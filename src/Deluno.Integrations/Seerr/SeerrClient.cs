@@ -38,6 +38,13 @@ public interface ISeerrClient
     /// </summary>
     /// <param name="mediaType"><c>movies</c> or <c>tv</c>.</param>
     Task<MediaServerAnswer<SeerrClearing>> ClearAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reports a title available (#852) the same way Overseerr's own scanners
+    /// do, by calling its internal <c>POST /api/v1/media/{id}/available</c>.
+    /// </summary>
+    /// <param name="seerrMediaId">Seerr's own media record id, not a TMDb/TVDb id.</param>
+    Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -166,6 +173,20 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
         return deleted.Ok || deleted.StatusCode == 404
             ? new MediaServerAnswer<SeerrClearing>.Reported(new SeerrClearing(true, $"{connection.Name} no longer lists it, and its requests are cleared."))
             : new MediaServerAnswer<SeerrClearing>.Unreachable(deleted.Problem!);
+    }
+
+    public async Task<MediaServerAnswer<bool>> MarkAvailableAsync(SeerrConnection connection, int seerrMediaId, CancellationToken cancellationToken)
+    {
+        var result = await SendAsync(
+            httpClientFactory,
+            HttpMethod.Post,
+            Address(connection, $"/api/v1/media/{seerrMediaId.ToString(CultureInfo.InvariantCulture)}/available"),
+            Headers(connection),
+            connection.Name,
+            cancellationToken);
+        return result.Ok
+            ? new MediaServerAnswer<bool>.Reported(true)
+            : new MediaServerAnswer<bool>.Unreachable(result.Problem!);
     }
 
     /// <summary>Who someone is, the way Seerr shows them.</summary>

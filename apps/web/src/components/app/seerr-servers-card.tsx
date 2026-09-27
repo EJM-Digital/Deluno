@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, Wifi } from "lucide-react";
-import { readValidationProblem } from "../../lib/api";
+import { fetchJson, readValidationProblem } from "../../lib/api";
+import type { LibraryItem, QualityProfileItem } from "../../lib/api/types";
 import { authedFetch } from "../../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../../lib/drawer-save-state";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
@@ -9,9 +10,10 @@ import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../ui/drawer";
-import { Field } from "../ui/field";
+import { Field, FieldRow } from "../ui/field";
 import { Input } from "../ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { Select } from "../ui/select";
 import { Switch, SwitchRow } from "../ui/switch";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
@@ -27,6 +29,26 @@ export interface SeerrServer {
   lastHealthTestUtc: string | null;
   serverName: string | null;
   version: string | null;
+  /** #851: where an approved request lands. Null follows the ordinary fallback: the first library of that media type. */
+  movieLibraryId: string | null;
+  movieQualityProfileId: string | null;
+  seriesLibraryId: string | null;
+  seriesQualityProfileId: string | null;
+}
+
+/** Mirrors `Deluno.Connections.Contracts.SeerrAcquisitionItem` (#851/#852). */
+export interface SeerrAcquisition {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+  mediaType: string;
+  entityId: string;
+  title: string;
+  seerrMediaId: number;
+  status: "added" | "failed" | "available" | "available-failed" | string;
+  message: string | null;
+  createdUtc: string;
+  updatedUtc: string;
 }
 
 /** Mirrors `Deluno.Retention.RetentionSeerrCleanup`. */
@@ -49,16 +71,29 @@ interface SeerrForm {
   baseUrl: string;
   apiKey: string;
   isEnabled: boolean;
+  movieLibraryId: string;
+  movieQualityProfileId: string;
+  seriesLibraryId: string;
+  seriesQualityProfileId: string;
 }
 
 function formFrom(server: SeerrServer | null): SeerrForm {
   return server
-    ? { name: server.name, baseUrl: server.baseUrl, apiKey: "", isEnabled: server.isEnabled }
-    : { name: "Seerr", baseUrl: "", apiKey: "", isEnabled: true };
+    ? {
+        name: server.name,
+        baseUrl: server.baseUrl,
+        apiKey: "",
+        isEnabled: server.isEnabled,
+        movieLibraryId: server.movieLibraryId ?? "",
+        movieQualityProfileId: server.movieQualityProfileId ?? "",
+        seriesLibraryId: server.seriesLibraryId ?? "",
+        seriesQualityProfileId: server.seriesQualityProfileId ?? ""
+      }
+    : { name: "Seerr", baseUrl: "", apiKey: "", isEnabled: true, movieLibraryId: "", movieQualityProfileId: "", seriesLibraryId: "", seriesQualityProfileId: "" };
 }
 
 function same(left: SeerrForm, right: SeerrForm) {
-  return left.name === right.name && left.baseUrl === right.baseUrl && left.apiKey === right.apiKey && left.isEnabled === right.isEnabled;
+  return (Object.keys(left) as (keyof SeerrForm)[]).every((key) => left[key] === right[key]);
 }
 
 /**
@@ -67,7 +102,19 @@ function same(left: SeerrForm, right: SeerrForm) {
  * cleared from Seerr, and a clearing Seerr refused is listed on its server
  * until it goes through.
  */
-export function SeerrServersCard({ servers, cleanups, onChanged }: { servers: SeerrServer[]; cleanups: SeerrCleanup[]; onChanged: () => void }) {
+export function SeerrServersCard({
+  servers,
+  cleanups,
+  libraries,
+  qualityProfiles,
+  onChanged
+}: {
+  servers: SeerrServer[];
+  cleanups: SeerrCleanup[];
+  libraries: LibraryItem[];
+  qualityProfiles: QualityProfileItem[];
+  onChanged: () => void;
+}) {
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [form, setForm] = useState<SeerrForm>(formFrom(null));
   const [initial, setInitial] = useState<SeerrForm>(formFrom(null));
@@ -164,7 +211,16 @@ export function SeerrServersCard({ servers, cleanups, onChanged }: { servers: Se
       await authedFetch(`/api/seerr-servers/${server.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: server.name, baseUrl: server.baseUrl, apiKey: "", isEnabled })
+        body: JSON.stringify({
+          name: server.name,
+          baseUrl: server.baseUrl,
+          apiKey: "",
+          isEnabled,
+          movieLibraryId: server.movieLibraryId,
+          movieQualityProfileId: server.movieQualityProfileId,
+          seriesLibraryId: server.seriesLibraryId,
+          seriesQualityProfileId: server.seriesQualityProfileId
+        })
       });
       onChanged();
     } finally {
@@ -271,6 +327,52 @@ export function SeerrServersCard({ servers, cleanups, onChanged }: { servers: Se
           <SwitchRow label="Enabled" description="Retention rules may read its requests and clear the titles they remove." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
         </DrawerSection>
 
+        <DrawerSection title="Turning approvals into downloads" aside="#851">
+          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+            In Seerr, add a Webhook notification agent pointed at{" "}
+            <code className="font-mono">{editing ? `${window.location.origin}/api/seerr-servers/${editing.id}/webhook` : "…save this server first…"}</code>
+            . An approved request lands in the library below and Deluno searches for it right away.
+          </p>
+          <FieldRow>
+            <Field label="Movie library" optional help="Blank uses the first movie library.">
+              <Select
+                value={form.movieLibraryId}
+                onChange={(event) => setForm((current) => ({ ...current, movieLibraryId: event.target.value }))}
+                placeholder="First movie library"
+                options={libraries.filter((library) => library.mediaType === "movies").map((library) => ({ value: library.id, label: library.name }))}
+              />
+            </Field>
+            <Field label="Movie quality profile" optional help="Blank keeps the library's own default.">
+              <Select
+                value={form.movieQualityProfileId}
+                onChange={(event) => setForm((current) => ({ ...current, movieQualityProfileId: event.target.value }))}
+                placeholder="Library default"
+                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="TV library" optional help="Blank uses the first TV library.">
+              <Select
+                value={form.seriesLibraryId}
+                onChange={(event) => setForm((current) => ({ ...current, seriesLibraryId: event.target.value }))}
+                placeholder="First TV library"
+                options={libraries.filter((library) => library.mediaType === "tv").map((library) => ({ value: library.id, label: library.name }))}
+              />
+            </Field>
+            <Field label="TV quality profile" optional help="Blank keeps the library's own default.">
+              <Select
+                value={form.seriesQualityProfileId}
+                onChange={(event) => setForm((current) => ({ ...current, seriesQualityProfileId: event.target.value }))}
+                placeholder="Library default"
+                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              />
+            </Field>
+          </FieldRow>
+        </DrawerSection>
+
+        {editing ? <RecentAcquisitionsSection connectionId={editing.id} /> : null}
+
         <DrawerSection title="Health">
           {editing?.lastHealthTestUtc ? (
             <dl className="grid grid-cols-[120px_1fr] items-center gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
@@ -343,5 +445,64 @@ export function SeerrServersCard({ servers, cleanups, onChanged }: { servers: Se
         }}
       />
     </>
+  );
+}
+
+const ACQUISITION_LABELS: Record<string, { label: string; tone: "ok" | "bad" | "idle" }> = {
+  added: { label: "Added, waiting to import", tone: "idle" },
+  failed: { label: "Could not add", tone: "bad" },
+  available: { label: "Imported and reported available", tone: "ok" },
+  "available-failed": { label: "Imported, but Seerr could not be told", tone: "bad" }
+};
+
+/**
+ * #851/#852: the last few approvals this server turned into acquisitions (or
+ * tried to and failed), so the automatic action is visible, not silent.
+ */
+function RecentAcquisitionsSection({ connectionId }: { connectionId: string }) {
+  const [items, setItems] = useState<SeerrAcquisition[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setItems(null);
+    fetchJson<SeerrAcquisition[]>(`/api/seerr-servers/${connectionId}/acquisitions`)
+      .then((result) => {
+        if (!cancelled) setItems(result);
+      })
+      .catch(() => {
+        if (!cancelled) setItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId]);
+
+  if (items !== null && items.length === 0) {
+    return null;
+  }
+
+  return (
+    <DrawerSection title="Recent acquisitions" aside={items ? `${items.length}` : undefined}>
+      {items === null ? (
+        <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Loading…</p>
+      ) : (
+        <dl className="grid grid-cols-[1fr_auto] items-baseline gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
+          {items.map((item) => {
+            const status = ACQUISITION_LABELS[item.status] ?? { label: item.status, tone: "idle" as const };
+            return (
+              <div key={item.id} className="contents">
+                <dt className="text-foreground">
+                  {item.title}
+                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">{relative(item.createdUtc)}{item.message ? ` · ${item.message}` : ""}</span>
+                </dt>
+                <dd>
+                  <Chip tone={status.tone}>{status.label}</Chip>
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      )}
+    </DrawerSection>
   );
 }

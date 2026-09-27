@@ -110,7 +110,8 @@ public static class PlatformDatabaseMigrations
         new V0102QbittorrentLocation(),
         new V0103IndexerProxies(),
         new V0104IntakeSourceMonitorMode(),
-        new V0105IntakeSourceSeriesOptions()
+        new V0105IntakeSourceSeriesOptions(),
+        new V0106SeerrAcquisitions()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

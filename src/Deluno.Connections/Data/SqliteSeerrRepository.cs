@@ -34,7 +34,7 @@ public sealed class SqliteSeerrRepository(
     private const string KeyPurpose = "seerr:api-key";
 
     private const string Columns =
-        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc";
+        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc, movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id";
 
     public async Task<IReadOnlyList<SeerrConnection>> ListAsync(CancellationToken cancellationToken)
     {
@@ -79,8 +79,14 @@ public sealed class SqliteSeerrRepository(
         using var command = connection.CreateCommand();
         command.CommandText = existing is null
             ? """
-              INSERT INTO seerr_servers (id, name, base_url, api_key, is_enabled, health_status, created_utc, updated_utc)
-              VALUES (@id, @name, @baseUrl, @apiKey, @isEnabled, 'untested', @now, @now);
+              INSERT INTO seerr_servers (
+                  id, name, base_url, api_key, is_enabled, health_status, created_utc, updated_utc,
+                  movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id
+              )
+              VALUES (
+                  @id, @name, @baseUrl, @apiKey, @isEnabled, 'untested', @now, @now,
+                  @movieLibraryId, @movieQualityProfileId, @seriesLibraryId, @seriesQualityProfileId
+              );
               """
             : """
               UPDATE seerr_servers
@@ -91,6 +97,10 @@ public sealed class SqliteSeerrRepository(
                   health_status = CASE WHEN @addressChanged = 1 THEN 'untested' ELSE health_status END,
                   server_name = CASE WHEN @addressChanged = 1 THEN NULL ELSE server_name END,
                   version = CASE WHEN @addressChanged = 1 THEN NULL ELSE version END,
+                  movie_library_id = @movieLibraryId,
+                  movie_quality_profile_id = @movieQualityProfileId,
+                  series_library_id = @seriesLibraryId,
+                  series_quality_profile_id = @seriesQualityProfileId,
                   updated_utc = @now
               WHERE id = @id;
               """;
@@ -101,6 +111,10 @@ public sealed class SqliteSeerrRepository(
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@addressChanged", addressChanged ? 1 : 0);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@movieLibraryId", string.IsNullOrWhiteSpace(request.MovieLibraryId) ? null : request.MovieLibraryId.Trim());
+        AddParameter(command, "@movieQualityProfileId", string.IsNullOrWhiteSpace(request.MovieQualityProfileId) ? null : request.MovieQualityProfileId.Trim());
+        AddParameter(command, "@seriesLibraryId", string.IsNullOrWhiteSpace(request.SeriesLibraryId) ? null : request.SeriesLibraryId.Trim());
+        AddParameter(command, "@seriesQualityProfileId", string.IsNullOrWhiteSpace(request.SeriesQualityProfileId) ? null : request.SeriesQualityProfileId.Trim());
         await command.ExecuteNonQueryAsync(cancellationToken);
         return await GetAsync(rowId, cancellationToken);
     }
@@ -156,5 +170,9 @@ public sealed class SqliteSeerrRepository(
             ServerName: reader.IsDBNull(9) ? null : reader.GetString(9),
             Version: reader.IsDBNull(10) ? null : reader.GetString(10),
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(11)),
-            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(12)));
+            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(12)),
+            MovieLibraryId: reader.IsDBNull(13) ? null : reader.GetString(13),
+            MovieQualityProfileId: reader.IsDBNull(14) ? null : reader.GetString(14),
+            SeriesLibraryId: reader.IsDBNull(15) ? null : reader.GetString(15),
+            SeriesQualityProfileId: reader.IsDBNull(16) ? null : reader.GetString(16));
 }

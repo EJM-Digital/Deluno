@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../lib/api";
-import type { IntegrationFailure } from "../lib/api/types";
+import type { IntegrationFailure, LibraryItem, QualityProfileItem } from "../lib/api/types";
 import { authedFetch } from "../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -91,14 +91,16 @@ interface ServerForm {
 }
 
 export async function mediaServersLoader() {
-  const [servers, collections, seerrServers, seerrCleanups] = await Promise.all([
+  const [servers, collections, seerrServers, seerrCleanups, libraries, qualityProfiles] = await Promise.all([
     fetchJson<MediaServerConnection[]>("/api/media-servers"),
     // Only a person who can see retention sees its collections; the servers stand on their own.
     fetchJson<LeavingSoonCollection[]>("/api/retention/collections").catch(() => [] as LeavingSoonCollection[]),
     fetchJson<SeerrServer[]>("/api/seerr-servers").catch(() => [] as SeerrServer[]),
-    fetchJson<SeerrCleanup[]>("/api/retention/seerr-cleanups").catch(() => [] as SeerrCleanup[])
+    fetchJson<SeerrCleanup[]>("/api/retention/seerr-cleanups").catch(() => [] as SeerrCleanup[]),
+    fetchJson<LibraryItem[]>("/api/libraries").catch(() => [] as LibraryItem[]),
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch(() => [] as QualityProfileItem[])
   ]);
-  return { servers, collections, seerrServers, seerrCleanups };
+  return { servers, collections, seerrServers, seerrCleanups, libraries, qualityProfiles };
 }
 
 function kindOf(kind: string) {
@@ -124,11 +126,13 @@ function same(left: ServerForm, right: ServerForm) {
  * reaches - two servers on the same default port are otherwise easy to mix up.
  */
 export function MediaServersPage() {
-  const { servers, collections, seerrServers, seerrCleanups } = useLoaderData() as {
+  const { servers, collections, seerrServers, seerrCleanups, libraries, qualityProfiles } = useLoaderData() as {
     servers: MediaServerConnection[];
     collections: LeavingSoonCollection[];
     seerrServers: SeerrServer[];
     seerrCleanups: SeerrCleanup[];
+    libraries: LibraryItem[];
+    qualityProfiles: QualityProfileItem[];
   };
   const revalidator = useRevalidator();
 
@@ -395,7 +399,7 @@ export function MediaServersPage() {
         )}
       </ListCard>
 
-      <SeerrServersCard servers={seerrServers} cleanups={seerrCleanups} onChanged={() => revalidator.revalidate()} />
+      <SeerrServersCard servers={seerrServers} cleanups={seerrCleanups} libraries={libraries} qualityProfiles={qualityProfiles} onChanged={() => revalidator.revalidate()} />
 
       <Drawer
         open={drawer.open}

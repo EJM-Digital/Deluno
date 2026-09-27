@@ -4,7 +4,9 @@ using Deluno.Worker.HealthChecks.Checks;
 using Deluno.Worker.Jobs;
 using Deluno.Worker.Services;
 using Deluno.Worker.Intake;
+using Deluno.Worker.Seerr;
 using Deluno.Intake.Contracts;
+using Deluno.Integrations.Seerr;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Worker;
@@ -21,6 +23,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IIntakeSyncService>(serviceProvider => serviceProvider.GetRequiredService<IntakeSyncService>());
         services.AddScoped<IIntakeListPreviewService>(serviceProvider => serviceProvider.GetRequiredService<IntakeSyncService>());
         services.AddScoped<IIntakeListApprovalService>(serviceProvider => serviceProvider.GetRequiredService<IntakeSyncService>());
+        services.AddScoped<ISeerrAcquisitionService, SeerrAcquisitionService>();
 
         services.AddScoped<IJobHandler, MoviesCatalogRefreshJobHandler>();
         services.AddScoped<IJobHandler, SeriesCatalogRefreshJobHandler>();
