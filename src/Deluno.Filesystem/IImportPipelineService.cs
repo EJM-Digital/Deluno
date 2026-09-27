@@ -11,4 +11,10 @@ public sealed record ImportPipelineResult(
     bool Succeeded,
     int StatusCode,
     ImportExecuteResponse? Response,
-    string Message);
+    string Message,
+    /// <summary>
+    /// The machine-readable reason a failed import was refused, matching
+    /// <c>ImportFailurePolicy</c>'s failure kinds (e.g. <c>"replacementRejected"</c>).
+    /// Null for a success, and for a failure that carries no such kind.
+    /// </summary>
+    string? FailureKind = null);

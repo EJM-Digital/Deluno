@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Filesystem;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -115,6 +116,11 @@ public sealed class ProcessorOutcomeReporter(
     public static bool WillNotTryAgain(ImportPipelineResult result, JobQueueItem job)
         => IsRefusal(result) || job.Attempts >= job.MaxAttempts;
 
-    /// <summary>A refusal of the import itself: final, because trying again reads the same bytes (#603).</summary>
-    public static bool IsRefusal(ImportPipelineResult result) => result.StatusCode == 400;
+    /// <summary>
+    /// A refusal of the import itself: final, because trying again reads the
+    /// same bytes (#603) - including a rejected upgrade (#928), which is a
+    /// refusal of the incoming file, not a transient problem to retry.
+    /// </summary>
+    public static bool IsRefusal(ImportPipelineResult result)
+        => result.StatusCode == 400 || result.FailureKind == ImportFailurePolicy.ReplacementRejected;
 }
