@@ -28,11 +28,30 @@ import { fetchPageItems, type ActivityEventItem } from "../../lib/api";
 import type { AttentionSnapshot } from "../../lib/use-attention";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
-import { categoryLabel, formatEventAge } from "../../lib/activity-format";
+import { categoryLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
 import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
 
 const LIMIT = 10;
+
+/**
+ * How far back the bell reads before filtering (#916). Routine job noise
+ * used to fill all ten slots on its own every half hour; reading a wider
+ * page and then keeping only what matters means the ten shown are still ten
+ * once the noise is filtered out, not "however many were left after it".
+ */
+const FETCH_PAGE_SIZE = 60;
+
+/**
+ * What the bell actually shows: folded to one row per job run, filtered to
+ * what needs attention or changed the library or queue, newest first.
+ */
+function bellEvents(raw: ActivityEventItem[]): ActivityEventItem[] {
+  return foldRoutineJobEvents(raw)
+    .map((folded) => folded.event)
+    .filter(mattersToTheBell)
+    .slice(0, LIMIT);
+}
 
 /** Where clicking an event goes: the title, the Queue item, or (failing that) its own Activity entry. */
 function eventHref(event: Pick<ActivityEventItem, "relatedEntityType" | "relatedEntityId">): string {
@@ -74,10 +93,10 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   useEffect(() => {
     if (!open || loaded) return;
     let cancelled = false;
-    fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${LIMIT}`)
+    fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${FETCH_PAGE_SIZE}`)
       .then((items) => {
         if (cancelled) return;
-        setEvents(items.slice(0, LIMIT));
+        setEvents(bellEvents(items));
         setLoaded(true);
       })
       .catch(() => {
@@ -95,6 +114,11 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   // refetches the fuller shape -- the same trade the ticker already makes.
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     if (!open) return;
+    // A routine job's own lifecycle noise never made it worth waking up for;
+    // it is filtered out here the same as it is on the seeded fetch, rather
+    // than arriving live and then never being folded away like its seeded
+    // siblings.
+    if (!mattersToTheBell(event)) return;
     setEvents((current) => {
       if (current.some((item) => item.id === event.id)) return current;
       return [

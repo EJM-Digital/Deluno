@@ -664,6 +664,69 @@ public sealed class JobStoreTests
         Assert.Single(remaining, activity => activity.Category == "test.recent");
     }
 
+    /// <summary>
+    /// #916: "Added a media read to the queue." and "Started reading what your
+    /// files actually are." said nothing about which library, so the routine
+    /// media-probe pass filled Activity with six near-identical unlabelled
+    /// lines every half hour. Every job whose own words do not already name a
+    /// library now says which one it ran for, whether it was queued or started.
+    /// </summary>
+    [Theory]
+    [InlineData("movie", "Movies")]
+    [InlineData("series", "TV")]
+    public async Task Media_probe_job_events_name_movies_or_tv(string relatedEntityType, string expectedSuffix)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "library.media.probe",
+                Source: "system",
+                PayloadJson: null,
+                RelatedEntityType: relatedEntityType,
+                RelatedEntityId: "all"),
+            CancellationToken.None);
+        await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), ["library.media.probe"], CancellationToken.None);
+
+        var activities = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        var queued = Assert.Single(activities, activity => activity.Category == "job.queued");
+        var started = Assert.Single(activities, activity => activity.Category == "job.started");
+
+        Assert.Equal($"Added a media read ({expectedSuffix}) to the queue.", queued.Message);
+        Assert.Equal($"Started reading what your files actually are ({expectedSuffix}).", started.Message);
+    }
+
+    /// <summary>
+    /// A job type whose own words already name Movies or TV — here
+    /// <c>movies.catalog.refresh</c> — must not be told twice.
+    /// </summary>
+    [Fact]
+    public async Task A_job_type_that_already_names_its_media_kind_is_not_told_twice()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: "movies.catalog.refresh",
+                Source: "system",
+                PayloadJson: null,
+                RelatedEntityType: "movie",
+                RelatedEntityId: "movie-1"),
+            CancellationToken.None);
+
+        var activities = await store.ListActivityAsync(10, null, null, CancellationToken.None);
+        var queued = Assert.Single(activities, activity => activity.Category == "job.queued");
+
+        Assert.Equal("Added a movie check to the queue.", queued.Message);
+        Assert.DoesNotContain("(Movies)", queued.Message);
+    }
+
     [Fact]
     public async Task RecordDownloadDispatchAsync_retains_the_external_id_returned_by_the_client()
     {

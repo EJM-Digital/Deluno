@@ -52,7 +52,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
-import { ACTIVITY_EVENT_TYPE_LABELS, activityEventType, categoryLabel, type ActivityEventType } from "../lib/activity-format";
+import { ACTIVITY_EVENT_TYPE_LABELS, activityEventType, categoryLabel, foldRoutineJobEvents, type ActivityEventType } from "../lib/activity-format";
 import { reasonWords } from "../lib/failure-reasons";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
@@ -146,15 +146,24 @@ export function ActivityPage() {
   const openEvent = activity.find((event) => event.id === openEventId) ?? null;
   const openImportCase = importCases.find((item) => `${item.mediaLabel}-${item.id}` === openImportCaseId) ?? null;
 
+  // #916: a routine background job's queued/started/completed rows fold into
+  // the one that answers "what happened" (its completion, or its start while
+  // still running), with the other two kept for the drawer.
+  const foldedActivity = useMemo(() => foldRoutineJobEvents(activity), [activity]);
+  const openEventFoldedFrom = foldedActivity.find((folded) => folded.event.id === openEventId)?.foldedFrom ?? [];
+
   // Only the types actually present are offered (#798): a dropdown of eight
   // options where six are always empty is not a filter, it is a maze.
   const presentEventTypes = useMemo(
-    () => [...new Set(activity.map((event) => activityEventType(event)))],
-    [activity]
+    () => [...new Set(foldedActivity.map((folded) => activityEventType(folded.event)))],
+    [foldedActivity]
   );
   const filteredActivity = useMemo(
-    () => (eventTypeFilter === "all" ? activity : activity.filter((event) => activityEventType(event) === eventTypeFilter)),
-    [activity, eventTypeFilter]
+    () =>
+      eventTypeFilter === "all"
+        ? foldedActivity
+        : foldedActivity.filter((folded) => activityEventType(folded.event) === eventTypeFilter),
+    [foldedActivity, eventTypeFilter]
   );
 
   async function handleRetryFailedJobs() {
@@ -318,7 +327,13 @@ export function ActivityPage() {
       {section === "events" ? (
         <ListCard
           title="Events"
-          count={filteredActivity.length !== activity.length ? `${filteredActivity.length} of ${activity.length}` : activity.length ? `Latest ${activity.length}` : undefined}
+          count={
+            filteredActivity.length !== foldedActivity.length
+              ? `${filteredActivity.length} of ${foldedActivity.length}`
+              : foldedActivity.length
+                ? `Latest ${foldedActivity.length}`
+                : undefined
+          }
           actions={
             <>
               {presentEventTypes.length > 1 ? (
@@ -351,9 +366,18 @@ export function ActivityPage() {
                 ...(eventColumns.isVisible("when") ? [{ label: "When" }] : [])
               ]}
             >
-              {filteredActivity.map((event) => (
+              {filteredActivity.map(({ event, foldedFrom }) => (
                 <ListRow key={event.id} onClick={() => setOpenEventId(event.id)} selected={openEventId === event.id}>
-                  <ListNameCell name={event.message} sub={event.detail} />
+                  <ListNameCell
+                    name={event.message}
+                    sub={
+                      foldedFrom.length
+                        ? [event.detail, `+${foldedFrom.length} more step${foldedFrom.length === 1 ? "" : "s"} for this run — open to see them`]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : event.detail
+                    }
+                  />
                   {eventColumns.isVisible("category") ? <ListCell primary={categoryLabel(event.category)} mobile /> : null}
                   {eventColumns.isVisible("type") ? <ListCell primary={ACTIVITY_EVENT_TYPE_LABELS[activityEventType(event)]} /> : null}
                   {eventColumns.isVisible("related") ? (
@@ -504,6 +528,21 @@ export function ActivityPage() {
                 <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
                   {prettyJson(openEvent.detailsJson)}
                 </pre>
+              </DrawerSection>
+            ) : null}
+
+            {openEventFoldedFrom.length ? (
+              <DrawerSection title="The rest of this run">
+                <ul className="flex flex-col gap-2">
+                  {openEventFoldedFrom.map((step) => (
+                    <li key={step.id} className="text-[length:var(--type-body-sm)] leading-relaxed text-muted-foreground">
+                      <span className="text-foreground">{step.message}</span>
+                      <span className="ml-1.5 text-[length:var(--type-caption)]">
+                        {formatPreferenceDateTime(step.createdUtc, preferences)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </DrawerSection>
             ) : null}
           </>

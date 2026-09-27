@@ -82,6 +82,77 @@ export const ACTIVITY_EVENT_TYPE_LABELS: Record<ActivityEventType, string> = {
  * `filesystem.import.failed` both names an import and is a failure, and a
  * failure a person can act on is the more useful bucket to find it under.
  */
+/**
+ * What the bell shows, per James's approved proposal on #916: what needs
+ * attention or changed the library or queue. A routine background job that
+ * found or changed nothing is neither — it is the six near-identical
+ * unlabelled lines an hour that used to push a failed grab off the bell's
+ * ten.
+ */
+const BELL_EVENT_TYPES: ReadonlySet<ActivityEventType> = new Set([
+  "failed",
+  "health",
+  "grabbed",
+  "imported",
+  "removed",
+  "blocklisted"
+]);
+
+export function mattersToTheBell(event: { category: string; severity?: string }): boolean {
+  return BELL_EVENT_TYPES.has(activityEventType(event));
+}
+
+/**
+ * The three lifecycle events one job run writes — queued, started, completed
+ * — folded into the one row that answers "what happened", carrying the
+ * others for whoever expands it. #916: a routine recurring job (the media
+ * probe every 30 minutes is the one that was actually counted) wrote three
+ * near-identical rows per run, which is what buried the events a person
+ * needed to see under events nobody was reading.
+ *
+ * Grouped by `relatedJobId` across the whole list rather than only adjacent
+ * rows, the same reason the dashboard ticker's `collapseRepeats` already
+ * does that: queued and completed can sit minutes apart with other events
+ * between them once more than one job runs at a time.
+ *
+ * The representative row is whichever of the three is encountered first —
+ * in a newest-first list that is `job.completed` once the run has finished
+ * (the outcome, which is the one worth reading), or `job.started`/
+ * `job.queued` while it is still in flight.
+ */
+const JOB_LIFECYCLE_CATEGORIES = new Set(["job.queued", "job.started", "job.completed"]);
+
+export interface FoldedActivityEvent<T> {
+  event: T;
+  /** The other lifecycle events for the same job run, if any were folded into this one. */
+  foldedFrom: T[];
+}
+
+export function foldRoutineJobEvents<T extends { category: string; relatedJobId: string | null }>(
+  events: readonly T[]
+): FoldedActivityEvent<T>[] {
+  const folded: FoldedActivityEvent<T>[] = [];
+  const groups = new Map<string, FoldedActivityEvent<T>>();
+
+  for (const event of events) {
+    const jobId = event.relatedJobId;
+    if (jobId && JOB_LIFECYCLE_CATEGORIES.has(event.category)) {
+      const existing = groups.get(jobId);
+      if (existing) {
+        existing.foldedFrom.push(event);
+        continue;
+      }
+      const entry: FoldedActivityEvent<T> = { event, foldedFrom: [] };
+      groups.set(jobId, entry);
+      folded.push(entry);
+      continue;
+    }
+    folded.push({ event, foldedFrom: [] });
+  }
+
+  return folded;
+}
+
 export function activityEventType(event: { category: string; severity?: string }): ActivityEventType {
   const category = event.category.trim().toLowerCase();
 
