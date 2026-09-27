@@ -29,4 +29,12 @@ public interface IActivityFeedRepository
     Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
         IReadOnlyList<ActivityEventItem> activities,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #828: deletes every Activity row older than <paramref name="olderThan"/>.
+    /// A different concept from a title's own history, which RetentionService
+    /// governs; this never touches a title, a file, or anything but Deluno's
+    /// own record of what it did and when.
+    /// </summary>
+    Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken);
 }

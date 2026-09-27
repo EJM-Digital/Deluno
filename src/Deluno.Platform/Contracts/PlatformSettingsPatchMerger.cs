@@ -96,5 +96,6 @@ public static class PlatformSettingsPatchMerger
             SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
-            RenameFoldersOnImport: patch.RenameFoldersOnImport ?? current.RenameFoldersOnImport);
+            RenameFoldersOnImport: patch.RenameFoldersOnImport ?? current.RenameFoldersOnImport,
+            HistoryRetentionDays: patch.HistoryRetentionDays ?? current.HistoryRetentionDays);
 }

@@ -236,5 +236,8 @@ public sealed class GuideRuleMigrationTests
 
         public Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(IReadOnlyList<ActivityEventItem> activities, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

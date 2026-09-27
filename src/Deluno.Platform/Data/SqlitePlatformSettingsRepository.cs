@@ -257,6 +257,8 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "media.multiEpisodeStyle", NormalizeMultiEpisodeStyle(request.MultiEpisodeStyle), updatedUtc, cancellationToken);
         // #764: off by default (#936), independent of media.renameOnImport.
         await UpsertSettingAsync(connection, transaction, "media.renameFoldersOnImport", request.RenameFoldersOnImport == true ? "true" : "false", updatedUtc, cancellationToken);
+        // #828: Deluno's own event/strike history, not RetentionService's title-removal marks.
+        await UpsertSettingAsync(connection, transaction, "history.retentionDays", Math.Clamp(request.HistoryRetentionDays ?? 365, 1, 3650).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -612,7 +614,8 @@ public sealed class SqlitePlatformSettingsRepository(
             SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
             SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
             MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),
-            RenameFoldersOnImport: string.Equals(GetValue(settings, "media.renameFoldersOnImport"), "true", StringComparison.OrdinalIgnoreCase));
+            RenameFoldersOnImport: string.Equals(GetValue(settings, "media.renameFoldersOnImport"), "true", StringComparison.OrdinalIgnoreCase),
+            HistoryRetentionDays: ReadPositiveInt(GetValue(settings, "history.retentionDays"), 365, 1, 3650));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

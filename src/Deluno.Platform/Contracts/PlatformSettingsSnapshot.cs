@@ -184,4 +184,11 @@ public sealed record PlatformSettingsSnapshot(
     // title exactly as it always has -- the "off" behaviour only changes
     // anything when the source Deluno was handed was itself a folder with a
     // name of its own to keep.
-    bool RenameFoldersOnImport = false);
+    bool RenameFoldersOnImport = false,
+    // #828: how long Deluno keeps its own event/strike history - Activity
+    // feed rows and download-health strike records - before a background
+    // job prunes them. A different concept from RetentionService, which
+    // decides when media titles themselves are removed from the library;
+    // this never touches a title or its files, only Deluno's own records
+    // about what happened. Same pattern as ImportRecoveryRetentionDays.
+    int HistoryRetentionDays = 365);

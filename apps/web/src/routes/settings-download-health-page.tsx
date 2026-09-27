@@ -238,6 +238,52 @@ function TimingCard({ settings }: { settings: PlatformSettingsSnapshot }) {
   );
 }
 
+/**
+ * #828: how long Deluno keeps its own event/strike history - Activity rows
+ * and download-health strike records - before a daily background job
+ * prunes it. A different concept from a title's own retention, which
+ * RetentionService governs; this never touches a title or its files.
+ */
+function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [days, setDays] = useState(String(settings.historyRetentionDays));
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const dirty = days !== String(settings.historyRetentionDays);
+
+  async function save() {
+    const value = Number(days);
+    if (!Number.isFinite(value) || value < 1 || value > 3650) {
+      setError("Must be between 1 and 3650 days.");
+      return;
+    }
+    setError(null);
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({ historyRetentionDays: value });
+      setDays(String(next.historyRetentionDays));
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="History retention" count="How long Deluno keeps its own records">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-end">
+        <Field label="Keep Activity and strike history for" error={error ?? undefined} help="Deluno's own record of what it did and when - never a title's files or its own retention, which stays under System -> Recycle bin.">
+          <div className="flex items-center gap-2">
+            <Input type="number" min="1" max="3650" step="1" value={days} onChange={(event) => setDays(event.target.value)} className="max-w-[8rem]" />
+            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
+          </div>
+        </Field>
+        <Button type="button" size="sm" onClick={() => void save()} disabled={!dirty || saveState === "saving"}>Save</Button>
+      </div>
+      {saveState === "error" ? <p className="px-[var(--card-pad-x)] pb-[var(--card-pad-x)] text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+    </ListCard>
+  );
+}
+
 interface RuleForm {
   kind: string;
   enabled: boolean;
@@ -534,6 +580,8 @@ export function SettingsDownloadHealthPage() {
       <StrikeInactivityCard settings={settings} />
 
       <TimingCard settings={settings} />
+
+      <HistoryRetentionCard settings={settings} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">

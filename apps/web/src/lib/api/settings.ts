@@ -77,6 +77,8 @@ export interface PlatformSettingsPatch {
   downloadHealthDefaultStrikeWindowMinutes?: number;
   /** #823: how often the throughput sampler polls telemetry for the speed chart, in minutes. 1-60. */
   downloadThroughputSamplerIntervalMinutes?: number;
+  /** #828: 1-3650 days of Deluno's own event/strike history before a background job prunes it. */
+  historyRetentionDays?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */

@@ -233,6 +233,9 @@ public sealed class ConnectivityMonitorTests
 
         public Task<Deluno.Contracts.Page<ActivityEventItem>> ListActivityPageAsync(Deluno.Contracts.PageRequest request, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
             => Task.FromResult(Deluno.Contracts.Page<ActivityEventItem>.Of(Recorded, null));
+
+        public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+            => Task.FromResult(0);
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
