@@ -18,10 +18,20 @@ namespace Deluno.Integrations.DownloadClients.Clients;
 /// <c>d.erase</c> — drop the torrent from rTorrent's session — and nothing
 /// that also removes the files it produced. Radarr/Sonarr do not claim to
 /// delete rTorrent's payload either; it is a genuine gap in rTorrent's own
-/// API, not a shortcut taken here. Delete, DeleteWithData and Forget all
-/// call <c>d.erase</c>: the file leaves rTorrent's session either way, and
-/// rTorrent keeps no separate history for a released hash to survive in
-/// (unlike SABnzbd/NZBGet), so there is nothing further "forget" could do.</para>
+/// API, not a shortcut taken here. Delete and Forget call <c>d.erase</c> alone:
+/// the file leaves rTorrent's session either way, and rTorrent keeps no
+/// separate history for a released hash to survive in (unlike SABnzbd/NZBGet),
+/// so there is nothing further "forget" could do.</para>
+///
+/// <para><b>DeleteWithData asks rTorrent where the download actually is</b>
+/// (<c>d.base_path</c>, falling back to <c>d.directory</c> for an older
+/// rTorrent build without it) and deletes exactly that path itself, once
+/// <c>d.erase</c> has released rTorrent's own hold on it — never a parent, a
+/// sibling, or anything <c>d.base_path</c> did not itself name. When rTorrent
+/// cannot say where the download is, or the path it names does not exist on
+/// this machine (a remote rTorrent whose files Deluno cannot see), nothing is
+/// deleted and the action's own message says so, so the limit shows on screen
+/// instead of silently doing nothing.</para>
 /// </summary>
 public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
 {
@@ -180,16 +190,20 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
         var http = CreateHttp(client);
 
-        // One arm per verb — Delete/DeleteWithData/Forget all reach d.erase,
-        // for the reason this class's own doc comment gives: rTorrent's RPC
-        // has nothing further any of them could call.
+        if (action == DownloadClientActions.DeleteWithData)
+        {
+            return await DeleteWithDataAsync(client, http, baseUri, queueItemId, cancellationToken);
+        }
+
+        // Delete and Forget both reach plain d.erase, for the reason this
+        // class's own doc comment gives: rTorrent's RPC has nothing further
+        // either could call.
         var method = action switch
         {
             DownloadClientActions.Pause => "d.pause",
             DownloadClientActions.Resume => "d.resume",
             DownloadClientActions.Recheck => "d.check_hash",
             DownloadClientActions.Delete => "d.erase",
-            DownloadClientActions.DeleteWithData => "d.erase",
             DownloadClientActions.Forget => "d.erase",
             _ => null
         };
@@ -204,6 +218,128 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         {
             return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
         }
+    }
+
+    /// <summary>
+    /// rTorrent has no "delete with data" of its own (see this class's doc
+    /// comment): Deluno asks rTorrent for the download's own path, releases
+    /// rTorrent's hold on it with <c>d.erase</c>, and deletes exactly that path
+    /// itself -- only when the path is one it can safely say belongs to this
+    /// download alone, never a guess. Anything less than that is a limit
+    /// stated on screen, not a silent no-op.
+    /// </summary>
+    private static async Task<DownloadClientActionResult> DeleteWithDataAsync(
+        DownloadClientItem client,
+        HttpClient http,
+        Uri baseUri,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        string? path;
+        try
+        {
+            path = AsString(await SendAsync(http, baseUri, "d.base_path", [queueItemId], cancellationToken));
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = AsString(await SendAsync(http, baseUri, "d.directory", [queueItemId], cancellationToken));
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.DeleteWithData, $"Could not ask rTorrent where this download's files are: {exception.Message}", null);
+        }
+
+        try
+        {
+            await SendAsync(http, baseUri, "d.erase", [queueItemId], cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, DownloadClientActions.DeleteWithData, exception.Message, null);
+        }
+
+        if (!IsSafeToDeleteRtorrentPath(path, out var fullPath))
+        {
+            return DownloadClientHelpers.ActionSuccess(
+                client,
+                queueItemId,
+                DownloadClientActions.DeleteWithData,
+                "rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not safely find its files on this machine, so they were left on disk -- remove them by hand.");
+        }
+
+        try
+        {
+            if (Directory.Exists(fullPath))
+            {
+                Directory.Delete(fullPath, recursive: true);
+            }
+            else
+            {
+                File.Delete(fullPath);
+            }
+
+            return DownloadClientHelpers.ActionSuccess(
+                client,
+                queueItemId,
+                DownloadClientActions.DeleteWithData,
+                $"rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent and deleted its files at {fullPath} itself.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return DownloadClientHelpers.ActionSuccess(
+                client,
+                queueItemId,
+                DownloadClientActions.DeleteWithData,
+                $"rTorrent has no delete-with-data of its own. Deluno removed it from rTorrent, but could not delete its files at {fullPath}: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> is one Deluno can safely delete on this
+    /// download's behalf: named, resolvable, not a filesystem root (rTorrent
+    /// reporting "/" or "C:\" is a misconfiguration, not this download's own
+    /// folder), and actually present on this machine -- a remote rTorrent
+    /// whose files Deluno cannot see reports a path that simply does not
+    /// exist here, which is exactly the case this must not guess through.
+    /// </summary>
+    private static bool IsSafeToDeleteRtorrentPath(string? path, out string fullPath)
+    {
+        fullPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        string resolved;
+        try
+        {
+            resolved = Path.GetFullPath(path);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+
+        var root = Path.GetPathRoot(resolved);
+        if (string.IsNullOrEmpty(root))
+        {
+            return false;
+        }
+
+        var trimmedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var trimmedResolved = resolved.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (trimmedResolved.Length == 0 || string.Equals(trimmedResolved, trimmedRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!Directory.Exists(resolved) && !File.Exists(resolved))
+        {
+            return false;
+        }
+
+        fullPath = resolved;
+        return true;
     }
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
