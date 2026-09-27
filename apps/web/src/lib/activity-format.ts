@@ -49,6 +49,54 @@ export function categoryLabel(category: string): string {
 }
 
 /**
+ * The event-type filter Activity's history gains in #798, cutting across
+ * category prefixes the way Radarr/Sonarr's History filter does — "grabbed",
+ * "imported", "failed", "rejected" — rather than one option per raw category
+ * slug (there are over ninety of those, which is a dropdown nobody reads).
+ */
+export type ActivityEventType =
+  | "grabbed"
+  | "imported"
+  | "rejected"
+  | "blocklisted"
+  | "removed"
+  | "failed"
+  | "health"
+  | "search"
+  | "other";
+
+export const ACTIVITY_EVENT_TYPE_LABELS: Record<ActivityEventType, string> = {
+  grabbed: "Grabbed",
+  imported: "Imported",
+  rejected: "Rejected",
+  blocklisted: "Blocklisted",
+  removed: "Removed",
+  failed: "Failed",
+  health: "Health",
+  search: "Search",
+  other: "Other"
+};
+
+/**
+ * Checked in this order because a category can earn more than one test —
+ * `filesystem.import.failed` both names an import and is a failure, and a
+ * failure a person can act on is the more useful bucket to find it under.
+ */
+export function activityEventType(event: { category: string; severity?: string }): ActivityEventType {
+  const category = event.category.trim().toLowerCase();
+
+  if (category.includes("block")) return "blocklisted";
+  if (category.includes("rejected")) return "rejected";
+  if (category.includes("removed") || category.includes("dismissed")) return "removed";
+  if (event.severity === "error" || category.includes("failed") || category.includes("failure")) return "failed";
+  if (category.includes("import") && !category.includes("failed")) return "imported";
+  if (category.includes("dispatch") || category.startsWith("release.") || category.includes("grab")) return "grabbed";
+  if (category.startsWith("health")) return "health";
+  if (category.startsWith("search") || category.includes(".search.") || category.endsWith(".search")) return "search";
+  return "other";
+}
+
+/**
  * Finer-grained than `formatShortDate`'s day buckets: a live feed lives and
  * dies by seconds and minutes, which "today"/"yesterday" cannot tell apart.
  */
