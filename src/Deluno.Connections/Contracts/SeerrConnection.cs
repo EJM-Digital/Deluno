@@ -33,9 +33,18 @@ public sealed record SeerrConnection(
     string? MovieLibraryId = null,
     string? MovieQualityProfileId = null,
     string? SeriesLibraryId = null,
-    string? SeriesQualityProfileId = null)
+    string? SeriesQualityProfileId = null,
+    /// <summary>
+    /// The value Overseerr/Jellyseerr's webhook agent must send back as its
+    /// Authorization header (#851). Never serialized to the API directly —
+    /// only the dedicated reveal/regenerate endpoints return the plaintext,
+    /// the same way the API key is never handed back once saved.
+    /// </summary>
+    [property: JsonIgnore] string? WebhookSecret = null)
 {
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
+
+    public bool HasWebhookSecret => !string.IsNullOrWhiteSpace(WebhookSecret);
 }
 
 /// <param name="ApiKey">Blank keeps the stored one, because the screen cannot show what is saved.</param>

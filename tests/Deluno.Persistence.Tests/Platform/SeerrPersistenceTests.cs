@@ -126,6 +126,35 @@ public sealed class SeerrPersistenceTests
         Assert.Null(updated); // no longer "added" once marked available
     }
 
+    /// <summary>#851: a generated webhook secret is stored protected (not the plaintext), round-trips through GetAsync, and regenerating replaces it.</summary>
+    [Fact]
+    public async Task A_webhook_secret_is_generated_stored_protected_and_replaced_on_regenerate()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+        var created = await repository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
+        Assert.False(created!.HasWebhookSecret);
+
+        var firstSecret = await repository.RegenerateWebhookSecretAsync(created.Id, CancellationToken.None);
+        Assert.False(string.IsNullOrWhiteSpace(firstSecret));
+
+        var reloaded = await repository.GetAsync(created.Id, CancellationToken.None);
+        Assert.True(reloaded!.HasWebhookSecret);
+        Assert.Equal(firstSecret, reloaded.WebhookSecret);
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT webhook_secret FROM seerr_servers;";
+            Assert.NotEqual(firstSecret, (string)(await command.ExecuteScalarAsync(CancellationToken.None))!);
+        }
+
+        var secondSecret = await repository.RegenerateWebhookSecretAsync(created.Id, CancellationToken.None);
+        Assert.NotEqual(firstSecret, secondSecret);
+
+        Assert.Null(await repository.RegenerateWebhookSecretAsync("not-a-real-id", CancellationToken.None));
+    }
+
     private static async Task<SqliteSeerrRepository> RepositoryAsync(TestStorage storage)
     {
         await new PlatformSchemaInitializer(
