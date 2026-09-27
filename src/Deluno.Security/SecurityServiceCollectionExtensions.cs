@@ -12,6 +12,11 @@ public static class SecurityServiceCollectionExtensions
     public static IServiceCollection AddDelunoSecurityModule(this IServiceCollection services)
     {
         services.AddSingleton<ISecurityRepository, SqliteSecurityRepository>();
+        // #939: Allowed Hosts.
+        services.AddSingleton<IAllowedHostsRepository, SqliteAllowedHostsRepository>();
+        services.AddSingleton<IAllowedHostsSettingsCache, AllowedHostsSettingsCache>();
+        services.AddSingleton<IForwardedHostTracker, ForwardedHostTracker>();
+        services.AddSingleton<IAllowedHostsCandidateProvider, AllowedHostsCandidateProvider>();
         services.AddHttpContextAccessor();
         services.AddAuthentication(DelunoAuthenticationHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, DelunoAuthenticationHandler>(

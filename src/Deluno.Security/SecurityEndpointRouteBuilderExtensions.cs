@@ -1,5 +1,6 @@
 using Deluno.Security.Contracts;
 using Deluno.Security.Data;
+using Deluno.Security.Hardening;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
@@ -237,6 +238,23 @@ public static class SecurityEndpointRouteBuilderExtensions
             var removed = await repository.DeleteApiKeyAsync(id, cancellationToken);
             return removed ? Results.NoContent() : Results.NotFound();
         });
+
+        // #939: Security page, starting with Allowed Hosts.
+        var security = endpoints.MapGroup("/api/security")
+            .RequireAuthorization(DelunoAuthorizationPolicies.System);
+
+        security.MapGet("/allowed-hosts", (
+            HttpContext httpContext,
+            [FromServices] IAllowedHostsRepository repository,
+            [FromServices] IAllowedHostsCandidateProvider candidateProvider,
+            CancellationToken cancellationToken) => AllowedHostsEndpoints.GetOverviewAsync(httpContext, repository, candidateProvider, cancellationToken));
+
+        security.MapPut("/allowed-hosts", (
+            [FromBody] UpdateAllowedHostsRequest request,
+            HttpContext httpContext,
+            [FromServices] IAllowedHostsRepository repository,
+            [FromServices] IAllowedHostsSettingsCache settingsCache,
+            CancellationToken cancellationToken) => AllowedHostsEndpoints.SaveAsync(request, httpContext, repository, settingsCache, cancellationToken));
 
         return endpoints;
     }
