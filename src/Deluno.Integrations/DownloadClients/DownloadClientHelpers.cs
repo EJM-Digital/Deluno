@@ -20,9 +20,14 @@ internal static class DownloadClientHelpers
         }
 
         if (string.IsNullOrWhiteSpace(client.Host)) return null;
-        var scheme = client.Host.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? string.Empty : "http://";
+        // A host already written as a full URL ("http://host") keeps whatever
+        // scheme it names; UseSsl only decides the scheme Deluno has to guess.
+        var scheme = client.Host.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : client.UseSsl ? "https://" : "http://";
         var port = client.Port is > 0 ? $":{client.Port}" : string.Empty;
-        return Uri.TryCreate(EnsureTrailingSlash($"{scheme}{client.Host}{port}"), UriKind.Absolute, out var uri) ? uri : null;
+        var urlBase = string.IsNullOrWhiteSpace(client.UrlBase) ? string.Empty : $"/{client.UrlBase.Trim('/')}";
+        return Uri.TryCreate(EnsureTrailingSlash($"{scheme}{client.Host}{port}{urlBase}"), UriKind.Absolute, out var uri) ? uri : null;
     }
 
     internal static string BuildResilienceKey(DownloadClientItem client, string purpose)

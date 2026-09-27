@@ -64,7 +64,7 @@ public sealed class DelugeMetadataStallTests
     private static string Json(string value) => System.Text.Json.JsonSerializer.Serialize(value);
 
     private static DownloadClientItem Client()
-        => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", "movies", "tv", null, 1, true,
+        => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory

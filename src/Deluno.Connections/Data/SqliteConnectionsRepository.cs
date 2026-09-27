@@ -149,7 +149,7 @@ public sealed class SqliteConnectionsRepository(
                 is_enabled, health_status, last_health_message,
                 last_health_failure_category, last_health_latency_ms, last_health_test_utc,
                 created_utc, updated_utc,
-                last_health_failure_json
+                last_health_failure_json, use_ssl, url_base
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -166,6 +166,8 @@ public sealed class SqliteConnectionsRepository(
                 Username: reader.IsDBNull(5) ? null : reader.GetString(5),
                 Secret: reader.IsDBNull(6) ? null : secretProtector.Unprotect("download-client:secret", reader.GetString(6)),
                 EndpointUrl: reader.IsDBNull(7) ? null : reader.GetString(7),
+                UseSsl: reader.GetInt64(21) == 1,
+                UrlBase: reader.IsDBNull(22) ? null : reader.GetString(22),
                 MoviesCategory: reader.IsDBNull(8) ? null : reader.GetString(8),
                 TvCategory: reader.IsDBNull(9) ? null : reader.GetString(9),
                 CategoryTemplate: reader.IsDBNull(10) ? null : reader.GetString(10),
@@ -522,6 +524,8 @@ public sealed class SqliteConnectionsRepository(
             Username: NormalizeName(request.Username),
             Secret: NormalizeName(request.Password),
             EndpointUrl: NormalizePath(request.EndpointUrl),
+            UseSsl: request.UseSsl,
+            UrlBase: NormalizePath(request.UrlBase),
             MoviesCategory: NormalizeName(request.MoviesCategory),
             TvCategory: NormalizeName(request.TvCategory),
             CategoryTemplate: NormalizeName(request.CategoryTemplate),
@@ -544,11 +548,13 @@ public sealed class SqliteConnectionsRepository(
             """
             INSERT INTO download_clients (
                 id, name, protocol, host, port, username, secret, endpoint_url,
+                use_ssl, url_base,
                 movies_category, tv_category, category_template, priority,
                 is_enabled, health_status, last_health_message, created_utc, updated_utc
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
+                @useSsl, @urlBase,
                 @moviesCategory, @tvCategory, @categoryTemplate, @priority,
                 @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc
             );
@@ -567,6 +573,8 @@ public sealed class SqliteConnectionsRepository(
                 ? null
                 : secretProtector.Protect("download-client:secret", item.Secret));
         AddParameter(command, "@endpointUrl", item.EndpointUrl);
+        AddParameter(command, "@useSsl", item.UseSsl ? 1 : 0);
+        AddParameter(command, "@urlBase", item.UrlBase);
         AddParameter(command, "@moviesCategory", item.MoviesCategory);
         AddParameter(command, "@tvCategory", item.TvCategory);
         AddParameter(command, "@categoryTemplate", item.CategoryTemplate);
@@ -701,6 +709,8 @@ public sealed class SqliteConnectionsRepository(
         var newUsername = request.Username is not null ? NormalizeName(request.Username) : existing.Username;
         var newSecret   = request.Password is not null ? NormalizeName(request.Password) : existing.Secret;
         var newEndpoint = request.EndpointUrl is not null ? NormalizePath(request.EndpointUrl) : existing.EndpointUrl;
+        var newUseSsl   = request.UseSsl ?? existing.UseSsl;
+        var newUrlBase  = request.UrlBase is not null ? NormalizePath(request.UrlBase) : existing.UrlBase;
         var newMovieCat = request.MoviesCategory is not null ? NormalizeName(request.MoviesCategory) : existing.MoviesCategory;
         var newTvCat    = request.TvCategory is not null ? NormalizeName(request.TvCategory) : existing.TvCategory;
         var newCatTmpl  = request.CategoryTemplate is not null ? NormalizeName(request.CategoryTemplate) : existing.CategoryTemplate;
@@ -722,6 +732,8 @@ public sealed class SqliteConnectionsRepository(
                 username = @username,
                 secret = @secret,
                 endpoint_url = @endpointUrl,
+                use_ssl = @useSsl,
+                url_base = @urlBase,
                 movies_category = @moviesCategory,
                 tv_category = @tvCategory,
                 category_template = @categoryTemplate,
@@ -746,6 +758,8 @@ public sealed class SqliteConnectionsRepository(
                 ? null
                 : secretProtector.Protect("download-client:secret", newSecret));
         AddParameter(command, "@endpointUrl", newEndpoint);
+        AddParameter(command, "@useSsl", newUseSsl ? 1 : 0);
+        AddParameter(command, "@urlBase", newUrlBase);
         AddParameter(command, "@moviesCategory", newMovieCat);
         AddParameter(command, "@tvCategory", newTvCat);
         AddParameter(command, "@categoryTemplate", newCatTmpl);
@@ -766,6 +780,8 @@ public sealed class SqliteConnectionsRepository(
             Username         = newUsername,
             Secret           = newSecret,
             EndpointUrl      = newEndpoint,
+            UseSsl           = newUseSsl,
+            UrlBase          = newUrlBase,
             MoviesCategory   = newMovieCat,
             TvCategory       = newTvCat,
             CategoryTemplate = newCatTmpl,

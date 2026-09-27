@@ -368,6 +368,7 @@ export function IndexersPage() {
   function clientPayload() {
     const preset = CLIENT_PRESETS.find((item) => item.protocol === clientForm.protocol);
     const port = Number(clientForm.port || preset?.defaultPort || 8080);
+    const urlBase = clientForm.urlBase.trim().replace(/^\/|\/$/g, "");
     return {
       name: clientForm.name.trim(),
       protocol: clientForm.protocol,
@@ -375,7 +376,9 @@ export function IndexersPage() {
       port,
       username: clientForm.username || undefined,
       password: clientForm.password || undefined,
-      endpointUrl: `http://${clientForm.host.trim()}:${port}`,
+      endpointUrl: `${clientForm.useSsl ? "https" : "http"}://${clientForm.host.trim()}:${port}${urlBase ? `/${urlBase}` : ""}`,
+      useSsl: clientForm.useSsl,
+      urlBase: urlBase || undefined,
       moviesCategory: clientForm.moviesCategory,
       tvCategory: clientForm.tvCategory,
       categoryTemplate: clientForm.moviesCategory,

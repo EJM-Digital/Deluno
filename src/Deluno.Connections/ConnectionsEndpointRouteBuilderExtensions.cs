@@ -445,6 +445,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 string.IsNullOrWhiteSpace(request.Username) ? null : request.Username.Trim(),
                 string.IsNullOrWhiteSpace(request.Password) ? null : request.Password,
                 string.IsNullOrWhiteSpace(request.EndpointUrl) ? null : request.EndpointUrl.Trim(),
+                request.UseSsl,
+                string.IsNullOrWhiteSpace(request.UrlBase) ? null : request.UrlBase.Trim(),
                 string.IsNullOrWhiteSpace(request.MoviesCategory) ? null : request.MoviesCategory.Trim(),
                 string.IsNullOrWhiteSpace(request.TvCategory) ? null : request.TvCategory.Trim(),
                 string.IsNullOrWhiteSpace(request.CategoryTemplate) ? null : request.CategoryTemplate.Trim(),

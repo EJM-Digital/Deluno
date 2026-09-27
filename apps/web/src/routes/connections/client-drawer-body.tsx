@@ -43,6 +43,7 @@ export function ClientDrawerBody({
   onRemove: () => void;
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
   /**
    * A client saved by an older Deluno can carry a protocol nothing can dispatch
@@ -98,6 +99,7 @@ export function ClientDrawerBody({
             <PresetField inputType="number" value={form.port} onChange={(value) => { clearError("port"); setForm((current) => ({ ...current, port: value })); }} options={PORT_OPTIONS} customLabel="Custom port" customPlaceholder="Port number" />
           </Field>
         </FieldRow>
+        <SwitchRow label="Use SSL" description="Connect to this client using https instead of http." checked={form.useSsl} onCheckedChange={(checked) => setForm((current) => ({ ...current, useSsl: checked }))} />
         <FieldRow>
           <Field label="Username" optional>
             <Input value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} autoComplete="off" />
@@ -119,6 +121,14 @@ export function ClientDrawerBody({
           </Field>
         </FieldRow>
       </DrawerSection>
+
+      {preset?.kind === "Usenet" ? (
+        <Disclosure title="Advanced" summary={form.urlBase.trim() ? `URL base: /${form.urlBase.trim().replace(/^\/|\/$/g, "")}` : "Only needed behind a reverse proxy"} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <Field label="URL base" help={`For example "sabnzbd" if this client is reached at a path like https://host/sabnzbd/ through a reverse proxy.`}>
+            <Input value={form.urlBase} onChange={(event) => setForm((current) => ({ ...current, urlBase: event.target.value }))} placeholder="sabnzbd" autoComplete="off" />
+          </Field>
+        </Disclosure>
+      ) : null}
 
       {editing ? (
         <Disclosure

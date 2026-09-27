@@ -240,6 +240,8 @@ public sealed class EveryVerbMeansSomethingDifferentTests
             "user",
             protocol == "sabnzbd" ? "api-key" : "secret",
             "http://localhost:8080/",
+            false,
+            null,
             "movies",
             "tv",
             null,

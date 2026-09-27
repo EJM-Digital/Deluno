@@ -102,6 +102,8 @@ public sealed class DownloadClientCategoryCheckTests
             null,
             protocol == "sabnzbd" ? "api-key" : null,
             $"http://localhost:8080/",
+            false,
+            null,
             "movies",
             "tv",
             null,

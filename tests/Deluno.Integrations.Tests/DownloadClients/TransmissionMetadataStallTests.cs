@@ -112,7 +112,7 @@ public sealed class TransmissionMetadataStallTests
     }
 
     private static DownloadClientItem Client()
-        => new("transmission-1", "Transmission", "transmission", "localhost", 9091, null, null, "http://localhost:9091/", "movies", "tv", null, 1, true,
+        => new("transmission-1", "Transmission", "transmission", "localhost", 9091, null, null, "http://localhost:9091/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory

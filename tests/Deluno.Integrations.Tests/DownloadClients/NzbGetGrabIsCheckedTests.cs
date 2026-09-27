@@ -59,7 +59,7 @@ public sealed class NzbGetGrabIsCheckedTests
     private static Task<DownloadClientGrabResult> Grab(string reply, List<string> sent)
         => new NzbGetDownloadClient(new StubFactory(new FakeNzbGet(reply, sent))).GrabAsync(
             new DownloadClientItem(
-                "client-1", "NZBGet", "nzbget", "localhost", 6789, "nzbget", "secret", "http://localhost:6789/",
+                "client-1", "NZBGet", "nzbget", "localhost", 6789, "nzbget", "secret", "http://localhost:6789/", false, null,
                 "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
             new DownloadClientGrabRequest("Pioneer.One.S01E01.1080p", "https://indexer.invalid/get/1", "tv", "TV", "altHUB"),
             CancellationToken.None);

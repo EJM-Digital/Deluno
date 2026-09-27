@@ -117,7 +117,7 @@ public sealed class ClientFoldersAreReadTests
         => await new NzbGetDownloadClient(Factory(Json(historyJson))).GetHistoryAsync(Client("nzbget"), DateTimeOffset.UtcNow, CancellationToken.None);
 
     private static DownloadClientItem Client(string protocol)
-        => new("client-1", protocol, protocol, "localhost", 1234, "user", "secret", "http://localhost:1234/",
+        => new("client-1", protocol, protocol, "localhost", 1234, "user", "secret", "http://localhost:1234/", false, null,
             "Movies", "TV", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static IHttpClientFactory Factory(HttpMessageHandler handler) => new StubFactory(handler);

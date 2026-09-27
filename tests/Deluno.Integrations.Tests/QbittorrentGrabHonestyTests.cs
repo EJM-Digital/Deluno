@@ -170,6 +170,8 @@ public sealed class QbittorrentGrabHonestyTests
             null,
             null,
             "http://localhost:8080/",
+            false,
+            null,
             "movies",
             "tv",
             null,

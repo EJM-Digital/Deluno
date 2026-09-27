@@ -110,7 +110,7 @@ public sealed class QbittorrentStateMappingTests
     }
 
     private static DownloadClientItem Client()
-        => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", "movies", "tv", null, 1, true,
+        => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private sealed class QbittorrentHandler(string torrentsInfo) : HttpMessageHandler

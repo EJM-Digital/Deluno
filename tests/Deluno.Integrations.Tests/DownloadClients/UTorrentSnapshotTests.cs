@@ -181,7 +181,7 @@ public sealed class UTorrentSnapshotTests
     }
 
     private static DownloadClientItem Client()
-        => new("utorrent-1", "uTorrent", "utorrent", "localhost", 8081, null, null, "http://localhost:8081/", "movies", "tv", null, 1, true,
+        => new("utorrent-1", "uTorrent", "utorrent", "localhost", 8081, null, null, "http://localhost:8081/", false, null, "movies", "tv", null, 1, true,
             "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private sealed class UTorrentHandler(string listResponse, string getPropsResponse) : HttpMessageHandler

@@ -12,4 +12,6 @@ public sealed record CreateDownloadClientRequest(
     string? TvCategory,
     string? CategoryTemplate,
     int? Priority,
-    bool IsEnabled);
+    bool IsEnabled,
+    bool UseSsl = false,
+    string? UrlBase = null);

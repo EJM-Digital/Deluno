@@ -110,6 +110,8 @@ public sealed class AddingATorrentTakesAMomentTests
             "user",
             "secret",
             "http://localhost:8080/",
+            false,
+            null,
             "movies",
             "tv",
             null,
