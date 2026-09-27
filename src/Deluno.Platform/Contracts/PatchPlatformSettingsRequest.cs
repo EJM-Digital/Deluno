@@ -51,6 +51,7 @@ public sealed record PatchPlatformSettingsRequest(
     int? SharingForHours = null,
     string? SharingStuckAction = null,
     int? SharingStuckAfterDays = null,
+    string? SharingCompletionAction = null,
     string? UiColorMode = null,
     string? UiLanguage = null,
     string? CalendarFirstDayOfWeek = null,

@@ -318,6 +318,13 @@ public sealed class SqlitePlatformSettingsRepository(
             await UpsertSettingAsync(connection, transaction, "sharing.stuckAction", SharingPolicy.NormalizeStuckAction(request.SharingStuckAction), updatedUtc, cancellationToken);
             await UpsertSettingAsync(connection, transaction, "sharing.stuckAfterDays", (request.SharingStuckAfterDays is > 0 ? request.SharingStuckAfterDays.Value : SharingPolicy.Default.StuckAfterDays).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         }
+        // Independent of the rule above (#821): whether reaching a target
+        // reclaims the download or just stops seeding it can be changed on
+        // its own, without resubmitting the whole sharing rule.
+        if (!string.IsNullOrWhiteSpace(request.SharingCompletionAction))
+        {
+            await UpsertSettingAsync(connection, transaction, "sharing.completionAction", SharingPolicy.NormalizeCompletionAction(request.SharingCompletionAction), updatedUtc, cancellationToken);
+        }
         await UpsertSettingAsync(connection, transaction, "cleanup.purgePayloadAfterThreshold", request.CleanupPurgePayloadAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey))
         {
@@ -602,6 +609,7 @@ public sealed class SqlitePlatformSettingsRepository(
             SharingUntilRatio: ReadOptionalDouble(GetValue(settings, "sharing.untilRatio")),
             SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
             SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
+            SharingCompletionAction: SharingPolicy.NormalizeCompletionAction(GetValue(settings, "sharing.completionAction")),
             // Same reasoning as CleanupRemoveClientEntryAfterThreshold above:
             // #904's "default on" never shipped, so this line and a missing
             // value's meaning are unchanged by #936.

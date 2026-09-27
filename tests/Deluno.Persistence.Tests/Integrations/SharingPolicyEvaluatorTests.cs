@@ -15,8 +15,9 @@ public sealed class SharingPolicyEvaluatorTests
         double? untilRatio = null,
         string stuck = SharingPolicy.StuckGiveUp,
         int stuckAfterDays = 14,
+        string completionAction = SharingPolicy.CompletionReclaim,
         string privacyScope = "both")
-        => new(mode, forHours, untilRatio, stuck, stuckAfterDays, privacyScope);
+        => new(mode, forHours, untilRatio, stuck, stuckAfterDays, completionAction, privacyScope);
 
     private static SharingDecision Evaluate(SharingPolicy policy, double? ratio = null, int? seedingMinutes = 0, bool supportsSharing = true, bool? isPrivate = null)
         => SharingPolicyEvaluator.Evaluate(policy, supportsSharing, ratio, seedingMinutes, isPrivate);
@@ -223,8 +224,8 @@ public sealed class SharingPolicyEvaluatorTests
     [Fact]
     public void A_source_override_only_has_to_state_what_differs()
     {
-        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14);
-        var siteWantsARatio = new SharingPolicy(string.Empty, null, 2.0, string.Empty, 0);
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14, SharingPolicy.CompletionStop);
+        var siteWantsARatio = new SharingPolicy(string.Empty, null, 2.0, string.Empty, 0, string.Empty);
 
         var effective = siteWantsARatio.InheritFrom(global);
 
@@ -233,6 +234,7 @@ public sealed class SharingPolicyEvaluatorTests
         Assert.Equal(2.0, effective.UntilRatio);
         Assert.Equal(SharingPolicy.StuckGiveUp, effective.StuckAction);
         Assert.Equal(14, effective.StuckAfterDays);
+        Assert.Equal(SharingPolicy.CompletionStop, effective.CompletionAction);
     }
 
     [Fact]
@@ -244,5 +246,50 @@ public sealed class SharingPolicyEvaluatorTests
         Assert.Equal(72, SharingPolicy.Default.ForHours);
         Assert.Equal(SharingPolicy.StuckGiveUp, SharingPolicy.Default.StuckAction);
         Assert.Equal(14, SharingPolicy.Default.StuckAfterDays);
+        Assert.Equal(SharingPolicy.CompletionReclaim, SharingPolicy.Default.CompletionAction);
+    }
+
+    // ── Stop seeding without deleting (#821) ──────────────────────────────
+
+    [Fact]
+    public void Reaching_the_target_reclaims_by_default()
+    {
+        var decision = Evaluate(Policy(forHours: 72), seedingMinutes: 72 * 60);
+
+        Assert.Equal(SharingAction.Reclaim, decision.Action);
+        Assert.Contains("Finished sharing", decision.Reason);
+    }
+
+    [Fact]
+    public void Reaching_the_target_stops_seeding_instead_when_configured()
+    {
+        var decision = Evaluate(Policy(forHours: 72, completionAction: SharingPolicy.CompletionStop), seedingMinutes: 72 * 60);
+
+        Assert.Equal(SharingAction.Stop, decision.Action);
+        Assert.Contains("Stopped seeding", decision.Reason);
+    }
+
+    [Fact]
+    public void Giving_up_stops_seeding_instead_of_reclaiming_when_configured()
+    {
+        var decision = Evaluate(
+            Policy(forHours: 72, untilRatio: 5.0, stuck: SharingPolicy.StuckGiveUp, stuckAfterDays: 14, completionAction: SharingPolicy.CompletionStop),
+            ratio: 0.1,
+            seedingMinutes: 14 * 24 * 60);
+
+        Assert.Equal(SharingAction.Stop, decision.Action);
+    }
+
+    [Fact]
+    public void Tidy_now_and_no_sharing_phase_always_reclaim_regardless_of_the_completion_action()
+    {
+        // There is nothing to "stop" seeding on a download that was never
+        // going to seed in the first place.
+        Assert.Equal(
+            SharingAction.Reclaim,
+            Evaluate(Policy(mode: SharingPolicy.ModeTidyNow, completionAction: SharingPolicy.CompletionStop)).Action);
+        Assert.Equal(
+            SharingAction.Reclaim,
+            Evaluate(Policy(completionAction: SharingPolicy.CompletionStop), supportsSharing: false).Action);
     }
 }

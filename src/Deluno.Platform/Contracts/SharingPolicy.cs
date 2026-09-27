@@ -21,6 +21,17 @@ public sealed record SharingPolicy(
     double? UntilRatio,
     string StuckAction,
     int StuckAfterDays,
+    /// <summary>
+    /// What happens once the sharing target (or the stuck give-up) is
+    /// reached (#821): <see cref="CompletionReclaim"/> removes the item and
+    /// its data from the download client, the behaviour Deluno has always
+    /// had; <see cref="CompletionStop"/> instead just stops seeding — the
+    /// client keeps the entry and the files, and nothing about the library
+    /// is touched. Global only for now, the same as the rest of this policy
+    /// before a source ever overrides it (#820 is the per-rule version of
+    /// this choice).
+    /// </summary>
+    string CompletionAction = SharingPolicy.CompletionReclaim,
     /// <summary>#815: which tracker-privacy downloads this policy covers. "both" (the default) is every existing install's value, so nothing narrows until it is edited.</summary>
     string PrivacyScope = DownloadHealthPrivacyScopes.Both)
 {
@@ -42,13 +53,19 @@ public sealed record SharingPolicy(
     /// <summary>Raise it as something needing a decision rather than acting.</summary>
     public const string StuckAsk = "ask";
 
+    /// <summary>Remove the item and its data from the download client once the target is met (#821). The long-standing behaviour.</summary>
+    public const string CompletionReclaim = "reclaim";
+
+    /// <summary>Stop seeding once the target is met, but leave the entry and its files in the download client (#821).</summary>
+    public const string CompletionStop = "stop";
+
     /// <summary>
     /// Safe for someone who reads nothing: keep sharing for three days so no
     /// site is upset, then reclaim automatically, and give up after a fortnight
     /// rather than holding the drive forever.
     /// </summary>
     public static SharingPolicy Default { get; } =
-        new(ModeShareThenTidy, ForHours: 72, UntilRatio: null, StuckGiveUp, StuckAfterDays: 14);
+        new(ModeShareThenTidy, ForHours: 72, UntilRatio: null, StuckGiveUp, StuckAfterDays: 14, CompletionReclaim);
 
     /// <summary>
     /// What "this site is strict" means, in one place.
@@ -65,7 +82,7 @@ public sealed record SharingPolicy(
     /// both are pinned by tests.
     /// </summary>
     public static SharingPolicy Strict { get; } =
-        new(ModeShareThenTidy, ForHours: 336, UntilRatio: 1.0, StuckKeepWaiting, StuckAfterDays: 14);
+        new(ModeShareThenTidy, ForHours: 336, UntilRatio: 1.0, StuckKeepWaiting, StuckAfterDays: 14, CompletionReclaim);
 
     public static string NormalizeMode(string? value)
         => value?.Trim().ToLowerInvariant() switch
@@ -83,6 +100,13 @@ public sealed record SharingPolicy(
             _ => StuckGiveUp
         };
 
+    public static string NormalizeCompletionAction(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            CompletionStop => CompletionStop,
+            _ => CompletionReclaim
+        };
+
     /// <summary>
     /// The policy this one falls back to for anything it does not state. Used
     /// for a search source's override: every field it leaves unset inherits the
@@ -95,6 +119,7 @@ public sealed record SharingPolicy(
             UntilRatio ?? fallback.UntilRatio,
             string.IsNullOrWhiteSpace(StuckAction) ? fallback.StuckAction : NormalizeStuckAction(StuckAction),
             StuckAfterDays > 0 ? StuckAfterDays : fallback.StuckAfterDays,
+            string.IsNullOrWhiteSpace(CompletionAction) ? fallback.CompletionAction : NormalizeCompletionAction(CompletionAction),
             DownloadHealthPrivacyScopes.IsKnown(PrivacyScope) ? PrivacyScope : fallback.PrivacyScope);
 
     /// <summary>#815: whether this policy's privacy scope covers a download with this reported privacy.</summary>

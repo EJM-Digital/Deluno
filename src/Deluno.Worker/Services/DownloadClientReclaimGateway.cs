@@ -37,4 +37,24 @@ public sealed class DownloadClientReclaimGateway(IServiceScopeFactory scopeFacto
 
         return new DownloadClientRemovalResult(result.Succeeded, result.Message);
     }
+
+    /// <summary>
+    /// "Stop seeding without deleting" (#821), through the same pause action
+    /// the Queue screen already offers — this asks nothing new of a client
+    /// adapter, only calls the pause path it already implements.
+    /// </summary>
+    public async Task<DownloadClientRemovalResult> StopSeedingAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
+        var result = await telemetry.ExecuteActionAsync(
+            clientId,
+            new DownloadClientActionRequest(DownloadClientActions.Pause, queueItemId),
+            cancellationToken);
+
+        return new DownloadClientRemovalResult(result.Succeeded, result.Message);
+    }
 }

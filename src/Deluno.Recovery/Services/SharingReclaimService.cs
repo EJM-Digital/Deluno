@@ -14,6 +14,10 @@ namespace Deluno.Recovery.Services;
 /// distinction the strike/blocklist executors already draw between a real
 /// action and a previewed one.
 /// </param>
+/// <param name="Stopped">
+/// True when the client was asked to stop seeding but keep the entry and its
+/// files (#821) — the alternative to <paramref name="Reclaimed"/>.
+/// </param>
 public sealed record SharingReclaimOutcome(
     string QueueItemId,
     string Title,
@@ -26,7 +30,8 @@ public sealed record SharingReclaimOutcome(
     /// See <see cref="SharingDecision.Detail"/>.
     /// </summary>
     string? Detail = null,
-    bool WouldReclaim = false);
+    bool WouldReclaim = false,
+    bool Stopped = false);
 
 /// <summary>
 /// Turns a sharing decision into the one action Deluno is allowed to take:
@@ -77,6 +82,32 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
             candidate.Ratio,
             candidate.SeedingMinutes,
             candidate.IsPrivate);
+
+        if (decision.Action == SharingAction.Stop)
+        {
+            var stopResult = await actions.StopSeedingAsync(candidate.ClientId, candidate.QueueItemId, cancellationToken);
+            if (stopResult.Succeeded)
+            {
+                return new(
+                    candidate.QueueItemId,
+                    candidate.Title,
+                    decision.Action,
+                    decision.Reason,
+                    Reclaimed: false,
+                    Detail: decision.DetailOrReason,
+                    Stopped: true);
+            }
+
+            var stopWarning = $"Deluno asked {candidate.ClientName} to stop seeding this and it did not: {stopResult.Message}";
+            return new(
+                candidate.QueueItemId,
+                candidate.Title,
+                decision.Action,
+                decision.Reason,
+                Reclaimed: false,
+                Warning: stopWarning,
+                Detail: $"{candidate.ClientName} would not stop seeding this — {stopResult.Message}");
+        }
 
         if (decision.Action != SharingAction.Reclaim)
         {
@@ -158,7 +189,11 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
                 source.SharingForHours,
                 source.SharingUntilRatio,
                 source.SharingStuckAction ?? string.Empty,
-                source.SharingStuckAfterDays ?? 0).InheritFrom(globalPolicy)
+                source.SharingStuckAfterDays ?? 0,
+                // No per-source completion-action override exists yet (#821 is
+                // global only until #820's rule matrix arrives), so this always
+                // falls through to whatever the global setting says.
+                CompletionAction: string.Empty).InheritFrom(globalPolicy)
             : globalPolicy;
 
         if (isSeasonPack && source.SeasonPackSeedForHours is > 0)
@@ -208,6 +243,12 @@ public sealed record SharingReclaimCandidate(
 public interface IDownloadClientActionGateway
 {
     Task<DownloadClientRemovalResult> RemoveWithDataAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>Stops seeding without removing the entry or its files (#821).</summary>
+    Task<DownloadClientRemovalResult> StopSeedingAsync(
         string clientId,
         string queueItemId,
         CancellationToken cancellationToken);

@@ -10,10 +10,17 @@ public sealed class SharingReclaimServiceTests
     private sealed class RecordingGateway(bool succeeds = true, string message = "Removed.") : IDownloadClientActionGateway
     {
         public List<(string ClientId, string QueueItemId)> Calls { get; } = [];
+        public List<(string ClientId, string QueueItemId)> StopCalls { get; } = [];
 
         public Task<DownloadClientRemovalResult> RemoveWithDataAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
         {
             Calls.Add((clientId, queueItemId));
+            return Task.FromResult(new DownloadClientRemovalResult(succeeds, message));
+        }
+
+        public Task<DownloadClientRemovalResult> StopSeedingAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+        {
+            StopCalls.Add((clientId, queueItemId));
             return Task.FromResult(new DownloadClientRemovalResult(succeeds, message));
         }
     }
@@ -127,6 +134,46 @@ public sealed class SharingReclaimServiceTests
 
         Assert.Equal(SharingAction.Wait, outcome.Action);
         Assert.Empty(gateway.Calls);
+    }
+
+    // ── Stop seeding without deleting (#821) ──────────────────────────────
+
+    [Fact]
+    public async Task Reconciling_a_finished_download_stops_seeding_instead_of_reclaiming_when_configured()
+    {
+        var gateway = new RecordingGateway();
+        var service = new SharingReclaimService(gateway);
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14, SharingPolicy.CompletionStop);
+
+        var outcome = await service.ReconcileAsync(
+            Candidate(seedingMinutes: 72 * 60),
+            global,
+            source: null,
+            CancellationToken.None);
+
+        Assert.Equal(SharingAction.Stop, outcome.Action);
+        Assert.True(outcome.Stopped);
+        Assert.False(outcome.Reclaimed);
+        Assert.Single(gateway.StopCalls);
+        Assert.Empty(gateway.Calls);
+    }
+
+    [Fact]
+    public async Task A_client_that_refuses_to_stop_seeding_is_reported_as_a_warning()
+    {
+        var gateway = new RecordingGateway(succeeds: false, message: "Client refused.");
+        var service = new SharingReclaimService(gateway);
+        var global = new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14, SharingPolicy.CompletionStop);
+
+        var outcome = await service.ReconcileAsync(
+            Candidate(seedingMinutes: 72 * 60),
+            global,
+            source: null,
+            CancellationToken.None);
+
+        Assert.False(outcome.Stopped);
+        Assert.NotNull(outcome.Warning);
+        Assert.Contains("Client refused.", outcome.Warning);
     }
 
     // ── Acting on the decision ────────────────────────────────────────────
