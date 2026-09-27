@@ -1330,6 +1330,27 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
             {note}
           </p>
         ))}
+
+        {current.updateAvailable && current.changelog ? (
+          <div className="rounded-xl border border-hairline bg-surface-1 p-[calc(var(--tile-pad)*0.7)] space-y-1">
+            <p className="text-sm font-semibold text-foreground">What's new in {current.latestVersion}</p>
+            <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{current.changelog}</p>
+          </div>
+        ) : null}
+
+        {current.appliedUpdates && current.appliedUpdates.length > 0 ? (
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-foreground">Update history</p>
+            <ul className="space-y-1">
+              {current.appliedUpdates.map((entry) => (
+                <li key={`${entry.version}-${entry.appliedAtUtc}`} className="flex items-center justify-between rounded-xl border border-hairline bg-surface-1 px-3 py-2 text-xs">
+                  <span className="font-medium text-foreground">{entry.version}</span>
+                  <span className="text-muted-foreground">{new Date(entry.appliedAtUtc).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         </CardContent>
       </Card>
       {children}

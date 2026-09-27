@@ -42,3 +42,19 @@ describe("system screen installation card uptime/runtime/app-data (#869)", () =>
     expect(source).toMatch(/systemInfo\.databaseLocation/);
   });
 });
+
+/**
+ * #870: the Updates card shows the changelog for a pending update and the
+ * last applied updates, both read from UpdateStatusResponse rather than
+ * hardcoded or backfilled.
+ */
+describe("system screen updates card release notes and history (#870)", () => {
+  const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
+
+  it("shows the changelog for an available update and the applied-update history", () => {
+    expect(source).toMatch(/current\.changelog/);
+    expect(source).toMatch(/current\.appliedUpdates/);
+    expect(source).toMatch(/entry\.version/);
+    expect(source).toMatch(/entry\.appliedAtUtc/);
+  });
+});
