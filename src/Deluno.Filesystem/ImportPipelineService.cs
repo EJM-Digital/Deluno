@@ -4001,7 +4001,18 @@ public sealed partial class ImportPipelineService(
             AirDate = cataloguedEpisode?.AirDate,
             AbsoluteEpisodeNumber = cataloguedEpisode?.AbsoluteNumber
         };
-        var formatted = settings.EpisodeFileFormat
+        // #761: a dated or absolute-numbered show gets its own template;
+        // everything else keeps the standard one. Keyed off the same scheme
+        // that resolved this exact episode, not the raw series type, so a
+        // show whose numbering scheme was overridden to standard still gets
+        // the standard template.
+        var episodeFileFormat = scheme switch
+        {
+            SeriesNumberingSchemes.AirDate => settings.DailyEpisodeFileFormat,
+            SeriesNumberingSchemes.Absolute => settings.AnimeEpisodeFileFormat,
+            _ => settings.EpisodeFileFormat
+        };
+        var formatted = episodeFileFormat
             .Replace("{Series Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{season:00}", seasonNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)

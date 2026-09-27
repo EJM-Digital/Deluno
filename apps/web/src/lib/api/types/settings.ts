@@ -35,6 +35,10 @@ export interface PlatformSettingsSnapshot {
   seriesFolderFormat: string;
   movieFileFormat: string;
   episodeFileFormat: string;
+  /** #761: used for dated (daily) shows instead of episodeFileFormat. */
+  dailyEpisodeFileFormat: string;
+  /** #761: used for absolute-numbered (anime) shows instead of episodeFileFormat. */
+  animeEpisodeFileFormat: string;
   hostBindAddress: string;
   hostPort: number;
   urlBase: string;
@@ -183,6 +187,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   seriesFolderFormat: "{Series Title} ({Series Year})",
   movieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
   episodeFileFormat: "{Series Title} - S{season:00}E{episode:00} - {Episode Title} [{Quality}] [{Custom Formats}]",
+  dailyEpisodeFileFormat: "{Series Title} - {Air-Date} - {Episode Title} [{Quality}] [{Custom Formats}]",
+  animeEpisodeFileFormat: "{Series Title} - {absolute:000} - {Episode Title} [{Quality}] [{Custom Formats}]",
   hostBindAddress: "127.0.0.1",
   hostPort: 5099,
   urlBase: "",

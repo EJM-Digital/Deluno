@@ -14,6 +14,10 @@ export interface PlatformSettingsPatch {
   seriesFolderFormat?: string;
   movieFileFormat?: string;
   episodeFileFormat?: string;
+  /** #761: used for dated (daily) shows instead of episodeFileFormat. */
+  dailyEpisodeFileFormat?: string;
+  /** #761: used for absolute-numbered (anime) shows instead of episodeFileFormat. */
+  animeEpisodeFileFormat?: string;
   hostBindAddress?: string;
   hostPort?: number;
   urlBase?: string;

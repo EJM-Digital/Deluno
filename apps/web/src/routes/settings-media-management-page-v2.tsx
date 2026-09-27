@@ -94,6 +94,8 @@ function customPatternMeta(kind: NamingFormatKind) {
   if (kind === "series-folder") return { label: "TV show folders", placeholder: "{Series Title} ({Series Year})" };
   if (kind === "movie-file") return { label: "Movie files", placeholder: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]" };
   if (kind === "episode-file") return { label: "Episode files", placeholder: "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" };
+  if (kind === "daily-episode-file") return { label: "Daily episode files", placeholder: "{Series Title} - {Air-Date} - {Episode Title}" };
+  if (kind === "anime-episode-file") return { label: "Anime episode files", placeholder: "{Series Title} - {absolute:000} - {Episode Title}" };
   return { label: "Custom format", placeholder: "{Title}" };
 }
 
@@ -102,6 +104,8 @@ function updateCustomPattern(settings: PlatformSettingsSnapshot, kind: NamingFor
   if (kind === "series-folder") return { ...settings, seriesFolderFormat: value };
   if (kind === "movie-file") return { ...settings, movieFileFormat: value };
   if (kind === "episode-file") return { ...settings, episodeFileFormat: value };
+  if (kind === "daily-episode-file") return { ...settings, dailyEpisodeFileFormat: value };
+  if (kind === "anime-episode-file") return { ...settings, animeEpisodeFileFormat: value };
   return settings;
 }
 
@@ -151,6 +155,8 @@ function FileHandlingPage() {
         seriesFolderFormat: form.seriesFolderFormat,
         movieFileFormat: form.movieFileFormat,
         episodeFileFormat: form.episodeFileFormat,
+        dailyEpisodeFileFormat: form.dailyEpisodeFileFormat,
+        animeEpisodeFileFormat: form.animeEpisodeFileFormat,
         renameOnImport: form.renameOnImport,
         useHardlinks: form.useHardlinks,
         replaceIllegalCharacters: form.replaceIllegalCharacters,
@@ -209,6 +215,22 @@ function FileHandlingPage() {
               </div>
             </div>
             <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
+              <div className="grid content-start gap-[var(--grid-gap)]">
+                <div className="grid content-start gap-1.5">
+                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Daily episode files</p>
+                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used for dated shows (news, talk shows) instead of the episode format above.</p>
+                </div>
+                <NamingFormatField kind="daily-episode-file" value={form.dailyEpisodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, dailyEpisodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("daily-episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - {Air-Date} - {Episode Title}" showExamples={false} />
+              </div>
+              <div className="grid content-start gap-[var(--grid-gap)]">
+                <div className="grid content-start gap-1.5">
+                  <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Anime episode files</p>
+                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Used for absolute-numbered shows instead of the episode format above.</p>
+                </div>
+                <NamingFormatField kind="anime-episode-file" value={form.animeEpisodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, animeEpisodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("anime-episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - {absolute:000} - {Episode Title}" showExamples={false} />
+              </div>
+            </div>
+            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
               <SwitchRow
                 label="Replace illegal characters"
                 description="On, a character a file system can't store (such as : or ?) becomes a dash. Off, Deluno removes it instead."
@@ -244,6 +266,12 @@ function FileHandlingPage() {
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                  <NamingPreview label="Daily episode file" value={previewNamingFormat(form.dailyEpisodeFileFormat || "{Series Title} - {Air-Date} - {Episode Title}")} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
+                  <NamingPreview label="Anime episode file" value={previewNamingFormat(form.animeEpisodeFileFormat || "{Series Title} - {absolute:000} - {Episode Title}")} />
                 </div>
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Illegal characters" value={sanitizeIllegalCharacters("Show? Special Edition", form.replaceIllegalCharacters)} />

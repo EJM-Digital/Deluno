@@ -300,6 +300,29 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(ColonReplacementModes.SmartReplace, (await repository.GetAsync(CancellationToken.None)).ColonReplacementMode);
     }
 
+    /// <summary>#761: Daily/Anime episode formats default sensibly and round-trip like any other naming format.</summary>
+    [Fact]
+    public async Task DailyAndAnimeEpisodeFileFormat_default_and_round_trip()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.Contains("{Air-Date}", defaults.DailyEpisodeFileFormat);
+        Assert.Contains("{absolute:000}", defaults.AnimeEpisodeFileFormat);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            defaults,
+            new PatchPlatformSettingsRequest(
+                DailyEpisodeFileFormat: "{Series Title} - {Air-Date}",
+                AnimeEpisodeFileFormat: "{Series Title} - {absolute:000}"));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("{Series Title} - {Air-Date}", loaded.DailyEpisodeFileFormat);
+        Assert.Equal("{Series Title} - {absolute:000}", loaded.AnimeEpisodeFileFormat);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));
