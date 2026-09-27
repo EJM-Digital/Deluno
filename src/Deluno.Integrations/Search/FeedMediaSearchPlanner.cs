@@ -975,6 +975,23 @@ public sealed class FeedMediaSearchPlanner(
             }
 
             var attrs = item.Elements(torznab + "attr").Concat(item.Elements(newznab + "attr")).ToArray();
+
+            // #752: a generic Torznab item can offer a magnet URL alongside its
+            // enclosure/link .torrent file (the "magneturl" attr). Deluno used
+            // to read only the enclosure/link, so an indexer's own Prefer
+            // magnet links setting had nothing to act on. Captured into the
+            // release itself: when the download link is not already a magnet
+            // and the torrent indexer prefers one, the magnet becomes the link
+            // Deluno grabs.
+            var magnetUrl = ReadStringAttr(attrs, "magneturl");
+            if (magnetUrl is not null &&
+                !downloadUrl!.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase) &&
+                indexer.PreferMagnetUrl &&
+                !string.Equals(indexer.Protocol, Deluno.Connections.Contracts.IndexerProtocols.Newznab, StringComparison.OrdinalIgnoreCase))
+            {
+                downloadUrl = magnetUrl;
+            }
+
             var size = ReadLongAttr(attrs, "size") ?? ReadLong(item.Elements("enclosure").FirstOrDefault()?.Attribute("length")?.Value);
             var seeders = ReadIntAttr(attrs, "seeders");
             var torrentHashOrItemId = ReadHashOrItemId(attrs, item, indexer.Protocol, downloadUrl);
@@ -1341,6 +1358,13 @@ public sealed class FeedMediaSearchPlanner(
 
     private static long? ReadLongAttr(IEnumerable<XElement> attrs, string name)
         => ReadLong(attrs.FirstOrDefault(attr => string.Equals(attr.Attribute("name")?.Value, name, StringComparison.OrdinalIgnoreCase))?.Attribute("value")?.Value);
+
+    /// <summary>A torznab/newznab attribute's raw text value, or null when the item does not carry one (#752).</summary>
+    private static string? ReadStringAttr(IEnumerable<XElement> attrs, string name)
+    {
+        var value = attrs.FirstOrDefault(attr => string.Equals(attr.Attribute("name")?.Value, name, StringComparison.OrdinalIgnoreCase))?.Attribute("value")?.Value;
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
 
     private static int? ReadIntAttr(IEnumerable<XElement> attrs, string name)
         => int.TryParse(attrs.FirstOrDefault(attr => string.Equals(attr.Attribute("name")?.Value, name, StringComparison.OrdinalIgnoreCase))?.Attribute("value")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
