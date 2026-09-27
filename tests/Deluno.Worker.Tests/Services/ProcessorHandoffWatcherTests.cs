@@ -310,10 +310,16 @@ public sealed class ProcessorHandoffWatcherTests
 
         await Watch();
 
-        Assert.Equal(ProcessorHandoffStatuses.Lost, Assert.Single(_updates).Status);
+        var (status, message) = Assert.Single(_updates);
+        Assert.Equal(ProcessorHandoffStatuses.Lost, status);
+        // #929: the reason names the processor and the two times it was asked
+        // — the moment the grace window started (the hand-off's last real
+        // change, two hours ago) and now.
+        Assert.Contains("Weir says it never received", message);
+        Assert.Contains($"asked {Now.AddHours(-2).ToLocalTime():HH:mm} and {Now.ToLocalTime():HH:mm}", message);
         var raised = Assert.Single(_cases);
         Assert.Equal("processor-lost", raised.FailureKind);
-        Assert.Contains("Import original", raised.RecommendedAction, StringComparison.Ordinal);
+        Assert.Equal("Import the original, hand it to the processor again, or search for another release.", raised.RecommendedAction);
     }
 
     [Fact]

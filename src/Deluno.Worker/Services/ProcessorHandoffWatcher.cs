@@ -157,7 +157,7 @@ public sealed class ProcessorHandoffWatcher(
                     break;
 
                 case ProcessorAnswer.NotFound when now - handoff.UpdatedUtc >= NotFoundGrace:
-                    await RecordLostAsync(handoff, library, processorName, cancellationToken);
+                    await RecordLostAsync(handoff, library, processorName, now, cancellationToken);
                     break;
 
                 case ProcessorAnswer.NotFound:
@@ -413,16 +413,24 @@ public sealed class ProcessorHandoffWatcher(
         ProcessorHandoffItem handoff,
         LibraryItem library,
         string processorName,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var summary = $"{processorName} has no record of {handoff.ReleaseName}, so nothing is coming back for it.";
+        // The grace window (NotFoundGrace) is measured between exactly these
+        // two instants -- the hand-off's last real change, and now -- so this
+        // says the two moments the grace period itself compares, in the same
+        // words the person asked for on the cleanup sheet: "asked 14:00 and
+        // 14:15" (#929).
+        var firstAsked = FormatClock(handoff.UpdatedUtc);
+        var lastAsked = FormatClock(now);
+        var summary = $"{processorName} says it never received {handoff.ReleaseName} (asked {firstAsked} and {lastAsked}).";
         await EndAsync(handoff, ProcessorHandoffStatuses.Lost, summary, cancellationToken);
         await RaiseRecoveryCaseAsync(
             handoff,
             library,
             "processor-lost",
             summary,
-            "Open Queue and choose Import original, or retry the hand-off.",
+            "Import the original, hand it to the processor again, or search for another release.",
             cancellationToken);
     }
 
@@ -515,6 +523,8 @@ public sealed class ProcessorHandoffWatcher(
             ProcessorHandoffStates.Scheduled => "waiting for a scheduled run that has passed",
             _ => $"still {answer.State}"
         };
+
+    private static string FormatClock(DateTimeOffset value) => value.ToLocalTime().ToString("HH:mm");
 
     internal static string Describe(TimeSpan span)
         => span.TotalHours >= 48
