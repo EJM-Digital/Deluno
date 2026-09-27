@@ -72,7 +72,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
-import { readAlternateTitles } from "../lib/ui-adapters";
+import { readAlternateTitles, readArtworkExtras } from "../lib/ui-adapters";
 
 /**
  * What Deluno recorded about the copy it holds: the release it came from, what
@@ -221,6 +221,10 @@ export function MovieDetailPage() {
   const alternateTitles = readAlternateTitles(movie.metadataJson).filter(
     (candidate) => candidate !== movie.title && candidate !== movie.originalTitle
   );
+  // #864: a transparent logo/wordmark and extra backdrop stills, beyond the
+  // poster and backdrop already shown above. No banner: TMDb has never
+  // reported one, so there is nothing here to show for it.
+  const { logoUrl, screenshots } = readArtworkExtras(movie.metadataJson);
   const openSearch = movieSearches.find((item) => item.id === openSearchId) ?? null;
   const openDispatch = movieDispatches.find((item) => item.id === openDispatchId) ?? null;
   /*
@@ -655,6 +659,8 @@ export function MovieDetailPage() {
             )}
             <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
+              {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
+              {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               {/*
                 **Centre, not baseline.** A button whose only child is an SVG has
                 its baseline at the BOTTOM of its box, so aligning that to the
@@ -848,6 +854,19 @@ export function MovieDetailPage() {
         <Card>
           <CardContent className="p-4">
             <CreditsRow heading="Crew" people={crew} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
+      {/* #864: extra backdrop stills beyond the single hero backdrop already shown above. */}
+      {screenshots.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Screenshots</p>
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {screenshots.map((url) => (
+                <img key={url} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}

@@ -77,7 +77,7 @@ import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
-import { readAlternateTitles } from "../lib/ui-adapters";
+import { readAlternateTitles, readArtworkExtras } from "../lib/ui-adapters";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -219,6 +219,9 @@ export function ShowDetailPage() {
   const alternateTitles = readAlternateTitles(series.metadataJson).filter(
     (candidate) => candidate !== series.title && candidate !== series.originalTitle
   );
+  // #864: a transparent logo/wordmark and extra backdrop stills, beyond the
+  // poster and backdrop already shown. No banner: TMDb has never reported one.
+  const { logoUrl, screenshots } = readArtworkExtras(series.metadataJson);
   const meta = useMemo<Record<string, unknown> | null>(() => {
     if (!series.metadataJson) return null;
     try { return JSON.parse(series.metadataJson) as Record<string, unknown>; } catch { return null; }
@@ -889,6 +892,8 @@ export function ShowDetailPage() {
             )}
             <div className="min-w-0 self-start">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
+              {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
+              {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{series.title}</h1>
                 {/* The shield, beside the title — one control, both shelves. */}
@@ -1020,6 +1025,19 @@ export function ShowDetailPage() {
         <Card>
           <CardContent className="p-4">
             <CreditsRow heading="Crew" people={crew} className="border-t-0 pt-0" />
+          </CardContent>
+        </Card>
+      ) : null}
+      {/* #864: extra backdrop stills beyond the single hero backdrop already shown above. */}
+      {screenshots.length ? (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Screenshots</p>
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {screenshots.map((url) => (
+                <img key={url} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}

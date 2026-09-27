@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownloadClientItem, DownloadDispatchItem, DownloadTelemetryOverview, IndexerItem, MovieListItem, SeriesListItem } from "./api";
-import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads, readAlternateTitles } from "./ui-adapters";
+import { adaptActiveDownloads, adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads, readAlternateTitles, readArtworkExtras } from "./ui-adapters";
 
 describe("UI adapters", () => {
   it("adapts representative movie and series data and accepts empty lists", () => {
@@ -19,6 +19,17 @@ describe("UI adapters", () => {
     expect(readAlternateTitles("{}")).toEqual([]);
     expect(readAlternateTitles(null)).toEqual([]);
     expect(readAlternateTitles("not json")).toEqual([]);
+  });
+
+  it("reads a logo and screenshots out of the stored metadata blob, and never a banner (#864)", () => {
+    expect(
+      readArtworkExtras('{"LogoUrl":"https://image.tmdb.org/logo.png","Screenshots":["https://image.tmdb.org/still1.jpg","https://image.tmdb.org/still2.jpg"],"BannerUrl":"https://example.test/banner.jpg"}')
+    ).toEqual({
+      logoUrl: "https://image.tmdb.org/logo.png",
+      screenshots: ["https://image.tmdb.org/still1.jpg", "https://image.tmdb.org/still2.jpg"]
+    });
+    expect(readArtworkExtras("{}")).toEqual({ logoUrl: null, screenshots: [] });
+    expect(readArtworkExtras(null)).toEqual({ logoUrl: null, screenshots: [] });
   });
 
   /**
