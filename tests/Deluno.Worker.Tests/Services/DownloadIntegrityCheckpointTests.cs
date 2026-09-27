@@ -1,0 +1,278 @@
+using System.Runtime.CompilerServices;
+using Deluno.Contracts;
+using Deluno.Filesystem;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
+using Deluno.Libraries.Contracts;
+using Deluno.Libraries.Data;
+using Deluno.Movies.Contracts;
+using Deluno.Movies.Data;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Deluno.Quality.Data;
+using Deluno.Series.Data;
+using Deluno.Worker.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+
+namespace Deluno.Worker.Tests.Services;
+
+/// <summary>
+/// Checkpoint A (#917): wired into the same completed-download loop that hands
+/// a finished download to a processor or imports it directly. Off by default
+/// for every install (#936) -- these tests confirm both that a failing
+/// download never reaches a processor or the library once the setting is on,
+/// and that nothing changes at all while it is off.
+/// </summary>
+public sealed class DownloadIntegrityCheckpointTests : IDisposable
+{
+    private const string ReleaseName = "Sintel.2010.2160p.WEB-DL.DDP5.1.H.264-DELUNO";
+
+    private readonly string _root = Directory.CreateDirectory(
+        Path.Combine(Path.GetTempPath(), $"deluno-integrity-checkpoint-{Guid.NewGuid():N}")).FullName;
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Off_by_default_does_not_touch_the_download_or_stop_the_import()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+        var telemetry = Telemetry(out var file);
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: false, probe: Probe.Failed());
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        telemetry.Verify(instance => instance.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        scheduler.Verify(instance => instance.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == "filesystem.import.execute"),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_failed_check_blocklists_removes_and_searches_again_without_importing()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out var file);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1",
+                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.DeleteWithData && request.QueueItemId == "queue-1"),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), activity: activity);
+
+        blocked.Verify(instance => instance.BlockAsync(
+            It.Is<BlockedRelease>(release => release.ReasonCode == ImportFailurePolicy.DownloadIntegrityFailed && release.ReleaseName == ReleaseName),
+            It.IsAny<CancellationToken>()), Times.Once);
+        telemetry.Verify(instance => instance.ExecuteActionAsync(
+            "client-1",
+            It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.DeleteWithData),
+            It.IsAny<CancellationToken>()), Times.Once);
+        scheduler.Verify(instance => instance.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == LibrarySearchJobTypes.Movies),
+            It.IsAny<CancellationToken>()), Times.Once);
+        scheduler.Verify(instance => instance.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == "filesystem.import.execute"),
+            It.IsAny<CancellationToken>()), Times.Never);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory,
+            It.Is<string>(message => message.Contains("No video stream", StringComparison.Ordinal)),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_passed_check_still_imports_and_is_recorded_on_the_titles_history()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+        var telemetry = Telemetry(out var file);
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Ok(), activity: activity);
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        telemetry.Verify(instance => instance.ExecuteActionAsync(It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        scheduler.Verify(instance => instance.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == "filesystem.import.execute"),
+            It.IsAny<CancellationToken>()), Times.Once);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityPassedCategory,
+            It.IsAny<string>(),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static Mock<IActivityFeedRepository> Activity()
+    {
+        var activity = new Mock<IActivityFeedRepository>();
+        activity.Setup(instance => instance.ListActivityAsync(It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ActivityEventItem>());
+        return activity;
+    }
+
+    private Mock<IDownloadClientTelemetryService> Telemetry(out string file)
+    {
+        file = Path.Combine(_root, "Downloads", ReleaseName, ReleaseName + ".mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, "finished download");
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
+
+        var summary = new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0);
+        var item = new DownloadQueueItem(
+            "queue-1", "client-1", "qBittorrent", "qbittorrent", "movies", "Sintel", ReleaseName,
+            "deluno-movies", DownloadQueueStatuses.Completed, 1, 0, 0, 100, 100, 0, "Indexer", null,
+            DateTimeOffset.UnixEpoch, file, "library-1");
+        var overview = new DownloadTelemetryOverview(
+            summary,
+            [new DownloadClientTelemetrySnapshot(
+                "client-1", "qBittorrent", "qbittorrent", "http://127.0.0.1:8080", "healthy", null,
+                new DownloadClientTelemetryCapabilities(true, true, true, true, false, true, "password"),
+                summary, [item], [], DateTimeOffset.UnixEpoch)],
+            DateTimeOffset.UnixEpoch);
+
+        var telemetry = new Mock<IDownloadClientTelemetryService>();
+        telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>())).ReturnsAsync(overview);
+        return telemetry;
+    }
+
+    private async Task Run(
+        Mock<IJobScheduler> scheduler,
+        Mock<IDownloadClientTelemetryService> telemetry,
+        Mock<IBlockedReleaseRepository> blocked,
+        bool checkEnabled,
+        Probe probe,
+        Mock<IActivityFeedRepository>? activity = null)
+    {
+        var jobs = new Mock<IJobQueueRepository>();
+        jobs.Setup(repository => repository.TryClaimScheduledPassAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        jobs.Setup(repository => repository.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        jobs.Setup(repository => repository.FindDispatchLinkByClientItemAsync("client-1", "queue-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-1", "movie", "movie-1", IndexerName: "Indexer", LibraryId: "library-1"));
+
+        var libraries = new Mock<ILibrariesRepository>();
+        libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Library()]);
+
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MovieListItem)RuntimeHelpers.GetUninitializedObject(typeof(MovieListItem)) with { Id = "movie-1", Title = "Sintel", ReleaseYear = 2010 });
+
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Settings(checkEnabled));
+
+        var probeService = new Mock<IMediaProbeService>();
+        probeService.Setup(service => service.ProbeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(probe.Info);
+
+        await new WorkPlanner(new FailingLogger(), jobs.Object, new ConfigurationBuilder().Build(), TimeProvider.System)
+            .PlanImportAutomationAsync(
+                scheduler.Object,
+                Mock.Of<IProcessorRepository>(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>())
+                    == Task.FromResult<IReadOnlyList<ProcessorHandoffItem>>(Array.Empty<ProcessorHandoffItem>())),
+                libraries.Object,
+                new LibraryAvailabilityService(Mock.Of<IActivityFeedRepository>(), TimeProvider.System, NullLogger<LibraryAvailabilityService>.Instance),
+                telemetry.Object,
+                Mock.Of<IProcessorConnectionService>(),
+                (activity ?? Activity()).Object,
+                movies.Object,
+                Mock.Of<ISeriesCatalogRepository>(),
+                TimeProvider.System,
+                CancellationToken.None,
+                settings.Object,
+                probeService.Object,
+                blocked.Object,
+                Mock.Of<IQualityRepository>());
+    }
+
+    private static PlatformSettingsSnapshot Settings(bool checkEnabled) => new(
+        AppInstanceName: "Deluno",
+        MovieRootPath: null,
+        SeriesRootPath: null,
+        DownloadsPath: null,
+        IncompleteDownloadsPath: null,
+        AutoStartJobs: true,
+        EnableNotifications: true,
+        RenameOnImport: true,
+        UseHardlinks: true,
+        CleanupEmptyFolders: true,
+        MovieFolderFormat: "{Movie}",
+        SeriesFolderFormat: "{Series}",
+        MovieFileFormat: "{Movie}",
+        EpisodeFileFormat: "{Episode}",
+        HostBindAddress: "127.0.0.1",
+        HostPort: 7979,
+        UrlBase: string.Empty,
+        RequireAuthentication: false,
+        UiTheme: "dark",
+        DefaultMovieView: "poster",
+        DefaultShowView: "poster",
+        MetadataNfoEnabled: true,
+        MetadataArtworkEnabled: true,
+        MetadataCertificationCountry: "US",
+        MetadataLanguage: "en",
+        MetadataProviderMode: "auto",
+        MetadataBrokerUrl: string.Empty,
+        MetadataBrokerConfigured: false,
+        MetadataTmdbApiKeyConfigured: false,
+        MetadataOmdbApiKeyConfigured: false,
+        ReleaseNeverGrabPatterns: string.Empty,
+        SearchScoringMode: "balanced",
+        ImportRecoveryRetentionDays: 30,
+        UpdatedUtc: DateTimeOffset.UnixEpoch,
+        LibraryFreeSpaceWarnPercent: 10,
+        LibraryFreeSpacePausePercent: 2,
+        DownloadIntegrityCheckEnabled: checkEnabled,
+        DownloadIntegrityMinimumRuntimePercent: 80);
+
+    private LibraryItem Library()
+    {
+        var now = DateTimeOffset.UnixEpoch;
+        return new LibraryItem(
+            "library-1", "Movies", "movies", "main", _root, Path.Combine(_root, "Downloads"), null, null, null,
+            true, true, "standard", null, null, 360, "block",
+            true, true, true, 6, 6, 10, null, null, "active", false, null, null, now, now);
+    }
+
+    /// <summary>A scheduled pass only logs what it throws; a test should see it.</summary>
+    private sealed class FailingLogger : Microsoft.Extensions.Logging.ILogger<WorkPlanner>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (exception is not null)
+            {
+                throw new InvalidOperationException(formatter(state, exception), exception);
+            }
+        }
+    }
+
+    private sealed class Probe(MediaProbeInfo info)
+    {
+        public MediaProbeInfo Info => info;
+
+        public static Probe Ok() => new(new MediaProbeInfo(
+            "succeeded", "ffprobe", null, 120 * 60, "mkv", null,
+            [new MediaVideoStreamInfo(0, "h264", null, 3840, 2160, "yuv420p", 24, null, null)],
+            [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+            []));
+
+        public static Probe Failed() => new(new MediaProbeInfo("succeeded", "ffprobe", null, 120 * 60, "mkv", null, [], [], []));
+    }
+}

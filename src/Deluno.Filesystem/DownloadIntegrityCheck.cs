@@ -35,10 +35,13 @@ public sealed record DownloadIntegrityResult(DownloadIntegrityOutcome Outcome, s
 /// that can reject a release outright, so nothing about it is enabled until a
 /// person turns it on in Settings.</para>
 ///
-/// <para>Not yet checked: the audio-language rule, which the issue itself
-/// leaves off until #769's language preferences exist; and a folder-shaped
-/// download (a season pack, a movie with extras) is not resolved to "the"
-/// file to probe. Both are deferred, not silently skipped -- see the
+/// <para>The audio-language rule reads a library's own quality profile
+/// (#769's <see cref="ProfileLanguagePreference"/>): only a profile
+/// that requires a language at all can fail a file for lacking one, so an
+/// install that never set a language preference sees no change here.</para>
+///
+/// <para>Not yet checked: a folder-shaped download (a season pack, a movie
+/// with extras) is not resolved to "the" file to probe -- see the
 /// worker-side caller for where a folder is passed over today.</para>
 /// </summary>
 public static class DownloadIntegrityCheck
@@ -52,7 +55,8 @@ public static class DownloadIntegrityCheck
         int? knownRuntimeMinutes,
         int minimumRuntimePercent,
         IMediaProbeService probeService,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ProfileLanguagePreference? languagePreference = null)
     {
         // A file still being written or locked is waited for, not failed.
         if (!ImportFileReadiness.IsReady(filePath))
@@ -82,6 +86,25 @@ public static class DownloadIntegrityCheck
         if (probe.Status == "succeeded" && probe.AudioStreams.Count == 0)
         {
             return DownloadIntegrityResult.Failed("No audio stream was detected in this file.");
+        }
+
+        // "Missing the audio language you want": none of its audio tracks is
+        // in a wanted language. Only a profile that requires one (rather than
+        // merely preferring it for ranking) can fail a file over this -- a
+        // ranking-only preference never refuses a release outright.
+        if (probe.Status == "succeeded" &&
+            languagePreference is { RequireLanguage: true, PreferredLanguages.Count: > 0 } preference)
+        {
+            var streamLanguages = probe.AudioStreams.Select(stream => stream.Language).ToArray();
+            var wanted = preference.PreferredLanguages
+                .Where(code => AudioLanguageMatch.Recognizes(code))
+                .ToArray();
+            if (wanted.Length > 0 && !wanted.Any(code => AudioLanguageMatch.AnyMatches(streamLanguages, code)))
+            {
+                var wantedLabel = string.Join(" or ", wanted.Select(ProfileLanguageCodes.Label));
+                return DownloadIntegrityResult.Failed(
+                    $"None of this file's audio tracks are in {wantedLabel}, which this library wants.");
+            }
         }
 
         if (probe.Status != "succeeded")

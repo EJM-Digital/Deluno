@@ -24,6 +24,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 using Deluno.Quality;
+using Deluno.Quality.Data;
 
 namespace Deluno.Worker.Services;
 
@@ -845,7 +846,15 @@ public sealed class WorkPlanner(
         IMovieCatalogRepository movieCatalogRepository,
         ISeriesCatalogRepository seriesCatalogRepository,
         TimeProvider timeProvider,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // Checkpoint A (#917). Optional and appended last so every existing
+        // caller and test keeps working unchanged: the checkpoint simply does
+        // not run when these are not supplied, exactly like the setting being
+        // off.
+        IPlatformSettingsRepository? downloadIntegrityPlatformSettings = null,
+        IMediaProbeService? downloadIntegrityProbeService = null,
+        IBlockedReleaseRepository? downloadIntegrityBlockedReleases = null,
+        IQualityRepository? downloadIntegrityQualityRepository = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.ImportAutomation,
@@ -981,6 +990,29 @@ public sealed class WorkPlanner(
 
             var library = ResolveLibraryForQueueItem(item, libraries, routeCategoriesByLibrary);
             if (library is null)
+            {
+                continue;
+            }
+
+            // Checkpoint A (#917): before this download reaches a processor or
+            // the library, Deluno opens the file and checks it against what its
+            // own name and the catalogue's known runtime claim. Off by default
+            // for every install (#936) -- nothing here runs until the setting
+            // is turned on.
+            if (await RunDownloadIntegrityCheckpointAsync(
+                    item,
+                    dispatch,
+                    library,
+                    downloadIntegrityPlatformSettings,
+                    downloadIntegrityProbeService,
+                    downloadIntegrityBlockedReleases,
+                    downloadIntegrityQualityRepository,
+                    downloadClientTelemetryService,
+                    jobScheduler,
+                    activityFeedRepository,
+                    movieCatalogRepository,
+                    seriesCatalogRepository,
+                    cancellationToken))
             {
                 continue;
             }
@@ -1230,6 +1262,238 @@ public sealed class WorkPlanner(
             "download-dispatch",
             dispatchId,
             cancellationToken);
+    }
+
+    internal const string DownloadIntegrityFailedCategory = "download.integrity.failed";
+    internal const string DownloadIntegrityPassedCategory = "download.integrity.passed";
+
+    /// <summary>
+    /// Checkpoint A (#917): opens a finished download and checks it against
+    /// what its own name and the catalogue's known runtime claim, before a
+    /// processor or the library ever sees it. Off by default for every install
+    /// (#936): the three integrity dependencies are only supplied once a
+    /// person turns the setting on, and this returns false unchanged when they
+    /// are not.
+    ///
+    /// <para>Returns true when the download failed and has already been
+    /// removed from its client, deleted, blocklisted (hash/id + name, every
+    /// indexer, #874) and searched again -- the caller must not go on to hand
+    /// it to a processor or import it. Returns false for a pass, for a file
+    /// still being written (tried again next pass), and whenever the check
+    /// itself is not switched on.</para>
+    /// </summary>
+    private static async Task<bool> RunDownloadIntegrityCheckpointAsync(
+        DownloadQueueItem item,
+        DispatchCatalogueLink? dispatch,
+        LibraryItem library,
+        IPlatformSettingsRepository? platformSettingsRepository,
+        IMediaProbeService? mediaProbeService,
+        IBlockedReleaseRepository? blockedReleaseRepository,
+        IQualityRepository? qualityRepository,
+        IDownloadClientTelemetryService downloadClientTelemetryService,
+        IJobScheduler jobScheduler,
+        IActivityFeedRepository activityFeedRepository,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (platformSettingsRepository is null ||
+            mediaProbeService is null ||
+            item.SourcePath is not { Length: > 0 } sourcePath ||
+            !File.Exists(sourcePath))
+        {
+            return false;
+        }
+
+        var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+        if (!settings.DownloadIntegrityCheckEnabled)
+        {
+            return false;
+        }
+
+        var languagePreference = qualityRepository is null
+            ? null
+            : await LanguagePreferenceForAsync(library, qualityRepository, cancellationToken);
+        var knownRuntimeMinutes = await KnownRuntimeMinutesAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+
+        var result = await DownloadIntegrityCheck.RunAsync(
+            sourcePath,
+            item.ReleaseName,
+            knownRuntimeMinutes,
+            settings.DownloadIntegrityMinimumRuntimePercent,
+            mediaProbeService,
+            cancellationToken,
+            languagePreference);
+
+        if (result.Outcome == DownloadIntegrityOutcome.StillWriting)
+        {
+            return false;
+        }
+
+        var entityType = library.MediaType == "tv" ? "series" : "movie";
+        var entityId = string.IsNullOrWhiteSpace(dispatch?.EntityId) ? null : dispatch.EntityId;
+
+        if (result.Outcome == DownloadIntegrityOutcome.Pass)
+        {
+            // A pass is recorded on the title's own history so the result can
+            // be seen later, same as a failure is.
+            if (entityId is not null)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    DownloadIntegrityPassedCategory,
+                    $"{item.Title} passed Deluno's check of the download before it went on.",
+                    JsonSerializer.Serialize(new { item.ClientId, item.ClientName, item.ReleaseName }, PayloadJsonOptions),
+                    null,
+                    entityType,
+                    entityId,
+                    cancellationToken);
+            }
+
+            return false;
+        }
+
+        // Failed: a bad release. Removed from the client, deleted, blocklisted
+        // (hash/id + name, every indexer, #874) and another searched for. The
+        // processor never sees it.
+        var reason = result.Reason ?? "Deluno's own check of this file found it was not what it claimed to be.";
+
+        if (blockedReleaseRepository is not null)
+        {
+            try
+            {
+                await blockedReleaseRepository.BlockAsync(
+                    new BlockedRelease(
+                        Guid.NewGuid().ToString("n"),
+                        BlockedReleaseKeys.For(item.ReleaseName, dispatch?.IndexerName is { Length: > 0 } indexer ? indexer : item.IndexerName),
+                        item.ReleaseName,
+                        dispatch?.IndexerName is { Length: > 0 } releaseIndexer ? releaseIndexer : item.IndexerName,
+                        library.MediaType,
+                        entityId,
+                        item.Title,
+                        ImportFailurePolicy.DownloadIntegrityFailed,
+                        reason,
+                        item.Id,
+                        item.ClientId,
+                        item.ClientName,
+                        DateTimeOffset.UtcNow),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Left unblocked; the next pass finds the same file and tries
+                // again rather than this one going silent about it.
+            }
+        }
+
+        var removedFromClient = false;
+        try
+        {
+            var actionResult = await downloadClientTelemetryService.ExecuteActionAsync(
+                item.ClientId,
+                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
+                cancellationToken);
+            removedFromClient = actionResult.Succeeded;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The client could not be reached right now. The blocklist entry
+            // alone still keeps this exact release from being sent again.
+        }
+
+        if (entityId is not null)
+        {
+            try
+            {
+                await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        LibrarySearchJobTypes.For(library.MediaType),
+                        "download-integrity-failed",
+                        JsonSerializer.Serialize(new
+                        {
+                            libraryId = library.Id,
+                            mediaType = library.MediaType,
+                            checkMissing = true,
+                            checkUpgrades = true,
+                            maxItems = 1,
+                            triggeredBy = "download-integrity-failed",
+                            targetEntityId = entityId
+                        }, PayloadJsonOptions),
+                        entityType,
+                        entityId,
+                        IdempotencyKey: $"download-integrity-failed:{item.Id}",
+                        DedupeKey: $"download-integrity-failed:{item.Id}"),
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The blocklist entry alone still keeps this release out; the
+                // title's own scheduled search picks it back up regardless.
+            }
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            DownloadIntegrityFailedCategory,
+            $"{item.Title} finished in {item.ClientName}, but {reason} Deluno removed it, blocklisted the release and is searching for another copy.",
+            JsonSerializer.Serialize(new
+            {
+                item.ClientId,
+                item.ClientName,
+                item.ReleaseName,
+                item.SourcePath,
+                reason,
+                removedFromClient
+            }, PayloadJsonOptions),
+            null,
+            entityId is null ? "download" : entityType,
+            entityId ?? item.Id,
+            cancellationToken);
+
+        return true;
+    }
+
+    /// <summary>The library's own language preference, from its assigned quality profile, or null when it has none.</summary>
+    private static async Task<ProfileLanguagePreference?> LanguagePreferenceForAsync(
+        LibraryItem library,
+        IQualityRepository qualityRepository,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(library.QualityProfileId))
+        {
+            return null;
+        }
+
+        var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
+        return profiles.FirstOrDefault(profile => string.Equals(profile.Id, library.QualityProfileId, StringComparison.OrdinalIgnoreCase))
+            ?.LanguagePreference;
+    }
+
+    /// <summary>
+    /// The runtime Deluno already knows for this grab's title -- a film's own
+    /// runtime, or a show's typical episode runtime, whichever the dispatch
+    /// names. Null when there is no dispatch, no catalogue match, or no
+    /// recorded runtime, in which case Checkpoint A's runtime rules simply
+    /// have nothing to compare against.
+    /// </summary>
+    private static async Task<int?> KnownRuntimeMinutesAsync(
+        DispatchCatalogueLink? dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        if (CatalogueImportNaming.IsShowGrab(dispatch))
+        {
+            var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+            var series = seriesId is null ? null : await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
+            return series?.RuntimeMinutes;
+        }
+
+        var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+        return movie?.RuntimeMinutes;
     }
 
     private static async Task RecordUnmatchedProcessorOutputsAsync(
