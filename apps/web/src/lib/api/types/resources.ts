@@ -1198,6 +1198,27 @@ export interface DownloadClientPathMappingItem {
   updatedUtc: string;
 }
 
+/** One entry in the seeding-rule matrix (#820): see SharingRuleItem.cs. */
+export interface SharingRuleItem {
+  id: string;
+  priority: number;
+  categoryPattern: string | null;
+  trackerPattern: string | null;
+  tagsCsv: string | null;
+  tagMatchMode: "any" | "all" | string;
+  mode: string | null;
+  forHours: number | null;
+  untilRatio: number | null;
+  stuckAction: string | null;
+  stuckAfterDays: number | null;
+  completionAction: string | null;
+  minSeeders: number | null;
+  maxInactiveDays: number | null;
+  isEnabled: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
 export interface DownloadHealthFinding {
   severity: "critical" | "warning" | string;
   kind: string;

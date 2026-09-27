@@ -292,4 +292,89 @@ public sealed class SharingPolicyEvaluatorTests
             SharingAction.Reclaim,
             Evaluate(Policy(completionAction: SharingPolicy.CompletionStop), supportsSharing: false).Action);
     }
+
+    // ── Rule-matrix guards (#820) ────────────────────────────────────────
+
+    [Fact]
+    public void Min_seeders_guard_holds_a_download_that_would_otherwise_reclaim()
+    {
+        var guards = new SharingPolicyEvaluator.SharingGuards(MinSeeders: 5, CurrentSeeders: 2, MaxInactiveDays: null, InactiveDays: null);
+
+        var decision = SharingPolicyEvaluator.Evaluate(
+            Policy(forHours: 72),
+            supportsSharing: true,
+            ratio: null,
+            seedingMinutes: 72 * 60,
+            isPrivate: null,
+            guards: guards);
+
+        Assert.Equal(SharingAction.Wait, decision.Action);
+        Assert.Contains("2 seeders", decision.Reason);
+    }
+
+    [Fact]
+    public void Min_seeders_guard_lets_a_download_reclaim_once_enough_seeders_are_present()
+    {
+        var guards = new SharingPolicyEvaluator.SharingGuards(MinSeeders: 5, CurrentSeeders: 5, MaxInactiveDays: null, InactiveDays: null);
+
+        var decision = SharingPolicyEvaluator.Evaluate(
+            Policy(forHours: 72),
+            supportsSharing: true,
+            ratio: null,
+            seedingMinutes: 72 * 60,
+            isPrivate: null,
+            guards: guards);
+
+        Assert.Equal(SharingAction.Reclaim, decision.Action);
+    }
+
+    [Fact]
+    public void Max_inactive_days_guard_holds_a_download_that_would_otherwise_reclaim()
+    {
+        var guards = new SharingPolicyEvaluator.SharingGuards(MinSeeders: null, CurrentSeeders: null, MaxInactiveDays: 10, InactiveDays: 12);
+
+        var decision = SharingPolicyEvaluator.Evaluate(
+            Policy(forHours: 72),
+            supportsSharing: true,
+            ratio: null,
+            seedingMinutes: 72 * 60,
+            isPrivate: null,
+            guards: guards);
+
+        Assert.Equal(SharingAction.Wait, decision.Action);
+        Assert.Contains("inactive for 12 days", decision.Reason);
+    }
+
+    [Fact]
+    public void Max_inactive_days_guard_lets_a_download_reclaim_while_still_active()
+    {
+        var guards = new SharingPolicyEvaluator.SharingGuards(MinSeeders: null, CurrentSeeders: null, MaxInactiveDays: 10, InactiveDays: 2);
+
+        var decision = SharingPolicyEvaluator.Evaluate(
+            Policy(forHours: 72),
+            supportsSharing: true,
+            ratio: null,
+            seedingMinutes: 72 * 60,
+            isPrivate: null,
+            guards: guards);
+
+        Assert.Equal(SharingAction.Reclaim, decision.Action);
+    }
+
+    [Fact]
+    public void Guards_are_independent_and_both_must_clear_before_reclaiming()
+    {
+        // Enough seeders, but still inactive too long: the inactivity guard alone still holds it.
+        var guards = new SharingPolicyEvaluator.SharingGuards(MinSeeders: 5, CurrentSeeders: 20, MaxInactiveDays: 10, InactiveDays: 15);
+
+        var decision = SharingPolicyEvaluator.Evaluate(
+            Policy(forHours: 72),
+            supportsSharing: true,
+            ratio: null,
+            seedingMinutes: 72 * 60,
+            isPrivate: null,
+            guards: guards);
+
+        Assert.Equal(SharingAction.Wait, decision.Action);
+    }
 }
