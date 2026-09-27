@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, isVanished, needsAction } from "./needs-action";
 import type { DownloadDispatchItem, DownloadTelemetryOverview, MovieImportRecoverySummary, ProcessorHandoffItem, SeriesImportRecoverySummary } from "./api";
-import { canTryAgain, needsAction } from "./needs-action";
+import { canTryAgain, isVanished, needsAction } from "./needs-action";
 
 function dispatch(overrides: Partial<DownloadDispatchItem> & Pick<DownloadDispatchItem, "id">): DownloadDispatchItem {
   return {
