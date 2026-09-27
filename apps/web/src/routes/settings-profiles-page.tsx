@@ -1250,7 +1250,11 @@ function guideStarters(guide: GuidePackage, tiers: { name: string; rank: number 
     return {
       id: profile.id,
       label: profile.name,
-      mediaType: profile.mediaType === "movies" ? "movies" : "tv",
+      // The backend buckets a guide profile's "anime" media type with movies
+      // (Radarr's own anime custom formats), not TV, so the starter's own
+      // recommended formats — Deluno's bundled anime release-group tiers and
+      // version tags among them — resolve against the right guide entries.
+      mediaType: profile.mediaType === "tv" ? "tv" : "movies",
       allowed: allowedBestFirst.reverse(),
       cutoff,
       summary: profile.description,

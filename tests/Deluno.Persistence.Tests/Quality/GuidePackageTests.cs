@@ -198,6 +198,28 @@ public sealed class GuidePackageTests
     }
 
     [Theory]
+    [InlineData("fb3ccc5d5cc8f77c9055d4cb4561dded", "Anime BD Tier 01")]
+    [InlineData("6115ccd6640b978234cc47f2c1f2cadc", "Anime BD Tier 08")]
+    [InlineData("a786fbc0eae05afe3bb51aee3c83a9d4", "Anime Web Tier 06")]
+    [InlineData("b0fdc5897f68c9a68c70c25169f77447", "Anime LQ Groups")]
+    [InlineData("c259005cbaeb5ab44c06eddb4751e70c", "v0")]
+    [InlineData("d4e5e842fad129a3c097bdb2d20d31a0", "v4")]
+    public void Anime_release_group_tiers_and_version_tags_are_enabled_by_default_only_for_the_anime_profile(
+        string trashId,
+        string name)
+    {
+        var animeCompilation = GuidePlanCompiler.Compile("anime-1080p");
+        Assert.Contains(animeCompilation.AdvancedRules, rule => rule.TrashId == trashId);
+
+        var moviesCompilation = GuidePlanCompiler.Compile("web-1080p");
+        Assert.DoesNotContain(moviesCompilation.AdvancedRules, rule => rule.TrashId == trashId);
+        Assert.DoesNotContain(moviesCompilation.Plan.Sources ?? [], source => source.SourceId == trashId);
+
+        // Sanity check the fixture names the trashId we expect.
+        Assert.Equal(name, GuidePackageCatalog.Current.CustomFormats.Single(format => format.TrashId == trashId).Name);
+    }
+
+    [Theory]
     [InlineData("unwanted.cam", "Movie.Title.2024.CAM.x264-GROUP")]
     [InlineData("unwanted.telesync", "Movie.Title.2024.TELESYNC.x264-GROUP")]
     [InlineData("unwanted.telecine", "Movie.Title.2024.TELECINE.x264-GROUP")]
