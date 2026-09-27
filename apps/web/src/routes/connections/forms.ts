@@ -10,15 +10,25 @@ import { CLIENT_PRESETS, INDEXER_PRESETS, type IndexerProtocol, type MediaScope 
  * describe: keep sharing a long time, give back at least what you took, and
  * never stop early on your own.
  */
-export type SharingRule = "inherit" | "strict";
+export type SharingRule = "inherit" | "strict" | "custom";
 
 export const STRICT_SHARING = { forHours: 336, untilRatio: 1, stuckAfterDays: 14 } as const;
 
+/**
+ * "strict" and "custom" are the same override under the hood — only the
+ * strict preset's own numbers say which one an existing indexer used, so a
+ * source hand-tuned away from those numbers is told back as "custom" rather
+ * than silently relabelled strict (#739).
+ */
 export function sharingRuleFrom(item: IndexerItem): SharingRule {
-  return item.sharingMode || item.sharingForHours != null || item.sharingUntilRatio != null ||
-    item.sharingStuckAction || item.sharingStuckAfterDays != null
-    ? "strict"
-    : "inherit";
+  if (!item.sharingMode && item.sharingForHours == null && item.sharingUntilRatio == null &&
+    !item.sharingStuckAction && item.sharingStuckAfterDays == null) {
+    return "inherit";
+  }
+  const isStrictPreset = item.sharingForHours === STRICT_SHARING.forHours &&
+    item.sharingUntilRatio === STRICT_SHARING.untilRatio &&
+    item.sharingStuckAfterDays === STRICT_SHARING.stuckAfterDays;
+  return isStrictPreset ? "strict" : "custom";
 }
 
 export interface IndexerForm {
@@ -38,6 +48,11 @@ export interface IndexerForm {
   categories: string;
   isEnabled: boolean;
   sharingRule: SharingRule;
+  /** Typed values behind sharingRule === "custom" — this tracker's own published seed ratio/time (#739). */
+  sharingSeedHours: string;
+  sharingSeedRatio: string;
+  /** Used instead of sharingSeedHours/the strict preset's hours when the download is a season pack (#739). Blank falls back to the normal seed time. */
+  seasonPackSeedForHours: string;
   minimumAgeMinutes: string;
   retentionDays: string;
   maximumSizeMb: string;
@@ -75,8 +90,8 @@ export interface IndexerForm {
   /** The configured proxy (#748) this indexer's requests go through. Blank means direct connection. */
   proxyId: string;
 }
-export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", apiPath: "", additionalParameters: "", animeCategories: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS.find((preset) => preset.protocol === "newznab")!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", minimumSeeders: "", preferIndexerFlags: "", requiredWords: "", ignoredWords: "", multiLanguages: "", vipExpiresUtc: "", queryLimit: "", grabLimit: "", limitsUnit: "day", preferMagnetUrl: false, seasonPackSearchMode: "both", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true, definitionId: "", trackerSettings: {}, trackerSecrets: {}, proxyId: "" }; }
-export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["tracker", "torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", apiPath: item.apiPath ?? "", additionalParameters: item.additionalParameters ?? "", animeCategories: item.animeCategories ?? "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), minimumSeeders: item.minimumSeeders == null ? "" : String(item.minimumSeeders), preferIndexerFlags: item.preferIndexerFlags ?? "", requiredWords: item.requiredWords ?? "", ignoredWords: item.ignoredWords ?? "", multiLanguages: item.multiLanguages ?? "", vipExpiresUtc: item.vipExpiresUtc ? item.vipExpiresUtc.slice(0, 10) : "", queryLimit: item.queryLimit == null ? "" : String(item.queryLimit), grabLimit: item.grabLimit == null ? "" : String(item.grabLimit), limitsUnit: item.limitsUnit === "hour" ? "hour" : "day", preferMagnetUrl: item.preferMagnetUrl === true, seasonPackSearchMode: item.seasonPackSearchMode === "season-packs-only" || item.seasonPackSearchMode === "episodes-only" ? item.seasonPackSearchMode : "both", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false, definitionId: item.definitionId ?? "", trackerSettings: { ...(item.definitionSettings ?? {}) }, trackerSecrets: {}, proxyId: item.proxyId ?? "" }; }
+export function emptyIndexerForm(): IndexerForm { return { name: "", protocol: "newznab", scope: "both", baseUrl: "", apiKey: "", apiPath: "", additionalParameters: "", animeCategories: "", priority: "10", requestIntervalSeconds: "", categories: INDEXER_PRESETS.find((preset) => preset.protocol === "newznab")!.defaultCategories("both"), isEnabled: true, sharingRule: "inherit", sharingSeedHours: "", sharingSeedRatio: "", seasonPackSeedForHours: "", minimumAgeMinutes: "", retentionDays: "", maximumSizeMb: "", minimumSeeders: "", preferIndexerFlags: "", requiredWords: "", ignoredWords: "", multiLanguages: "", vipExpiresUtc: "", queryLimit: "", grabLimit: "", limitsUnit: "day", preferMagnetUrl: false, seasonPackSearchMode: "both", availabilityDelayDays: "", rssEnabled: true, automaticSearchEnabled: true, interactiveSearchEnabled: true, definitionId: "", trackerSettings: {}, trackerSecrets: {}, proxyId: "" }; }
+export function indexerFormFrom(item: IndexerItem): IndexerForm { return { name: item.name, protocol: (["tracker", "torznab", "newznab", "rss", "custom"].includes(item.protocol) ? item.protocol : "custom") as IndexerProtocol, scope: item.mediaScope ?? "both", baseUrl: item.baseUrl, apiKey: "", apiPath: item.apiPath ?? "", additionalParameters: item.additionalParameters ?? "", animeCategories: item.animeCategories ?? "", priority: String(item.priority), requestIntervalSeconds: item.requestIntervalSeconds == null ? "" : String(item.requestIntervalSeconds), categories: item.categories, isEnabled: item.isEnabled, sharingRule: sharingRuleFrom(item), sharingSeedHours: item.sharingForHours == null ? "" : String(item.sharingForHours), sharingSeedRatio: item.sharingUntilRatio == null ? "" : String(item.sharingUntilRatio), seasonPackSeedForHours: item.seasonPackSeedForHours == null ? "" : String(item.seasonPackSeedForHours), minimumAgeMinutes: item.minimumAgeMinutes == null ? "" : String(item.minimumAgeMinutes), retentionDays: item.retentionDays == null ? "" : String(item.retentionDays), maximumSizeMb: item.maximumSizeMb == null ? "" : String(item.maximumSizeMb), minimumSeeders: item.minimumSeeders == null ? "" : String(item.minimumSeeders), preferIndexerFlags: item.preferIndexerFlags ?? "", requiredWords: item.requiredWords ?? "", ignoredWords: item.ignoredWords ?? "", multiLanguages: item.multiLanguages ?? "", vipExpiresUtc: item.vipExpiresUtc ? item.vipExpiresUtc.slice(0, 10) : "", queryLimit: item.queryLimit == null ? "" : String(item.queryLimit), grabLimit: item.grabLimit == null ? "" : String(item.grabLimit), limitsUnit: item.limitsUnit === "hour" ? "hour" : "day", preferMagnetUrl: item.preferMagnetUrl === true, seasonPackSearchMode: item.seasonPackSearchMode === "season-packs-only" || item.seasonPackSearchMode === "episodes-only" ? item.seasonPackSearchMode : "both", availabilityDelayDays: item.availabilityDelayDays == null ? "" : String(item.availabilityDelayDays), rssEnabled: item.rssEnabled !== false, automaticSearchEnabled: item.automaticSearchEnabled !== false, interactiveSearchEnabled: item.interactiveSearchEnabled !== false, definitionId: item.definitionId ?? "", trackerSettings: { ...(item.definitionSettings ?? {}) }, trackerSecrets: {}, proxyId: item.proxyId ?? "" }; }
 export function sameIndexer(a: IndexerForm, b: IndexerForm) { return (Object.keys(a) as (keyof IndexerForm)[]).every((key) => typeof a[key] === "object" ? sameRecord(a[key] as Record<string, string>, b[key] as Record<string, string>) : a[key] === b[key]); }
 /** The same values, ignoring keys that are blank on one side and missing on the other. */
 function sameRecord(a: Record<string, string>, b: Record<string, string>) { return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => (a[key] ?? "") === (b[key] ?? "")); }

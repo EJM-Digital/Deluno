@@ -226,7 +226,20 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
             sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
             clearSharingPolicy: false
           }
-        : { clearSharingPolicy: true })
+        : form.sharingRule === "custom"
+          ? {
+              sharingMode: "share-then-tidy",
+              sharingForHours: form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null,
+              sharingUntilRatio: form.sharingSeedRatio.trim() ? Number(form.sharingSeedRatio) : null,
+              sharingStuckAction: "keep-waiting",
+              sharingStuckAfterDays: STRICT_SHARING.stuckAfterDays,
+              clearSharingPolicy: false
+            }
+          : { clearSharingPolicy: true }),
+    // Independent of the rule above: a season pack from this source can seed
+    // for longer even when the rest of the sharing rule is inherited (#739).
+    seasonPackSeedForHours: form.seasonPackSeedForHours.trim() ? Number(form.seasonPackSeedForHours) : null,
+    clearSeasonPackSeedForHours: editing && !form.seasonPackSeedForHours.trim()
   };
 }
 

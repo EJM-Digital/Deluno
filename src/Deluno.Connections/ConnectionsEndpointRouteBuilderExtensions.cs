@@ -868,6 +868,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.MultiLanguages);
         AddQueryGrabLimitErrors(errors, request.QueryLimit, request.GrabLimit);
 
+        if (request.SeasonPackSeedForHours is not null)
+        {
+            AddNonNegativeError(errors, "seasonPackSeedForHours", request.SeasonPackSeedForHours, "Season-pack seed time cannot be negative.");
+        }
+
         return errors;
     }
 
@@ -897,6 +902,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         AddRequestIntervalError(errors, request.RequestIntervalSeconds, request.ClearRequestInterval == true);
+        if (request.ClearSeasonPackSeedForHours != true && request.SeasonPackSeedForHours is not null)
+        {
+            AddNonNegativeError(errors, "seasonPackSeedForHours", request.SeasonPackSeedForHours, "Season-pack seed time cannot be negative.");
+        }
         if (request.ClearMinimumAge != true && request.MinimumAgeMinutes is not null)
         {
             AddNonNegativeError(errors, "minimumAgeMinutes", request.MinimumAgeMinutes, "Minimum age cannot be negative.");

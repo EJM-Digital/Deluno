@@ -111,7 +111,8 @@ public static class PlatformDatabaseMigrations
         new V0103IndexerProxies(),
         new V0104IntakeSourceMonitorMode(),
         new V0105IntakeSourceSeriesOptions(),
-        new V0106SeerrAcquisitions()
+        new V0106SeerrAcquisitions(),
+        new V0107IndexerSeasonPackSeedTime()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

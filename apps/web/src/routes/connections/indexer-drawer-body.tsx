@@ -13,7 +13,8 @@ import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
 import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScope } from "./presets";
 import type { IndexerForm, SharingRule } from "./forms";
-import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
+import { describeCustomSharingRule, describeGlobalSharingRule, describeSeasonPackSeedTime, describeStrictSharingRule } from "../../lib/sharing-rule";
+import { STRICT_SHARING } from "./forms";
 import { formatSeconds, healthChip, relative, vipWarningActive } from "./format";
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
@@ -134,16 +135,58 @@ export function IndexerDrawerBody({
         >
           <SegmentedControl<SharingRule>
             value={form.sharingRule}
-            onValueChange={(sharingRule) => setForm((current) => ({ ...current, sharingRule }))}
+            onValueChange={(sharingRule) => setForm((current) => ({
+              ...current,
+              sharingRule,
+              // The strict preset's own numbers, so switching to "custom" from
+              // "strict" starts from what the site was already being held to
+              // rather than blank fields (#739).
+              sharingSeedHours: sharingRule === "custom" && !current.sharingSeedHours ? String(STRICT_SHARING.forHours) : current.sharingSeedHours,
+              sharingSeedRatio: sharingRule === "custom" && !current.sharingSeedRatio ? String(STRICT_SHARING.untilRatio) : current.sharingSeedRatio
+            }))}
             options={[
               { value: "inherit", label: "No, my normal rule" },
-              { value: "strict", label: "Yes, it is strict" }
+              { value: "strict", label: "Yes, it is strict" },
+              { value: "custom", label: "Set my own numbers" }
             ]}
           />
         </Field>
+        {form.sharingRule === "custom" ? (
+          <FieldRow>
+            <Field label="Seed time" help="This tracker's published minimum seed time.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.sharingSeedHours} onChange={(event) => setForm((current) => ({ ...current, sharingSeedHours: event.target.value }))} placeholder="e.g. 336" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+              </div>
+            </Field>
+            <Field label="Seed ratio" help="This tracker's published minimum ratio.">
+              <Input type="number" min="0" step="0.05" value={form.sharingSeedRatio} onChange={(event) => setForm((current) => ({ ...current, sharingSeedRatio: event.target.value }))} placeholder="e.g. 1.0" />
+            </Field>
+          </FieldRow>
+        ) : null}
         <p className="text-[length:var(--type-caption)] text-muted-foreground">
-          {form.sharingRule === "strict" ? describeStrictSharingRule() : describeGlobalSharingRule(settings)}
+          {form.sharingRule === "strict"
+            ? describeStrictSharingRule()
+            : form.sharingRule === "custom"
+              ? describeCustomSharingRule(form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null, form.sharingSeedRatio.trim() ? Number(form.sharingSeedRatio) : null)
+              : describeGlobalSharingRule(settings)}
         </p>
+        {form.sharingRule !== "inherit" ? (
+          <>
+            <Field label="Season-pack seed time" help="Only for whole-season downloads from this source. Leave blank to use the seed time above for season packs too.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.seasonPackSeedForHours} onChange={(event) => setForm((current) => ({ ...current, seasonPackSeedForHours: event.target.value }))} placeholder="Same as normal" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+              </div>
+            </Field>
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              {describeSeasonPackSeedTime(
+                form.seasonPackSeedForHours.trim() ? Number(form.seasonPackSeedForHours) : null,
+                form.sharingRule === "strict" ? STRICT_SHARING.forHours : (form.sharingSeedHours.trim() ? Number(form.sharingSeedHours) : null)
+              )}
+            </p>
+          </>
+        ) : null}
       </DrawerSection>
 
       <DrawerSection title="Search details">

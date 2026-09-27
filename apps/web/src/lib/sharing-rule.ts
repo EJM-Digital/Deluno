@@ -40,6 +40,33 @@ export function describeStrictSharingRule(): string {
   return `Deluno keeps sharing for ${describeHours(STRICT_SHARING.forHours)}, and until you have given back as much as you took. It never stops early on its own.`;
 }
 
+/**
+ * What "custom" commits to, from the exact numbers typed for this source
+ * (#739) — a private tracker's own published ratio and seed time, rather than
+ * Deluno's canned strict preset.
+ */
+export function describeCustomSharingRule(hours: number | null, ratio: number | null): string {
+  const targets = [
+    hours ? `for ${describeHours(hours)}` : null,
+    ratio ? `until ratio ${ratio.toFixed(2)}` : null
+  ].filter(Boolean);
+
+  return targets.length
+    ? `Deluno keeps sharing ${targets.join(" and ")}, using the numbers you typed for this source.`
+    : "Type this tracker's published seed ratio and/or seed time below.";
+}
+
+/** The season-pack seed time, said back so it is clear what it changes (#739). */
+export function describeSeasonPackSeedTime(seasonPackHours: number | null, normalHours: number | null): string {
+  if (!seasonPackHours) {
+    return normalHours
+      ? `Season packs from this source use the same seed time as everything else: ${describeHours(normalHours)}.`
+      : "Season packs from this source use the same seed time as everything else.";
+  }
+
+  return `Season packs from this source seed for ${describeHours(seasonPackHours)} instead of the normal seed time.`;
+}
+
 /** Hours as a person says them: "3 days", "14 days", "6 hours". */
 function describeHours(hours: number): string {
   if (hours >= 48) return `${Math.round(hours / 24)} days`;

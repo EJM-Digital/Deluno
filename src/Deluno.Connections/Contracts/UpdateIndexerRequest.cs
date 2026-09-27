@@ -35,6 +35,9 @@ public sealed record UpdateIndexerRequest(
     string? SharingStuckAction = null,
     int? SharingStuckAfterDays = null,
     bool? ClearSharingPolicy = null,
+    // A longer seed time used for season packs instead of SharingForHours (#739).
+    int? SeasonPackSeedForHours = null,
+    bool? ClearSeasonPackSeedForHours = null,
     int? MinimumAgeMinutes = null,
     bool? ClearMinimumAge = null,
     int? RetentionDays = null,
