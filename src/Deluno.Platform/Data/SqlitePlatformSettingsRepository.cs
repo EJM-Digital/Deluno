@@ -255,6 +255,8 @@ public sealed class SqlitePlatformSettingsRepository(
         // same way ColonReplacementMode's own normalizer does not reach into
         // another module either.
         await UpsertSettingAsync(connection, transaction, "media.multiEpisodeStyle", NormalizeMultiEpisodeStyle(request.MultiEpisodeStyle), updatedUtc, cancellationToken);
+        // #764: off by default (#936), independent of media.renameOnImport.
+        await UpsertSettingAsync(connection, transaction, "media.renameFoldersOnImport", request.RenameFoldersOnImport == true ? "true" : "false", updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -609,7 +611,8 @@ public sealed class SqlitePlatformSettingsRepository(
             LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760),
             SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
             SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
-            MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")));
+            MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),
+            RenameFoldersOnImport: string.Equals(GetValue(settings, "media.renameFoldersOnImport"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

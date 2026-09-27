@@ -177,4 +177,11 @@ public sealed record PlatformSettingsSnapshot(
     string SpecialsFolderFormat = "",
     // #763: how a file spanning more than one episode renders its combined
     // season/episode segment. Range is Sonarr's own default.
-    string MultiEpisodeStyle = "range");
+    string MultiEpisodeStyle = "range",
+    // #764: independent of RenameOnImport, which only ever governs the file
+    // name. Off by default (#936): an install that has never opened this
+    // setting keeps using the templated movie/series folder name for a new
+    // title exactly as it always has -- the "off" behaviour only changes
+    // anything when the source Deluno was handed was itself a folder with a
+    // name of its own to keep.
+    bool RenameFoldersOnImport = false);

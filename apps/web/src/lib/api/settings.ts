@@ -93,4 +93,6 @@ export interface PlatformSettingsPatch {
   specialsFolderFormat?: string;
   /** #763: one of "extend" | "duplicate" | "repeat" | "scene" | "range" (default) | "prefixed-range". */
   multiEpisodeStyle?: string;
+  /** #764: independent of renameOnImport. */
+  renameFoldersOnImport?: boolean;
 }

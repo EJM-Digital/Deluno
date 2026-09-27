@@ -112,6 +112,71 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Arrival", movie.Title);
     }
 
+    /// <summary>
+    /// #764: RenameFoldersOnImport and RenameOnImport are independent -- all
+    /// four combinations, against a source that is itself a release folder
+    /// (the only case Deluno has a name to keep for).
+    /// </summary>
+    [Theory]
+    [InlineData(false, false, "Arrival.2016.WEB.1080p-FLUX", "Arrival.2016.WEB.1080p-FLUX.mkv")]
+    [InlineData(false, true, "Arrival.2016.WEB.1080p-FLUX", "Arrival (2016).mkv")]
+    [InlineData(true, false, "Arrival (2016)", "Arrival.2016.WEB.1080p-FLUX.mkv")]
+    [InlineData(true, true, "Arrival (2016)", "Arrival (2016).mkv")]
+    public async Task Preview_renames_the_movie_folder_and_file_independently(
+        bool renameFoldersOnImport,
+        bool renameOnImport,
+        string expectedFolderName,
+        string expectedFileName)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        // The release folder a download client reports for a multi-file
+        // torrent -- the only "existing folder name" Deluno ever has to
+        // decide whether to keep.
+        var sourceFolder = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p-FLUX");
+        Directory.CreateDirectory(sourceFolder);
+        var sourcePath = Path.Combine(sourceFolder, "Arrival.2016.WEB.1080p-FLUX.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year})",
+            renameOnImport: renameOnImport,
+            renameFoldersOnImport: renameFoldersOnImport);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var preview = await service.PreviewAsync(
+            new ImportPreviewRequest(
+                SourcePath: sourceFolder,
+                FileName: null,
+                MediaType: "movies",
+                Title: "Arrival",
+                Year: 2016,
+                Genres: [],
+                Tags: [],
+                Studio: null,
+                OriginalLanguage: null),
+            CancellationToken.None);
+
+        Assert.Equal(
+            Path.Combine(movieRootPath, expectedFolderName, expectedFileName),
+            preview.DestinationPath);
+    }
+
     /// <summary>#766: the configured chmod is applied to an imported file when enabled, on the non-Windows hosts CI runs on.</summary>
     [Fact]
     public async Task ExecuteAsync_applies_the_configured_chmod_when_set_permissions_on_import_is_enabled()
@@ -1083,7 +1148,10 @@ public sealed class ImportPipelineServiceTests
             CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
+        // #764: RenameFoldersOnImport defaults to off, so the release folder
+        // Deluno was handed keeps its own name; the file inside it is still
+        // renamed (RenameOnImport defaults to on in this test helper).
+        var destinationPath = Path.Combine(movieRootPath, "Arrival.2016.1080p.WEB-VERIFY", "Arrival (2016) [WEB 1080p].mkv");
         Assert.True(File.Exists(destinationPath));
         Assert.Equal(new FileInfo(featurePath).Length, new FileInfo(destinationPath).Length);
     }
@@ -5163,7 +5231,9 @@ public sealed class ImportPipelineServiceTests
         string? chownGroup = null,
         string? seasonFolderFormat = null,
         string? specialsFolderFormat = null,
-        string? multiEpisodeStyle = null)
+        string? multiEpisodeStyle = null,
+        bool renameOnImport = true,
+        bool renameFoldersOnImport = false)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -5174,7 +5244,7 @@ public sealed class ImportPipelineServiceTests
                 IncompleteDownloadsPath: null,
                 AutoStartJobs: false,
                 EnableNotifications: false,
-                RenameOnImport: true,
+                RenameOnImport: renameOnImport,
                 UseHardlinks: false,
                 CleanupEmptyFolders: false,
                 RemoveCompletedDownloads: false,
@@ -5207,7 +5277,8 @@ public sealed class ImportPipelineServiceTests
                 ChownGroup: chownGroup,
                 SeasonFolderFormat: seasonFolderFormat,
                 SpecialsFolderFormat: specialsFolderFormat,
-                MultiEpisodeStyle: multiEpisodeStyle),
+                MultiEpisodeStyle: multiEpisodeStyle,
+                RenameFoldersOnImport: renameFoldersOnImport),
             CancellationToken.None);
     }
 

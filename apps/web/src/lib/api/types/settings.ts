@@ -139,6 +139,8 @@ export interface PlatformSettingsSnapshot {
   specialsFolderFormat: string;
   /** #763: one of "extend" | "duplicate" | "repeat" | "scene" | "range" (default) | "prefixed-range". */
   multiEpisodeStyle: string;
+  /** #764: independent of renameOnImport, which only ever governs the file name. Off by default. */
+  renameFoldersOnImport: boolean;
   updatedUtc: string;
 }
 
@@ -278,5 +280,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   seasonFolderFormat: "",
   specialsFolderFormat: "",
   multiEpisodeStyle: "range",
+  renameFoldersOnImport: false,
   updatedUtc: new Date(0).toISOString()
 };

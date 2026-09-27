@@ -522,6 +522,38 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal("Specials", loaded.SpecialsFolderFormat);
     }
 
+    /// <summary>#764: independent of RenameOnImport, off by default for a new install, and stays on once explicitly turned on.</summary>
+    [Fact]
+    public async Task RenameFoldersOnImport_defaults_to_off_and_is_independent_of_RenameOnImport()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.False(defaults.RenameFoldersOnImport);
+        Assert.False(defaults.RenameOnImport);
+
+        var mergedFoldersOnly = PlatformSettingsPatchMerger.Apply(
+            defaults,
+            new PatchPlatformSettingsRequest(RenameFoldersOnImport: true));
+        await repository.SaveAsync(mergedFoldersOnly, CancellationToken.None);
+
+        var afterFolders = await repository.GetAsync(CancellationToken.None);
+        Assert.True(afterFolders.RenameFoldersOnImport);
+        // Untouched by that patch.
+        Assert.False(afterFolders.RenameOnImport);
+
+        var mergedFilesToo = PlatformSettingsPatchMerger.Apply(
+            afterFolders,
+            new PatchPlatformSettingsRequest(RenameOnImport: true));
+        await repository.SaveAsync(mergedFilesToo, CancellationToken.None);
+
+        var reloaded = await SettingsAsync(storage); // a fresh instance: nothing survives but the database
+        var loaded = await reloaded.GetAsync(CancellationToken.None);
+        Assert.True(loaded.RenameFoldersOnImport);
+        Assert.True(loaded.RenameOnImport);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));
