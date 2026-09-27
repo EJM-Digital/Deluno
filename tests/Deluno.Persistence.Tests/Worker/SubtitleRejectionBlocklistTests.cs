@@ -208,5 +208,29 @@ public sealed class SubtitleRejectionBlocklistTests
             _index++;
             return Task.FromResult(outcome);
         }
+
+        public Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string? videoPath,
+            bool excludeHearingImpaired,
+            CancellationToken cancellationToken,
+            SubtitleNamePolicy? namePolicy = null,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult<IReadOnlyList<SubtitleSearchCandidate>>([]);
+
+        public Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+            SubtitleSearchRequest request,
+            string providerKey,
+            string downloadToken,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false)
+            => Task.FromResult(outcomes[0]);
     }
 }

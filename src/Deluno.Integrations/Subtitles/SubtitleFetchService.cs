@@ -112,7 +112,57 @@ public interface ISubtitleFetchService
         SubtitleNamePolicy? namePolicy = null,
         bool omitLanguageCode = false,
         IReadOnlyCollection<string>? blockedKeys = null);
+
+    /// <summary>
+    /// Every ranked candidate for one language, from every askable provider —
+    /// for #841's manual search screen. Unlike <see cref="FetchAsync"/> this
+    /// never stops at the first success and never downloads anything; it is
+    /// the same ranking read aloud instead of acted on, so a person can see
+    /// what Deluno would have picked and choose differently.
+    /// </summary>
+    Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+        SubtitleSearchRequest request,
+        string language,
+        bool isEpisodeMedia,
+        string? videoPath,
+        bool excludeHearingImpaired,
+        CancellationToken cancellationToken,
+        SubtitleNamePolicy? namePolicy = null,
+        IReadOnlyCollection<string>? blockedKeys = null);
+
+    /// <summary>
+    /// Downloads and writes one specific candidate a person chose from
+    /// <see cref="SearchCandidatesAsync"/>'s results (#841) — the same
+    /// malformed-response check, content policy and naming <see cref="FetchAsync"/>
+    /// applies to an automatic fetch, so a manual pick is never a second,
+    /// looser write path.
+    /// </summary>
+    Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+        SubtitleSearchRequest request,
+        string providerKey,
+        string downloadToken,
+        string language,
+        bool isEpisodeMedia,
+        string videoPath,
+        CancellationToken cancellationToken,
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false);
 }
+
+/// <summary>One ranked candidate, shown rather than acted on (#841).</summary>
+public sealed record SubtitleSearchCandidate(
+    string ProviderKey,
+    string ProviderName,
+    string BlockKey,
+    string DownloadToken,
+    string Language,
+    bool HearingImpaired,
+    string? ReleaseName,
+    string? Uploader,
+    int? DownloadCount,
+    SubtitleMatch Match,
+    string MatchDescription);
 
 public sealed class SubtitleFetchService(
     ISubtitleProviderRegistry registry,
@@ -429,6 +479,159 @@ public sealed class SubtitleFetchService(
             language, false, null, null, false,
             $"No forced {language} track was found.",
             Failures: failures.Count == 0 ? null : failures.ToArray());
+    }
+
+    /// <summary>
+    /// Every ranked candidate from every askable provider, for #841's manual
+    /// search — the same ranking <see cref="FetchAsync"/> uses, shown rather
+    /// than acted on. Providers are asked in parallel-shaped sequence here
+    /// too (one after another, same as a fetch) because this still spends
+    /// each provider's own daily allowance, just without a download.
+    /// </summary>
+    public async Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+        SubtitleSearchRequest request,
+        string language,
+        bool isEpisodeMedia,
+        string? videoPath,
+        bool excludeHearingImpaired,
+        CancellationToken cancellationToken,
+        SubtitleNamePolicy? namePolicy = null,
+        IReadOnlyCollection<string>? blockedKeys = null)
+    {
+        var blocked = blockedKeys is null or { Count: 0 }
+            ? null
+            : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
+        var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
+        var configured = await repository.ListAsync(cancellationToken);
+
+        var askable = configured
+            .Where(item => item.IsAskable(timeProvider.GetUtcNow()))
+            .OrderBy(item => item.Priority)
+            .Select(item => (Connection: item, Provider: registry.Find(item.ProviderKey)))
+            .Where(pair => pair.Provider is not null && Serves(pair.Provider!, isEpisodeMedia))
+            .ToArray();
+
+        var results = new List<SubtitleSearchCandidate>();
+        foreach (var (connection, provider) in askable)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<SubtitleCandidate> candidates;
+            try
+            {
+                candidates = await provider!.SearchAsync(
+                    request with { Languages = [language] }, Credentials(connection), cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogWarning(
+                    exception, "Subtitle provider {Provider} failed a manual search for {Title}.", provider!.Key, request.Title);
+                continue;
+            }
+
+            results.AddRange(Rank(candidates, language, excludeHearingImpaired, videoPath, names)
+                .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider!.Key, candidate.DownloadToken)))
+                .Select(candidate =>
+                {
+                    var match = SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath);
+                    return new SubtitleSearchCandidate(
+                        provider!.Key,
+                        provider.DisplayName,
+                        SubtitleBlockKeys.For(provider.Key, candidate.DownloadToken),
+                        candidate.DownloadToken,
+                        candidate.Language,
+                        candidate.HearingImpaired,
+                        candidate.ReleaseName,
+                        candidate.Uploader,
+                        candidate.DownloadCount,
+                        match,
+                        SubtitleMatchRanking.Describe(match));
+                }));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Downloads and writes one specific candidate a person picked from
+    /// <see cref="SearchCandidatesAsync"/> (#841). Re-searches the one
+    /// provider named rather than trusting a candidate serialised across an
+    /// API call, so a release that vanished between browsing and picking
+    /// fails honestly instead of downloading whatever token happened to
+    /// still resolve.
+    /// </summary>
+    public async Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+        SubtitleSearchRequest request,
+        string providerKey,
+        string downloadToken,
+        string language,
+        bool isEpisodeMedia,
+        string videoPath,
+        CancellationToken cancellationToken,
+        SubtitleContentModificationPolicy? contentPolicy = null,
+        SubtitleNamePolicy? namePolicy = null,
+        bool omitLanguageCode = false)
+    {
+        var configured = await repository.ListAsync(cancellationToken);
+        var connection = configured.FirstOrDefault(item =>
+            string.Equals(item.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase));
+        var provider = registry.Find(providerKey);
+
+        if (connection is null || provider is null || !Serves(provider, isEpisodeMedia))
+        {
+            return new SubtitleFetchOutcome(
+                language, false, null, null, false, $"{providerKey} is not a configured, enabled subtitle provider.");
+        }
+
+        IReadOnlyList<SubtitleCandidate> candidates;
+        try
+        {
+            candidates = await provider.SearchAsync(
+                request with { Languages = [language] }, Credentials(connection), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return new SubtitleFetchOutcome(
+                language, false, null, null, false,
+                $"{provider.DisplayName} could not be searched again: {exception.Message}");
+        }
+
+        var pick = candidates.FirstOrDefault(candidate =>
+            string.Equals(candidate.DownloadToken, downloadToken, StringComparison.Ordinal));
+        if (pick is null)
+        {
+            return new SubtitleFetchOutcome(
+                language, false, null, null, false,
+                $"{provider.DisplayName} no longer offers that subtitle - it may have been removed or replaced since it was found.");
+        }
+
+        var blockKey = SubtitleBlockKeys.For(provider.Key, pick.DownloadToken);
+        var payload = await provider.DownloadAsync(pick, Credentials(connection), cancellationToken);
+        var subtitle = SubtitleArchive.Extract(payload);
+
+        if (subtitle is null || !SubtitleArchive.LooksLikeSubtitle(subtitle))
+        {
+            return new SubtitleFetchOutcome(
+                language, false, null, null, false,
+                $"{provider.DisplayName} returned something that is not a subtitle.",
+                RejectedCandidates: [new RejectedSubtitleCandidate(blockKey, language, provider.Key, pick.ReleaseName, "Not a real subtitle file.")]);
+        }
+
+        var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
+        subtitle = modification.Content;
+        var written = await fileWriter.WriteAsync(
+            videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
+        var match = SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath);
+
+        return new SubtitleFetchOutcome(
+            Language: language,
+            Found: true,
+            ProviderKey: provider.Key,
+            WrittenPath: written,
+            HearingImpaired: pick.HearingImpaired,
+            Reason: BuildSuccessReason(provider.DisplayName, match, modification),
+            Match: match,
+            AppliedModifications: modification.AppliedRules.Count == 0 ? null : modification.AppliedRules,
+            SourceKey: blockKey);
     }
 
     /// <summary>

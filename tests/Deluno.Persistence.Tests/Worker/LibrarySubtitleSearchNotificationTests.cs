@@ -223,5 +223,29 @@ public sealed class LibrarySubtitleSearchNotificationTests
             bool omitLanguageCode = false,
             IReadOnlyCollection<string>? blockedKeys = null)
             => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
+
+        public Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string? videoPath,
+            bool excludeHearingImpaired,
+            CancellationToken cancellationToken,
+            SubtitleNamePolicy? namePolicy = null,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult<IReadOnlyList<SubtitleSearchCandidate>>([]);
+
+        public Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+            SubtitleSearchRequest request,
+            string providerKey,
+            string downloadToken,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false)
+            => Task.FromResult(outcome);
     }
 }

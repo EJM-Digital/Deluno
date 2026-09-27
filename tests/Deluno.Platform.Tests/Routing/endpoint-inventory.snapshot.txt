@@ -156,6 +156,7 @@ GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview
 GET /api/movies/{id}/subtitles
+GET /api/movies/{id}/subtitles/{language}/candidates
 GET /api/movies/{id}/tags
 GET /api/movies/{id}/workflow-status
 GET /api/notification-preferences/
@@ -379,8 +380,11 @@ POST /api/movies/{id}/metadata/link
 POST /api/movies/{id}/metadata/link/preview
 POST /api/movies/{id}/metadata/refresh
 POST /api/movies/{id}/search
+POST /api/movies/{id}/subtitles/{language}/blacklist
+POST /api/movies/{id}/subtitles/{language}/candidates/pick
 POST /api/movies/{id}/subtitles/{language}/reject
 POST /api/movies/{id}/subtitles/{language}/resync
+POST /api/movies/{id}/subtitles/{language}/upload
 POST /api/notification-webhooks/
 POST /api/notification-webhooks/deliveries/{deliveryId}/replay
 POST /api/notification-webhooks/{id}/test
