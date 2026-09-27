@@ -12,7 +12,7 @@
  * PUT /api/libraries/{id}/automation, POST …/search-now, POST …/skip-cycle.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -560,110 +560,14 @@ export function SearchCyclesPage() {
 
       {view === "failed" ? <ListCard title="Download health" count="What counts as stuck, before it is struck">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <div className="grid gap-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
-            <SwitchRow
-              label="No progress"
-              description="Flag a download that has not gained a single byte, whatever its peers say."
-              checked={cleanup.noProgressEnabled}
-              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, noProgressEnabled: checked }))}
-            />
-            <Field label="After this many minutes" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
-              <PresetField
-                inputType="number"
-                value={cleanup.noProgressMinutes}
-                onChange={(value) => setCleanup((current) => ({ ...current, noProgressMinutes: value }))}
-                disabled={!cleanup.noProgressEnabled}
-                options={[
-                  { value: "15", label: "15 minutes" },
-                  { value: "30", label: "30 minutes" },
-                  { value: "60", label: "1 hour" }
-                ]}
-                customLabel="Custom"
-                customPlaceholder="1–1440"
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr_1fr] sm:items-start">
-            <SwitchRow
-              label="Too slow"
-              description="Flag a download that stays under a speed floor. Off until a floor makes sense for your own connections."
-              checked={cleanup.minSpeedEnabled}
-              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, minSpeedEnabled: checked }))}
-            />
-            <Field label="Slower than" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
-              <PresetField
-                inputType="number"
-                value={cleanup.minSpeedKbps}
-                onChange={(value) => setCleanup((current) => ({ ...current, minSpeedKbps: value }))}
-                disabled={!cleanup.minSpeedEnabled}
-                options={[
-                  { value: "50", label: "50 KB/s" },
-                  { value: "200", label: "200 KB/s" },
-                  { value: "500", label: "500 KB/s" }
-                ]}
-                customLabel="Custom"
-                customPlaceholder="KB/s"
-              />
-            </Field>
-            <Field label="For this long" className="max-w-[12rem]">
-              <PresetField
-                inputType="number"
-                value={cleanup.minSpeedMinutes}
-                onChange={(value) => setCleanup((current) => ({ ...current, minSpeedMinutes: value }))}
-                disabled={!cleanup.minSpeedEnabled}
-                options={[
-                  { value: "15", label: "15 minutes" },
-                  { value: "30", label: "30 minutes" },
-                  { value: "60", label: "1 hour" }
-                ]}
-                customLabel="Custom"
-                customPlaceholder="1–1440"
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr_1fr] sm:items-start">
-            <SwitchRow
-              label="Not enough peers"
-              description="Flag a download whose peers or seeders stay below a floor. Off until a floor makes sense for the swarms you see."
-              checked={cleanup.minPeersEnabled}
-              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, minPeersEnabled: checked }))}
-            />
-            <Field label="Fewer than" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
-              <PresetField
-                inputType="number"
-                value={cleanup.minPeers}
-                onChange={(value) => setCleanup((current) => ({ ...current, minPeers: value }))}
-                disabled={!cleanup.minPeersEnabled}
-                options={[
-                  { value: "1", label: "1 peer" },
-                  { value: "3", label: "3 peers" },
-                  { value: "5", label: "5 peers" }
-                ]}
-                customLabel="Custom"
-                customPlaceholder="Peers"
-              />
-            </Field>
-            <Field label="For this long" className="max-w-[12rem]">
-              <PresetField
-                inputType="number"
-                value={cleanup.minPeersMinutes}
-                onChange={(value) => setCleanup((current) => ({ ...current, minPeersMinutes: value }))}
-                disabled={!cleanup.minPeersEnabled}
-                options={[
-                  { value: "15", label: "15 minutes" },
-                  { value: "30", label: "30 minutes" },
-                  { value: "60", label: "1 hour" }
-                ]}
-                customLabel="Custom"
-                customPlaceholder="1–1440"
-              />
-            </Field>
-          </div>
           <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
-            Every rule that trips feeds the same strikes below, and shows on Transfers and Health — clearable from there. A download still inside its own window here is never struck early.
+            What counts as stuck, and what Deluno does about it, moved to its own page (#905): each rule now has its own strikes, its own timer and its own action, instead of one flat switch shared by every kind. Nothing changed for this installation until you open it and edit a rule there.
           </p>
+          <div>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/search-cycles/download-health">Open Download health</Link>
+            </Button>
+          </div>
         </div>
       </ListCard> : null}
 

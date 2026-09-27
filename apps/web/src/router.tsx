@@ -381,6 +381,13 @@ export const router = createBrowserRouter([
         })
       },
       {
+        path: "search-cycles/download-health",
+        lazy: withSkeleton(async () => {
+          const module = await import("./routes/settings-download-health-page");
+          return { loader: module.settingsDownloadHealthLoader, Component: module.SettingsDownloadHealthPage };
+        })
+      },
+      {
         path: "search-cycles/blocklist",
         lazy: withSkeleton(async () => {
           const module = await import("./routes/search-cycles-page");

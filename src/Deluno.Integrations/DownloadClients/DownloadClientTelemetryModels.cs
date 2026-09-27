@@ -297,7 +297,9 @@ public sealed record DownloadHealthFinding(
     /// <summary>The configured rule (#905) driving this finding's strikes, when one matched.</summary>
     string? RuleId = null,
     string? RuleActionPreset = null,
-    DateTimeOffset? NextStrikeUtc = null);
+    DateTimeOffset? NextStrikeUtc = null,
+    /// <summary>The matched rule's own strike limit (#905); null for a finding outside the rule engine, which uses the platform-wide fallback threshold instead.</summary>
+    int? RuleStrikeLimit = null);
 
 public sealed record DownloadClientHistoryItem(
     string Id,

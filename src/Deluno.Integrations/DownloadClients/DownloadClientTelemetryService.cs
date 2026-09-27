@@ -794,7 +794,8 @@ public sealed class DownloadClientTelemetryService(
                         IgnoredUntilUtc: record?.IgnoredUntilUtc,
                         RuleId: record?.RuleId,
                         RuleActionPreset: record?.RuleActionPreset,
-                        NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes));
+                        NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes),
+                        RuleStrikeLimit: record?.RuleStrikeLimit);
                 }).ToArray()
             }).ToArray()
         };
@@ -887,9 +888,14 @@ public sealed class DownloadClientTelemetryService(
             {
                 // Only a download that has stopped is struck (#560): a failed
                 // import or processing run has its own rules about the release.
+                // A rule-engine finding (#905) reads its own StrikeLimit here,
+                // not the platform-wide fallback, so a rule set to "instant"
+                // (1 strike) acts on its first sighting even while the
+                // fallback threshold - used only by findings outside the
+                // rule engine, like client-stalled - stays at its own value.
                 var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
                     DownloadHealthStrikes.Counts(finding.Kind) &&
-                    finding.StrikeCount >= settings.DownloadHealthStrikeThreshold &&
+                    finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 20) &&
                     (finding.IgnoredUntilUtc is null || finding.IgnoredUntilUtc <= overview.CapturedUtc));
                 if (struck is null)
                 {
@@ -1039,9 +1045,15 @@ public sealed class DownloadClientTelemetryService(
                     payloadOwned,
                     dryRun
                 });
+                // #905: name the rule that caused this, in plain words, so
+                // Activity never just says "something happened" - a person
+                // reading it later can tell which of their own rules fired.
+                var ruleReason = struck.RuleId is not null
+                    ? $" ({DownloadHealthRuleValidator.DescribeKind(struck.Kind)})"
+                    : string.Empty;
                 var activityMessage = dryRun
-                    ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}."
-                    : $"Applied failed-download handling to {item.ReleaseName}: {string.Join(", ", applied)}.";
+                    ? $"[Dry run] Would apply failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}."
+                    : $"Applied failed-download handling to {item.ReleaseName}{ruleReason}: {string.Join(", ", applied)}.";
                 if (dryRun)
                 {
                     // No timeline/import-outcome write: a dry run must leave

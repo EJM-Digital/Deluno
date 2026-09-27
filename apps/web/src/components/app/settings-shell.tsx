@@ -22,6 +22,9 @@ export const automationNavItems = [
   { to: "/search-cycles/missing", label: "Missing Searches", end: false },
   { to: "/search-cycles/upgrades", label: "Upgrades", end: false },
   { to: "/search-cycles/failed-downloads", label: "Failed Downloads", end: false },
+  // #905: what counts as a stuck download and what happens once it does, one
+  // rule at a time - replaces the flat toggles that used to sit above.
+  { to: "/search-cycles/download-health", label: "Download Health", end: false },
   // Decisions 1 and 2 made refusals permanent, which is only safe because they
   // are visible and reversible. This tab is that.
   { to: "/search-cycles/blocklist", label: "Blocklist", end: false },
