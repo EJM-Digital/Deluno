@@ -829,6 +829,13 @@ public sealed partial class ImportPipelineService(
             blockReasons.Add("Choose the existing TV show before importing a season pack so every file can be matched to its canonical episode.");
         }
 
+        // #889: lets a file skipped over its own problem (corrupt, too short,
+        // wrong type) name exactly the episode(s) it left missing, so the
+        // completed pack can search again for only those - never the whole
+        // show, and never the extras/samples that were never episodes at all.
+        var episodeIdByNumber = (numbering?.Episodes ?? [])
+            .ToDictionary(episode => (episode.SeasonNumber, episode.EpisodeNumber), episode => episode.EpisodeId);
+
         var declaredSeasons = SeriesNumberingResolver.ParseSeasonPackNumbers(request.SourcePath)
             .Distinct()
             .OrderBy(value => value)
@@ -924,7 +931,8 @@ public sealed partial class ImportPipelineService(
                 // blockReasons.
                 skippedFiles.Add(new TvPackSkippedFilePlan(
                     preview,
-                    "The filename does not resolve to one or more canonical episodes in this show."));
+                    "The filename does not resolve to one or more canonical episodes in this show.",
+                    []));
                 continue;
             }
             if (declaredSeasons.Length == 1 && fileNumbers.Episodes.Any(episode => episode.SeasonNumber != declaredSeasons[0]))
@@ -944,9 +952,16 @@ public sealed partial class ImportPipelineService(
                     .Select(episode => EpisodeKey(episode.SeasonNumber, episode.EpisodeNumber))
                     .Distinct(StringComparer.Ordinal)
                     .OrderBy(key => key, StringComparer.Ordinal));
+                var missingEpisodeIds = fileNumbers.Episodes
+                    .Select(episode => episodeIdByNumber.TryGetValue((episode.SeasonNumber, episode.EpisodeNumber), out var episodeId) ? episodeId : null)
+                    .Where(episodeId => episodeId is not null)
+                    .Select(episodeId => episodeId!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
                 skippedFiles.Add(new TvPackSkippedFilePlan(
                     preview,
-                    $"Matched to episode(s) {episodeKeys} but not imported: {string.Join(" ", fileOwnWarnings)}"));
+                    $"Matched to episode(s) {episodeKeys} but not imported: {string.Join(" ", fileOwnWarnings)}",
+                    missingEpisodeIds));
                 continue;
             }
 
@@ -1627,6 +1642,11 @@ public sealed partial class ImportPipelineService(
                 "series",
                 request.Preview.SeriesId,
                 cancellationToken);
+
+            // #889: search again, but only for the episodes this pack left
+            // missing - never the whole show, and never for an extra/sample
+            // that was never a wanted episode in the first place.
+            await EnqueueMissingEpisodeSearchesAsync(request, plan, libraries, cancellationToken);
             await activityFeedRepository.RecordDecisionAsync(
                 new DecisionExplanationPayload(
                     Scope: "filesystem.import.season-pack",
@@ -2796,6 +2816,59 @@ public sealed partial class ImportPipelineService(
     }
 
     /// <summary>
+    /// #889 (cleanup sheet E9): once a season pack has landed, a search is
+    /// queued for exactly the episode(s) a skipped file's own problem left
+    /// missing - never the whole show (other episodes may already be
+    /// covered, or simply not wanted), and never for an extra or sample that
+    /// was never a canonical episode in the first place.
+    /// </summary>
+    private Task EnqueueMissingEpisodeSearchesAsync(
+        ImportExecuteRequest request,
+        TvPackPlan plan,
+        IReadOnlyList<LibraryItem> libraries,
+        CancellationToken cancellationToken)
+    {
+        var missingEpisodeIds = plan.SkippedFiles
+            .SelectMany(file => file.EpisodeIds)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (mediaServerJobScheduler is null || missingEpisodeIds.Length == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var library = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
+        var libraryId = request.Preview.LibraryId ?? library?.Id;
+        if (string.IsNullOrWhiteSpace(libraryId))
+        {
+            return Task.CompletedTask;
+        }
+
+        var libraryName = library?.Name ?? libraryId;
+        var seriesId = request.Preview.SeriesId ?? "series";
+        return Task.WhenAll(missingEpisodeIds.Select(episodeId => mediaServerJobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                LibrarySearchJobTypes.For("tv"),
+                "filesystem.import.season-pack",
+                JsonSerializer.Serialize(new
+                {
+                    libraryId,
+                    libraryName,
+                    mediaType = "tv",
+                    checkMissing = true,
+                    checkUpgrades = false,
+                    maxItems = 1,
+                    triggeredBy = "season-pack-partial-import",
+                    targetEntityId = episodeId
+                }),
+                "episode",
+                episodeId,
+                IdempotencyKey: $"season-pack-partial-import:{seriesId}:{episodeId}",
+                DedupeKey: $"season-pack-partial-import:{seriesId}:{episodeId}"),
+            cancellationToken)));
+    }
+
+    /// <summary>
     /// The rename is its own step. It is the moment a release title becomes a
     /// library filename, and it is the step people most often need to check.
     /// A file that kept its name has nothing to report.
@@ -3617,7 +3690,14 @@ public sealed partial class ImportPipelineService(
     /// </summary>
     private sealed record TvPackSkippedFilePlan(
         ImportPreviewResponse Preview,
-        string Reason);
+        string Reason,
+        /// <summary>
+        /// The canonical episode(s) this file matched but was not imported
+        /// for - empty for a file that never resolved to an episode at all
+        /// (an extra, sample, or unlisted special). Lets a completed pack
+        /// search again for exactly what it left missing (#889).
+        /// </summary>
+        IReadOnlyList<string> EpisodeIds);
 
     private sealed record TvPackPlan(
         ImportPreviewResponse Summary,
