@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, reorderControlsFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
 
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -452,5 +452,52 @@ describe("dismissing a health finding", () => {
     const item = { healthFindings: [findingAt(past)] } as DownloadQueueItem;
 
     expect(visibleFindings(item)).toHaveLength(1);
+  });
+});
+
+describe("queueRowExtras (#796)", () => {
+  it("reads quality and custom-format score from the matched dispatch's decision telemetry", () => {
+    const item = {
+      releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
+      sizeBytes: 4_294_967_296,
+      etaSeconds: 0
+    } as DownloadQueueItem;
+    const dispatch = {
+      decisionQuality: "WEB 1080p",
+      decisionCustomFormatScore: 125
+    } as DownloadDispatchItem;
+
+    const extras = queueRowExtras(item, dispatch, false);
+
+    expect(extras.quality).toBe("WEB 1080p");
+    expect(extras.customFormat).toBe("125");
+    expect(extras.size).toBe("4.0 GB");
+  });
+
+  it("falls back to a dash for quality, custom-format score and language when nothing is known", () => {
+    const item = {
+      releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
+      sizeBytes: 0,
+      etaSeconds: 0
+    } as DownloadQueueItem;
+
+    const extras = queueRowExtras(item, null, false);
+
+    expect(extras.quality).toBe("—");
+    expect(extras.customFormat).toBe("—");
+    expect(extras.language).toBe("—");
+    expect(extras.timeleft).toBe("—");
+  });
+
+  it("reads a language named in the release itself, and only shows a timeleft while transferring", () => {
+    const item = {
+      releaseName: "Movie.2026.MULTI.1080p.WEB-DL-GROUP",
+      sizeBytes: 0,
+      etaSeconds: 120
+    } as DownloadQueueItem;
+
+    expect(queueRowExtras(item, null, true).language).toBe("Multilingual");
+    expect(queueRowExtras(item, null, true).timeleft).toBe("2m left");
+    expect(queueRowExtras(item, null, false).timeleft).toBe("—");
   });
 });

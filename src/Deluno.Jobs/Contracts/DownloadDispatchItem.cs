@@ -52,4 +52,11 @@ public sealed record DownloadDispatchItem(
     // When the client said it had finished with the download, successfully or
     // not. DetectedUtc is when the client first showed it (#554); the wait for
     // an import is measured from here, so a long download is not an overdue one.
-    DateTimeOffset? ClientCompletedUtc = null);
+    DateTimeOffset? ClientCompletedUtc = null,
+
+    // The release-selection decision recorded at grab time (#796): the quality
+    // name and custom-format score the release was chosen for. Both are already
+    // captured in decision telemetry for other purposes; this is the first place
+    // that reads them back out for display.
+    string? DecisionQuality = null,
+    int? DecisionCustomFormatScore = null);

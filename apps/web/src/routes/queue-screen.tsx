@@ -77,9 +77,28 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
+import { ColumnPicker } from "../components/ui/column-picker";
 import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
+import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
+import { detectReleaseLanguage } from "../lib/release-language";
+
+/**
+ * The queue table's optional columns (#796): quality, custom-format score,
+ * language and a dedicated timeleft, beside the always-shown Media / Stage /
+ * Progress / Client / Status. All default on — Radarr shows its equivalents
+ * by default too — but the picker lets a narrow screen or a person who does
+ * not care about custom-format scores turn them back off, remembered for
+ * next time the same way Activity's own picker is (#798).
+ */
+const QUEUE_OPTIONAL_COLUMNS: readonly ColumnDefinition[] = [
+  { key: "quality", label: "Quality", defaultVisible: true },
+  { key: "customFormat", label: "Custom format score", defaultVisible: true },
+  { key: "language", label: "Language", defaultVisible: true },
+  { key: "size", label: "Size", defaultVisible: true },
+  { key: "timeleft", label: "Timeleft", defaultVisible: true }
+];
 
 type QueueAction = "pause" | "resume" | "recheck" | "move-to-top" | "move-up" | "move-down" | "move-to-bottom" | "force-start";
 
@@ -176,6 +195,7 @@ export function QueuePage() {
   const revalidator = useRevalidator();
   const lastDispatchRefresh = useRef(0);
   const { preferences } = useDisplayPreferences();
+  const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();
@@ -867,6 +887,13 @@ export function QueuePage() {
       <ListCard
         title="Media pipeline"
         count={queue.length ? `${queue.length} in flight · ${activeImportJobs} importing` : undefined}
+        actions={
+          <ColumnPicker
+            columns={QUEUE_OPTIONAL_COLUMNS}
+            isVisible={queueColumns.isVisible}
+            onToggle={queueColumns.toggle}
+          />
+        }
       >
         {queue.length === 0 ? (
           <ListEmpty
@@ -881,6 +908,11 @@ export function QueuePage() {
               { label: "Progress", width: "minmax(0,1.2fr)" },
               { label: "Speed / left", mobile: true },
               { label: "Client" },
+              ...(queueColumns.isVisible("quality") ? [{ label: "Quality" }] : []),
+              ...(queueColumns.isVisible("customFormat") ? [{ label: "Custom format" }] : []),
+              ...(queueColumns.isVisible("language") ? [{ label: "Language" }] : []),
+              ...(queueColumns.isVisible("size") ? [{ label: "Size", align: "end" as const }] : []),
+              ...(queueColumns.isVisible("timeleft") ? [{ label: "Timeleft" }] : []),
               { label: "Status", width: LIST_TRACK.status, mobile: true }
             ]}
           >
@@ -892,6 +924,8 @@ export function QueuePage() {
               // in plain text below it (#263).
               const transferring = item.speedMbps > 0 || (item.progress > 0 && item.progress < 100);
               const needsAttention = chip.tone === "bad" || chip.tone === "warn" || Boolean(item.failure);
+              const rowDispatch = findDispatchForQueueItem(item, dispatches);
+              const extras = queueRowExtras(item, rowDispatch, transferring);
               return (
                 <ListRow key={`${item.clientId}:${item.id}`} onClick={() => setDrawer({ kind: "queue", id: item.id })} selected={openQueueItem?.id === item.id}>
                   <ListNameCell
@@ -921,6 +955,21 @@ export function QueuePage() {
                     secondary={transferring && item.etaSeconds > 0 ? formatEta(item.etaSeconds) : undefined}
                   />
                   <ListCell primary={item.clientName} secondary={item.indexerName || undefined} />
+                  {queueColumns.isVisible("quality") ? (
+                    <ListCell primary={extras.quality} />
+                  ) : null}
+                  {queueColumns.isVisible("customFormat") ? (
+                    <ListCell numeric primary={extras.customFormat} />
+                  ) : null}
+                  {queueColumns.isVisible("language") ? (
+                    <ListCell primary={extras.language} />
+                  ) : null}
+                  {queueColumns.isVisible("size") ? (
+                    <ListCell numeric primary={extras.size} />
+                  ) : null}
+                  {queueColumns.isVisible("timeleft") ? (
+                    <ListCell primary={extras.timeleft} />
+                  ) : null}
                   <ListCell mobile>
                     <Chip tone={needsAttention ? chip.tone : transferring ? "info" : "idle"}>{chip.label}</Chip>
                   </ListCell>
@@ -2538,6 +2587,34 @@ export function findDispatchForQueueItem(
   ) ?? clientDispatches.find((dispatch) =>
     comparableReleaseName(dispatch.releaseName) === comparableReleaseName(item.releaseName)
   ) ?? null;
+}
+
+/**
+ * The five optional queue columns (#796), read from the matched dispatch's
+ * decision telemetry and the release name, each falling back to "—" rather
+ * than a blank cell when Deluno has no answer (an older dispatch with no
+ * decision telemetry, or a release name that names no language).
+ */
+export interface QueueRowExtras {
+  quality: string;
+  customFormat: string;
+  language: string;
+  size: string;
+  timeleft: string;
+}
+
+export function queueRowExtras(
+  item: DownloadQueueItem,
+  dispatch: DownloadDispatchItem | null,
+  transferring: boolean
+): QueueRowExtras {
+  return {
+    quality: dispatch?.decisionQuality ?? "—",
+    customFormat: dispatch?.decisionCustomFormatScore != null ? String(dispatch.decisionCustomFormatScore) : "—",
+    language: detectReleaseLanguage(item.releaseName) ?? "—",
+    size: formatBytes(item.sizeBytes),
+    timeleft: transferring && item.etaSeconds > 0 ? formatEta(item.etaSeconds) : "—"
+  };
 }
 
 /**
