@@ -44,6 +44,7 @@ public sealed record UpdatePlatformSettingsRequest(
     double? SharingUntilRatio = null,
     string? SharingStuckAction = null,
     int? SharingStuckAfterDays = null,
+    string? SharingCompletionAction = null,
     string? UiColorMode = null,
     string? UiLanguage = null,
     string? CalendarFirstDayOfWeek = null,

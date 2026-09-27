@@ -59,6 +59,10 @@ public sealed record PlatformSettingsSnapshot(
     double? SharingUntilRatio = null,
     string SharingStuckAction = SharingPolicy.StuckGiveUp,
     int SharingStuckAfterDays = 14,
+    // What happens once the sharing target is met (#821): remove the item
+    // from the download client (the long-standing behaviour), or just stop
+    // seeding it and leave the entry and its files alone.
+    string SharingCompletionAction = SharingPolicy.CompletionReclaim,
     string UiColorMode = "standard",
     string UiLanguage = "en-AU",
     string CalendarFirstDayOfWeek = "monday",

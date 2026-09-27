@@ -88,6 +88,8 @@ export interface PlatformSettingsSnapshot {
   sharingStuckAfterDays: number;
   /** #815: which tracker-privacy downloads the global sharing policy covers. */
   sharingPrivacyScope: "public" | "private" | "both" | string;
+  /** "reclaim" removes the item once the target is met; "stop" just stops seeding and leaves it in the client (#821). */
+  sharingCompletionAction: string;
   /**
    * How often Deluno looks at whether the files it thinks you have are still
    * on disk. The right answer depends on the disk: a local pool can afford
@@ -358,6 +360,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   sharingStuckAction: "give-up",
   sharingStuckAfterDays: 14,
   sharingPrivacyScope: "both",
+  sharingCompletionAction: "reclaim",
   libraryFileCheckHours: 6,
   downloadHealthNoProgressEnabled: true,
   downloadHealthNoProgressMinutes: 30,

@@ -14,6 +14,14 @@ public enum SharingAction
     /// <summary>Ask the client to remove the item and its data.</summary>
     Reclaim,
 
+    /// <summary>
+    /// Ask the client to stop seeding, but leave the entry and its files in
+    /// place (#821) — the alternative to <see cref="Reclaim"/> when the
+    /// sharing target is met, for a site where the user would rather keep the
+    /// data around than have the client forget it.
+    /// </summary>
+    Stop,
+
     /// <summary>The rule can no longer be met. Raise it as a decision rather than acting.</summary>
     Ask
 }
@@ -104,12 +112,19 @@ public static class SharingPolicyEvaluator
         var timeMet = !hasTimeRule || sharedMinutes >= policy.ForHours!.Value * 60;
         var ratioMet = !hasRatioRule || (ratio ?? 0) >= policy.UntilRatio!.Value;
 
+        // Whether reaching the target removes the item or just stops seeding it
+        // (#821). Either way the obligation is discharged; the only question is
+        // whether the client is asked to forget the torrent or just pause it.
+        var completesWithStop = SharingPolicy.NormalizeCompletionAction(policy.CompletionAction) == SharingPolicy.CompletionStop;
+        var completionVerb = completesWithStop ? "Stopped seeding" : "Finished sharing";
+        var completionAction = completesWithStop ? SharingAction.Stop : SharingAction.Reclaim;
+
         // Both stated targets must be met. Asking for "14 days and ratio 1.0"
         // and reclaiming at whichever lands first would break the stricter half
         // of the rule, which is the half that gets accounts banned.
         if (timeMet && ratioMet)
         {
-            return new(SharingAction.Reclaim, $"Finished sharing{DescribeMet(policy, ratio, sharedMinutes)}.");
+            return new(completionAction, $"{completionVerb}{DescribeMet(policy, ratio, sharedMinutes)}.");
         }
 
         var stuckAfterMinutes = Math.Max(1, policy.StuckAfterDays) * 24 * 60;
@@ -127,7 +142,7 @@ public static class SharingPolicyEvaluator
                     $"Shared for {policy.StuckAfterDays} days and {shortfall}. Deluno is waiting for you to decide.",
                     $"{policy.StuckAfterDays} days in, {shortfall} — waiting for you to decide"),
                 _ => new(
-                    SharingAction.Reclaim,
+                    completionAction,
                     $"Gave up after {policy.StuckAfterDays} days: {shortfall}.")
             };
         }

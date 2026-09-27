@@ -156,6 +156,8 @@ interface SharingForm {
   stuckAfterDays: string;
   // #815: which tracker-privacy downloads this policy covers.
   privacyScope: string;
+  /** "reclaim" or "stop" — what happens once the target above is reached (#821). */
+  completionAction: string;
 }
 
 interface CleanupForm {
@@ -430,7 +432,8 @@ export function SearchCyclesPage() {
             sharingUntilRatio: sharing.untilRatio.trim() === "" ? null : Math.max(0, Number(sharing.untilRatio)),
             sharingStuckAction: sharing.stuckAction,
             sharingStuckAfterDays: Math.max(1, Number(sharing.stuckAfterDays || 14)),
-            sharingPrivacyScope: sharing.privacyScope
+            sharingPrivacyScope: sharing.privacyScope,
+            sharingCompletionAction: sharing.completionAction
         }),
         fetchJson<QualityModelSnapshot>("/api/quality-model", {
           method: "PUT",
@@ -649,6 +652,21 @@ export function SearchCyclesPage() {
                     </Field>
                   ) : null}
                 </div>
+
+                <Field
+                  label="Once the target above is reached"
+                  help="Reclaiming removes the download from the client entirely. Stopping just ends seeding — the client keeps the entry and the files, and Deluno does not touch your library either way."
+                >
+                  <SegmentedControl
+                    aria-label="Once the target above is reached"
+                    value={sharing.completionAction}
+                    onValueChange={(completionAction) => setSharing((current) => ({ ...current, completionAction }))}
+                    options={[
+                      { value: "reclaim", label: "Reclaim the space" },
+                      { value: "stop", label: "Stop seeding without deleting" }
+                    ]}
+                  />
+                </Field>
               </>
             ) : null}
 
@@ -982,7 +1000,8 @@ function sharingFrom(settings: PlatformSettingsSnapshot): SharingForm {
     untilRatio: settings.sharingUntilRatio == null ? "" : String(settings.sharingUntilRatio),
     stuckAction: settings.sharingStuckAction ?? "give-up",
     stuckAfterDays: String(settings.sharingStuckAfterDays ?? 14),
-    privacyScope: settings.sharingPrivacyScope ?? "both"
+    privacyScope: settings.sharingPrivacyScope ?? "both",
+    completionAction: settings.sharingCompletionAction ?? "reclaim"
   };
 }
 

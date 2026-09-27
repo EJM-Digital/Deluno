@@ -54,6 +54,8 @@ public static class PlatformSettingsPatchMerger
             SharingUntilRatio: patch.SharingMode is null ? current.SharingUntilRatio : patch.SharingUntilRatio,
             SharingStuckAction: patch.SharingStuckAction ?? current.SharingStuckAction,
             SharingStuckAfterDays: patch.SharingStuckAfterDays ?? current.SharingStuckAfterDays,
+            // Independent of the rule above (#821): can be changed on its own.
+            SharingCompletionAction: patch.SharingCompletionAction ?? current.SharingCompletionAction,
             UiColorMode: patch.UiColorMode ?? current.UiColorMode,
             UiLanguage: patch.UiLanguage ?? current.UiLanguage,
             CalendarFirstDayOfWeek: patch.CalendarFirstDayOfWeek ?? current.CalendarFirstDayOfWeek,

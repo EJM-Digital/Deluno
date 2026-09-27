@@ -64,6 +64,7 @@ export interface PlatformSettingsPatch {
   sharingStuckAfterDays?: number;
   /** #815: which tracker-privacy downloads the global sharing policy covers. */
   sharingPrivacyScope?: string;
+  sharingCompletionAction?: string;
   downloadHealthNoProgressEnabled?: boolean;
   downloadHealthNoProgressMinutes?: number;
   downloadHealthMinSpeedEnabled?: boolean;

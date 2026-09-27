@@ -132,4 +132,44 @@ public sealed class SharingPolicyPatchTests
         Assert.Null(settings.SharingForHours);
         Assert.Null(settings.SharingUntilRatio);
     }
+
+    // ── Stop seeding without deleting (#821) ──────────────────────────────
+
+    [Fact]
+    public async Task A_fresh_install_reclaims_by_default()
+    {
+        var (repository, storage) = await CreateAsync();
+        using var _ = storage;
+
+        var settings = await repository.GetAsync(CancellationToken.None);
+
+        Assert.Equal(SharingPolicy.CompletionReclaim, settings.SharingCompletionAction);
+    }
+
+    [Fact]
+    public async Task The_completion_action_can_be_set_to_stop_on_its_own()
+    {
+        var (repository, storage) = await CreateAsync();
+        using var _ = storage;
+
+        // Unlike the rule itself, this is independent of Mode/ForHours/UntilRatio
+        // — a person can flip Reclaim to Stop without resubmitting the rest.
+        await PatchAsync(repository, new PatchPlatformSettingsRequest(SharingCompletionAction: SharingPolicy.CompletionStop));
+
+        var settings = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(SharingPolicy.CompletionStop, settings.SharingCompletionAction);
+    }
+
+    [Fact]
+    public async Task A_patch_about_something_else_entirely_leaves_the_completion_action_alone()
+    {
+        var (repository, storage) = await CreateAsync();
+        using var _ = storage;
+
+        await PatchAsync(repository, new PatchPlatformSettingsRequest(SharingCompletionAction: SharingPolicy.CompletionStop));
+        await PatchAsync(repository, new PatchPlatformSettingsRequest(AppInstanceName: "Renamed"));
+
+        var settings = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(SharingPolicy.CompletionStop, settings.SharingCompletionAction);
+    }
 }

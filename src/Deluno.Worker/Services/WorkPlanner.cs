@@ -624,6 +624,7 @@ public sealed class WorkPlanner(
             settings.SharingUntilRatio,
             settings.SharingStuckAction,
             settings.SharingStuckAfterDays,
+            settings.SharingCompletionAction,
             settings.SharingPrivacyScope);
         // #814: one sandbox switch, shared with the strike/blocklist executors.
         var dryRun = settings.DownloadHealthDryRunEnabled;
@@ -730,6 +731,22 @@ public sealed class WorkPlanner(
                 await activityFeedRepository.RecordActivityAsync(
                     "download.sharing.reclaimed",
                     $"{item.Title} finished sharing and was removed from {item.ClientName}. {outcome.Reason}",
+                    null,
+                    null,
+                    dispatch.EntityType,
+                    dispatch.EntityId,
+                    cancellationToken);
+                continue;
+            }
+
+            if (outcome.Stopped)
+            {
+                // Discharged the same as a reclaim, but the entry and its
+                // files stay in the client — nothing about the library, and
+                // nothing left for this pass to keep tracking (#821).
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.sharing.stopped",
+                    $"{item.Title} finished sharing. Seeding was stopped on {item.ClientName}, and the download was left in place. {outcome.Reason}",
                     null,
                     null,
                     dispatch.EntityType,
