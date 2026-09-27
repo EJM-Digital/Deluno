@@ -87,6 +87,44 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_changed_existing_definition_is_named_as_updated_not_added()
+    {
+        var (service, store, activity, source, catalog, _) = Build();
+        await store.SetSettingsAsync(isEnabled: true, intervalHours: 24, CancellationToken.None);
+        var trackersDir = Path.Combine(dataRoot, "trackers");
+        Directory.CreateDirectory(trackersDir);
+        await File.WriteAllTextAsync(Path.Combine(trackersDir, "existingtracker.yml"), ValidYaml("existingtracker"));
+        catalog.Reload();
+        source.Definitions.Add(new RemoteTrackerDefinition("existingtracker", ValidYaml("existingtracker") + "\n# a fixed selector\n"));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Equal(["existingtracker"], state.UpdatedTrackerIds);
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Contains("updated the existingtracker tracker definition", recorded.Message);
+        Assert.DoesNotContain("added", recorded.Message);
+    }
+
+    [Fact]
+    public async Task A_pass_with_both_a_new_and_a_changed_definition_names_each_apart()
+    {
+        var (service, store, activity, source, catalog, _) = Build();
+        await store.SetSettingsAsync(isEnabled: true, intervalHours: 24, CancellationToken.None);
+        var trackersDir = Path.Combine(dataRoot, "trackers");
+        Directory.CreateDirectory(trackersDir);
+        await File.WriteAllTextAsync(Path.Combine(trackersDir, "existingtracker.yml"), ValidYaml("existingtracker"));
+        catalog.Reload();
+        source.Definitions.Add(new RemoteTrackerDefinition("existingtracker", ValidYaml("existingtracker") + "\n# a fixed selector\n"));
+        source.Definitions.Add(new RemoteTrackerDefinition("newtracker", ValidYaml("newtracker")));
+
+        await service.UpdateNowAsync(CancellationToken.None);
+
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Contains("added the newtracker tracker definition", recorded.Message);
+        Assert.Contains("updated the existingtracker tracker definition", recorded.Message);
+    }
+
+    [Fact]
     public async Task An_unchanged_definition_is_not_rewritten_or_logged()
     {
         var (service, store, activity, source, _, _) = Build();
