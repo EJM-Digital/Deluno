@@ -568,6 +568,18 @@ public sealed partial class ImportPipelineService(
                 "completion",
                 cancellationToken);
 
+            if (catalogImportResult.ReplacedFilePaths.Count > 0)
+            {
+                await DispatchImportOutcomeNotificationAsync(
+                    "upgrade",
+                    $"Upgraded: {TitleForActivity(request.Preview)}",
+                    $"{TitleForActivity(request.Preview)} was upgraded by this import.",
+                    JsonSerializer.Serialize(new { title = TitleForActivity(request.Preview), mediaType }),
+                    prefs => prefs.UpgradeEnabled,
+                    "upgrade",
+                    cancellationToken);
+            }
+
             await RecordRenameAsync(
                 provenance,
                 mediaType,
@@ -2373,6 +2385,18 @@ public sealed partial class ImportPipelineService(
             prefs => prefs.ImportFailedEnabled,
             "failure",
             cancellationToken);
+
+        // Every failure recorded here also opened a recovery case above: it is
+        // exactly Radarr/Sonarr's "On Manual Interaction Required" — someone
+        // has to look at this before it can finish (#856).
+        await DispatchImportOutcomeNotificationAsync(
+            "manual_interaction_required",
+            $"Needs your attention: {title}",
+            $"{summary} ({failureKind}) — {recommendedAction}",
+            JsonSerializer.Serialize(new { title, failureKind, recommendedAction, mediaType }),
+            prefs => prefs.ManualInteractionRequiredEnabled,
+            "manual-interaction-required",
+            cancellationToken);
     }
 
     /// <summary>
@@ -2413,6 +2437,20 @@ public sealed partial class ImportPipelineService(
             logger.LogWarning(ex, "Outbound notification dispatch failed for import {Outcome} — notifications may be misconfigured.", outcomeLabel);
         }
     }
+
+    /// <summary>
+    /// A replaced file's own delete/recycle is the same "file delete" concept
+    /// Radarr/Sonarr fire "On Movie File Delete For Upgrade" for (#856).
+    /// </summary>
+    private async Task DispatchFileDeletedNotificationAsync(string fileName, bool forUpgrade, CancellationToken cancellationToken)
+        => await DispatchImportOutcomeNotificationAsync(
+            "file.deleted",
+            $"File removed: {fileName}",
+            forUpgrade ? $"{fileName} was removed because an upgrade replaced it." : $"{fileName} was removed.",
+            JsonSerializer.Serialize(new { fileName, forUpgrade }),
+            prefs => prefs.FileDeletedEnabled,
+            "file-deleted",
+            cancellationToken);
 
     private async Task RecordImportStartedAsync(
         ImportExecuteRequest request,
@@ -2593,6 +2631,17 @@ public sealed partial class ImportPipelineService(
             null,
             mediaType == "tv" ? "series" : "movie",
             entityId,
+            cancellationToken);
+
+        await DispatchImportOutcomeNotificationAsync(
+            "rename",
+            $"Renamed: {destinationName}",
+            string.IsNullOrWhiteSpace(provenance.MatchedRuleNames)
+                ? $"{sourceName} was named {destinationName}."
+                : $"{sourceName} was named {destinationName}, keeping {provenance.MatchedRuleNames}.",
+            JsonSerializer.Serialize(new { provenance.SourcePath, provenance.DestinationPath }),
+            prefs => prefs.RenameEnabled,
+            "rename",
             cancellationToken);
     }
 
@@ -3466,6 +3515,7 @@ public sealed partial class ImportPipelineService(
                 // service through DI.
                 TryDelete(replacedPath);
                 messages.Add($"Removed the previous {fileName} file it replaced.");
+                await DispatchFileDeletedNotificationAsync(fileName, forUpgrade: true, cancellationToken);
                 continue;
             }
 
@@ -3481,6 +3531,7 @@ public sealed partial class ImportPipelineService(
             else
             {
                 messages.Add($"Moved the previous {fileName} file to the recycle bin.");
+                await DispatchFileDeletedNotificationAsync(fileName, forUpgrade: true, cancellationToken);
             }
         }
 

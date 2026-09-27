@@ -257,6 +257,171 @@ public sealed class ImportPipelineServiceTests
         Assert.Empty(outbound.DispatchedCategories);
     }
 
+    /// <summary>#856: renaming a file on import is its own outbound trigger, off by default.</summary>
+    [Fact]
+    public async Task ExecuteAsync_dispatches_rename_outbound_when_enabled()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { RenameEnabled = true });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(sourcePath, null, "movies", "Arrival", 2016, [], [], null, "en", ImdbId: "tt2543164"),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        // The staged name (Arrival.2016.WEB.1080p.mkv) differs from the
+        // destination Deluno names it (Arrival (2016) [WEB 1080p].mkv).
+        Assert.Contains("rename", outbound.DispatchedCategories);
+    }
+
+    /// <summary>
+    /// #856: an upgrade that replaces an existing file dispatches both
+    /// "upgrade" and "file.deleted" for the file it replaced — the two
+    /// triggers only fire together because an upgrade is what removed it.
+    /// </summary>
+    [Fact]
+    public async Task An_upgrade_dispatches_upgrade_and_file_deleted_outbound_when_enabled()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-25T06:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { UpgradeEnabled = true, FileDeletedEnabled = true });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("The Wild Robot", 2024, null), CancellationToken.None);
+
+        var firstSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.WEB.720p.mkv");
+        await File.WriteAllBytesAsync(firstSource, Enumerable.Repeat((byte)0x11, 4096).ToArray());
+        File.SetLastWriteTimeUtc(firstSource, DateTime.UtcNow.AddMinutes(-1));
+        var firstDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 WEB 720p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var firstResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(firstSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: firstDispatchId),
+            CancellationToken.None);
+        Assert.True(firstResult.Succeeded, firstResult.Message);
+        outbound.DispatchedCategories.Clear();
+
+        var secondDispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "The Wild Robot 2024 REPACK 1080p BluRay", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+        var secondSource = Path.Combine(downloadsPath, "The.Wild.Robot.2024.REPACK.1080p.BluRay.mkv");
+        await File.WriteAllBytesAsync(secondSource, Enumerable.Repeat((byte)0x22, 8192).ToArray());
+        File.SetLastWriteTimeUtc(secondSource, DateTime.UtcNow.AddMinutes(-1));
+        var secondResult = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(secondSource, null, "movies", "The Wild Robot", 2024, [], [], null, null),
+                "copy", Overwrite: true, AllowCopyFallback: true, ForceReplacement: true, DispatchId: secondDispatchId),
+            CancellationToken.None);
+        Assert.True(secondResult.Succeeded, secondResult.Message);
+
+        Assert.Contains("upgrade", outbound.DispatchedCategories);
+        Assert.Contains("file.deleted", outbound.DispatchedCategories);
+    }
+
+    /// <summary>
+    /// #856: a failed import that opens a recovery case is exactly Radarr's
+    /// "needs manual action" moment.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_dispatches_manual_interaction_required_outbound_when_enabled()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var releaseFolder = Path.Combine(downloadsPath, "Arrival.2016.1080p.WEB-VERIFY");
+        Directory.CreateDirectory(releaseFolder);
+        Directory.CreateDirectory(movieRootPath);
+        await File.WriteAllTextAsync(Path.Combine(releaseFolder, "Arrival.2016.nfo"), "clutter");
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { ManualInteractionRequiredEnabled = true });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs);
+
+        // No importable video inside the release folder: a real import
+        // failure, which is exactly what opens the recovery case.
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: releaseFolder,
+                    FileName: "Arrival.2016.1080p.WEB-VERIFY.mkv",
+                    MediaType: "movies",
+                    Title: "Arrival",
+                    Year: 2016,
+                    Genres: [],
+                    Tags: [],
+                    Studio: null,
+                    OriginalLanguage: null),
+                TransferMode: "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("manual_interaction_required", outbound.DispatchedCategories);
+    }
+
     /// <summary>
     /// #417. An import Deluno cannot name must not invent a film from the
     /// filename.
