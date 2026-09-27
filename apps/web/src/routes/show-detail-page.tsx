@@ -167,6 +167,8 @@ export function ShowDetailPage() {
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState<EpisodeFilter>("all");
   const [openSeasons, setOpenSeasons] = useState<number[] | null>(null);
+  /** Scopes the History tab down to one episode's own searches (#795). Cleared, it shows the whole series. */
+  const [historyEpisodeId, setHistoryEpisodeId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [section, setSection] = useState<DetailSection>("episodes");
   const [numberingDraft, setNumberingDraft] = useState<NumberingDraft | null>(null);
@@ -200,6 +202,12 @@ export function ShowDetailPage() {
   const libraryQuery = memberships.length > 1 && actingLibraryId ? `libraryId=${encodeURIComponent(actingLibraryId)}` : "";
   const library = actingLibraryId ? libraries.find((item) => item.id === actingLibraryId) ?? null : null;
   const seriesSearches = searchHistory.filter((item) => item.seriesId === series.id);
+  // The History tab's own episode filter (#795): narrows the same list down
+  // to one episode's searches, rather than asking the server a new question.
+  const historyEpisode = historyEpisodeId
+    ? inventory.episodes.find((episode) => episode.episodeId === historyEpisodeId) ?? null
+    : null;
+  const historyFilteredSearches = filterSearchHistoryByEpisode(seriesSearches, historyEpisode?.episodeId ?? null);
   const seriesDispatches = dispatches.filter((item) => item.entityId === series.id);
   const importCases = importRecovery.recentCases.filter(
     (item) => item.title.trim().toLowerCase() === series.title.trim().toLowerCase()
@@ -1396,11 +1404,40 @@ export function ShowDetailPage() {
 
           <DecisionExplanationList decisions={decisions} />
 
-          <ListCard title="Searches" count={seriesSearches.length ? `Latest ${Math.min(seriesSearches.length, 12)} of ${seriesSearches.length}` : undefined}>
-            {seriesSearches.length === 0 ? (
+          <ListCard
+            title="Searches"
+            count={historyFilteredSearches.length ? `Latest ${Math.min(historyFilteredSearches.length, 12)} of ${historyFilteredSearches.length}` : undefined}
+          >
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Filter to episode</span>
+                <Select
+                  aria-label="Filter history to episode"
+                  value={historyEpisodeId ?? ""}
+                  onChange={(event) => setHistoryEpisodeId(event.target.value || null)}
+                  options={[
+                    { value: "", label: "Whole show" },
+                    ...inventory.episodes.map((episode) => ({
+                      value: episode.episodeId,
+                      label: `${formatEpisodeCode(episode)} · ${episode.title ?? "Episode title pending"}`
+                    }))
+                  ]}
+                />
+              </label>
+              {historyEpisode ? (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setHistoryEpisodeId(null)}>
+                  Clear filter
+                </Button>
+              ) : null}
+            </div>
+            {historyFilteredSearches.length === 0 ? (
               <ListEmpty
-                title="No searches yet"
-                description="Manual and scheduled searches for this show — series, season and episode alike — appear here with their outcomes and explanations."
+                title={historyEpisode ? `No searches yet for ${formatEpisodeCode(historyEpisode)}` : "No searches yet"}
+                description={
+                  historyEpisode
+                    ? "Manual and scheduled searches for this episode appear here with their outcomes and explanations."
+                    : "Manual and scheduled searches for this show — series, season and episode alike — appear here with their outcomes and explanations."
+                }
               />
             ) : (
               <ListTable
@@ -1412,7 +1449,7 @@ export function ShowDetailPage() {
                   { label: "Outcome", width: LIST_TRACK.status }
                 ]}
               >
-                {seriesSearches.slice(0, 12).map((item) => (
+                {historyFilteredSearches.slice(0, 12).map((item) => (
                   <ListRow key={item.id} onClick={() => setOpenSearchId(item.id)} selected={openSearchId === item.id}>
                     <ListNameCell name={item.releaseName ?? "No release selected"} sub={item.indexerName ?? "No source yet"} />
                     <ListCell primary={formatSearchScope(item)} mobile />
@@ -1974,6 +2011,18 @@ function buildSeasonGroups(episodes: SeriesEpisodeInventoryItem[]) {
         monitoredCount: sorted.filter((item) => item.monitored).length
       };
     });
+}
+
+/**
+ * Scopes a show's search history down to one episode (#795), or returns it
+ * unchanged when no episode is selected - clearing the filter is just
+ * passing `null` back in.
+ */
+export function filterSearchHistoryByEpisode(
+  searches: SeriesSearchHistoryItem[],
+  episodeId: string | null
+): SeriesSearchHistoryItem[] {
+  return episodeId ? searches.filter((item) => item.episodeId === episodeId) : searches;
 }
 
 function formatEpisodeCode(episode: SeriesEpisodeInventoryItem) {
