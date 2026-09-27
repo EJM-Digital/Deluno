@@ -241,10 +241,15 @@ public static class ImportFailurePolicy
     /// Whether the downloaded file is worth keeping.
     ///
     /// <para>Only where Deluno knows it is not what was wanted. Everything else
-    /// might be environmental, and deleting on a guess cannot be undone.</para>
+    /// might be environmental, and deleting on a guess cannot be undone.
+    /// <see cref="MediaProbeRejected"/> belongs here for the same reason as
+    /// <see cref="NoVideoStream"/> and <see cref="LikelySample"/>: Deluno opened
+    /// the file and found it broken, so a second copy would arrive exactly as
+    /// broken (#918, cleanup sheet E4 — "if something is unreadable and
+    /// corrupt don't even retry").</para>
     /// </summary>
     public static bool ShouldDeletePayload(string reasonCode)
-        => reasonCode is NoVideoStream or LikelySample or ReplacementRejected or ProcessorRejected;
+        => reasonCode is NoVideoStream or LikelySample or MediaProbeRejected or ReplacementRejected or ProcessorRejected;
 
     /// <summary>
     /// Whether this counts against the download client's health record.
