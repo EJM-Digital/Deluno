@@ -91,4 +91,6 @@ public sealed record UpdatePlatformSettingsRequest(
     int? HistoryRetentionDays = null,
     string? SharingPrivacyScope = null,
     bool? MaxSearchesPerHourEnabled = null,
-    int? MaxSearchesPerHour = null);
+    int? MaxSearchesPerHour = null,
+    bool? DownloadIntegrityCheckEnabled = null,
+    int? DownloadIntegrityMinimumRuntimePercent = null);

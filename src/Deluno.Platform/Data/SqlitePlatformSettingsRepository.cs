@@ -264,6 +264,9 @@ public sealed class SqlitePlatformSettingsRepository(
         // number when the switch is on.
         await UpsertSettingAsync(connection, transaction, "search.maxSearchesPerHour.enabled", request.MaxSearchesPerHourEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "search.maxSearchesPerHour", Math.Clamp(request.MaxSearchesPerHour ?? 200, 1, 100_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // Checkpoint A (#917): off by default (#936).
+        await UpsertSettingAsync(connection, transaction, "download-integrity.checkEnabled", request.DownloadIntegrityCheckEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-integrity.minimumRuntimePercent", Math.Clamp(request.DownloadIntegrityMinimumRuntimePercent ?? 80, 1, 100).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -625,7 +628,9 @@ public sealed class SqlitePlatformSettingsRepository(
                 ? GetValue(settings, "sharing.privacyScope")!
                 : DownloadHealthPrivacyScopes.Both,
             MaxSearchesPerHourEnabled: string.Equals(GetValue(settings, "search.maxSearchesPerHour.enabled"), "true", StringComparison.OrdinalIgnoreCase),
-            MaxSearchesPerHour: ReadPositiveInt(GetValue(settings, "search.maxSearchesPerHour"), 200, 1, 100_000));
+            MaxSearchesPerHour: ReadPositiveInt(GetValue(settings, "search.maxSearchesPerHour"), 200, 1, 100_000),
+            DownloadIntegrityCheckEnabled: string.Equals(GetValue(settings, "download-integrity.checkEnabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadIntegrityMinimumRuntimePercent: ReadPositiveInt(GetValue(settings, "download-integrity.minimumRuntimePercent"), 80, 1, 100));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)
