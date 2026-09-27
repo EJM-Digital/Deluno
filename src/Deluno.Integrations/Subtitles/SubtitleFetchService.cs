@@ -29,11 +29,34 @@ public sealed record SubtitleFetchOutcome(
     /// Named, deterministic content cleanups applied before the file was
     /// written. Null means the provider bytes were written unchanged.
     /// </summary>
-    IReadOnlyList<string>? AppliedModifications = null)
+    IReadOnlyList<string>? AppliedModifications = null,
+    /// <summary>
+    /// The stable identity of the candidate that was written, so the caller can
+    /// record it beside the fetched row and later blocklist that exact file
+    /// rather than every candidate the provider ever offers for this language
+    /// (#895, #897, #841). Null when nothing was written.
+    /// </summary>
+    string? SourceKey = null,
+    /// <summary>
+    /// Candidates this fetch rejected as not really a subtitle — a rate limit
+    /// page or a captcha served with a 200 — and moved past to try the next
+    /// one from the same provider, rather than giving up on the provider
+    /// entirely (#898). The caller blocklists each of these so a later search
+    /// never downloads the same bad file again.
+    /// </summary>
+    IReadOnlyList<RejectedSubtitleCandidate>? RejectedCandidates = null)
 {
     public IntegrationFailure? Failure
         => Found ? null : Failures?.LastOrDefault();
 }
+
+/// <summary>One candidate a fetch downloaded and found not to be a real subtitle.</summary>
+public sealed record RejectedSubtitleCandidate(
+    string BlockKey,
+    string Language,
+    string ProviderKey,
+    string? ReleaseName,
+    string Reason);
 
 /// <summary>
 /// Finds one language for one file, and writes it beside the video.
@@ -62,7 +85,11 @@ public interface ISubtitleFetchService
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
         SubtitleNamePolicy? namePolicy = null,
-        bool omitLanguageCode = false);
+        bool omitLanguageCode = false,
+        // Candidates already refused for this file (#897) — a bad download
+        // (#898), a rejection the person made themselves (#841), or a
+        // subtitle they deleted from disk (#895). Never offered again.
+        IReadOnlyCollection<string>? blockedKeys = null);
 }
 
 public sealed class SubtitleFetchService(
@@ -82,8 +109,13 @@ public sealed class SubtitleFetchService(
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
         SubtitleNamePolicy? namePolicy = null,
-        bool omitLanguageCode = false)
+        bool omitLanguageCode = false,
+        IReadOnlyCollection<string>? blockedKeys = null)
     {
+        var blocked = blockedKeys is null or { Count: 0 }
+            ? null
+            : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
+        var rejected = new List<RejectedSubtitleCandidate>();
         var now = timeProvider.GetUtcNow();
         var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
         var configured = await repository.ListAsync(cancellationToken);
@@ -134,57 +166,73 @@ public sealed class SubtitleFetchService(
                     Credentials(connection),
                     cancellationToken);
 
-                var pick = Choose(candidates, language, excludeHearingImpaired, videoPath, names);
-                if (pick is null)
+                // Ranked once, tried in order. A candidate that turns out not to
+                // be a real subtitle costs one download and one blocklist entry
+                // (#898) — it does not cost the rest of this provider's
+                // candidates, which the old "give up on the first pick" shape
+                // did, nor the rest of this file's languages, which a
+                // provider-level failure would have.
+                var ranked = Rank(candidates, language, excludeHearingImpaired, videoPath, names)
+                    .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider.Key, candidate.DownloadToken)))
+                    .ToArray();
+
+                foreach (var pick in ranked)
                 {
-                    continue;
+                    var blockKey = SubtitleBlockKeys.For(provider.Key, pick.DownloadToken);
+
+                    operation = "download";
+                    var payload = await provider.DownloadAsync(pick, Credentials(connection), cancellationToken);
+                    var subtitle = SubtitleArchive.Extract(payload);
+
+                    if (subtitle is null || !SubtitleArchive.LooksLikeSubtitle(subtitle))
+                    {
+                        // A rate limit, a captcha or a "sign in to download" page,
+                        // served with a 200. Writing it would turn the bar green
+                        // over a file that shows a player nothing. Blocklisted so
+                        // the next search does not download the same bad file
+                        // again, and the next candidate from this same provider is
+                        // tried before giving up on it entirely.
+                        var failure = IntegrationFailureFactory.FromLegacy(
+                            "subtitle",
+                            provider.Key,
+                            provider.DisplayName,
+                            operation,
+                            "malformed-response",
+                            $"{provider.DisplayName} returned something that is not a subtitle.");
+                        failures.Add(failure);
+                        rejected.Add(new RejectedSubtitleCandidate(
+                            blockKey, language, provider.Key, pick.ReleaseName, failure.Message));
+                        await RecordAsync(connection, "degraded", failure.Message, false, null, cancellationToken, failure);
+                        continue;
+                    }
+
+                    operation = "write";
+                    var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
+                    subtitle = modification.Content;
+                    var written = await fileWriter.WriteAsync(
+                        videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
+
+                    await RecordAsync(connection, "healthy",
+                        $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);
+
+                    var match = SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath);
+
+                    return new SubtitleFetchOutcome(
+                        Language: language,
+                        Found: true,
+                        ProviderKey: provider.Key,
+                        WrittenPath: written,
+                        HearingImpaired: pick.HearingImpaired,
+                        // The rung is said out loud, because "found it" and "found one
+                        // that is in time" are different sentences and only one of
+                        // them is worth trusting.
+                        Reason: BuildSuccessReason(provider.DisplayName, match, modification),
+                        Match: match,
+                        Failures: failures.Count == 0 ? null : failures.ToArray(),
+                        AppliedModifications: modification.AppliedRules.Count == 0 ? null : modification.AppliedRules,
+                        SourceKey: blockKey,
+                        RejectedCandidates: rejected.Count == 0 ? null : rejected.ToArray());
                 }
-
-                operation = "download";
-                var payload = await provider.DownloadAsync(pick, Credentials(connection), cancellationToken);
-                var subtitle = SubtitleArchive.Extract(payload);
-
-                if (subtitle is null || !SubtitleArchive.LooksLikeSubtitle(subtitle))
-                {
-                    // A rate limit, a captcha or a "sign in to download" page,
-                    // served with a 200. Writing it would turn the bar green over
-                    // a file that shows a player nothing.
-                    var failure = IntegrationFailureFactory.FromLegacy(
-                        "subtitle",
-                        provider.Key,
-                        provider.DisplayName,
-                        operation,
-                        "malformed-response",
-                        $"{provider.DisplayName} returned something that is not a subtitle.");
-                    failures.Add(failure);
-                    await RecordAsync(connection, "degraded", failure.Message, false, null, cancellationToken, failure);
-                    continue;
-                }
-
-                operation = "write";
-                var modification = SubtitleContentModifier.Apply(subtitle, contentPolicy);
-                subtitle = modification.Content;
-                var written = await fileWriter.WriteAsync(
-                    videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
-
-                await RecordAsync(connection, "healthy",
-                    $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);
-
-                var match = SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath);
-
-                return new SubtitleFetchOutcome(
-                    Language: language,
-                    Found: true,
-                    ProviderKey: provider.Key,
-                    WrittenPath: written,
-                    HearingImpaired: pick.HearingImpaired,
-                    // The rung is said out loud, because "found it" and "found one
-                    // that is in time" are different sentences and only one of
-                    // them is worth trusting.
-                    Reason: BuildSuccessReason(provider.DisplayName, match, modification),
-                    Match: match,
-                    Failures: failures.Count == 0 ? null : failures.ToArray(),
-                    AppliedModifications: modification.AppliedRules.Count == 0 ? null : modification.AppliedRules);
             }
             catch (SubtitleProviderRateLimitedException rateLimited)
             {
@@ -228,7 +276,8 @@ public sealed class SubtitleFetchService(
         return new SubtitleFetchOutcome(
             language, false, null, null, false,
             reason,
-            Failures: failures.ToArray());
+            Failures: failures.ToArray(),
+            RejectedCandidates: rejected.Count == 0 ? null : rejected.ToArray());
     }
 
     /// <summary>
@@ -253,7 +302,7 @@ public sealed class SubtitleFetchService(
     /// <para>Forced is never chosen: a forced track is four lines of Elvish, and
     /// the rest of Deluno already refuses to count it as coverage.</para>
     /// </summary>
-    private static SubtitleCandidate? Choose(
+    private static IEnumerable<SubtitleCandidate> Rank(
         IReadOnlyList<SubtitleCandidate> candidates,
         string language,
         bool excludeHearingImpaired,
@@ -269,8 +318,7 @@ public sealed class SubtitleFetchService(
             .Where(candidate => candidate.Language.StartsWith(language[..Math.Min(2, language.Length)], StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath))
             .ThenBy(candidate => candidate.HearingImpaired ? 1 : 0)
-            .ThenByDescending(candidate => candidate.DownloadCount ?? 0)
-            .FirstOrDefault();
+            .ThenByDescending(candidate => candidate.DownloadCount ?? 0);
 
     /// <summary>
     /// Whether this provider can answer for this kind of title at all.

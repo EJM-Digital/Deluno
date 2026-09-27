@@ -340,11 +340,11 @@ public sealed class SqliteMediaSubtitleRepository(
         command.CommandText = $"""
             INSERT INTO {map.SubtitleTable} (
                 {map.SubtitleMediaIdColumn}, language, forced, hearing_impaired,
-                source, file_path, stream_index, codec, provider, match_rung, created_utc, updated_utc
+                source, file_path, stream_index, codec, provider, match_rung, source_key, created_utc, updated_utc
             )
             VALUES (
                 @mediaId, @language, @forced, @hearingImpaired,
-                @source, @filePath, NULL, @codec, @provider, @matchRung, @now, @now
+                @source, @filePath, NULL, @codec, @provider, @matchRung, @sourceKey, @now, @now
             )
             ON CONFLICT ({map.SubtitleMediaIdColumn}, language, forced, hearing_impaired) DO UPDATE SET
                 source = excluded.source,
@@ -352,6 +352,7 @@ public sealed class SqliteMediaSubtitleRepository(
                 codec = excluded.codec,
                 provider = excluded.provider,
                 match_rung = excluded.match_rung,
+                source_key = excluded.source_key,
                 updated_utc = excluded.updated_utc;
             """;
 
@@ -364,9 +365,130 @@ public sealed class SqliteMediaSubtitleRepository(
         AddParameter(command, "@codec", subtitle.Codec);
         AddParameter(command, "@provider", subtitle.Provider);
         AddParameter(command, "@matchRung", subtitle.MatchRung);
+        AddParameter(command, "@sourceKey", subtitle.SourceKey);
         AddParameter(command, "@now", now.ToString("O"));
 
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task BlockSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string language,
+        string blockKey,
+        string? providerKey,
+        string? releaseName,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var now = timeProvider.GetUtcNow();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            INSERT INTO {map.SubtitleBlockTable} (
+                {map.SubtitleMediaIdColumn}, language, block_key, provider, release_name, reason, blocked_utc
+            )
+            VALUES (@mediaId, @language, @blockKey, @provider, @releaseName, @reason, @now)
+            ON CONFLICT ({map.SubtitleMediaIdColumn}, block_key) DO UPDATE SET
+                reason = excluded.reason,
+                blocked_utc = excluded.blocked_utc;
+            """;
+
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@language", language);
+        AddParameter(command, "@blockKey", blockKey);
+        AddParameter(command, "@provider", providerKey);
+        AddParameter(command, "@releaseName", releaseName);
+        AddParameter(command, "@reason", reason);
+        AddParameter(command, "@now", now.ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MediaSubtitleBlock>> ListBlockedAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT language, block_key, provider, release_name, reason, blocked_utc
+            FROM {map.SubtitleBlockTable}
+            WHERE {map.SubtitleMediaIdColumn} = @mediaId
+            ORDER BY blocked_utc DESC;
+            """;
+        AddParameter(command, "@mediaId", mediaId);
+
+        var rows = new List<MediaSubtitleBlock>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new MediaSubtitleBlock(
+                Language: reader.GetString(0),
+                BlockKey: reader.GetString(1),
+                ProviderKey: reader.IsDBNull(2) ? null : reader.GetString(2),
+                ReleaseName: reader.IsDBNull(3) ? null : reader.GetString(3),
+                Reason: reader.GetString(4),
+                BlockedUtc: DateTimeOffset.Parse(reader.GetString(5))));
+        }
+
+        return rows;
+    }
+
+    public async Task<IReadOnlySet<string>> ListBlockedKeysAsync(
+        MediaKind kind,
+        string mediaId,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT block_key FROM {map.SubtitleBlockTable} WHERE {map.SubtitleMediaIdColumn} = @mediaId;
+            """;
+        AddParameter(command, "@mediaId", mediaId);
+
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            keys.Add(reader.GetString(0));
+        }
+
+        return keys;
+    }
+
+    public async Task<bool> UnblockSubtitleAsync(
+        MediaKind kind,
+        string mediaId,
+        string blockKey,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"DELETE FROM {map.SubtitleBlockTable} WHERE {map.SubtitleMediaIdColumn} = @mediaId AND block_key = @blockKey;";
+        AddParameter(command, "@mediaId", mediaId);
+        AddParameter(command, "@blockKey", blockKey);
+
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     /// <summary>
@@ -657,7 +779,7 @@ public sealed class SqliteMediaSubtitleRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT language, source, forced, hearing_impaired, file_path, stream_index, codec, provider
+            SELECT language, source, forced, hearing_impaired, file_path, stream_index, codec, provider, source_key
             FROM {map.SubtitleTable}
             WHERE {map.SubtitleMediaIdColumn} = @mediaId
             ORDER BY language, forced, hearing_impaired;
@@ -676,7 +798,8 @@ public sealed class SqliteMediaSubtitleRepository(
                 FilePath: reader.IsDBNull(4) ? null : reader.GetString(4),
                 StreamIndex: reader.IsDBNull(5) ? null : reader.GetInt32(5),
                 Codec: reader.IsDBNull(6) ? null : reader.GetString(6),
-                Provider: reader.IsDBNull(7) ? null : reader.GetString(7)));
+                Provider: reader.IsDBNull(7) ? null : reader.GetString(7),
+                SourceKey: reader.IsDBNull(8) ? null : reader.GetString(8)));
         }
 
         return rows;

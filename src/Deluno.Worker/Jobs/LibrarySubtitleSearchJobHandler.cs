@@ -131,6 +131,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
             foreach (var language in item.LanguagesToFetch)
             {
+                var blockedKeys = await mediaSubtitleRepository.ListBlockedKeysAsync(kind, item.MediaId, cancellationToken);
 
                 var outcome = await subtitleFetchService.FetchAsync(
                     request,
@@ -145,7 +146,19 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     cancellationToken,
                     library.SubtitleContentPolicy,
                     library.SubtitleNamePolicy,
-                    library.SubtitleOmitLanguageCode);
+                    library.SubtitleOmitLanguageCode,
+                    blockedKeys);
+
+                // A candidate that turned out not to be a real subtitle (#898):
+                // blocklisted so the next search — automatic or manual — never
+                // downloads the same bad file again, whether or not this fetch
+                // went on to find something else.
+                foreach (var candidate in outcome.RejectedCandidates ?? [])
+                {
+                    await mediaSubtitleRepository.BlockSubtitleAsync(
+                        kind, item.MediaId, candidate.Language, candidate.BlockKey,
+                        candidate.ProviderKey, candidate.ReleaseName, candidate.Reason, cancellationToken);
+                }
 
                 if (outcome.Reason.StartsWith("No subtitle providers", StringComparison.Ordinal))
                 {
@@ -200,7 +213,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         StreamIndex: null,
                         Codec: "srt",
                         Provider: outcome.ProviderKey,
-                        MatchRung: (int)outcome.Match),
+                        MatchRung: (int)outcome.Match,
+                        SourceKey: outcome.SourceKey),
                     cancellationToken);
 
                 if (wasAlreadyHeld)
