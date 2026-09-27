@@ -3260,6 +3260,52 @@ public sealed class SqliteJobStore(
         return Page<ActivityEventItem>.Of(events, nextPageToken);
     }
 
+    public async Task<ActivityStatsSnapshot> GetActivityStatsAsync(
+        DateTimeOffset sinceUtc,
+        int windowHours,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        // One pass over the window rather than five separate COUNT queries.
+        // The category buckets mirror the strings every caller already writes
+        // (grep in ActivityStatsRepositoryTests pins the list), so a search,
+        // grab, import or removal counts here the moment it is logged to
+        // Activity -- there is no second, parallel bookkeeping to keep in step.
+        command.CommandText =
+            """
+            SELECT
+                SUM(CASE WHEN category LIKE '%.search.%' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN category LIKE '%.release.grabbed' OR category LIKE '%.release.force-grabbed' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN category IN ('filesystem.import.completed', 'filesystem.import.season-pack.completed') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN category IN ('download.orphan.removed', 'download.queue.removed', 'download.sharing.reclaimed', 'download.sharing.stopped') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN category = 'retention.removed' THEN 1 ELSE 0 END)
+            FROM activity_events
+            WHERE created_utc >= @sinceUtc;
+            """;
+        AddParameter(command, "@sinceUtc", sinceUtc.ToString("O"));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var generatedUtc = timeProvider.GetUtcNow();
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return new ActivityStatsSnapshot(sinceUtc, generatedUtc, windowHours, 0, 0, 0, 0, 0);
+        }
+
+        return new ActivityStatsSnapshot(
+            sinceUtc,
+            generatedUtc,
+            windowHours,
+            SearchesRun: reader.IsDBNull(0) ? 0 : reader.GetInt32(0),
+            DownloadsStarted: reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+            ImportsCompleted: reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
+            CleanupRemovals: reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+            RetentionRemovals: reader.IsDBNull(4) ? 0 : reader.GetInt32(4));
+    }
+
     public async Task<ActivityEventItem> RecordActivityAsync(
         string category,
         string message,

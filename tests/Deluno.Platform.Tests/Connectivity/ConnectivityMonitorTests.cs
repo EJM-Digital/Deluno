@@ -239,6 +239,9 @@ public sealed class ConnectivityMonitorTests
 
         public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
             => Task.FromResult(0);
+
+        public Task<ActivityStatsSnapshot> GetActivityStatsAsync(DateTimeOffset sinceUtc, int windowHours, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider

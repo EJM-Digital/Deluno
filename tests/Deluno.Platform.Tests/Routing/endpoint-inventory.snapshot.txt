@@ -217,6 +217,7 @@ GET /api/series/{id}/workflow-status
 GET /api/settings/
 GET /api/setup/draft
 GET /api/setup/progress
+GET /api/stats
 GET /api/subtitle-languages
 GET /api/subtitle-providers/
 GET /api/system/bundled-components

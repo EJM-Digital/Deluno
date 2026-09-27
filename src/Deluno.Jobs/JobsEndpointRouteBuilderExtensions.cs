@@ -130,6 +130,18 @@ public static class JobsEndpointRouteBuilderExtensions
             return Results.Ok(new { removed, note });
         });
 
+        endpoints.MapGet("/api/stats", async (
+            string? window,
+            IActivityFeedRepository repository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var hours = NormalizeStatsWindowHours(window);
+            var sinceUtc = timeProvider.GetUtcNow().AddHours(-hours);
+            var stats = await repository.GetActivityStatsAsync(sinceUtc, hours, cancellationToken);
+            return Results.Ok(stats);
+        });
+
         endpoints.MapGet("/api/decisions", async (
             int? pageSize,
             string? pageToken,
@@ -207,4 +219,16 @@ public static class JobsEndpointRouteBuilderExtensions
 
         return endpoints;
     }
+
+    /// <summary>
+    /// "24h"/"7d"/"30d" (#827), in the words the query string uses rather than
+    /// a raw hour count a caller would have to work out themselves. Anything
+    /// else, including a missing window, is the safe default.
+    /// </summary>
+    private static int NormalizeStatsWindowHours(string? window) => window?.Trim().ToLowerInvariant() switch
+    {
+        "7d" => 24 * 7,
+        "30d" => 24 * 30,
+        _ => 24
+    };
 }

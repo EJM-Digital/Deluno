@@ -115,6 +115,22 @@ export interface ActivityEventItem {
   createdUtc: string;
 }
 
+/**
+ * The counts behind GET /api/stats (#827) -- the same facts the Activity feed
+ * already writes in plain words, aggregated over a time window for an
+ * external dashboard widget (Homepage, Homarr) or Deluno's own Dashboard.
+ */
+export interface ActivityStatsSnapshot {
+  sinceUtc: string;
+  generatedUtc: string;
+  windowHours: number;
+  searchesRun: number;
+  downloadsStarted: number;
+  importsCompleted: number;
+  cleanupRemovals: number;
+  retentionRemovals: number;
+}
+
 export interface DecisionAlternativeExplanation {
   name: string;
   status: string;
