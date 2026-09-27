@@ -5,6 +5,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Contracts;
@@ -108,16 +109,7 @@ public abstract class LibrarySearchJobHandler(
         var retryDelayed = ignoreRetryWindow
             ? 0
             : await movieCatalogRepository.CountRetryDelayedWantedAsync(payload.LibraryId, now, cancellationToken, searchStatus);
-        var candidates = (await movieCatalogRepository.ListEligibleWantedAsync(
-            payload.LibraryId,
-            CandidateLimit(payload),
-            now,
-            ignoreRetryWindow,
-            cancellationToken,
-            searchStatus,
-            scopeFilters,
-            requireMonitored: !PersonAsked(payload),
-            randomOrder: payload.RandomizeSearchOrder))
+        var candidates = (await FetchMovieCandidatesAsync(payload, searchStatus, now, ignoreRetryWindow, scopeFilters, cancellationToken))
             .Where(candidate => MatchesTarget(payload, candidate.MovieId))
             .ToArray();
         IReadOnlyList<BlockedRelease> refusals = PersonAsked(payload) ? [] : await ListRefusalsAsync(cancellationToken);
@@ -472,8 +464,141 @@ public abstract class LibrarySearchJobHandler(
     private static bool IgnoresRetryWindow(JobPayloads.LibrarySearchPayload payload)
         => IsTargeted(payload) || string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
 
-    private static int CandidateLimit(JobPayloads.LibrarySearchPayload payload)
-        => IsTargeted(payload) ? TargetedCandidateLimit : payload.MaxItems;
+    /// <summary>
+    /// The candidate-list cap for a specific kind ("missing" or "upgrade"). A
+    /// combined cycle (both due, unscoped — <paramref name="searchStatus"/> is
+    /// null) reads one list sized to hold both budgets at once, then
+    /// <see cref="CapEachKind{T}"/> enforces each cap against its own half of
+    /// that list — never letting one kind's backlog eat into the other's
+    /// budget (#830). A targeted search still reads everything before
+    /// filtering to its one target, same as before.
+    /// </summary>
+    private static int CandidateLimit(JobPayloads.LibrarySearchPayload payload, string? searchStatus)
+        => IsTargeted(payload)
+            ? TargetedCandidateLimit
+            : searchStatus switch
+            {
+                "upgrade" => payload.EffectiveMaxUpgradeItems,
+                "missing" => payload.EffectiveMaxMissingItems,
+                _ => payload.EffectiveMaxMissingItems + payload.EffectiveMaxUpgradeItems
+            };
+
+    /// <summary>
+    /// Truncates a combined missing+upgrade list so each kind is bounded by
+    /// its own cap rather than the pair sharing one number (#830). A
+    /// single-kind or targeted list is already exactly what it should be (the
+    /// query itself was limited to one kind, or to the target's search), so
+    /// this only changes anything for the combined, unscoped case.
+    /// </summary>
+    private static IReadOnlyList<T> CapEachKind<T>(
+        JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
+        IReadOnlyList<T> candidates,
+        Func<T, string> wantedStatus)
+    {
+        if (IsTargeted(payload) || searchStatus is not null)
+        {
+            return candidates;
+        }
+
+        var missingCap = payload.EffectiveMaxMissingItems;
+        var upgradeCap = payload.EffectiveMaxUpgradeItems;
+        var missingCount = 0;
+        var upgradeCount = 0;
+        var result = new List<T>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            if (string.Equals(wantedStatus(candidate), "upgrade", StringComparison.OrdinalIgnoreCase))
+            {
+                if (upgradeCount >= upgradeCap)
+                {
+                    continue;
+                }
+
+                upgradeCount++;
+            }
+            else
+            {
+                if (missingCount >= missingCap)
+                {
+                    continue;
+                }
+
+                missingCount++;
+            }
+
+            result.Add(candidate);
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyList<MovieWantedItem>> FetchMovieCandidatesAsync(
+        JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
+        DateTimeOffset now,
+        bool ignoreRetryWindow,
+        CatalogueFilters? scopeFilters,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await movieCatalogRepository.ListEligibleWantedAsync(
+            payload.LibraryId,
+            CandidateLimit(payload, searchStatus),
+            now,
+            ignoreRetryWindow,
+            cancellationToken,
+            searchStatus,
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload),
+            randomOrder: payload.RandomizeSearchOrder);
+        return CapEachKind(payload, searchStatus, candidates, candidate => candidate.WantedStatus);
+    }
+
+    /// <summary>Series candidates for one cycle — same missing/upgrade cap enforcement as <see cref="FetchMovieCandidatesAsync"/> (#830).</summary>
+    private async Task<IReadOnlyList<SeriesWantedItem>> FetchSeriesCandidatesAsync(
+        JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
+        DateTimeOffset now,
+        bool ignoreRetryWindow,
+        CatalogueFilters? scopeFilters,
+        CancellationToken cancellationToken)
+    {
+        var candidates = await seriesCatalogRepository.ListEligibleWantedAsync(
+            payload.LibraryId,
+            CandidateLimit(payload, searchStatus),
+            now,
+            ignoreRetryWindow,
+            cancellationToken,
+            searchStatus,
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload),
+            randomOrder: payload.RandomizeSearchOrder);
+        return CapEachKind(payload, searchStatus, candidates, candidate => candidate.WantedStatus);
+    }
+
+    /// <summary>
+    /// Eligible episodes for one cycle. Unlike the show-level lists above,
+    /// <see cref="EpisodeSearchEligibilityItem"/> does not carry its own
+    /// missing/upgrade status, so a combined cycle reads one list sized to
+    /// both budgets combined rather than each capped separately — the same
+    /// behaviour this had before #830 for this one path.
+    /// </summary>
+    private async Task<IReadOnlyList<EpisodeSearchEligibilityItem>> FetchEligibleEpisodesAsync(
+        JobPayloads.LibrarySearchPayload payload,
+        string? searchStatus,
+        DateTimeOffset now,
+        bool ignoreRetryWindow,
+        CatalogueFilters? scopeFilters,
+        CancellationToken cancellationToken)
+        => await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
+            payload.LibraryId,
+            CandidateLimit(payload, searchStatus),
+            now,
+            ignoreRetryWindow,
+            cancellationToken,
+            searchStatus,
+            scopeFilters,
+            requireMonitored: !PersonAsked(payload));
 
     /// <summary>
     /// Whether a candidate is the target. An episode is named by its own id
@@ -528,16 +653,7 @@ public abstract class LibrarySearchJobHandler(
         CancellationToken cancellationToken)
     {
         var seriesIgnoreRetryWindow = IgnoresRetryWindow(payload);
-        var seriesCandidates = (await seriesCatalogRepository.ListEligibleWantedAsync(
-            payload.LibraryId,
-            CandidateLimit(payload),
-            now,
-            seriesIgnoreRetryWindow,
-            cancellationToken,
-            searchStatus,
-            scopeFilters,
-            requireMonitored: !PersonAsked(payload),
-            randomOrder: payload.RandomizeSearchOrder))
+        var seriesCandidates = (await FetchSeriesCandidatesAsync(payload, searchStatus, now, seriesIgnoreRetryWindow, scopeFilters, cancellationToken))
             .Where(candidate => MatchesTarget(payload, candidate.SeriesId))
             .ToArray();
         var seriesStartedUtc = now;
@@ -575,15 +691,7 @@ public abstract class LibrarySearchJobHandler(
         // planner is about to hand to its own search is left alone by the
         // show-level candidate loop, so exactly one of the two ever dispatches
         // a candidate covering it (#655).
-        var eligibleEpisodes = (await seriesCatalogRepository.ListEligibleWantedEpisodesAsync(
-            payload.LibraryId,
-            CandidateLimit(payload),
-            now,
-            seriesIgnoreRetryWindow,
-            cancellationToken,
-            searchStatus,
-            scopeFilters,
-            requireMonitored: !PersonAsked(payload)))
+        var eligibleEpisodes = (await FetchEligibleEpisodesAsync(payload, searchStatus, now, seriesIgnoreRetryWindow, scopeFilters, cancellationToken))
             .Where(episode => MatchesTarget(payload, episode.SeriesId, episode.EpisodeId))
             .Select(episode => new EpisodeSearchPlanItem(
                 EpisodeId: episode.EpisodeId,

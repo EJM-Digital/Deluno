@@ -488,6 +488,9 @@ public sealed class IntakeSyncService(
                     SearchIntervalHours: targetLibrary.SearchIntervalHours,
                     RetryDelayHours: targetLibrary.RetryDelayHours,
                     MaxItemsPerRun: targetLibrary.MaxItemsPerRun,
+                    MaxMissingItemsPerRun: targetLibrary.MaxMissingItemsPerRun,
+                    MaxUpgradeItemsPerRun: targetLibrary.MaxUpgradeItemsPerRun,
+                    SearchWindowDays: targetLibrary.SearchWindowDays,
                     SearchWindowStartHour: targetLibrary.SearchWindowStartHour,
                     SearchWindowEndHour: targetLibrary.SearchWindowEndHour),
                 cancellationToken);

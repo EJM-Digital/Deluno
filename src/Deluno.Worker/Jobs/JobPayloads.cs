@@ -25,7 +25,18 @@ internal static class JobPayloads
         string? ScopeId = null,
         string? ScopeName = null,
         IReadOnlyList<CatalogueFilterCondition>? ScopeConditions = null,
-        bool RandomizeSearchOrder = false);
+        bool RandomizeSearchOrder = false,
+        /// <summary>How many missing-item candidates this cycle works through, independent of <see cref="MaxUpgradeItems"/> (#830). Falls back to half of <see cref="MaxItems"/> for a job queued before this existed.</summary>
+        int? MaxMissingItems = null,
+        /// <summary>How many upgrade candidates this cycle works through, independent of <see cref="MaxMissingItems"/> (#830). Falls back to half of <see cref="MaxItems"/> for a job queued before this existed.</summary>
+        int? MaxUpgradeItems = null)
+    {
+        /// <summary>Effective missing-item cap: the split value when present, otherwise <see cref="MaxItems"/> itself (an older, unsplit job).</summary>
+        public int EffectiveMaxMissingItems => MaxMissingItems ?? MaxItems;
+
+        /// <summary>Effective upgrade-item cap: the split value when present, otherwise <see cref="MaxItems"/> itself (an older, unsplit job).</summary>
+        public int EffectiveMaxUpgradeItems => MaxUpgradeItems ?? MaxItems;
+    }
 
     internal sealed record LibraryQualityPayload(
         string LibraryId,

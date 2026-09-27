@@ -19,4 +19,8 @@ public sealed record CreateLibraryRequest(
     int? RetryDelayHours,
     int? MaxItemsPerRun,
     string? CleanupMode = null,
-    bool RemoveEmptySourceFolders = false);
+    bool RemoveEmptySourceFolders = false,
+    /// <summary>How many missing-item candidates a search cycle works through, independent of the upgrade cap (#830). Falls back to <see cref="MaxItemsPerRun"/> when unset.</summary>
+    int? MaxMissingItemsPerRun = null,
+    /// <summary>How many cutoff-unmet (upgrade) candidates a search cycle works through, independent of the missing cap (#830). Falls back to <see cref="MaxItemsPerRun"/> when unset.</summary>
+    int? MaxUpgradeItemsPerRun = null);

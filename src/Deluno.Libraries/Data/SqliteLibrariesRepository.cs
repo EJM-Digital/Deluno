@@ -39,7 +39,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_content_policy_json, l.subtitle_timing_policy_json,
                 l.subtitle_name_policy_json,
                    l.subtitle_omit_language_code, l.randomize_search_order,
-                l.subtitle_language_type_preferences_json
+                l.subtitle_language_type_preferences_json,
+                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -410,7 +411,10 @@ public sealed class SqliteLibrariesRepository(
             CreatedUtc: now,
             UpdatedUtc: now,
             CleanupMode: NormalizeCleanupMode(request.CleanupMode),
-            RemoveEmptySourceFolders: request.RemoveEmptySourceFolders);
+            RemoveEmptySourceFolders: request.RemoveEmptySourceFolders,
+            MaxMissingItemsPerRun: NormalizePositiveValue(request.MaxMissingItemsPerRun ?? request.MaxItemsPerRun, 25),
+            MaxUpgradeItemsPerRun: NormalizePositiveValue(request.MaxUpgradeItemsPerRun ?? request.MaxItemsPerRun, 25),
+            SearchWindowDays: 127);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -435,6 +439,7 @@ public sealed class SqliteLibrariesRepository(
                 auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_hours,
                 retry_delay_hours, max_items_per_run,
+                max_missing_items_per_run, max_upgrade_items_per_run, search_window_days,
                 search_window_start_hour, search_window_end_hour,
                 created_utc, updated_utc
             )
@@ -445,6 +450,7 @@ public sealed class SqliteLibrariesRepository(
                 @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
                 @retryDelayHours, @maxItemsPerRun,
+                @maxMissingItemsPerRun, @maxUpgradeItemsPerRun, @searchWindowDays,
                 @searchWindowStartHour, @searchWindowEndHour,
                 @createdUtc, @updatedUtc
             );
@@ -470,6 +476,9 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
         AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
         AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
+        AddParameter(command, "@maxMissingItemsPerRun", item.MaxMissingItemsPerRun);
+        AddParameter(command, "@maxUpgradeItemsPerRun", item.MaxUpgradeItemsPerRun);
+        AddParameter(command, "@searchWindowDays", item.SearchWindowDays);
         AddParameter(command, "@searchWindowStartHour", item.SearchWindowStartHour);
         AddParameter(command, "@searchWindowEndHour", item.SearchWindowEndHour);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
@@ -510,6 +519,9 @@ public sealed class SqliteLibrariesRepository(
                     search_interval_hours = @searchIntervalHours,
                     retry_delay_hours = @retryDelayHours,
                     max_items_per_run = @maxItemsPerRun,
+                    max_missing_items_per_run = @maxMissingItemsPerRun,
+                    max_upgrade_items_per_run = @maxUpgradeItemsPerRun,
+                    search_window_days = @searchWindowDays,
                     search_window_start_hour = @searchWindowStartHour,
                     search_window_end_hour = @searchWindowEndHour,
                     randomize_search_order = @randomizeSearchOrder,
@@ -517,13 +529,21 @@ public sealed class SqliteLibrariesRepository(
                 WHERE id = @id;
                 """;
 
+            // #830: MaxItemsPerRun is kept as the value both new caps fall
+            // back to when a caller (an older client, or the split fields
+            // themselves left unset) does not send its own split value.
+            var normalizedLegacyMax = NormalizePositiveValue(request.MaxItemsPerRun, 25);
+
             AddParameter(command, "@id", id);
             AddParameter(command, "@autoSearchEnabled", request.AutoSearchEnabled ? 1 : 0);
             AddParameter(command, "@missingSearchEnabled", request.MissingSearchEnabled ? 1 : 0);
             AddParameter(command, "@upgradeSearchEnabled", request.UpgradeSearchEnabled ? 1 : 0);
             AddParameter(command, "@searchIntervalHours", NormalizePositiveValue(request.SearchIntervalHours, 6));
             AddParameter(command, "@retryDelayHours", NormalizePositiveValue(request.RetryDelayHours, 24));
-            AddParameter(command, "@maxItemsPerRun", NormalizePositiveValue(request.MaxItemsPerRun, 25));
+            AddParameter(command, "@maxItemsPerRun", normalizedLegacyMax);
+            AddParameter(command, "@maxMissingItemsPerRun", NormalizePositiveValue(request.MaxMissingItemsPerRun ?? request.MaxItemsPerRun, 25));
+            AddParameter(command, "@maxUpgradeItemsPerRun", NormalizePositiveValue(request.MaxUpgradeItemsPerRun ?? request.MaxItemsPerRun, 25));
+            AddParameter(command, "@searchWindowDays", NormalizeSearchWindowDays(request.SearchWindowDays));
             AddParameter(command, "@searchWindowStartHour", NormalizeSearchWindowHour(request.SearchWindowStartHour));
             AddParameter(command, "@searchWindowEndHour", NormalizeSearchWindowHour(request.SearchWindowEndHour));
             AddParameter(command, "@randomizeSearchOrder", request.RandomizeSearchOrder ? 1 : 0);
@@ -1057,7 +1077,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_content_policy_json, l.subtitle_timing_policy_json,
                 l.subtitle_name_policy_json,
                    l.subtitle_omit_language_code, l.randomize_search_order,
-                l.subtitle_language_type_preferences_json
+                l.subtitle_language_type_preferences_json,
+                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1282,6 +1303,14 @@ public sealed class SqliteLibrariesRepository(
     private static int? NormalizeSearchWindowHour(int? value)
         => value is null ? null : Math.Clamp(value.Value, 0, 23);
 
+    /// <summary>Every day (7-bit mask), used for a missing, zero or out-of-range value so an unset day axis never silently pauses a library (#832).</summary>
+    private const int AllSearchWindowDaysMask = 0b111_1111;
+
+    private static int NormalizeSearchWindowDays(int? value)
+        => value is null || value.Value <= 0 || value.Value > AllSearchWindowDaysMask
+            ? AllSearchWindowDaysMask
+            : value.Value;
+
 
     private static int NormalizePriorityValue(int value)
     {
@@ -1375,7 +1404,10 @@ public sealed class SqliteLibrariesRepository(
             SubtitleOmitLanguageCode: !reader.IsDBNull(37) && reader.GetInt32(37) == 1,
             RandomizeSearchOrder: !reader.IsDBNull(38) && reader.GetInt64(38) == 1,
             SubtitleLanguageTypePreferences: SubtitleLanguageTypePreferenceCodec.Deserialize(
-                reader.IsDBNull(39) ? null : reader.GetString(39)));
+                reader.IsDBNull(39) ? null : reader.GetString(39)),
+            MaxMissingItemsPerRun: reader.IsDBNull(40) ? 25 : reader.GetInt32(40),
+            MaxUpgradeItemsPerRun: reader.IsDBNull(41) ? 25 : reader.GetInt32(41),
+            SearchWindowDays: reader.IsDBNull(42) ? 127 : reader.GetInt32(42));
     }
 
 

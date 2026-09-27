@@ -27,4 +27,10 @@ public sealed record LibraryAutomationPlanItem(
     /// </summary>
     IReadOnlyList<LibraryAutomationScope>? SearchScopes = null,
     /// <summary>Shuffles automatic wanted-title search order instead of oldest-added-first (#831).</summary>
-    bool RandomizeSearchOrder = false);
+    bool RandomizeSearchOrder = false,
+    /// <summary>How many missing-item candidates a search cycle works through, independent of <see cref="MaxUpgradeItemsPerRun"/> (#830).</summary>
+    int MaxMissingItemsPerRun = 25,
+    /// <summary>How many cutoff-unmet (upgrade) candidates a search cycle works through, independent of <see cref="MaxMissingItemsPerRun"/> (#830).</summary>
+    int MaxUpgradeItemsPerRun = 25,
+    /// <summary>Which days of the week the search window applies on, as a 7-bit mask (Sunday = bit 0 ... Saturday = bit 6). 127 is every day (#832).</summary>
+    int SearchWindowDays = 127);

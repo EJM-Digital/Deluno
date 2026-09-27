@@ -25,8 +25,14 @@ export interface LibraryItem {
   searchIntervalHours: number;
   retryDelayHours: number;
   maxItemsPerRun: number;
+  /** How many missing-item candidates a search cycle works through, independent of maxUpgradeItemsPerRun (#830). */
+  maxMissingItemsPerRun?: number;
+  /** How many cutoff-unmet (upgrade) candidates a search cycle works through, independent of maxMissingItemsPerRun (#830). */
+  maxUpgradeItemsPerRun?: number;
   searchWindowStartHour: number | null;
   searchWindowEndHour: number | null;
+  /** Which days of the week the search window applies on, as a 7-bit mask (Sunday = bit 0 ... Saturday = bit 6). 127 is every day (#832). */
+  searchWindowDays?: number;
   /** Shuffles automatic wanted-title search order instead of oldest-added first, so a recent add is never stuck behind a long backlog. */
   randomizeSearchOrder?: boolean;
   automationStatus: string;

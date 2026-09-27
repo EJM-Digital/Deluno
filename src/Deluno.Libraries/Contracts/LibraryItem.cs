@@ -24,6 +24,7 @@ public sealed record LibraryItem(
     bool UpgradeSearchEnabled,
     int SearchIntervalHours,
     int RetryDelayHours,
+    /// <summary>Deprecated: see <see cref="UpdateLibraryAutomationRequest.MaxItemsPerRun"/>. Kept in step with the higher of the two split caps below for any reader still using it.</summary>
     int MaxItemsPerRun,
     int? SearchWindowStartHour,
     int? SearchWindowEndHour,
@@ -101,4 +102,15 @@ public sealed record LibraryItem(
     /// hearing-impaired is coverage with a plain track winning a tie, and
     /// forced is never fetched.
     /// </summary>
-    IReadOnlyList<SubtitleLanguageTypePreference>? SubtitleLanguageTypePreferences = null);
+    IReadOnlyList<SubtitleLanguageTypePreference>? SubtitleLanguageTypePreferences = null,
+    /// <summary>How many missing-item candidates a search cycle works through per library, independent of <see cref="MaxUpgradeItemsPerRun"/> (#830).</summary>
+    int MaxMissingItemsPerRun = 25,
+    /// <summary>How many cutoff-unmet (upgrade) candidates a search cycle works through per library, independent of <see cref="MaxMissingItemsPerRun"/> (#830).</summary>
+    int MaxUpgradeItemsPerRun = 25,
+    /// <summary>
+    /// Which days of the week the search window applies on, as a 7-bit mask —
+    /// one bit per <see cref="DayOfWeek"/> value (Sunday = bit 0 ... Saturday =
+    /// bit 6). 127 (every bit set) is every day, which is what every library
+    /// had before this existed and is the default (#832).
+    /// </summary>
+    int SearchWindowDays = 127);
