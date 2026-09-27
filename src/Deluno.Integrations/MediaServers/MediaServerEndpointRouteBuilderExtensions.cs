@@ -1,5 +1,6 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Notifications;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -89,6 +90,8 @@ public static class MediaServerEndpointRouteBuilderExtensions
             [FromBody] SaveMediaServerRequest? request,
             [FromServices] IMediaServerRepository repository,
             [FromServices] IMediaServerClientRegistry registry,
+            [FromServices] IOutboundNotificationService notificationService,
+            [FromServices] INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var stored = await repository.GetAsync(id, cancellationToken);
@@ -104,8 +107,17 @@ public static class MediaServerEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["kind"] = ["Choose Plex, Jellyfin or Emby."] });
             }
 
+            var previousHealthStatus = stored.HealthStatus;
             var result = await client.TestAsync(candidate, cancellationToken);
             await repository.RecordHealthAsync(id, result, cancellationToken);
+            await DispatchHealthChangeAsync(
+                notificationService,
+                notificationPreferences,
+                $"Media server {stored.Name}",
+                previousHealthStatus,
+                result.Status,
+                result.Message,
+                cancellationToken);
             return Results.Ok(result);
         });
 
@@ -197,6 +209,62 @@ public static class MediaServerEndpointRouteBuilderExtensions
             stored?.ServerId,
             stored?.CreatedUtc ?? now,
             now);
+    }
+
+    /// <summary>
+    /// Media servers were tested and their health recorded, but nothing ever
+    /// told the outbound path about it — the "health.degraded"/"health.restored"
+    /// pair (#859) existed only for indexers and download clients. This adds
+    /// the same pair here, gated by the same single Provider Health Changed
+    /// toggle every provider type shares.
+    /// </summary>
+    private static async Task DispatchHealthChangeAsync(
+        IOutboundNotificationService notificationService,
+        INotificationService notificationPreferences,
+        string providerName,
+        string previousHealthStatus,
+        string newHealthStatus,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var isHealthy = string.Equals(newHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        if (!isHealthy)
+        {
+            // Matches the indexer/download-client pattern: every failing Test
+            // reports "health.degraded", not only a genuine transition.
+            var preferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (!preferences.ProviderHealthChangedEnabled)
+            {
+                return;
+            }
+
+            await notificationService.DispatchAsync(
+                "health.degraded",
+                $"{providerName} degraded",
+                message ?? $"{providerName} is unhealthy.",
+                null,
+                cancellationToken);
+            return;
+        }
+
+        var wasHealthy = string.Equals(previousHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        if (wasHealthy)
+        {
+            return;
+        }
+
+        var restoredPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+        if (!restoredPreferences.ProviderHealthChangedEnabled)
+        {
+            return;
+        }
+
+        await notificationService.DispatchAsync(
+            "health.restored",
+            $"{providerName} is healthy again",
+            message ?? $"{providerName} recovered.",
+            null,
+            cancellationToken);
     }
 
     private static Dictionary<string, string[]> Validate(SaveMediaServerRequest request, MediaServerConnection? stored)

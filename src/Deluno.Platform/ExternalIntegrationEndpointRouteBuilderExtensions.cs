@@ -711,12 +711,15 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IProcessorRepository repository,
             IProcessorConnectionService processorConnections,
             IActivityFeedRepository activityFeed,
+            IOutboundNotificationService notificationService,
+            INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
             var connection = await repository.GetProcessorConnectionAsync(id, cancellationToken);
             if (connection is null) return Results.NotFound();
+            var previousHealthStatus = connection.HealthStatus;
             var result = await processorConnections.TestAsync(connection, cancellationToken);
             await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
             await activityFeed.RecordActivityAsync(
@@ -726,6 +729,14 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 null,
                 "processor-connection",
                 connection.Id,
+                cancellationToken);
+            await DispatchProcessorHealthChangeAsync(
+                notificationService,
+                notificationPreferences,
+                $"Processor {connection.Name}",
+                previousHealthStatus,
+                result.Status,
+                result.Message,
                 cancellationToken);
             return Results.Ok(result);
         });
@@ -1180,6 +1191,63 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Processor connections were tested and their health recorded, but
+    /// nothing ever told the outbound path about it — the
+    /// "health.degraded"/"health.restored" pair (#859) existed only for
+    /// indexers and download clients. This adds the same pair here, gated by
+    /// the same single Provider Health Changed toggle every provider type
+    /// shares.
+    /// </summary>
+    private static async Task DispatchProcessorHealthChangeAsync(
+        IOutboundNotificationService notificationService,
+        INotificationService notificationPreferences,
+        string providerName,
+        string previousHealthStatus,
+        string newHealthStatus,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        var isHealthy = string.Equals(newHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        if (!isHealthy)
+        {
+            // Matches the indexer/download-client pattern: every failing Test
+            // reports "health.degraded", not only a genuine transition.
+            var preferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (!preferences.ProviderHealthChangedEnabled)
+            {
+                return;
+            }
+
+            await notificationService.DispatchAsync(
+                "health.degraded",
+                $"{providerName} degraded",
+                message ?? $"{providerName} is unhealthy.",
+                null,
+                cancellationToken);
+            return;
+        }
+
+        var wasHealthy = string.Equals(previousHealthStatus, "healthy", StringComparison.OrdinalIgnoreCase);
+        if (wasHealthy)
+        {
+            return;
+        }
+
+        var restoredPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+        if (!restoredPreferences.ProviderHealthChangedEnabled)
+        {
+            return;
+        }
+
+        await notificationService.DispatchAsync(
+            "health.restored",
+            $"{providerName} is healthy again",
+            message ?? $"{providerName} recovered.",
+            null,
+            cancellationToken);
     }
 
     private static Dictionary<string, string[]> ValidateProcessorConnection(

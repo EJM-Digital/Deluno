@@ -4,6 +4,8 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Notifications;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -16,9 +18,12 @@ namespace Deluno.Persistence.Tests.Api;
 /// <summary>
 /// #859: a manual Test only ever announced a provider going bad
 /// ("health.degraded"); nothing was ever said when it recovered. Covers an
-/// indexer and a download client — the non-indexer provider type the
-/// acceptance line calls for — each going from unhealthy to healthy across
-/// two Test calls against the same fake server.
+/// indexer, a download client, and a processor connection — including a
+/// non-indexer provider type the acceptance line calls for — each going
+/// from unhealthy to healthy across two Test calls against the same fake
+/// server. Media servers share the same helper (see
+/// MediaServerEndpointRouteBuilderExtensions.DispatchHealthChangeAsync) and
+/// are exercised by the media-server integration tests.
 /// </summary>
 public sealed class HealthRestoredNotificationTests
 {
@@ -83,6 +88,32 @@ public sealed class HealthRestoredNotificationTests
         var recovered = await app.Client.PostAsync($"/api/download-clients/{client.Id}/test", null);
         Assert.True(recovered.IsSuccessStatusCode, await recovered.Content.ReadAsStringAsync());
         Assert.Equal("healthy", (await recovered.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("healthStatus").GetString());
+        Assert.Equal(1, outbound.DispatchedCategories.Count(category => category == "health.restored"));
+    }
+
+    [Fact]
+    public async Task A_processor_connection_recovering_from_unhealthy_to_healthy_dispatches_health_restored_once()
+    {
+        var outbound = new RecordingOutboundNotificationService();
+        await using var server = await ToggleableHeadProbeServerAsync();
+        await using var app = await ApplicationTestHost.StartAsync(
+            replaceServices: services => services.AddSingleton<IOutboundNotificationService>(outbound));
+
+        var connection = await app.Services.GetRequiredService<IProcessorRepository>().CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Flaky processor", "generic", server.BaseUrl, null, null, true),
+            CancellationToken.None);
+
+        server.Healthy = false;
+        var degraded = await app.Client.PostAsync($"/api/integrations/processors/connections/{connection.Id}/test", null);
+        Assert.True(degraded.IsSuccessStatusCode, await degraded.Content.ReadAsStringAsync());
+        Assert.NotEqual("healthy", (await degraded.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+        Assert.Contains("health.degraded", outbound.DispatchedCategories);
+        Assert.DoesNotContain("health.restored", outbound.DispatchedCategories);
+
+        server.Healthy = true;
+        var recovered = await app.Client.PostAsync($"/api/integrations/processors/connections/{connection.Id}/test", null);
+        Assert.True(recovered.IsSuccessStatusCode, await recovered.Content.ReadAsStringAsync());
+        Assert.Equal("healthy", (await recovered.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
         Assert.Equal(1, outbound.DispatchedCategories.Count(category => category == "health.restored"));
     }
 
@@ -153,6 +184,24 @@ public sealed class HealthRestoredNotificationTests
 
             context.Response.ContentType = "text/plain";
             await context.Response.WriteAsync("4.6.0");
+        });
+        await app.StartAsync();
+        var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
+        server = new ToggleableServer(app, address);
+        return server;
+    }
+
+    /// <summary>Answers a processor connection's HEAD probe with 200 when healthy, 500 otherwise.</summary>
+    private static async Task<ToggleableServer> ToggleableHeadProbeServerAsync()
+    {
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        var app = builder.Build();
+        ToggleableServer? server = null;
+        app.Run(context =>
+        {
+            context.Response.StatusCode = server!.Healthy ? StatusCodes.Status200OK : StatusCodes.Status500InternalServerError;
+            return Task.CompletedTask;
         });
         await app.StartAsync();
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
