@@ -32,6 +32,35 @@ public static class GuidePackageCatalog
     /// </summary>
     public const int GenuineFormatsSchemaVersion = 3;
 
+    /// <summary>
+    /// TRaSH format-group names that identify an upstream item as belonging to
+    /// a specific region, mapped to the picker category it should be reachable
+    /// under instead of the catch-all "upstream-advanced" bucket (#779). Anime
+    /// regional groups are excluded: the anime category already exists and
+    /// promoting anime tiers by default is #781's job, not a regional split.
+    ///
+    /// Declared before <see cref="Current"/> so its own static initializer has
+    /// already run by the time Current's Load() call reaches
+    /// <see cref="MergeSourceInventory"/> -- C# runs static field initializers
+    /// in textual declaration order, and Current used to sit above this field,
+    /// so every regional lookup silently saw a null dictionary.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> RegionalSourceGroupCategories =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["[Release Groups] French"] = "french",
+            ["[Optional] French Audio Version"] = "french",
+            ["[Unwanted] Unwanted Formats French"] = "french",
+            ["[Streaming Services] French"] = "french",
+            ["[Release Groups] German"] = "german",
+            ["[Optional] German Miscellaneous"] = "german",
+            ["[Unwanted] Unwanted Formats German"] = "german",
+            ["[Streaming Services] Dutch"] = "dutch",
+            ["[Streaming Services] Asian"] = "asian",
+            ["[Release Groups] Asian"] = "asian",
+            ["[Streaming Services] UK"] = "uk"
+        };
+
     public static GuidePackage Current { get; } = Load();
 
     public static string ComputeIntegritySha256(GuidePackage package)
@@ -200,29 +229,6 @@ public static class GuidePackageCatalog
     /// intact; a newly discovered upstream format is retained as Advanced until
     /// Deluno has reviewed its semantics.
     /// </summary>
-    /// <summary>
-    /// TRaSH format-group names that identify an upstream item as belonging to
-    /// a specific region, mapped to the picker category it should be reachable
-    /// under instead of the catch-all "upstream-advanced" bucket (#779). Anime
-    /// regional groups are excluded: the anime category already exists and
-    /// promoting anime tiers by default is #781's job, not a regional split.
-    /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> RegionalSourceGroupCategories =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["[Release Groups] French"] = "french",
-            ["[Optional] French Audio Version"] = "french",
-            ["[Unwanted] Unwanted Formats French"] = "french",
-            ["[Streaming Services] French"] = "french",
-            ["[Release Groups] German"] = "german",
-            ["[Optional] German Miscellaneous"] = "german",
-            ["[Unwanted] Unwanted Formats German"] = "german",
-            ["[Streaming Services] Dutch"] = "dutch",
-            ["[Streaming Services] Asian"] = "asian",
-            ["[Release Groups] Asian"] = "asian",
-            ["[Streaming Services] UK"] = "uk"
-        };
-
     public static GuidePackage MergeSourceInventory(
         GuidePackage curated,
         GuideSourceInventory sourceInventory)
