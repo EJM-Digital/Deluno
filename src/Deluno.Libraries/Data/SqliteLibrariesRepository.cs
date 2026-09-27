@@ -388,9 +388,12 @@ public sealed class SqliteLibrariesRepository(
             ProcessorName: NormalizeName(request.ProcessorName),
             ProcessorOutputPath: NormalizePath(request.ProcessorOutputPath),
             ProcessorTimeoutMinutes: ProcessorStallLimits.Normalize(request.ProcessorTimeoutMinutes),
-            // A new library imports the untouched download when its processor
-            // stalls, rather than leaving the title missing (#511).
-            ProcessorFailureMode: NormalizeProcessorFailureMode(request.ProcessorFailureMode, "import-original"),
+            // A new library holds the file and asks, rather than importing the
+            // untouched download, when its processor stalls (#914 changed the
+            // #511 default). A library that already chose "import-original"
+            // keeps that choice; only a library created from here on gets the
+            // new default.
+            ProcessorFailureMode: NormalizeProcessorFailureMode(request.ProcessorFailureMode, "block"),
             AutoSearchEnabled: request.AutoSearchEnabled,
             MissingSearchEnabled: request.MissingSearchEnabled,
             UpgradeSearchEnabled: request.UpgradeSearchEnabled,

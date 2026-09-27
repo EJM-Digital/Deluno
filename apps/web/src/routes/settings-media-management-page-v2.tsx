@@ -975,7 +975,10 @@ function ProcessingWorkflowPage() {
 /* --------------------------------------------------------------- utils */
 
 function emptyWorkflow(): WorkflowForm {
-  return { importWorkflow: "standard", processorName: "", processorOutputPath: "", processorTimeoutMinutes: String(DEFAULT_STALL_MINUTES), processorFailureMode: "import-original", cleanupMode: "keep-source", removeEmptySourceFolders: false };
+  // #914: a new library holds the file and asks by default. Nothing but an
+  // existing library that already chose "Import the original file" keeps
+  // that choice.
+  return { importWorkflow: "standard", processorName: "", processorOutputPath: "", processorTimeoutMinutes: String(DEFAULT_STALL_MINUTES), processorFailureMode: "block", cleanupMode: "keep-source", removeEmptySourceFolders: false };
 }
 function workflowFrom(library: LibraryItem): WorkflowForm {
   return {

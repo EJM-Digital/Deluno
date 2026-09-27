@@ -21,7 +21,7 @@ internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishActivityEventAddedAsync(
+    public virtual Task PublishActivityEventAddedAsync(
         string id,
         string message,
         string category,
