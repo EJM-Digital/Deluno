@@ -50,7 +50,6 @@ public sealed class ADeletedFileUnmonitorsItselfTests
             currentQuality: "Bluray-1080p",
             targetQuality: "Bluray-1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: filePath,
             fileSizeBytes: 4,
             cancellationToken: CancellationToken.None);
@@ -96,7 +95,6 @@ public sealed class ADeletedFileUnmonitorsItselfTests
             currentQuality: "Bluray-1080p",
             targetQuality: "Bluray-1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: null,
             fileSizeBytes: null,
             episodes:
@@ -145,7 +143,6 @@ public sealed class ADeletedFileUnmonitorsItselfTests
             currentQuality: "Bluray-1080p",
             targetQuality: "Bluray-1080p",
             qualityCutoffMet: true,
-            unmonitorWhenCutoffMet: false,
             filePath: filePath,
             fileSizeBytes: 4,
             cancellationToken: CancellationToken.None);
