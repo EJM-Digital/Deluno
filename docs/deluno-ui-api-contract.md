@@ -44,6 +44,7 @@ Implemented REST endpoints:
 - `GET /api/health/ready`: readiness, anonymous; 200 with the check results when every readiness check passes, 503 with the same body when one fails
 - `GET /api/system/logs`
 - `GET /api/system/jobs`
+- `GET /api/system/health` and `GET /api/system/health/summary`: the one health-check list every surface reads from (System → Health's full list, the Dashboard tile, and the bell all call the same endpoint and see the same rows). `POST /api/system/health/{id}/snooze` (`{ hours? }`, default 24, capped at 30 days) and `POST /api/system/health/{id}/unsnooze` manage a check's snooze; a snooze always names its own end, never forever.
 - `GET /api/system/lan-access`: whether other devices on the network can reach Deluno (`open`, `blocked`, or `notChecked` on a host with no firewall for Deluno to manage)
 - `GET /api/libraries/{libraryId}/folder-chain`: the library's folders checked end to end. For each routed download client it shows the category Deluno sends, whether the client has it, the folder the client really saves it to (read from the client, through path mappings), and whether that is the library's downloads folder. Then come the downloads folder, the processor's ready folder when a processor is used, and the library root. Each link is `ok`, `problem` or `unknown`, with a message that says what to change.
 - `POST /api/trackers/cloudflare-helper/test` with `{ url }`: whether a FlareSolverr-compatible Cloudflare helper answers at that address. The address itself is the `cloudflareHelperUrl` platform setting, and the tracker engine uses it only for a tracker that answers with a Cloudflare check.
@@ -493,6 +494,9 @@ Implemented download-client endpoints:
 - `GET /api/download-clients/telemetry`
 - `GET /api/download-clients/telemetry/last-known`
 - `POST /api/download-clients/{clientId}/queue/actions`
+- `POST /api/download-clients/{clientId}/queue/{queueItemId}/remove` — the Queue's "why" dialog (cleanup sheet J1/J2, #924): body is `{ reason }`, one of `failed` ("It's bad": remove from the client, delete its files, blocklist the release everywhere, search again), `unwanted` ("I don't want it": remove from the client and delete its files, no blocklist), or `forget` ("Just stop tracking it": Deluno forgets the download; the client keeps it and its files untouched). This replaces the old single confirm and the "Allow removing client queue entries" setting that used to gate removal — every reason now acts without a separate on/off gate.
+- `GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview` — the ownership/threshold opinion behind a removal: whether Deluno can prove it owns this client item and its payload before removing them
+- `POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore` — snoozes one download-health finding for that queue item
 - `POST /api/download-clients/{clientId}/grab`
 - `POST /api/download-clients/{clientId}/categories/check` — verifies a library-specific category against SABnzbd or qBittorrent and reports `ready`, `missing`, `unreachable`, `configuration`, or `unsupported` without claiming the route is ready when it cannot be verified
 
@@ -514,6 +518,21 @@ Current gaps:
 
 - reorder/prioritization contracts are still indirect
 - deeper per-client history fidelity and outcome tracking remain incomplete
+
+## Blocked Releases
+
+Implemented endpoints:
+
+- `GET /api/blocked-releases`
+- `POST /api/blocked-releases` — block a release from wherever it is named (a search result never grabbed, a title's search history, an Activity entry, not only a proposal Deluno itself raised): `{ releaseName, indexerName?, torrentHashOrItemId?, mediaType?, entityId?, title? }`
+- `DELETE /api/blocked-releases/{id}` — lifts the block; starts no search (clearing a block never fires a search automatically, only the title page's own "search now" does)
+- `POST /api/blocked-releases/{id}/refuse` — answers a proposed ("ask me") entry by refusing it
+- `POST /api/blocked-releases/{id}/cleanup` — the manual half of the scheduled clear-out: deletes the payload, removes the client queue entry, and clears the client's memory of the release, without overruling an active seeding/sharing-rule hold
+
+Current behavior:
+
+- a block always matches by the release's identity across every indexer, not only the one it came from: by torrent hash or NZB item id when one is known, and by normalized release name otherwise — never scoped to a single indexer
+- blocking, listing, and lifting are offered from every place a release is named (search results, the Queue, a title's own history, Activity, and the Blocklist screen itself), all calling these same routes
 
 ## Activity, Queue, And External Operations
 
@@ -539,6 +558,7 @@ Implemented core operational endpoints:
 Current UI contract expectations:
 
 - activity and queue are already fed by durable job/activity stores, not just transient UI state
+- the Queue shows and acts only on Deluno's own downloads: telemetry, health findings, and queue actions are scoped per download client to Deluno's own dispatches (cleanup sheet row M2, #933), not every item a shared client happens to be running
 - every operational list returns `{ items, nextPageToken, hasMore }`; page tokens are opaque seek cursors and `pageSize` is capped at 500
 - intake diagnostics return `{ source, diagnostics: { items, nextPageToken, hasMore } }`; catalogue pages add `totalCount` and `facets` on their first page
 - refine-before-import and external processor coordination are implemented platform concerns

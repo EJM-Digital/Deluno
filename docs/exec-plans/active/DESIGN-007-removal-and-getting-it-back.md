@@ -10,6 +10,13 @@
 > recycle bin retention that is already enforced on the heartbeat. **Check
 > before building** — in this codebase the answer is usually already there under
 > a name you did not search for.
+>
+> **Later authority.** The 26–27 Sep 2026 cleanup-rules decision sheet and its
+> follow-on issues (#874, #585, #924, #925, #933…) are the latest decisions and
+> override anything below that they touch — the block-release key and the
+> Queue's removal dialog have both moved on from what this page first
+> described. Where the two disagree, the sheet wins; this page's history stays
+> as a record of how we got here.
 
 James, on the scenario that started this:
 
@@ -541,7 +548,7 @@ they appear here.
 
 | Word | Means | Does **not** mean |
 |---|---|---|
-| **Block release** | A durable, visible record that this exact release — name, indexer, infohash — is not to be used for this title again. Listed on a screen, clearable by hand, may carry an expiry. | Blocking the title |
+| **Block release** | A durable, visible record that this exact release is not to be used for this title again, matched by torrent hash or NZB item id when known and by release name otherwise — across **every** indexer, not only the one it came from (cleanup sheet, #874/#585: superseding the name-plus-indexer key this section first described). Listed on a screen, clearable by hand, may carry an expiry. | Blocking the title |
 | **Skip** | What a search *does* when a candidate matches a blocked release. Always reported: "skipped 2 blocked releases". | Silently dropping it |
 | **Unblock** | Removing a block record | Re-downloading |
 | **Forget** | Clearing the *download client's* memory so it will accept the release again — infohash on a torrent client, history on a usenet one | Deleting files |
@@ -715,7 +722,17 @@ creates and must therefore answer for.
 | Unblock a release | untouched | leave | leave | leave | none | untouched | **contentious** |
 | Restore from the recycle bin | **restored** | leave | leave | leave | none | **covered** | none |
 | Archive a dispatch | untouched | leave | leave | leave | none | untouched | none |
-| Queue action (delete-with-data) | untouched | remove with data | forget | leave | none | untouched | none |
+| Queue remove — "It's bad" (#924) | **deleted** | remove with data | leave | leave | none | missing | **yes**, and blocklisted everywhere |
+| Queue remove — "I don't want it" (#924) | **deleted** | remove with data | leave | leave | none | missing (should be **unmonitored** per the cleanup sheet; not yet built — see the code-vs-decision list) | none |
+| Queue remove — "Just stop tracking it" (#924) | untouched | leave | leave | leave | none | untouched | none |
+
+The three rows above replaced the single "queue action (delete-with-data)" row
+this table used to carry, once cleanup sheet #924 turned the queue's bare
+confirm into a three-way "why" dialog and retired the "Allow removing client
+queue entries" setting that used to gate it. The raw
+`POST /api/download-clients/{clientId}/queue/actions` endpoint this section's
+"unguarded removal API" finding described still exists unchanged alongside the
+new reasoned route.
 
 Two need stating.
 
