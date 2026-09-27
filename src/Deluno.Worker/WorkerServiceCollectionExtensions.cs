@@ -67,6 +67,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, LibraryFolderChainHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHealthCheck>();
         services.AddScoped<IHealthCheck, ExternalServiceHealthCheck>();
+        services.AddScoped<IHealthCheck, MetadataProviderHealthCheck>();
         services.AddScoped<IHealthCheck, SystemDiskSpaceHealthCheck>();
         services.AddScoped<IHealthCheck, DispatchRecoveryPollerHealthCheck>();
         services.AddScoped<HealthCheckRunner>();
