@@ -51,7 +51,12 @@ export function Drawer({ open, onOpenChange, title, description, children, foote
       <div className="min-h-0 flex-1 overflow-y-auto px-6">{children}</div>
 
       {footer ? (
-        <footer className="flex min-h-[var(--drawer-footer-height)] shrink-0 items-center justify-between gap-[var(--grid-gap)] border-t border-hairline bg-surface-2/40 px-6">
+        <footer
+          className={cn(
+            "flex min-h-[var(--drawer-footer-height)] shrink-0 flex-col items-stretch gap-2 border-t border-hairline bg-surface-2/40 px-6 py-3",
+            "sm:h-[var(--drawer-footer-height)] sm:flex-row sm:items-center sm:justify-between sm:gap-[var(--grid-gap)] sm:py-0"
+          )}
+        >
           {footer}
         </footer>
       ) : null}
@@ -241,15 +246,23 @@ export function DrawerFooter({
 
   return (
     <>
-      <span role="status" aria-live="polite" className={cn("inline-flex min-w-0 items-center gap-1.5 text-[length:var(--type-caption)]", status?.tone)}>
+      <span
+        role="status"
+        aria-live="polite"
+        className={cn("flex min-w-0 items-center gap-1.5 text-[length:var(--type-caption)] sm:inline-flex", status?.tone)}
+      >
         {status && StatusIcon ? (
           <>
             <StatusIcon className={cn("h-3 w-3 shrink-0", status.spin && "animate-spin")} strokeWidth={2.5} />
-            <span className="truncate">{status.label}</span>
+            {/* Wraps here rather than truncating: the extra footer action on
+                narrow viewports left no room to shrink this into and still
+                read, so the whole status stacks above the buttons instead
+                of disappearing to nothing (#925). */}
+            <span className="min-w-0 sm:truncate">{status.label}</span>
           </>
         ) : null}
       </span>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex flex-wrap shrink-0 items-center justify-end gap-2">
         {readOnly ? (
           <>
             {extraAction}
