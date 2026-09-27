@@ -1,4 +1,5 @@
 using Deluno.Contracts;
+using Deluno.Contracts.Connectivity;
 using Deluno.Infrastructure.Observability;
 using Deluno.Infrastructure.Storage;
 using Microsoft.Extensions.Logging;
@@ -85,7 +86,8 @@ public enum IntegrationResilienceOutcome
 public sealed class IntegrationResiliencePolicy(
     TimeProvider timeProvider,
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    ILogger<IntegrationResiliencePolicy> logger)
+    ILogger<IntegrationResiliencePolicy> logger,
+    IConnectivityMonitor? connectivityMonitor = null)
     : IIntegrationResiliencePolicy
 {
     private static readonly TimeSpan DefaultInitialDelay = TimeSpan.FromMilliseconds(250);
@@ -420,7 +422,19 @@ public sealed class IntegrationResiliencePolicy(
                 // the ladder one more rung; a call that succeeds calls
                 // Reset(), which drops the whole circuit entry (including
                 // this level) back to zero.
-                escalationLevel++;
+                //
+                // Unless the internet itself is down (#901): a service that
+                // cannot be reached only because nothing can is not a service
+                // getting worse, and must not be judged as if it were. The
+                // circuit still opens - retries still back off - it just does
+                // not climb the ladder while the outage lasts, so a service
+                // that was healthy before the outage is retried at the same
+                // rung once the outage ends rather than one it never earned.
+                if (connectivityMonitor?.Current.IsOutage != true)
+                {
+                    escalationLevel++;
+                }
+
                 var breakDuration = request.BreakDuration ?? GetEscalatingBreakDuration(escalationLevel);
                 openedUntil = openedUtc.Add(breakDuration);
                 failureCount = 0;

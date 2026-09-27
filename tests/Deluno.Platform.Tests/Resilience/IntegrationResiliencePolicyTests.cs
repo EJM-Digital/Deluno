@@ -1,6 +1,7 @@
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage;
 using Deluno.Contracts;
+using Deluno.Contracts.Connectivity;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Net;
@@ -378,13 +379,86 @@ public sealed class IntegrationResiliencePolicyTests
             cancellation.Token));
     }
 
-    private static IntegrationResiliencePolicy CreatePolicy(TimeProvider? timeProvider = null)
+    private static IntegrationResiliencePolicy CreatePolicy(TimeProvider? timeProvider = null, IConnectivityMonitor? connectivityMonitor = null)
     {
         var mockFactory = new Mock<IDelunoDatabaseConnectionFactory>();
         return new(
             timeProvider ?? TimeProvider.System,
             mockFactory.Object,
-            NullLogger<IntegrationResiliencePolicy>.Instance);
+            NullLogger<IntegrationResiliencePolicy>.Instance,
+            connectivityMonitor);
+    }
+
+    /// <summary>Reports whatever outage state the test wants, without a real probe.</summary>
+    private static IConnectivityMonitor OutageMonitor(bool isOutage)
+    {
+        var mock = new Mock<IConnectivityMonitor>();
+        mock.SetupGet(m => m.Current).Returns(new ConnectivityStatus(isOutage, isOutage ? DateTimeOffset.UtcNow : null, DateTimeOffset.UtcNow, [], isOutage ? "Internet down." : "Connected."));
+        return mock.Object;
+    }
+
+    [Fact]
+    public async Task An_outage_stops_the_escalation_ladder_from_climbing()
+    {
+        // #901: a service unreachable only because the internet is down must
+        // not be judged as though it were getting worse on its own.
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-09-27T14:00:00Z"));
+        var policy = CreatePolicy(timeProvider, OutageMonitor(isOutage: true));
+        var request = new IntegrationResilienceRequest(
+            "indexer:outage-frozen",
+            "indexer.search",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero);
+
+        for (var i = 0; i < 3; i++)
+        {
+            var opened = await policy.ExecuteAsync(
+                request,
+                _ => Task.FromResult("down"),
+                _ => IntegrationResilienceOutcome.RetryableFailure,
+                CancellationToken.None);
+
+            Assert.True(opened.CircuitOpened);
+            // Every opening during the outage stays on the first rung (one
+            // minute) instead of climbing to five, fifteen...
+            Assert.Equal(TimeSpan.FromMinutes(1), opened.RetryAfterUtc - timeProvider.GetUtcNow());
+            timeProvider.Advance(TimeSpan.FromMinutes(1));
+        }
+    }
+
+    [Fact]
+    public async Task Escalation_resumes_once_the_outage_ends()
+    {
+        var timeProvider = new ManualTimeProvider(DateTimeOffset.Parse("2026-09-27T14:00:00Z"));
+        var mock = new Mock<IConnectivityMonitor>();
+        var isOutage = true;
+        mock.SetupGet(m => m.Current).Returns(() => new ConnectivityStatus(isOutage, isOutage ? DateTimeOffset.UtcNow : null, DateTimeOffset.UtcNow, [], "status"));
+        var policy = CreatePolicy(timeProvider, mock.Object);
+        var request = new IntegrationResilienceRequest(
+            "download-client:outage-then-clear",
+            "download-client.telemetry",
+            MaxAttempts: 1,
+            FailureThreshold: 1,
+            InitialDelay: TimeSpan.Zero,
+            MaxDelay: TimeSpan.Zero);
+
+        var duringOutage = await policy.ExecuteAsync(request, _ => Task.FromResult("down"), _ => IntegrationResilienceOutcome.RetryableFailure, CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(1), duringOutage.RetryAfterUtc - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+
+        isOutage = false;
+        var afterOutage = await policy.ExecuteAsync(request, _ => Task.FromResult("still-down"), _ => IntegrationResilienceOutcome.RetryableFailure, CancellationToken.None);
+
+        // The ladder never moved during the outage, so this opening is only
+        // the first real escalation and stays on the first rung; a second
+        // opening after this one is what finally climbs to the second.
+        Assert.Equal(TimeSpan.FromMinutes(1), afterOutage.RetryAfterUtc - timeProvider.GetUtcNow());
+        timeProvider.Advance(TimeSpan.FromMinutes(1));
+
+        var secondAfterOutage = await policy.ExecuteAsync(request, _ => Task.FromResult("still-down"), _ => IntegrationResilienceOutcome.RetryableFailure, CancellationToken.None);
+        Assert.Equal(TimeSpan.FromMinutes(5), secondAfterOutage.RetryAfterUtc - timeProvider.GetUtcNow());
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
