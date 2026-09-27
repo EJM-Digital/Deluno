@@ -4,7 +4,8 @@ import { TITLE_MARK_PRESENTATION, type TitleMark } from "../../lib/status-tones"
 import { MarkStrip, TitleMarkBarLegend } from "../ui/title-mark";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Filter, LayoutGrid, LayoutTemplate, List, Search, Rows3} from "lucide-react";
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useState } from "react";
+import { useSlidingPill } from "../../hooks/use-sliding-pill";
 import type { CatalogueFacets } from "../../lib/api";
 import type { FilterCondition, LibraryControlSet } from "../../lib/library-controls";
 import { describeCondition } from "../../lib/library-controls";
@@ -224,18 +225,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
   const configuredProviders = useConfiguredProviders();
 
   const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "view" | null>(null);
-  const pillTrackRef = useRef<HTMLDivElement>(null);
-  const btnRefs = useRef<Map<QuickFilter, HTMLButtonElement | null>>(new Map());
-  const [pill, setPill] = useState({ left: 0, width: 0, ready: false });
-
-  useLayoutEffect(() => {
-    const track = pillTrackRef.current;
-    const btn = btnRefs.current.get(quickFilter);
-    if (!track || !btn) return;
-    const tRect = track.getBoundingClientRect();
-    const bRect = btn.getBoundingClientRect();
-    setPill({ left: bRect.left - tRect.left, width: bRect.width, ready: true });
-  }, [quickFilter]);
 
   const counts: Partial<Record<QuickFilter, number>> = {
     all: facets?.all ?? 0,
@@ -246,6 +235,13 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
     downloading: facets?.downloading ?? 0,
     airing: facets?.airing ?? 0
   };
+
+  // Re-measured on far more than `quickFilter` changing — see the hook: a
+  // count arriving after first paint, a font finishing load, or the row
+  // simply resizing all move a chip without a click ever happening (#934).
+  const chips = quickFiltersFor(variant);
+  const pillSignal = chips.map((chip) => `${chip.key}:${chip.label}:${counts[chip.key] ?? 0}`).join("|");
+  const { pill, trackRef: pillTrackRef, registerElement: registerChipButton } = useSlidingPill(quickFilter, pillSignal);
 
   const fieldsById = new Map(controlSet.filterFields.map((field) => [field.id, field]));
   const toggle = (panel: "sort" | "filter" | "view") =>
@@ -446,17 +442,22 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     height: "calc(var(--library-toolbar-height) * 0.74)",
                     top: "50%",
                     transform: "translateY(-50%)",
-                    transition: "left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)"
+                    // Only a chosen move animates; a resize/font/count
+                    // correction snaps straight to the right spot instead of
+                    // visibly sliding there after the fact (#934).
+                    transition: pill.animate
+                      ? "left 0.22s cubic-bezier(0.4,0,0.2,1), width 0.22s cubic-bezier(0.4,0,0.2,1)"
+                      : "none"
                   }}
                 />
               ) : null}
 
-              {quickFiltersFor(variant).map((chip) => {
+              {chips.map((chip) => {
                 const active = quickFilter === chip.key;
                 return (
                   <button
                     key={chip.key}
-                    ref={(element) => { btnRefs.current.set(chip.key, element); }}
+                    ref={(element) => registerChipButton(chip.key, element)}
                     type="button"
                     onClick={() => setQuickFilter(chip.key)}
                     className={cn(

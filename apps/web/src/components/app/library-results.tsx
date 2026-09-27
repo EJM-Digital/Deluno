@@ -21,6 +21,15 @@ type LibraryResultsProps = {
   /** Which shelf. Decides whether the list offers an Episodes column. */
   variant: "movies" | "shows";
   hasLoadedOnce: boolean;
+  /**
+   * A fetch for the *current* query (chip, monitoring, library, sort or
+   * conditions) is in flight and nothing has arrived for it yet. Separate
+   * from `hasLoadedOnce`, which only ever answers "has this view loaded
+   * anything, ever" — gating the skeleton on that alone let a chip switch
+   * fall through to "Nothing matches" for the instant between the old rows
+   * being cleared and the new ones landing (#934).
+   */
+  isQueryLoading: boolean;
   items: MediaItem[];
   label: string;
   singular: string;
@@ -48,7 +57,7 @@ type LibraryResultsProps = {
 
 export function LibraryResults({
   variant,
-  hasLoadedOnce, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, displayOptions, selectedIds,
+  hasLoadedOnce, isQueryLoading, items, label, singular, libraryCount, hasActiveFilter, view, cardSize, displayOptions, selectedIds,
   listColumnOrder, onListColumnOrderChange,
   keyBust, sortField, sortDirection, isComplete, onOpenCreate,
   onClearFilters, onSelect, onToggle, onToggleAll, onEndReached,
@@ -65,7 +74,7 @@ export function LibraryResults({
       and keep showing it. A refetch that finds items replaces the empty state
       without a placeholder flash in between.
     */}
-    {!hasLoadedOnce && items.length === 0 ? (
+    {(!hasLoadedOnce || isQueryLoading) && items.length === 0 ? (
       <GlassTile className="p-[var(--tile-pad)]"><LibraryGridSkeleton count={20} /></GlassTile>
     ) : items.length === 0 && hasActiveFilter ? (
       <EmptyState
