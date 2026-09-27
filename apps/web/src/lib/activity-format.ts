@@ -153,6 +153,98 @@ export function foldRoutineJobEvents<T extends { category: string; relatedJobId:
   return folded;
 }
 
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+
+/**
+ * " (Movies)" / " (TV)", the suffix `MediaKindSuffix` on the backend
+ * (SqliteJobStore) appends to a routine job's own wording when that wording
+ * does not already say which kind of library ran. Stripping it back off is
+ * how the client recognises "the same job type, run for the other library".
+ */
+const MEDIA_KIND_SUFFIXES = [
+  { suffix: " (Movies)", kind: "movie" as const },
+  { suffix: " (TV)", kind: "series" as const }
+];
+
+function splitMediaKindSuffix(message: string): { base: string; hadPeriod: boolean; kind: "movie" | "series" } | null {
+  // The backend inserts the suffix before the final period ("...evaluated
+  // (TV)."), not after it, so the trailing punctuation has to come off first
+  // and go back on after the combined suffix, rather than sitting before it.
+  const hadPeriod = message.endsWith(".");
+  const withoutPeriod = hadPeriod ? message.slice(0, -1) : message;
+
+  for (const { suffix, kind } of MEDIA_KIND_SUFFIXES) {
+    if (withoutPeriod.endsWith(suffix)) {
+      return { base: withoutPeriod.slice(0, -suffix.length), hadPeriod, kind };
+    }
+  }
+  return null;
+}
+
+/**
+ * #916 (decided by the owner, 27 Sep 2026): the media-read job (and anything
+ * else that names its run only via the "(Movies)"/"(TV)" suffix) runs once
+ * for Movies and once for TV, a few seconds or minutes apart. Two completed
+ * runs of the same job — same wording once the suffix is stripped, opposite
+ * kinds, finishing within fifteen minutes of each other — read as one line
+ * ("Every file has been read and evaluated (Movies and TV).") rather than
+ * two. The drawer still shows both original runs, via `foldedFrom`.
+ *
+ * Applied after `foldRoutineJobEvents`, so it only ever sees the one
+ * representative row per job run, not its queued/started siblings.
+ */
+export function foldCrossMediaJobRuns<
+  T extends { id: string; category: string; relatedEntityType: string | null; message: string; createdUtc: string }
+>(folded: readonly FoldedActivityEvent<T>[]): FoldedActivityEvent<T>[] {
+  const result: FoldedActivityEvent<T>[] = [];
+  const consumed = new Set<number>();
+
+  for (let i = 0; i < folded.length; i++) {
+    if (consumed.has(i)) continue;
+    const current = folded[i];
+    const currentSplit = current.event.category === "job.completed" ? splitMediaKindSuffix(current.event.message) : null;
+
+    if (!currentSplit) {
+      result.push(current);
+      continue;
+    }
+
+    const currentTime = new Date(current.event.createdUtc).getTime();
+    let matchIndex = -1;
+    for (let j = i + 1; j < folded.length; j++) {
+      if (consumed.has(j)) continue;
+      const candidate = folded[j];
+      if (candidate.event.category !== "job.completed") continue;
+      const candidateSplit = splitMediaKindSuffix(candidate.event.message);
+      if (!candidateSplit || candidateSplit.base !== currentSplit.base || candidateSplit.kind === currentSplit.kind) {
+        continue;
+      }
+      const gapMs = Math.abs(currentTime - new Date(candidate.event.createdUtc).getTime());
+      if (gapMs > FIFTEEN_MINUTES_MS) continue;
+      matchIndex = j;
+      break;
+    }
+
+    if (matchIndex === -1) {
+      result.push(current);
+      continue;
+    }
+
+    const match = folded[matchIndex];
+    consumed.add(matchIndex);
+    const newer = currentTime >= new Date(match.event.createdUtc).getTime() ? current.event : match.event;
+
+    const combinedMessage = `${currentSplit.base} (Movies and TV)${currentSplit.hadPeriod ? "." : ""}`;
+
+    result.push({
+      event: { ...newer, message: combinedMessage },
+      foldedFrom: [...current.foldedFrom, current.event, ...match.foldedFrom, match.event]
+    });
+  }
+
+  return result;
+}
+
 export function activityEventType(event: { category: string; severity?: string }): ActivityEventType {
   const category = event.category.trim().toLowerCase();
 

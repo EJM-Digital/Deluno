@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityEventType, categoryLabel, foldRoutineJobEvents, mattersToTheBell } from "./activity-format";
+import { activityEventType, categoryLabel, foldCrossMediaJobRuns, foldRoutineJobEvents, mattersToTheBell } from "./activity-format";
 
 describe("activity category labels", () => {
   it("names the area in plain words, never the internal code", () => {
@@ -120,5 +120,86 @@ describe("folding a job's lifecycle events into one row (#916)", () => {
     const folded = foldRoutineJobEvents(events);
 
     expect(folded).toEqual([{ event: events[0], foldedFrom: [] }]);
+  });
+});
+
+describe("folding a Movies run and a TV run of the same job into one line (#916)", () => {
+  interface CrossMediaEvent {
+    id: string;
+    category: string;
+    relatedEntityType: string | null;
+    message: string;
+    createdUtc: string;
+  }
+
+  function folded(events: CrossMediaEvent[]) {
+    return foldCrossMediaJobRuns(events.map((event) => ({ event, foldedFrom: [] })));
+  }
+
+  it("folds a Movies completion and a TV completion of the same job into one row when they finish within 15 minutes", () => {
+    const result = folded([
+      {
+        id: "tv-done",
+        category: "job.completed",
+        relatedEntityType: "series",
+        message: "Every file has been read and evaluated (TV).",
+        createdUtc: "2026-09-27T09:10:00Z"
+      },
+      {
+        id: "movies-done",
+        category: "job.completed",
+        relatedEntityType: "movie",
+        message: "Every file has been read and evaluated (Movies).",
+        createdUtc: "2026-09-27T09:00:00Z"
+      }
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.event.message).toBe("Every file has been read and evaluated (Movies and TV).");
+    // The newer of the two names the fold's own id and timestamp.
+    expect(result[0]!.event.id).toBe("tv-done");
+    expect(result[0]!.foldedFrom.map((event) => event.id).sort()).toEqual(["movies-done", "tv-done"]);
+  });
+
+  it("does not fold the two runs when they finish more than 15 minutes apart", () => {
+    const result = folded([
+      {
+        id: "movies-done",
+        category: "job.completed",
+        relatedEntityType: "movie",
+        message: "Every file has been read and evaluated (Movies).",
+        createdUtc: "2026-09-27T09:00:00Z"
+      },
+      {
+        id: "tv-done",
+        category: "job.completed",
+        relatedEntityType: "series",
+        message: "Every file has been read and evaluated (TV).",
+        createdUtc: "2026-09-27T09:20:00Z"
+      }
+    ]);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("does not fold two runs of a different job, or a run that found something", () => {
+    const result = folded([
+      {
+        id: "movies-probe",
+        category: "job.completed",
+        relatedEntityType: "movie",
+        message: "Every file has been read and evaluated (Movies).",
+        createdUtc: "2026-09-27T09:00:00Z"
+      },
+      {
+        id: "tv-search",
+        category: "job.completed",
+        relatedEntityType: "series",
+        message: "Found 2 upgrades (TV).",
+        createdUtc: "2026-09-27T09:02:00Z"
+      }
+    ]);
+
+    expect(result).toHaveLength(2);
   });
 });
