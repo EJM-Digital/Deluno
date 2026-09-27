@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
 
 namespace Deluno.Worker.Jobs;
 
@@ -57,6 +58,31 @@ internal static class JobPayloads
     internal sealed record IntakeSyncPayload(
         string? SourceId,
         bool Manual);
+
+    /// <summary>
+    /// One more try at sending the exact same release to the exact same
+    /// client after a connectivity or setup failure (#875) — carries
+    /// everything a fresh <see cref="DownloadClientGrabRequest"/> needs so
+    /// the retry is a literal resend, never a new search.
+    /// </summary>
+    internal sealed record DownloadClientRetryGrabPayload(
+        string DownloadClientId,
+        string DownloadClientName,
+        string LibraryId,
+        string MediaType,
+        string EntityType,
+        string EntityId,
+        string Title,
+        string ReleaseName,
+        string DownloadUrl,
+        string? Category,
+        string? IndexerName,
+        string? IndexerId,
+        string? DispatchId,
+        int? Priority,
+        string? Password,
+        byte[]? TorrentFile,
+        int AttemptNumber);
 
     /// <summary>
     /// A targeted library search an add endpoint wants to run once this

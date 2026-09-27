@@ -51,6 +51,30 @@ public sealed class AConnectivityFailureRetriesTheSameReleaseTests
             Times.Once);
     }
 
+    /// <summary>
+    /// The retry must resend the exact same release to the exact same
+    /// client — not a fresh title search that could pick a different
+    /// release entirely.
+    /// </summary>
+    [Fact]
+    public async Task The_scheduled_retry_carries_the_same_release_download_url_and_client()
+    {
+        var world = new World(IntegrationFailureKind.Unavailable);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.Scheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request =>
+                    request.JobType == "download-client.retry-grab" &&
+                    request.PayloadJson != null &&
+                    request.PayloadJson.Contains(Release) &&
+                    request.PayloadJson.Contains("http://fixture.invalid/release.nzb") &&
+                    request.PayloadJson.Contains("client-1")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task A_connectivity_failure_schedules_a_retry_for_a_series()
     {

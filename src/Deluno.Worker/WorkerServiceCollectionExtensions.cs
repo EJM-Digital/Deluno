@@ -44,6 +44,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IJobHandler, TvLibrarySearchJobHandler>();
         services.AddScoped<IJobHandler, MediaServerRefreshJobHandler>();
         services.AddScoped<IJobHandler, MediaServerRefreshRetryJobHandler>();
+        services.AddScoped<IJobHandler, DownloadClientRetryGrabJobHandler>();
         services.AddScoped<JobHandlerRegistry>();
 
         services.AddScoped<WorkPlanner>();

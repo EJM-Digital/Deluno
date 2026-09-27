@@ -129,13 +129,34 @@ internal static class SearchExecutionSupport
     internal static readonly TimeSpan ConnectivityRetryDelay = TimeSpan.FromMinutes(15);
 
     /// <summary>
+    /// How many times Deluno resends the exact same release before it stops
+    /// dedicated retries and leaves the title to the library's own scheduled
+    /// search (#875). Eight tries at fifteen minutes apart is two hours of a
+    /// client having every chance to come back; a client down longer than
+    /// that needs a person to look at it, not a job retrying forever.
+    /// </summary>
+    internal const int MaxConnectivityRetryAttempts = 8;
+
+    /// <summary>
+    /// Whether an <see cref="IntegrationFailure"/> says something about
+    /// reaching the client — offline, wrong password, timed out — rather than
+    /// about the release itself (#875, #880, #901).
+    /// </summary>
+    internal static bool IsConnectivityOrSetupProblem(IntegrationFailure? failure)
+        => failure is { } value && value.Kind is IntegrationFailureKind.Timeout
+            or IntegrationFailureKind.Unavailable
+            or IntegrationFailureKind.Authentication
+            or IntegrationFailureKind.CircuitOpen;
+
+    /// <summary>
     /// #875 (cleanup sheet B1): the download client was offline, refused the
     /// password, or timed out — Deluno's own setup, not the release's fault
     /// (#880, #901). Nothing here is ever blocklisted; instead the exact same
-    /// title is queued for another try once the client has had a chance to
-    /// come back, rather than leaving it to whatever the next ordinary search
-    /// cycle happens to be, and the problem is written to Activity so it stays
-    /// visible until it clears.
+    /// release is resent to the exact same client once the client has had a
+    /// chance to come back, on its own retry lane (#920's pattern) rather
+    /// than waiting for whatever the next ordinary search cycle happens to
+    /// be, and the problem is written to Activity so it stays visible until
+    /// it clears.
     ///
     /// <para>A no-op for a dead release (#876) or an ordinary success — this
     /// only fires for a failure that says something about reaching the
@@ -145,60 +166,107 @@ internal static class SearchExecutionSupport
         IJobScheduler? jobScheduler,
         IActivityFeedRepository activityFeedRepository,
         DownloadClientGrabResult grabResult,
+        DownloadClientGrabRequest request,
         TimeProvider timeProvider,
         string libraryId,
         string mediaType,
         string entityType,
         string entityId,
+        string title,
+        string downloadClientId,
         string clientName,
         CancellationToken cancellationToken)
     {
-        if (jobScheduler is null || grabResult.Succeeded || grabResult.Failure is not { } failure)
+        if (jobScheduler is null || grabResult.Succeeded || !IsConnectivityOrSetupProblem(grabResult.Failure))
         {
             return;
         }
 
-        var isConnectivityOrSetupProblem = failure.Kind is IntegrationFailureKind.Timeout
-            or IntegrationFailureKind.Unavailable
-            or IntegrationFailureKind.Authentication
-            or IntegrationFailureKind.CircuitOpen;
-        if (!isConnectivityOrSetupProblem)
-        {
-            return;
-        }
-
-        var retryAt = timeProvider.GetUtcNow() + ConnectivityRetryDelay;
-        await jobScheduler.EnqueueAsync(
-            new EnqueueJobRequest(
-                LibrarySearchJobTypes.For(mediaType),
-                "download-client-retry",
-                JsonSerializer.Serialize(new
-                {
-                    libraryId,
-                    mediaType,
-                    checkMissing = true,
-                    checkUpgrades = true,
-                    maxItems = 1,
-                    retryDelayHours = 24,
-                    triggeredBy = "connectivity-retry",
-                    targetEntityId = entityId
-                }),
-                entityType,
-                entityId,
-                ScheduledUtc: retryAt,
-                IdempotencyKey: $"download-client-retry:{entityType}:{entityId}",
-                DedupeKey: $"download-client-retry:{entityType}:{entityId}"),
+        await ScheduleConnectivityRetryAsync(
+            jobScheduler,
+            timeProvider,
+            libraryId,
+            mediaType,
+            entityType,
+            entityId,
+            title,
+            downloadClientId,
+            clientName,
+            grabResult.ReleaseName,
+            request,
+            attemptNumber: 1,
             cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
             "download.client.connectivity-retry-scheduled",
-            $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} This is a setup problem, not the release — Deluno will try sending it again once {clientName} is reachable.",
+            $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} This is a setup problem, not the release — Deluno will try sending the same release to {clientName} again shortly.",
             null,
             null,
             entityType,
             entityId,
             cancellationToken);
     }
+
+    /// <summary>
+    /// Schedules one more attempt to send <paramref name="request"/> — the
+    /// exact same release, same download URL and indexer — to the same
+    /// client, on the dedicated retry lane so it never crowds out an
+    /// ordinary search cycle (#875, following #920's media-server lane).
+    /// </summary>
+    internal static async Task ScheduleConnectivityRetryAsync(
+        IJobScheduler jobScheduler,
+        TimeProvider timeProvider,
+        string libraryId,
+        string mediaType,
+        string entityType,
+        string entityId,
+        string title,
+        string downloadClientId,
+        string clientName,
+        string releaseName,
+        DownloadClientGrabRequest request,
+        int attemptNumber,
+        CancellationToken cancellationToken)
+    {
+        var retryAt = timeProvider.GetUtcNow() + ConnectivityRetryDelay;
+        var payload = new JobPayloads.DownloadClientRetryGrabPayload(
+            downloadClientId,
+            clientName,
+            libraryId,
+            mediaType,
+            entityType,
+            entityId,
+            title,
+            releaseName,
+            request.DownloadUrl,
+            request.Category,
+            request.IndexerName,
+            request.IndexerId,
+            request.DispatchId,
+            request.Priority,
+            request.Password,
+            request.TorrentFile,
+            attemptNumber);
+
+        await jobScheduler.EnqueueAsync(
+            new EnqueueJobRequest(
+                DownloadClientRetryGrabJobType,
+                "download-client-connectivity-retry",
+                JsonSerializer.Serialize(payload, JobPayloads.Options),
+                entityType,
+                entityId,
+                ScheduledUtc: retryAt,
+                IdempotencyKey: $"download-client-retry-grab:{entityType}:{entityId}:{attemptNumber}",
+                DedupeKey: $"download-client-retry-grab:{entityType}:{entityId}"),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The job type a connectivity retry (#875) runs under: its own lane, so
+    /// a client that is slow to come back never delays or is delayed by the
+    /// library's ordinary search cycle.
+    /// </summary>
+    internal const string DownloadClientRetryGrabJobType = "download-client.retry-grab";
 
     /// <summary>
     /// Why a release the search chose is not sent, when this title or that exact

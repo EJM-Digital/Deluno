@@ -297,11 +297,14 @@ public abstract class LibrarySearchJobHandler(
                     jobScheduler,
                     activityFeedRepository,
                     grabResult,
+                    decisionPlan.DispatchRequest,
                     timeProvider,
                     payload.LibraryId,
                     "movies",
                     "movie",
                     candidate.MovieId,
+                    candidate.Title,
+                    downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     cancellationToken);
 
@@ -809,11 +812,14 @@ public abstract class LibrarySearchJobHandler(
                     jobScheduler,
                     activityFeedRepository,
                     grabResult,
+                    decisionPlan.DispatchRequest,
                     timeProvider,
                     payload.LibraryId,
                     "tv",
                     "series",
                     candidate.SeriesId,
+                    candidate.Title,
+                    downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     cancellationToken);
 
