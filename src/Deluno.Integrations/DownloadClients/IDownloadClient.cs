@@ -44,4 +44,13 @@ public interface IDownloadClient
         double? progress,
         int? errorCode = null,
         string? errorMessage = null);
+
+    /// <summary>
+    /// #813: clears a client's own queue-level warnings (SABnzbd's
+    /// mode=warnings&amp;name=clear). A default interface method rather than
+    /// a required member, so most clients — which have no such concept — and
+    /// every existing test double need not implement it.
+    /// </summary>
+    Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult(false);
 }

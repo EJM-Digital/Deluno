@@ -50,6 +50,15 @@ public abstract class DownloadClientBase : IDownloadClient
         int? errorCode = null,
         string? errorMessage = null);
 
+    /// <summary>
+    /// #813: clears a client's own queue-level warnings (SABnzbd's
+    /// mode=warnings&amp;name=clear). Most clients have no such concept, so
+    /// this defaults to "not supported" rather than every adapter overriding
+    /// it to say so.
+    /// </summary>
+    public virtual Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult(false);
+
     protected DownloadClientTelemetrySnapshot CreateSnapshot(
         DownloadClientItem client,
         IReadOnlyList<DownloadQueueItem> queue,
@@ -60,7 +69,8 @@ public abstract class DownloadClientBase : IDownloadClient
         IntegrationFailure? failure = null,
         long? freeSpaceBytes = null,
         bool? clientPaused = null,
-        string? clientVersion = null)
+        string? clientVersion = null,
+        IReadOnlyList<string>? clientWarnings = null)
     {
         var normalizedQueue = (queue ?? [])
             .Select(DownloadClientHelpers.NormalizeQueueFailure)
@@ -85,7 +95,8 @@ public abstract class DownloadClientBase : IDownloadClient
             LastFailure = failure,
             FreeSpaceBytes = freeSpaceBytes,
             ClientPaused = clientPaused,
-            ClientVersion = clientVersion
+            ClientVersion = clientVersion,
+            ClientWarnings = clientWarnings
         };
     }
 

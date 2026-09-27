@@ -1278,6 +1278,8 @@ export interface DownloadClientTelemetrySnapshot {
   clientPaused?: boolean | null;
   /** The client's own reported version, read alongside its queue/status (#812). Null when not yet read or the protocol has no version call. */
   clientVersion?: string | null;
+  /** The client's own queue-level warnings (#813) — SABnzbd's have_warnings/mode=warnings. Null/empty when it has none, or the protocol has no such concept. */
+  clientWarnings?: string[] | null;
 }
 
 /** One stored reading of combined throughput, both directions. */

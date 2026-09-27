@@ -381,6 +381,14 @@ public sealed record DownloadClientTelemetrySnapshot(
 
     /// <summary>The client's own reported version (#812), read alongside its queue/status. Null when not yet read or the protocol has no version call.</summary>
     public string? ClientVersion { get; init; }
+
+    /// <summary>
+    /// The client's own queue-level warnings (#813) -- SABnzbd's
+    /// have_warnings/mode=warnings, such as a disk-full condition or a failed
+    /// unpack. Null when the client has none, or the protocol has no such
+    /// concept.
+    /// </summary>
+    public IReadOnlyList<string>? ClientWarnings { get; init; }
 }
 
 public sealed record DownloadTelemetryOverview(
