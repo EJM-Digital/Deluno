@@ -259,6 +259,23 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True((await repository.GetAsync(CancellationToken.None)).SubtitleFetchAutomaticEnabled);
     }
 
+    /// <summary>#757: on by default (today's replace-with-dash rendering), and stays off once turned off.</summary>
+    [Fact]
+    public async Task ReplaceIllegalCharacters_defaults_to_on_for_a_new_install_and_stays_off_once_turned_off()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        Assert.True((await repository.GetAsync(CancellationToken.None)).ReplaceIllegalCharacters);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(ReplaceIllegalCharacters: false));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        Assert.False((await repository.GetAsync(CancellationToken.None)).ReplaceIllegalCharacters);
+    }
+
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
     {
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z"));

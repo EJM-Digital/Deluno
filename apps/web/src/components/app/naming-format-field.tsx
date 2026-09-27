@@ -243,6 +243,61 @@ export function namingStyleLabel(kind: NamingFormatKind, value: string) {
   return preset.label;
 }
 
+/** Radarr/Sonarr's five colon-handling modes (#759); "dash" also matches the plain "Replace Illegal Characters" behaviour every other illegal character gets. */
+export type ColonReplacementMode = "smart" | "delete" | "dash" | "space-dash" | "space-dash-space";
+
+const ILLEGAL_FILENAME_CHARACTERS = new Set(["<", ">", ":", '"', "/", "\\", "|", "?", "*"]);
+
+/**
+ * Mirrors NamingTemplateRenderer.SanitizeSegment (#757, #759) closely enough
+ * to preview it: the same illegal-character set, the same off-switch, the
+ * same five colon modes. Used only to demonstrate the setting in this form —
+ * the server remains the source of truth for what an import actually writes.
+ */
+export function sanitizeIllegalCharacters(
+  value: string,
+  replaceIllegalCharacters: boolean,
+  colonReplacementMode: ColonReplacementMode = "smart"
+): string {
+  let result = "";
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (character === ":") {
+      if (!replaceIllegalCharacters) continue;
+      const nextIsSpace = value[index + 1] === " ";
+      switch (colonReplacementMode) {
+        case "delete":
+          break;
+        case "dash":
+          result += "-";
+          break;
+        case "space-dash":
+          result += " -";
+          break;
+        case "space-dash-space":
+          result += " - ";
+          break;
+        case "smart":
+        default:
+          if (nextIsSpace) {
+            result += " - ";
+            index++;
+          } else {
+            result += "-";
+          }
+          break;
+      }
+      continue;
+    }
+    if (ILLEGAL_FILENAME_CHARACTERS.has(character)) {
+      if (replaceIllegalCharacters) result += "-";
+      continue;
+    }
+    result += character;
+  }
+  return result.trim();
+}
+
 export function previewNamingFormat(format: string) {
   return format
     .replaceAll("{Movie Title}", "Arrival")

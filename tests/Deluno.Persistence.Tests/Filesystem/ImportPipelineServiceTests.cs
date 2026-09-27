@@ -1782,6 +1782,45 @@ public sealed class ImportPipelineServiceTests
         Assert.True(only.HasFile);
     }
 
+    /// <summary>#757: unchecking "Replace illegal characters" removes them on the import file-naming path too, not just the render-preview one.</summary>
+    [Fact]
+    public async Task ExecuteAsync_removes_illegal_characters_instead_of_dashing_them_when_replacement_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Say.What.2020.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year})",
+            replaceIllegalCharacters: false);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Say What? A Story", 2020, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Say What A Story (2020).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
     [Fact]
     public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
     {
@@ -3910,7 +3949,8 @@ public sealed class ImportPipelineServiceTests
         string downloadsPath,
         string? seriesRootPath = null,
         string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
-        string movieFileFormat = "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]")
+        string movieFileFormat = "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
+        bool replaceIllegalCharacters = true)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -3944,7 +3984,8 @@ public sealed class ImportPipelineServiceTests
                 MetadataBrokerUrl: null,
                 MetadataTmdbApiKey: null,
                 MetadataOmdbApiKey: null,
-                ReleaseNeverGrabPatterns: null),
+                ReleaseNeverGrabPatterns: null,
+                ReplaceIllegalCharacters: replaceIllegalCharacters),
             CancellationToken.None);
     }
 

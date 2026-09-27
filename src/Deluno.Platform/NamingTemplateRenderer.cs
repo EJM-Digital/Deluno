@@ -51,18 +51,19 @@ public static partial class NamingTemplateRenderer
         string? genre = null,
         string? tag = null,
         string? network = null,
-        NamingDecision? decision = null)
+        NamingDecision? decision = null,
+        bool replaceIllegalCharacters = true)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision);
+        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters);
         var segments = resolved
             .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(RemoveEmptyWrappers)
-            .Select(SanitizeSegment)
+            .Select(segment => SanitizeSegment(segment, replaceIllegalCharacters))
             .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToArray();
 
         return segments.Length == 0
-            ? SanitizeSegment(title) is { Length: > 0 } fallback ? fallback : "Untitled"
+            ? SanitizeSegment(title, replaceIllegalCharacters) is { Length: > 0 } fallback ? fallback : "Untitled"
             : Path.Combine(segments);
     }
 
@@ -76,10 +77,11 @@ public static partial class NamingTemplateRenderer
         string? genre = null,
         string? tag = null,
         string? network = null,
-        NamingDecision? decision = null)
+        NamingDecision? decision = null,
+        bool replaceIllegalCharacters = true)
     {
-        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision);
-        return SanitizeSegment(RemoveEmptyWrappers(resolved));
+        var resolved = ReplaceTokens(template, title, year, imdbId, tvDbId, qualityProfile, genre, tag, network, decision, replaceIllegalCharacters);
+        return SanitizeSegment(RemoveEmptyWrappers(resolved), replaceIllegalCharacters);
     }
 
     private static string ReplaceTokens(
@@ -92,24 +94,25 @@ public static partial class NamingTemplateRenderer
         string? genre,
         string? tag,
         string? network,
-        NamingDecision? decision)
+        NamingDecision? decision,
+        bool replaceIllegalCharacters = true)
     {
         decision ??= NamingDecision.None;
         var source = string.IsNullOrWhiteSpace(template) ? "{Title} ({Year})" : template;
         return TokenPattern().Replace(source, match => match.Value.ToLowerInvariant() switch
         {
-            "{quality}" => SanitizeSegment(decision.Quality),
-            "{release group}" => SanitizeSegment(decision.ReleaseGroup),
-            "{custom formats}" => SanitizeSegment(decision.CustomFormatText),
-            "{edition}" => SanitizeSegment(decision.EditionText),
-            "{movie title}" or "{series title}" or "{title}" => SanitizeSegment(title),
+            "{quality}" => SanitizeSegment(decision.Quality, replaceIllegalCharacters),
+            "{release group}" => SanitizeSegment(decision.ReleaseGroup, replaceIllegalCharacters),
+            "{custom formats}" => SanitizeSegment(decision.CustomFormatText, replaceIllegalCharacters),
+            "{edition}" => SanitizeSegment(decision.EditionText, replaceIllegalCharacters),
+            "{movie title}" or "{series title}" or "{title}" => SanitizeSegment(title, replaceIllegalCharacters),
             "{release year}" or "{series year}" or "{year}" => year?.ToString() ?? "Unknown Year",
-            "{imdb id}" => SanitizeSegment(imdbId),
-            "{tvdb id}" => SanitizeSegment(tvDbId),
-            "{quality profile}" => SanitizeSegment(qualityProfile),
-            "{genre}" => SanitizeSegment(genre),
-            "{tag}" => SanitizeSegment(tag),
-            "{network}" => SanitizeSegment(network),
+            "{imdb id}" => SanitizeSegment(imdbId, replaceIllegalCharacters),
+            "{tvdb id}" => SanitizeSegment(tvDbId, replaceIllegalCharacters),
+            "{quality profile}" => SanitizeSegment(qualityProfile, replaceIllegalCharacters),
+            "{genre}" => SanitizeSegment(genre, replaceIllegalCharacters),
+            "{tag}" => SanitizeSegment(tag, replaceIllegalCharacters),
+            "{network}" => SanitizeSegment(network, replaceIllegalCharacters),
             // Keep a custom token visible. It is safer to show an unsupported
             // pattern than to silently turn a user's deliberate text into a
             // different name.
@@ -125,7 +128,17 @@ public static partial class NamingTemplateRenderer
         return cleaned.Trim();
     }
 
-    private static string SanitizeSegment(string? value)
+    /// <summary>
+    /// Turns whatever a title, token or template segment contains into
+    /// something safe to put on disk.
+    ///
+    /// <para>Radarr and Sonarr default to replacing an illegal character with
+    /// a dash; unchecking their "Replace Illegal Characters" switch removes it
+    /// instead (#757). <paramref name="replaceIllegalCharacters"/> is that
+    /// switch — false removes every illegal character, colon included,
+    /// regardless of any colon mode.</para>
+    /// </summary>
+    private static string SanitizeSegment(string? value, bool replaceIllegalCharacters = true)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -144,13 +157,22 @@ public static partial class NamingTemplateRenderer
         // image is the Linux one, and a library it writes is read by Windows
         // clients over a share.
         var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(value
-            .Select(character => invalid.Contains(character) ||
-                                 character is '/' or '\\' or '<' or '>' or ':' or '"' or '|' or '?' or '*'
-                ? '-'
-                : character)
-            .ToArray())
-            .Trim();
+        var builder = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            var isIllegal = invalid.Contains(character) ||
+                character is '/' or '\\' or '<' or '>' or ':' or '"' or '|' or '?' or '*';
+            if (!isIllegal)
+            {
+                builder.Append(character);
+            }
+            else if (replaceIllegalCharacters)
+            {
+                builder.Append('-');
+            }
+        }
+
+        var cleaned = builder.ToString().Trim();
 
         // A user-entered template must not escape the selected library root.
         // Separators have already been split, so these are the only traversal

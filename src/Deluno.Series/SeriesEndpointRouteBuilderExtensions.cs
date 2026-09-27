@@ -2101,7 +2101,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                         seriesItem.ImdbId,
                         tvDbId: ReadMetadataText(seriesItem.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
                         network: ReadMetadataText(seriesItem.MetadataJson, "Network", "network"),
-                        genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
+                        genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                        replaceIllegalCharacters: settings.ReplaceIllegalCharacters)
                 });
             }
 
