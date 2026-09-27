@@ -1887,6 +1887,33 @@ public sealed partial class ImportPipelineService(
             return "The processed file has no video, and the download it was made from does. Deluno did not import it.";
         }
 
+        // "Lost every track in a wanted language" (#919, once #769's language
+        // preference exists). Only a library whose profile *requires* a
+        // language, rather than merely ranking by it, can fail a processed
+        // file over this -- a ranking-only preference never refuses anything.
+        if (before.AudioStreams.Count > 0 &&
+            after.AudioStreams.Count > 0 &&
+            !string.IsNullOrWhiteSpace(request.Preview.LibraryId))
+        {
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(candidate => string.Equals(candidate.Id, request.Preview.LibraryId, StringComparison.OrdinalIgnoreCase));
+            var preference = library is null
+                ? null
+                : (await ResolvePreferenceProfileAsync(library, NormalizeMediaType(request.Preview.MediaType) ?? library.MediaType, cancellationToken))?.LanguagePreference;
+
+            if (preference is { RequireLanguage: true, PreferredLanguages.Count: > 0 })
+            {
+                var wanted = preference.PreferredLanguages.Where(AudioLanguageMatch.Recognizes).ToArray();
+                var hadWantedLanguage = wanted.Any(code => AudioLanguageMatch.AnyMatches(before.AudioStreams.Select(stream => stream.Language), code));
+                var stillHasWantedLanguage = wanted.Any(code => AudioLanguageMatch.AnyMatches(after.AudioStreams.Select(stream => stream.Language), code));
+                if (hadWantedLanguage && !stillHasWantedLanguage)
+                {
+                    var wantedLabel = string.Join(" or ", wanted.Select(ProfileLanguageCodes.Label));
+                    return $"The processed file has no audio track in {wantedLabel}, and the download it was made from does. Deluno did not import it.";
+                }
+            }
+        }
+
         return null;
     }
 
