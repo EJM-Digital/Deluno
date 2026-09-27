@@ -183,7 +183,8 @@ public sealed class SystemTasksAreDeclaredInOneSpotTests
             Path.Combine("src", "Deluno.Api", "Backup", "DelunoBackupService.cs"),
             Path.Combine("src", "Deluno.Integrations", "Search", "RankingModelTrainingHostedService.cs"),
             Path.Combine("src", "Deluno.Jobs", "Data", "DownloadDispatchPollingHostedService.cs"),
-            Path.Combine("src", "Deluno.Recovery", "Services", "ImportRecoveryRetentionService.cs")
+            Path.Combine("src", "Deluno.Recovery", "Services", "ImportRecoveryRetentionService.cs"),
+            Path.Combine("src", "Deluno.Worker", "HealthChecks", "HealthCheckHostedService.cs")
         };
 
         return relativePaths.Select(path => File.ReadAllText(Path.Combine(root, path)));
