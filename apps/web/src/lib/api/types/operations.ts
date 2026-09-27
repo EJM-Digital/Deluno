@@ -395,6 +395,8 @@ export interface DownloadDispatchItem {
   decisionQuality?: string | null;
   /** The custom-format score the release was picked for at grab time (#796). */
   decisionCustomFormatScore?: number | null;
+  /** The release name read for language at grab time, by the backend's own parser (#796). */
+  decisionLanguage?: string | null;
 }
 
 export interface DispatchTimelineEvent {

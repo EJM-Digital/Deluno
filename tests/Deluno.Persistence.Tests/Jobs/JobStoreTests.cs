@@ -817,7 +817,8 @@ public sealed class JobStoreTests
                 decision_release_group,
                 decision_size_bytes,
                 decision_seeders,
-                decision_policy_version
+                decision_policy_version,
+                decision_language
             FROM download_dispatches
             WHERE id = @id
             LIMIT 1;
@@ -838,6 +839,47 @@ public sealed class JobStoreTests
         Assert.Equal(8000000000L, reader.GetInt64(6));
         Assert.Equal(20, reader.GetInt32(7));
         Assert.Equal("policy-v1", reader.GetString(8));
+        // #796: language is not read from the decision candidate's notes JSON
+        // (there is no such field) — it is parsed straight from the release
+        // name by the backend's own release parser at grab time.
+        Assert.Null(reader.IsDBNull(9) ? null : reader.GetString(9));
+    }
+
+    [Fact]
+    public async Task RecordDownloadDispatchAsync_records_the_language_parsed_from_the_release_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-05-13T05:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var dispatchId = await store.RecordDownloadDispatchAsync(
+            libraryId: "movies-main",
+            mediaType: "movies",
+            entityType: "movie",
+            entityId: "movie-1",
+            releaseName: "Movie.2026.MULTI.1080p.WEB-DL-GROUP",
+            indexerName: "Indexer One",
+            downloadClientId: "qb-1",
+            downloadClientName: "qBittorrent",
+            status: "sent",
+            notesJson: null,
+            cancellationToken: CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            CancellationToken.None);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT decision_language FROM download_dispatches WHERE id = @id LIMIT 1;";
+        var idParameter = command.CreateParameter();
+        idParameter.ParameterName = "@id";
+        idParameter.Value = dispatchId;
+        command.Parameters.Add(idParameter);
+
+        using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.Equal("Multilingual", reader.GetString(0));
     }
 
     [Fact]

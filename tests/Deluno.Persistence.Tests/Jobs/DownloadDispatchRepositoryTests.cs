@@ -107,7 +107,7 @@ public sealed class DownloadDispatchRepositoryTests
             mediaType: "movies",
             entityType: "movie",
             entityId: "movie-1",
-            releaseName: "Movie.2026.1080p.WEB-DL-GROUP",
+            releaseName: "Movie.2026.MULTI.1080p.WEB-DL-GROUP",
             indexerName: "test-indexer",
             downloadClientId: "qbittorrent-main",
             downloadClientName: "qBittorrent",
@@ -117,7 +117,7 @@ public sealed class DownloadDispatchRepositoryTests
                 {
                   "searchPlan": {
                     "bestCandidate": {
-                      "releaseName": "Movie.2026.1080p.WEB-DL-GROUP",
+                      "releaseName": "Movie.2026.MULTI.1080p.WEB-DL-GROUP",
                       "quality": "WEB 1080p",
                       "customFormatScore": 125
                     }
@@ -132,6 +132,10 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.NotNull(dispatch);
         Assert.Equal("WEB 1080p", dispatch.DecisionQuality);
         Assert.Equal(125, dispatch.DecisionCustomFormatScore);
+        // The language column is not decision telemetry: it is the backend's
+        // own release parser (Deluno.Quality's ReleasePreferenceFactFactory)
+        // reading the release name itself, at grab time (#796).
+        Assert.Equal("Multilingual", dispatch.DecisionLanguage);
     }
 
     /// <summary>
@@ -158,6 +162,7 @@ public sealed class DownloadDispatchRepositoryTests
         Assert.NotNull(dispatch);
         Assert.Null(dispatch.DecisionQuality);
         Assert.Null(dispatch.DecisionCustomFormatScore);
+        Assert.Null(dispatch.DecisionLanguage);
     }
 
     /// <summary>

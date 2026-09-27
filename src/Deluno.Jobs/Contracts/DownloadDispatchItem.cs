@@ -59,4 +59,10 @@ public sealed record DownloadDispatchItem(
     // captured in decision telemetry for other purposes; this is the first place
     // that reads them back out for display.
     string? DecisionQuality = null,
-    int? DecisionCustomFormatScore = null);
+    int? DecisionCustomFormatScore = null,
+
+    // The release name read for language at grab time (#796), from the same
+    // parser (Deluno.Quality.ReleasePreferences.ReleasePreferenceFactFactory)
+    // that judges a probed file's audio track — never a second copy of the
+    // token list in the web app.
+    string? DecisionLanguage = null);

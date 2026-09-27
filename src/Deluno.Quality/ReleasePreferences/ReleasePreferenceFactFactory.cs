@@ -305,6 +305,15 @@ public static class ReleasePreferenceFactFactory
     /// names one of its constituent languages, and "carries every language" or
     /// "carries a dub" is the more useful fact to report.
     /// </summary>
+    /// <summary>
+    /// The single backend answer for "what language does this release name
+    /// carry" (#796). The Transfers queue's language column calls this
+    /// directly on the download dispatch's release name at grab time, rather
+    /// than keeping its own copy of the token list in the web app.
+    /// </summary>
+    public static string? DetectLanguageFromReleaseName(string releaseName)
+        => DetectLanguage(releaseName.ToLowerInvariant());
+
     private static string? DetectLanguage(string value)
         => HasReleaseToken(value, "multi") || value.Contains("multilanguage", StringComparison.Ordinal)
             ? "Multilingual"
