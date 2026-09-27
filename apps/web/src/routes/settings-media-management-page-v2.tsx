@@ -24,7 +24,7 @@ import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
-import { NamingFormatField, NamingPatternEditor, previewNamingFormat, sanitizeIllegalCharacters, type NamingFormatKind } from "../components/app/naming-format-field";
+import { NamingFormatField, NamingPatternEditor, previewNamingFormat, sanitizeIllegalCharacters, type ColonReplacementMode, type NamingFormatKind } from "../components/app/naming-format-field";
 import { librarySetupNavItems } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { toast } from "../components/shell/toaster";
@@ -45,6 +45,14 @@ const TIMEOUT_OPTIONS = [
   { value: "10080", label: "7 days" }
 ];
 const DEFAULT_STALL_MINUTES = 2880;
+/** #759: matches ColonReplacementModes on the server. */
+const COLON_REPLACEMENT_OPTIONS = [
+  { value: "smart", label: "Smart Replace (recommended)" },
+  { value: "delete", label: "Delete" },
+  { value: "dash", label: "Dash" },
+  { value: "space-dash", label: "Space Dash" },
+  { value: "space-dash-space", label: "Space Dash Space" }
+];
 const FAILURE_OPTIONS = [
   { value: "block", label: "Stop and ask me" },
   { value: "manual-review", label: "Send to manual review" },
@@ -145,7 +153,8 @@ function FileHandlingPage() {
         episodeFileFormat: form.episodeFileFormat,
         renameOnImport: form.renameOnImport,
         useHardlinks: form.useHardlinks,
-        replaceIllegalCharacters: form.replaceIllegalCharacters
+        replaceIllegalCharacters: form.replaceIllegalCharacters,
+        colonReplacementMode: form.colonReplacementMode
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -199,13 +208,22 @@ function FileHandlingPage() {
                 <NamingFormatField kind="episode-file" value={form.episodeFileFormat} onChange={(value) => setForm((current) => ({ ...current, episodeFileFormat: value }))} onCustomModeChange={(active, draftValue, previousValue) => handleCustomMode("episode-file", active, draftValue, previousValue)} placeholder="{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}" showExamples={false} />
               </div>
             </div>
-            <div className="p-[var(--card-pad-x)]">
+            <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] md:grid-cols-2">
               <SwitchRow
                 label="Replace illegal characters"
                 description="On, a character a file system can't store (such as : or ?) becomes a dash. Off, Deluno removes it instead."
                 checked={form.replaceIllegalCharacters}
                 onCheckedChange={(checked) => setForm((current) => ({ ...current, replaceIllegalCharacters: checked }))}
               />
+              {form.replaceIllegalCharacters ? (
+                <Field label="Colon replacement" help="How a colon in a title is handled specifically. Every other illegal character keeps the dash above.">
+                  <Select
+                    value={form.colonReplacementMode}
+                    onChange={(event) => setForm((current) => ({ ...current, colonReplacementMode: event.target.value }))}
+                    options={COLON_REPLACEMENT_OPTIONS}
+                  />
+                </Field>
+              ) : null}
             </div>
           </div>
           <aside className="border-t border-hairline bg-surface-1/20 p-[var(--card-pad-x)] lg:border-l lg:border-t-0">
@@ -227,8 +245,11 @@ function FileHandlingPage() {
                 <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Episode file" value={previewNamingFormat(form.episodeFileFormat || "{Series Title} - S{Season:00}E{Episode:00} - {Episode Title}")} />
                 </div>
-                <div className="grid gap-[var(--grid-gap)] pb-[var(--grid-gap)] last:pb-0">
+                <div className="grid gap-[var(--grid-gap)] border-b border-hairline pb-[var(--grid-gap)] last:border-b-0 last:pb-0">
                   <NamingPreview label="Illegal characters" value={sanitizeIllegalCharacters("Show? Special Edition", form.replaceIllegalCharacters)} />
+                </div>
+                <div className="grid gap-[var(--grid-gap)] pb-[var(--grid-gap)] last:pb-0">
+                  <NamingPreview label="Colon replacement" value={sanitizeIllegalCharacters("Series: Title", form.replaceIllegalCharacters, form.colonReplacementMode as ColonReplacementMode)} />
                 </div>
               </div>
             </div>

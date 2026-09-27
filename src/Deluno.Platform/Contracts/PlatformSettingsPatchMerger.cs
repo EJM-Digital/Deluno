@@ -76,5 +76,6 @@ public static class PlatformSettingsPatchMerger
             LibraryFreeSpaceWarnPercent: patch.LibraryFreeSpaceWarnPercent ?? current.LibraryFreeSpaceWarnPercent,
             LibraryFreeSpacePausePercent: patch.LibraryFreeSpacePausePercent ?? current.LibraryFreeSpacePausePercent,
             SubtitleFetchAutomaticEnabled: patch.SubtitleFetchAutomaticEnabled ?? current.SubtitleFetchAutomaticEnabled,
-            ReplaceIllegalCharacters: patch.ReplaceIllegalCharacters ?? current.ReplaceIllegalCharacters);
+            ReplaceIllegalCharacters: patch.ReplaceIllegalCharacters ?? current.ReplaceIllegalCharacters,
+            ColonReplacementMode: patch.ColonReplacementMode ?? current.ColonReplacementMode);
 }

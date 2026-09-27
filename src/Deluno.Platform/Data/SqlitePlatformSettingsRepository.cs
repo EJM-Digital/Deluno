@@ -163,6 +163,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // #757: "unless false" like UseHardlinks -- a brand-new install with no
         // stored key keeps today's replace-with-dash rendering.
         await UpsertSettingAsync(connection, transaction, "media.replaceIllegalCharacters", request.ReplaceIllegalCharacters is false ? "false" : "true", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.colonReplacementMode", ColonReplacementModes.Normalize(request.ColonReplacementMode), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.bindAddress", NormalizeName(request.HostBindAddress) ?? "127.0.0.1", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.port", NormalizePositiveValue(request.HostPort, 5099).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "host.urlBase", NormalizeName(request.UrlBase) ?? string.Empty, updatedUtc, cancellationToken);
@@ -545,7 +546,8 @@ public sealed class SqlitePlatformSettingsRepository(
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
             LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
             SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase),
-            ReplaceIllegalCharacters: !string.Equals(GetValue(settings, "media.replaceIllegalCharacters"), "false", StringComparison.OrdinalIgnoreCase));
+            ReplaceIllegalCharacters: !string.Equals(GetValue(settings, "media.replaceIllegalCharacters"), "false", StringComparison.OrdinalIgnoreCase),
+            ColonReplacementMode: ColonReplacementModes.Normalize(GetValue(settings, "media.colonReplacementMode")));
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)

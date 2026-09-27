@@ -369,7 +369,8 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             request.Genres?.FirstOrDefault(),
             request.Tags?.FirstOrDefault(),
             request.Network,
-            replaceIllegalCharacters: settings.ReplaceIllegalCharacters);
+            replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+            colonReplacementMode: settings.ColonReplacementMode);
         var fullPath = string.IsNullOrWhiteSpace(rootPath)
             ? folderName
             : Path.Combine(rootPath, folderName);

@@ -1,4 +1,5 @@
 using Deluno.Platform;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Platform.Tests;
 
@@ -72,5 +73,42 @@ public sealed class NamingTemplateRendererTests
             replaceIllegalCharacters: false);
 
         Assert.Equal(Path.Combine("Comedy", "Who Me"), rendered);
+    }
+
+    /// <summary>#759: the default mode space-dash-spaces a colon+space, and plain-dashes a bare colon.</summary>
+    [Theory]
+    [InlineData("Series: Title", "Series - Title")]
+    [InlineData("Ratio:2", "Ratio-2")]
+    public void RenderSegment_smart_replace_is_the_default_colon_mode(string title, string expected)
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment("{Movie Title}", title, 2024);
+
+        Assert.Equal(expected, rendered);
+    }
+
+    [Theory]
+    [InlineData(ColonReplacementModes.Delete, "Series Title")]
+    [InlineData(ColonReplacementModes.Dash, "Series- Title")]
+    [InlineData(ColonReplacementModes.SpaceDash, "Series - Title")]
+    [InlineData(ColonReplacementModes.SpaceDashSpace, "Series -  Title")]
+    public void RenderSegment_applies_every_colon_replacement_mode(string mode, string expected)
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment("{Movie Title}", "Series: Title", 2024, colonReplacementMode: mode);
+
+        Assert.Equal(expected, rendered);
+    }
+
+    /// <summary>#759: turning illegal-character replacement off removes a colon outright, ignoring the colon mode.</summary>
+    [Fact]
+    public void RenderSegment_removes_the_colon_when_illegal_character_replacement_is_off()
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment(
+            "{Movie Title}",
+            "Series: Title",
+            2024,
+            replaceIllegalCharacters: false,
+            colonReplacementMode: ColonReplacementModes.SpaceDashSpace);
+
+        Assert.Equal("Series Title", rendered);
     }
 }

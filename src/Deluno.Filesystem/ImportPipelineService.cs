@@ -1999,11 +1999,12 @@ public sealed partial class ImportPipelineService(
             request.Genres?.FirstOrDefault(),
             request.Tags?.FirstOrDefault(),
             request.Network,
-            settings.ReplaceIllegalCharacters);
+            settings.ReplaceIllegalCharacters,
+            settings.ColonReplacementMode);
         var destinationFolder = string.IsNullOrWhiteSpace(rootPath) ? folder : Path.Combine(rootPath, folder);
         var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering, decision);
         var fileName = resolvedName.FileName;
-        var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName, settings.ReplaceIllegalCharacters));
+        var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
         var sourceExists = File.Exists(request.SourcePath);
         var destinationExists = File.Exists(destinationPath);
@@ -3760,7 +3761,8 @@ public sealed partial class ImportPipelineService(
         string? genre = null,
         string? tag = null,
         string? network = null,
-        bool replaceIllegalCharacters = true)
+        bool replaceIllegalCharacters = true,
+        string colonReplacementMode = ColonReplacementModes.SmartReplace)
         => NamingTemplateRenderer.RenderFolder(
             template,
             title,
@@ -3771,7 +3773,8 @@ public sealed partial class ImportPipelineService(
             genre,
             tag,
             network,
-            replaceIllegalCharacters: replaceIllegalCharacters);
+            replaceIllegalCharacters: replaceIllegalCharacters,
+            colonReplacementMode: colonReplacementMode);
 
     /// <summary>
     /// What Deluno decided about the release being imported: the quality it
@@ -3903,7 +3906,8 @@ public sealed partial class ImportPipelineService(
                 request.Tags?.FirstOrDefault(),
                 request.Network,
                 decision,
-                settings.ReplaceIllegalCharacters);
+                settings.ReplaceIllegalCharacters,
+                settings.ColonReplacementMode);
             return new ResolvedDestinationFileName($"{movieName}{extension}", null);
         }
 
@@ -3953,8 +3957,8 @@ public sealed partial class ImportPipelineService(
             ?? LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}")
             ?? string.Empty;
         var formatted = settings.EpisodeFileFormat
-            .Replace("{Series Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters), StringComparison.OrdinalIgnoreCase)
-            .Replace("{Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Series Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
+            .Replace("{Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{season:00}", seasonNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
             .Replace("{season}", seasonNumber.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("{episode:00}", episodeNumber.ToString("D2"), StringComparison.OrdinalIgnoreCase)
@@ -3962,7 +3966,7 @@ public sealed partial class ImportPipelineService(
             .Replace("{Episode Title}", episodeTitle, StringComparison.OrdinalIgnoreCase)
             .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
         return new ResolvedDestinationFileName(
-            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: decision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters)}{extension}",
+            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: decision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode)}{extension}",
             null);
     }
 
@@ -3970,30 +3974,18 @@ public sealed partial class ImportPipelineService(
     private static partial Regex SampleTokenPattern();
 
     /// <summary>
-    /// The import-path counterpart to <c>NamingTemplateRenderer.SanitizeSegment</c>:
-    /// same illegal-character set, same #757 "Replace illegal characters"
-    /// switch, so a name assembled here and one assembled by the renderer never
-    /// disagree about what survives.
+    /// The import-path counterpart to <c>NamingTemplateRenderer</c>'s own
+    /// sanitizing: both call <see cref="FileNameSanitizer.Sanitize"/>, so a
+    /// name assembled here and one assembled by the renderer never disagree
+    /// about what #757's switch or #759's colon mode does to a character.
     /// </summary>
-    private static string SanitizeFileName(string value, bool replaceIllegalCharacters = true)
+    private static string SanitizeFileName(
+        string value,
+        bool replaceIllegalCharacters = true,
+        string colonReplacementMode = ColonReplacementModes.SmartReplace)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var builder = new System.Text.StringBuilder(value.Length);
-        foreach (var character in value)
-        {
-            var isIllegal = invalid.Contains(character) || character is '<' or '>' or ':' or '"' or '/' or '\\' or '|' or '?' or '*';
-            if (!isIllegal)
-            {
-                builder.Append(character);
-            }
-            else if (replaceIllegalCharacters)
-            {
-                builder.Append('-');
-            }
-        }
-
-        var cleaned = builder.ToString();
-        return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned.Trim();
+        var cleaned = FileNameSanitizer.Sanitize(value, replaceIllegalCharacters, colonReplacementMode);
+        return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned;
     }
 
     private sealed record ResolvedDestinationFileName(string FileName, string? Warning);

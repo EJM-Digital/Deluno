@@ -1821,6 +1821,45 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Say What A Story (2020).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
     }
 
+    /// <summary>#759: the chosen colon mode reaches the import file-naming path, not just the render preview.</summary>
+    [Fact]
+    public async Task ExecuteAsync_applies_the_chosen_colon_replacement_mode_to_the_destination_file_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Series.Title.2020.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year})",
+            colonReplacementMode: ColonReplacementModes.SpaceDashSpace);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Series: Title", 2020, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Series -  Title (2020).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
     [Fact]
     public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
     {
@@ -3950,7 +3989,8 @@ public sealed class ImportPipelineServiceTests
         string? seriesRootPath = null,
         string episodeFileFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
         string movieFileFormat = "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
-        bool replaceIllegalCharacters = true)
+        bool replaceIllegalCharacters = true,
+        string? colonReplacementMode = null)
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
@@ -3985,7 +4025,8 @@ public sealed class ImportPipelineServiceTests
                 MetadataTmdbApiKey: null,
                 MetadataOmdbApiKey: null,
                 ReleaseNeverGrabPatterns: null,
-                ReplaceIllegalCharacters: replaceIllegalCharacters),
+                ReplaceIllegalCharacters: replaceIllegalCharacters,
+                ColonReplacementMode: colonReplacementMode),
             CancellationToken.None);
     }
 

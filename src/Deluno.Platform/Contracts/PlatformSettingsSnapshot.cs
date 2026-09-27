@@ -110,4 +110,8 @@ public sealed record PlatformSettingsSnapshot(
     // historical behaviour) turns an illegal filename character into a dash;
     // off removes it instead. Default true so an install that has never
     // opened this setting keeps today's rendering.
-    bool ReplaceIllegalCharacters = true);
+    bool ReplaceIllegalCharacters = true,
+    // #759: one of ColonReplacementModes, consulted only when
+    // ReplaceIllegalCharacters is on. Smart Replace is Radarr/Sonarr's own
+    // default.
+    string ColonReplacementMode = ColonReplacementModes.SmartReplace);
