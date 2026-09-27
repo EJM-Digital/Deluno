@@ -41,6 +41,13 @@ public sealed class EndpointInventoryTests
         var snapshotPath = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
             "../../../../../tests/Deluno.Platform.Tests/Routing/endpoint-inventory.snapshot.txt"));
+        // Set DELUNO_UPDATE_ROUTE_SNAPSHOT=1 to rewrite the snapshot after a
+        // deliberate route change, then review the diff before committing.
+        if (Environment.GetEnvironmentVariable("DELUNO_UPDATE_ROUTE_SNAPSHOT") == "1")
+        {
+            File.WriteAllLines(snapshotPath, actual);
+        }
+
         var expected = File.ReadAllLines(snapshotPath);
 
         Assert.Equal(expected, actual);
