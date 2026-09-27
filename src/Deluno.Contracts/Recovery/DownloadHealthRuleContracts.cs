@@ -7,13 +7,17 @@ namespace Deluno.Contracts;
 ///
 /// <para>The wishlist in #905 named four more — magnet stuck fetching
 /// metadata, never-starts-at-0%, tracker-says-unregistered as its own signal,
-/// and strikeable dangerous-file/client-failure kinds. None of those has a
-/// telemetry source yet: no client adapter reports metadata-fetch state or a
-/// normalized tracker-status enum, and the file/client-failure findings
-/// (#879, #882-#885) are not built. Adding them here without a real signal
-/// behind them would be a switch that does nothing, which is worse than not
-/// offering it — so they are left for whichever of those issues lands the
-/// telemetry first.</para>
+/// and strikeable dangerous-file/client-failure kinds. Tracker status is no
+/// longer one of those: #878 gave every torrent client adapter a normalized
+/// <see cref="Deluno.Contracts.DownloadTrackerStatuses"/> reading, and #818
+/// folded "the tracker says unregistered" into <see cref="DeadTorrent"/>
+/// alongside its existing zero-seeder check, rather than adding a fifth kind
+/// for the same underlying dead-release verdict. The remaining three still
+/// have no telemetry source: no client adapter reports metadata-fetch state,
+/// and the file/client-failure findings (#879, #882-#885) are not built.
+/// Adding them here without a real signal behind them would be a switch that
+/// does nothing, which is worse than not offering it — so they are left for
+/// whichever of those issues lands the telemetry first.</para>
 /// </summary>
 public static class DownloadHealthRuleKinds
 {
@@ -27,9 +31,12 @@ public static class DownloadHealthRuleKinds
     public const string LowPeers = "low-peers";
 
     /// <summary>
-    /// Zero peers or seeders at all (#818) - a sharper, separate check from
-    /// <see cref="LowPeers"/>'s configurable floor, with its own grace period
-    /// before a freshly-added download can trip it.
+    /// Zero peers or seeders at all, or the tracker itself explicitly
+    /// reporting the torrent unregistered (#818) - a sharper, separate check
+    /// from <see cref="LowPeers"/>'s configurable floor, with its own grace
+    /// period before a freshly-added download can trip it. A tracker outage
+    /// (temporarily unreachable) is not the same reading as "unregistered"
+    /// and never trips this on its own.
     /// </summary>
     public const string DeadTorrent = "dead-torrent";
 

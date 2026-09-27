@@ -88,6 +88,9 @@ export interface PlatformSettingsPatch {
   /** #829: a single hourly search-call ceiling across every indexer combined. Off by default (#936). */
   maxSearchesPerHourEnabled?: boolean;
   maxSearchesPerHour?: number;
+  /** #818: zero seeders, or the tracker itself saying unregistered, past a grace period since the download was added. Off by default. */
+  downloadHealthDeadTorrentEnabled?: boolean;
+  downloadHealthDeadTorrentGraceMinutes?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */

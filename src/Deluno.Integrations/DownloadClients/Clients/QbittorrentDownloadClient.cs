@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
@@ -170,6 +171,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
         await LoginAsync(http, client, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
+        var trackerStatusByHash = await GetTrackerStatusesAsync(http, torrents, cancellationToken);
         var queue = torrents.Select(item => new DownloadQueueItem(
             item.Hash ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
@@ -196,7 +198,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // stalled/stalledDL state (no seeds, no error text) is left as a
             // release-side finding.
             IsSetupProblem: IsSetupProblemState(item.State),
-            IsPrivate: item.Private))
+            IsPrivate: item.Private,
+            TrackerStatus: item.Hash is { Length: > 0 } hash && trackerStatusByHash.TryGetValue(hash, out var trackerStatus)
+                ? trackerStatus
+                : DownloadTrackerStatuses.Unknown))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, cancellationToken);
@@ -527,4 +532,42 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     private sealed record QbitMainData([property: JsonPropertyName("server_state")] QbitServerState? ServerState);
 
     private sealed record QbitServerState([property: JsonPropertyName("free_space_on_disk")] long? FreeSpaceOnDisk);
+
+    /// <summary>qBittorrent's per-tracker status: 4 is "Not working", and only then does <c>msg</c> carry the tracker's own reason.</summary>
+    private sealed record QbitTrackerItem(
+        [property: JsonPropertyName("status")] int? Status,
+        [property: JsonPropertyName("msg")] string? Message);
+
+    private const int TrackerNotWorking = 4;
+
+    /// <summary>
+    /// #878: qBittorrent has no tracker field on <c>torrents/info</c> at all —
+    /// its answer is only ever the queue-status word, never the tracker's own
+    /// message, which is why it could not tell an unregistered torrent apart
+    /// from an ordinary stall (cleanup sheet C5). This is the one extra
+    /// request, per torrent, that reads what the tracker actually said.
+    /// </summary>
+    private static async Task<Dictionary<string, string>> GetTrackerStatusesAsync(
+        HttpClient http, IReadOnlyList<QbitTorrentItem> torrents, CancellationToken cancellationToken)
+    {
+        var statusByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var hash in torrents.Select(item => item.Hash).Where(hash => !string.IsNullOrWhiteSpace(hash)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var trackers = await http.GetFromJsonAsync<IReadOnlyList<QbitTrackerItem>>($"api/v2/torrents/trackers?hash={hash}", cancellationToken) ?? [];
+                statusByHash[hash!] = trackers.Any(tracker => tracker.Status == TrackerNotWorking && DownloadClientHelpers.LooksUnregistered(tracker.Message))
+                    ? DownloadTrackerStatuses.Unregistered
+                    : DownloadTrackerStatuses.Ok;
+            }
+            catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+            {
+                // A tracker read that fails says nothing either way (#901) -
+                // an outage never reads as "unregistered".
+                statusByHash[hash!] = DownloadTrackerStatuses.Unknown;
+            }
+        }
+
+        return statusByHash;
+    }
 }

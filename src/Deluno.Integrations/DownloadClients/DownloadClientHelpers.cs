@@ -262,6 +262,25 @@ internal static class DownloadClientHelpers
             || normalized.Contains("error", StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The wording trackers actually use to say a torrent is gone for good
+    /// (#878, cleanup sheet C5) — different tracker software phrases it
+    /// differently, but each of these means "no announce will ever succeed
+    /// again", which is a different fact from the tracker being merely
+    /// unreachable right now (a timeout or connection-refused message matches
+    /// none of these).
+    /// </summary>
+    private static readonly string[] UnregisteredTrackerPhrases =
+    [
+        "unregistered", "not registered", "torrent not found", "not authorized",
+        "torrent has been deleted", "info hash not found"
+    ];
+
+    /// <summary>Whether a tracker's own message is it declaring the torrent unregistered/removed (#878).</summary>
+    internal static bool LooksUnregistered(string? trackerMessage)
+        => !string.IsNullOrWhiteSpace(trackerMessage) &&
+           UnregisteredTrackerPhrases.Any(phrase => trackerMessage.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+
     internal static string CleanReleaseTitle(string value) => value.Replace('.', ' ').Replace('_', ' ').Replace('-', ' ').Trim();
 
     internal static string? ChoosePath(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();

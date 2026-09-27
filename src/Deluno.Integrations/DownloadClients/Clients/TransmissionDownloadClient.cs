@@ -3,6 +3,7 @@ using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
@@ -76,7 +77,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // ReconcileTorrentStatus's own no-metadata-no-peers stall window
             // reads Peers as "is there anyone to talk to at all" — switching
             // it to sending-only would stall that magnet on the first poll.
-            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate" }
+            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate", "trackerStats" }
         }), cancellationToken);
         var queue = (response.Arguments?.Torrents ?? []).Select(item => new DownloadQueueItem(
             item.Id?.ToString(CultureInfo.InvariantCulture) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
@@ -98,7 +99,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // complaining about the release itself, which stays a release-side
             // finding.
             IsSetupProblem: item.Error == TrLocalError,
-            IsPrivate: item.IsPrivate))
+            IsPrivate: item.IsPrivate,
+            TrackerStatus: TrackerStatus(item)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(client, baseUri, cancellationToken);
@@ -150,6 +152,27 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         return item.IsStalled == true && status == DownloadQueueStatuses.Downloading
             ? DownloadQueueStatuses.Stalled
             : status;
+    }
+
+    /// <summary>
+    /// #878: Transmission's <c>trackerStats</c> carries the tracker's own
+    /// last announce result, unlike the queue-level <c>error</c>/<c>errorString</c>
+    /// fields this adapter already reads, which only ever hold Transmission's
+    /// own word for the problem. Only an announce Transmission actually made
+    /// and that the tracker rejected counts - a tracker it has not reached yet
+    /// (no announce attempted) says nothing about whether it still holds the
+    /// torrent.
+    /// </summary>
+    private static string TrackerStatus(TransmissionTorrent item)
+    {
+        var trackers = item.TrackerStats ?? [];
+        if (trackers.Count == 0) return DownloadTrackerStatuses.Unknown;
+        return trackers.Any(tracker =>
+            tracker.HasAnnounced == true &&
+            tracker.LastAnnounceSucceeded == false &&
+            DownloadClientHelpers.LooksUnregistered(tracker.LastAnnounceResult))
+            ? DownloadTrackerStatuses.Unregistered
+            : DownloadTrackerStatuses.Ok;
     }
 
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
@@ -300,5 +323,11 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("download-dir")] string? DownloadDir = null,
         [property: JsonPropertyName("size-bytes")] long? SizeBytes = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null);
+
+    /// <summary>One tracker's own last-announce result, from Transmission's <c>trackerStats</c> (#878).</summary>
+    private sealed record TransmissionTrackerStat(
+        [property: JsonPropertyName("lastAnnounceResult")] string? LastAnnounceResult,
+        [property: JsonPropertyName("lastAnnounceSucceeded")] bool? LastAnnounceSucceeded,
+        [property: JsonPropertyName("hasAnnounced")] bool? HasAnnounced);
 }

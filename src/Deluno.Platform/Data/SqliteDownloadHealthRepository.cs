@@ -460,7 +460,10 @@ public sealed class SqliteDownloadHealthRepository(
             Rule("legacy-no-progress", DownloadHealthRuleKinds.NoProgress, legacy.DownloadHealthNoProgressEnabled, legacy.DownloadHealthNoProgressMinutes, 0),
             Rule("legacy-too-slow", DownloadHealthRuleKinds.TooSlow, legacy.DownloadHealthMinSpeedEnabled, legacy.DownloadHealthMinSpeedMinutes, legacy.DownloadHealthMinSpeedKbps),
             Rule("legacy-low-peers", DownloadHealthRuleKinds.LowPeers, legacy.DownloadHealthMinPeersEnabled, legacy.DownloadHealthMinPeersMinutes, legacy.DownloadHealthMinPeers),
-            Rule("legacy-dead-torrent", DownloadHealthRuleKinds.DeadTorrent, false, 30, 60)
+            // #818: the timer here is the strike-repeat window, not the grace
+            // period - the grace period is the rule's own Threshold, which
+            // DownloadHealthEvaluator reads for DeadTorrent.
+            Rule("legacy-dead-torrent", DownloadHealthRuleKinds.DeadTorrent, legacy.DownloadHealthDeadTorrentEnabled, 30, legacy.DownloadHealthDeadTorrentGraceMinutes)
         ];
     }
 

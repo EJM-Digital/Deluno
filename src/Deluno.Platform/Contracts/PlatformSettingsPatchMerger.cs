@@ -73,6 +73,8 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthMinPeersEnabled: patch.DownloadHealthMinPeersEnabled ?? current.DownloadHealthMinPeersEnabled,
             DownloadHealthMinPeers: patch.DownloadHealthMinPeers ?? current.DownloadHealthMinPeers,
             DownloadHealthMinPeersMinutes: patch.DownloadHealthMinPeersMinutes ?? current.DownloadHealthMinPeersMinutes,
+            DownloadHealthDeadTorrentEnabled: patch.DownloadHealthDeadTorrentEnabled ?? current.DownloadHealthDeadTorrentEnabled,
+            DownloadHealthDeadTorrentGraceMinutes: patch.DownloadHealthDeadTorrentGraceMinutes ?? current.DownloadHealthDeadTorrentGraceMinutes,
             LibraryFreeSpaceWarnPercent: patch.LibraryFreeSpaceWarnPercent ?? current.LibraryFreeSpaceWarnPercent,
             LibraryFreeSpacePausePercent: patch.LibraryFreeSpacePausePercent ?? current.LibraryFreeSpacePausePercent,
             SubtitleFetchAutomaticEnabled: patch.SubtitleFetchAutomaticEnabled ?? current.SubtitleFetchAutomaticEnabled,

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
@@ -69,7 +70,14 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // for itself (a move that failed, a path it could not write
                 // to), which is this machine's problem.
                 IsSetupProblem: TrackerError(item.TrackerStatus) is null && DelugeMessage(item.Message) is not null,
-                IsPrivate: item.Private);
+                IsPrivate: item.Private,
+                // #878: tracker_status is Deluge's own free-text field, not a
+                // fixed enum, so a keyword match on the raw text (not only the
+                // "Error"-prefixed slice ErrorMessage above uses) is what
+                // catches the phrasing a tracker actually sent back.
+                TrackerStatus: DownloadClientHelpers.LooksUnregistered(item.TrackerStatus)
+                    ? DownloadTrackerStatuses.Unregistered
+                    : string.IsNullOrWhiteSpace(item.TrackerStatus) ? DownloadTrackerStatuses.Unknown : DownloadTrackerStatuses.Ok);
         })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();

@@ -4,6 +4,7 @@ using Deluno.Connections.Contracts;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
+using Deluno.Platform.Contracts;
 using Deluno.Recovery.Policies;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
@@ -98,6 +99,52 @@ public sealed class DelugeSharingAndTrackerTests
         Assert.Equal(DownloadQueueStatuses.Queued, item.Status);
     }
 
+    /// <summary>#878, cleanup sheet C5: the tracker explicitly saying the torrent is unregistered normalizes to its own signal, distinct from any other tracker error.</summary>
+    [Fact]
+    public async Task An_unregistered_tracker_normalizes_to_the_tracker_unregistered_status()
+    {
+        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
+
+        Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
+    }
+
+    /// <summary>A tracker complaint that is not the "gone for good" wording (banned, offline) is not read as unregistered.</summary>
+    [Fact]
+    public async Task A_different_tracker_error_is_not_read_as_unregistered()
+    {
+        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: torrent banned");
+
+        Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
+    }
+
+    [Fact]
+    public async Task A_healthy_tracker_status_normalizes_to_ok()
+    {
+        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Announce sent");
+
+        Assert.Equal(DownloadTrackerStatuses.Ok, item.TrackerStatus);
+    }
+
+    [Fact]
+    public async Task No_tracker_status_at_all_normalizes_to_unknown()
+    {
+        var item = await Snapshot(state: "Queued", ratio: null, seedingTime: null, trackerStatus: string.Empty);
+
+        Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
+    }
+
+    /// <summary>#878: an unregistered tracker acts immediately - James decided this does not wait for strikes to build up - so the finding carries its own strike limit of one.</summary>
+    [Fact]
+    public async Task An_unregistered_tracker_reaches_the_evaluator_as_an_immediate_critical_finding()
+    {
+        var item = await Snapshot(state: "Downloading", ratio: null, seedingTime: null, trackerStatus: "Error: unregistered torrent");
+
+        var findings = Evaluate(item);
+        var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.TrackerUnregistered);
+        Assert.Equal("critical", finding.Severity);
+        Assert.Equal(1, finding.RuleStrikeLimit);
+    }
+
     private static IReadOnlyList<RecoveryHealthFinding> Evaluate(DownloadQueueItem item)
         => new DownloadHealthEvaluator().Evaluate(
             new RecoveryQueueSnapshot(
@@ -107,7 +154,8 @@ public sealed class DelugeSharingAndTrackerTests
                 item.SpeedMbps,
                 item.AddedUtc,
                 item.EtaSeconds,
-                item.ReleaseName),
+                item.ReleaseName,
+                TrackerStatus: item.TrackerStatus),
             capturedUtc: item.AddedUtc);
 
     private static async Task<DownloadQueueItem> Snapshot(string state, double? ratio, double? seedingTime, string trackerStatus, string message = "OK")

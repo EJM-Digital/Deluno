@@ -140,6 +140,61 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.DeadTorrent);
     }
 
+    /// <summary>#818: a healthy swarm whose tracker itself says the torrent is unregistered is dead too, not merely "low peers".</summary>
+    [Fact]
+    public void Dead_torrent_rule_flags_a_tracker_reported_unregistered_torrent_even_with_peers()
+    {
+        var rules = new[] { DeadTorrentRule(graceMinutes: 60, timerMinutes: 30) };
+        var findings = Evaluate(CreateItem(peers: 12, addedUtc: CapturedUtc.AddMinutes(-91), trackerStatus: DownloadTrackerStatuses.Unregistered), rules);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.DeadTorrent);
+        Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
+    }
+
+    /// <summary>#818: a tracker that is merely unreachable right now (Unknown, not Unregistered) is a temporary outage, not a dead verdict.</summary>
+    [Fact]
+    public void Dead_torrent_rule_does_not_treat_a_tracker_outage_as_dead()
+    {
+        var rules = new[] { DeadTorrentRule(graceMinutes: 60, timerMinutes: 30) };
+        var findings = Evaluate(CreateItem(peers: 12, addedUtc: CapturedUtc.AddMinutes(-91), trackerStatus: DownloadTrackerStatuses.Unknown), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.DeadTorrent);
+    }
+
+    /// <summary>
+    /// #878, cleanup sheet C5: unlike every other kind here, this is not
+    /// something a person opts into - it is James's decided behaviour, so it
+    /// fires with no configured rule at all, and carries a strike limit of
+    /// one so it can act on the very first sighting rather than waiting for
+    /// strikes to build up.
+    /// </summary>
+    [Fact]
+    public void Tracker_unregistered_finding_fires_with_no_rule_configured_and_acts_on_the_first_sighting()
+    {
+        var findings = Evaluate(CreateItem(trackerStatus: DownloadTrackerStatuses.Unregistered), DownloadHealthRules.Defaults);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.TrackerUnregistered);
+        Assert.Equal("critical", finding.Severity);
+        Assert.Equal(1, finding.RuleStrikeLimit);
+        Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
+    }
+
+    [Fact]
+    public void Tracker_unregistered_finding_never_applies_to_usenet()
+    {
+        var findings = Evaluate(CreateItem(trackerStatus: DownloadTrackerStatuses.Unregistered, isUsenet: true), DownloadHealthRules.Defaults);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.TrackerUnregistered);
+    }
+
+    [Fact]
+    public void A_healthy_tracker_status_never_raises_the_tracker_unregistered_finding()
+    {
+        var findings = Evaluate(CreateItem(trackerStatus: DownloadTrackerStatuses.Ok), DownloadHealthRules.Defaults);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.TrackerUnregistered);
+    }
+
     [Fact]
     public void A_rule_scoped_to_the_wrong_completion_range_never_matches()
     {
@@ -270,7 +325,8 @@ public sealed class DownloadHealthRulesAreConfigurableTests
                 item.Peers,
                 ProgressPercent: item.Progress,
                 IsUsenetProtocol: string.Equals(item.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase),
-                IsPrivate: item.IsPrivate),
+                IsPrivate: item.IsPrivate,
+                TrackerStatus: item.TrackerStatus),
             CapturedUtc,
             rules);
 
@@ -280,7 +336,8 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         DateTimeOffset? addedUtc = null,
         double progressPercent = 50,
         bool isUsenet = false,
-        bool? isPrivate = null)
+        bool? isPrivate = null,
+        string trackerStatus = DownloadTrackerStatuses.Unknown)
         => new(
             Id: "queue-1",
             ClientId: "client-1",
@@ -301,5 +358,6 @@ public sealed class DownloadHealthRulesAreConfigurableTests
             ErrorMessage: null,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
             SourcePath: "D:\\downloads\\example.mkv",
-            IsPrivate: isPrivate);
+            IsPrivate: isPrivate,
+            TrackerStatus: trackerStatus);
 }

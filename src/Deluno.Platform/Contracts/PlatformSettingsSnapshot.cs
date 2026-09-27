@@ -90,6 +90,11 @@ public sealed record PlatformSettingsSnapshot(
     bool DownloadHealthMinPeersEnabled = false,
     int DownloadHealthMinPeers = 1,
     int DownloadHealthMinPeersMinutes = 30,
+    // #818: zero seeders, or the tracker itself saying unregistered, past a
+    // grace period since the download was added - off by default (#936),
+    // same as every other opt-in rule kind above.
+    bool DownloadHealthDeadTorrentEnabled = false,
+    int DownloadHealthDeadTorrentGraceMinutes = 60,
     // A library root running low on space fails title by title, at the worst
     // possible moment -- mid-import -- with no single place saying why (#909).
     // Warn is informational; at or below Pause, Deluno stops grabbing and

@@ -743,7 +743,8 @@ public sealed class DownloadClientTelemetryService(
                         item.IsSetupProblem,
                         item.Progress,
                         DownloadClientHelpers.IsUsenetProtocol(item.Protocol),
-                        item.IsPrivate),
+                        item.IsPrivate,
+                        item.TrackerStatus),
                     snapshot.CapturedUtc,
                     rules);
                 annotated.Add((item, findings));
@@ -927,6 +928,9 @@ public sealed class DownloadClientTelemetryService(
                 // (1 strike) acts on its first sighting even while the
                 // fallback threshold - used only by findings outside the
                 // rule engine, like client-stalled - stays at its own value.
+                // A tracker-unregistered finding (#878) carries a StrikeLimit
+                // of one directly (no RuleId needed), so it strikes here on
+                // its first sighting the same way.
                 var struck = (item.HealthFindings ?? []).FirstOrDefault(finding =>
                     DownloadHealthStrikes.Counts(finding.Kind) &&
                     finding.StrikeCount >= Math.Clamp(finding.RuleStrikeLimit ?? settings.DownloadHealthStrikeThreshold, 1, 20) &&

@@ -146,15 +146,25 @@ public static class DownloadHealthStrikes
     /// <summary>Fewer peers or seeders than the configured floor for longer than allowed (#659, off by default).</summary>
     public const string LowPeers = "low-peers";
 
-    /// <summary>Zero peers or seeders past the rule's grace period (#818, off by default).</summary>
+    /// <summary>Zero peers or seeders, or the tracker itself saying unregistered, past the rule's grace period (#818, off by default).</summary>
     public const string DeadTorrent = "dead-torrent";
+
+    /// <summary>
+    /// The tracker explicitly reports this torrent unregistered or removed
+    /// (#878, cleanup sheet C5). Not gated behind a configurable rule the way
+    /// <see cref="DeadTorrent"/> is: James decided this acts immediately once
+    /// the tracker has said so, rather than waiting for strikes to build up,
+    /// so this kind always carries its own strike limit of one.
+    /// </summary>
+    public const string TrackerUnregistered = "tracker-unregistered";
 
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, LowSpeed, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, TrackerUnregistered, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>, under <paramref name="window"/>.</summary>
     public static int For(DateTimeOffset since, DateTimeOffset now, TimeSpan window)

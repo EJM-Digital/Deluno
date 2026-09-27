@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Infrastructure.Storage;
 using Deluno.Intake.Contracts;
@@ -940,6 +941,9 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False(loaded.DownloadHealthMinPeersEnabled);
         Assert.Equal(1, loaded.DownloadHealthMinPeers);
         Assert.Equal(30, loaded.DownloadHealthMinPeersMinutes);
+        // #818: off by default (#936), with Cleanuparr's own hour as the starting grace period.
+        Assert.False(loaded.DownloadHealthDeadTorrentEnabled);
+        Assert.Equal(60, loaded.DownloadHealthDeadTorrentGraceMinutes);
     }
 
     [Fact]
@@ -958,7 +962,9 @@ public sealed class PlatformSettingsPersistenceTests
                 DownloadHealthMinSpeedMinutes: 45,
                 DownloadHealthMinPeersEnabled: true,
                 DownloadHealthMinPeers: 3,
-                DownloadHealthMinPeersMinutes: 20));
+                DownloadHealthMinPeersMinutes: 20,
+                DownloadHealthDeadTorrentEnabled: true,
+                DownloadHealthDeadTorrentGraceMinutes: 90));
         await repository.SaveAsync(merged, CancellationToken.None);
 
         var reloaded = await SettingsAsync(storage); // a fresh instance: nothing survives but the database
@@ -972,6 +978,49 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.DownloadHealthMinPeersEnabled);
         Assert.Equal(3, loaded.DownloadHealthMinPeers);
         Assert.Equal(20, loaded.DownloadHealthMinPeersMinutes);
+        Assert.True(loaded.DownloadHealthDeadTorrentEnabled);
+        Assert.Equal(90, loaded.DownloadHealthDeadTorrentGraceMinutes);
+    }
+
+    /// <summary>
+    /// #818: the Dead torrent rule's switch and grace period are ordinary
+    /// settings, the same way the original three rules (#659) are, and
+    /// <see cref="SqliteDownloadHealthRepository.GetDownloadHealthRulesAsync"/>
+    /// synthesizes the equivalent rule from them the first time an
+    /// installation reads its rules - so an existing install stays exactly
+    /// off (#936), and a new one becomes configurable from Settings ->
+    /// Download health without a separate rule-editor screen.
+    /// </summary>
+    [Fact]
+    public async Task Off_by_default_dead_torrent_setting_synthesizes_a_disabled_rule_with_the_shipped_grace_period()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+        var health = new SqliteDownloadHealthRepository(storage.Factory, new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z")));
+
+        var rules = await health.GetDownloadHealthRulesAsync(await repository.GetAsync(CancellationToken.None), CancellationToken.None);
+
+        var rule = Assert.Single(rules, rule => rule.Kind == DownloadHealthRuleKinds.DeadTorrent);
+        Assert.False(rule.Enabled);
+        Assert.Equal(60, rule.Threshold);
+    }
+
+    [Fact]
+    public async Task Turning_the_dead_torrent_setting_on_with_a_custom_grace_period_produces_an_enabled_rule()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(DownloadHealthDeadTorrentEnabled: true, DownloadHealthDeadTorrentGraceMinutes: 15));
+        await repository.SaveAsync(merged, CancellationToken.None);
+        var health = new SqliteDownloadHealthRepository(storage.Factory, new FixedTimeProvider(DateTimeOffset.Parse("2026-09-05T01:02:03Z")));
+
+        var rules = await health.GetDownloadHealthRulesAsync(await repository.GetAsync(CancellationToken.None), CancellationToken.None);
+
+        var rule = Assert.Single(rules, rule => rule.Kind == DownloadHealthRuleKinds.DeadTorrent);
+        Assert.True(rule.Enabled);
+        Assert.Equal(15, rule.Threshold);
     }
 
     /// <summary>
