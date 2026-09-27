@@ -80,6 +80,7 @@ const LIFECYCLE_PREFERENCE_ROWS: Array<{
   { key: "renameEnabled", name: "Rename", description: "A file was renamed to match the naming settings." },
   { key: "fileDeletedEnabled", name: "File delete", description: "A file was removed, including one replaced by an upgrade." },
   { key: "manualInteractionRequiredEnabled", name: "Manual interaction required", description: "An import failed in a way only a person can resolve." },
+  { key: "updateEnabled", name: "Application update", description: "Deluno itself started running a newer version than it did last run." },
   { key: "providerHealthChangedEnabled", name: "Provider health changed", description: "An indexer, download client, media server, or processor became unhealthy or recovered." }
 ];
 

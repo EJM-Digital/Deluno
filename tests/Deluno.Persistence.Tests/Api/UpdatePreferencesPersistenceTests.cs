@@ -15,7 +15,7 @@ public sealed class UpdatePreferencesPersistenceTests
         try
         {
             var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
-            var orchestrator = new DefaultUpdateOrchestrator(options);
+            var orchestrator = new DefaultUpdateOrchestrator(options, new FakeNotificationService(), new FakeOutboundNotificationService());
 
             var initial = await orchestrator.GetPreferencesAsync(CancellationToken.None);
             Assert.Equal(UpdateModes.NotifyOnly, initial.Mode);
@@ -28,7 +28,7 @@ public sealed class UpdatePreferencesPersistenceTests
             Assert.Equal(UpdateModes.DownloadBackground, saved.Mode);
             Assert.True(saved.AutoCheck);
 
-            var reloaded = new DefaultUpdateOrchestrator(options);
+            var reloaded = new DefaultUpdateOrchestrator(options, new FakeNotificationService(), new FakeOutboundNotificationService());
             var loaded = await reloaded.GetPreferencesAsync(CancellationToken.None);
             Assert.Equal(saved, loaded);
         }

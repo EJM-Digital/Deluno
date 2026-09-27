@@ -51,7 +51,17 @@ public sealed record UpdateStatusResponse(
     string? LastError,
     IReadOnlyList<string> Notes,
     string? CurrentImageRef = null,
-    string? CurrentImageDigest = null);
+    string? CurrentImageDigest = null,
+    string? Changelog = null,
+    IReadOnlyList<AppliedUpdateEntry>? AppliedUpdates = null);
+
+/// <summary>
+/// One entry in the "past 5 updates applied" history (#870), recorded the
+/// moment Deluno notices its own running version changed from what it last
+/// recorded — the same signal that fires the "On Application Update"
+/// outbound notification (#856).
+/// </summary>
+public sealed record AppliedUpdateEntry(string Version, DateTimeOffset AppliedAtUtc);
 
 public sealed record UpdatePreferencesResponse(
     string Mode,
