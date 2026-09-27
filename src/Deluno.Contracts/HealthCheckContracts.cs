@@ -1,0 +1,97 @@
+namespace Deluno.Contracts;
+
+/// <summary>The three answers a health check can give (#909).</summary>
+public static class HealthCheckStatuses
+{
+    /// <summary>The thing being checked is fine.</summary>
+    public const string Ok = "ok";
+
+    /// <summary>Something needs a person's attention.</summary>
+    public const string Problem = "problem";
+
+    /// <summary>Deluno could not tell, and says so rather than guessing either way.</summary>
+    public const string Unknown = "unknown";
+}
+
+/// <summary>
+/// Every category a check can belong to, so System &#8594; Health, the
+/// Dashboard tile, the bell and notifications can all group and filter the
+/// same way (#909).
+/// </summary>
+public static class HealthCheckCategories
+{
+    public const string DownloadClient = "download-client";
+    public const string Indexer = "indexer";
+    public const string Library = "library";
+    public const string Processor = "processor";
+    public const string MediaServer = "media-server";
+    public const string Metadata = "metadata";
+    public const string SubtitleProvider = "subtitle-provider";
+    public const string Seerr = "seerr";
+    public const string System = "system";
+    public const string Grab = "grab";
+}
+
+/// <summary>
+/// One health check's latest result, read by every surface that shows
+/// problems (#909). <paramref name="Id"/> is stable across runs -- the same
+/// check overwrites its own row rather than appending a new one, which is
+/// what lets <see cref="ProblemSinceUtc"/> mean "since it first went wrong"
+/// instead of "since Deluno last happened to look".
+/// </summary>
+public sealed record HealthCheckResultItem(
+    string Id,
+    string Category,
+    string Name,
+    string Status,
+    string Message,
+    string? Cause,
+    string? Fix,
+    string? DetailsJson,
+    DateTimeOffset LastRunUtc,
+    DateTimeOffset? ProblemSinceUtc,
+    DateTimeOffset? SnoozedUntilUtc)
+{
+    /// <summary>
+    /// A problem still counts on the Dashboard tile and lights the bell while
+    /// it is snoozed -- snoozing hides it from demanding attention on Health,
+    /// it does not make it not a problem (#909).
+    /// </summary>
+    public bool IsSnoozed(DateTimeOffset nowUtc) => SnoozedUntilUtc is { } until && until > nowUtc;
+}
+
+/// <summary>
+/// One check's outcome before it is persisted -- everything a check reports
+/// except the bookkeeping (<see cref="HealthCheckResultItem.ProblemSinceUtc"/>,
+/// snooze state) that only the repository can know across runs.
+/// </summary>
+public sealed record HealthCheckOutcome(
+    string Id,
+    string Category,
+    string Name,
+    string Status,
+    string Message,
+    string? Cause = null,
+    string? Fix = null,
+    string? DetailsJson = null)
+{
+    public static HealthCheckOutcome Ok(string id, string category, string name, string message, string? detailsJson = null)
+        => new(id, category, name, HealthCheckStatuses.Ok, message, DetailsJson: detailsJson);
+
+    public static HealthCheckOutcome Problem(string id, string category, string name, string message, string? cause, string? fix, string? detailsJson = null)
+        => new(id, category, name, HealthCheckStatuses.Problem, message, cause, fix, detailsJson);
+
+    public static HealthCheckOutcome Unknown(string id, string category, string name, string message, string? detailsJson = null)
+        => new(id, category, name, HealthCheckStatuses.Unknown, message, DetailsJson: detailsJson);
+}
+
+/// <summary>The counts a Dashboard tile and the bell need without reading every row (#909).</summary>
+public sealed record HealthCheckSummary(
+    int ProblemCount,
+    int UnsnoozedProblemCount,
+    int UnknownCount,
+    DateTimeOffset? LastRunUtc);
+
+public sealed record HealthCheckListResponse(
+    IReadOnlyList<HealthCheckResultItem> Checks,
+    HealthCheckSummary Summary);
