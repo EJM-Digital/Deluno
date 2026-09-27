@@ -3,6 +3,7 @@ import { fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IndexerItem, ReleaseProfileItem } from "../lib/api";
+import { emptyPlatformSettingsSnapshot } from "../lib/api/types/settings";
 
 /**
  * An enable/disable switch and indexer scoping for Release Profiles (#770):
@@ -33,7 +34,7 @@ const scopedProfile: ReleaseProfileItem = {
   indexerIds: ["idx-1"]
 };
 
-const loaderData = { profiles: [scopedProfile], indexers };
+const loaderData = { profiles: [scopedProfile], indexers, settings: emptyPlatformSettingsSnapshot };
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
