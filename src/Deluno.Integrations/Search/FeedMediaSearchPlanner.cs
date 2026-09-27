@@ -1010,11 +1010,12 @@ public sealed class FeedMediaSearchPlanner(
                     releaseName,
                     customFormats,
                     out matchedFormats,
-                    indexerFlags);
+                    indexerFlags,
+                    size);
             }
             else
             {
-                matchedFormats = CustomFormatMatcher.EvaluateMatches(releaseName, customFormats, indexerFlags);
+                matchedFormats = CustomFormatMatcher.EvaluateMatches(releaseName, customFormats, indexerFlags, size);
             }
             var decision = ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
                 releaseName,

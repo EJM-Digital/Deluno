@@ -342,6 +342,100 @@ public sealed class CustomFormatDecisionParityTests
         Assert.Equal(dryRun.IsMatch, typed.IsMatch);
     }
 
+    /// <summary>
+    /// Radarr's Year condition (#775): a min/max range matched against the
+    /// release name's own parsed year, including an open-ended range and a
+    /// negated condition.
+    /// </summary>
+    [Theory]
+    [InlineData("Movie.2018.1080p.WEB-DL-GRP", "2015-2020", true)]
+    [InlineData("Movie.2012.1080p.WEB-DL-GRP", "2015-2020", false)]
+    [InlineData("Movie.2026.1080p.WEB-DL-GRP", "2015-2020", false)]
+    [InlineData("Movie.2026.1080p.WEB-DL-GRP", "2020-", true)]
+    [InlineData("Movie.2010.1080p.WEB-DL-GRP", "2020-", false)]
+    [InlineData("Movie.2010.1080p.WEB-DL-GRP", "-2015", true)]
+    [InlineData("Movie.2026.1080p.WEB-DL-GRP", "-2015", false)]
+    [InlineData("Movie.1080p.WEB-DL-GRP", "2015-2020", false)]
+    public void Year_condition_matches_the_parsed_release_year(string releaseName, string range, bool expected)
+    {
+        var definition = $"[{{\"type\":\"year\",\"value\":\"{range}\"}}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.Equal(expected, CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
+    [Fact]
+    public void Negated_year_condition_flips_the_result()
+    {
+        const string releaseName = "Movie.2018.1080p.WEB-DL-GRP";
+        const string definition = "[{\"type\":\"year\",\"value\":\"2015-2020\",\"negate\":true}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false).IsMatch);
+    }
+
+    /// <summary>
+    /// Radarr's Size condition (#775): a min/max range in GB, matched against
+    /// the same size value release scoring already reads off the indexer
+    /// response — never derived from the release name.
+    /// </summary>
+    [Theory]
+    [InlineData(3_000_000_000L, "1-5", true)]
+    [InlineData(10_000_000_000L, "1-5", false)]
+    [InlineData(null, "1-5", false)]
+    [InlineData(10_000_000_000L, "5-", true)]
+    [InlineData(3_000_000_000L, "5-", false)]
+    [InlineData(3_000_000_000L, "-5", true)]
+    [InlineData(10_000_000_000L, "-5", false)]
+    public void Size_condition_matches_the_releases_reported_size(long? sizeBytes, string range, bool expected)
+    {
+        var definition = $"[{{\"type\":\"size\",\"value\":\"{range}\"}}]";
+        const string releaseName = "Movie.2026.1080p.WEB-DL-GRP";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.Equal(
+            expected,
+            CustomFormatDefinitionMatcher.Evaluate(releaseName, definition, anyCondition: false, releaseSizeBytes: sizeBytes).IsMatch);
+    }
+
+    [Fact]
+    public void Negated_size_condition_flips_the_result()
+    {
+        const string releaseName = "Movie.2026.1080p.WEB-DL-GRP";
+        const string definition = "[{\"type\":\"size\",\"value\":\"1-5\",\"negate\":true}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(definition));
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate(
+            releaseName,
+            definition,
+            anyCondition: false,
+            releaseSizeBytes: 3_000_000_000L).IsMatch);
+    }
+
+    /// <summary>
+    /// Radarr's YearSpecification/SizeSpecification store a "min" and a
+    /// "max" field rather than one "value" (#775); both map onto the same
+    /// range condition a hand-written rule uses.
+    /// </summary>
+    [Fact]
+    public void Imported_year_and_size_specifications_map_onto_range_conditions()
+    {
+        const string yearDefinition =
+            "[{\"implementation\":\"YearSpecification\",\"fields\":[{\"name\":\"min\",\"value\":2015},{\"name\":\"max\",\"value\":2020}]}]";
+        const string sizeDefinition =
+            "[{\"implementation\":\"SizeSpecification\",\"fields\":[{\"name\":\"min\",\"value\":1},{\"name\":\"max\",\"value\":5}]}]";
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(yearDefinition));
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate("Movie.2018.1080p.WEB-DL-GRP", yearDefinition, anyCondition: false).IsMatch);
+
+        Assert.True(CustomFormatDefinitionMatcher.CanEvaluate(sizeDefinition));
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate(
+            "Movie.2026.1080p.WEB-DL-GRP",
+            sizeDefinition,
+            anyCondition: false,
+            releaseSizeBytes: 3_000_000_000L).IsMatch);
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,

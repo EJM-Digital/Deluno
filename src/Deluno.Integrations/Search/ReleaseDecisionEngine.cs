@@ -465,7 +465,8 @@ public static partial class ReleaseDecisionEngine
                     input.ReleaseName,
                     normalizedCandidate,
                     indexerFlags: input.IndexerFlags,
-                    multiLanguages: input.MultiLanguages),
+                    multiLanguages: input.MultiLanguages,
+                    releaseSizeBytes: input.SizeBytes),
                 input.Seeders,
                 isSeasonPack);
             preferenceEvaluation = ReleasePreferenceEvaluator.Evaluate(
