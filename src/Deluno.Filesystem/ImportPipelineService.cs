@@ -406,6 +406,13 @@ public sealed partial class ImportPipelineService(
         var stagingPath = BuildTemporaryPath(preview.DestinationPath, ".deluno-stage");
         var restoreSourceOnFailure = false;
 
+        // A restart between here and the final catalogue write (below) leaves
+        // this staging file on disk with nothing to say what it was for. The
+        // marker records enough to finish or undo the import automatically on
+        // the next startup (#913) - it is deleted the moment the file is
+        // safely placed or the attempt is rolled back.
+        WriteRestartMarker(stagingPath, preview.SourcePath, preview.DestinationPath, mediaType, TitleForActivity(request.Preview));
+
         try
         {
             await RecordImportStartedAsync(request, preview, mediaType, cancellationToken);
@@ -472,6 +479,7 @@ public sealed partial class ImportPipelineService(
             var stagedSize = VerifyStagedImport(stagingPath);
             File.Move(stagingPath, preview.DestinationPath, overwrite: request.Overwrite);
             VerifyFinalImport(preview.DestinationPath, stagedSize);
+            DeleteRestartMarker(stagingPath);
             await ApplyImportPermissionsAsync(preview.DestinationPath, settings, cancellationToken);
 
             var catalogImportResult = await MarkCatalogImportedAsync(
@@ -3831,7 +3839,40 @@ public sealed partial class ImportPipelineService(
         {
             File.Move(backupPath, destinationPath, overwrite: true);
         }
+
+        // This attempt is over one way or another - nothing is left for a
+        // restart to recover (#913).
+        DeleteRestartMarker(stagingPath);
     }
+
+    /// <summary>
+    /// Records what an in-flight import was doing, next to its staging file,
+    /// so a restart can tell "finish this" from "this is nobody's business"
+    /// (#913). Best-effort: a marker that fails to write only means a crash
+    /// during this particular import will surface as a plain missing-source
+    /// case on the next scan rather than an automatic restart recovery.
+    /// </summary>
+    private static void WriteRestartMarker(
+        string stagingPath,
+        string sourcePath,
+        string destinationPath,
+        string mediaType,
+        string title)
+    {
+        try
+        {
+            var marker = new ImportRestartMarker(sourcePath, destinationPath, stagingPath, mediaType, title);
+            File.WriteAllText(RestartMarkerPath(stagingPath), JsonSerializer.Serialize(marker));
+        }
+        catch
+        {
+            // Best-effort only - see summary above.
+        }
+    }
+
+    private static void DeleteRestartMarker(string stagingPath) => TryDelete(RestartMarkerPath(stagingPath));
+
+    internal static string RestartMarkerPath(string stagingPath) => stagingPath + ".deluno-marker.json";
 
     private static void RestoreMovedSourceIfNeeded(
         string sourcePath,

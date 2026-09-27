@@ -67,6 +67,27 @@ public sealed class DelunoHeartbeatWorker(
                     _workerId,
                     recoveredJobs.Count);
             }
+
+            // #913: a restart mid-import leaves a staged file nobody is
+            // watching. Find every one of those, finish or undo it, before
+            // this worker starts leasing new jobs.
+            try
+            {
+                var recovery = await scope.ServiceProvider.GetRequiredService<IImportRestartRecoveryService>()
+                    .RecoverAsync(stoppingToken);
+                if (recovery.Recovered > 0 || recovery.Abandoned > 0)
+                {
+                    logger.LogInformation(
+                        "Worker {WorkerId} recovered {Recovered} import(s) interrupted by the previous restart and could not finish {Abandoned}.",
+                        _workerId,
+                        recovery.Recovered,
+                        recovery.Abandoned);
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Import restart recovery failed to run at startup.");
+            }
         }
 
         await Task.WhenAll(_lanes.Select(lane => RunLaneAsync(lane, stoppingToken)));
