@@ -48,6 +48,14 @@ public sealed record IndexerItem(
     public string? AdditionalParameters { get; init; }
 
     /// <summary>
+    /// This indexer's own anime category numbers (#742), in the same
+    /// comma-separated format as <see cref="Categories"/>. Anime is often
+    /// catalogued under different category numbers than normal TV on the
+    /// same indexer; null uses <see cref="Categories"/> for every search.
+    /// </summary>
+    public string? AnimeCategories { get; init; }
+
+    /// <summary>
     /// This source's own sharing rule (#288). Every field is null by default,
     /// meaning "inherit the global setting", so a source only has to state what
     /// makes it different — a private tracker that wants a ratio, say, on an

@@ -16,6 +16,8 @@ public sealed record CreateIndexerRequest(
     string? ApiPath = null,
     // Extra Newznab/Torznab query parameters some indexers require (#741).
     string? AdditionalParameters = null,
+    // This indexer's own anime category numbers (#742). Null uses Categories.
+    string? AnimeCategories = null,
     // Null means "inherit the global sharing rule" (#288).
     string? SharingMode = null,
     int? SharingForHours = null,

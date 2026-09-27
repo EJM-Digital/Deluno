@@ -467,6 +467,45 @@ public sealed class IndexerPersistenceTests
         Assert.Null(cleared.AdditionalParameters);
     }
 
+    // ── AnimeCategories (#742) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateIndexerAsync_persists_anime_categories()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var created = await repo.CreateIndexerAsync(
+            BaseCreateRequest() with { AnimeCategories = "5070, 5080" },
+            CancellationToken.None);
+
+        Assert.Equal("5070, 5080", created.AnimeCategories);
+        var persisted = Assert.Single(await repo.ListIndexersAsync(CancellationToken.None));
+        Assert.Equal("5070, 5080", persisted.AnimeCategories);
+    }
+
+    [Fact]
+    public async Task UpdateIndexerAsync_can_set_and_clear_anime_categories()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateIndexerAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, AnimeCategories: "5070"),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+        Assert.Equal("5070", updated.AnimeCategories);
+
+        var cleared = await repo.UpdateIndexerAsync(
+            created.Id,
+            new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null, ClearAnimeCategories: true),
+            CancellationToken.None);
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.AnimeCategories);
+    }
+
     // ── DeleteIndexerAsync ────────────────────────────────────────────────────
 
     [Fact]

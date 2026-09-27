@@ -143,6 +143,18 @@ describe("indexer form additional parameters", () => {
   });
 });
 
+// #742: an indexer's own anime category numbers round-trip through the form.
+describe("indexer form anime categories", () => {
+  it("reads a saved indexer's anime categories into the form", () => {
+    const form = indexerFormFrom({ ...savedIndexer(), animeCategories: "5070" });
+    expect(form.animeCategories).toBe("5070");
+  });
+
+  it("defaults a new indexer's anime categories to blank", () => {
+    expect(emptyIndexerForm().animeCategories).toBe("");
+  });
+});
+
 function savedIndexer(): IndexerItem {
   return {
     id: "1", name: "TorrentLeech", protocol: "torznab", privacy: "private", baseUrl: "https://www.torrentleech.org/", priority: 10, categories: "2000", tags: "",

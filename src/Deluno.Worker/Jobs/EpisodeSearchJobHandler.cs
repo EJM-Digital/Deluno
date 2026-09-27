@@ -157,7 +157,8 @@ public sealed class EpisodeSearchJobHandler(
                 SceneEpisodeNumber: targetEpisode?.SceneEpisodeNumber,
                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                 RuntimeMinutes: seriesItem?.RuntimeMinutes,
-                ImdbId: seriesItem?.ImdbId).WithProfile(profileRules),
+                ImdbId: seriesItem?.ImdbId,
+                Genres: seriesItem?.Genres).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;

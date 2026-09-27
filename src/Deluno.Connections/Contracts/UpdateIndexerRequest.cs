@@ -24,6 +24,9 @@ public sealed record UpdateIndexerRequest(
     // Extra Newznab/Torznab query parameters some indexers require (#741).
     string? AdditionalParameters = null,
     bool? ClearAdditionalParameters = null,
+    // This indexer's own anime category numbers (#742). Null uses Categories.
+    string? AnimeCategories = null,
+    bool? ClearAnimeCategories = null,
     // Null means "leave as is". ClearSharingPolicy drops the override entirely
     // so the source goes back to inheriting the global rule (#288).
     string? SharingMode = null,

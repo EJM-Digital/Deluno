@@ -117,7 +117,8 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.ProfileAcquisition,
                 request.RuntimeMinutes,
                 request.ImdbId,
-                request.ScoreLimits);
+                request.ScoreLimits,
+                request.Genres);
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
@@ -718,7 +719,13 @@ public sealed record AcquisitionDecisionRequest(
     /// the tracker search so a definition that only filters server-side by
     /// IMDb id (EZTV's JSON API, #606) can search the right show.
     /// </summary>
-    string? ImdbId = null);
+    string? ImdbId = null,
+    /// <summary>
+    /// The title's own genres, comma-separated, when the catalogue has them
+    /// (#742). A TV search whose genres name "Anime" queries each indexer's
+    /// own anime categories instead of its normal ones, when configured.
+    /// </summary>
+    string? Genres = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

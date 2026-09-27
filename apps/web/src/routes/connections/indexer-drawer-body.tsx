@@ -149,6 +149,11 @@ export function IndexerDrawerBody({
               Use the standard {scopeWords} categories
             </Button>
           )}
+          {form.scope === "tv" || form.scope === "both" ? (
+            <Field label="Anime categories" help="This indexer's own category numbers for anime, if it catalogues anime separately from normal TV. Leave blank to use the categories above for anime too.">
+              <Input value={form.animeCategories} onChange={(event) => setForm((current) => ({ ...current, animeCategories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="5070" />
+            </Field>
+          ) : null}
         </Disclosure>
         <Disclosure title="Fine-tune" summary="Use Deluno's safe 2-second default, or follow this indexer's published limit." open={fineTuneOpen} onOpenChange={setFineTuneOpen}>
           <Field label="Request interval" error={errors.requestIntervalSeconds} help="Deluno will not query this indexer more often than this. Private trackers usually publish a limit; leave this alone if you are not sure.">
