@@ -41,6 +41,15 @@ public sealed record ProcessorStatusSupport(
     /// </summary>
     public bool CanBeToldTheOutcome { get; init; }
 
+    /// <summary>
+    /// The folder the processor says it is watching, from an optional
+    /// <c>watchedPath</c> field on its capabilities answer (#909). Null means
+    /// the processor did not say -- shown as "not reported by the processor"
+    /// rather than as a problem, since plenty of processors will never add
+    /// this field and are not thereby broken.
+    /// </summary>
+    public string? WatchedPath { get; init; }
+
     public static readonly ProcessorStatusSupport None = new(ProcessorAnswer.Unsupported, false, false, null);
 }
 

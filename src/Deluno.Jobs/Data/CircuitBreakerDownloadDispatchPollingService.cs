@@ -2,16 +2,37 @@ using Microsoft.Extensions.Logging;
 
 namespace Deluno.Jobs.Data;
 
+/// <summary>
+/// Whether the dispatch-recovery poller has paused itself, and until when
+/// (#909). The circuit breaker paused silently before this existed -- it
+/// logged and nothing on any screen said so, which is exactly the kind of
+/// problem this health system exists to surface.
+/// </summary>
+public interface IDownloadDispatchCircuitBreakerState
+{
+    bool IsOpen { get; }
+
+    DateTimeOffset? ResumesAtUtc { get; }
+
+    int ConsecutiveFailures { get; }
+}
+
 public sealed class CircuitBreakerDownloadDispatchPollingService(
     IDownloadDispatchPollingService innerService,
     ILogger<CircuitBreakerDownloadDispatchPollingService> logger)
-    : IDownloadDispatchPollingService
+    : IDownloadDispatchPollingService, IDownloadDispatchCircuitBreakerState
 {
     private static readonly int FailureThreshold = 3;
     private static readonly TimeSpan CircuitOpenDuration = TimeSpan.FromMinutes(15);
 
     private int _consecutiveFailures;
     private DateTimeOffset? _circuitOpenedUtc;
+
+    public bool IsOpen => _circuitOpenedUtc is not null && DateTimeOffset.UtcNow - _circuitOpenedUtc < CircuitOpenDuration;
+
+    public DateTimeOffset? ResumesAtUtc => _circuitOpenedUtc?.Add(CircuitOpenDuration);
+
+    public int ConsecutiveFailures => _consecutiveFailures;
 
     public async Task<DownloadDispatchPollingReport> PollAsync(CancellationToken cancellationToken)
     {

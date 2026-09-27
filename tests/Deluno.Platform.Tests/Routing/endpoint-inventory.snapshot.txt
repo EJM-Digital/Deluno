@@ -198,6 +198,8 @@ GET /api/subtitle-languages
 GET /api/subtitle-providers/
 GET /api/system/bundled-components
 GET /api/system/connectivity
+GET /api/system/health/
+GET /api/system/health/summary
 GET /api/system/lan-access
 GET /api/system/tasks
 GET /api/tags/
@@ -385,6 +387,8 @@ POST /api/series/{id}/search
 POST /api/series/{id}/seasons/{seasonNumber:int}/search
 POST /api/setup/completed
 POST /api/subtitle-providers/{key}/test
+POST /api/system/health/{id}/snooze
+POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
 POST /api/tags/
 POST /api/trackers/cloudflare-helper/test

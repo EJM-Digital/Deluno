@@ -52,6 +52,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromBody] CreateIndexerRequest request,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -68,6 +69,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var item = await repository.CreateIndexerAsync(request, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
+            // #909: a newly added indexer's reachability is worth showing on
+            // Health right away rather than waiting up to fifteen minutes.
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Indexer, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -184,6 +188,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromBody] UpdateIndexerRequest request,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -202,6 +207,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (item is not null)
             {
                 await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
+                await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Indexer, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
@@ -310,6 +316,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromBody] CreateDownloadClientRequest request,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -326,6 +333,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var item = await repository.CreateDownloadClientAsync(request, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", item.Id, cancellationToken);
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.DownloadClient, cancellationToken);
             return Results.Ok(item);
         });
 
@@ -500,6 +508,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromBody] UpdateDownloadClientRequest request,
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
+            [FromServices] IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -520,6 +529,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (item is not null)
             {
                 await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", item.Id, cancellationToken);
+                // #909: a changed category, path or address is exactly what
+                // the folder-chain and save-path checks depend on.
+                await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.DownloadClient, cancellationToken);
+                await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
             }
             return item is null ? Results.NotFound() : Results.Ok(item);
         });

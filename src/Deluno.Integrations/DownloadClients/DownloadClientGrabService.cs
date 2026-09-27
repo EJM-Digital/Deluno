@@ -7,10 +7,13 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Data;
+using Deluno.Notifications;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -20,7 +23,12 @@ public sealed class DownloadClientGrabService(
     IIntegrationResiliencePolicy resiliencePolicy,
     IDownloadDispatchesRepository dispatchesRepository,
     IRealtimeEventPublisher realtimeEventPublisher,
-    Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null)
+    Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null,
+    ILibrariesRepository? librariesRepository = null,
+    IHealthCheckRepository? healthCheckRepository = null,
+    IActivityFeedRepository? activityFeedRepository = null,
+    IOutboundNotificationService? notificationService = null,
+    ILogger<DownloadClientGrabService>? logger = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -151,7 +159,127 @@ public sealed class DownloadClientGrabService(
                 cancellationToken);
         }
 
+        if (grabResult.Succeeded)
+        {
+            await ConfirmSavePathAsync(client, request, cancellationToken);
+        }
+
         return grabResult;
+    }
+
+    /// <summary>
+    /// Confirms, on this grab, that the category and save path the client
+    /// actually used are the ones the library that requested it expects
+    /// (#909). A category renamed in the client, or a remapped share, used to
+    /// "succeed" here while the file landed where nothing was looking for it
+    /// -- the next sign of trouble was an import that never happened, days
+    /// later, with no link back to this grab. This is flagged immediately as
+    /// a setup problem, not judged as a bad release.
+    ///
+    /// <para>Best-effort: this never fails or delays the grab itself, which
+    /// has already succeeded by the time this runs.</para>
+    /// </summary>
+    private async Task ConfirmSavePathAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (librariesRepository is null || healthCheckRepository is null || string.IsNullOrWhiteSpace(request.Category))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!downloadClientRegistry.TryGet(client.Protocol, out var implementation))
+            {
+                return;
+            }
+
+            var libraries = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .Where(library => string.Equals(library.MediaType, request.MediaType, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (libraries.Length == 0)
+            {
+                return;
+            }
+
+            var check = await implementation.CheckCategoryAsync(client, request.Category, cancellationToken);
+            if (string.IsNullOrWhiteSpace(check.SavePath))
+            {
+                // The client did not say -- not every protocol reports a save
+                // path per category, and that is not itself a problem.
+                return;
+            }
+
+            var mappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(client.Id, cancellationToken);
+            var reportedPath = DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, mappings);
+            if (string.IsNullOrWhiteSpace(reportedPath))
+            {
+                return;
+            }
+
+            foreach (var library in libraries)
+            {
+                var routing = await librariesRepository.GetLibraryRoutingAsync(library.Id, cancellationToken);
+                var routed = routing?.DownloadClients.Any(link =>
+                    string.Equals(link.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        !string.IsNullOrWhiteSpace(link.Category) ? link.Category : (string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? client.TvCategory : client.MoviesCategory),
+                        request.Category,
+                        StringComparison.OrdinalIgnoreCase)) ?? false;
+                if (!routed || string.IsNullOrWhiteSpace(library.DownloadsPath))
+                {
+                    continue;
+                }
+
+                var id = $"grab:{library.Id}:{client.Id}:{request.Category}";
+                var name = $"{client.Name}'s save path for {library.Name}";
+
+                var outcome = FolderChainService.SamePath(reportedPath, library.DownloadsPath)
+                    ? HealthCheckOutcome.Ok(id, HealthCheckCategories.Grab, name, $"{client.Name} saved {request.ReleaseName} to {reportedPath}, the folder {library.Name} expects.")
+                    : HealthCheckOutcome.Problem(
+                        id, HealthCheckCategories.Grab, name,
+                        $"{client.Name} saved {request.ReleaseName} to {reportedPath}, but {library.Name} expects {library.DownloadsPath}.",
+                        cause: $"{client.Name}'s {request.Category} category no longer saves to the folder {library.Name} watches -- a category renamed in the client, or a remapped share, usually causes this.",
+                        fix: $"Change the {request.Category} category's folder in {client.Name}, or update {library.Name}'s downloads folder to match.",
+                        detailsJson: $$"""{"libraryId":"{{library.Id}}","clientId":"{{client.Id}}","category":"{{request.Category}}","reportedPath":"{{reportedPath}}","expectedPath":"{{library.DownloadsPath}}"}""");
+
+                var transitions = await healthCheckRepository.UpsertResultsAsync([outcome], cancellationToken);
+                var transition = transitions.FirstOrDefault();
+                if (transition is null || transition.Transition == HealthCheckTransition.Unchanged)
+                {
+                    continue;
+                }
+
+                var started = transition.Transition == HealthCheckTransition.Started;
+                if (activityFeedRepository is not null)
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        started ? "health.problem" : "health.resolved",
+                        transition.Result.Message,
+                        transition.Result.DetailsJson,
+                        null,
+                        "health-check",
+                        transition.Result.Id,
+                        cancellationToken);
+                }
+
+                if (started && notificationService is not null)
+                {
+                    await notificationService.DispatchAsync(
+                        "health.problem",
+                        name,
+                        $"{transition.Result.Message} {transition.Result.Cause} {transition.Result.Fix}".Trim(),
+                        transition.Result.DetailsJson,
+                        cancellationToken);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogDebug(exception, "Could not confirm the save path for grab of {ReleaseName} to {ClientName}.", request.ReleaseName, client.Name);
+        }
     }
 
     /// <summary>

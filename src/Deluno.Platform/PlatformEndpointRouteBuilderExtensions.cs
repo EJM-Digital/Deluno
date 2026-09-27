@@ -105,6 +105,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             [FromBody] UpdatePlatformSettingsRequest request,
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -121,6 +122,11 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var snapshot = await repository.SaveAsync(request, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
+            // #909: the library free-space thresholds live on this settings
+            // record, so any save might have changed them. Asking the library
+            // checks to run now costs one extra fast pass; not asking risks
+            // showing a stale pause/warn state for up to fifteen minutes.
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
             return Results.Ok(snapshot);
         });
 
@@ -129,6 +135,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             [FromBody] PatchPlatformSettingsRequest request,
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IHealthCheckRepository healthChecks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -147,6 +154,7 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             var snapshot = await repository.SaveAsync(merged, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
+            await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
             return Results.Ok(snapshot);
         });
 
