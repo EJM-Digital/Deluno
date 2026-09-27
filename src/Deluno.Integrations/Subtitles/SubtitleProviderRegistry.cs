@@ -37,6 +37,12 @@ namespace Deluno.Integrations.Subtitles;
 /// the two that need no account first, so a new install finds something before
 /// it is asked to sign up for anything. A person's own priority on the stored
 /// row overrides it.</para>
+///
+/// <para><b>Three more, for #837.</b> Titlovi (Balkan languages), Assrt
+/// (Chinese) and Supersubtitles (Hungarian TV) extend real regional coverage
+/// Bazarr has and the original six did not, rather than padding the count.
+/// Supersubtitles needs no account and sits with the other two anonymous
+/// providers; Titlovi and Assrt both need one, so they sit after.</para>
 /// </summary>
 public sealed class SubtitleProviderRegistry(IEnumerable<ISubtitleProvider> providers) : ISubtitleProviderRegistry
 {
@@ -44,10 +50,13 @@ public sealed class SubtitleProviderRegistry(IEnumerable<ISubtitleProvider> prov
     [
         "gestdown",
         "podnapisi",
+        "supersubtitles",
         "opensubtitles",
         "subdl",
         "subsource",
-        "subf2m"
+        "subf2m",
+        "titlovi",
+        "assrt"
     ];
 
     public IReadOnlyList<ISubtitleProvider> All { get; } =
