@@ -198,6 +198,37 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             IsSetupProblem: !string.IsNullOrWhiteSpace(message));
     }
 
+    /// <summary>
+    /// rTorrent's own <c>f.multicall(hash, "", "f.path=")</c> (#816, and the
+    /// last of #803's own acceptance lines: a file listing for rTorrent) --
+    /// every file's own path relative to the torrent's base directory, the
+    /// same per-file granularity qBittorrent's and Deluge's file listings
+    /// give. Null when the address or hash is missing, or the call itself
+    /// fails, so the content blocklist falls back to the release name.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
+        var http = CreateHttp(client);
+
+        try
+        {
+            var response = await SendAsync(http, baseUri, "f.multicall", [queueItemId, string.Empty, "f.path="], cancellationToken);
+            return (AsArray(response) ?? [])
+                .Select(AsArray)
+                .Where(row => row is not null && row.Count > 0)
+                .Select(row => AsString(Field(row!, 0)))
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => path!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
