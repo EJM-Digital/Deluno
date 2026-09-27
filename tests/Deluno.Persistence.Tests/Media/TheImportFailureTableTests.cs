@@ -70,7 +70,7 @@ public sealed class TheImportFailureTableTests
     }
 
     /// <summary>
-    /// Two reasons justify deleting what was downloaded, and a third is the
+    /// Three reasons justify deleting what was downloaded, and a fourth is the
     /// surplus copy from a rejected replacement. Everything else might be
     /// environmental, and deleting on a guess cannot be undone.
     /// </summary>
@@ -82,8 +82,39 @@ public sealed class TheImportFailureTableTests
             .ToArray();
 
         Assert.Equal(
-            [ImportFailurePolicy.NoVideoStream, ImportFailurePolicy.LikelySample, ImportFailurePolicy.ReplacementRejected],
+            [
+                ImportFailurePolicy.NoVideoStream,
+                ImportFailurePolicy.LikelySample,
+                ImportFailurePolicy.MediaProbeRejected,
+                ImportFailurePolicy.ReplacementRejected
+            ],
             deleted);
+    }
+
+    /// <summary>
+    /// #918: a file that opens and is found broken (the probe rejected it) is
+    /// a bad release at once — no retry, and the download is not worth
+    /// keeping either.
+    /// </summary>
+    [Fact]
+    public void A_file_that_opens_and_is_broken_is_refused_and_deleted_with_no_retry()
+    {
+        Assert.Equal(BlockDecision.Immediately, ImportFailurePolicy.BlockFor(ImportFailurePolicy.MediaProbeRejected));
+        Assert.True(ImportFailurePolicy.ShouldBlock(ImportFailurePolicy.MediaProbeRejected, priorFailuresOfSameRelease: 0));
+        Assert.True(ImportFailurePolicy.ShouldDeletePayload(ImportFailurePolicy.MediaProbeRejected));
+    }
+
+    /// <summary>
+    /// #918: only a file Deluno could not open at all — still being written or
+    /// locked — is waited for and tried again. It is not blocked, and its
+    /// download is not deleted, because Deluno has not judged the file yet.
+    /// </summary>
+    [Fact]
+    public void A_file_that_cannot_be_opened_yet_is_waited_for_and_not_deleted()
+    {
+        Assert.Equal(BlockDecision.AfterOneRetry, ImportFailurePolicy.BlockFor(ImportFailurePolicy.MediaProbeUnreadable));
+        Assert.False(ImportFailurePolicy.ShouldBlock(ImportFailurePolicy.MediaProbeUnreadable, priorFailuresOfSameRelease: 0));
+        Assert.False(ImportFailurePolicy.ShouldDeletePayload(ImportFailurePolicy.MediaProbeUnreadable));
     }
 
     /// <summary>
