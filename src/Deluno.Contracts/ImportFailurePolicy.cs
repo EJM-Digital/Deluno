@@ -174,6 +174,17 @@ public static class ImportFailurePolicy
     /// </summary>
     public const string DeadOrBrokenLink = "deadOrBrokenLink";
 
+    /// <summary>
+    /// Checkpoint A (#917): opened before a processor or the library ever
+    /// sees it and found wrong — lower resolution than the name claims, far
+    /// from the known runtime, missing every track in a wanted language, or
+    /// will not open or play. Every one of those is Deluno reading the file
+    /// for itself, so a second copy of the same release would read exactly
+    /// as wrong: refused immediately and its payload removed, the same as
+    /// <see cref="NoVideoStream"/> and <see cref="MediaProbeRejected"/>.
+    /// </summary>
+    public const string DownloadIntegrityFailed = "downloadIntegrityFailed";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -183,7 +194,7 @@ public static class ImportFailurePolicy
         MissingLibraryRoot, MissingSource, Permission, IoError,
         HardlinkUnavailable, HardlinkFailed, SamePath, Conflict,
         ReplacementOwnershipMismatch, ProcessedFileIsLess, ClientReportedFailure,
-        DeadOrBrokenLink, InsufficientFreeSpace
+        DeadOrBrokenLink, InsufficientFreeSpace, DownloadIntegrityFailed
     ];
 
     /// <summary>
@@ -209,6 +220,10 @@ public static class ImportFailurePolicy
         // downloaded. A dead link or an unparseable file fetches the same
         // dead link or unparseable file a second time.
         DeadOrBrokenLink => BlockDecision.Immediately,
+
+        // Checkpoint A opened the file itself and found it wrong. A second
+        // copy of the same release reads exactly the same way.
+        DownloadIntegrityFailed => BlockDecision.Immediately,
 
         // Deluno cannot say whose fault it was, so it proves it twice.
         ImportFailed or MediaProbeUnreadable => BlockDecision.AfterOneRetry,
@@ -255,7 +270,7 @@ public static class ImportFailurePolicy
     /// </summary>
     public static string CategoryFor(string reasonCode) => reasonCode switch
     {
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure or DeadOrBrokenLink => FailureCategories.BadFile,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure or DeadOrBrokenLink or DownloadIntegrityFailed => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
         Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled or ClientReportedFailure => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup
@@ -273,7 +288,7 @@ public static class ImportFailurePolicy
     /// corrupt don't even retry").</para>
     /// </summary>
     public static bool ShouldDeletePayload(string reasonCode)
-        => reasonCode is NoVideoStream or LikelySample or MediaProbeRejected or ReplacementRejected or ProcessorRejected;
+        => reasonCode is NoVideoStream or LikelySample or MediaProbeRejected or ReplacementRejected or ProcessorRejected or DownloadIntegrityFailed;
 
     /// <summary>
     /// Whether this counts against the download client's health record.

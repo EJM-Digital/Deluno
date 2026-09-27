@@ -307,7 +307,11 @@ public sealed class DelunoHeartbeatWorker(
                 movieCatalogRepository,
                 seriesCatalogRepository,
                 timeProvider,
-                stoppingToken);
+                stoppingToken,
+                services.GetRequiredService<IPlatformSettingsRepository>(),
+                services.GetRequiredService<Deluno.Filesystem.IMediaProbeService>(),
+                services.GetRequiredService<IBlockedReleaseRepository>(),
+                services.GetRequiredService<Deluno.Quality.Data.IQualityRepository>());
 
             await workPlanner.PlanSharingReclaimAsync(
                 downloadClientTelemetryService,

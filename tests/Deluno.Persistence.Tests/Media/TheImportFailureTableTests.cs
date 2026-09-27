@@ -28,6 +28,7 @@ public sealed class TheImportFailureTableTests
     [InlineData(ImportFailurePolicy.ReplacementRejected)]
     [InlineData(ImportFailurePolicy.ClientReportedFailure)]
     [InlineData(ImportFailurePolicy.DeadOrBrokenLink)]
+    [InlineData(ImportFailurePolicy.DownloadIntegrityFailed)]
     public void A_release_Deluno_has_judged_is_refused_at_once(string reason)
     {
         Assert.Equal(BlockDecision.Immediately, ImportFailurePolicy.BlockFor(reason));
@@ -87,7 +88,8 @@ public sealed class TheImportFailureTableTests
                 ImportFailurePolicy.NoVideoStream,
                 ImportFailurePolicy.LikelySample,
                 ImportFailurePolicy.MediaProbeRejected,
-                ImportFailurePolicy.ReplacementRejected
+                ImportFailurePolicy.ReplacementRejected,
+                ImportFailurePolicy.DownloadIntegrityFailed
             ],
             deleted);
     }

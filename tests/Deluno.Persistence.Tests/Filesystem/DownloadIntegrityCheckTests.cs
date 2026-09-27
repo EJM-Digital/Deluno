@@ -1,4 +1,5 @@
 using Deluno.Filesystem;
+using Deluno.Quality;
 
 namespace Deluno.Persistence.Tests.Filesystem;
 
@@ -119,8 +120,56 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
     }
 
-    private async Task<DownloadIntegrityResult> Run(IMediaProbeService probe, string releaseName, int knownRuntimeMinutes)
-        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None);
+    /// <summary>
+    /// "Missing the audio language you want": the file's only audio track is
+    /// English, but the library requires Japanese (#917, #769).
+    /// </summary>
+    [Fact]
+    public async Task None_of_the_audio_tracks_in_the_wanted_language_fails()
+    {
+        var wantsJapanese = new ProfileLanguagePreference(["ja"], RequireLanguage: true);
+
+        var result = await Run(Probe.Ok(1920, 1080, 120 * 60), "Sintel.2010.1080p.WEB-DL", 120, wantsJapanese);
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+        Assert.Contains("Japanese", result.Reason);
+    }
+
+    [Fact]
+    public async Task A_track_in_the_wanted_language_passes()
+    {
+        var wantsEnglish = new ProfileLanguagePreference(["en"], RequireLanguage: true);
+
+        var result = await Run(Probe.Ok(1920, 1080, 120 * 60), "Sintel.2010.1080p.WEB-DL", 120, wantsEnglish);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    /// <summary>A preference that only ranks, rather than requiring, never refuses a release for its language.</summary>
+    [Fact]
+    public async Task A_ranking_only_language_preference_never_fails_a_file()
+    {
+        var prefersJapanese = new ProfileLanguagePreference(["ja"], RequireLanguage: false);
+
+        var result = await Run(Probe.Ok(1920, 1080, 120 * 60), "Sintel.2010.1080p.WEB-DL", 120, prefersJapanese);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    [Fact]
+    public async Task No_language_preference_at_all_is_unaffected()
+    {
+        var result = await Run(Probe.Ok(1920, 1080, 120 * 60), "Sintel.2010.1080p.WEB-DL", 120, languagePreference: null);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    private async Task<DownloadIntegrityResult> Run(
+        IMediaProbeService probe,
+        string releaseName,
+        int knownRuntimeMinutes,
+        ProfileLanguagePreference? languagePreference = null)
+        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None, languagePreference);
 
     private sealed class Probe(MediaProbeInfo info) : IMediaProbeService
     {
