@@ -222,6 +222,13 @@ public static class MediaGrabHandler
 
         var releaseName = request.ReleaseName.Trim();
         var indexerName = request.IndexerName?.Trim();
+        // Plain-English routing reason (#808): null for the ordinary case of
+        // an untagged client, which is why this never shows up as noise on
+        // every grab — only a title sent somewhere because of its tags says so.
+        var routingReason = await acquisitionPipeline.ExplainDownloadClientRoutingAsync(
+            downloadClient.DownloadClientId,
+            titleTags,
+            cancellationToken);
         var grabResult = await downloadClientGrabService.GrabAsync(
             downloadClient.DownloadClientId,
             new DownloadClientGrabRequest(
@@ -286,9 +293,10 @@ public static class MediaGrabHandler
             // Naming the release is the point of the row. "A release was
             // selected" leaves the one fact a person came to find - which
             // release Deluno actually took - only in the drawer behind it.
-            forceOverride
+            (forceOverride
                 ? $"{releaseName} was forced for {item.Title} and sent to {downloadClient.DownloadClientName}."
-                : $"{releaseName} was chosen for {item.Title} by hand and sent to {downloadClient.DownloadClientName}.",
+                : $"{releaseName} was chosen for {item.Title} by hand and sent to {downloadClient.DownloadClientName}.")
+                + (routingReason is null ? string.Empty : $" {routingReason}"),
             serializedAudit,
             null,
             entityType,
@@ -308,6 +316,7 @@ public static class MediaGrabHandler
                     ["indexerName"] = indexerName,
                     ["downloadClientId"] = downloadClient.DownloadClientId,
                     ["downloadClientName"] = downloadClient.DownloadClientName,
+                    ["downloadClientRoutingReason"] = routingReason,
                     ["policyVersion"] = selectedDecision.PolicyVersion,
                     ["forceOverride"] = forceOverride.ToString()
                 },
