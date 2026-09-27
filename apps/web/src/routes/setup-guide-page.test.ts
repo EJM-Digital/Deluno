@@ -127,7 +127,6 @@ describe("setup guide Automation step (#936)", () => {
     expect(buildAutomationSettingsPayload(ALL_NO)).toEqual({
       autoStartJobs: false,
       renameOnImport: false,
-      cleanupEmptyFolders: false,
       cleanupRemoveClientEntryAfterThreshold: false,
       cleanupPurgePayloadAfterThreshold: false,
       subtitleFetchAutomaticEnabled: false
@@ -135,7 +134,8 @@ describe("setup guide Automation step (#936)", () => {
     expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
       autoSearchEnabled: false,
       missingSearchEnabled: false,
-      upgradeSearchEnabled: false
+      upgradeSearchEnabled: false,
+      removeEmptySourceFolders: false
     });
     expect(buildIndexerAutomationFields(ALL_NO)).toEqual({
       rssEnabled: false,
@@ -147,7 +147,6 @@ describe("setup guide Automation step (#936)", () => {
     const onlyRenameYes: AutomationChoices = { ...ALL_NO, renameOnImport: true };
     expect(buildAutomationSettingsPayload(onlyRenameYes)).toMatchObject({
       renameOnImport: true,
-      cleanupEmptyFolders: false,
       cleanupRemoveClientEntryAfterThreshold: false,
       cleanupPurgePayloadAfterThreshold: false,
       subtitleFetchAutomaticEnabled: false
@@ -163,7 +162,16 @@ describe("setup guide Automation step (#936)", () => {
     expect(buildLibraryAutomationFields(onlyMissingSearchYes)).toEqual({
       autoSearchEnabled: true,
       missingSearchEnabled: true,
-      upgradeSearchEnabled: false
+      upgradeSearchEnabled: false,
+      removeEmptySourceFolders: false
+    });
+
+    const onlyLeftoverCleanupYes: AutomationChoices = { ...ALL_NO, leftoverCleanup: true };
+    expect(buildLibraryAutomationFields(onlyLeftoverCleanupYes)).toEqual({
+      autoSearchEnabled: false,
+      missingSearchEnabled: false,
+      upgradeSearchEnabled: false,
+      removeEmptySourceFolders: true
     });
 
     const onlyRssYes: AutomationChoices = { ...ALL_NO, rssGrabs: true };
@@ -171,6 +179,10 @@ describe("setup guide Automation step (#936)", () => {
       rssEnabled: true,
       automaticSearchEnabled: false
     });
+  });
+
+  it("never writes the dead global CleanupEmptyFolders flag that #736 already removed from the UI", () => {
+    expect(buildAutomationSettingsPayload(ALL_YES)).not.toHaveProperty("cleanupEmptyFolders");
   });
 
   it("turns the background scheduler on if any one of missing search, RSS or upgrades is on", () => {

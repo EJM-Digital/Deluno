@@ -115,8 +115,8 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
   },
   {
     key: "leftoverCleanup",
-    question: "Clean up empty leftover folders after an import?",
-    help: "If off, empty folders are left behind for you to remove."
+    question: "Once an import removes the downloaded file, remove the folder it leaves empty?",
+    help: "Only matters for a library also set to remove the downloaded file after import (Processing). If off, or that library keeps the file instead, empty folders are left for you to remove."
   }
 ];
 
@@ -199,19 +199,25 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
       || automation.rssGrabs === true
       || automation.qualityUpgrades === true,
     renameOnImport: automation.renameOnImport === true,
-    cleanupEmptyFolders: automation.leftoverCleanup === true,
     cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
     cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,
     subtitleFetchAutomaticEnabled: automation.subtitleFetching === true
   };
 }
 
-/** The per-library search fields a new library is created with (#936). */
+/**
+ * The per-library fields a new library is created with (#936). Leftover-folder
+ * cleanup lands on LibraryItem.RemoveEmptySourceFolders, the switch import
+ * actually reads (Processing -> that library's workflow) -- not the global
+ * CleanupEmptyFolders flag, which nothing reads and #736 already removed from
+ * the UI.
+ */
 export function buildLibraryAutomationFields(automation: AutomationChoices) {
   return {
     autoSearchEnabled: automation.searchMissingTitles === true || automation.qualityUpgrades === true,
     missingSearchEnabled: automation.searchMissingTitles === true,
-    upgradeSearchEnabled: automation.qualityUpgrades === true
+    upgradeSearchEnabled: automation.qualityUpgrades === true,
+    removeEmptySourceFolders: automation.leftoverCleanup === true
   };
 }
 
