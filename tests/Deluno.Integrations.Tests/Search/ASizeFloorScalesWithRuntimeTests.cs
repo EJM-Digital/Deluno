@@ -30,7 +30,10 @@ public sealed class ASizeFloorScalesWithRuntimeTests
         var decision = Decide(sizeBytes: 200_000_000, runtimeMinutes: 12);
 
         Assert.Equal("preferred", decision.Status);
-        Assert.Equal(80, decision.SizeScore);
+        // #771: within range now also scores a small bonus for how close the
+        // size is to the tier's Preferred value, so this is no longer always
+        // exactly 80 - only ever at or above it.
+        Assert.True(decision.SizeScore >= 80);
         Assert.DoesNotContain(decision.RiskFlags, flag =>
             flag.Contains("below", StringComparison.OrdinalIgnoreCase) &&
             flag.Contains("minimum", StringComparison.OrdinalIgnoreCase));
