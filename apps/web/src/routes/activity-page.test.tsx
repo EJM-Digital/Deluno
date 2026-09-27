@@ -1,8 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "../lib/api";
+
+const authedFetchMock = vi.fn();
+vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 
 const loaderData = {
   activity: [
@@ -65,6 +68,24 @@ const loaderData = {
       relatedEntityType: "movie",
       relatedEntityId: null,
       createdUtc: "2026-09-27T08:03:00Z"
+    },
+    {
+      id: "season-pack-completed",
+      category: "filesystem.import.season-pack.completed",
+      message: "Some Show season pack imported 9 season-pack files covering 9 episodes.",
+      severity: "success",
+      detail: undefined,
+      detailsJson: JSON.stringify({
+        Files: [],
+        Skipped: [
+          { SourcePath: "C:/Downloads/Some.Show.S01/Some.Show.S01.Extras.Making.Of.mkv", Reason: "The filename does not resolve to one or more canonical episodes in this show." },
+          { SourcePath: "C:/Downloads/Some.Show.S01/Some.Show.S01E05.mkv", Reason: "Matched to episode(s) S01E05 but not imported: No video stream was detected." }
+        ]
+      }),
+      relatedJobId: null,
+      relatedEntityType: "series",
+      relatedEntityId: "series-1",
+      createdUtc: "2026-09-27T11:00:00Z"
     }
   ] as ActivityEventItem[],
   dispatches: [],
@@ -100,10 +121,11 @@ const loaderData = {
   } as SeriesImportRecoverySummary
 };
 
+const revalidateMock = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   useLoaderData: () => loaderData,
-  useRevalidator: () => ({ revalidate: vi.fn(), state: "idle" })
+  useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" })
 }));
 
 const { ActivityPage } = await import("./activity-page");
@@ -205,4 +227,71 @@ describe("A routine job's queued/started/completed fold into one row (#916)", ()
     expect(within(dialog).getByText("Started reading what your files actually are (Movies).")).toBeInTheDocument();
     expect(within(dialog).getByText("Added a media read (Movies) to the queue.")).toBeInTheDocument();
   });
+});
+
+/**
+ * #889: a season pack that only partly matched names, in plain words, what
+ * did not go in - and a person can confirm deleting exactly those files
+ * from where the import left them.
+ */
+describe("A season pack's leftovers can be reviewed and deleted (#889)", () => {
+  beforeEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+  });
+
+  it("lists what did not match, in plain words, with the file names", async () => {
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+    await userEvent.click(screen.getByText("Some Show season pack imported 9 season-pack files covering 9 episodes."));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("What didn't match")).toBeInTheDocument();
+    expect(within(dialog).getByText("Some.Show.S01.Extras.Making.Of.mkv")).toBeInTheDocument();
+    expect(within(dialog).getByText("The filename does not resolve to one or more canonical episodes in this show.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Some.Show.S01E05.mkv")).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/Matched to episode\(s\) S01E05 but not imported/).length).toBeGreaterThan(0);
+  });
+
+  it("confirms, names the files, deletes them, and clears the problem from the screen", async () => {
+    authedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ deleted: 2, refused: [] })
+    });
+
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+    await userEvent.click(screen.getByText("Some Show season pack imported 9 season-pack files covering 9 episodes."));
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete leftover files" }));
+
+    const confirmDialog = screen.getByRole("dialog", { name: "Delete leftover files?" });
+    expect(within(confirmDialog).getByText(/Some\.Show\.S01\.Extras\.Making\.Of\.mkv/)).toBeInTheDocument();
+    expect(within(confirmDialog).getByText(/Some\.Show\.S01E05\.mkv/)).toBeInTheDocument();
+
+    await userEvent.click(within(confirmDialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/filesystem/import/season-pack/leftovers/delete",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          paths: [
+            "C:/Downloads/Some.Show.S01/Some.Show.S01.Extras.Making.Of.mkv",
+            "C:/Downloads/Some.Show.S01/Some.Show.S01E05.mkv"
+          ]
+        })
+      })
+    ));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+
 });
