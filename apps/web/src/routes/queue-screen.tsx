@@ -396,6 +396,22 @@ export function QueuePage() {
   // this one finding for a week, the same server-side rule every other
   // ignored finding already uses.
   async function dismissHealthFinding(item: DownloadQueueItem, kind: string) {
+    // #813: a SABnzbd queue-level warning is the client's own state, not a
+    // per-item problem Deluno is tracking — dismissing it here has to clear
+    // it at SABnzbd (the same call the Connections screen's client row
+    // makes), not add this one item to the per-item ignore list, which would
+    // leave the warning reappearing on every other item from this client on
+    // the next poll.
+    if (kind === "sabnzbd-client-warning") {
+      return run(
+        `warnings:clear:${item.clientId}`,
+        async () => {
+          const response = await authedFetch(`/api/download-clients/${item.clientId}/warnings/clear`, { method: "POST" });
+          if (!response.ok) throw new Error(await readErrorText(response, "That warning could not be cleared."));
+        },
+        "Cleared this client's warnings"
+      );
+    }
     return run(
       `dismiss:${item.clientId}:${item.id}:${kind}`,
       async () => {

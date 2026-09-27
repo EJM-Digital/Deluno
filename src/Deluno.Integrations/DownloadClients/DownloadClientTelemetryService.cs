@@ -866,40 +866,70 @@ public sealed class DownloadClientTelemetryService(
                 cancellationToken);
         }
 
-        return snapshot with
+        var queue = annotated.Select(entry => entry.Item with
         {
-            Queue = annotated.Select(entry => entry.Item with
+            HealthFindings = entry.Findings.Select(finding =>
             {
-                HealthFindings = entry.Findings.Select(finding =>
-                {
-                    recordsByFinding.TryGetValue($"{entry.Item.ClientId}\u001f{entry.Item.Id}\u001f{finding.Kind}", out var record);
-                    // A rule-engine finding's own action preset decides
-                    // whether it can block a candidate on its own; a finding
-                    // outside the rule engine (client-stalled, and so on)
-                    // still falls back to the platform-wide switch (#905).
-                    var candidateBlocked = record is not null &&
-                        (record.RuleActionPreset is { } preset
-                            ? preset != DownloadHealthActionPresets.JustTellMe
-                            : blockReleaseAfterThreshold) &&
-                        record.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold);
-                    return new DownloadHealthFinding(
-                        finding.Severity,
-                        finding.Kind,
-                        finding.Summary,
-                        finding.Evidence,
-                        finding.RecommendedAction,
-                        finding.CanSafelyRetry,
-                        finding.CanSafelyRemove,
-                        StrikeCount: record?.StrikeCount ?? 0,
-                        CandidateBlocked: candidateBlocked,
-                        IgnoredUntilUtc: record?.IgnoredUntilUtc,
-                        RuleId: record?.RuleId,
-                        RuleActionPreset: record?.RuleActionPreset,
-                        NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes),
-                        RuleStrikeLimit: record?.RuleStrikeLimit);
-                }).ToArray()
+                recordsByFinding.TryGetValue($"{entry.Item.ClientId}\u001f{entry.Item.Id}\u001f{finding.Kind}", out var record);
+                // A rule-engine finding's own action preset decides
+                // whether it can block a candidate on its own; a finding
+                // outside the rule engine (client-stalled, and so on)
+                // still falls back to the platform-wide switch (#905).
+                var candidateBlocked = record is not null &&
+                    (record.RuleActionPreset is { } preset
+                        ? preset != DownloadHealthActionPresets.JustTellMe
+                        : blockReleaseAfterThreshold) &&
+                    record.BlocksCandidate(snapshot.CapturedUtc, strikeThreshold);
+                return new DownloadHealthFinding(
+                    finding.Severity,
+                    finding.Kind,
+                    finding.Summary,
+                    finding.Evidence,
+                    finding.RecommendedAction,
+                    finding.CanSafelyRetry,
+                    finding.CanSafelyRemove,
+                    StrikeCount: record?.StrikeCount ?? 0,
+                    CandidateBlocked: candidateBlocked,
+                    IgnoredUntilUtc: record?.IgnoredUntilUtc,
+                    RuleId: record?.RuleId,
+                    RuleActionPreset: record?.RuleActionPreset,
+                    NextStrikeUtc: record?.NextStrikeUtc(defaultStrikeWindow.Minutes),
+                    RuleStrikeLimit: record?.RuleStrikeLimit);
             }).ToArray()
-        };
+        }).ToArray();
+
+        // #813: SABnzbd's own queue-level warning (disk-full, a failed
+        // unpack, and the like) is not about any one release, so it never
+        // goes through the strike/rule engine above -- it would otherwise
+        // eventually block a candidate for a reason that has nothing to do
+        // with that candidate. Folded onto every one of Deluno's own items
+        // for this client instead, using the same DownloadHealthFinding
+        // shape the Transfers screen's Issues view already renders, so it
+        // needs no bespoke presentation there. Clearing it is the same
+        // mode=warnings&name=clear call already wired from the Connections
+        // screen's client row.
+        if (snapshot.ClientWarnings is { Count: > 0 } clientWarnings && queue.Length > 0)
+        {
+            var warningText = string.Join(" ", clientWarnings);
+            queue = queue.Select(item => IsDelunosOwnDownload(item, clientDispatches, snapshot.CapturedUtc)
+                ? item with
+                {
+                    HealthFindings = [
+                        .. item.HealthFindings ?? [],
+                        new DownloadHealthFinding(
+                            Severity: "warning",
+                            Kind: "sabnzbd-client-warning",
+                            Summary: $"{snapshot.ClientName} reported: {warningText}",
+                            Evidence: warningText,
+                            RecommendedAction: "Clear this warning in SABnzbd, or from this client's row on Connections.",
+                            CanSafelyRetry: false,
+                            CanSafelyRemove: false)
+                    ]
+                }
+                : item).ToArray();
+        }
+
+        return snapshot with { Queue = queue };
     }
 
     public async Task<DownloadCleanupPreview?> PreviewCleanupAsync(
