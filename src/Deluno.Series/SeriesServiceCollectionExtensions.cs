@@ -47,7 +47,9 @@ public static class SeriesServiceCollectionExtensions
         services.AddSingleton<IEpisodeImportRecoveryService, EpisodeImportRecoveryService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, SeriesDispatchRecoveryHandler>();
         services.AddSingleton<IMigrationCatalogImporter, SeriesMigrationCatalogImporter>();
+        services.AddSingleton<ISceneMappingRefreshService, SceneMappingRefreshService>();
         services.AddHostedService<SeriesSchemaInitializer>();
+        services.AddHostedService<SceneMappingRefreshHostedService>();
         return services;
     }
 }
