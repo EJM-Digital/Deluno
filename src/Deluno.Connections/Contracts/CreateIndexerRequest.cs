@@ -38,6 +38,9 @@ public sealed record CreateIndexerRequest(
     // The languages this indexer's own MULTI tag means (#746). Null uses
     // Deluno's fixed "Multilingual" default.
     string? MultiLanguages = null,
+    // The recorded VIP/subscription expiry date for a private-tracker
+    // indexer (#747). Null means nothing is tracked.
+    DateTimeOffset? VipExpiresUtc = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

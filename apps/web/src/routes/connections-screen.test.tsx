@@ -112,6 +112,25 @@ describe("indexer save payload multi languages (#746)", () => {
   });
 });
 
+// #747: a recorded VIP/subscription expiry date round-trips as an ISO
+// timestamp and clears the same clear-flag way as the other acquisition
+// fields.
+describe("indexer save payload VIP expiry (#747)", () => {
+  it("sends a typed VIP expiry date as an ISO timestamp", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", vipExpiresUtc: "2026-12-01" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.vipExpiresUtc).toBe(new Date("2026-12-01T00:00:00.000Z").toISOString());
+    expect(payload.clearVipExpiry).toBe(false);
+  });
+
+  it("clears the VIP expiry date on an edit when emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.vipExpiresUtc).toBeNull();
+    expect(payload.clearVipExpiry).toBe(true);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

@@ -51,6 +51,12 @@ public sealed record UpdateIndexerRequest(
     bool? ClearIgnoredWords = null,
     string? MultiLanguages = null,
     bool? ClearMultiLanguages = null,
+    DateTimeOffset? VipExpiresUtc = null,
+    bool? ClearVipExpiry = null,
+    // Acknowledges the currently-recorded VipExpiresUtc value (existing,
+    // or this same request's own new value), silencing its warning until
+    // the date changes again (#747).
+    bool? AcknowledgeVipExpiry = null,
     int? AvailabilityDelayDays = null,
     bool? ClearAvailabilityDelay = null,
     bool? RssEnabled = null,

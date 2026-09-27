@@ -77,7 +77,8 @@ public sealed class SqliteConnectionsRepository(
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
                 api_path, additional_parameters, anime_categories, minimum_seeders,
-                required_words, ignored_words, multi_languages
+                required_words, ignored_words, multi_languages,
+                vip_expires_utc, vip_warning_acknowledged_expiry_utc
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -134,7 +135,9 @@ public sealed class SqliteConnectionsRepository(
                 MinimumSeeders = reader.IsDBNull(42) ? null : reader.GetInt32(42),
                 RequiredWords = reader.IsDBNull(43) ? null : reader.GetString(43),
                 IgnoredWords = reader.IsDBNull(44) ? null : reader.GetString(44),
-                MultiLanguages = reader.IsDBNull(45) ? null : reader.GetString(45)
+                MultiLanguages = reader.IsDBNull(45) ? null : reader.GetString(45),
+                VipExpiresUtc = reader.IsDBNull(46) ? null : ParseTimestamp(reader.GetString(46)),
+                VipWarningAcknowledgedExpiryUtc = reader.IsDBNull(47) ? null : ParseTimestamp(reader.GetString(47))
             });
         }
 
@@ -287,6 +290,7 @@ public sealed class SqliteConnectionsRepository(
             RequiredWords = NormalizeBlankToNull(request.RequiredWords),
             IgnoredWords = NormalizeBlankToNull(request.IgnoredWords),
             MultiLanguages = NormalizeBlankToNull(request.MultiLanguages),
+            VipExpiresUtc = request.VipExpiresUtc,
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
             AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -310,7 +314,8 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
-                minimum_seeders, required_words, ignored_words, multi_languages
+                minimum_seeders, required_words, ignored_words, multi_languages,
+                vip_expires_utc
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -319,7 +324,8 @@ public sealed class SqliteConnectionsRepository(
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
-                @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages
+                @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages,
+                @vipExpiresUtc
             );
             """;
 
@@ -366,6 +372,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@requiredWords", item.RequiredWords);
         AddParameter(command, "@ignoredWords", item.IgnoredWords);
         AddParameter(command, "@multiLanguages", item.MultiLanguages);
+        AddParameter(command, "@vipExpiresUtc", item.VipExpiresUtc?.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -435,6 +442,18 @@ public sealed class SqliteConnectionsRepository(
         var newMultiLanguages = request.ClearMultiLanguages == true
             ? null
             : NormalizeBlankToNull(request.MultiLanguages) ?? existing.MultiLanguages;
+        var newVipExpiresUtc = request.ClearVipExpiry == true
+            ? null
+            : request.VipExpiresUtc ?? existing.VipExpiresUtc;
+        // Acknowledging silences the warning for the value it names — the
+        // just-updated date when given alongside it, or the still-current
+        // one otherwise. Clearing the date drops the marker with it, and any
+        // other edit leaves a standing acknowledgement alone.
+        var newVipWarningAcknowledged = request.ClearVipExpiry == true
+            ? null
+            : request.AcknowledgeVipExpiry == true
+                ? newVipExpiresUtc
+                : existing.VipWarningAcknowledgedExpiryUtc;
         var newAvailabilityDelay = request.ClearAvailabilityDelay == true
             ? null
             : request.AvailabilityDelayDays ?? existing.AvailabilityDelayDays;
@@ -478,6 +497,8 @@ public sealed class SqliteConnectionsRepository(
                 required_words = @requiredWords,
                 ignored_words = @ignoredWords,
                 multi_languages = @multiLanguages,
+                vip_expires_utc = @vipExpiresUtc,
+                vip_warning_acknowledged_expiry_utc = @vipWarningAcknowledgedExpiryUtc,
                 prefer_indexer_flags = @preferIndexerFlags,
                 availability_delay_days = @availabilityDelayDays,
                 rss_enabled = @rssEnabled,
@@ -523,6 +544,8 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@requiredWords", newRequiredWords);
         AddParameter(command, "@ignoredWords", newIgnoredWords);
         AddParameter(command, "@multiLanguages", newMultiLanguages);
+        AddParameter(command, "@vipExpiresUtc", newVipExpiresUtc?.ToString("O"));
+        AddParameter(command, "@vipWarningAcknowledgedExpiryUtc", newVipWarningAcknowledged?.ToString("O"));
         AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
         AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
@@ -563,6 +586,8 @@ public sealed class SqliteConnectionsRepository(
             RequiredWords = newRequiredWords,
             IgnoredWords = newIgnoredWords,
             MultiLanguages = newMultiLanguages,
+            VipExpiresUtc = newVipExpiresUtc,
+            VipWarningAcknowledgedExpiryUtc = newVipWarningAcknowledged,
             PreferIndexerFlags = newPreferIndexerFlags,
             AvailabilityDelayDays = newAvailabilityDelay,
             RssEnabled = newRssEnabled,

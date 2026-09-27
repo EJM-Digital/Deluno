@@ -17,11 +17,32 @@ export function unusedChip(item: { isEnabled: boolean; healthStatus: string }, u
   return statusPresentation("connection.notRouted");
 }
 
-export function healthChip(item: { isEnabled: boolean; healthStatus: string; rateLimitedUntilUtc?: string | null }): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+/**
+ * Whether a recorded VIP/subscription expiry (#747) should currently warn:
+ * starting 7 days before the date and continuing after it lapses, until the
+ * user acknowledges that exact date or the date itself changes. Mirrors
+ * IndexerVipWarning.IsActive on the backend.
+ */
+export function vipWarningActive(item: { vipExpiresUtc?: string | null; vipWarningAcknowledgedExpiryUtc?: string | null }): boolean {
+  if (!item.vipExpiresUtc) return false;
+  if (item.vipWarningAcknowledgedExpiryUtc === item.vipExpiresUtc) return false;
+  const warnsFrom = new Date(item.vipExpiresUtc).getTime() - 7 * 24 * 60 * 60 * 1000;
+  return Date.now() >= warnsFrom;
+}
+
+export function healthChip(item: { isEnabled: boolean; healthStatus: string; rateLimitedUntilUtc?: string | null; vipExpiresUtc?: string | null; vipWarningAcknowledgedExpiryUtc?: string | null }): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (!item.isEnabled) return statusPresentation("connection.off");
   // Deluno backed off deliberately and resumes on its own, so this is motion,
   // not something a person has to deal with. It was amber.
   if (item.rateLimitedUntilUtc && new Date(item.rateLimitedUntilUtc).getTime() > Date.now()) return statusPresentation("connection.rateLimited");
+  // #747: a VIP warning is a problem on this indexer specifically, same as
+  // Degraded/Unhealthy — shown ahead of a plain Healthy chip, but a real
+  // connection failure still takes precedence below.
+  if (item.vipExpiresUtc && vipWarningActive(item) && (item.healthStatus === "healthy" || item.healthStatus === "untested")) {
+    return new Date(item.vipExpiresUtc).getTime() <= Date.now()
+      ? statusPresentation("connection.vipExpired")
+      : statusPresentation("connection.vipExpiring");
+  }
   switch (item.healthStatus) {
     case "healthy": return statusPresentation("connection.healthy");
     case "degraded": return statusPresentation("connection.degraded");

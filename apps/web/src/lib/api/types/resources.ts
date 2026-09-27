@@ -743,6 +743,10 @@ export interface IndexerItem {
   ignoredWords?: string | null;
   /** What this indexer's own MULTI tag means, e.g. "Original, French" (#746). Null uses Deluno's fixed "Multilingual" default. */
   multiLanguages?: string | null;
+  /** The recorded VIP/subscription expiry date for a private-tracker indexer (#747). Null means nothing is tracked. */
+  vipExpiresUtc?: string | null;
+  /** Which vipExpiresUtc value the user last acknowledged a warning for (#747). */
+  vipWarningAcknowledgedExpiryUtc?: string | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;
