@@ -73,9 +73,11 @@ internal static class SearchExecutionSupport
     /// <summary>
     /// #876 (cleanup sheet B2): a grab the client refused outright — a dead
     /// link or a file it could not parse — is nobody's setup problem and
-    /// nothing worth retrying unchanged. Blocklisting it here is what stops a
-    /// later automatic search picking the exact same bad release and failing
-    /// the same way again; the next search naturally tries a different one.
+    /// nothing worth retrying unchanged. Blocklisting it here, and queuing a
+    /// replacement search for the same title straight away (via
+    /// <see cref="ReplacementSearchQueuer"/>, the same helper every other
+    /// give-up path uses), is what stops the title sitting on a bad release
+    /// until its next ordinary scheduled search happens to run.
     ///
     /// <para>A no-op for any other grab outcome, including an ordinary
     /// connectivity failure (#875) — those are the client's or the network's
@@ -91,7 +93,10 @@ internal static class SearchExecutionSupport
         string title,
         string indexerName,
         string clientName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IJobScheduler? jobScheduler = null,
+        string? libraryId = null,
+        string? libraryName = null)
     {
         if (blockedReleases is null || grabResult.Status != DownloadQueueStatuses.DeadRelease)
         {
@@ -115,9 +120,27 @@ internal static class SearchExecutionSupport
                 DateTimeOffset.MinValue),
             cancellationToken);
 
+        var searchedAgain = false;
+        if (jobScheduler is not null && !string.IsNullOrWhiteSpace(libraryId) && ReplacementSearchQueuer.Supports(entityType))
+        {
+            await ReplacementSearchQueuer.EnqueueAsync(
+                jobScheduler,
+                dispatchId: $"dead-release:{entityType}:{entityId}:{Guid.NewGuid():n}",
+                libraryId,
+                libraryName ?? libraryId,
+                mediaType,
+                entityType,
+                entityId,
+                seasonEpisodeIds: [],
+                cancellationToken);
+            searchedAgain = true;
+        }
+
         await activityFeedRepository.RecordActivityAsync(
             "download.release.dead-link",
-            $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
+            searchedAgain
+                ? $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and is searching for a replacement now."
+                : $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
             null,
             null,
             entityType,

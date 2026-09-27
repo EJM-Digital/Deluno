@@ -83,7 +83,12 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
         world.BlockedReleases.Verify(repository => repository.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>If the client's answer changes to a dead release on retry, the dead-release path (#876) still applies.</summary>
+    /// <summary>
+    /// If the client's answer changes to a dead release on retry, the
+    /// dead-release path (#876) still applies: blocklisted, and searched for
+    /// a replacement straight away rather than resent or left to the next
+    /// ordinary search cycle.
+    /// </summary>
     [Fact]
     public async Task A_dead_release_answer_on_retry_is_blocklisted_instead_of_retried_again()
     {
@@ -92,7 +97,16 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
         await world.Handler().HandleAsync(world.Job(attemptNumber: 1), CancellationToken.None);
 
         world.BlockedReleases.Verify(repository => repository.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
-        world.Scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        world.Scheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.PayloadJson != null && request.PayloadJson.Contains("\"AttemptNumber\"")),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        world.Scheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.JobType == "library.search.movies" && request.PayloadJson != null && request.PayloadJson.Contains("\"triggeredBy\":\"health-replacement\"")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private sealed class World

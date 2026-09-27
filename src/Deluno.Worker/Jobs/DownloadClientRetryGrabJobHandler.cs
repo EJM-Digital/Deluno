@@ -71,7 +71,10 @@ public sealed class DownloadClientRetryGrabJobHandler(
             payload.Title,
             payload.IndexerName ?? string.Empty,
             payload.DownloadClientName,
-            cancellationToken);
+            cancellationToken,
+            jobScheduler,
+            payload.LibraryId,
+            payload.LibraryId);
 
         await jobQueueRepository.RecordDownloadDispatchAsync(
             payload.LibraryId,

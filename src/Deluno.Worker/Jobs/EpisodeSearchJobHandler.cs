@@ -202,7 +202,10 @@ public sealed class EpisodeSearchJobHandler(
                 seriesItem?.Title ?? bestCandidate!.ReleaseName,
                 bestCandidate!.IndexerName,
                 downloadClient.DownloadClientName,
-                cancellationToken);
+                cancellationToken,
+                jobScheduler,
+                payload.LibraryId,
+                payload.LibraryId);
 
             await SearchExecutionSupport.RecordDuplicateFollowAsync(
                 activityFeedRepository,
