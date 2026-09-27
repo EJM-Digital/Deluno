@@ -1,0 +1,330 @@
+using System.Globalization;
+using System.Text;
+using System.Xml.Linq;
+using Deluno.Connections.Contracts;
+
+namespace Deluno.Integrations.DownloadClients.Clients;
+
+/// <summary>
+/// rTorrent's own RPC interface (#803): XML-RPC over HTTP, the shape every
+/// rTorrent install exposes once it is put behind a webserver (SCGI is
+/// rTorrent's native transport, but almost nobody reaches it directly —
+/// lighttpd/nginx/xmlrpc2http bridges terminate it as plain HTTP, which is
+/// what Deluno's EndpointUrl already models for every other client). SCGI
+/// itself is not implemented: nothing in #803's acceptance asked for it, and
+/// every rTorrent setup this was checked against fronts it with HTTP anyway.
+///
+/// <para><b>No native "delete with data".</b> rTorrent's own RPC has
+/// <c>d.erase</c> — drop the torrent from rTorrent's session — and nothing
+/// that also removes the files it produced. Radarr/Sonarr do not claim to
+/// delete rTorrent's payload either; it is a genuine gap in rTorrent's own
+/// API, not a shortcut taken here. Delete, DeleteWithData and Forget all
+/// call <c>d.erase</c>: the file leaves rTorrent's session either way, and
+/// rTorrent keeps no separate history for a released hash to survive in
+/// (unlike SABnzbd/NZBGet), so there is nothing further "forget" could do.</para>
+/// </summary>
+public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory) : DownloadClientBase
+{
+    public override string Protocol => "rtorrent";
+
+    public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(
+        SupportsQueue: true,
+        SupportsHistory: false,
+        SupportsPauseResume: true,
+        SupportsRemove: true,
+        SupportsRecheck: true,
+        SupportsImportPath: true,
+        AuthMode: "basic");
+
+    public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.GrabFailure(client, request, "Download client address is missing.");
+        var http = CreateHttp(client);
+
+        // What was there before, so the answer below can be about what
+        // actually happened rather than about what was asked — the same
+        // before/after honesty check qBittorrent's adapter uses (#606),
+        // needed here for the same reason: load.start answers before the
+        // torrent necessarily appears in rTorrent's own list.
+        var before = await ListHashesAsync(http, baseUri, cancellationToken);
+
+        // load.normal/load.raw load without starting (for Add downloads
+        // paused, #805); load.start/load.raw_start load and start
+        // immediately. The "raw" pair take the .torrent's bytes directly
+        // (base64, an XML-RPC <base64> value) for a release Deluno fetched
+        // itself with a tracker's own sign-in (#606); the plain pair take a
+        // URL rTorrent fetches on its own.
+        if (request.TorrentFile is { } file)
+        {
+            var method = client.AddPaused ? "load.raw" : "load.raw_start";
+            await SendAsync(http, baseUri, method, [string.Empty, new XmlRpcBase64(file)], cancellationToken);
+        }
+        else
+        {
+            var method = client.AddPaused ? "load.normal" : "load.start";
+            await SendAsync(http, baseUri, method, [string.Empty, request.DownloadUrl], cancellationToken);
+        }
+
+        var after = await WaitForNewHashAsync(http, baseUri, before, cancellationToken);
+        if (before is not null && after is not null && !after.Except(before).Any())
+        {
+            return DownloadClientHelpers.GrabFailure(
+                client,
+                request,
+                "rTorrent accepted the request but added no torrent. Either it already holds this release, or it could not read what the link returned.");
+        }
+
+        var added = before is not null && after is not null ? after.Except(before).FirstOrDefault() : null;
+        return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to rTorrent." : "Torrent file sent to rTorrent.") with
+        {
+            ExternalId = added
+        };
+    }
+
+    public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
+        var http = CreateHttp(client);
+
+        // d.multicall2 with an explicit field list, in the order MapRow reads
+        // them below — one call for the whole "main" view rather than one per
+        // torrent, the same batching every other adapter's list call gets for
+        // free from its own client's list endpoint.
+        var response = await SendAsync(
+            http,
+            baseUri,
+            "d.multicall2",
+            [
+                string.Empty, "main",
+                "d.hash=", "d.name=", "d.is_active=", "d.is_hash_checking=", "d.complete=",
+                "d.bytes_done=", "d.size_bytes=", "d.down.rate=", "d.up.rate=", "d.ratio=",
+                "d.message=", "d.directory="
+            ],
+            cancellationToken);
+
+        var queue = (AsArray(response) ?? [])
+            .Select(row => AsArray(row))
+            .Where(row => row is not null)
+            .Select(row => MapRow(client, row!, capturedUtc))
+            .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
+            .ToArray();
+
+        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to rTorrent at {baseUri.Host}:{baseUri.Port}.");
+    }
+
+    private DownloadQueueItem MapRow(DownloadClientItem client, IReadOnlyList<object?> row, DateTimeOffset capturedUtc)
+    {
+        var hash = AsString(Field(row, 0)) ?? Guid.CreateVersion7().ToString("N");
+        var name = AsString(Field(row, 1)) ?? "Unknown rTorrent item";
+        var isActive = AsBool(Field(row, 2));
+        var isHashChecking = AsBool(Field(row, 3));
+        var complete = AsBool(Field(row, 4));
+        var bytesDone = AsLong(Field(row, 5)) ?? 0;
+        var sizeBytes = AsLong(Field(row, 6)) ?? 0;
+        var downRate = AsLong(Field(row, 7)) ?? 0;
+        var upRate = AsLong(Field(row, 8)) ?? 0;
+        // rTorrent's own d.ratio is scaled by 1000 (1500 == 1.5).
+        var ratio = AsLong(Field(row, 9)) is { } scaledRatio ? scaledRatio / 1000d : (double?)null;
+        var message = AsString(Field(row, 10));
+        var directory = AsString(Field(row, 11));
+        var progress = sizeBytes <= 0 ? 0 : Math.Round(bytesDone / (double)sizeBytes * 100, 1);
+
+        var nativeStatus = isHashChecking ? "hash_checking"
+            : !string.IsNullOrWhiteSpace(message) ? "error"
+            : complete ? "complete"
+            : !isActive ? "paused"
+            : "downloading";
+
+        return new DownloadQueueItem(
+            hash, client.Id, client.Name, client.Protocol,
+            DownloadClientHelpers.InferMediaType(client, null),
+            DownloadClientHelpers.CleanReleaseTitle(name), name, string.Empty,
+            NormalizeStatus(nativeStatus, progress), progress,
+            Math.Round(downRate / 1_000_000d, 1), 0, sizeBytes, bytesDone, 0, "rTorrent",
+            string.IsNullOrWhiteSpace(message) ? null : message,
+            capturedUtc, directory,
+            Ratio: ratio,
+            UploadSpeedMbps: Math.Round(upRate / 1_000_000d, 1),
+            // rTorrent's own message field is its own diagnostic text (a
+            // tracker error included), so — like Deluge's equivalent field —
+            // it is read as this machine's problem rather than the
+            // release's, the same #880/#881 distinction every torrent
+            // adapter here draws.
+            IsSetupProblem: !string.IsNullOrWhiteSpace(message));
+    }
+
+    public override async Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
+        var http = CreateHttp(client);
+
+        // One arm per verb — Delete/DeleteWithData/Forget all reach d.erase,
+        // for the reason this class's own doc comment gives: rTorrent's RPC
+        // has nothing further any of them could call.
+        var method = action switch
+        {
+            DownloadClientActions.Pause => "d.pause",
+            DownloadClientActions.Resume => "d.resume",
+            DownloadClientActions.Recheck => "d.check_hash",
+            DownloadClientActions.Delete => "d.erase",
+            DownloadClientActions.DeleteWithData => "d.erase",
+            DownloadClientActions.Forget => "d.erase",
+            _ => null
+        };
+        if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "rTorrent");
+
+        try
+        {
+            await SendAsync(http, baseUri, method, [queueItemId], cancellationToken);
+            return DownloadClientHelpers.ActionSuccess(client, queueItemId, action, "rTorrent action sent.");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+        {
+            return DownloadClientHelpers.ActionFailure(client, queueItemId, action, exception.Message, null);
+        }
+    }
+
+    public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
+    {
+        var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
+        if (normalized == "hash_checking") return DownloadQueueStatuses.NotTransferring;
+        if (normalized == "error") return DownloadQueueStatuses.Stalled;
+        if ((progress ?? 0) >= 100 || normalized == "complete") return DownloadQueueStatuses.ImportReady;
+        if (normalized == "paused") return DownloadQueueStatuses.Paused;
+        return DownloadQueueStatuses.Downloading;
+    }
+
+    private HttpClient CreateHttp(DownloadClientItem client)
+    {
+        var http = httpClientFactory.CreateClient("download-clients");
+        http.Timeout = TimeSpan.FromSeconds(8);
+        if (!string.IsNullOrWhiteSpace(client.Username) || !string.IsNullOrWhiteSpace(client.Secret))
+        {
+            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{client.Username}:{client.Secret}"));
+            http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", token);
+        }
+
+        return http;
+    }
+
+    /// <summary>download_list with no view name -- every hash rTorrent currently holds.</summary>
+    private static async Task<HashSet<string>?> ListHashesAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await SendAsync(http, baseUri, "download_list", [], cancellationToken);
+            return (AsArray(result) ?? [])
+                .Select(AsString)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The same bounded wait qBittorrent's adapter uses (#606): load.start
+    /// answers as soon as rTorrent has accepted the job, before the hash
+    /// necessarily appears in download_list, so asking once immediately is
+    /// asking before the answer exists.
+    /// </summary>
+    private static async Task<HashSet<string>?> WaitForNewHashAsync(HttpClient http, Uri baseUri, HashSet<string>? before, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
+        HashSet<string>? after;
+        while (true)
+        {
+            after = await ListHashesAsync(http, baseUri, cancellationToken);
+            if (before is null || after is null || after.Except(before).Any()) return after;
+            if (DateTimeOffset.UtcNow >= deadline) return after;
+            await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationToken);
+        }
+    }
+
+    // ── Minimal XML-RPC codec ────────────────────────────────────────────────
+    // rTorrent's RPC is the one protocol here that is not JSON, so unlike
+    // every other adapter this cannot reuse DownloadClientHelpers.PostJsonAsync.
+    // Deliberately minimal: only the value shapes rTorrent's own methods
+    // actually return (string, integer, boolean, array — no struct, which
+    // rTorrent's XML-RPC responses never use).
+
+    private static async Task<object?> SendAsync(HttpClient http, Uri baseUri, string method, IReadOnlyList<object> parameters, CancellationToken cancellationToken)
+    {
+        var requestXml = BuildRequest(method, parameters);
+        using var content = new StringContent(requestXml, Encoding.UTF8, "text/xml");
+        using var response = await http.PostAsync(baseUri, content, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var responseXml = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseResponse(responseXml);
+    }
+
+    private static string BuildRequest(string method, IReadOnlyList<object> parameters)
+    {
+        var builder = new StringBuilder();
+        builder.Append("<?xml version=\"1.0\"?><methodCall><methodName>").Append(method).Append("</methodName><params>");
+        foreach (var parameter in parameters)
+        {
+            builder.Append("<param>").Append(EncodeValue(parameter)).Append("</param>");
+        }
+
+        builder.Append("</params></methodCall>");
+        return builder.ToString();
+    }
+
+    private static string EncodeValue(object value) => value switch
+    {
+        string text => $"<value><string>{System.Security.SecurityElement.Escape(text)}</string></value>",
+        int number => $"<value><i4>{number.ToString(CultureInfo.InvariantCulture)}</i4></value>",
+        long number => $"<value><i4>{number.ToString(CultureInfo.InvariantCulture)}</i4></value>",
+        bool flag => $"<value><boolean>{(flag ? 1 : 0)}</boolean></value>",
+        XmlRpcBase64 raw => $"<value><base64>{Convert.ToBase64String(raw.Bytes)}</base64></value>",
+        _ => $"<value><string>{System.Security.SecurityElement.Escape(value.ToString() ?? string.Empty)}</string></value>"
+    };
+
+    /// <summary>Raw bytes for an XML-RPC &lt;base64&gt; value, distinct from a string parameter.</summary>
+    private sealed record XmlRpcBase64(byte[] Bytes);
+
+    private static object? ParseResponse(string xml)
+    {
+        var document = XDocument.Parse(xml);
+        var fault = document.Root?.Element("fault");
+        if (fault is not null)
+        {
+            var faultValue = fault.Element("value");
+            var faultString = faultValue is not null ? ParseValue(faultValue) : null;
+            throw new InvalidOperationException($"rTorrent returned a fault: {faultString}");
+        }
+
+        var valueElement = document.Root?.Element("params")?.Element("param")?.Element("value");
+        return valueElement is null ? null : ParseValue(valueElement);
+    }
+
+    private static object? ParseValue(XElement valueElement)
+    {
+        var typed = valueElement.Elements().FirstOrDefault();
+        // No type element at all means a bare string, per the XML-RPC spec.
+        if (typed is null) return valueElement.Value;
+
+        return typed.Name.LocalName switch
+        {
+            "string" => typed.Value,
+            "int" or "i4" or "i8" => long.TryParse(typed.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : 0L,
+            "boolean" => typed.Value.Trim() is "1" or "true",
+            "double" => double.TryParse(typed.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var real) ? real : 0d,
+            "array" => (typed.Element("data")?.Elements("value") ?? []).Select(ParseValue).ToList(),
+            _ => typed.Value
+        };
+    }
+
+    private static List<object?>? AsArray(object? value) => value as List<object?>;
+    private static string? AsString(object? value) => value as string;
+    private static long? AsLong(object? value) => value switch { long l => l, int i => i, _ => null };
+    private static bool AsBool(object? value) => value switch { bool b => b, long l => l != 0, _ => false };
+    private static object? Field(IReadOnlyList<object?> row, int index) => index < row.Count ? row[index] : null;
+}

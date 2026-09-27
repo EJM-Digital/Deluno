@@ -444,6 +444,6 @@ public sealed class DownloadClientPersistenceTests
 
         // The message names what a user may actually choose, not the wider set
         // storage will still read back.
-        Assert.Contains("Supported protocols: deluge, nzbget, qbittorrent, sabnzbd, transmission, utorrent.", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Supported protocols: deluge, nzbget, qbittorrent, rtorrent, sabnzbd, transmission, utorrent.", error.Message, StringComparison.Ordinal);
     }
 }
