@@ -125,4 +125,122 @@ public sealed class IntakeSourcePersistenceTests
         Assert.Equal("Fetched 10, added 3, skipped 7.", synced.LastSyncSummary);
         Assert.Equal(DateTimeOffset.Parse("2026-05-14T05:00:00Z"), synced.LastSyncUtc);
     }
+
+    [Fact]
+    public async Task IntakeSource_round_trips_monitor_mode_series_type_and_season_folder()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T00:00:00Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var intakeRepository = new SqliteIntakeRepository(storage.Factory, timeProvider);
+
+        // #848/#850: an unset source (as every source created before these
+        // fields existed would be) keeps today's fully-monitored, no-override
+        // behaviour.
+        var plainMovie = await intakeRepository.CreateIntakeSourceAsync(
+            new CreateIntakeSourceRequest(
+                Name: "Plain movie list",
+                Provider: "url-list",
+                FeedUrl: "https://lists.deluno.test/movies.txt",
+                MediaType: "movies",
+                LibraryId: null,
+                QualityProfileId: null,
+                RequiredGenres: null,
+                MinimumRating: null,
+                MinimumYear: null,
+                MaximumAgeDays: null,
+                AllowedCertifications: null,
+                Audience: null,
+                SyncIntervalHours: 24,
+                SearchOnAdd: true,
+                IsEnabled: true),
+            CancellationToken.None);
+        Assert.Equal("movie", plainMovie.MonitorMode);
+        Assert.Null(plainMovie.SeriesType);
+        Assert.Null(plainMovie.SeasonFolder);
+
+        var unmonitoredMovie = await intakeRepository.CreateIntakeSourceAsync(
+            new CreateIntakeSourceRequest(
+                Name: "Unmonitored movie list",
+                Provider: "url-list",
+                FeedUrl: "https://lists.deluno.test/movies2.txt",
+                MediaType: "movies",
+                LibraryId: null,
+                QualityProfileId: null,
+                RequiredGenres: null,
+                MinimumRating: null,
+                MinimumYear: null,
+                MaximumAgeDays: null,
+                AllowedCertifications: null,
+                Audience: null,
+                SyncIntervalHours: 24,
+                SearchOnAdd: true,
+                IsEnabled: true,
+                MonitorMode: "none"),
+            CancellationToken.None);
+        Assert.Equal("none", unmonitoredMovie.MonitorMode);
+
+        var tvSource = await intakeRepository.CreateIntakeSourceAsync(
+            new CreateIntakeSourceRequest(
+                Name: "Anime watchlist",
+                Provider: "url-list",
+                FeedUrl: "https://lists.deluno.test/anime.txt",
+                MediaType: "tv",
+                LibraryId: null,
+                QualityProfileId: null,
+                RequiredGenres: null,
+                MinimumRating: null,
+                MinimumYear: null,
+                MaximumAgeDays: null,
+                AllowedCertifications: null,
+                Audience: null,
+                SyncIntervalHours: 24,
+                SearchOnAdd: true,
+                IsEnabled: true,
+                MonitorMode: "future",
+                SeriesType: "anime",
+                SeasonFolder: true),
+            CancellationToken.None);
+        Assert.Equal("future", tvSource.MonitorMode);
+        Assert.Equal("anime", tvSource.SeriesType);
+        Assert.True(tvSource.SeasonFolder);
+
+        var reloadedTv = await intakeRepository.GetIntakeSourceAsync(tvSource.Id, CancellationToken.None);
+        Assert.NotNull(reloadedTv);
+        Assert.Equal("future", reloadedTv!.MonitorMode);
+        Assert.Equal("anime", reloadedTv.SeriesType);
+        Assert.True(reloadedTv.SeasonFolder);
+
+        var updatedTv = await intakeRepository.UpdateIntakeSourceAsync(
+            tvSource.Id,
+            new UpdateIntakeSourceRequest(
+                Name: tvSource.Name,
+                Provider: tvSource.Provider,
+                FeedUrl: tvSource.FeedUrl,
+                MediaType: tvSource.MediaType,
+                LibraryId: tvSource.LibraryId,
+                QualityProfileId: tvSource.QualityProfileId,
+                RequiredGenres: tvSource.RequiredGenres,
+                MinimumRating: tvSource.MinimumRating,
+                MinimumYear: tvSource.MinimumYear,
+                MaximumAgeDays: tvSource.MaximumAgeDays,
+                AllowedCertifications: tvSource.AllowedCertifications,
+                Audience: tvSource.Audience,
+                SyncIntervalHours: tvSource.SyncIntervalHours,
+                SearchOnAdd: tvSource.SearchOnAdd,
+                IsEnabled: tvSource.IsEnabled,
+                MonitorMode: "recent",
+                SeriesType: "daily",
+                SeasonFolder: false),
+            CancellationToken.None);
+        Assert.NotNull(updatedTv);
+        Assert.Equal("recent", updatedTv!.MonitorMode);
+        Assert.Equal("daily", updatedTv.SeriesType);
+        Assert.False(updatedTv.SeasonFolder);
+    }
 }

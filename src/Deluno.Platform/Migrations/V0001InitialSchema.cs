@@ -108,7 +108,9 @@ public static class PlatformDatabaseMigrations
         new V0100TraktConnection(),
         new V0101NotificationWebhookProviders(),
         new V0102QbittorrentLocation(),
-        new V0103IndexerProxies()
+        new V0103IndexerProxies(),
+        new V0104IntakeSourceMonitorMode(),
+        new V0105IntakeSourceSeriesOptions()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

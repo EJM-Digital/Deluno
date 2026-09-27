@@ -377,7 +377,19 @@ public sealed class IntakeSyncService(
                                 Rating: metadata?.Rating,
                                 Genres: metadata is null ? entry.GenresCsv : string.Join(", ", metadata.Genres),
                                 ExternalUrl: metadata?.ExternalUrl,
-                                MetadataJson: metadata is null ? null : JsonSerializer.Serialize(metadata, JsonOptions)),
+                                MetadataJson: metadata is null ? null : JsonSerializer.Serialize(metadata, JsonOptions),
+                                // #850: a list can ask an added series to take on a
+                                // particular Series Type and/or a Season Folder
+                                // override, the same choices a direct series add
+                                // already exposes. Null/unset preserves Deluno's
+                                // ordinary per-series defaults.
+                                SeriesType: string.IsNullOrWhiteSpace(source.SeriesType) ? null : source.SeriesType,
+                                SeasonFolder: source.SeasonFolder,
+                                // #848: how much of this newly added show to
+                                // actually watch for, instead of always fully
+                                // monitoring it. "All" (the default) changes
+                                // nothing.
+                                ListMonitorMode: source.MonitorMode == IntakeMonitorModes.All ? null : source.MonitorMode),
                             cancellationToken);
                         existingId = created.Id;
                     }
@@ -388,7 +400,10 @@ public sealed class IntakeSyncService(
                                 Title: resolvedTitle,
                                 ReleaseYear: resolvedYear,
                                 ImdbId: resolvedImdb,
-                                Monitored: true,
+                                // #848: a movie source can add its titles unmonitored
+                                // ("None") instead of Deluno always fully monitoring
+                                // everything a list adds.
+                                Monitored: source.MonitorMode != IntakeMonitorModes.None,
                                 MetadataProvider: metadata?.Provider,
                                 MetadataProviderId: metadata?.ProviderId,
                                 OriginalTitle: metadata?.OriginalTitle,

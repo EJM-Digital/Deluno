@@ -111,6 +111,12 @@ interface ListForm {
   personCreditTypes: TmdbPersonCreditType[];
   /** Minimum release stage (movies only) a list-added title must reach before Deluno searches for it (#849). */
   minimumAvailability: string;
+  /** How much of a newly added title to actually watch for (#848): All/Future/Missing/Existing/Recent for TV, Movie/None for movies. */
+  monitorMode: string;
+  /** TV only (#850): Standard/Daily/Anime, mirroring the same choice on a direct series add. */
+  seriesType: string;
+  /** TV only (#850): forces a season subfolder on or off, or "" to follow the global Media Management format. */
+  seasonFolder: "" | "true" | "false";
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -620,7 +626,12 @@ export function SettingsListsPage() {
             <Field label="Media type">
               <SegmentedControl<"movies" | "tv">
                 value={form.mediaType}
-                onValueChange={(mediaType) => setForm((current) => ({ ...current, mediaType, libraryId: libraries.find((library) => library.mediaType === mediaType)?.id ?? "" }))}
+                onValueChange={(mediaType) => setForm((current) => ({
+                  ...current,
+                  mediaType,
+                  libraryId: libraries.find((library) => library.mediaType === mediaType)?.id ?? "",
+                  monitorMode: mediaType === "tv" ? "all" : "movie"
+                }))}
                 options={[
                   { value: "movies", label: "Movies" },
                   { value: "tv", label: "TV shows" }
@@ -705,18 +716,70 @@ export function SettingsListsPage() {
             <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
           </FieldRow>
           {form.mediaType === "movies" ? (
-            <Field label="Don't search until" help="Holds a list-added movie back from searching until it reaches this release stage.">
-              <Select
-                value={form.minimumAvailability}
-                onChange={(event) => setForm((current) => ({ ...current, minimumAvailability: event.target.value }))}
-                options={[
-                  { value: "announced", label: "Announced — search right away" },
-                  { value: "inCinemas", label: "In cinemas" },
-                  { value: "released", label: "Released (digital/physical)" }
-                ]}
-              />
-            </Field>
-          ) : null}
+            <FieldRow>
+              <Field label="Don't search until" help="Holds a list-added movie back from searching until it reaches this release stage.">
+                <Select
+                  value={form.minimumAvailability}
+                  onChange={(event) => setForm((current) => ({ ...current, minimumAvailability: event.target.value }))}
+                  options={[
+                    { value: "announced", label: "Announced — search right away" },
+                    { value: "inCinemas", label: "In cinemas" },
+                    { value: "released", label: "Released (digital/physical)" }
+                  ]}
+                />
+              </Field>
+              <Field label="Monitor" help="Whether an added movie is watched for at all.">
+                <Select
+                  value={form.monitorMode}
+                  onChange={(event) => setForm((current) => ({ ...current, monitorMode: event.target.value }))}
+                  options={[
+                    { value: "movie", label: "Monitored" },
+                    { value: "none", label: "Not monitored — add without watching for it" }
+                  ]}
+                />
+              </Field>
+            </FieldRow>
+          ) : (
+            <>
+              <Field label="Monitor" help="How much of a newly added show to watch for.">
+                <Select
+                  value={form.monitorMode}
+                  onChange={(event) => setForm((current) => ({ ...current, monitorMode: event.target.value }))}
+                  options={[
+                    { value: "all", label: "All episodes" },
+                    { value: "future", label: "Future episodes only" },
+                    { value: "missing", label: "Missing episodes" },
+                    { value: "existing", label: "Existing episodes only" },
+                    { value: "recent", label: "Most recent season only" }
+                  ]}
+                />
+              </Field>
+              <FieldRow>
+                <Field label="Series type" help="Mirrors the same choice on a direct series add.">
+                  <Select
+                    value={form.seriesType}
+                    onChange={(event) => setForm((current) => ({ ...current, seriesType: event.target.value }))}
+                    options={[
+                      { value: "standard", label: "Standard" },
+                      { value: "daily", label: "Daily" },
+                      { value: "anime", label: "Anime" }
+                    ]}
+                  />
+                </Field>
+                <Field label="Season folder" optional help="Leave on Default to follow Media Management's season-folder setting.">
+                  <Select
+                    value={form.seasonFolder}
+                    onChange={(event) => setForm((current) => ({ ...current, seasonFolder: event.target.value as ListForm["seasonFolder"] }))}
+                    options={[
+                      { value: "", label: "Default" },
+                      { value: "true", label: "On" },
+                      { value: "false", label: "Off" }
+                    ]}
+                  />
+                </Field>
+              </FieldRow>
+            </>
+          )}
         </DrawerSection>
 
         {editing ? (
@@ -878,7 +941,10 @@ function emptyForm(libraries: LibraryItem[]): ListForm {
     searchOnAdd: true,
     isEnabled: true,
     personCreditTypes: ["cast"],
-    minimumAvailability: "announced"
+    minimumAvailability: "announced",
+    monitorMode: "movie",
+    seriesType: "standard",
+    seasonFolder: ""
   };
 }
 
@@ -900,7 +966,10 @@ function formFrom(item: IntakeSourceItem): ListForm {
     searchOnAdd: item.searchOnAdd,
     isEnabled: item.isEnabled,
     personCreditTypes: item.provider === "tmdb-person" ? parseTmdbPersonAddress(item.feedUrl).creditTypes : ["cast"],
-    minimumAvailability: item.minimumAvailability ?? "announced"
+    minimumAvailability: item.minimumAvailability ?? "announced",
+    monitorMode: item.monitorMode ?? (item.mediaType === "tv" ? "all" : "movie"),
+    seriesType: item.seriesType ?? "standard",
+    seasonFolder: item.seasonFolder === true ? "true" : item.seasonFolder === false ? "false" : ""
   };
 }
 
@@ -921,7 +990,10 @@ function toPayload(form: ListForm) {
     syncIntervalHours: form.syncIntervalHours.trim() ? Number(form.syncIntervalHours) : 24,
     searchOnAdd: form.searchOnAdd,
     isEnabled: form.isEnabled,
-    minimumAvailability: form.mediaType === "movies" ? form.minimumAvailability : "announced"
+    minimumAvailability: form.mediaType === "movies" ? form.minimumAvailability : "announced",
+    monitorMode: form.monitorMode,
+    seriesType: form.mediaType === "tv" ? form.seriesType : null,
+    seasonFolder: form.mediaType === "tv" && form.seasonFolder !== "" ? form.seasonFolder === "true" : null
   };
 }
 

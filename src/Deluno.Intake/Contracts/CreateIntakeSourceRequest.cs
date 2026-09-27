@@ -22,4 +22,14 @@ public sealed record CreateIntakeSourceRequest(
     /// normalizes to Announced, which always passes and preserves today's
     /// immediate-search behaviour. TV sources ignore this.
     /// </summary>
-    string? MinimumAvailability = null);
+    string? MinimumAvailability = null,
+    /// <summary>See <see cref="IntakeMonitorModes"/> (#848). Null normalizes to All/Movie, preserving today's fully-monitored behaviour.</summary>
+    string? MonitorMode = null,
+    /// <summary>
+    /// TV-only (#850): the series type (Standard/Daily/Anime) and Season
+    /// Folder override a list-added series should take on, mirroring the
+    /// same fields on a direct series add. Null/unset preserves Deluno's
+    /// existing per-series defaults (Standard type, global season format).
+    /// </summary>
+    string? SeriesType = null,
+    bool? SeasonFolder = null);

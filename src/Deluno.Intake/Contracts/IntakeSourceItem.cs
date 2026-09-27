@@ -25,4 +25,10 @@ public sealed record IntakeSourceItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     /// <summary>See <see cref="CreateIntakeSourceRequest.MinimumAvailability"/> (#849). Always normalized to Announced/In Cinemas/Released.</summary>
-    string MinimumAvailability = "announced");
+    string MinimumAvailability = "announced",
+    /// <summary>See <see cref="IntakeMonitorModes"/> (#848). Always normalized against MediaType.</summary>
+    string MonitorMode = "all",
+    /// <summary>See <see cref="CreateIntakeSourceRequest.SeriesType"/> (#850). TV-only; null for movie sources.</summary>
+    string? SeriesType = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.SeasonFolder"/> (#850).</summary>
+    bool? SeasonFolder = null);
