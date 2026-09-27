@@ -165,7 +165,14 @@ public sealed class SubtitleManualSearchApiTests
     {
         public Task<SubtitleFetchOutcome> FetchAsync(
             SubtitleSearchRequest request, string language, bool isEpisodeMedia, string videoPath,
-            bool excludeHearingImpaired, CancellationToken cancellationToken,
+            string hearingImpairedPreference, CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null, SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false, IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult(new SubtitleFetchOutcome(language, false, null, null, false, "Not used by this test."));
+
+        public Task<SubtitleFetchOutcome> FetchForcedAsync(
+            SubtitleSearchRequest request, string language, bool isEpisodeMedia, string videoPath,
+            CancellationToken cancellationToken,
             SubtitleContentModificationPolicy? contentPolicy = null, SubtitleNamePolicy? namePolicy = null,
             bool omitLanguageCode = false, IReadOnlyCollection<string>? blockedKeys = null)
             => Task.FromResult(new SubtitleFetchOutcome(language, false, null, null, false, "Not used by this test."));

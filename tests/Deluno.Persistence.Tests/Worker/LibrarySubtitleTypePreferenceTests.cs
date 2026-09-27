@@ -108,7 +108,8 @@ public sealed class LibrarySubtitleTypePreferenceTests
         var recorder = new RecordingFetchService();
         var handler = new LibrarySubtitleSearchJobHandler(
             libraries, subtitles, recorder, jobStore.JobStore,
-            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()));
+            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()),
+            jobStore.JobStore);
 
         await handler.HandleAsync(JobFor(libraryId), CancellationToken.None);
 
@@ -147,7 +148,8 @@ public sealed class LibrarySubtitleTypePreferenceTests
         var fetchService = new ForcedFoundFetchService();
         var handler = new LibrarySubtitleSearchJobHandler(
             libraries, subtitles, fetchService, jobs.JobStore,
-            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()));
+            new NotificationEventPublisher(new InMemoryNotificationService(), new NullRealtimeEventPublisher()),
+            jobs.JobStore);
 
         await handler.HandleAsync(JobFor(libraryId), CancellationToken.None);
 
@@ -257,6 +259,30 @@ public sealed class LibrarySubtitleTypePreferenceTests
             bool omitLanguageCode = false,
             IReadOnlyCollection<string>? blockedKeys = null)
             => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
+
+        public Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string? videoPath,
+            bool excludeHearingImpaired,
+            CancellationToken cancellationToken,
+            SubtitleNamePolicy? namePolicy = null,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult<IReadOnlyList<SubtitleSearchCandidate>>([]);
+
+        public Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+            SubtitleSearchRequest request,
+            string providerKey,
+            string downloadToken,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false)
+            => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
     }
 
     /// <summary>Never finds the full subtitle, but always finds a forced one — so the recorded row can only have come from the forced path.</summary>
@@ -293,5 +319,29 @@ public sealed class LibrarySubtitleTypePreferenceTests
                 language, Found: true, ProviderKey: "gestdown", WrittenPath: $"{videoPath}.{language}.forced.srt",
                 HearingImpaired: false, Reason: "Fetched.", Match: SubtitleMatch.AnyRelease));
         }
+
+        public Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string? videoPath,
+            bool excludeHearingImpaired,
+            CancellationToken cancellationToken,
+            SubtitleNamePolicy? namePolicy = null,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult<IReadOnlyList<SubtitleSearchCandidate>>([]);
+
+        public Task<SubtitleFetchOutcome> DownloadCandidateAsync(
+            SubtitleSearchRequest request,
+            string providerKey,
+            string downloadToken,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false)
+            => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
     }
 }
