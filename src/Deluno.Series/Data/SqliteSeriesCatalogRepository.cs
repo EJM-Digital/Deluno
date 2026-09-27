@@ -602,6 +602,51 @@ public sealed class SqliteSeriesCatalogRepository(
         return await GetNumberingAsync(seriesId, cancellationToken);
     }
 
+    public async Task<int> ApplyAutomaticNumberingAsync(
+        string seriesId,
+        IReadOnlyList<SeriesEpisodeSceneMapping> mappings,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(seriesId) || mappings.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var updated = 0;
+        foreach (var mapping in mappings)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var update = connection.CreateCommand();
+            update.CommandText =
+                """
+                UPDATE episode_entries
+                SET absolute_number = @absoluteNumber,
+                    scene_season_number = @sceneSeasonNumber,
+                    scene_episode_number = @sceneEpisodeNumber,
+                    numbering_source = @numberingSource
+                WHERE series_id = @seriesId
+                  AND season_number = @seasonNumber
+                  AND episode_number = @episodeNumber
+                  AND (numbering_source IS NOT 'owner');
+                """;
+            AddParameter(update, "@seriesId", seriesId);
+            AddParameter(update, "@seasonNumber", mapping.SeasonNumber);
+            AddParameter(update, "@episodeNumber", mapping.EpisodeNumber);
+            AddParameter(update, "@absoluteNumber", mapping.AbsoluteNumber);
+            AddParameter(update, "@sceneSeasonNumber", mapping.SceneSeasonNumber);
+            AddParameter(update, "@sceneEpisodeNumber", mapping.SceneEpisodeNumber);
+            AddParameter(update, "@numberingSource", SeriesNumberingSources.SceneMap);
+            updated += await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return updated;
+    }
+
     private static async Task<SeriesListItem?> FindExistingSeriesAsync(
         System.Data.Common.DbConnection connection,
         SeriesListItem series,

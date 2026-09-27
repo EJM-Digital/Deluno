@@ -75,10 +75,31 @@ public static class SeriesNumberingSources
     public const string Provider = "provider";
     public const string Owner = "owner";
 
-    public static string Normalize(string? value) =>
-        string.Equals(value?.Trim(), Owner, StringComparison.OrdinalIgnoreCase)
-            ? Owner
-            : Provider;
+    /// <summary>
+    /// An automatic scene/absolute mapping fetched from a third-party
+    /// numbering source (TheXEM) rather than typed by the owner or read from
+    /// the metadata provider's own season/episode list. Recorded separately so
+    /// the System screen and the per-episode source label can say where a
+    /// number actually came from, and so a provider catalogue refresh does not
+    /// read as having invented it.
+    /// </summary>
+    public const string SceneMap = "scene-map";
+
+    public static string Normalize(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.Equals(trimmed, Owner, StringComparison.OrdinalIgnoreCase))
+        {
+            return Owner;
+        }
+
+        if (string.Equals(trimmed, SceneMap, StringComparison.OrdinalIgnoreCase))
+        {
+            return SceneMap;
+        }
+
+        return Provider;
+    }
 }
 
 /// <summary>The persisted numbering choice for one series.</summary>
@@ -112,6 +133,21 @@ public sealed record SeriesNumberingMapping(
     int? SceneSeasonNumber = null,
     int? SceneEpisodeNumber = null,
     DateOnly? AirDate = null);
+
+/// <summary>
+/// One episode's automatic scene/absolute mapping, keyed by the canonical
+/// season/episode a third-party numbering source (TheXEM) reported it against
+/// — unlike <see cref="SeriesNumberingMapping"/>, which the UI keys by episode
+/// id because it already has the episode loaded. An automatic refresh only
+/// ever knows season/episode, so it looks the episode up the same way a
+/// provider catalogue sync does.
+/// </summary>
+public sealed record SeriesEpisodeSceneMapping(
+    int SeasonNumber,
+    int EpisodeNumber,
+    int? AbsoluteNumber = null,
+    int? SceneSeasonNumber = null,
+    int? SceneEpisodeNumber = null);
 
 public sealed record UpdateSeriesNumberingRequest(
     string? SeriesType = null,

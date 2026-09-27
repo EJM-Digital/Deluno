@@ -85,6 +85,7 @@ public static class SystemTasks
     public const string ProcessorOutcomes = "processor.outcomes";
     public const string RssSync = "rss.sync";
     public const string HealthChecks = "health.checks";
+    public const string SceneMappingRefresh = "scene.mapping.refresh";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -183,7 +184,13 @@ public static class SystemTasks
         // worst case, not the only case.
         new(HealthChecks, "Check system health",
             "Looks at download clients, indexers, libraries, the processor and other connections for problems, and shows anything wrong on Health, the Dashboard, the bell and a notification.",
-            TimeSpan.FromMinutes(15))
+            TimeSpan.FromMinutes(15)),
+        // Twelve hours: a scene mapping does not change mid-day, and every
+        // anime title is asked for on its own request, so this is paced for
+        // TheXEM's courtesy rather than for freshness (#863).
+        new(SceneMappingRefresh, "Refresh anime scene numbering",
+            "Checks TheXEM for scene-numbering corrections on your anime titles, so a release named by fansub order still matches the right episode.",
+            TimeSpan.FromHours(12))
     ];
 
     /// <summary>
