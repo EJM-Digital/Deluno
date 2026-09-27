@@ -174,4 +174,7 @@ public sealed record PlatformSettingsSnapshot(
     // today's behaviour for every install that has never opened this
     // setting.
     string SeasonFolderFormat = "",
-    string SpecialsFolderFormat = "");
+    string SpecialsFolderFormat = "",
+    // #763: how a file spanning more than one episode renders its combined
+    // season/episode segment. Range is Sonarr's own default.
+    string MultiEpisodeStyle = "range");

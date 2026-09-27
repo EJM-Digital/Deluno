@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace Deluno.Series.Contracts;
@@ -68,6 +69,69 @@ public static class SeriesNumberingSchemes
         string.IsNullOrWhiteSpace(numberingScheme)
             ? ForSeriesType(seriesType)
             : Normalize(numberingScheme);
+}
+
+/// <summary>
+/// #763: how a file that spans more than one episode renders its combined
+/// season/episode segment, mirroring Sonarr's own "Multi-Episode Style"
+/// choices. Only the season/episode token portion of a naming template is
+/// affected; {Episode Title} always joins every episode's title with " + ",
+/// regardless of the style chosen here.
+/// </summary>
+public static class MultiEpisodeStyles
+{
+    public const string Extend = "extend";
+    public const string Duplicate = "duplicate";
+    public const string Repeat = "repeat";
+    public const string Scene = "scene";
+    public const string Range = "range";
+    public const string PrefixedRange = "prefixed-range";
+
+    public static readonly IReadOnlyList<string> All = [Extend, Duplicate, Repeat, Scene, Range, PrefixedRange];
+
+    /// <summary>Range is Sonarr's own default.</summary>
+    public static string Normalize(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            Extend => Extend,
+            Duplicate => Duplicate,
+            Repeat => Repeat,
+            Scene => Scene,
+            PrefixedRange => PrefixedRange,
+            _ => Range
+        };
+
+    /// <summary>
+    /// The season/episode portion of a multi-episode file name -- e.g. for
+    /// season 1, episodes 1-3: Extend "S01E01E02E03", Duplicate
+    /// "S01E01S01E02S01E03", Repeat "S01E01-S01E02-S01E03", Scene
+    /// "S01E01-E02-E03", Range "S01E01-E03", Prefixed Range "S01E01-03". A
+    /// single episode always renders the same "S01E01" regardless of style.
+    /// </summary>
+    public static string FormatToken(string? style, int seasonNumber, IReadOnlyList<int> episodeNumbers)
+    {
+        var ordered = episodeNumbers.Distinct().OrderBy(number => number).ToArray();
+        if (ordered.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var season = seasonNumber.ToString("D2", CultureInfo.InvariantCulture);
+        if (ordered.Length == 1)
+        {
+            return $"S{season}E{ordered[0]:D2}";
+        }
+
+        return Normalize(style) switch
+        {
+            Extend => $"S{season}" + string.Concat(ordered.Select(episode => $"E{episode:D2}")),
+            Duplicate => string.Concat(ordered.Select(episode => $"S{season}E{episode:D2}")),
+            Repeat => string.Join("-", ordered.Select(episode => $"S{season}E{episode:D2}")),
+            Scene => $"S{season}E{ordered[0]:D2}" + string.Concat(ordered.Skip(1).Select(episode => $"-E{episode:D2}")),
+            PrefixedRange => $"S{season}E{ordered[0]:D2}-{ordered[^1]:D2}",
+            _ => $"S{season}E{ordered[0]:D2}-E{ordered[^1]:D2}"
+        };
+    }
 }
 
 public static class SeriesNumberingSources

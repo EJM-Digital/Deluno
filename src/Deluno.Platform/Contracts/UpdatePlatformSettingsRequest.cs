@@ -85,4 +85,5 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? LeftoverDownloadCleanupEnabled = null,
     int? LeftoverDownloadCleanupAgeHours = null,
     string? SeasonFolderFormat = null,
-    string? SpecialsFolderFormat = null);
+    string? SpecialsFolderFormat = null,
+    string? MultiEpisodeStyle = null);

@@ -137,6 +137,8 @@ export interface PlatformSettingsSnapshot {
   /** #762: per-season and specials (season 0) subfolders under the series folder. Blank means no subfolder, matching a movie/series folder format's own blank behaviour. */
   seasonFolderFormat: string;
   specialsFolderFormat: string;
+  /** #763: one of "extend" | "duplicate" | "repeat" | "scene" | "range" (default) | "prefixed-range". */
+  multiEpisodeStyle: string;
   updatedUtc: string;
 }
 
@@ -275,5 +277,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   leftoverDownloadCleanupAgeHours: 24,
   seasonFolderFormat: "",
   specialsFolderFormat: "",
+  multiEpisodeStyle: "range",
   updatedUtc: new Date(0).toISOString()
 };
