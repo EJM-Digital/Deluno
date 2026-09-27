@@ -688,6 +688,21 @@ export function QueuePage() {
   }
 
   /**
+   * Give up on this release entirely (#914, #929): blocklists it, ends the
+   * hand-off, and starts a search for a replacement, instead of waiting on
+   * the same processor or the same download any longer.
+   */
+  async function searchAgainForHandoff(handoff: ProcessorHandoffItem) {
+    const done = await run(`handoff:search-again:${handoff.id}`, async () => {
+      const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/search-again`, { method: "POST" });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message || "Deluno could not search for another release.");
+      toast.success(body?.message ?? `Deluno is searching for a replacement for ${handoff.releaseName}.`);
+    });
+    if (done) setDrawer(null);
+  }
+
+  /**
    * Keep waiting for a hand-off Deluno already gave up on, with a fresh
    * limit, instead of importing the original or resubmitting to the
    * processor (#914/#929).
@@ -1895,6 +1910,10 @@ export function QueuePage() {
               <Button type="button" variant="outline" size="sm" onClick={() => void retryHandoff(openHandoff)} disabled={busyKey !== null}>
                 {busyKey === `handoff:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Ask the processor again
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void searchAgainForHandoff(openHandoff)} disabled={busyKey !== null}>
+                {busyKey === `handoff:search-again:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Search for another release
               </Button>
             </div>
           </DrawerSection>

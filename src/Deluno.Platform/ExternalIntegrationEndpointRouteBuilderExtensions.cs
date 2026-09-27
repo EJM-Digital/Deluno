@@ -686,6 +686,94 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Accepted($"/api/integrations/processors/handoffs?libraryId={Uri.EscapeDataString(handoff.LibraryId)}", released);
         });
 
+        // "Give up and search for another release" (#914, #929): a real
+        // action, not just words in a recovery case's recommendation. The
+        // title comes from the download dispatch the hand-off's own
+        // client/queue-item pair names -- the same way a Queue "mark as bad"
+        // finds it -- so the reused ReplacementSearchQueuer points the new
+        // search at the exact title (or, for a season-pack hand-off, exactly
+        // the episodes it covered) rather than the whole library's next cycle.
+        integrations.MapPost("/processors/handoffs/{id}/search-again", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            IActivityFeedRepository activityFeed,
+            IDownloadDispatchesRepository dispatchesRepository,
+            IBlockedReleaseRepository blockedReleases,
+            IJobScheduler jobScheduler,
+            ILibrariesRepository librariesRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var handoff = await repository.GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is null) return Results.NotFound();
+            if (!ProcessorHandoffStatuses.NeedsPerson(handoff.Status, handoff.FailureMessage))
+            {
+                return Results.Conflict(new
+                {
+                    message = "A replacement search can only be started once this hand-off has ended badly."
+                });
+            }
+
+            var dispatch = await dispatchesRepository.FindDispatchByHashAsync(handoff.ClientId, handoff.QueueItemId, cancellationToken);
+            if (dispatch is null || !ReplacementSearchQueuer.Supports(dispatch.EntityType))
+            {
+                return Results.Conflict(new
+                {
+                    message = "Deluno does not know which title this release was for, so it cannot search for a replacement."
+                });
+            }
+
+            // #874: the blocklist key is the release's hash/id and its name,
+            // on every indexer -- the same key every other give-up path uses.
+            await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                    dispatch.ReleaseName,
+                    dispatch.IndexerName,
+                    dispatch.MediaType,
+                    dispatch.EntityId,
+                    handoff.ReleaseName,
+                    ImportFailurePolicy.ProcessorRejected,
+                    $"Gave up on {handoff.ProcessorName ?? "the processor"} and searched for another release.",
+                    dispatch.TorrentHashOrItemId ?? handoff.QueueItemId,
+                    dispatch.DownloadClientId,
+                    dispatch.DownloadClientName,
+                    DateTimeOffset.MinValue,
+                    Origin: BlockedReleaseOrigins.Manual),
+                cancellationToken);
+
+            var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+            await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
+
+            var message = $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.";
+            var ended = await repository.UpdateProcessorHandoffAsync(
+                handoff.Id,
+                ProcessorHandoffStatuses.Dismissed,
+                null,
+                null,
+                message,
+                cancellationToken);
+            if (ended is null) return Results.NotFound();
+
+            await activityFeed.RecordActivityAsync(
+                "processing.search-again",
+                message,
+                JsonSerializer.Serialize(new { HandoffId = handoff.Id, handoff.LibraryId, handoff.ReleaseName, PreviousStatus = handoff.Status }),
+                null,
+                "processor-handoff",
+                handoff.Id,
+                cancellationToken);
+
+            return Results.Ok(new { message, handoff = ended });
+        });
+
         integrations.MapGet("/processors/connections", async (
             HttpContext httpContext,
             IProcessorRepository repository,
