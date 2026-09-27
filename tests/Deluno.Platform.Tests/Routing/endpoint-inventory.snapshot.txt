@@ -175,6 +175,7 @@ GET /api/retention/seerr-cleanups
 GET /api/retention/titles/{entityId}
 GET /api/search-cycles
 GET /api/search-retry-windows
+GET /api/security/allowed-hosts
 GET /api/seerr-servers/
 GET /api/series/calendar
 GET /api/series/controls
@@ -463,6 +464,7 @@ PUT /api/quality-profiles/{id}
 PUT /api/recycle-bin/settings
 PUT /api/release-profiles/{id}
 PUT /api/retention/rules/{id}
+PUT /api/security/allowed-hosts
 PUT /api/seerr-servers/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
