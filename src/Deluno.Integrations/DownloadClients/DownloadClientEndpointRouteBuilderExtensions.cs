@@ -27,6 +27,138 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 new PageRequest(pageSize ?? 30, pageToken), cancellationToken));
         });
 
+        // Its own Settings screen (#905): the rule set Deluno holds for what
+        // counts as a stuck download and what it does once it does. Reads
+        // synthesize the legacy flat toggles into equivalent rules the first
+        // time an installation asks, so nothing changes until a person edits
+        // one here (#936).
+        endpoints.MapGet("/api/download-health/rules", async (
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            IPlatformSettingsRepository settingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var legacy = await settingsRepository.GetAsync(cancellationToken);
+            return Results.Ok(await platformRepository.GetDownloadHealthRulesAsync(legacy, cancellationToken));
+        });
+
+        endpoints.MapPut("/api/download-health/rules/{id}", async (
+            string id,
+            [FromBody] SaveDownloadHealthRuleRequest request,
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            IPlatformSettingsRepository settingsRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            if (!DownloadHealthRuleKinds.IsKnown(request.Kind ?? string.Empty))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["kind"] = ["That isn't a rule kind Deluno knows about."]
+                });
+            }
+
+            var now = timeProvider.GetUtcNow();
+            var candidate = new DownloadHealthRule(
+                Id: string.IsNullOrWhiteSpace(id) || id == "new" ? Guid.NewGuid().ToString("n") : id,
+                Kind: request.Kind!,
+                Enabled: request.Enabled,
+                StrikeLimit: request.StrikeLimit,
+                TimerMinutes: request.TimerMinutes,
+                AppliesTo: request.AppliesTo ?? DownloadHealthAppliesTo.Both,
+                MinCompletionPercent: request.MinCompletionPercent,
+                MaxCompletionPercent: request.MaxCompletionPercent,
+                ResetStrikesOnProgress: request.ResetStrikesOnProgress,
+                ActionPreset: request.ActionPreset ?? DownloadHealthActionPresets.JustTellMe,
+                CreatedUtc: now,
+                UpdatedUtc: now,
+                Threshold: request.Threshold);
+
+            var legacy = await settingsRepository.GetAsync(cancellationToken);
+            var (rules, error) = await platformRepository.SaveDownloadHealthRuleAsync(candidate, legacy, cancellationToken);
+            return error is null ? Results.Ok(rules) : Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = [error] });
+        });
+
+        endpoints.MapDelete("/api/download-health/rules/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await platformRepository.DeleteDownloadHealthRuleAsync(id, cancellationToken));
+        });
+
+        // Ignored downloads (#817): exempt by hash, client category, or
+        // tracker/indexer domain - never struck by any rule while listed.
+        endpoints.MapGet("/api/download-health/ignore-list", async (
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await platformRepository.ListDownloadHealthIgnoreEntriesAsync(cancellationToken));
+        });
+
+        endpoints.MapPost("/api/download-health/ignore-list", async (
+            [FromBody] AddDownloadHealthIgnoreEntryRequest request,
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            TimeProvider timeProvider,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            if (string.IsNullOrWhiteSpace(request.Hash) && string.IsNullOrWhiteSpace(request.Category) && string.IsNullOrWhiteSpace(request.TrackerDomain))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["entry"] = ["Give at least a hash, a client category, or a tracker/indexer domain to ignore."]
+                });
+            }
+
+            var entry = new DownloadHealthIgnoreEntry(
+                Id: Guid.NewGuid().ToString("n"),
+                Hash: request.Hash?.Trim(),
+                Category: request.Category?.Trim(),
+                TrackerDomain: request.TrackerDomain?.Trim(),
+                Note: request.Note?.Trim(),
+                CreatedUtc: timeProvider.GetUtcNow());
+            return Results.Ok(await platformRepository.AddDownloadHealthIgnoreEntryAsync(entry, cancellationToken));
+        });
+
+        endpoints.MapDelete("/api/download-health/ignore-list/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            return denied ?? Results.Ok(await platformRepository.RemoveDownloadHealthIgnoreEntryAsync(id, cancellationToken));
+        });
+
+        // #826: clears every recorded strike for every download, in one call.
+        // Irreversible, so it stays a deliberate action rather than a toggle.
+        endpoints.MapPost("/api/download-health/purge-strikes", async (
+            HttpContext httpContext,
+            IDownloadHealthRepository platformRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+
+            var purged = await platformRepository.PurgeAllDownloadHealthStrikesAsync(cancellationToken);
+            return Results.Ok(new PurgeDownloadHealthStrikesResult(purged));
+        });
+
         // Orphaned download folders (#588): what sits in a library's completed
         // folder that nothing claims. Counted in Needs attention; each is kept
         // or, when Deluno can prove it downloaded it, removed - by a person.
@@ -285,3 +417,23 @@ public static class DownloadClientEndpointRouteBuilderExtensions
 }
 
 public sealed record IgnoreDownloadHealthFindingRequest(int DurationDays = 7);
+
+public sealed record SaveDownloadHealthRuleRequest(
+    string? Kind,
+    bool Enabled,
+    int StrikeLimit,
+    int TimerMinutes,
+    string? AppliesTo,
+    int MinCompletionPercent,
+    int MaxCompletionPercent,
+    bool ResetStrikesOnProgress,
+    string? ActionPreset,
+    double Threshold);
+
+public sealed record AddDownloadHealthIgnoreEntryRequest(
+    string? Hash,
+    string? Category,
+    string? TrackerDomain,
+    string? Note);
+
+public sealed record PurgeDownloadHealthStrikesResult(int PurgedCount);

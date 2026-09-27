@@ -119,6 +119,61 @@ public sealed class DownloadHealthGrabGuardTests
         Assert.Equal("health-remediation-applied", updated!.ImportFailureCode);
     }
 
+    /// <summary>
+    /// #905: a rule set to "instant" (StrikeLimit: 1) has to act the moment
+    /// its own strike is recorded, even while the platform-wide fallback
+    /// threshold (used only by findings outside the rule engine) is still
+    /// its higher default. Remediation used to read the raw StrikeCount
+    /// against that fallback for every finding, rule-engine or not, so an
+    /// instant rule never fired until three sightings - the same wait as
+    /// every other rule, whatever its own StrikeLimit said.
+    /// </summary>
+    [Fact]
+    public async Task A_rule_set_to_instant_acts_on_its_own_first_strike_not_the_platform_wide_fallback()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
+        await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
+        var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
+        var library = await librariesRepository.CreateLibraryAsync(new CreateLibraryRequest(
+            "Movies", "movies", "library", Path.Combine(storage.DataRoot, "movies"), Path.Combine(storage.DataRoot, "downloads"), null,
+            "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
+        var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "deluno-movies", "deluno-tv", null, 1, true), CancellationToken.None);
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
+        var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobs.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-arrival", "Arrival.2016.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+            cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
+
+        var settings = await settingsRepository.GetAsync(CancellationToken.None);
+        Assert.True(settings.DownloadHealthStrikeThreshold > 1, "This test only proves something if the platform-wide fallback is higher than the rule's own instant limit.");
+
+        var service = new DownloadClientTelemetryService(
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, new DownloadClientRegistry([]), time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance);
+        var finding = new DownloadHealthFinding(
+            "warning", DownloadHealthStrikes.DeadTorrent, "No seeds or peers", "0 peers", "Review", true, false,
+            StrikeCount: 1, RuleId: "instant-dead-torrent", RuleActionPreset: DownloadHealthActionPresets.RetryElsewhere, RuleStrikeLimit: 1);
+        var item = new DownloadQueueItem("queue-arrival", client.Id, client.Name, client.Protocol, "movies", "Arrival", "Arrival.2016.1080p.WEB",
+            "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, time.GetUtcNow(), HealthFindings: [finding]);
+        var snapshot = new DownloadClientTelemetrySnapshot(client.Id, client.Name, client.Protocol, null, "healthy", null,
+            new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "none"),
+            new DownloadTelemetrySummary(0, 0, 0, 1, 0, 0, 0), [item], [], time.GetUtcNow());
+
+        var report = await service.RunConfiguredHealthRemediationAsync(
+            new DownloadTelemetryOverview(snapshot.Summary, [snapshot], time.GetUtcNow()), CancellationToken.None);
+
+        Assert.Equal(1, report.ReplacementSearchesQueued);
+        var updated = await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.Equal("health-remediation-applied", updated!.ImportFailureCode);
+    }
+
     [Fact]
     public async Task Untested_external_client_is_refused_before_any_grab_or_network_call()
     {

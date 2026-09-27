@@ -1045,6 +1045,33 @@ export interface DownloadHealthRecord {
   ignoredUntilUtc: string | null;
 }
 
+/** One configured download-health rule (#905). */
+export interface DownloadHealthRule {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  strikeLimit: number;
+  timerMinutes: number;
+  appliesTo: "torrents" | "usenet" | "both" | string;
+  minCompletionPercent: number;
+  maxCompletionPercent: number;
+  resetStrikesOnProgress: boolean;
+  actionPreset: "replace" | "retry-elsewhere" | "just-tell-me" | string;
+  createdUtc: string;
+  updatedUtc: string;
+  threshold: number;
+}
+
+/** One entry exempting a download from every health rule (#817). */
+export interface DownloadHealthIgnoreEntry {
+  id: string;
+  hash: string | null;
+  category: string | null;
+  trackerDomain: string | null;
+  note: string | null;
+  createdUtc: string;
+}
+
 export interface ProcessorHandoffItem {
   id: string;
   libraryId: string;
