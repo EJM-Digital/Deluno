@@ -73,6 +73,12 @@ TV Shows should own:
 - metadata linking and refresh
 - import review and failed-import recovery
 - TV bulk actions
+- per-series numbering (standard, air-date, absolute, or scene) and an
+  owner-editable scene/absolute mapping that search, import matching, and
+  naming all resolve through before falling back to season/episode
+- a scheduled pass (`scene.mapping.refresh`) that keeps that mapping current
+  for anime titles from TheXEM, the same numbering-mismatch source Sonarr
+  documents relying on, without touching a mapping the owner set by hand
 
 ### Indexers
 

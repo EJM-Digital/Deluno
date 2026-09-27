@@ -74,6 +74,107 @@ public sealed class SeriesNumberingPersistenceTests
     }
 
     [Fact]
+    public async Task Automatic_scene_mapping_resolves_a_release_that_season_and_episode_alone_would_miss()
+    {
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var now = DateTimeOffset.Parse("2026-09-27T02:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Scene Mismatch Anime", 2024, "tt2468135", SeriesType: SeriesTypes.Anime, NumberingScheme: SeriesNumberingSchemes.Scene),
+            CancellationToken.None);
+
+        // TVDB (and Deluno's catalogue) calls this season 2 episode 1, but the
+        // fansub group that named the release counted straight through from
+        // season 1 and called it episode 13 — exactly the mismatch TheXEM
+        // exists to record.
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(2, 1, "The Real Episode", null, now.AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+
+        var beforeMapping = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var canonical = Assert.Single(beforeMapping!.Episodes);
+        Assert.Null(canonical.SceneSeasonNumber);
+
+        // A plain S01E13 parse cannot resolve against the catalogue at all yet -
+        // nothing is catalogued under season 1.
+        var parsedBeforeMapping = SeriesNumberingResolver.ParseFileName(
+            "Scene Mismatch Anime - S01E13.mkv",
+            SeriesNumberingSchemes.Scene);
+        Assert.False(SeriesNumberingResolver.TryResolve(parsedBeforeMapping.Matches[0], beforeMapping.Episodes, out var notMatched, out var missingReason));
+        Assert.NotNull(missingReason);
+
+        var updated = await repository.ApplyAutomaticNumberingAsync(
+            series.Id,
+            [new SeriesEpisodeSceneMapping(2, 1, AbsoluteNumber: 13, SceneSeasonNumber: 1, SceneEpisodeNumber: 13)],
+            CancellationToken.None);
+        Assert.Equal(1, updated);
+
+        var afterMapping = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var mapped = Assert.Single(afterMapping!.Episodes);
+        Assert.Equal(1, mapped.SceneSeasonNumber);
+        Assert.Equal(13, mapped.SceneEpisodeNumber);
+        Assert.Equal(SeriesNumberingSources.SceneMap, mapped.NumberingSource);
+
+        var parsedAfterMapping = SeriesNumberingResolver.ParseFileName(
+            "Scene Mismatch Anime - S01E13.mkv",
+            SeriesNumberingSchemes.Scene);
+        Assert.True(SeriesNumberingResolver.TryResolve(parsedAfterMapping.Matches[0], afterMapping.Episodes, out var resolved, out var reason), reason);
+        Assert.Equal(canonical.EpisodeId, resolved?.EpisodeId);
+    }
+
+    [Fact]
+    public async Task Automatic_scene_mapping_never_overwrites_an_owner_correction()
+    {
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var now = DateTimeOffset.Parse("2026-09-27T02:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Owner Protected Anime", 2024, "tt1357924", SeriesType: SeriesTypes.Anime, NumberingScheme: SeriesNumberingSchemes.Absolute),
+            CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+
+        var beforeOwnerEdit = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var episodeId = beforeOwnerEdit!.Episodes.Single().EpisodeId;
+        await repository.UpdateNumberingAsync(
+            series.Id,
+            new UpdateSeriesNumberingRequest(Mappings: [new SeriesNumberingMapping(episodeId, AbsoluteNumber: 500)]),
+            CancellationToken.None);
+
+        var updated = await repository.ApplyAutomaticNumberingAsync(
+            series.Id,
+            [new SeriesEpisodeSceneMapping(1, 1, AbsoluteNumber: 1)],
+            CancellationToken.None);
+        Assert.Equal(0, updated);
+
+        var after = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var episode = after!.Episodes.Single();
+        Assert.Equal(500, episode.AbsoluteNumber);
+        Assert.Equal(SeriesNumberingSources.Owner, episode.NumberingSource);
+    }
+
+    [Fact]
     public void Resolver_supports_standard_multi_episode_airdate_and_scene_without_guessing()
     {
         var standard = SeriesNumberingResolver.ParseFileName("Show.S02E03E04.1080p.mkv");

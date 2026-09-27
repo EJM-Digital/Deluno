@@ -33,6 +33,19 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Applies an automatic scene/absolute mapping (TheXEM or a similar
+    /// numbering source) to the episodes it names. An owner mapping is never
+    /// touched — the same protection <see cref="UpdateNumberingAsync"/> gives a
+    /// manual edit against a later provider catalogue refresh. Returns how many
+    /// episodes actually changed, so a scheduled pass can report something more
+    /// useful than "ran".
+    /// </summary>
+    Task<int> ApplyAutomaticNumberingAsync(
+        string seriesId,
+        IReadOnlyList<SeriesEpisodeSceneMapping> mappings,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Every genre this catalogue actually holds, in alphabetical order.
     ///
     /// Served rather than derived in the browser from whatever happens to be on
