@@ -531,9 +531,6 @@ export function IndexersPage() {
       setClientInitial(next);
     }
   }
-  async function setRemovalPermission(allowed: boolean) {
-    await run("permission", () => settingsMutation.mutate({ removeCompletedDownloads: allowed }));
-  }
   async function addMapping(clientId: string) {
     if (!newMapping.remotePath.trim() || !newMapping.localPath.trim()) return;
     const ok = await run("mapping:add", () => send(`/api/download-clients/${clientId}/path-mappings`, "POST", { remotePath: newMapping.remotePath.trim(), localPath: newMapping.localPath.trim(), isEnabled: true, priority: 10 }, "File location link could not be saved."), "File location linked");
@@ -672,21 +669,6 @@ export function IndexersPage() {
                 })}
               </ListTable>
             )}
-          </ListCard>
-
-          <ListCard title="Permissions">
-            <ListTable columns={[{ label: "Permission" }, { label: "Applies to" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-              <ListRow>
-              <ListNameCell name="Remove items from the client queue" sub="A confirmed, manual Remove on Transfers. Automatic cleanup is configured in Automation & Recovery." />
-                <ListCell primary="All download clients" secondary="SABnzbd, qBittorrent, …" />
-                <ListCell mobile>
-                  <Chip tone={settings.removeCompletedDownloads ? "ok" : "idle"}>{settings.removeCompletedDownloads ? "Allowed" : "Blocked"}</Chip>
-                </ListCell>
-                <ListCell mobile>
-                  <Switch size="sm" aria-label="Allow removing client queue entries" checked={settings.removeCompletedDownloads} disabled={busy === "permission"} onCheckedChange={(checked) => void setRemovalPermission(checked)} />
-                </ListCell>
-              </ListRow>
-            </ListTable>
           </ListCard>
         </>
       ) : null}

@@ -141,6 +141,21 @@ public static class ImportFailurePolicy
     /// </summary>
     public const string ClientReportedFailure = "clientReportedFailure";
 
+    /// <summary>
+    /// A person said so directly — the Queue's "It's bad" removal reason
+    /// (cleanup sheet J1/J2, #924). Filed the same as a file Deluno read and
+    /// rejected itself: a person looking at the download decided it is bad in
+    /// exactly the sense <see cref="NoVideoStream"/> and the others are, so it
+    /// refuses every indexer's copy of the release rather than only the one
+    /// downloaded, and needs no retry to prove it twice.
+    /// </summary>
+    /// <remarks>
+    /// Not in <see cref="KnownReasons"/> for the same reason as
+    /// <see cref="ProcessorRejected"/> and <see cref="DownloadStalled"/>: the
+    /// person already answered the question this table exists to answer.
+    /// </remarks>
+    public const string ManualFailure = "manualFailure";
+
     /// <summary>Every reason this table has an answer for.</summary>
     public static readonly IReadOnlyList<string> KnownReasons =
     [
@@ -216,7 +231,7 @@ public static class ImportFailurePolicy
     /// </summary>
     public static string CategoryFor(string reasonCode) => reasonCode switch
     {
-        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected => FailureCategories.BadFile,
+        NoVideoStream or LikelySample or UnsupportedFile or MediaProbeRejected or ProcessorRejected or ManualFailure => FailureCategories.BadFile,
         ReplacementRejected => FailureCategories.NotAFailure,
         Unmatched or ImportFailed or MediaProbeUnreadable or DownloadStalled or ClientReportedFailure => FailureCategories.CannotSay,
         _ => FailureCategories.YourSetup

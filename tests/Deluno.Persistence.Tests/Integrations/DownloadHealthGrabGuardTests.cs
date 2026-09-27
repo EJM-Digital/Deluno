@@ -16,8 +16,16 @@ namespace Deluno.Persistence.Tests.Integrations;
 
 public sealed class DownloadHealthGrabGuardTests
 {
+    /// <summary>
+    /// Cleanup sheet J1/J2 (#924) dropped the "Allow removing client queue
+    /// entries" setting that used to gate this: the Queue's remove dialog is
+    /// now the confirmation, asking why in plain words, so removal is
+    /// attempted directly rather than refused by a separate configuration
+    /// gate. It still fails here, because nothing real is listening on
+    /// "localhost:8080" - but for that reason, not the old setting.
+    /// </summary>
     [Fact]
-    public async Task External_client_removal_is_refused_until_the_manual_queue_removal_setting_is_enabled()
+    public async Task External_client_removal_is_no_longer_gated_by_a_setting()
     {
         using var storage = TestStorage.Create();
         var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
@@ -29,7 +37,9 @@ public sealed class DownloadHealthGrabGuardTests
             "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
         var service = new DownloadClientTelemetryService(
-            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, null!, time, null!, null!, null!, null!, new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance);
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!,
+            new DownloadClientRegistry([]), time, new PassThroughResiliencePolicy(), null!, null!, null!,
+            new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance);
 
         var result = await service.ExecuteActionAsync(
             client.Id,
@@ -37,7 +47,27 @@ public sealed class DownloadHealthGrabGuardTests
             CancellationToken.None);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("Allow removing client queue entries", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Allow removing client queue entries", result.Message, StringComparison.Ordinal);
+        Assert.Contains("not a supported download client protocol", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A resilience policy that just runs the operation once, for tests that do not care about retries.</summary>
+    private sealed class PassThroughResiliencePolicy : Deluno.Infrastructure.Resilience.IIntegrationResiliencePolicy
+    {
+        public async Task<Deluno.Infrastructure.Resilience.IntegrationResilienceResult<T>> ExecuteAsync<T>(
+            Deluno.Infrastructure.Resilience.IntegrationResilienceRequest request,
+            Func<CancellationToken, Task<T>> operation,
+            Func<T, Deluno.Infrastructure.Resilience.IntegrationResilienceOutcome> classifyResult,
+            CancellationToken cancellationToken)
+            => new(await operation(cancellationToken), false, false, 1, null, null);
+
+        public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
+        {
+            retryAfterUtc = default;
+            return false;
+        }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     [Fact]

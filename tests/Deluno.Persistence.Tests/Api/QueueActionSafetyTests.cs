@@ -35,41 +35,17 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class QueueActionSafetyTests
 {
     /// <summary>
-    /// The guard that matters most. An item in somebody's queue can be seeded,
-    /// shared or cross-seeded, so removing it is opt-in - and until the owner
-    /// opts in, Deluno must refuse rather than quietly forward the request.
+    /// Cleanup sheet J1/J2 (#924) dropped the "Allow removing client queue
+    /// entries" setting: the Queue's remove dialog is now the confirmation,
+    /// asking why in plain words, so a queue removal is no longer refused by
+    /// a separate configuration gate. It still fails here, because no SABnzbd
+    /// is listening in a test - but for that reason, not a configuration one.
     /// </summary>
     [Fact]
-    public async Task Removing_a_queued_download_is_refused_until_the_owner_turns_it_on()
+    public async Task Removing_a_queued_download_is_no_longer_gated_by_a_setting()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var clientId = await CreateDownloadClientAsync(app);
-
-        var refused = await ActOnQueueAsync(app, clientId, action: "remove", queueItemId: "SABnzbd_nzo_abc");
-
-        Assert.Equal(HttpStatusCode.BadRequest, refused.Status);
-        Assert.False(refused.Succeeded);
-        Assert.Contains("Allow removing client queue entries\" under Find & Download > Download Clients", refused.Message, StringComparison.Ordinal);
-
-        // And the refusal names the setting rather than leaving somebody
-        // hunting for it.
-        Assert.Contains("Download clients", refused.Message, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Turning the setting on gets the request past the guard. It still fails,
-    /// because no SABnzbd is listening in a test - but it fails for that reason
-    /// rather than for the configuration one, which is what proves the toggle
-    /// is what was standing in the way.
-    /// </summary>
-    [Fact]
-    public async Task Turning_removal_on_gets_the_request_past_the_guard()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var clientId = await CreateDownloadClientAsync(app);
-
-        var patch = await app.Client.PatchAsJsonAsync("/api/settings/", new { removeCompletedDownloads = true });
-        Assert.True(patch.IsSuccessStatusCode, await patch.Content.ReadAsStringAsync());
 
         var attempt = await ActOnQueueAsync(app, clientId, action: "remove", queueItemId: "SABnzbd_nzo_abc");
 

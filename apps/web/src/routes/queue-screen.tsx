@@ -44,6 +44,7 @@ import {
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
   type ProcessorOutcomeRecord,
+  type QueueRemovalResult,
   type SeriesImportRecoverySummary, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
@@ -57,8 +58,8 @@ import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure,
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
-import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
+import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
@@ -71,7 +72,7 @@ import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 
-type QueueAction = "pause" | "resume" | "delete" | "recheck";
+type QueueAction = "pause" | "resume" | "recheck";
 
 interface ManualImportForm {
   sourcePath: string;
@@ -171,6 +172,7 @@ export function QueuePage() {
   const [importPreviews, setImportPreviews] = useState<Record<string, ImportPreviewResponse>>({});
   const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
   const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
+  const [removalReasonBusy, setRemovalReasonBusy] = useState<RemovalReason | null>(null);
   const [activityKind, setActivityKind] = useState<"all" | ActivityEntry["kind"]>("all");
   const [manualImport, setManualImport] = useState<ManualImportForm>(() => ({
     sourcePath: "",
@@ -275,6 +277,60 @@ export function QueuePage() {
       },
       `${actionLabel(action)} sent to ${item.clientName}`
     );
+  }
+
+  // Cleanup sheet J1/J2 (#924): removing a download asks why, in plain
+  // words, and each choice does exactly what it says. The client action, the
+  // blocklist entry and the replacement search all happen on the server in
+  // one call; "I don't want it" also unmonitors the title, which happens on
+  // the movie or series side rather than here — Deluno's engines stay
+  // separate, so that step is a second, best-effort call through the same
+  // bulk endpoint the title's own screen uses.
+  async function removeWithReason(item: DownloadQueueItem, reason: RemovalReason) {
+    setRemovalReasonBusy(reason);
+    try {
+      const response = await authedFetch(
+        `/api/download-clients/${item.clientId}/queue/${encodeURIComponent(item.id)}/remove`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason })
+        }
+      );
+      const result = (await response.json().catch(() => null)) as QueueRemovalResult | null;
+      if (!response.ok || !result?.succeeded) {
+        throw new Error(result?.message || (await readErrorText(response, "That removal could not be completed.")));
+      }
+
+      if (reason === "unwanted" && result.entityId) {
+        await unmonitorTitle(result.entityId, result.mediaType);
+      }
+
+      toast.success(result.message);
+      setPendingRemoval(null);
+      setDrawer(null);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That removal could not be completed.");
+    } finally {
+      setRemovalReasonBusy(null);
+    }
+  }
+
+  async function unmonitorTitle(entityId: string, mediaType: string | null) {
+    const { url, body } = unmonitorRequestFor(entityId, mediaType);
+    try {
+      await fetchJson(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch {
+      // Best-effort: the download is already gone and its files deleted,
+      // which is the part that matters. A title left monitored is visible
+      // and easy to fix by hand; silently failing the whole removal over it
+      // would not be.
+    }
   }
 
   // #880/#881: a setup-problem finding (a full disk, permissions, a missing
@@ -1285,24 +1341,16 @@ export function QueuePage() {
         ) : null}
       </Drawer>
 
-      <ConfirmDialog
+      <RemovalReasonDialog
         open={pendingRemoval !== null}
         onOpenChange={(open) => {
-          if (!open && busyKey === null) setPendingRemoval(null);
+          if (!open) setPendingRemoval(null);
         }}
-        title="Remove this from the client's queue?"
-        description={
-          pendingRemoval
-            ? `Deluno will ask ${pendingRemoval.clientName} to drop “${pendingRemoval.title}”. The client decides what happens to the files it downloaded; Deluno never removes anything from your media library through this.`
-            : ""
-        }
-        confirmLabel="Remove from client"
-        busy={pendingRemoval !== null && busyKey === `queue:${pendingRemoval.clientId}:${pendingRemoval.id}:delete`}
-        onConfirm={async () => {
+        title={pendingRemoval?.title ?? ""}
+        busyReason={removalReasonBusy}
+        onChoose={(reason) => {
           if (!pendingRemoval) return;
-          await queueAction(pendingRemoval, "delete");
-          setPendingRemoval(null);
-          setDrawer(null);
+          void removeWithReason(pendingRemoval, reason);
         }}
       />
     </div>
@@ -1939,6 +1987,19 @@ export function buildImportRequest(
       ? dispatch.entityId
       : null
   };
+}
+
+/**
+ * Where "I don't want it" unmonitors the title, and what it sends — a pure
+ * mapping so the choice can be tested without a render (#924). Movie and TV
+ * engines stay separate, so this picks between their two, otherwise
+ * identical, bulk endpoints rather than one shared one.
+ */
+export function unmonitorRequestFor(entityId: string, mediaType: string | null): { url: string; body: Record<string, unknown> } {
+  const isTv = mediaType === "tv" || mediaType === "series";
+  return isTv
+    ? { url: "/api/series/bulk", body: { seriesIds: [entityId], operation: "monitoring", monitored: false } }
+    : { url: "/api/movies/bulk", body: { movieIds: [entityId], operation: "monitoring", monitored: false } };
 }
 
 export function findDispatchForQueueItem(

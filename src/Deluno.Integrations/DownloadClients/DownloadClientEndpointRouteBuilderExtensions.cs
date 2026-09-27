@@ -128,6 +128,29 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
+        // The Queue's "why" behind removing a download (cleanup sheet J1/J2,
+        // #924): one of QueueRemovalReasons, in plain words on the dialog
+        // that asks it. Replaces the old single confirm and the "Allow
+        // removing client queue entries" setting that gated it — this
+        // endpoint is the confirmation, and every reason acts.
+        endpoints.MapPost("/api/download-clients/{clientId}/queue/{queueItemId}/remove", async (
+            string clientId,
+            string queueItemId,
+            HttpContext httpContext,
+            [FromBody] QueueRemovalRequest request,
+            IDownloadClientTelemetryService telemetryService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await telemetryService.RemoveWithReasonAsync(clientId, queueItemId, request.Reason, cancellationToken);
+            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+        });
+
         endpoints.MapGet("/api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview", async (
             string clientId,
             string queueItemId,

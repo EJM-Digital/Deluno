@@ -38,6 +38,59 @@ public static class DownloadClientActions
 }
 
 /// <summary>
+/// The three plain-word choices behind the Queue's "Remove" dialog
+/// (cleanup sheet J1/J2, #924). Replaces the old single yes/no confirm and
+/// the "Allow removing client queue entries" setting that gated it — the
+/// dialog is now the confirmation, and every choice acts.
+/// </summary>
+public static class QueueRemovalReasons
+{
+    /// <summary>
+    /// "It's bad": remove from the client, delete its files, blocklist the
+    /// release everywhere it could be found again, and search for another.
+    /// </summary>
+    public const string Failed = "failed";
+
+    /// <summary>
+    /// "I don't want it": remove from the client and delete its files. No
+    /// blocklist — the release was not bad, the title just is not wanted.
+    /// </summary>
+    public const string Unwanted = "unwanted";
+
+    /// <summary>
+    /// "Just stop tracking it": Deluno forgets the download. The client keeps
+    /// it and its files, untouched.
+    /// </summary>
+    public const string Forget = "forget";
+
+    public static bool IsKnown(string reason)
+        => reason is Failed or Unwanted or Forget;
+}
+
+public sealed record QueueRemovalRequest(string Reason);
+
+/// <param name="EntityId">
+/// The title this download belongs to, when Deluno can still say — read from
+/// the matching dispatch, not the queue item itself. Null for a download
+/// Deluno never grabbed (added by hand, or from before this dispatch existed),
+/// in which case only the client action happens.
+/// </param>
+/// <param name="MediaType">"movie" or "tv", alongside <see cref="EntityId"/>.</param>
+public sealed record QueueRemovalResult(
+    string ClientId,
+    string QueueItemId,
+    string Reason,
+    bool Succeeded,
+    string Message,
+    bool Blocklisted,
+    bool SearchStarted,
+    string? EntityId,
+    string? MediaType)
+{
+    public IntegrationFailure? Failure { get; init; }
+}
+
+/// <summary>
 /// Values shared between the two places a client says a download failed on
 /// its own: a push webhook and a poll of its history (#647). One string, so
 /// a dispatch already marked by one path is recognised by the other instead
