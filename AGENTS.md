@@ -42,18 +42,15 @@ This file is the small entry point for agent work. It is a map, not the full man
 
 ## Validation
 
-Run the smallest relevant checks while working. Before every push, run the CI gate:
+Run the smallest relevant checks while working. Before every push, run the full gate:
 
 ```powershell
-npm run ci:check
+npm run gate
 ```
 
-Before every push, also run the full test suite:
-
-```powershell
-dotnet test Deluno.slnx --configuration Release
-npm run test:web
-```
+It builds Release once, then runs the backend tests, `npm run ci:check` and
+`npm run test:web` side by side (about 8 minutes instead of about 20 one after
+another), and says which step failed with the tail of its log.
 
 Changes land on `main` directly, and each push runs CI once (`ci.yml`). Every
 run costs Actions minutes, so batch the work: push once, after the local gates
