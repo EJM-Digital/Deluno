@@ -5,6 +5,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Media;
+using Deluno.Notifications;
 
 namespace Deluno.Worker.Jobs;
 
@@ -46,7 +47,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
     ILibrariesRepository librariesRepository,
     IMediaSubtitleRepository mediaSubtitleRepository,
     ISubtitleFetchService subtitleFetchService,
-    IJobScheduler jobScheduler)
+    IJobScheduler jobScheduler,
+    NotificationEventPublisher notificationEventPublisher)
     : IJobHandler
 {
     public string JobType => "library.subtitles.search";
@@ -108,6 +110,14 @@ public sealed class LibrarySubtitleSearchJobHandler(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Read before any fetch for this item: whether a language already
+            // had a row decides "downloaded" from "upgraded" once the fetch
+            // below succeeds, and a fetch's own RecordFetchedAsync call would
+            // have already overwritten that answer.
+            var languagesAlreadyHeld = (await mediaSubtitleRepository.ListSubtitlesAsync(kind, item.MediaId, cancellationToken))
+                .Select(subtitle => subtitle.Language)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var request = new SubtitleSearchRequest(
                 Title: item.Title,
                 Year: item.Year,
@@ -168,9 +178,12 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         FirstRetryDelay,
                         cancellationToken,
                         outcome.Failure);
+                    await notificationEventPublisher.PublishSubtitleFailedAsync(
+                        item.Title, language, outcome.Reason, cancellationToken);
                     continue;
                 }
 
+                var wasAlreadyHeld = languagesAlreadyHeld.Contains(language);
                 await mediaSubtitleRepository.RecordFetchedAsync(
                     kind,
                     item.MediaId,
@@ -189,6 +202,15 @@ public sealed class LibrarySubtitleSearchJobHandler(
                         Provider: outcome.ProviderKey,
                         MatchRung: (int)outcome.Match),
                     cancellationToken);
+
+                if (wasAlreadyHeld)
+                {
+                    await notificationEventPublisher.PublishSubtitleUpgradedAsync(item.Title, language, cancellationToken);
+                }
+                else
+                {
+                    await notificationEventPublisher.PublishSubtitleDownloadedAsync(item.Title, language, cancellationToken);
+                }
 
                 if (outcome.Match >= SubtitleCutoff.Rung)
                 {
