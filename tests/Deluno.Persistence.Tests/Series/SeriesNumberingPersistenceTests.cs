@@ -175,6 +175,116 @@ public sealed class SeriesNumberingPersistenceTests
     }
 
     [Fact]
+    public async Task Episode_group_refresh_stores_available_orderings_and_resolves_a_dvd_order_release()
+    {
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var now = DateTimeOffset.Parse("2026-09-27T02:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("DVD Order Show", 2024, "tt2222222"),
+            CancellationToken.None);
+
+        // Aired order: season 2 episode 1. The DVD release folded the last
+        // episode of season 1 into season 2, so DVD order calls the same
+        // episode season 2 episode 2.
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(2, 1, "Aired Second Season Opener", null, now.AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+
+        var beforeRefresh = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        Assert.Equal([SeriesNumberingSchemes.Standard], beforeRefresh!.AvailableNumberingSchemes);
+
+        var updated = await repository.ApplyEpisodeGroupsAsync(
+            series.Id,
+            [SeriesNumberingSchemes.Dvd],
+            ["Story Arc"],
+            [new SeriesEpisodeGroupMapping(2, 1, DvdSeasonNumber: 2, DvdEpisodeNumber: 2)],
+            CancellationToken.None);
+        Assert.Equal(1, updated);
+
+        var afterRefresh = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        Assert.Contains(SeriesNumberingSchemes.Standard, afterRefresh!.AvailableNumberingSchemes!);
+        Assert.Contains(SeriesNumberingSchemes.Dvd, afterRefresh.AvailableNumberingSchemes!);
+        Assert.Equal(["Story Arc"], afterRefresh.OtherNumberingSchemeNames);
+        var mapped = Assert.Single(afterRefresh.Episodes);
+        Assert.Equal(2, mapped.DvdSeasonNumber);
+        Assert.Equal(2, mapped.DvdEpisodeNumber);
+
+        // The show page's numbering switcher reads this from the inventory
+        // detail response, not the dedicated numbering endpoint - it must
+        // see the same available orderings either way (#863).
+        var inventoryDetail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.Contains(SeriesNumberingSchemes.Dvd, inventoryDetail!.Numbering!.AvailableNumberingSchemes!);
+        Assert.Equal(["Story Arc"], inventoryDetail.Numbering.OtherNumberingSchemeNames);
+
+        // A release named by DVD order (folder "Season 2", file S02E02) does
+        // not match the aired-order catalogue at all - it must go through
+        // the DVD ordering to resolve.
+        var parsedAsStandard = SeriesNumberingResolver.ParseFileName("DVD Order Show - S02E02.mkv");
+        Assert.False(SeriesNumberingResolver.TryResolve(parsedAsStandard.Matches[0], afterRefresh.Episodes, out var notMatched, out var notMatchedReason));
+        Assert.Null(notMatched);
+        Assert.NotNull(notMatchedReason);
+
+        var parsedAsDvd = SeriesNumberingResolver.ParseFileName("DVD Order Show - S02E02.mkv", SeriesNumberingSchemes.Dvd);
+        Assert.True(SeriesNumberingResolver.TryResolve(parsedAsDvd.Matches[0], afterRefresh.Episodes, out var resolved, out var reason), reason);
+        Assert.Equal(mapped.EpisodeId, resolved?.EpisodeId);
+    }
+
+    [Fact]
+    public async Task Episode_group_refresh_never_overwrites_an_owner_correction()
+    {
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var now = DateTimeOffset.Parse("2026-09-27T02:00:00Z");
+        var timeProvider = new FixedTimeProvider(now);
+
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Owner Protected DVD Show", 2024, "tt3333333", SeriesType: SeriesTypes.Anime, NumberingScheme: SeriesNumberingSchemes.Absolute),
+            CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-1))],
+            "provider",
+            CancellationToken.None);
+
+        var beforeOwnerEdit = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var episodeId = beforeOwnerEdit!.Episodes.Single().EpisodeId;
+        await repository.UpdateNumberingAsync(
+            series.Id,
+            new UpdateSeriesNumberingRequest(Mappings: [new SeriesNumberingMapping(episodeId, AbsoluteNumber: 500)]),
+            CancellationToken.None);
+
+        var updated = await repository.ApplyEpisodeGroupsAsync(
+            series.Id,
+            [SeriesNumberingSchemes.Absolute],
+            [],
+            [new SeriesEpisodeGroupMapping(1, 1, AbsoluteNumber: 1)],
+            CancellationToken.None);
+        Assert.Equal(0, updated);
+
+        var after = await repository.GetNumberingAsync(series.Id, CancellationToken.None);
+        var episode = after!.Episodes.Single();
+        Assert.Equal(500, episode.AbsoluteNumber);
+        Assert.Equal(SeriesNumberingSources.Owner, episode.NumberingSource);
+    }
+
+    [Fact]
     public void Resolver_supports_standard_multi_episode_airdate_and_scene_without_guessing()
     {
         var standard = SeriesNumberingResolver.ParseFileName("Show.S02E03E04.1080p.mkv");
@@ -189,6 +299,10 @@ public sealed class SeriesNumberingPersistenceTests
         var scene = SeriesNumberingResolver.ParseFileName("Show.S03E07.1080p.mkv", SeriesNumberingSchemes.Scene);
         Assert.Equal(3, Assert.Single(scene.Matches).SceneSeasonNumber);
         Assert.Equal(7, scene.Matches[0].SceneEpisodeNumber);
+
+        var dvd = SeriesNumberingResolver.ParseFileName("Show.S02E02.1080p.mkv", SeriesNumberingSchemes.Dvd);
+        Assert.Equal(2, Assert.Single(dvd.Matches).DvdSeasonNumber);
+        Assert.Equal(2, dvd.Matches[0].DvdEpisodeNumber);
 
         var range = SeriesNumberingResolver.ParseFileName("Show.S00E01-E03.mkv");
         Assert.Equal([1, 2, 3], range.Matches.Select(item => item.EpisodeNumber).ToArray());

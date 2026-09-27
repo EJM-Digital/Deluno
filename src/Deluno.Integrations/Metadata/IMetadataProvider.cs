@@ -36,6 +36,17 @@ public interface IMetadataProvider
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every alternate episode ordering TMDb's episode_groups endpoint
+    /// publishes for a series (#863) - aired order is not included, since it
+    /// is simply <see cref="GetSeriesCatalogueAsync"/>'s own plain
+    /// season/episode list. Returns an empty list when the provider cannot
+    /// answer or the title has no episode groups at all.
+    /// </summary>
+    Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
+        string providerId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// When a movie reached cinemas, digital and physical release. Returns
     /// <see cref="MetadataReleaseDates.None"/> when the provider cannot answer.
     /// </summary>

@@ -394,6 +394,8 @@ public sealed class SqliteSeriesCatalogRepository(
         string numberingScheme;
         string numberingSource;
         DateTimeOffset? updatedUtc;
+        IReadOnlyList<string> availableSchemes;
+        IReadOnlyList<string> otherSchemeNames;
 
         using (var series = connection.CreateCommand())
         {
@@ -403,7 +405,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     COALESCE(series_type, 'standard'),
                     COALESCE(numbering_scheme, 'standard'),
                     COALESCE(numbering_source, 'provider'),
-                    numbering_updated_utc
+                    numbering_updated_utc,
+                    available_numbering_schemes,
+                    other_numbering_scheme_names
                 FROM series_entries
                 WHERE id = @seriesId
                 LIMIT 1;
@@ -420,7 +424,11 @@ public sealed class SqliteSeriesCatalogRepository(
             numberingScheme = SeriesNumberingSchemes.Normalize(reader.IsDBNull(1) ? null : reader.GetString(1));
             numberingSource = SeriesNumberingSources.Normalize(reader.IsDBNull(2) ? null : reader.GetString(2));
             updatedUtc = reader.IsDBNull(3) ? null : ParseTimestamp(reader.GetString(3));
+            availableSchemes = SplitCsv(reader.IsDBNull(4) ? null : reader.GetString(4));
+            otherSchemeNames = SplitCsv(reader.IsDBNull(5) ? null : reader.GetString(5));
         }
+
+        availableSchemes = MergeAvailableSchemes(seriesType, numberingScheme, availableSchemes);
 
         var episodes = new List<SeriesEpisodeNumbering>();
         using (var episodeCommand = connection.CreateCommand())
@@ -436,7 +444,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     scene_episode_number,
                     airdate_key,
                     numbering_source,
-                    title
+                    title,
+                    dvd_season_number,
+                    dvd_episode_number
                 FROM episode_entries
                 WHERE series_id = @seriesId
                 ORDER BY season_number ASC, episode_number ASC, id ASC;
@@ -455,7 +465,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     SceneEpisodeNumber: reader.IsDBNull(5) ? null : reader.GetInt32(5),
                     AirDate: ParseAirDateKey(reader.IsDBNull(6) ? null : reader.GetString(6)),
                     NumberingSource: reader.IsDBNull(7) ? null : reader.GetString(7),
-                    Title: reader.IsDBNull(8) ? null : reader.GetString(8)));
+                    Title: reader.IsDBNull(8) ? null : reader.GetString(8),
+                    DvdSeasonNumber: reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                    DvdEpisodeNumber: reader.IsDBNull(10) ? null : reader.GetInt32(10)));
             }
         }
 
@@ -465,8 +477,44 @@ public sealed class SqliteSeriesCatalogRepository(
             numberingScheme,
             numberingSource,
             updatedUtc,
-            episodes);
+            episodes,
+            availableSchemes,
+            otherSchemeNames);
     }
+
+    /// <summary>
+    /// Standard is always viewable - it is just the provider's plain
+    /// season/episode list - even before any episode-groups refresh has ever
+    /// run for this title. Air date and scene are offered whenever the
+    /// series type or the currently-chosen scheme already implies them, so
+    /// switching away from one and back never loses it from the list.
+    /// Anything else (DVD order, absolute) only appears once a TMDb
+    /// episode-groups refresh actually found one.
+    /// </summary>
+    private static IReadOnlyList<string> MergeAvailableSchemes(
+        string seriesType,
+        string numberingScheme,
+        IReadOnlyList<string> storedSchemes)
+    {
+        var merged = new List<string> { SeriesNumberingSchemes.Standard };
+        merged.AddRange(storedSchemes);
+        if (seriesType == SeriesTypes.Daily || numberingScheme == SeriesNumberingSchemes.AirDate)
+        {
+            merged.Add(SeriesNumberingSchemes.AirDate);
+        }
+
+        if (seriesType == SeriesTypes.Anime || numberingScheme == SeriesNumberingSchemes.Scene)
+        {
+            merged.Add(SeriesNumberingSchemes.Scene);
+        }
+
+        return merged.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IReadOnlyList<string> SplitCsv(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     public async Task<SeriesNumberingDetail?> UpdateNumberingAsync(
         string seriesId,
@@ -646,6 +694,77 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(update, "@absoluteNumber", mapping.AbsoluteNumber);
             AddParameter(update, "@sceneSeasonNumber", mapping.SceneSeasonNumber);
             AddParameter(update, "@sceneEpisodeNumber", mapping.SceneEpisodeNumber);
+            AddParameter(update, "@numberingSource", SeriesNumberingSources.SceneMap);
+            updated += await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return updated;
+    }
+
+    public async Task<int> ApplyEpisodeGroupsAsync(
+        string seriesId,
+        IReadOnlyList<string> availableNumberingSchemes,
+        IReadOnlyList<string> otherNumberingSchemeNames,
+        IReadOnlyList<SeriesEpisodeGroupMapping> mappings,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(seriesId))
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using (var header = connection.CreateCommand())
+        {
+            header.CommandText =
+                """
+                UPDATE series_entries
+                SET available_numbering_schemes = @availableSchemes,
+                    other_numbering_scheme_names = @otherSchemeNames
+                WHERE id = @seriesId;
+                """;
+            AddParameter(header, "@seriesId", seriesId);
+            AddParameter(header, "@availableSchemes", availableNumberingSchemes.Count == 0
+                ? null
+                : string.Join(",", availableNumberingSchemes));
+            AddParameter(header, "@otherSchemeNames", otherNumberingSchemeNames.Count == 0
+                ? null
+                : string.Join(",", otherNumberingSchemeNames));
+            await header.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var updated = 0;
+        foreach (var mapping in mappings)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var update = connection.CreateCommand();
+            // Every column here is refreshed from TMDb's episode groups, a
+            // different source than TheXEM's scene/absolute pass above, so a
+            // mapping's own null (this show has no DVD-order group, say)
+            // must leave that column untouched rather than blanking out what
+            // the other source already found.
+            update.CommandText =
+                """
+                UPDATE episode_entries
+                SET absolute_number = CASE WHEN @absoluteNumber IS NOT NULL THEN @absoluteNumber ELSE absolute_number END,
+                    dvd_season_number = @dvdSeasonNumber,
+                    dvd_episode_number = @dvdEpisodeNumber,
+                    numbering_source = CASE WHEN @absoluteNumber IS NOT NULL THEN @numberingSource ELSE numbering_source END
+                WHERE series_id = @seriesId
+                  AND season_number = @seasonNumber
+                  AND episode_number = @episodeNumber
+                  AND (numbering_source IS NOT 'owner');
+                """;
+            AddParameter(update, "@seriesId", seriesId);
+            AddParameter(update, "@seasonNumber", mapping.SeasonNumber);
+            AddParameter(update, "@episodeNumber", mapping.EpisodeNumber);
+            AddParameter(update, "@absoluteNumber", mapping.AbsoluteNumber);
+            AddParameter(update, "@dvdSeasonNumber", mapping.DvdSeasonNumber);
+            AddParameter(update, "@dvdEpisodeNumber", mapping.DvdEpisodeNumber);
             AddParameter(update, "@numberingSource", SeriesNumberingSources.SceneMap);
             updated += await update.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -2107,6 +2226,8 @@ public sealed class SqliteSeriesCatalogRepository(
         var numberingScheme = SeriesNumberingSchemes.Standard;
         var numberingSource = SeriesNumberingSources.Provider;
         DateTimeOffset? numberingUpdatedUtc = null;
+        IReadOnlyList<string> availableSchemes = [];
+        IReadOnlyList<string> otherSchemeNames = [];
         using (var seriesCommand = connection.CreateCommand())
         {
             seriesCommand.CommandText =
@@ -2117,7 +2238,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     series_type,
                     numbering_scheme,
                     numbering_source,
-                    numbering_updated_utc
+                    numbering_updated_utc,
+                    available_numbering_schemes,
+                    other_numbering_scheme_names
                 FROM series_entries
                 WHERE id = @seriesId
                 LIMIT 1;
@@ -2136,7 +2259,11 @@ public sealed class SqliteSeriesCatalogRepository(
             numberingScheme = SeriesNumberingSchemes.Normalize(seriesReader.IsDBNull(3) ? null : seriesReader.GetString(3));
             numberingSource = SeriesNumberingSources.Normalize(seriesReader.IsDBNull(4) ? null : seriesReader.GetString(4));
             numberingUpdatedUtc = seriesReader.IsDBNull(5) ? null : ParseTimestamp(seriesReader.GetString(5));
+            availableSchemes = SplitCsv(seriesReader.IsDBNull(6) ? null : seriesReader.GetString(6));
+            otherSchemeNames = SplitCsv(seriesReader.IsDBNull(7) ? null : seriesReader.GetString(7));
         }
+
+        availableSchemes = MergeAvailableSchemes(seriesType, numberingScheme, availableSchemes);
 
         var episodes = new List<SeriesEpisodeInventoryItem>();
         using (var episodeCommand = connection.CreateCommand())
@@ -2227,7 +2354,9 @@ public sealed class SqliteSeriesCatalogRepository(
                     item.SceneEpisodeNumber,
                     item.AirDate,
                     item.NumberingSource,
-                    item.Title)).ToArray()));
+                    item.Title)).ToArray(),
+                availableSchemes,
+                otherSchemeNames));
     }
 
     public async Task<IReadOnlyList<SeriesUpcomingEpisodeItem>> ListUpcomingEpisodesAsync(

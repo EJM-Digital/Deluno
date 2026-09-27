@@ -217,6 +217,49 @@ public sealed record MetadataEpisode(
     string? Overview,
     DateTimeOffset? AirDateUtc);
 
+/// <summary>
+/// TMDb's own numbering codes for an episode group (#863), from the
+/// <c>type</c> field its episode_groups endpoint returns. Kept as the raw
+/// provider code here rather than normalized to Deluno's own scheme
+/// vocabulary - normalizing which types Deluno actually resolves episodes by
+/// is a series-catalogue decision, not a metadata-provider one.
+/// </summary>
+public static class TmdbEpisodeGroupTypes
+{
+    public const int OriginalAirDate = 1;
+    public const int Absolute = 2;
+    public const int Dvd = 3;
+    public const int Digital = 4;
+    public const int StoryArc = 5;
+    public const int Production = 6;
+    public const int Tv = 7;
+}
+
+/// <summary>
+/// One alternate ordering TMDb publishes for a series - a "DVD order", an
+/// absolute count, a story arc, and so on (#863). <see cref="Episodes"/> is
+/// empty for a type Deluno does not resolve episodes by yet (see
+/// <see cref="TmdbEpisodeGroupTypes"/>); the group is still returned so the
+/// series catalogue can at least show its name as something TMDb offers.
+/// </summary>
+public sealed record MetadataEpisodeGroup(
+    int TmdbType,
+    string ProviderGroupId,
+    string Name,
+    IReadOnlyList<MetadataEpisodeGroupEpisode> Episodes);
+
+/// <summary>
+/// One episode's position under an alternate ordering, keyed back to the
+/// season/episode number the provider's plain (aired-order) episode list
+/// already uses - the same identity <see cref="MetadataEpisode"/> carries -
+/// so a caller never has to invent a second way to recognise "this episode".
+/// </summary>
+public sealed record MetadataEpisodeGroupEpisode(
+    int OriginalSeasonNumber,
+    int OriginalEpisodeNumber,
+    int GroupSeasonNumber,
+    int GroupEpisodeNumber);
+
 public sealed record MetadataCastMember(
     string Name,
     string? Character,

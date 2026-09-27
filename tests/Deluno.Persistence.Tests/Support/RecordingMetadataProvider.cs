@@ -65,6 +65,11 @@ internal sealed class RecordingMetadataProvider(
         CancellationToken cancellationToken)
         => throw new NotSupportedException();
 
+    public Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException();
+
     public Task<MetadataReleaseDates> GetMovieReleaseDatesAsync(
         string providerId,
         CancellationToken cancellationToken)

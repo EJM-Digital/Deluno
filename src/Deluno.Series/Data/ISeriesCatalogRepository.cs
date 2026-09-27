@@ -46,6 +46,26 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Records what TMDb's episode-groups endpoint published for this title
+    /// (#863): which orderings are actually available (for the show page's
+    /// switcher), any other ordering TMDb offers that Deluno does not resolve
+    /// episodes by yet, and each episode's DVD-order and absolute numbers.
+    /// An owner mapping is never touched, the same protection
+    /// <see cref="ApplyAutomaticNumberingAsync"/> gives TheXEM's corrections.
+    /// A mapping's own null fields leave the corresponding column exactly as
+    /// it was - this and <see cref="ApplyAutomaticNumberingAsync"/> refresh
+    /// different columns from different sources and must not blank out
+    /// whatever the other one already found. Returns how many episodes
+    /// actually changed.
+    /// </summary>
+    Task<int> ApplyEpisodeGroupsAsync(
+        string seriesId,
+        IReadOnlyList<string> availableNumberingSchemes,
+        IReadOnlyList<string> otherNumberingSchemeNames,
+        IReadOnlyList<SeriesEpisodeGroupMapping> mappings,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Every genre this catalogue actually holds, in alphabetical order.
     ///
     /// Served rather than derived in the browser from whatever happens to be on

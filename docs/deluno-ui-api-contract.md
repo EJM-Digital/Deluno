@@ -146,8 +146,8 @@ Implemented endpoints:
 - `POST /api/series/import-recovery`
 - `DELETE /api/series/import-recovery/{id}`
 - `GET /api/series/{id}`
-- `GET /api/series/{id}/numbering`
-- `PUT /api/series/{id}/numbering` — selects standard/daily/anime and standard/air-date/absolute/scene keys; explicit owner mappings are protected from provider refreshes
+- `GET /api/series/{id}/numbering` — also returns which orderings TMDb's episode-groups refresh actually found for this title (`availableNumberingSchemes`) and any other ordering TMDb offers that Deluno does not resolve episodes by yet (`otherNumberingSchemeNames`) (#863)
+- `PUT /api/series/{id}/numbering` — selects standard/daily/anime and standard/air-date/absolute/dvd/scene keys; explicit owner mappings are protected from provider refreshes
 - `PUT /api/series/monitoring`
 - `PUT /api/series/episodes/monitoring`
 - `POST /api/series/{id}/search`
