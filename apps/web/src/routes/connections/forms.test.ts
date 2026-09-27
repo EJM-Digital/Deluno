@@ -122,6 +122,12 @@ describe("client form Use SSL and URL Base", () => {
     expect(set.shareInactiveSeedingTimeLimitMinutes).toBe("60");
   });
 
+  // #811 — qBittorrent's save path (setLocation/savepath), blank unless set.
+  it("reads a saved client's save path into the form on reopen", () => {
+    expect(clientFormFrom(baseItem).location).toBe("");
+    expect(clientFormFrom({ ...baseItem, location: "D:\\Downloads\\Movies" }).location).toBe("D:\\Downloads\\Movies");
+  });
+
   it("rejects a negative or non-numeric share limit but accepts a blank one", () => {
     const base = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
     expect(clientFormErrors({ ...base, shareRatioLimit: "" })).toEqual({});

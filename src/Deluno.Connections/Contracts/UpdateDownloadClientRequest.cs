@@ -40,4 +40,7 @@ public sealed record UpdateDownloadClientRequest(
     bool ClearShareSeedingTimeLimitMinutes = false,
     /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding. Null leaves the saved value unchanged; combine with ClearShareInactiveSeedingTimeLimitMinutes to clear it.</summary>
     int? ShareInactiveSeedingTimeLimitMinutes = null,
-    bool ClearShareInactiveSeedingTimeLimitMinutes = false);
+    bool ClearShareInactiveSeedingTimeLimitMinutes = false,
+    /// <summary>#811 (qBittorrent only): save path sent at add time. Null leaves the saved value unchanged; combine with ClearLocation to clear it.</summary>
+    string? Location = null,
+    bool ClearLocation = false);

@@ -44,7 +44,9 @@ public sealed record DownloadClientItem(
     /// <summary>#811 (qBittorrent only): minutes to seed before the client's own share limits stop it, independent of ratio.</summary>
     int? ShareSeedingTimeLimitMinutes = null,
     /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding, regardless of ratio or total seeding time.</summary>
-    int? ShareInactiveSeedingTimeLimitMinutes = null)
+    int? ShareInactiveSeedingTimeLimitMinutes = null,
+    /// <summary>#811 (qBittorrent only): save path sent at add time and reasserted with setLocation once the grab has a hash. Null leaves the client's own default (or its category's save path).</summary>
+    string? Location = null)
 {
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }

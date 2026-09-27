@@ -7,6 +7,7 @@ import { Disclosure } from "../../components/ui/disclosure";
 import { DrawerDanger, DrawerSection } from "../../components/ui/drawer";
 import { Field, FieldRow } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
+import { PathInput } from "../../components/ui/path-input";
 import { PresetField } from "../../components/ui/preset-field";
 import { Select } from "../../components/ui/select";
 import { SwitchRow } from "../../components/ui/switch";
@@ -181,6 +182,9 @@ export function ClientDrawerBody({
           </FieldRow>
           <Field label="Inactive seed time limit (minutes)" optional error={errors.shareInactiveSeedingTimeLimitMinutes} help="Stop seeding after this many minutes with no upload activity, regardless of ratio or total seeding time. Leave blank to use qBittorrent's own default.">
             <Input inputMode="numeric" value={form.shareInactiveSeedingTimeLimitMinutes} onChange={(event) => { clearError("shareInactiveSeedingTimeLimitMinutes"); setForm((current) => ({ ...current, shareInactiveSeedingTimeLimitMinutes: event.target.value })); }} placeholder="e.g. 60" />
+          </Field>
+          <Field label="Save path" optional help="Where qBittorrent should save this client's downloads. Leave blank to use qBittorrent's own default, or its category's save path.">
+            <PathInput value={form.location} onChange={(value) => setForm((current) => ({ ...current, location: value }))} placeholder="e.g. D:\Downloads\Movies" />
           </Field>
         </DrawerSection>
       ) : null}

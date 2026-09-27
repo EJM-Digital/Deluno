@@ -299,6 +299,16 @@ describe("client save payload qBittorrent options (#811)", () => {
     expect(payload.shareInactiveSeedingTimeLimitMinutes).toBe(60);
     expect(payload.clearShareInactiveSeedingTimeLimitMinutes).toBe(false);
   });
+
+  it("sends null and a clear flag for a blank save path, or the typed path otherwise", () => {
+    const blank = buildClientSavePayload({ ...emptyClientForm(), name: "qBittorrent", host: "localhost" });
+    expect(blank.location).toBeNull();
+    expect(blank.clearLocation).toBe(true);
+
+    const set = buildClientSavePayload({ ...emptyClientForm(), name: "qBittorrent", host: "localhost", location: "D:\\Downloads\\Movies" });
+    expect(set.location).toBe("D:\\Downloads\\Movies");
+    expect(set.clearLocation).toBe(false);
+  });
 });
 
 /**

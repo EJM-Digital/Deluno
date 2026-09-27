@@ -1048,6 +1048,8 @@ export interface DownloadClientItem {
   shareSeedingTimeLimitMinutes?: number | null;
   /** #811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding. */
   shareInactiveSeedingTimeLimitMinutes?: number | null;
+  /** #811 (qBittorrent only): save path sent at add time and reasserted with setLocation. Null uses the client's own default (or its category's save path). */
+  location?: string | null;
 }
 
 export interface ExistingLibraryCandidate {
