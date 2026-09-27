@@ -1,8 +1,51 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
+import type {
+  DownloadDispatchItem,
+  DownloadHealthFinding,
+  DownloadQueueItem,
+  ImportPreviewResponse,
+  LibraryItem
+} from "../lib/api";
+import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, visibleFindings } from "./queue-screen";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, QueuePage, visibleFindings } from "./queue-screen";
+
+const authedFetchMock = vi.fn();
+vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
+
+const revalidateMock = vi.fn();
+const queueLoaderData = {
+  telemetry: {
+    summary: {
+      activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0,
+      processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
+    },
+    clients: [],
+    capturedUtc: new Date().toISOString()
+  },
+  dispatches: [],
+  movieRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
+  seriesRecovery: { openCount: 0, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 0, recentCases: [] },
+  libraries: [],
+  settings: emptyPlatformSettingsSnapshot,
+  jobs: [],
+  failedJobs: [],
+  healthRecords: [],
+  processorConnections: [],
+  processorHandoffs: [],
+  activityEvents: [],
+  orphans: []
+};
+
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useLoaderData: () => queueLoaderData,
+  useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" }),
+  useNavigate: () => vi.fn()
+}));
 
 function packPreview(canExecute: boolean): ImportPreviewResponse {
   return {
@@ -250,6 +293,107 @@ describe("the Queue's removal-reason dialog", () => {
     expect(screen.getByRole("button", { name: /It's bad/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /I don't want it/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Just stop tracking it/ })).toBeDisabled();
+  });
+});
+
+/**
+ * #783: manual import scans a folder and lets the user review every guessed
+ * match before importing all reviewed rows in one action.
+ */
+describe("Manual import: scan a folder", () => {
+  const authedFetch = authedFetchMock;
+
+  function jsonResponse(body: unknown) {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
+      url: "test"
+    } as Response);
+  }
+
+  function scanResponse() {
+    return {
+      folderPath: "D:/Downloads/Batch",
+      items: [
+        {
+          sourcePath: "D:/Downloads/Batch/Arrival.2016.WEB.1080p-GROUP.mkv",
+          fileName: "Arrival.2016.WEB.1080p-GROUP.mkv",
+          guessedTitle: "Arrival",
+          guessedYear: 2016,
+          matched: true,
+          preview: { ...packPreview(true), pack: null, sourcePath: "D:/Downloads/Batch/Arrival.2016.WEB.1080p-GROUP.mkv", destinationPath: "C:/Movies/Arrival (2016)/Arrival (2016).mkv" }
+        },
+        {
+          sourcePath: "D:/Downloads/Batch/unknown_file.mkv",
+          fileName: "unknown_file.mkv",
+          guessedTitle: null,
+          guessedYear: null,
+          matched: false,
+          preview: { ...packPreview(true), pack: null, sourcePath: "D:/Downloads/Batch/unknown_file.mkv", destinationPath: "" }
+        }
+      ],
+      issues: []
+    };
+  }
+
+  async function openManualImportInFolderMode() {
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Manual import/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Scan a folder" }));
+  }
+
+  it("scans a folder and shows every file with its guessed match, flagging the one Deluno could not guess", async () => {
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/filesystem/import/scan-folder") return jsonResponse(scanResponse());
+      return jsonResponse({});
+    });
+
+    await openManualImportInFolderMode();
+
+    fireEvent.change(screen.getByPlaceholderText("D:/Downloads/Some.Release.2024"), { target: { value: "D:/Downloads/Batch" } });
+    fireEvent.click(screen.getByRole("button", { name: "Scan folder" }));
+
+    await waitFor(() => expect(screen.getByText("Arrival.2016.WEB.1080p-GROUP.mkv")).toBeInTheDocument());
+    expect(screen.getByText("unknown_file.mkv")).toBeInTheDocument();
+    expect(screen.getByText(/Deluno could not guess a title/)).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Arrival")).toBeInTheDocument();
+  });
+
+  it("imports every included row in one batch action", async () => {
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/filesystem/import/scan-folder") return jsonResponse(scanResponse());
+      if (path === "/api/filesystem/import/execute-batch") {
+        return jsonResponse({
+          requestedCount: 1,
+          importedCount: 1,
+          results: [{ sourcePath: "D:/Downloads/Batch/Arrival.2016.WEB.1080p-GROUP.mkv", succeeded: true, message: "Imported.", response: null }]
+        });
+      }
+      return jsonResponse({});
+    });
+
+    await openManualImportInFolderMode();
+
+    fireEvent.change(screen.getByPlaceholderText("D:/Downloads/Some.Release.2024"), { target: { value: "D:/Downloads/Batch" } });
+    fireEvent.click(screen.getByRole("button", { name: "Scan folder" }));
+    await waitFor(() => expect(screen.getByText("Arrival.2016.WEB.1080p-GROUP.mkv")).toBeInTheDocument());
+
+    // Only the matched row is included by default; the unmatched one needs a person's attention first.
+    fireEvent.click(screen.getByRole("button", { name: /Import selected/ }));
+
+    await waitFor(() => expect(screen.getByText(/Imported 1 of 1/)).toBeInTheDocument());
+    const batchCall = authedFetch.mock.calls.find(([path]) => path === "/api/filesystem/import/execute-batch");
+    expect(batchCall).toBeTruthy();
+    const body = JSON.parse((batchCall![1] as RequestInit).body as string);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0].preview.sourcePath).toContain("Arrival");
   });
 });
 

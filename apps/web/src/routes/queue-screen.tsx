@@ -33,6 +33,10 @@ import {
   type DownloadTelemetryOverview,
   type IntegrationFailure,
   type ActivityEventItem,
+  type ImportBatchExecuteResponse,
+  type ImportExecuteRequest,
+  type ImportFolderScanItem,
+  type ImportFolderScanResponse,
   type ImportJobResponse,
   type ImportPreviewRequest,
   type ImportPreviewResponse,
@@ -57,6 +61,7 @@ import { parseImportJobPayload } from "../lib/import-job-payload";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isWithProcessor, needsAction } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
@@ -86,6 +91,23 @@ interface ManualImportForm {
   genres: string;
   tags: string;
   transferMode: string;
+}
+
+/**
+ * One row of a folder scan (#783), editable before import. Deluno's own
+ * guess seeds `title`/`year`; a person can correct either and re-check the
+ * row before it is included in the batch.
+ */
+interface FolderScanRow {
+  sourcePath: string;
+  fileName: string;
+  title: string;
+  year: string;
+  matched: boolean;
+  preview: ImportPreviewResponse;
+  /** Off by default for an unmatched row — a guess with nothing in it is not something to import silently. */
+  include: boolean;
+  checking: boolean;
 }
 
 interface QueueLoaderData {
@@ -194,6 +216,16 @@ export function QueuePage() {
   // DrawerFooter only renders a message for a non-clean state, so the outcome of a
   // preview or a queue has to move the state, not just the text.
   const [manualState, setManualState] = useState<"clean" | "saving" | "saved" | "error">("clean");
+
+  // #783: a second mode on the same drawer — one file, typed once (above), or
+  // a whole folder, scanned and reviewed row by row.
+  const [manualImportMode, setManualImportMode] = useState<"file" | "folder">("file");
+  const [folderScanPath, setFolderScanPath] = useState("");
+  const [folderScanMediaType, setFolderScanMediaType] = useState("movies");
+  const [folderScanRows, setFolderScanRows] = useState<FolderScanRow[]>([]);
+  const [folderScanIssues, setFolderScanIssues] = useState<string[]>([]);
+  const [folderScanBusy, setFolderScanBusy] = useState(false);
+  const [folderScanMessage, setFolderScanMessage] = useState<string | null>(null);
 
   /* ------------------------------------------------------------- derived */
   const queue = useMemo(
@@ -607,6 +639,135 @@ export function QueuePage() {
       setManualMessage(error instanceof Error ? error.message : "That could not be completed.");
     } finally {
       setBusyKey(null);
+    }
+  }
+
+  function scanRowToState(item: ImportFolderScanItem): FolderScanRow {
+    return {
+      sourcePath: item.sourcePath,
+      fileName: item.fileName,
+      title: item.guessedTitle ?? "",
+      year: item.guessedYear ? String(item.guessedYear) : "",
+      matched: item.matched,
+      preview: item.preview,
+      include: item.matched,
+      checking: false
+    };
+  }
+
+  /** Scans a folder for every video file inside it and previews each one's best guess (#783). */
+  async function scanFolder() {
+    if (!folderScanPath.trim()) {
+      setFolderScanMessage("Choose a folder first.");
+      return;
+    }
+    setFolderScanBusy(true);
+    setFolderScanMessage(null);
+    try {
+      const response = await fetchJson<ImportFolderScanResponse>("/api/filesystem/import/scan-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderPath: folderScanPath.trim(), mediaType: folderScanMediaType })
+      });
+      setFolderScanRows(response.items.map(scanRowToState));
+      setFolderScanIssues(response.issues);
+      setFolderScanMessage(
+        response.items.length
+          ? `Found ${response.items.length} file${response.items.length === 1 ? "" : "s"}. Review each match before importing.`
+          : "No supported video files were found in this folder."
+      );
+    } catch (error) {
+      setFolderScanRows([]);
+      setFolderScanMessage(error instanceof Error ? error.message : "That folder could not be scanned.");
+    } finally {
+      setFolderScanBusy(false);
+    }
+  }
+
+  /** Re-runs a single row's preview after its title/year was corrected by hand. */
+  async function recheckFolderScanRow(index: number) {
+    const row = folderScanRows[index];
+    if (!row) return;
+    setFolderScanRows((current) => current.map((item, i) => (i === index ? { ...item, checking: true } : item)));
+    try {
+      const preview = await fetchJson<ImportPreviewResponse>("/api/filesystem/import/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourcePath: row.sourcePath,
+          fileName: null,
+          mediaType: folderScanMediaType,
+          title: row.title.trim() || null,
+          year: row.year ? Number(row.year) : null,
+          genres: null,
+          tags: null,
+          studio: null,
+          originalLanguage: null
+        } satisfies ImportPreviewRequest)
+      });
+      setFolderScanRows((current) =>
+        current.map((item, i) =>
+          i === index
+            ? { ...item, preview, matched: Boolean(row.title.trim()), include: Boolean(row.title.trim()), checking: false }
+            : item
+        )
+      );
+    } catch (error) {
+      setFolderScanRows((current) => current.map((item, i) => (i === index ? { ...item, checking: false } : item)));
+      toast.error(error instanceof Error ? error.message : "That row could not be re-checked.");
+    }
+  }
+
+  /** Imports every included, reviewed row in one action rather than one file at a time (#783). */
+  async function importReviewedFolderRows() {
+    const included = folderScanRows.filter((row) => row.include);
+    if (included.length === 0) {
+      setFolderScanMessage("Nothing is selected to import.");
+      return;
+    }
+    setFolderScanBusy(true);
+    setFolderScanMessage(null);
+    try {
+      const items: ImportExecuteRequest[] = included.map((row) => ({
+        preview: {
+          sourcePath: row.sourcePath,
+          fileName: null,
+          mediaType: folderScanMediaType,
+          title: row.title.trim() || null,
+          year: row.year ? Number(row.year) : null,
+          genres: null,
+          tags: null,
+          studio: null,
+          originalLanguage: null
+        },
+        transferMode: manualImport.transferMode,
+        overwrite: false,
+        allowCopyFallback: true,
+        forceReplacement: false
+      }));
+
+      const result = await fetchJson<ImportBatchExecuteResponse>("/api/filesystem/import/execute-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items })
+      });
+
+      const failed = result.results.filter((item) => !item.succeeded);
+      setFolderScanMessage(
+        failed.length === 0
+          ? `Imported ${result.importedCount} of ${result.requestedCount} file${result.requestedCount === 1 ? "" : "s"}.`
+          : `Imported ${result.importedCount} of ${result.requestedCount}. ${failed.length} failed: ${failed[0]!.message}`
+      );
+      // Drop the rows that succeeded; a person reviewing a failure should not
+      // have to re-find it among rows that are already done.
+      setFolderScanRows((current) =>
+        current.filter((row) => !result.results.some((item) => item.sourcePath === row.sourcePath && item.succeeded))
+      );
+      revalidator.revalidate();
+    } catch (error) {
+      setFolderScanMessage(error instanceof Error ? error.message : "The batch could not be imported.");
+    } finally {
+      setFolderScanBusy(false);
     }
   }
 
@@ -1131,77 +1292,221 @@ export function QueuePage() {
           if (!open) setDrawer(null);
         }}
         title="Manual import"
-        description="Bring in a file Deluno did not download itself"
+        description="Bring in files Deluno did not download itself"
         footer={
-          <DrawerFooter
-            state={manualState}
-            message={manualMessage}
-            saveType="button"
-            saveLabel="Queue import"
-            saveEnabled={Boolean(manualImport.sourcePath.trim()) && busyKey === null}
-            onSave={() => void manualRun("queue")}
-            onCancel={() => setDrawer(null)}
-          />
+          manualImportMode === "file" ? (
+            <DrawerFooter
+              state={manualState}
+              message={manualMessage}
+              saveType="button"
+              saveLabel="Queue import"
+              saveEnabled={Boolean(manualImport.sourcePath.trim()) && busyKey === null}
+              onSave={() => void manualRun("queue")}
+              onCancel={() => setDrawer(null)}
+            />
+          ) : (
+            <DrawerFooter readOnly state="clean" saveLabel="Close" onCancel={() => setDrawer(null)} />
+          )
         }
       >
-        <DrawerSection title="Source">
-          <Field label="File or folder" help="Anything Deluno can read — it is copied or linked, never moved out from under you without a preview.">
-            <PathInput value={manualImport.sourcePath} onChange={(value) => setManualImport((current) => ({ ...current, sourcePath: value }))} placeholder="D:/Downloads/Some.Release.2024" />
-          </Field>
-          <FieldRow>
-            <Field label="Media type">
-              <SegmentedControl<string>
-                aria-label="Media type"
-                value={manualImport.mediaType}
-                onValueChange={(value) => setManualImport((current) => ({ ...current, mediaType: value }))}
-                options={[
-                  { value: "movies", label: "Movies" },
-                  { value: "tv", label: "TV" }
-                ]}
-              />
-            </Field>
-            <Field label="Transfer method" help="Automatic uses a single-copy link (hardlink) when possible, so the download can keep seeding without a duplicate. If that is not possible, Deluno copies or moves the file.">
-              <Select
-                value={manualImport.transferMode}
-                onChange={(event) => setManualImport((current) => ({ ...current, transferMode: event.target.value }))}
-                options={[
-                  { value: "auto", label: "Automatic" },
-                  { value: "hardlink", label: "Single-copy link (hardlink)" },
-                  { value: "copy", label: "Copy the file" },
-                  { value: "move", label: "Move the file" }
-                ]}
-              />
-            </Field>
-          </FieldRow>
+        <DrawerSection title="Bring in">
+          <SegmentedControl<"file" | "folder">
+            aria-label="Manual import mode"
+            value={manualImportMode}
+            onValueChange={setManualImportMode}
+            options={[
+              { value: "file", label: "One file" },
+              { value: "folder", label: "Scan a folder" }
+            ]}
+          />
         </DrawerSection>
 
-        <DrawerSection title="Help Deluno match it" aside="optional">
-          <FieldRow>
-            <Field label="Title" optional help="Only needed when the file name does not say.">
-              <Input value={manualImport.title} onChange={(event) => setManualImport((current) => ({ ...current, title: event.target.value }))} />
-            </Field>
-            <Field label="Year" optional>
-              <Input type="number" value={manualImport.year} onChange={(event) => setManualImport((current) => ({ ...current, year: event.target.value }))} />
-            </Field>
-          </FieldRow>
-          <Field label="File name" optional help="Override the file inside the folder to import.">
-            <Input value={manualImport.fileName} onChange={(event) => setManualImport((current) => ({ ...current, fileName: event.target.value }))} className="font-mono" />
-          </Field>
-        </DrawerSection>
+        {manualImportMode === "file" ? (
+          <>
+            <DrawerSection title="Source">
+              <Field label="File or folder" help="Anything Deluno can read — it is copied or linked, never moved out from under you without a preview.">
+                <PathInput value={manualImport.sourcePath} onChange={(value) => setManualImport((current) => ({ ...current, sourcePath: value }))} placeholder="D:/Downloads/Some.Release.2024" />
+              </Field>
+              <FieldRow>
+                <Field label="Media type">
+                  <SegmentedControl<string>
+                    aria-label="Media type"
+                    value={manualImport.mediaType}
+                    onValueChange={(value) => setManualImport((current) => ({ ...current, mediaType: value }))}
+                    options={[
+                      { value: "movies", label: "Movies" },
+                      { value: "tv", label: "TV" }
+                    ]}
+                  />
+                </Field>
+                <Field label="Transfer method" help="Automatic uses a single-copy link (hardlink) when possible, so the download can keep seeding without a duplicate. If that is not possible, Deluno copies or moves the file.">
+                  <Select
+                    value={manualImport.transferMode}
+                    onChange={(event) => setManualImport((current) => ({ ...current, transferMode: event.target.value }))}
+                    options={[
+                      { value: "auto", label: "Automatic" },
+                      { value: "hardlink", label: "Single-copy link (hardlink)" },
+                      { value: "copy", label: "Copy the file" },
+                      { value: "move", label: "Move the file" }
+                    ]}
+                  />
+                </Field>
+              </FieldRow>
+            </DrawerSection>
 
-        <DrawerSection title="Where it would land" aside={manualPreview ? undefined : "run a preview"}>
-          {manualPreview ? (
-            <ImportPreviewFacts preview={manualPreview} />
-          ) : (
-            <p className="text-[length:var(--type-caption)] text-muted-foreground">Preview first — it shows the destination path and the new name without writing anything.</p>
-          )}
-          <div>
-            <Button type="button" variant="outline" size="sm" onClick={() => void manualRun("preview")} disabled={busyKey !== null || !manualImport.sourcePath.trim()}>
-              {busyKey === "manual:preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Preview
-            </Button>
-          </div>
-        </DrawerSection>
+            <DrawerSection title="Help Deluno match it" aside="optional">
+              <FieldRow>
+                <Field label="Title" optional help="Only needed when the file name does not say.">
+                  <Input value={manualImport.title} onChange={(event) => setManualImport((current) => ({ ...current, title: event.target.value }))} />
+                </Field>
+                <Field label="Year" optional>
+                  <Input type="number" value={manualImport.year} onChange={(event) => setManualImport((current) => ({ ...current, year: event.target.value }))} />
+                </Field>
+              </FieldRow>
+              <Field label="File name" optional help="Override the file inside the folder to import.">
+                <Input value={manualImport.fileName} onChange={(event) => setManualImport((current) => ({ ...current, fileName: event.target.value }))} className="font-mono" />
+              </Field>
+            </DrawerSection>
+
+            <DrawerSection title="Where it would land" aside={manualPreview ? undefined : "run a preview"}>
+              {manualPreview ? (
+                <ImportPreviewFacts preview={manualPreview} />
+              ) : (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">Preview first — it shows the destination path and the new name without writing anything.</p>
+              )}
+              <div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void manualRun("preview")} disabled={busyKey !== null || !manualImport.sourcePath.trim()}>
+                  {busyKey === "manual:preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Preview
+                </Button>
+              </div>
+            </DrawerSection>
+          </>
+        ) : (
+          <>
+            <DrawerSection title="Folder">
+              <Field label="Folder" help="Deluno lists every video file inside it — including subfolders, for a season pack — and guesses each one's title and year from its own name.">
+                <PathInput value={folderScanPath} onChange={setFolderScanPath} placeholder="D:/Downloads/Some.Release.2024" />
+              </Field>
+              <FieldRow>
+                <Field label="Media type">
+                  <SegmentedControl<string>
+                    aria-label="Folder media type"
+                    value={folderScanMediaType}
+                    onValueChange={setFolderScanMediaType}
+                    options={[
+                      { value: "movies", label: "Movies" },
+                      { value: "tv", label: "TV" }
+                    ]}
+                  />
+                </Field>
+                <Field label="Transfer method">
+                  <Select
+                    value={manualImport.transferMode}
+                    onChange={(event) => setManualImport((current) => ({ ...current, transferMode: event.target.value }))}
+                    options={[
+                      { value: "auto", label: "Automatic" },
+                      { value: "hardlink", label: "Single-copy link (hardlink)" },
+                      { value: "copy", label: "Copy the file" },
+                      { value: "move", label: "Move the file" }
+                    ]}
+                  />
+                </Field>
+              </FieldRow>
+              <div>
+                <Button type="button" variant="outline" size="sm" onClick={() => void scanFolder()} disabled={folderScanBusy || !folderScanPath.trim()}>
+                  {folderScanBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Scan folder
+                </Button>
+              </div>
+              {folderScanMessage ? (
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">{folderScanMessage}</p>
+              ) : null}
+              {folderScanIssues.length > 0 ? (
+                <ul className="list-inside list-disc text-[length:var(--type-caption)] text-warning">
+                  {folderScanIssues.map((issue) => <li key={issue}>{issue}</li>)}
+                </ul>
+              ) : null}
+            </DrawerSection>
+
+            {folderScanRows.length > 0 ? (
+              <DrawerSection
+                title="Review every match"
+                aside={`${folderScanRows.filter((row) => row.include).length} of ${folderScanRows.length} selected`}
+              >
+                <div className="flex flex-col gap-2">
+                  {folderScanRows.map((row, index) => (
+                    <div key={row.sourcePath} className="rounded-[10px] border border-hairline p-3">
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          checked={row.include}
+                          aria-label={`Include ${row.fileName}`}
+                          onCheckedChange={(checked) =>
+                            setFolderScanRows((current) =>
+                              current.map((item, i) => (i === index ? { ...item, include: checked } : item))
+                            )
+                          }
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-[length:var(--type-caption)] text-muted-foreground" title={row.fileName}>
+                            {row.fileName}
+                          </p>
+                          {!row.matched ? (
+                            <p className="mt-0.5 text-[length:var(--type-caption)] font-medium text-warning">
+                              Deluno could not guess a title — fill it in and re-check before including this row.
+                            </p>
+                          ) : null}
+                          <FieldRow className="mt-1.5">
+                            <Field label="Title">
+                              <Input
+                                value={row.title}
+                                onChange={(event) =>
+                                  setFolderScanRows((current) =>
+                                    current.map((item, i) => (i === index ? { ...item, title: event.target.value } : item))
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Year" optional>
+                              <Input
+                                type="number"
+                                value={row.year}
+                                onChange={(event) =>
+                                  setFolderScanRows((current) =>
+                                    current.map((item, i) => (i === index ? { ...item, year: event.target.value } : item))
+                                  )
+                                }
+                              />
+                            </Field>
+                          </FieldRow>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <Button type="button" variant="outline" size="sm" onClick={() => void recheckFolderScanRow(index)} disabled={row.checking}>
+                              {row.checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                              Re-check
+                            </Button>
+                            <span className="truncate text-[length:var(--type-caption)] text-muted-foreground" title={row.preview.destinationPath}>
+                              {row.preview.destinationPath}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <Button
+                    type="button"
+                    onClick={() => void importReviewedFolderRows()}
+                    disabled={folderScanBusy || folderScanRows.every((row) => !row.include)}
+                  >
+                    {folderScanBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    Import selected
+                  </Button>
+                </div>
+              </DrawerSection>
+            ) : null}
+          </>
+        )}
       </Drawer>
 
       {/* ----------------------------------------------- dispatch details */}

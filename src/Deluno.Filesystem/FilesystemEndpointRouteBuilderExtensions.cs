@@ -121,6 +121,104 @@ public static class FilesystemEndpointRouteBuilderExtensions
                 statusCode: result.StatusCode);
         });
 
+        filesystem.MapPost("/import/scan-folder", async (
+            [FromBody] ImportFolderScanRequest request,
+            IImportPipelineService importPipeline,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.FolderPath))
+            {
+                return Results.BadRequest(new { message = "A folder path is required." });
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(request.FolderPath.Trim());
+            }
+            catch (ArgumentException)
+            {
+                return Results.BadRequest(new { message = "That folder path is not valid." });
+            }
+
+            if (!Directory.Exists(fullPath))
+            {
+                return Results.NotFound(new { message = "That folder does not exist." });
+            }
+
+            var files = ManualImportFolderScanner.FindVideoFiles(fullPath);
+            var items = new List<ImportFolderScanItem>(files.Count);
+            var issues = new List<string>();
+
+            foreach (var file in files)
+            {
+                var fileName = Path.GetFileName(file);
+                var (guessedTitle, guessedYear) = ManualImportFolderScanner.GuessTitleAndYear(fileName);
+
+                try
+                {
+                    var preview = await importPipeline.PreviewAsync(
+                        new ImportPreviewRequest(
+                            SourcePath: file,
+                            FileName: null,
+                            MediaType: request.MediaType,
+                            Title: guessedTitle,
+                            Year: guessedYear,
+                            Genres: null,
+                            Tags: null,
+                            Studio: null,
+                            OriginalLanguage: null,
+                            SeriesId: request.SeriesId,
+                            LibraryId: request.LibraryId),
+                        cancellationToken);
+
+                    items.Add(new ImportFolderScanItem(file, fileName, guessedTitle, guessedYear, guessedTitle is not null, preview));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    issues.Add($"{fileName}: {ex.Message}");
+                }
+            }
+
+            if (files.Count == 0)
+            {
+                issues.Add("No supported video files were found in this folder.");
+            }
+
+            return Results.Ok(new ImportFolderScanResponse(fullPath, items, issues));
+        });
+
+        filesystem.MapPost("/import/execute-batch", async (
+            [FromBody] ImportBatchExecuteRequest request,
+            IImportPipelineService importPipeline,
+            CancellationToken cancellationToken) =>
+        {
+            var results = new List<ImportBatchExecuteResult>(request.Items.Count);
+            var imported = 0;
+
+            foreach (var item in request.Items)
+            {
+                if (item?.Preview is null)
+                {
+                    results.Add(new ImportBatchExecuteResult(item?.Preview?.SourcePath ?? "unknown", false, "This row has no preview to import.", null));
+                    continue;
+                }
+
+                var outcome = await importPipeline.ExecuteAsync(item, cancellationToken);
+                if (outcome.Succeeded && outcome.Response is not null)
+                {
+                    imported++;
+                    results.Add(new ImportBatchExecuteResult(item.Preview.SourcePath, true, outcome.Message, outcome.Response));
+                }
+                else
+                {
+                    results.Add(new ImportBatchExecuteResult(item.Preview.SourcePath, false, outcome.Message, outcome.Response));
+                }
+            }
+
+            return Results.Ok(new ImportBatchExecuteResponse(request.Items.Count, imported, results));
+        });
+
         filesystem.MapPost("/import/jobs", async (
             [FromBody] ImportExecuteRequest request,
             IImportPipelineService importPipeline,
