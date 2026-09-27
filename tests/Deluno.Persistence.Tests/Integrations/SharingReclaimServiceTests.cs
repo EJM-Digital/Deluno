@@ -90,6 +90,30 @@ public sealed class SharingReclaimServiceTests
         Assert.Equal(("client-1", "hash-1"), gateway.Calls.Single());
     }
 
+    /// <summary>
+    /// #814: the single dry-run switch shared with the strike/blocklist
+    /// executors. The rule still says this item's obligation is discharged,
+    /// but the client is never asked to remove anything while it is on.
+    /// </summary>
+    [Fact]
+    public async Task Dry_run_never_asks_the_client_to_remove_anything_it_would_otherwise_reclaim()
+    {
+        var gateway = new RecordingGateway();
+        var service = new SharingReclaimService(gateway);
+
+        var outcome = await service.ReconcileAsync(
+            Candidate(seedingMinutes: 72 * 60),
+            new SharingPolicy(SharingPolicy.ModeShareThenTidy, 72, null, SharingPolicy.StuckGiveUp, 14),
+            source: null,
+            dryRun: true,
+            CancellationToken.None);
+
+        Assert.Equal(SharingAction.Reclaim, outcome.Action);
+        Assert.False(outcome.Reclaimed);
+        Assert.True(outcome.WouldReclaim);
+        Assert.Empty(gateway.Calls);
+    }
+
     [Fact]
     public async Task Leaves_the_client_alone_while_the_obligation_stands()
     {

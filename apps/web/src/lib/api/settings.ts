@@ -69,6 +69,12 @@ export interface PlatformSettingsPatch {
   downloadHealthMinPeersEnabled?: boolean;
   downloadHealthMinPeers?: number;
   downloadHealthMinPeersMinutes?: number;
+  /** #814: one sandbox switch, shared by the strike/blocklist executor and the seeding-cleanup executor. */
+  downloadHealthDryRunEnabled?: boolean;
+  /** #825: hours a download can go without a fresh strike before its strike count clears. 1-720. */
+  downloadHealthStrikeInactivityHours?: number;
+  /** #823: how often the throughput sampler polls telemetry for the speed chart, in minutes. 1-60. */
+  downloadThroughputSamplerIntervalMinutes?: number;
   /** #909: percent free remaining at which a library root's health check warns, but keeps grabbing and importing. */
   libraryFreeSpaceWarnPercent?: number;
   /** #909: percent free remaining at or below which Deluno pauses a library's grabs and imports, the same way an unreachable root does. */

@@ -7,6 +7,12 @@ namespace Deluno.Recovery.Services;
 
 /// <summary>What was decided for one completed download, and what came of it.</summary>
 /// <param name="Reclaimed">True when the client was asked to remove the item and its data.</param>
+/// <param name="WouldReclaim">
+/// True when the rule says this item's obligation is discharged but #814's
+/// dry run held Deluno back from asking the client to remove it - the same
+/// distinction the strike/blocklist executors already draw between a real
+/// action and a previewed one.
+/// </param>
 public sealed record SharingReclaimOutcome(
     string QueueItemId,
     string Title,
@@ -18,7 +24,8 @@ public sealed record SharingReclaimOutcome(
     /// The same fact without the part a surrounding heading already states.
     /// See <see cref="SharingDecision.Detail"/>.
     /// </summary>
-    string? Detail = null);
+    string? Detail = null,
+    bool WouldReclaim = false);
 
 /// <summary>
 /// Turns a sharing decision into the one action Deluno is allowed to take:
@@ -43,10 +50,23 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
     /// with the sentence explaining why, so the caller can show it rather than
     /// leaving the user to guess what is holding their disk.
     /// </summary>
+    public Task<SharingReclaimOutcome> ReconcileAsync(
+        SharingReclaimCandidate candidate,
+        SharingPolicy globalPolicy,
+        IndexerItem? source,
+        CancellationToken cancellationToken)
+        => ReconcileAsync(candidate, globalPolicy, source, dryRun: false, cancellationToken);
+
+    /// <summary>
+    /// <paramref name="dryRun"/> is #814's single sandbox switch, shared with
+    /// the strike/blocklist executors: the rule is still evaluated in full,
+    /// but the client is never asked to remove anything while it is on.
+    /// </summary>
     public async Task<SharingReclaimOutcome> ReconcileAsync(
         SharingReclaimCandidate candidate,
         SharingPolicy globalPolicy,
         IndexerItem? source,
+        bool dryRun,
         CancellationToken cancellationToken)
     {
         var policy = EffectivePolicyFor(globalPolicy, source);
@@ -65,6 +85,18 @@ public sealed class SharingReclaimService(IDownloadClientActionGateway actions)
                 decision.Reason,
                 Reclaimed: false,
                 Detail: decision.DetailOrReason);
+        }
+
+        if (dryRun)
+        {
+            return new(
+                candidate.QueueItemId,
+                candidate.Title,
+                decision.Action,
+                decision.Reason,
+                Reclaimed: false,
+                Detail: decision.DetailOrReason,
+                WouldReclaim: true);
         }
 
         var result = await actions.RemoveWithDataAsync(candidate.ClientId, candidate.QueueItemId, cancellationToken);

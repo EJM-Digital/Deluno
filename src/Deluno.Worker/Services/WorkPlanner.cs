@@ -588,6 +588,8 @@ public sealed class WorkPlanner(
             settings.SharingUntilRatio,
             settings.SharingStuckAction,
             settings.SharingStuckAfterDays);
+        // #814: one sandbox switch, shared with the strike/blocklist executors.
+        var dryRun = settings.DownloadHealthDryRunEnabled;
 
         // Nothing to do at all when the user has told Deluno to keep its hands
         // off, and no reason to read telemetry to find that out. The stored
@@ -657,7 +659,21 @@ public sealed class WorkPlanner(
                     item.SeedingMinutes),
                 globalPolicy,
                 source,
+                dryRun,
                 cancellationToken);
+
+            if (outcome.WouldReclaim)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.sharing.reclaim-previewed",
+                    $"[Dry run] Would remove {item.Title} from {item.ClientName}: it finished sharing. {outcome.Reason}",
+                    null,
+                    null,
+                    dispatch.EntityType,
+                    dispatch.EntityId,
+                    cancellationToken);
+                continue;
+            }
 
             if (outcome.Reclaimed)
             {

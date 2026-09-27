@@ -174,6 +174,66 @@ public sealed class DownloadHealthGrabGuardTests
         Assert.Equal("health-remediation-applied", updated!.ImportFailureCode);
     }
 
+    /// <summary>
+    /// #814: the one sandbox switch shared by the strike/blocklist executor
+    /// and the seeding-cleanup executor. On, it must log what it would have
+    /// done - distinctly from a real action - and make no real change: no
+    /// replacement search queued, and the dispatch left free for a real pass
+    /// to still act on later.
+    /// </summary>
+    [Fact]
+    public async Task Dry_run_previews_a_struck_downloads_action_instead_of_taking_it()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-14T00:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, time);
+        await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await new JobsSchemaInitializer(storage.Factory, migrator, NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var settingsRepository = new SqlitePlatformSettingsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var healthRepository = new SqliteDownloadHealthRepository(storage.Factory, time);
+        var connectionsRepository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
+        var library = await librariesRepository.CreateLibraryAsync(new CreateLibraryRequest(
+            "Movies", "movies", "library", Path.Combine(storage.DataRoot, "movies"), Path.Combine(storage.DataRoot, "downloads"), null,
+            "direct-import", null, null, null, null, true, true, true, 12, 24, 25), CancellationToken.None);
+        var client = await connectionsRepository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            "External qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "deluno-movies", "deluno-tv", null, 1, true), CancellationToken.None);
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
+        var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobs.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-arrival", "Arrival.2016.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+            cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "queue-arrival", 1024, completed: false, CancellationToken.None);
+
+        var current = await settingsRepository.GetAsync(CancellationToken.None);
+        Assert.False(current.DownloadHealthDryRunEnabled, "Dry run must default to off.");
+        await settingsRepository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(current, new PatchPlatformSettingsRequest(DownloadHealthDryRunEnabled: true)),
+            CancellationToken.None);
+
+        var service = new DownloadClientTelemetryService(
+            settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!, new DownloadClientRegistry([]), time, null!, jobs, dispatches, jobs, new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance);
+        var finding = new DownloadHealthFinding("critical", "client-stalled", "Stalled", "No progress", "Review", false, false, StrikeCount: 3);
+        var item = new DownloadQueueItem("queue-arrival", client.Id, client.Name, client.Protocol, "movies", "Arrival", "Arrival.2016.1080p.WEB",
+            "deluno-movies", DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, "Fixture", null, time.GetUtcNow(), HealthFindings: [finding]);
+        var snapshot = new DownloadClientTelemetrySnapshot(client.Id, client.Name, client.Protocol, null, "healthy", null,
+            new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "none"),
+            new DownloadTelemetrySummary(0, 0, 0, 1, 0, 0, 0), [item], [], time.GetUtcNow());
+
+        await service.RunConfiguredHealthRemediationAsync(
+            new DownloadTelemetryOverview(snapshot.Summary, [snapshot], time.GetUtcNow()), CancellationToken.None);
+
+        // No real job was queued and the dispatch was left free for a real
+        // pass to still act on later - the report's count is a preview tally
+        // ("would queue a replacement search"), not proof anything happened.
+        Assert.Empty(await jobs.ListAsync(10, CancellationToken.None));
+        var updated = await dispatches.GetDispatchAsync(dispatchId, CancellationToken.None);
+        Assert.NotEqual("health-remediation-applied", updated!.ImportFailureCode);
+        var activity = await jobs.ListActivityAsync(20, "download_dispatch", dispatchId, CancellationToken.None);
+        var entry = Assert.Single(activity, entry => entry.Category == "download.health.remediation-previewed");
+        Assert.StartsWith("[Dry run]", entry.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Untested_external_client_is_refused_before_any_grab_or_network_call()
     {
