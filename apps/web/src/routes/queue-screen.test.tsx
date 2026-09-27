@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { DownloadDispatchItem, DownloadQueueItem, ImportPreviewResponse, LibraryItem } from "../lib/api";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts } from "./queue-screen";
+import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem } from "../lib/api";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, visibleFindings } from "./queue-screen";
 
 function packPreview(canExecute: boolean): ImportPreviewResponse {
   return {
@@ -99,5 +99,47 @@ describe("season-pack import preview", () => {
     const other = { id: "dispatch-other", downloadClientId: "deluge", torrentHashOrItemId: null, releaseName: "House On Haunted Hill 1999 1080p BluRay x264" } as DownloadDispatchItem;
 
     expect(findDispatchForQueueItem(queueItem, [other, grab])?.id).toBe("dispatch-house");
+  });
+});
+
+// #880/#881: a setup-problem finding (a full disk, permissions, a missing
+// file) stays visible until it clears on its own, but a person can dismiss
+// it. Dismissing calls the server's existing health/{kind}/ignore endpoint,
+// which sets ignoredUntilUtc — this is what makes that dismissal actually
+// disappear from the drawer instead of the finding just sitting there.
+describe("dismissing a health finding", () => {
+  function findingAt(ignoredUntilUtc: string | null): DownloadHealthFinding {
+    return {
+      severity: "critical",
+      kind: "client-setup-problem",
+      summary: "This looks like a problem on your machine, not the release.",
+      evidence: "Disk full.",
+      recommendedAction: "Free up space, then Resume.",
+      canSafelyRetry: true,
+      canSafelyRemove: false,
+      strikeCount: 0,
+      candidateBlocked: false,
+      ignoredUntilUtc
+    };
+  }
+
+  it("keeps a finding with no ignoredUntilUtc visible", () => {
+    const item = { healthFindings: [findingAt(null)] } as DownloadQueueItem;
+
+    expect(visibleFindings(item)).toHaveLength(1);
+  });
+
+  it("hides a finding dismissed into the future", () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const item = { healthFindings: [findingAt(future)] } as DownloadQueueItem;
+
+    expect(visibleFindings(item)).toHaveLength(0);
+  });
+
+  it("shows a finding again once its dismissal has elapsed", () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const item = { healthFindings: [findingAt(past)] } as DownloadQueueItem;
+
+    expect(visibleFindings(item)).toHaveLength(1);
   });
 });

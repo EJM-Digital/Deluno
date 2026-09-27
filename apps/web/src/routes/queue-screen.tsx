@@ -26,6 +26,7 @@ import {
   fetchJson, fetchPageItems,
   type DownloadCleanupPreview,
   type DownloadDispatchDetail,
+  type DownloadHealthFinding,
   type DownloadHealthRecord,
   type DownloadDispatchItem,
   type DownloadQueueItem,
@@ -273,6 +274,30 @@ export function QueuePage() {
         if (!response.ok) throw new Error(await readErrorText(response, "The download action failed."));
       },
       `${actionLabel(action)} sent to ${item.clientName}`
+    );
+  }
+
+  // #880/#881: a setup-problem finding (a full disk, permissions, a missing
+  // file — never the release's fault) stays on the item until it clears on
+  // its own, but a person can dismiss it from here rather than staring at it.
+  // Dismissing does not touch the download or the release; it only quiets
+  // this one finding for a week, the same server-side rule every other
+  // ignored finding already uses.
+  async function dismissHealthFinding(item: DownloadQueueItem, kind: string) {
+    return run(
+      `dismiss:${item.clientId}:${item.id}:${kind}`,
+      async () => {
+        const response = await authedFetch(
+          `/api/download-clients/${item.clientId}/queue/${item.id}/health/${encodeURIComponent(kind)}/ignore`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ durationDays: 7 })
+          }
+        );
+        if (!response.ok) throw new Error(await readErrorText(response, "That finding could not be dismissed."));
+      },
+      "Dismissed for a week, or until it happens again"
     );
   }
 
@@ -872,13 +897,24 @@ export function QueuePage() {
               </div>
             </DrawerSection>
 
-            {openQueueItem.errorMessage || openQueueItem.failure || openQueueItem.healthFindings?.length ? (
+            {openQueueItem.errorMessage || openQueueItem.failure || visibleFindings(openQueueItem).length ? (
               <DrawerSection title="Health">
                 {openQueueItem.failure ? <IntegrationFailureDetails failure={openQueueItem.failure} preferences={preferences} /> : null}
                 {openQueueItem.errorMessage ? <p className="text-[length:var(--type-body-sm)] text-destructive">{openQueueItem.errorMessage}</p> : null}
-                {(openQueueItem.healthFindings ?? []).map((finding, index) => (
+                {visibleFindings(openQueueItem).map((finding, index) => (
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
-                    <span className="text-[length:var(--type-body-sm)] text-foreground">{finding.summary}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[length:var(--type-body-sm)] text-foreground">{finding.summary}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void dismissHealthFinding(openQueueItem, finding.kind)}
+                        disabled={busyKey !== null}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
                     {finding.recommendedAction ? (
                       <span className="text-[length:var(--type-caption)] text-muted-foreground">{finding.recommendedAction}</span>
                     ) : null}
@@ -1395,10 +1431,21 @@ export function ImportPreviewFacts({ preview }: { preview: ImportPreviewResponse
   );
 }
 
+/**
+ * Findings still worth showing (#880/#881): a dismissed one keeps counting
+ * server-side (it can come back if the same problem happens again once the
+ * week is up) but drops out of the drawer the moment it is dismissed, rather
+ * than sitting there after a person has already acted on it.
+ */
+export function visibleFindings(item: DownloadQueueItem): DownloadHealthFinding[] {
+  const now = Date.now();
+  return (item.healthFindings ?? []).filter((finding) => !finding.ignoredUntilUtc || new Date(finding.ignoredUntilUtc).getTime() <= now);
+}
+
 function queueChip(item: DownloadQueueItem): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (item.failure) return { tone: integrationFailureTone(item.failure), label: integrationFailureShortLabel(item.failure) };
   if (item.errorMessage || item.status === downloadQueueStatuses.stalled) return { tone: statusTone("transfer.stalled"), label: queueStatusLabel(item.status) };
-  if (item.healthFindings?.length) return statusPresentation("transfer.needsALook");
+  if (visibleFindings(item).length) return statusPresentation("transfer.needsALook");
   // Was green here and grey in the pipeline strip. Green is the colour for
   // done, and a release waiting to be imported is mid-pipeline.
   if (isImportReadyStatus(item.status)) return statusPresentation("transfer.importReady");
