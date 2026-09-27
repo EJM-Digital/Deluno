@@ -46,6 +46,9 @@ public sealed record CreateIndexerRequest(
     int? QueryLimit = null,
     int? GrabLimit = null,
     string? LimitsUnit = null,
+    // For a torrent indexer, prefer a magnet URL over a .torrent file link
+    // when a grab has both (#752). Ignored for usenet. Off by default.
+    bool PreferMagnetUrl = false,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

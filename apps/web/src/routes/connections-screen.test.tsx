@@ -154,6 +154,20 @@ describe("indexer save payload query/grab limits (#750)", () => {
   });
 });
 
+// #752: prefer-magnet-links sends through as a plain boolean, no clear flag
+// needed since it is never "unset", only on or off.
+describe("indexer save payload prefer magnet (#752)", () => {
+  it("sends the chosen prefer-magnet-links value", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateTracker", baseUrl: "https://tracker.example.test", protocol: "torznab" as const, preferMagnetUrl: true };
+    expect(buildIndexerSavePayload(form, form, true, "").preferMagnetUrl).toBe(true);
+  });
+
+  it("defaults to off for a new indexer", () => {
+    const form = { ...emptyIndexerForm(), name: "PrivateTracker", baseUrl: "https://tracker.example.test" };
+    expect(buildIndexerSavePayload(form, form, false, "").preferMagnetUrl).toBe(false);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

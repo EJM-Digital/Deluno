@@ -255,6 +255,9 @@ export function IndexerDrawerBody({
           <p className="text-[length:var(--type-caption)] text-muted-foreground">The timing rules hold or reject a candidate; they do not alter the indexer's results.</p>
         </Disclosure>
         <div className="flex flex-col gap-2">
+          {form.protocol !== "newznab" ? (
+            <SwitchRow label="Prefer magnet links" description="When a grab has both a magnet link and a .torrent file, send the magnet link to the download client." checked={form.preferMagnetUrl} onCheckedChange={(checked) => setForm((current) => ({ ...current, preferMagnetUrl: checked }))} />
+          ) : null}
           <SwitchRow label="RSS feed" description="Include this indexer's RSS results when RSS is the source." checked={form.rssEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, rssEnabled: checked }))} />
           <SwitchRow label="Automatic search" description="Allow scheduled library searches to query this indexer." checked={form.automaticSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, automaticSearchEnabled: checked }))} />
           <SwitchRow label="Interactive search" description="Allow searches started from a title or episode page to query this indexer." checked={form.interactiveSearchEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, interactiveSearchEnabled: checked }))} />
