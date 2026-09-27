@@ -21,6 +21,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
@@ -194,23 +195,15 @@ export function IndexersPage() {
     setLiveOutboundThrottle(outboundThrottle);
   }, [outboundThrottle]);
 
-  useEffect(() => {
+  // Worker-driven (#937), not a page setInterval: this stays live at its
+  // real 5 s rate hidden or minimised instead of falling under Chrome's
+  // background timer throttling and jumping on return.
+  useLiveInterval(() => {
     if (section !== "indexers") return;
-
-    let mounted = true;
-    const refresh = () => {
-      void fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle")
-        .then((snapshot) => {
-          if (mounted) setLiveOutboundThrottle(snapshot);
-        })
-        .catch(() => undefined);
-    };
-    const interval = window.setInterval(refresh, 5000);
-    return () => {
-      mounted = false;
-      window.clearInterval(interval);
-    };
-  }, [section]);
+    void fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle")
+      .then(setLiveOutboundThrottle)
+      .catch(() => undefined);
+  }, 5000);
 
   useSignalREvent("DownloadProgress", RealtimeGroups.Queue, () => {
     const now = Date.now();

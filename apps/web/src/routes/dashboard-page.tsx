@@ -331,11 +331,12 @@ function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
 
 const DASHBOARD_REFRESH = {
   // A safety net: realtime drives normal freshness, and this heartbeat
-  // recovers from a missed envelope. It keeps running while the tab is hidden,
-  // so the Dashboard is current the moment it is looked at again (#641).
+  // recovers from a missed envelope. It keeps running while the tab is hidden
+  // (refetchIntervalInBackground is a QueryClient-wide default, #937,
+  // app-layout.tsx), so the Dashboard is current the moment it is looked at
+  // again (#641).
   staleTime: 60_000,
-  refetchInterval: 60_000,
-  refetchIntervalInBackground: true
+  refetchInterval: 60_000
 } as const;
 
 /**
@@ -348,8 +349,7 @@ const DASHBOARD_REFRESH = {
  */
 const MONITORING_REFRESH = {
   staleTime: 30_000,
-  refetchInterval: 30_000,
-  refetchIntervalInBackground: true
+  refetchInterval: 30_000
 } as const;
 
 /**

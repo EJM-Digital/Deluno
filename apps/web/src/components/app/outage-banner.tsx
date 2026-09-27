@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WifiOff } from "lucide-react";
 import { fetchJson } from "../../lib/api";
+import { useLiveInterval } from "../../hooks/use-live-interval";
 
 export type ConnectivityStatus = {
   isOutage: boolean;
@@ -32,24 +33,26 @@ export function OutageBanner() {
 
   useEffect(() => {
     active.current = true;
-
-    async function poll() {
-      try {
-        const next = await fetchJson<ConnectivityStatus>("/api/system/connectivity");
-        if (active.current) setStatus(next);
-      } catch {
-        // A failed poll says nothing about connectivity; the banner just
-        // keeps whatever it last knew until the next successful check.
-      }
-    }
-
-    void poll();
-    const timer = window.setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => {
-      active.current = false;
-      window.clearInterval(timer);
-    };
+    return () => { active.current = false; };
   }, []);
+
+  const poll = useRef(async () => {
+    try {
+      const next = await fetchJson<ConnectivityStatus>("/api/system/connectivity");
+      if (active.current) setStatus(next);
+    } catch {
+      // A failed poll says nothing about connectivity; the banner just
+      // keeps whatever it last knew until the next successful check.
+    }
+  }).current;
+
+  useEffect(() => { void poll(); }, [poll]);
+
+  // Worker-driven (#937): an outage that starts or clears while Deluno sits
+  // hidden or minimised still shows up at this poll's real 15 s rate,
+  // instead of only being noticed -- possibly minutes late -- once the tab
+  // is looked at again.
+  useLiveInterval(poll, POLL_INTERVAL_MS);
 
   if (!status || !status.isOutage) {
     return null;
