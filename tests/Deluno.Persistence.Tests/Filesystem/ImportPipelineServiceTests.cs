@@ -4979,6 +4979,90 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains("no audio", result.Message);
     }
 
+    /// <summary>
+    /// #783: manual import scans a folder rather than one file at a time.
+    /// <see cref="ManualImportFolderScanner"/> is what finds the files and
+    /// guesses each one's title/year; this proves that guess feeds straight
+    /// into the same <see cref="IImportPipelineService.PreviewAsync"/> a
+    /// single-file manual import already used, so a folder scan's rows carry
+    /// the identical destination-path/quality/warnings review.
+    /// </summary>
+    [Fact]
+    public async Task Folder_scan_finds_every_video_file_and_previews_its_guessed_title()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads-folder-scan");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies-folder-scan");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var arrival = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p-GROUP.mkv");
+        var dune = Path.Combine(downloadsPath, "Dune.Part.Two.2024.2160p.UHD.BluRay.x265-GROUP.mkv");
+        var readme = Path.Combine(downloadsPath, "readme.txt");
+        await File.WriteAllTextAsync(arrival, "movie");
+        await File.WriteAllTextAsync(dune, "movie");
+        await File.WriteAllTextAsync(readme, "not a video");
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var files = ManualImportFolderScanner.FindVideoFiles(downloadsPath);
+
+        // The text file is not a video file, so only the two releases show up.
+        Assert.Equal(2, files.Count);
+        Assert.DoesNotContain(readme, files);
+
+        var previews = new List<(string File, string? Title, int? Year, ImportPreviewResponse Preview)>();
+        foreach (var file in files)
+        {
+            var (title, year) = ManualImportFolderScanner.GuessTitleAndYear(Path.GetFileName(file));
+            var preview = await service.PreviewAsync(
+                new ImportPreviewRequest(
+                    SourcePath: file,
+                    FileName: null,
+                    MediaType: "movies",
+                    Title: title,
+                    Year: year,
+                    Genres: null,
+                    Tags: null,
+                    Studio: null,
+                    OriginalLanguage: null),
+                CancellationToken.None);
+            previews.Add((file, title, year, preview));
+        }
+
+        var arrivalGuess = previews.Single(item => item.File == arrival);
+        Assert.Equal("Arrival", arrivalGuess.Title);
+        Assert.Equal(2016, arrivalGuess.Year);
+        Assert.True(arrivalGuess.Preview.SourceExists);
+        Assert.Contains("Arrival", arrivalGuess.Preview.DestinationPath);
+
+        var duneGuess = previews.Single(item => item.File == dune);
+        Assert.Equal("Dune Part Two", duneGuess.Title);
+        Assert.Equal(2024, duneGuess.Year);
+    }
+
+    [Theory]
+    [InlineData("Arrival.2016.WEB.1080p-GROUP.mkv", "Arrival", 2016)]
+    [InlineData("The.Matrix.1999.BluRay.1080p.x264-GROUP.mkv", "The Matrix", 1999)]
+    [InlineData("Some.Show.S01E02.720p.HDTV.x264-GROUP.mkv", "Some Show", null)]
+    [InlineData("random_video_file.mkv", "random video file", null)]
+    public void Folder_scan_guesses_title_and_year_from_a_release_style_file_name(string fileName, string expectedTitle, int? expectedYear)
+    {
+        var (title, year) = ManualImportFolderScanner.GuessTitleAndYear(fileName);
+
+        Assert.Equal(expectedTitle, title);
+        Assert.Equal(expectedYear, year);
+    }
+
     private sealed record ProcessedScene(
         Func<Task<ImportPipelineResult>> Import,
         string DestinationPath)

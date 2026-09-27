@@ -452,6 +452,43 @@ export interface ImportJobResponse {
   job: JobQueueItem;
 }
 
+/** #783: manual import scans a folder rather than one file at a time. */
+export interface ImportFolderScanRequest {
+  folderPath: string;
+  mediaType?: string | null;
+  libraryId?: string | null;
+  seriesId?: string | null;
+}
+
+export interface ImportFolderScanItem {
+  sourcePath: string;
+  fileName: string;
+  guessedTitle: string | null;
+  guessedYear: number | null;
+  /** Whether Deluno could guess anything at all — an unmatched row still appears, flagged for a person to fill in rather than silently dropped. */
+  matched: boolean;
+  preview: ImportPreviewResponse;
+}
+
+export interface ImportFolderScanResponse {
+  folderPath: string;
+  items: ImportFolderScanItem[];
+  issues: string[];
+}
+
+export interface ImportBatchExecuteResult {
+  sourcePath: string;
+  succeeded: boolean;
+  message: string;
+  response: ImportExecuteResponse | null;
+}
+
+export interface ImportBatchExecuteResponse {
+  requestedCount: number;
+  importedCount: number;
+  results: ImportBatchExecuteResult[];
+}
+
 export interface MediaPlanAutomationIntent {
   scenarioId: string | null;
   scenarioVersion: number | null;
