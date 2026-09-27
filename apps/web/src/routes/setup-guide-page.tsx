@@ -62,7 +62,8 @@ type AutomationChoiceKey =
   | "subtitleFetching"
   | "removeBadDownloads"
   | "deleteBadDownloadFiles"
-  | "leftoverCleanup";
+  | "leftoverCleanup"
+  | "leftoverDownloadCleanup";
 
 export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
 
@@ -74,7 +75,8 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
   subtitleFetching: null,
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
-  leftoverCleanup: null
+  leftoverCleanup: null,
+  leftoverDownloadCleanup: null
 };
 
 export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string; help: string }[] = [
@@ -117,6 +119,11 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
     key: "leftoverCleanup",
     question: "Once an import removes the downloaded file, remove the folder it leaves empty?",
     help: "Only matters for a library also set to remove the downloaded file after import (Processing). If off, or that library keeps the file instead, empty folders are left for you to remove."
+  },
+  {
+    key: "leftoverDownloadCleanup",
+    question: "Automatically delete leftover download files?",
+    help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the Queue's leftovers list for you to remove."
   }
 ];
 
@@ -201,7 +208,11 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     renameOnImport: automation.renameOnImport === true,
     cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
     cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true,
-    subtitleFetchAutomaticEnabled: automation.subtitleFetching === true
+    subtitleFetchAutomaticEnabled: automation.subtitleFetching === true,
+    // #932: the age threshold is not asked here - it keeps its own 24-hour
+    // default (set in Settings -> Media Management -> Cleanup) whichever way
+    // this question is answered.
+    leftoverDownloadCleanupEnabled: automation.leftoverDownloadCleanup === true
   };
 }
 

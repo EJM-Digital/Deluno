@@ -417,29 +417,30 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     /// <summary>
-    /// #932: unlike the eight setup-guide automation questions (#936), the
-    /// leftover-download cleanup task's own decision sheet row says "Default
-    /// on, age configurable, can be switched off" - so a new install starts
-    /// with it already on, at the 24-hour default, and both are saved through
+    /// #932/#936: the decision sheet's own row for this said "Default on",
+    /// but #936 is the owner's later, standing rule - every automatic behaviour,
+    /// this one included, starts off for a new install and is asked in the
+    /// setup guide instead. The age threshold still defaults to 24 hours
+    /// (it only ever matters once the switch is on), and both save through
     /// the same PATCH path as every other setting.
     /// </summary>
     [Fact]
-    public async Task LeftoverDownloadCleanup_defaults_to_on_at_24_hours_and_both_are_configurable()
+    public async Task LeftoverDownloadCleanup_defaults_to_off_at_24_hours_and_both_are_configurable()
     {
         using var storage = TestStorage.Create();
         var repository = await SettingsAsync(storage);
 
         var defaults = await repository.GetAsync(CancellationToken.None);
-        Assert.True(defaults.LeftoverDownloadCleanupEnabled);
+        Assert.False(defaults.LeftoverDownloadCleanupEnabled);
         Assert.Equal(24, defaults.LeftoverDownloadCleanupAgeHours);
 
         var merged = PlatformSettingsPatchMerger.Apply(
             defaults,
-            new PatchPlatformSettingsRequest(LeftoverDownloadCleanupEnabled: false, LeftoverDownloadCleanupAgeHours: 72));
+            new PatchPlatformSettingsRequest(LeftoverDownloadCleanupEnabled: true, LeftoverDownloadCleanupAgeHours: 72));
         await repository.SaveAsync(merged, CancellationToken.None);
 
         var updated = await repository.GetAsync(CancellationToken.None);
-        Assert.False(updated.LeftoverDownloadCleanupEnabled);
+        Assert.True(updated.LeftoverDownloadCleanupEnabled);
         Assert.Equal(72, updated.LeftoverDownloadCleanupAgeHours);
     }
 

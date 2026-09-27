@@ -344,7 +344,9 @@ function ImportPolicyPage() {
         libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent,
         setPermissionsOnImport: form.setPermissionsOnImport,
         folderChmod: form.folderChmod,
-        chownGroup: form.chownGroup
+        chownGroup: form.chownGroup,
+        leftoverDownloadCleanupEnabled: form.leftoverDownloadCleanupEnabled,
+        leftoverDownloadCleanupAgeHours: form.leftoverDownloadCleanupAgeHours
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -435,6 +437,21 @@ function ImportPolicyFields({
             </div>
           </Field>
         </FieldRow>
+      </div>
+      <div className="border-t border-hairline p-[var(--card-pad-x)]">
+        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
+          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Leftover downloads</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list on Queue always offers Keep/Remove by hand either way.</p>
+        </div>
+        <SwitchRow label="Delete leftover download files automatically" description="Deluno checks for these on its own schedule and writes every deletion to Activity, saying why it counted as a leftover." checked={form.leftoverDownloadCleanupEnabled} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupEnabled: checked }))} />
+        {form.leftoverDownloadCleanupEnabled ? (
+          <Field label="After" help="How long a leftover must have sat, untouched, before Deluno deletes it.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min={1} max={8760} value={form.leftoverDownloadCleanupAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupAgeHours: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+            </div>
+          </Field>
+        ) : null}
       </div>
       <div className="border-t border-hairline p-[var(--card-pad-x)]">
         <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">

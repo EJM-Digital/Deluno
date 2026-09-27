@@ -192,11 +192,13 @@ public static class SystemTasks
         new(SceneMappingRefresh, "Refresh anime scene numbering",
             "Checks TheXEM for scene-numbering corrections on your anime titles, so a release named by fansub order still matches the right episode.",
             TimeSpan.FromHours(12)),
-        // #932 (cleanup sheet row M1): on by default, unlike the setup-guide
-        // automation questions this is not one of - its own row says so. An
-        // hour, the same cadence as dispatch-recovery polling: leftovers are
-        // not urgent, but a day-old default age threshold means most of them
-        // are already eligible the first time this runs.
+        // #932 (cleanup sheet row M1): off by default, per #936's later,
+        // standing rule - this is one of the setup guide's automation
+        // questions now, the same as every other automatic behaviour, not
+        // the "on" the cleanup sheet's own row first asked for. The pass
+        // itself still runs hourly regardless (the same cadence as
+        // dispatch-recovery polling); the service reads the switch and does
+        // nothing while it is off.
         new(DownloadLeftoverCleanup, "Clean up leftover downloads",
             "Deletes a download-folder leftover nothing is using once it is old enough, with the reason written to Activity.",
             TimeSpan.FromHours(1),

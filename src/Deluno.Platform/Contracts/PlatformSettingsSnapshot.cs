@@ -158,11 +158,13 @@ public sealed record PlatformSettingsSnapshot(
     string Timezone = "",
     // #932 (cleanup sheet row M1, decided 27 Sep 2026): a scheduled task that
     // deletes a leftover download once it is old enough and nothing at all is
-    // still holding it. Its own row on the decision sheet says "Default on,
-    // age configurable, can be switched off" - unlike the setup-guide
-    // automation questions (#936), this is not one of the eight behaviours
-    // asked there, so it carries its own explicit default rather than
-    // inheriting theirs. Never touches an item unless every hold condition in
-    // LeftoverDownloadCleanupService is met.
-    bool LeftoverDownloadCleanupEnabled = true,
+    // still holding it. The decision sheet's own row said "Default on", but
+    // #936 (the owner's later, standing rule, also 27 Sep 2026) is explicit that
+    // every new install starts with every automatic behaviour off and asks
+    // the setup guide instead - this is now one of those nine questions
+    // ("Automatically delete leftover download files?"), so it defaults off
+    // like the rest, and an existing install is never flipped on by this
+    // setting shipping. Never touches an item unless every hold condition in
+    // LeftoverDownloadCleanupService is met, once turned on.
+    bool LeftoverDownloadCleanupEnabled = false,
     int LeftoverDownloadCleanupAgeHours = 24);
