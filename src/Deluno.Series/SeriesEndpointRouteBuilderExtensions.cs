@@ -239,6 +239,19 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(rows);
         });
 
+        /*
+          #840: the movies twin - one episode's own append-only search
+          history, the same rows the Wanted screen's status reads from.
+        */
+        series.MapGet("/episodes/{episodeId}/subtitles/history", async (
+            string episodeId,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var rows = await subtitles.ListAttemptHistoryAsync(MediaKind.Series, episodeId, cancellationToken);
+            return Results.Ok(rows);
+        });
+
         series.MapGet("/calendar", async (
             DateTimeOffset? from,
             DateTimeOffset? to,

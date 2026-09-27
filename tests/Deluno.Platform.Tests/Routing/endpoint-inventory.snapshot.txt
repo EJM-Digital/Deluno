@@ -159,6 +159,7 @@ GET /api/movies/{id}/metadata/issue
 GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview
 GET /api/movies/{id}/subtitles
+GET /api/movies/{id}/subtitles/history
 GET /api/movies/{id}/subtitles/{language}/candidates
 GET /api/movies/{id}/tags
 GET /api/movies/{id}/workflow-status
@@ -198,6 +199,7 @@ GET /api/series/calendar
 GET /api/series/controls
 GET /api/series/episodes/wanted
 GET /api/series/episodes/{episodeId}/subtitles
+GET /api/series/episodes/{episodeId}/subtitles/history
 GET /api/series/episodes/{episodeId}/subtitles/{language}/candidates
 GET /api/series/genres
 GET /api/series/import-recovery
