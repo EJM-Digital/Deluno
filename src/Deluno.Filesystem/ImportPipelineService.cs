@@ -3748,75 +3748,8 @@ public sealed partial class ImportPipelineService(
     /// when Deluno's own process owns the file — the same caveat Radarr/Sonarr
     /// document for their own chmod/chown.
     /// </summary>
-    private async Task ApplyImportPermissionsAsync(string destinationPath, PlatformSettingsSnapshot settings, CancellationToken cancellationToken)
-    {
-        if (!settings.SetPermissionsOnImport || RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(settings.FolderChmod))
-        {
-            try
-            {
-                File.SetUnixFileMode(destinationPath, (UnixFileMode)Convert.ToInt32(settings.FolderChmod, 8));
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException or OverflowException)
-            {
-                logger.LogWarning(exception, "Could not set permissions {Chmod} on {DestinationPath}. This only works when Deluno's own process owns the file.", settings.FolderChmod, destinationPath);
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(settings.ChownGroup))
-        {
-            await TryChownGroupAsync(destinationPath, settings.ChownGroup, cancellationToken);
-        }
-    }
-
-    private async Task TryChownGroupAsync(string destinationPath, string group, CancellationToken cancellationToken)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "chgrp",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add(group);
-        startInfo.ArgumentList.Add(destinationPath);
-
-        Process? process;
-        try
-        {
-            process = Process.Start(startInfo);
-        }
-        catch (Win32Exception exception)
-        {
-            logger.LogWarning(exception, "Could not run chgrp {Group} for {DestinationPath}: the chgrp binary was not found.", group, destinationPath);
-            return;
-        }
-
-        if (process is null)
-        {
-            return;
-        }
-
-        using (process)
-        {
-            var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            if (process.ExitCode != 0)
-            {
-                logger.LogWarning(
-                    "chgrp {Group} for {DestinationPath} exited with code {ExitCode}: {Error}. This only works when Deluno's own process owns the file.",
-                    group,
-                    destinationPath,
-                    process.ExitCode,
-                    (await errorTask).Trim());
-            }
-        }
-    }
+    private Task ApplyImportPermissionsAsync(string destinationPath, PlatformSettingsSnapshot settings, CancellationToken cancellationToken)
+        => FilePermissions.ApplyAsync(destinationPath, settings, logger, cancellationToken);
 
     private static void RollBackPartialImport(
         string sourcePath,

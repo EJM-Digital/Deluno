@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Filesystem;
+using Deluno.Persistence.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Media;
@@ -38,7 +39,7 @@ public sealed class SubtitleWriteReadRoundTripTests
         var video = Path.Combine(folder.Path, "Dune (2021) [Remux-2160p].mkv");
         await File.WriteAllTextAsync(video, "not really a film");
 
-        var writer = new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance);
+        var writer = new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance, FakePlatformSettingsRepository.With());
         var written = await writer.WriteAsync(
             video,
             language,
@@ -64,7 +65,7 @@ public sealed class SubtitleWriteReadRoundTripTests
         var video = Path.Combine(folder.Path, "Dune.mkv");
         await File.WriteAllTextAsync(video, "not really a film");
 
-        var writer = new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance);
+        var writer = new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance, FakePlatformSettingsRepository.With());
         await writer.WriteAsync(video, "en", false, "first"u8.ToArray(), CancellationToken.None);
         await writer.WriteAsync(video, "en", false, "second"u8.ToArray(), CancellationToken.None);
 
@@ -81,7 +82,7 @@ public sealed class SubtitleWriteReadRoundTripTests
         var video = Path.Combine(folder.Path, "Dune.mkv");
         await File.WriteAllTextAsync(video, "not really a film");
 
-        await new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance)
+        await new SubtitleFileWriter(NullLogger<SubtitleFileWriter>.Instance, FakePlatformSettingsRepository.With())
             .WriteAsync(video, "en", false, "subtitle"u8.ToArray(), CancellationToken.None);
 
         // The write goes to `.partial` and is moved, because a half-written

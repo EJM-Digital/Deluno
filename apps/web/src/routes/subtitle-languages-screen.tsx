@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson, type PlatformSettingsSnapshot } from "../lib/api";
@@ -498,6 +498,20 @@ export function SubtitleLanguagesPage() {
                       onChange={(event) => setForm({ ...form, mustNotContain: event.target.value })}
                     />
                   </Field>
+                </DrawerSection>
+
+                <DrawerSection title="File encoding and permissions">
+                  <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                    Every subtitle Deluno writes is saved as UTF-8, whatever encoding the provider actually sent — always on, not a setting, because a wrong-encoding file reads as accented names and curly quotes turned to mismatched symbols with nothing on screen to say why (#838).
+                  </p>
+                  <p className="text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
+                    {settings.setPermissionsOnImport
+                      ? `A written subtitle also gets the "Set Permissions" chmod${settings.folderChmod ? ` (${settings.folderChmod})` : ""}${settings.chownGroup ? ` and group ${settings.chownGroup}` : ""} from Import Policy, on non-Windows hosts.`
+                      : "\"Set Permissions\" is off, so a written subtitle's file permissions are left as the operating system default."}{" "}
+                    <Link to="/settings/media-management" className="underline underline-offset-2">
+                      Change it under Import Policy.
+                    </Link>
+                  </p>
                 </DrawerSection>
 
                 <DrawerSection title="After download">
