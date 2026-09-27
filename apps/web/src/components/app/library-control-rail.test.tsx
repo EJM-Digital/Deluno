@@ -114,3 +114,41 @@ describe("ControlRail facet wiring", () => {
     expect(unmonitoredToggle).toHaveTextContent("0");
   });
 });
+
+/**
+ * #790: Radarr's one-click "Wanted" filter. `missing` and `monitored` were
+ * already two separate, stackable axes on this row — see the Unmonitored
+ * toggle above — so Wanted is a shortcut over the two, not a new state.
+ */
+describe("ControlRail Wanted shortcut", () => {
+  it("sets the Missing chip and the Monitored filter together", () => {
+    const setQuickFilter = vi.fn();
+    const setMonitoring = vi.fn();
+    render(
+      <ControlRail
+        label="Movies"
+        variant="movies"
+        facets={facets()}
+        controls={controls({ setQuickFilter, setMonitoring })}
+      />
+    );
+
+    screen.getByRole("button", { name: /Wanted/ }).click();
+
+    expect(setQuickFilter).toHaveBeenCalledWith("missing");
+    expect(setMonitoring).toHaveBeenCalledWith("monitored");
+  });
+
+  it("reads as pressed only when both axes already match Wanted", () => {
+    render(
+      <ControlRail
+        label="Movies"
+        variant="movies"
+        facets={facets()}
+        controls={controls({ quickFilter: "missing", monitoring: "monitored" })}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Wanted/ })).toHaveAttribute("aria-pressed", "true");
+  });
+});

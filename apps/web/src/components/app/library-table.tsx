@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { GripVertical, Star } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Star } from "lucide-react";
 import type { MediaItem } from "../../lib/media-types";
 import { cn, formatBytesFromGb } from "../../lib/utils";
 import { Badge } from "../ui/badge";
@@ -11,11 +11,13 @@ import { EpisodeProgressBar, TitleMarkLabel, titleBarGradient } from "../ui/titl
 import { titleBar } from "../../lib/status-tones";
 import { buildJumpBuckets } from "../../lib/library-buckets";
 import type { SortField } from "../../lib/library-filters";
+import { formatRuntime, formatShortDate, useDisplayPreferences, type DisplayPreferences } from "../../lib/display-preferences";
 import { JumpRail, useJumpRail } from "./library-jump-rail";
 import {
   listColumnLabel,
   moveListColumn,
   shiftListColumn,
+  LIST_COLUMN_SORT_FIELD,
   type LibraryListColumnKey
 } from "../../lib/library-list-columns";
 
@@ -27,7 +29,16 @@ const LIST_COLUMN_CLASSES: Record<LibraryListColumnKey, string> = {
   genre: "hidden text-muted-foreground lg:table-cell",
   size: "num hidden text-muted-foreground lg:table-cell",
   rating: "num hidden md:table-cell",
-  added: "hidden text-muted-foreground xl:table-cell"
+  added: "hidden text-muted-foreground xl:table-cell",
+  studio: "hidden text-muted-foreground xl:table-cell",
+  originalTitle: "hidden text-muted-foreground xl:table-cell",
+  collection: "hidden text-muted-foreground xl:table-cell",
+  path: "hidden text-muted-foreground xl:table-cell",
+  releaseDate: "hidden text-muted-foreground xl:table-cell",
+  runtime: "num hidden text-muted-foreground xl:table-cell",
+  releaseGroup: "hidden text-muted-foreground xl:table-cell",
+  tags: "hidden text-muted-foreground xl:table-cell",
+  qualityProfile: "hidden text-muted-foreground xl:table-cell"
 };
 
 export function LibraryTable(
@@ -51,7 +62,8 @@ export function LibraryTable(
    */
   variant,
   columnOrder,
-  onColumnOrderChange
+  onColumnOrderChange,
+  onSortChange
 }: {
   items: MediaItem[];
   selectedIds: string[];
@@ -68,7 +80,14 @@ export function LibraryTable(
   /** The user order for the columns after the fixed selection and Title cells. */
   columnOrder: LibraryListColumnKey[];
   onColumnOrderChange: (next: LibraryListColumnKey[]) => void;
+  /**
+   * Click-to-sort (#790). Optional so a caller that has not wired a sort
+   * change yet still renders a working, reorderable table — the header
+   * simply is not a button until this is passed.
+   */
+  onSortChange?: (field: SortField, direction: "asc" | "desc") => void;
 }) {
+  const { preferences } = useDisplayPreferences();
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [focusIndex, setFocusIndex] = useState(0);
@@ -135,6 +154,23 @@ export function LibraryTable(
     if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
     event.preventDefault();
     onColumnOrderChange(shiftListColumn(columnOrder, column, event.key === "ArrowLeft" ? -1 : 1));
+  }
+
+  /**
+   * Click-to-sort (#790). Radarr's header is a link that toggles direction
+   * when it is already the active column and otherwise starts a fresh
+   * ascending sort — the same rule as the Sort menu's own toggle, just
+   * reached from the header instead.
+   */
+  function handleSort(field: SortField) {
+    if (!onSortChange) return;
+    const next = field === sortField && sortDirection === "asc" ? "desc" : "asc";
+    onSortChange(field, next);
+  }
+
+  function ariaSortFor(field: SortField | undefined): React.AriaAttributes["aria-sort"] {
+    if (!field || field !== sortField) return "none";
+    return sortDirection === "asc" ? "ascending" : "descending";
   }
 
   function handleRowKey(event: React.KeyboardEvent<HTMLTableRowElement>, index: number, item: MediaItem) {
@@ -209,18 +245,28 @@ export function LibraryTable(
                 onChange={onToggleAll}
               />
             </th>
-            <th scope="col" className="col-sticky" style={{ left: 40, minWidth: 280 }}>Title</th>
-            {columnOrder.map((column) => (
+            <th
+              scope="col"
+              className="col-sticky"
+              style={{ left: 40, minWidth: 280 }}
+              aria-sort={ariaSortFor("title")}
+            >
+              <SortableHeaderLabel label="Title" active={sortField === "title"} direction={sortDirection} onSort={onSortChange ? () => handleSort("title") : undefined} />
+            </th>
+            {columnOrder.map((column) => {
+              const sortableField = LIST_COLUMN_SORT_FIELD[column];
+              return (
               <th
                 key={column}
                 scope="col"
                 data-column-key={column}
                 draggable
                 tabIndex={0}
-                aria-label={`${listColumnLabel(column)} column. Drag to reorder.`}
+                aria-label={`${listColumnLabel(column)} column. Drag to reorder.${sortableField ? " Click to sort." : ""}`}
                 aria-grabbed={draggingColumn === column}
+                aria-sort={ariaSortFor(sortableField)}
                 aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
-                title="Drag to reorder. Alt + Left/Right also moves this column."
+                title={`Drag to reorder. Alt + Left/Right also moves this column.${sortableField ? " Click to sort." : ""}`}
                 onDragStart={(event) => handleColumnDragStart(event, column)}
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -242,10 +288,16 @@ export function LibraryTable(
               >
                 <span className="inline-flex items-center gap-1.5">
                   <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-                  {listColumnLabel(column)}
+                  <SortableHeaderLabel
+                    label={listColumnLabel(column)}
+                    active={!!sortableField && sortableField === sortField}
+                    direction={sortDirection}
+                    onSort={sortableField && onSortChange ? () => handleSort(sortableField) : undefined}
+                  />
                 </span>
               </th>
-            ))}
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -302,7 +354,7 @@ export function LibraryTable(
                 </td>
                 {columnOrder.map((column) => (
                   <td key={column} data-column-key={column} className={LIST_COLUMN_CLASSES[column]}>
-                    {renderListCell(column, item, variant)}
+                    {renderListCell(column, item, variant, preferences)}
                   </td>
                 ))}
               </tr>
@@ -320,7 +372,13 @@ export function LibraryTable(
   );
 }
 
-function renderListCell(column: LibraryListColumnKey, item: MediaItem, variant: "movies" | "shows") {
+/** Exported for direct unit testing — the virtualised table only ever renders visible rows in jsdom. */
+export function renderListCell(
+  column: LibraryListColumnKey,
+  item: MediaItem,
+  variant: "movies" | "shows",
+  preferences: DisplayPreferences
+) {
   switch (column) {
     case "quality": {
       const quality = heldQualityLabel(item);
@@ -350,9 +408,73 @@ function renderListCell(column: LibraryListColumnKey, item: MediaItem, variant: 
       );
     case "added":
       return item.added;
+    case "studio":
+      return item.studio || <span className="text-muted-foreground">—</span>;
+    case "originalTitle":
+      return item.originalTitle && item.originalTitle !== item.title
+        ? item.originalTitle
+        : <span className="text-muted-foreground">—</span>;
+    case "collection":
+      return item.collection || <span className="text-muted-foreground">—</span>;
+    case "path":
+      return item.path
+        ? <span className="truncate" title={item.path}>{item.path}</span>
+        : <span className="text-muted-foreground">—</span>;
+    case "releaseDate": {
+      const releaseDate = item.digitalRelease ?? item.inCinemas ?? item.releaseDate ?? null;
+      return releaseDate
+        ? formatShortDate(releaseDate, preferences)
+        : <span className="text-muted-foreground">—</span>;
+    }
+    case "runtime":
+      return typeof item.runtimeMinutes === "number" && item.runtimeMinutes > 0
+        ? formatRuntime(item.runtimeMinutes, preferences)
+        : <span className="text-muted-foreground">—</span>;
+    case "releaseGroup":
+      return item.releaseGroup || <span className="text-muted-foreground">—</span>;
+    case "tags":
+      return item.tags && item.tags.length > 0
+        ? item.tags.slice(0, 3).join(", ")
+        : <span className="text-muted-foreground">—</span>;
+    case "qualityProfile":
+      return item.qualityProfile || <span className="text-muted-foreground">—</span>;
     default:
       return null;
   }
+}
+
+/** A small header label that becomes a sort button when a sort field is wired to it. */
+function SortableHeaderLabel({
+  label,
+  active,
+  direction,
+  onSort
+}: {
+  label: string;
+  active: boolean;
+  direction: "asc" | "desc";
+  onSort?: () => void;
+}) {
+  if (!onSort) return <>{label}</>;
+  return (
+    <button
+      type="button"
+      draggable={false}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSort();
+      }}
+      onDragStart={(event) => event.stopPropagation()}
+      className="inline-flex items-center gap-1 hover:text-foreground"
+    >
+      {label}
+      {active ? (
+        direction === "asc"
+          ? <ArrowUp className="h-3 w-3 shrink-0" aria-hidden="true" />
+          : <ArrowDown className="h-3 w-3 shrink-0" aria-hidden="true" />
+      ) : null}
+    </button>
+  );
 }
 
 /**
