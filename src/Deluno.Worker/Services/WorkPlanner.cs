@@ -851,9 +851,12 @@ public sealed class WorkPlanner(
             // A download client can report completion just before the final
             // copy or rename has released the file. Keep the item visible to
             // telemetry, but do not create a hand-off or import job until the
-            // path is stable and readable.
+            // path is stable and readable. This is a last safety net behind
+            // the client's own settled status (#912): logged only when it is
+            // actually what is holding the import back.
             if (File.Exists(item.SourcePath) && !ProcessorOutputReadiness.IsReady(item.SourcePath))
             {
+                await TellHeldByFileCheckOnceAsync(activityFeedRepository, item, cancellationToken);
                 continue;
             }
 
@@ -1072,6 +1075,36 @@ public sealed class WorkPlanner(
     }
 
     internal const string NotImportedCategory = "filesystem.import.not-imported";
+    internal const string HeldByFileCheckCategory = "filesystem.import.held-by-file-check";
+
+    /// <summary>
+    /// Says once, against the source path, that the 20-second stability check
+    /// — the safety net behind a client's own settled status (#912) — is what
+    /// is holding this import back. The planner sees the same unready file on
+    /// every pass; the activity feed is where it is remembered that this was
+    /// already logged, so it is not repeated every poll.
+    /// </summary>
+    private static async Task TellHeldByFileCheckOnceAsync(
+        IActivityFeedRepository activityFeedRepository,
+        DownloadQueueItem item,
+        CancellationToken cancellationToken)
+    {
+        var sourceKey = NormalizeSourceKey(item.SourcePath!);
+        var told = await activityFeedRepository.ListActivityAsync(5, "download-source", sourceKey, cancellationToken);
+        if (told.Any(activity => activity.Category == HeldByFileCheckCategory))
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            HeldByFileCheckCategory,
+            $"{item.Title} finished in {item.ClientName}, but Deluno is waiting for the file to stop changing size before importing it.",
+            JsonSerializer.Serialize(new { item.ClientId, item.ClientName, item.ReleaseName, item.SourcePath }, PayloadJsonOptions),
+            null,
+            "download-source",
+            sourceKey,
+            cancellationToken);
+    }
 
     /// <summary>
     /// Says once, against the grab, that a finished download was not imported.
