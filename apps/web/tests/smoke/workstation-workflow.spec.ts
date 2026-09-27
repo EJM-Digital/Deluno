@@ -737,12 +737,96 @@ test.describe("dashboard workflow", () => {
   });
 
   test("makes external client queue removal an explicit manual setting", async ({ page }) => {
-    await authenticateAndNavigate(page, "/indexers/download-clients");
+    // #924: the old "Allow removing client queue entries" switch is gone.
+    // Removing now always asks why, through a dialog with three plain-word
+    // choices, rather than being gated behind a settings toggle.
+    await page.route("**/api/download-clients/telemetry", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          summary: {
+            activeCount: 1, queuedCount: 0, completedCount: 0, stalledCount: 0,
+            processingCount: 0, importReadyCount: 0, totalSpeedMbps: 1.2,
+            totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
+          },
+          clients: [
+            {
+              clientId: "client-1",
+              clientName: "qBittorrent",
+              protocol: "torrent",
+              endpointUrl: "http://localhost:8080",
+              healthStatus: "ok",
+              lastHealthMessage: null,
+              capabilities: {
+                supportsQueue: true, supportsHistory: true, supportsPauseResume: true,
+                supportsRemove: true, supportsRecheck: true, supportsImportPath: true,
+                authMode: "none"
+              },
+              summary: {
+                activeCount: 1, queuedCount: 0, completedCount: 0, stalledCount: 0,
+                processingCount: 0, importReadyCount: 0, totalSpeedMbps: 1.2,
+                totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
+              },
+              queue: [
+                {
+                  id: "queue-1",
+                  clientId: "client-1",
+                  clientName: "qBittorrent",
+                  protocol: "torrent",
+                  mediaType: "movies",
+                  title: "Arrival",
+                  releaseName: "Arrival.2016.1080p.BluRay",
+                  category: "movies",
+                  status: "downloading",
+                  progress: 42,
+                  speedMbps: 1.2,
+                  etaSeconds: 900,
+                  sizeBytes: 4_000_000_000,
+                  downloadedBytes: 1_680_000_000,
+                  peers: 12,
+                  indexerName: "Example Indexer",
+                  errorMessage: null,
+                  addedUtc: "2026-09-27T00:00:00Z",
+                  sourcePath: null,
+                  libraryId: null,
+                  healthFindings: null
+                }
+              ],
+              history: [],
+              capturedUtc: "2026-09-27T00:00:00Z",
+              historyTruncated: false
+            }
+          ],
+          capturedUtc: "2026-09-27T00:00:00Z"
+        })
+      });
+    });
+    await page.route("**/api/download-clients/client-1/queue/queue-1/remove", async (route) => {
+      expect(route.request().postDataJSON()).toEqual({ reason: "unwanted" });
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ succeeded: true, message: "Removed “Arrival” from qBittorrent.", entityId: null, mediaType: null })
+      });
+    });
 
-    const setting = page.getByRole("switch", { name: "Allow removing client queue entries" });
-    await expect(setting).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByText("Remove items from the client queue", { exact: true })).toBeVisible();
-    await expect(page.getByText(/A confirmed, manual Remove on Transfers/)).toBeVisible();
+    await authenticateAndNavigate(page, "/queue");
+
+    await expect(page.getByRole("switch", { name: "Allow removing client queue entries" })).toHaveCount(0);
+
+    await page.getByRole("row", { name: /Arrival/ }).click();
+    const queueDrawer = page.getByRole("dialog", { name: "Arrival" });
+    await expect(queueDrawer).toBeVisible();
+    await queueDrawer.getByRole("button", { name: "Remove from client" }).click();
+
+    const removalDialog = page.getByRole("dialog", { name: "Why remove “Arrival”?" });
+    await expect(removalDialog).toBeVisible();
+    await expect(removalDialog.getByRole("button", { name: /It's bad/ })).toBeVisible();
+    await expect(removalDialog.getByRole("button", { name: /I don't want it/ })).toBeVisible();
+    await expect(removalDialog.getByRole("button", { name: /Just stop tracking it/ })).toBeVisible();
+
+    await removalDialog.getByRole("button", { name: /I don't want it/ }).click();
+    await expect(removalDialog).toHaveCount(0);
+    await expect(page.getByText("Removed “Arrival” from qBittorrent.")).toBeVisible();
   });
 
   test("previews an import list without adding or searching titles", async ({ page }) => {
