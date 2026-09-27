@@ -9,6 +9,7 @@ using Deluno.Intake.Data;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Integrations.Metadata;
+using Deluno.Integrations.Subtitles;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Media;
@@ -2314,6 +2315,244 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { message = "This movie now follows its library's subtitle languages again." });
         });
 
+        /*
+          #841: the manual search screen's own list - every ranked candidate
+          from every provider, shown rather than acted on, so a person can
+          pick differently from what the automatic fetch would have.
+        */
+        movies.MapGet("/{id}/subtitles/{language}/candidates", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            IMovieCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFetchService fetchService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == movie.LibraryId);
+            var blockedKeys = await subtitles.ListBlockedKeysAsync(MediaKind.Movie, id, cancellationToken);
+
+            var request = new SubtitleSearchRequest(
+                movie.Title, movie.ReleaseYear, null, null, null, movie.ReleaseGroup, movie.ImdbId, [language], IsEpisode: false);
+            var candidates = await fetchService.SearchCandidatesAsync(
+                request, language, isEpisodeMedia: false, movie.FilePath, excludeHearingImpaired: false,
+                cancellationToken, library?.SubtitleNamePolicy, blockedKeys);
+
+            return Results.Ok(candidates);
+        });
+
+        /*
+          #841: picking one candidate from the manual search list above and
+          writing it, through the same content-policy and naming path a
+          fetch uses.
+        */
+        movies.MapPost("/{id}/subtitles/{language}/candidates/pick", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            [FromBody] PickSubtitleCandidateRequest request,
+            IMovieCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFetchService fetchService,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null || string.IsNullOrWhiteSpace(movie.FilePath))
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderKey) || string.IsNullOrWhiteSpace(request.DownloadToken))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerKey"] = ["Choose a candidate from the search results first."]
+                });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == movie.LibraryId);
+            var searchRequest = new SubtitleSearchRequest(
+                movie.Title, movie.ReleaseYear, null, null, null, movie.ReleaseGroup, movie.ImdbId, [language], IsEpisode: false);
+
+            var outcome = await fetchService.DownloadCandidateAsync(
+                searchRequest, request.ProviderKey, request.DownloadToken, language, isEpisodeMedia: false,
+                movie.FilePath, cancellationToken, library?.SubtitleContentPolicy, library?.SubtitleNamePolicy,
+                library?.SubtitleOmitLanguageCode ?? false);
+
+            if (!outcome.Found || outcome.WrittenPath is null)
+            {
+                return Results.UnprocessableEntity(new { message = outcome.Reason });
+            }
+
+            await subtitles.RecordFetchedAsync(
+                MediaKind.Movie, id,
+                new MediaSubtitleRow(
+                    Language: language,
+                    Source: "manual",
+                    Forced: false,
+                    HearingImpaired: outcome.HearingImpaired,
+                    FilePath: outcome.WrittenPath,
+                    StreamIndex: null,
+                    Codec: "srt",
+                    Provider: outcome.ProviderKey,
+                    MatchRung: (int)outcome.Match,
+                    SourceKey: outcome.SourceKey),
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+
+            return Results.Ok(new { written = true, message = outcome.Reason });
+        });
+
+        /*
+          #841: a blacklist action on a candidate a person saw in manual
+          search but never downloaded - stores its identity so it is never
+          offered again, without requiring it to already be on disk (that
+          case is the /reject endpoint above).
+        */
+        movies.MapPost("/{id}/subtitles/{language}/blacklist", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            [FromBody] BlacklistSubtitleCandidateRequest request,
+            IMovieCatalogRepository repository,
+            IMediaSubtitleRepository subtitles,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (await repository.GetByIdAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderKey) || string.IsNullOrWhiteSpace(request.DownloadToken))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["providerKey"] = ["Choose a candidate from the search results first."]
+                });
+            }
+
+            var blockKey = SubtitleBlockKeys.For(request.ProviderKey, request.DownloadToken);
+            var reason = string.IsNullOrWhiteSpace(request.Reason) ? "You blacklisted this candidate." : request.Reason;
+            await subtitles.BlockSubtitleAsync(
+                MediaKind.Movie, id, language, blockKey, request.ProviderKey, request.ReleaseName, reason, cancellationToken);
+
+            return Results.Ok(new { blacklisted = true });
+        });
+
+        /*
+          #841: a person's own .srt/.ass file, written through the same
+          UTF-8/style-tag policy a fetched subtitle already gets - a manual
+          upload is not a second, looser write path.
+        */
+        movies.MapPost("/{id}/subtitles/{language}/upload", async (
+            HttpContext httpContext,
+            string id,
+            string language,
+            IFormFile file,
+            IMovieCatalogRepository repository,
+            ILibrariesRepository librariesRepository,
+            IMediaSubtitleRepository subtitles,
+            ISubtitleFileWriter fileWriter,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null || string.IsNullOrWhiteSpace(movie.FilePath))
+            {
+                return Results.NotFound();
+            }
+
+            if (file.Length == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["file"] = ["Choose a .srt or .ass file to upload."]
+                });
+            }
+
+            byte[] uploaded;
+            await using (var stream = file.OpenReadStream())
+            await using (var buffer = new MemoryStream())
+            {
+                await stream.CopyToAsync(buffer, cancellationToken);
+                uploaded = buffer.ToArray();
+            }
+
+            if (!SubtitleArchive.LooksLikeSubtitle(uploaded))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["file"] = ["That file does not look like a subtitle."]
+                });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var library = libraries.FirstOrDefault(item => item.Id == movie.LibraryId);
+            var modification = SubtitleContentModifier.Apply(uploaded, library?.SubtitleContentPolicy);
+            var written = await fileWriter.WriteAsync(
+                movie.FilePath, language, hearingImpaired: false, modification.Content, cancellationToken,
+                library?.SubtitleOmitLanguageCode ?? false);
+
+            await subtitles.RecordFetchedAsync(
+                MediaKind.Movie, id,
+                new MediaSubtitleRow(
+                    Language: language,
+                    Source: "uploaded",
+                    Forced: false,
+                    HearingImpaired: false,
+                    FilePath: written,
+                    StreamIndex: null,
+                    Codec: "srt",
+                    Provider: null,
+                    MatchRung: (int)SubtitleCutoff.Rung),
+                cancellationToken);
+
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+
+            return Results.Ok(new
+            {
+                written = true,
+                appliedModifications = modification.AppliedRules,
+                message = $"Your {language} subtitle was written and is now held for this movie."
+            });
+        }).DisableAntiforgery();
+
         movies.MapPost("/bulk/quality-profile", async (
             HttpContext httpContext,
             [FromBody] BulkQualityProfileRequest request,
@@ -3200,6 +3439,10 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? MovieIds);
 
     private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
+
+    private sealed record PickSubtitleCandidateRequest(string? ProviderKey, string? DownloadToken);
+
+    private sealed record BlacklistSubtitleCandidateRequest(string? ProviderKey, string? DownloadToken, string? ReleaseName, string? Reason);
 
     private sealed record BulkQualityProfileRequest(
         IReadOnlyList<string>? MovieIds,

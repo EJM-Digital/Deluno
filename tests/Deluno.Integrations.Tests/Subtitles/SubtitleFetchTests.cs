@@ -456,6 +456,86 @@ public sealed class SubtitleFetchTests
         Assert.Equal(statusCode, exception.StatusCode);
     }
 
+    /// <summary>#841: manual search shows every ranked candidate rather than stopping at the first.</summary>
+    [Fact]
+    public async Task SearchCandidatesAsync_lists_every_provider_ranked_rather_than_stopping_at_the_first()
+    {
+        var first = new FakeProvider("first", [Candidate("en")], Srt);
+        var second = new FakeProvider("second", [Candidate("en") with { DownloadToken = "other" }], Srt);
+        var service = Build([first, second], new FakeWriter());
+
+        var candidates = await service.SearchCandidatesAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.Equal(2, candidates.Count);
+        Assert.Equal(1, first.Searches);
+        Assert.Equal(1, second.Searches);
+        Assert.Contains(candidates, c => c.ProviderKey == "first" && c.DownloadToken == "token");
+        Assert.Contains(candidates, c => c.ProviderKey == "second" && c.DownloadToken == "other");
+    }
+
+    [Fact]
+    public async Task SearchCandidatesAsync_never_downloads_anything()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        await service.SearchCandidatesAsync(Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None);
+
+        Assert.Null(provider.LastDownloadToken);
+        Assert.Empty(writer.Written);
+    }
+
+    [Fact]
+    public async Task SearchCandidatesAsync_excludes_blocklisted_candidates()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [Candidate("en"), Candidate("en") with { DownloadToken = "keep" }],
+            Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var candidates = await service.SearchCandidatesAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv", false, CancellationToken.None,
+            blockedKeys: [SubtitleBlockKeys.For("first", "token")]);
+
+        var candidate = Assert.Single(candidates);
+        Assert.Equal("keep", candidate.DownloadToken);
+    }
+
+    /// <summary>#841: picking a candidate downloads and writes exactly that one, through the same write path a fetch uses.</summary>
+    [Fact]
+    public async Task DownloadCandidateAsync_writes_the_chosen_candidate()
+    {
+        var provider = new FakeProvider(
+            "first",
+            [Candidate("en"), Candidate("en") with { DownloadToken = "other" }],
+            Srt);
+        var writer = new FakeWriter();
+        var service = Build([provider], writer);
+
+        var outcome = await service.DownloadCandidateAsync(
+            Request(), "first", "other", "en", false, @"D:\Media\Dune\Dune.mkv", CancellationToken.None);
+
+        Assert.True(outcome.Found);
+        Assert.Equal("other", provider.LastDownloadToken);
+        Assert.Single(writer.Written);
+    }
+
+    [Fact]
+    public async Task DownloadCandidateAsync_fails_honestly_when_the_candidate_is_gone()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var service = Build([provider], new FakeWriter());
+
+        var outcome = await service.DownloadCandidateAsync(
+            Request(), "first", "vanished", "en", false, @"D:\Media\Dune\Dune.mkv", CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Contains("no longer offers", outcome.Reason, StringComparison.Ordinal);
+    }
+
     /* ------------------------------------------------------------ helpers */
 
     private static SubtitleSearchRequest Request()
