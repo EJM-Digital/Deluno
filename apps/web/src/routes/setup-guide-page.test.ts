@@ -18,7 +18,8 @@ const UNANSWERED: AutomationChoices = {
   subtitleFetching: null,
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
-  leftoverCleanup: null
+  leftoverCleanup: null,
+  leftoverDownloadCleanup: null
 };
 
 const ALL_NO: AutomationChoices = {
@@ -29,7 +30,8 @@ const ALL_NO: AutomationChoices = {
   subtitleFetching: false,
   removeBadDownloads: false,
   deleteBadDownloadFiles: false,
-  leftoverCleanup: false
+  leftoverCleanup: false,
+  leftoverDownloadCleanup: false
 };
 
 const ALL_YES: AutomationChoices = {
@@ -40,7 +42,8 @@ const ALL_YES: AutomationChoices = {
   subtitleFetching: true,
   removeBadDownloads: true,
   deleteBadDownloadFiles: true,
-  leftoverCleanup: true
+  leftoverCleanup: true,
+  leftoverDownloadCleanup: true
 };
 
 describe("setup guide draft format goal (#731)", () => {
@@ -100,11 +103,12 @@ describe("setup guide Automation step (#936)", () => {
     expect(hasAnsweredAllAutomationQuestions(ALL_YES)).toBe(true);
   });
 
-  it("asks exactly the eight behaviours #936 lists, each with its own key", () => {
+  it("asks exactly the eight behaviours #936 lists plus #932's leftover-download cleanup, each with its own key", () => {
     const keys = AUTOMATION_QUESTIONS.map((item) => item.key).sort();
     expect(keys).toEqual([
       "deleteBadDownloadFiles",
       "leftoverCleanup",
+      "leftoverDownloadCleanup",
       "qualityUpgrades",
       "removeBadDownloads",
       "renameOnImport",
@@ -129,7 +133,8 @@ describe("setup guide Automation step (#936)", () => {
       renameOnImport: false,
       cleanupRemoveClientEntryAfterThreshold: false,
       cleanupPurgePayloadAfterThreshold: false,
-      subtitleFetchAutomaticEnabled: false
+      subtitleFetchAutomaticEnabled: false,
+      leftoverDownloadCleanupEnabled: false
     });
     expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
       autoSearchEnabled: false,
@@ -179,6 +184,19 @@ describe("setup guide Automation step (#936)", () => {
       rssEnabled: true,
       automaticSearchEnabled: false
     });
+
+    const onlyLeftoverDownloadCleanupYes: AutomationChoices = { ...ALL_NO, leftoverDownloadCleanup: true };
+    expect(buildAutomationSettingsPayload(onlyLeftoverDownloadCleanupYes)).toMatchObject({
+      renameOnImport: false,
+      subtitleFetchAutomaticEnabled: false,
+      leftoverDownloadCleanupEnabled: true
+    });
+  });
+
+  it("#932/#936: the leftover-download cleanup question defaults off and is not one of the per-library or per-indexer fields", () => {
+    expect(buildAutomationSettingsPayload(ALL_NO).leftoverDownloadCleanupEnabled).toBe(false);
+    expect(buildLibraryAutomationFields(ALL_YES)).not.toHaveProperty("leftoverDownloadCleanupEnabled");
+    expect(buildIndexerAutomationFields(ALL_YES)).not.toHaveProperty("leftoverDownloadCleanupEnabled");
   });
 
   it("never writes the dead global CleanupEmptyFolders flag that #736 already removed from the UI", () => {

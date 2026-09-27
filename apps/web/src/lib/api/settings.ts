@@ -84,4 +84,8 @@ export interface PlatformSettingsPatch {
   folderChmod?: string | null;
   chownGroup?: string | null;
   properRepackAcquisitionMode?: string;
+  /** #932/#936: off by default; the "Clean up leftover downloads" system task deletes nothing while this is off. */
+  leftoverDownloadCleanupEnabled?: boolean;
+  /** #932: how long a leftover must have sat before the task deletes it. Only matters once the switch above is on. */
+  leftoverDownloadCleanupAgeHours?: number;
 }

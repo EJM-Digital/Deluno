@@ -240,9 +240,9 @@ public sealed class SqlitePlatformSettingsRepository(
         // real check) so a typo clears to "unset" rather than storing garbage
         // silently mistaken for a real zone.
         await UpsertSettingAsync(connection, transaction, "ui.timezone", NormalizeTimezone(request.Timezone), updatedUtc, cancellationToken);
-        // #932: on by default per the cleanup sheet's own row (unlike the
-        // eight setup-guide automation questions, this is not one of them).
-        await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.enabled", request.LeftoverDownloadCleanupEnabled is false ? "false" : "true", updatedUtc, cancellationToken);
+        // #932/#936: off by default, the same as the other setup-guide
+        // automation questions - a missing key reads as off.
+        await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.enabled", request.LeftoverDownloadCleanupEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.ageHours", Math.Clamp(request.LeftoverDownloadCleanupAgeHours ?? 24, 1, 8760).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
@@ -594,7 +594,7 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthConnectivityCheckUrls: GetValue(settings, "download-health.connectivityCheck.urls") ?? string.Empty,
             DownloadThroughputSamplerIntervalMinutes: ReadPositiveInt(GetValue(settings, "download-health.throughputSampler.intervalMinutes"), 1, 1, 60),
             Timezone: GetValue(settings, "ui.timezone") ?? string.Empty,
-            LeftoverDownloadCleanupEnabled: !string.Equals(GetValue(settings, "downloads.leftoverCleanup.enabled"), "false", StringComparison.OrdinalIgnoreCase),
+            LeftoverDownloadCleanupEnabled: string.Equals(GetValue(settings, "downloads.leftoverCleanup.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760));
     }
 

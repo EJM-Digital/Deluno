@@ -125,6 +125,15 @@ export interface PlatformSettingsSnapshot {
   chownGroup: string | null;
   /** #767: "prefer-and-upgrade" | "do-not-upgrade-automatically" | "do-not-prefer". */
   properRepackAcquisitionMode: string;
+  /**
+   * #932/#936: whether the "Clean up leftover downloads" system task may
+   * delete anything. Off for a new install, asked in the setup guide's
+   * Automation step and set here in Media Management -> Cleanup ->
+   * Leftover downloads, the same as every other automatic behaviour.
+   */
+  leftoverDownloadCleanupEnabled: boolean;
+  /** #932: how long a leftover must have sat, untouched, before the task deletes it. Only matters once the switch above is on. */
+  leftoverDownloadCleanupAgeHours: number;
   updatedUtc: string;
 }
 
@@ -258,5 +267,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   folderChmod: null,
   chownGroup: null,
   properRepackAcquisitionMode: "prefer-and-upgrade",
+  // #932/#936: off by default, matching PlatformSettingsSnapshot's server-side default.
+  leftoverDownloadCleanupEnabled: false,
+  leftoverDownloadCleanupAgeHours: 24,
   updatedUtc: new Date(0).toISOString()
 };
