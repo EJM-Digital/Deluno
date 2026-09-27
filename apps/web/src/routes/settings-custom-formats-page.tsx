@@ -24,6 +24,7 @@ import { Disclosure } from "../components/ui/disclosure";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { LibraryImpactLinks } from "../components/ui/library-impact";
 import { ListGroupHeader, MediaTypeFilter, mediaTypeLabel, useMediaTypeSplit } from "../components/ui/media-type-split";
@@ -1496,12 +1497,12 @@ export function SettingsCustomFormatsPage() {
             />
           </Field>
           <Field label="Custom format JSON" hideLabel>
-            <textarea
+            <Textarea
               value={importText}
               onChange={(event) => setImportText(event.target.value)}
               placeholder='{"name": "...", "mediaType": "movies", "conditions": [...] }  or  [ {...}, {...} ]'
               rows={10}
-              className="w-full rounded-[10px] border border-hairline bg-surface-2/40 p-3 font-mono text-[length:var(--type-caption)] text-foreground"
+              className="font-mono"
             />
           </Field>
         </DrawerSection>
