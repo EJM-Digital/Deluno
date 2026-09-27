@@ -10,4 +10,7 @@ public static class HealthCheckHttpClients
     /// the whole health pass.
     /// </summary>
     public const string SystemTime = "health-check-system-time";
+
+    /// <summary>Used to test a configured FlareSolverr/Byparr proxy's own API for <see cref="Checks.HttpProxyReachabilityTester"/> (#868).</summary>
+    public const string Proxy = "health-check-proxy";
 }
