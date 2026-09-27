@@ -94,6 +94,42 @@ to close this gap; until then, an installation that cares about a
 non-English language or a non-US ratings board should use `direct` mode with
 its own TMDb key.
 
+## Episode groups (TV numbering, #863)
+
+`GET /tv/{id}/episode-groups`
+
+A series-only, gateway-shaped endpoint alongside the `/tv/{id}/catalogue`
+gateway route the app's own broker client already calls: TMDb's
+`episode_groups` feature, which publishes alternate episode orderings such as
+DVD order, absolute numbering, and story arcs. Deluno's numbering switcher
+uses this to offer only the orderings a title actually has, instead of a
+fixed list nobody checked against the provider.
+
+Response:
+
+```json
+{
+  "groups": [
+    {
+      "type": 3,
+      "providerGroupId": "5f0a1b2c3d4e5f6a7b8c9d0e",
+      "name": "DVD Order",
+      "episodes": [
+        { "originalSeasonNumber": 1, "originalEpisodeNumber": 1, "groupSeasonNumber": 1, "groupEpisodeNumber": 1 }
+      ]
+    }
+  ]
+}
+```
+
+`type` follows TMDb's own codes (1 original air date, 2 absolute, 3 DVD, 4
+digital, 5 story arc, 6 production, 7 TV). Deluno only resolves episodes by
+type 2 and 3 today; every other type may still be listed, with an empty
+`episodes` array, purely so its name can be shown as something the provider
+offers. When the broker has no episode groups for a title (including when it
+does not implement this route at all), hybrid and direct modes fall back to
+TMDb directly, the same as every other broker call in this contract.
+
 ## Managed gateway deployment
 
 The Deluno-managed Cloudflare Worker is deployed at

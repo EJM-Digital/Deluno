@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SeriesSearchHistoryItem } from "../lib/api";
-import { filterSearchHistoryByEpisode } from "./show-detail-page";
+import { ALL_NUMBERING_SCHEME_OPTIONS, explainNumberingScheme, filterSearchHistoryByEpisode } from "./show-detail-page";
 
 function search(overrides: Partial<SeriesSearchHistoryItem> = {}): SeriesSearchHistoryItem {
   return {
@@ -49,5 +49,25 @@ describe("filterSearchHistoryByEpisode (#795)", () => {
     const all = [search({ id: "s1", episodeId: "ep-1" })];
 
     expect(filterSearchHistoryByEpisode(all, "ep-99")).toEqual([]);
+  });
+});
+
+describe("episode ordering switcher (#863)", () => {
+  it("names an actual consequence for every scheme the switcher can offer, in plain words", () => {
+    for (const option of ALL_NUMBERING_SCHEME_OPTIONS) {
+      const explanation = explainNumberingScheme(option.value);
+      expect(explanation.length).toBeGreaterThan(0);
+      expect(explanation.toLowerCase()).toContain("match");
+    }
+  });
+
+  it("gives the DVD-order scheme its own explanation, distinct from the aired default", () => {
+    expect(explainNumberingScheme("dvd")).not.toEqual(explainNumberingScheme("standard"));
+    expect(explainNumberingScheme("dvd").toLowerCase()).toContain("dvd");
+  });
+
+  it("falls back to the aired-order explanation for an unrecognised or missing scheme", () => {
+    expect(explainNumberingScheme(undefined)).toEqual(explainNumberingScheme("standard"));
+    expect(explainNumberingScheme("something-new")).toEqual(explainNumberingScheme("standard"));
   });
 });

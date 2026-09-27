@@ -49,8 +49,13 @@ public static class SeriesServiceCollectionExtensions
         services.AddSingleton<IDispatchTitleUnmonitorComponent, SeriesDispatchTitleUnmonitorService>();
         services.AddSingleton<IMigrationCatalogImporter, SeriesMigrationCatalogImporter>();
         services.AddSingleton<ISceneMappingRefreshService, SceneMappingRefreshService>();
+        // Scoped, not singleton: it consumes IMetadataProvider, which is
+        // scoped. The hosted service that schedules it creates its own scope
+        // per pass, the same way HealthCheckHostedService does.
+        services.TryAddScoped<IEpisodeGroupRefreshService, EpisodeGroupRefreshService>();
         services.AddHostedService<SeriesSchemaInitializer>();
         services.AddHostedService<SceneMappingRefreshHostedService>();
+        services.AddHostedService<EpisodeGroupRefreshHostedService>();
         return services;
     }
 }

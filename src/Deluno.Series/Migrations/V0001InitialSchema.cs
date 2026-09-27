@@ -52,7 +52,8 @@ public static class SeriesDatabaseMigrations
         new V0041SeriesLibraryMembership(),
         new V0042SeriesFilesReadAgain(),
         new V0043SeriesSubtitleBlock(),
-        new V0044SeriesMonitorNewEpisodesPreset()
+        new V0044SeriesMonitorNewEpisodesPreset(),
+        new V0045SeriesEpisodeGroupOrdering()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -261,7 +261,7 @@ export interface SeriesListItem {
   subtitleLanguagesHeld?: number;
   subtitleLanguagesSettled?: number;
   seriesType?: "standard" | "daily" | "anime" | string;
-  numberingScheme?: "standard" | "airdate" | "absolute" | "scene" | string;
+  numberingScheme?: "standard" | "airdate" | "absolute" | "scene" | "dvd" | string;
   numberingSource?: "provider" | "owner" | string | null;
   /**
    * Whether an episode this show discovers on a future refresh comes out
@@ -399,6 +399,9 @@ export interface SeriesEpisodeNumbering {
   sceneEpisodeNumber: number | null;
   airDate: string | null;
   numberingSource: string | null;
+  /** This episode's season/episode number under TMDb's "DVD order" episode group, when TMDb publishes one (#863). */
+  dvdSeasonNumber?: number | null;
+  dvdEpisodeNumber?: number | null;
 }
 
 export interface SeriesNumberingDetail {
@@ -408,6 +411,10 @@ export interface SeriesNumberingDetail {
   numberingSource: string;
   updatedUtc: string | null;
   episodes: SeriesEpisodeNumbering[];
+  /** The orderings this title can actually be viewed and matched in right now (#863). */
+  availableNumberingSchemes?: string[] | null;
+  /** Every other ordering TMDb publishes that Deluno does not resolve episodes by yet - shown for information only. */
+  otherNumberingSchemeNames?: string[] | null;
 }
 
 export interface SeriesInventoryDetail {

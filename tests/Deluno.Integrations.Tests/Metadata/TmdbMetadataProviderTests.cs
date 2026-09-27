@@ -1479,6 +1479,160 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Equal(new DateTimeOffset(2011, 4, 24, 0, 0, 0, TimeSpan.Zero), episode2.AirDateUtc);
     }
 
+    [Fact]
+    public async Task GetSeriesEpisodeGroupsAsync_resolves_dvd_and_absolute_orderings_and_names_the_rest()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                string payload;
+                if (uri.AbsolutePath.Contains("/episode_group/dvd1", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "groups": [
+                        { "order": 0, "episodes": [ { "season_number": 1, "episode_number": 1 }, { "season_number": 1, "episode_number": 2 } ] },
+                        { "order": 1, "episodes": [ { "season_number": 1, "episode_number": 3 } ] }
+                      ]
+                    }
+                    """;
+                }
+                else if (uri.AbsolutePath.Contains("/episode_group/abs1", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "groups": [
+                        { "order": 0, "episodes": [ { "season_number": 1, "episode_number": 1 }, { "season_number": 1, "episode_number": 2 }, { "season_number": 1, "episode_number": 3 } ] }
+                      ]
+                    }
+                    """;
+                }
+                else if (uri.AbsolutePath.EndsWith("/episode_groups", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "results": [
+                        { "id": "dvd1", "name": "DVD Order", "type": 3, "episode_count": 3 },
+                        { "id": "abs1", "name": "Absolute Order", "type": 2, "episode_count": 3 },
+                        { "id": "arc1", "name": "Story Arc", "type": 5, "episode_count": 5 }
+                      ]
+                    }
+                    """;
+                }
+                else
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var groups = await provider.GetSeriesEpisodeGroupsAsync("1399", CancellationToken.None);
+
+        Assert.Equal(3, groups.Count);
+
+        var dvd = groups.Single(group => group.TmdbType == TmdbEpisodeGroupTypes.Dvd);
+        Assert.Equal("dvd1", dvd.ProviderGroupId);
+        Assert.Equal("DVD Order", dvd.Name);
+        Assert.Equal(3, dvd.Episodes.Count);
+        Assert.Contains(dvd.Episodes, episode => episode is { OriginalSeasonNumber: 1, OriginalEpisodeNumber: 1, GroupSeasonNumber: 1, GroupEpisodeNumber: 1 });
+        Assert.Contains(dvd.Episodes, episode => episode is { OriginalSeasonNumber: 1, OriginalEpisodeNumber: 2, GroupSeasonNumber: 1, GroupEpisodeNumber: 2 });
+        Assert.Contains(dvd.Episodes, episode => episode is { OriginalSeasonNumber: 1, OriginalEpisodeNumber: 3, GroupSeasonNumber: 2, GroupEpisodeNumber: 1 });
+
+        var absolute = groups.Single(group => group.TmdbType == TmdbEpisodeGroupTypes.Absolute);
+        Assert.Equal(3, absolute.Episodes.Count);
+        Assert.Contains(absolute.Episodes, episode => episode is { OriginalSeasonNumber: 1, OriginalEpisodeNumber: 3, GroupSeasonNumber: 1, GroupEpisodeNumber: 3 });
+
+        var storyArc = groups.Single(group => group.TmdbType == TmdbEpisodeGroupTypes.StoryArc);
+        Assert.Equal("Story Arc", storyArc.Name);
+        Assert.Empty(storyArc.Episodes);
+    }
+
+    [Fact]
+    public async Task GetSeriesEpisodeGroupsAsync_falls_back_to_direct_tmdb_when_the_broker_has_no_groups()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("hybrid", "https://broker.deluno.test"));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                if (uri.Host.Equals("broker.deluno.test", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The broker does not implement the episode-groups route
+                    // yet - the same "no route" shape any 404 gateway path
+                    // produces.
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                if (uri.AbsolutePath.EndsWith("/episode_groups", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("""{ "results": [] }""", Encoding.UTF8, "application/json")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var groups = await provider.GetSeriesEpisodeGroupsAsync("1399", CancellationToken.None);
+
+        Assert.Empty(groups);
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(
         string providerMode,
         string brokerUrl,

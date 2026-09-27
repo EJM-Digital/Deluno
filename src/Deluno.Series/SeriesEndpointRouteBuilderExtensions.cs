@@ -2852,7 +2852,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         if (request.NumberingScheme is not null && !SeriesNumberingSchemes.IsKnown(request.NumberingScheme))
         {
-            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, or scene."];
+            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, dvd, or scene."];
         }
 
         if (request.NumberingSource is not null &&
@@ -2876,7 +2876,7 @@ public static class SeriesEndpointRouteBuilderExtensions
 
         if (request.NumberingScheme is not null && !SeriesNumberingSchemes.IsKnown(request.NumberingScheme))
         {
-            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, or scene."];
+            errors["numberingScheme"] = ["Numbering scheme must be standard, airdate, absolute, dvd, or scene."];
         }
 
         if (request.NumberingSource is not null &&

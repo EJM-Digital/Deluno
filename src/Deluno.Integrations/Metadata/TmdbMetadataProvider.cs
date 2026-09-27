@@ -1725,6 +1725,44 @@ public sealed class TmdbMetadataProvider(
         return await GetTmdbCatalogueAsync(id, apiKey, cancellationToken);
     }
 
+    /// <summary>
+    /// Every alternate ordering (aired/DVD/absolute/story-arc) TMDb's
+    /// episode_groups endpoint publishes for this series (#863).
+    /// </summary>
+    public async Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
+        string providerId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerId)
+            || !int.TryParse(providerId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+        {
+            return [];
+        }
+
+        var config = await GetMetadataConfigurationAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(config.BrokerUrl))
+        {
+            var fromBroker = await TryBrokerEpisodeGroupsAsync(config.BrokerUrl, id, cancellationToken);
+            if (fromBroker is { Count: > 0 })
+            {
+                return fromBroker;
+            }
+
+            logger.LogInformation(
+                "Metadata gateway returned no episode groups for series {ProviderId}; falling back to a direct provider call.",
+                providerId);
+        }
+
+        var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return [];
+        }
+
+        return await GetTmdbEpisodeGroupsAsync(id, apiKey, cancellationToken);
+    }
+
     /// <summary>Release dates for a movie: in cinemas, digital, physical.</summary>
     public async Task<MetadataReleaseDates> GetMovieReleaseDatesAsync(
         string providerId,
@@ -1933,6 +1971,39 @@ public sealed class TmdbMetadataProvider(
                         NullIfBlank(episode.Title),
                         NullIfBlank(episode.Overview),
                         ParseAirDate(episode.AirDate)))
+                    .ToArray()))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<MetadataEpisodeGroup>?> TryBrokerEpisodeGroupsAsync(
+        string brokerUrl,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var url = $"{BuildGatewayBaseUrl(brokerUrl)}/tv/{id.ToString(CultureInfo.InvariantCulture)}/episode-groups";
+        var response = await GetJsonWithResilienceAsync<BrokerEpisodeGroupsResponse>(
+            url,
+            $"metadata:broker:episode-groups:{BuildHostKey(brokerUrl)}",
+            "metadata.broker.episode-groups",
+            cancellationToken);
+
+        if (response?.Groups is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return response.Groups
+            .Where(group => !string.IsNullOrWhiteSpace(group.ProviderGroupId) && !string.IsNullOrWhiteSpace(group.Name))
+            .Select(group => new MetadataEpisodeGroup(
+                group.Type,
+                group.ProviderGroupId!.Trim(),
+                group.Name!.Trim(),
+                (group.Episodes ?? [])
+                    .Select(episode => new MetadataEpisodeGroupEpisode(
+                        episode.OriginalSeasonNumber,
+                        episode.OriginalEpisodeNumber,
+                        episode.GroupSeasonNumber,
+                        episode.GroupEpisodeNumber))
                     .ToArray()))
             .ToArray();
     }
@@ -2197,6 +2268,119 @@ public sealed class TmdbMetadataProvider(
     }
 
     /// <summary>
+    /// TMDb's episode_groups endpoint lists every alternate ordering by name
+    /// and type but not its episodes; each one's episodes need a second call
+    /// to <c>/tv/episode_group/{id}</c> (#863). Only fetched for the types
+    /// Deluno actually resolves episodes by (<see cref="TmdbEpisodeGroupTypes.Absolute"/>,
+    /// <see cref="TmdbEpisodeGroupTypes.Dvd"/>) - every other type is still
+    /// returned, with no episodes, so a series catalogue can at least name
+    /// what else TMDb offers. When TMDb lists more than one group of the same
+    /// resolvable type (more than one "DVD order", say) the one with the most
+    /// episodes is kept, on the theory that a fuller group is more likely to
+    /// be the maintained one.
+    /// </summary>
+    private async Task<IReadOnlyList<MetadataEpisodeGroup>> GetTmdbEpisodeGroupsAsync(
+        int id,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var summary = await GetJsonWithResilienceAsync<TmdbEpisodeGroupsResponse>(
+            $"https://api.themoviedb.org/3/tv/{id}/episode_groups?api_key={Uri.EscapeDataString(apiKey)}",
+            "metadata:tmdb:episode-groups",
+            "metadata.tmdb.episode-groups",
+            cancellationToken);
+
+        if (summary?.Results is not { Count: > 0 })
+        {
+            return [];
+        }
+
+        var resolvableTypes = new[] { TmdbEpisodeGroupTypes.Absolute, TmdbEpisodeGroupTypes.Dvd };
+        var groups = new List<MetadataEpisodeGroup>();
+
+        foreach (var grouping in summary.Results
+                     .Where(candidate => !string.IsNullOrWhiteSpace(candidate.Id) && !string.IsNullOrWhiteSpace(candidate.Name))
+                     .GroupBy(candidate => candidate.Type))
+        {
+            if (!resolvableTypes.Contains(grouping.Key))
+            {
+                // Not one Deluno resolves episodes by yet - still surface its
+                // name (the first one, if TMDb lists several) so the title's
+                // available orderings can say what else TMDb offers.
+                var first = grouping.First();
+                groups.Add(new MetadataEpisodeGroup(grouping.Key, first.Id!.Trim(), first.Name!.Trim(), []));
+                continue;
+            }
+
+            var chosen = grouping.OrderByDescending(candidate => candidate.EpisodeCount).First();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var detail = await GetJsonWithResilienceAsync<TmdbEpisodeGroupDetail>(
+                $"https://api.themoviedb.org/3/tv/episode_group/{Uri.EscapeDataString(chosen.Id!)}?api_key={Uri.EscapeDataString(apiKey)}",
+                "metadata:tmdb:episode-group:detail",
+                "metadata.tmdb.episode-group.detail",
+                cancellationToken);
+
+            if (detail?.Groups is not { Count: > 0 })
+            {
+                groups.Add(new MetadataEpisodeGroup(grouping.Key, chosen.Id!.Trim(), chosen.Name!.Trim(), []));
+                continue;
+            }
+
+            var episodes = new List<MetadataEpisodeGroupEpisode>();
+            if (grouping.Key == TmdbEpisodeGroupTypes.Absolute)
+            {
+                // Absolute order has no season concept: one running count
+                // across every subgroup TMDb split the episodes into.
+                var position = 0;
+                foreach (var episode in detail.Groups.SelectMany(subgroup => subgroup.Episodes ?? []))
+                {
+                    if (episode.SeasonNumber is null || episode.EpisodeNumber is null)
+                    {
+                        continue;
+                    }
+
+                    position++;
+                    episodes.Add(new MetadataEpisodeGroupEpisode(
+                        episode.SeasonNumber.Value,
+                        episode.EpisodeNumber.Value,
+                        GroupSeasonNumber: 1,
+                        GroupEpisodeNumber: position));
+                }
+            }
+            else
+            {
+                // DVD order keeps its own season structure: each subgroup is
+                // one renumbered season, in the order TMDb lists them.
+                var seasonNumber = 0;
+                foreach (var subgroup in detail.Groups)
+                {
+                    seasonNumber++;
+                    var episodeNumber = 0;
+                    foreach (var episode in subgroup.Episodes ?? [])
+                    {
+                        if (episode.SeasonNumber is null || episode.EpisodeNumber is null)
+                        {
+                            continue;
+                        }
+
+                        episodeNumber++;
+                        episodes.Add(new MetadataEpisodeGroupEpisode(
+                            episode.SeasonNumber.Value,
+                            episode.EpisodeNumber.Value,
+                            seasonNumber,
+                            episodeNumber));
+                    }
+                }
+            }
+
+            groups.Add(new MetadataEpisodeGroup(grouping.Key, chosen.Id!.Trim(), chosen.Name!.Trim(), episodes));
+        }
+
+        return groups;
+    }
+
+    /// <summary>
     /// TMDb reports release dates per country and per type, so this takes the
     /// earliest of each across every region rather than guessing one. Types:
     /// 2 limited, 3 theatrical, 4 digital, 5 physical. A premiere (1) is a
@@ -2287,6 +2471,21 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("overview")] string? Overview,
         [property: JsonPropertyName("airDate")] string? AirDate);
 
+    private sealed record BrokerEpisodeGroupsResponse(
+        [property: JsonPropertyName("groups")] IReadOnlyList<BrokerEpisodeGroup>? Groups);
+
+    private sealed record BrokerEpisodeGroup(
+        [property: JsonPropertyName("type")] int Type,
+        [property: JsonPropertyName("providerGroupId")] string? ProviderGroupId,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("episodes")] IReadOnlyList<BrokerEpisodeGroupEpisode>? Episodes);
+
+    private sealed record BrokerEpisodeGroupEpisode(
+        [property: JsonPropertyName("originalSeasonNumber")] int OriginalSeasonNumber,
+        [property: JsonPropertyName("originalEpisodeNumber")] int OriginalEpisodeNumber,
+        [property: JsonPropertyName("groupSeasonNumber")] int GroupSeasonNumber,
+        [property: JsonPropertyName("groupEpisodeNumber")] int GroupEpisodeNumber);
+
     private sealed record BrokerReleaseDatesResponse(
         [property: JsonPropertyName("inCinemas")] string? InCinemas,
         [property: JsonPropertyName("digital")] string? Digital,
@@ -2343,6 +2542,26 @@ public sealed class TmdbMetadataProvider(
         [property: JsonPropertyName("name")] string? Name,
         [property: JsonPropertyName("overview")] string? Overview,
         [property: JsonPropertyName("air_date")] string? AirDate);
+
+    private sealed record TmdbEpisodeGroupsResponse(
+        [property: JsonPropertyName("results")] IReadOnlyList<TmdbEpisodeGroupSummary>? Results);
+
+    private sealed record TmdbEpisodeGroupSummary(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("type")] int Type,
+        [property: JsonPropertyName("episode_count")] int EpisodeCount);
+
+    private sealed record TmdbEpisodeGroupDetail(
+        [property: JsonPropertyName("groups")] IReadOnlyList<TmdbEpisodeGroupSubgroup>? Groups);
+
+    private sealed record TmdbEpisodeGroupSubgroup(
+        [property: JsonPropertyName("order")] int Order,
+        [property: JsonPropertyName("episodes")] IReadOnlyList<TmdbEpisodeGroupEpisode>? Episodes);
+
+    private sealed record TmdbEpisodeGroupEpisode(
+        [property: JsonPropertyName("season_number")] int? SeasonNumber,
+        [property: JsonPropertyName("episode_number")] int? EpisodeNumber);
 
     private sealed record TmdbReleaseDatesResponse(
         [property: JsonPropertyName("results")] IReadOnlyList<TmdbCountryReleaseDates>? Results);

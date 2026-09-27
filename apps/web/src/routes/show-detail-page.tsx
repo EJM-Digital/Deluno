@@ -103,6 +103,10 @@ interface NumberingDraft {
   seriesType: string;
   numberingScheme: string;
   numberingSource: string;
+  /** The orderings this title can actually be picked from (#863) - always includes the currently-saved scheme, even if a later refresh dropped it. */
+  availableSchemes: string[];
+  /** Every other ordering TMDb publishes that Deluno does not resolve episodes by yet - shown for information only. */
+  otherSchemeNames: string[];
   mappings: Record<string, {
     absoluteNumber: string;
     sceneSeasonNumber: string;
@@ -485,10 +489,23 @@ export function ShowDetailPage() {
       airDate: episode.airDate ?? null
     }));
 
+    const numberingScheme = detail?.numberingScheme ?? series.numberingScheme ?? "standard";
+    const availableSchemes = detail?.availableNumberingSchemes?.length
+      ? detail.availableNumberingSchemes
+      : ["standard"];
+
     setNumberingDraft({
       seriesType: detail?.seriesType ?? series.seriesType ?? "standard",
-      numberingScheme: detail?.numberingScheme ?? series.numberingScheme ?? "standard",
+      numberingScheme,
       numberingSource: detail?.numberingSource ?? series.numberingSource ?? "provider",
+      // The currently-saved scheme is always offered, even if a later
+      // provider refresh dropped it (a DVD-order group TMDb removed, say) -
+      // a saved choice must stay visible and explained, never vanish from
+      // its own dropdown.
+      availableSchemes: availableSchemes.includes(numberingScheme)
+        ? availableSchemes
+        : [...availableSchemes, numberingScheme],
+      otherSchemeNames: detail?.otherNumberingSchemeNames ?? [],
       mappings: Object.fromEntries(episodes.map((episode) => [episode.episodeId, {
         absoluteNumber: episode.absoluteNumber === null || episode.absoluteNumber === undefined ? "" : String(episode.absoluteNumber),
         sceneSeasonNumber: episode.sceneSeasonNumber === null || episode.sceneSeasonNumber === undefined ? "" : String(episode.sceneSeasonNumber),
@@ -1637,13 +1654,16 @@ export function ShowDetailPage() {
                     aria-label="Numbering scheme"
                     value={numberingDraft.numberingScheme}
                     onChange={(event) => setNumberingDraft({ ...numberingDraft, numberingScheme: event.target.value })}
-                    options={[
-                      { value: "standard", label: "Season / episode" },
-                      { value: "airdate", label: "Air date" },
-                      { value: "absolute", label: "Absolute episode" },
-                      { value: "scene", label: "Scene season / episode" }
-                    ]}
+                    options={ALL_NUMBERING_SCHEME_OPTIONS.filter((option) => numberingDraft.availableSchemes.includes(option.value))}
                   />
+                  <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                    {explainNumberingScheme(numberingDraft.numberingScheme)}
+                  </p>
+                  {numberingDraft.otherSchemeNames.length > 0 ? (
+                    <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                      TMDb also publishes {numberingDraft.otherSchemeNames.join(", ")} for this title, which Deluno does not match episodes by yet.
+                    </p>
+                  ) : null}
                 </label>
                 <label className="grid gap-1.5 text-sm sm:col-span-2">
                   <span className="font-medium text-foreground">Mapping source</span>
@@ -2035,9 +2055,35 @@ function formatNumberingScheme(value: string | null | undefined) {
     case "airdate": return "Air date";
     case "absolute": return "Absolute episode";
     case "scene": return "Scene numbering";
+    case "dvd": return "DVD order";
     default: return "Season / episode";
   }
 }
+
+/** Plain words about what actually changes when this scheme is picked (#863) - shown under the switcher so a choice is never made blind. */
+export function explainNumberingScheme(value: string | null | undefined) {
+  switch (value?.toLowerCase()) {
+    case "airdate":
+      return "Matches and imports episodes by the date they aired, for shows with no fixed season structure.";
+    case "absolute":
+      return "Matches and imports episodes by one running count instead of season breaks - the numbering most anime releases use.";
+    case "scene":
+      return "Matches and imports using the numbering release groups actually used, mapped automatically from TheXEM.";
+    case "dvd":
+      return "Matches and imports using the season/episode order TMDb's DVD release used, when it differs from the order episodes aired.";
+    default:
+      return "Matches and imports episodes by the season and episode number TMDb aired them under.";
+  }
+}
+
+/** Every scheme the show page's numbering switcher may offer, in a fixed display order. Only <see cref="detail.availableNumberingSchemes"/> narrows this down to what a title actually has. */
+export const ALL_NUMBERING_SCHEME_OPTIONS = [
+  { value: "standard", label: "Season / episode (aired)" },
+  { value: "dvd", label: "DVD order" },
+  { value: "absolute", label: "Absolute episode" },
+  { value: "airdate", label: "Air date" },
+  { value: "scene", label: "Scene season / episode" }
+];
 
 function formatNumberingSource(value: string | null | undefined) {
   switch (value?.toLowerCase()) {

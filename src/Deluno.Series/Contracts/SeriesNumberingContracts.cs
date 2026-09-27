@@ -37,8 +37,18 @@ public static class SeriesNumberingSchemes
     public const string Absolute = "absolute";
     public const string Scene = "scene";
 
+    /// <summary>
+    /// TMDb's own "DVD order" episode group (#863): the season/episode
+    /// numbering a physical or digital release used, which for many shows
+    /// differs from the order episodes actually aired in. Populated
+    /// automatically from TMDb's episode_groups endpoint, the same way
+    /// <see cref="Scene"/> is populated automatically from TheXEM — never
+    /// guessed from a filename's own shape.
+    /// </summary>
+    public const string Dvd = "dvd";
+
     public static readonly IReadOnlySet<string> All =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Standard, AirDate, Absolute, Scene };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Standard, AirDate, Absolute, Scene, Dvd };
 
     public static string Normalize(string? value) =>
         value?.Trim().ToLowerInvariant() switch
@@ -46,6 +56,7 @@ public static class SeriesNumberingSchemes
             AirDate => AirDate,
             Absolute => Absolute,
             Scene => Scene,
+            Dvd => Dvd,
             _ => Standard
         };
 
@@ -173,7 +184,25 @@ public sealed record SeriesNumberingDetail(
     string NumberingScheme,
     string NumberingSource,
     DateTimeOffset? UpdatedUtc,
-    IReadOnlyList<SeriesEpisodeNumbering> Episodes);
+    IReadOnlyList<SeriesEpisodeNumbering> Episodes,
+    /// <summary>
+    /// The schemes this title can actually be viewed and matched in right
+    /// now: <see cref="SeriesNumberingSchemes.Standard"/> always, plus
+    /// <see cref="SeriesNumberingSchemes.Dvd"/> and/or
+    /// <see cref="SeriesNumberingSchemes.Absolute"/> when the last TMDb
+    /// episode-groups refresh (#863) found one, plus
+    /// <see cref="SeriesNumberingSchemes.AirDate"/>/<see cref="SeriesNumberingSchemes.Scene"/>
+    /// when the series type or an owner mapping already uses them. The show
+    /// page's numbering switcher offers exactly this list, never a fixed
+    /// four options nobody checked the title actually has.
+    /// </summary>
+    IReadOnlyList<string>? AvailableNumberingSchemes = null,
+    /// <summary>
+    /// Every other ordering TMDb publishes for this title that Deluno does
+    /// not resolve episodes by yet (a story arc or production order, say) -
+    /// shown for information only, never selectable.
+    /// </summary>
+    IReadOnlyList<string>? OtherNumberingSchemeNames = null);
 
 /// <summary>
 /// Alternate numbers attached to an episode. Canonical season/episode remains
@@ -188,7 +217,14 @@ public sealed record SeriesEpisodeNumbering(
     int? SceneEpisodeNumber,
     DateOnly? AirDate,
     string? NumberingSource,
-    string? Title = null);
+    string? Title = null,
+    /// <summary>
+    /// This episode's season/episode number under TMDb's "DVD order" episode
+    /// group (#863), when TMDb publishes one. Populated only by the
+    /// automatic episode-groups refresh, never typed by an owner.
+    /// </summary>
+    int? DvdSeasonNumber = null,
+    int? DvdEpisodeNumber = null);
 
 /// <summary>A user-owned alternate-number mapping submitted from the UI/API.</summary>
 public sealed record SeriesNumberingMapping(
@@ -213,6 +249,19 @@ public sealed record SeriesEpisodeSceneMapping(
     int? SceneSeasonNumber = null,
     int? SceneEpisodeNumber = null);
 
+/// <summary>
+/// One episode's automatic numbering from TMDb's episode-groups endpoint
+/// (#863), keyed by the canonical season/episode the way
+/// <see cref="SeriesEpisodeSceneMapping"/> is keyed for TheXEM - a refresh
+/// only ever knows season/episode, never an episode id.
+/// </summary>
+public sealed record SeriesEpisodeGroupMapping(
+    int SeasonNumber,
+    int EpisodeNumber,
+    int? AbsoluteNumber = null,
+    int? DvdSeasonNumber = null,
+    int? DvdEpisodeNumber = null);
+
 public sealed record UpdateSeriesNumberingRequest(
     string? SeriesType = null,
     string? NumberingScheme = null,
@@ -228,7 +277,9 @@ public sealed record ParsedSeriesEpisodeNumber(
     int? SceneSeasonNumber,
     int? SceneEpisodeNumber,
     DateOnly? AirDate,
-    string Token);
+    string Token,
+    int? DvdSeasonNumber = null,
+    int? DvdEpisodeNumber = null);
 
 public sealed record SeriesNumberingParseResult(
     IReadOnlyList<ParsedSeriesEpisodeNumber> Matches,
@@ -283,8 +334,9 @@ public static partial class SeriesNumberingResolver
         var scheme = SeriesNumberingSchemes.Normalize(numberingScheme);
         return scheme switch
         {
-            SeriesNumberingSchemes.Standard => ParseStandard(fileName, scene: false),
-            SeriesNumberingSchemes.Scene => ParseStandard(fileName, scene: true),
+            SeriesNumberingSchemes.Standard => ParseStandard(fileName, scheme),
+            SeriesNumberingSchemes.Scene => ParseStandard(fileName, scheme),
+            SeriesNumberingSchemes.Dvd => ParseStandard(fileName, scheme),
             SeriesNumberingSchemes.AirDate => ParseAirDate(fileName),
             SeriesNumberingSchemes.Absolute => ParseAbsolute(fileName),
             _ => new([], $"The numbering scheme '{numberingScheme}' is not supported.")
@@ -312,6 +364,9 @@ public static partial class SeriesNumberingResolver
                 parsed.AbsoluteNumber is not null && parsed.AbsoluteNumber == episode.AbsoluteNumber,
             SeriesNumberingSchemes.AirDate =>
                 parsed.AirDate is not null && parsed.AirDate == episode.AirDate,
+            SeriesNumberingSchemes.Dvd =>
+                parsed.DvdSeasonNumber is not null && parsed.DvdSeasonNumber == episode.DvdSeasonNumber &&
+                parsed.DvdEpisodeNumber is not null && parsed.DvdEpisodeNumber == episode.DvdEpisodeNumber,
             _ => false
         }).ToArray();
 
@@ -329,7 +384,7 @@ public static partial class SeriesNumberingResolver
         return false;
     }
 
-    private static SeriesNumberingParseResult ParseStandard(string fileName, bool scene)
+    private static SeriesNumberingParseResult ParseStandard(string fileName, string scheme)
     {
         var match = StandardPattern().Match(Path.GetFileNameWithoutExtension(fileName));
         if (!match.Success || !int.TryParse(match.Groups["season"].Value, out var season))
@@ -355,25 +410,35 @@ public static partial class SeriesNumberingResolver
 
             for (var episodeNumber = firstEpisode; episodeNumber <= lastEpisode; episodeNumber++)
             {
-                results.Add(scene
-                    ? new(
+                results.Add(scheme switch
+                {
+                    // The filename shape is the same S01E01 token regardless
+                    // of which numbering the show uses (#863): a DVD-order or
+                    // scene-order title is not named any differently, only
+                    // interpreted differently. Only the parsed field the
+                    // token targets changes.
+                    SeriesNumberingSchemes.Scene => new(
                         SeriesNumberingSchemes.Scene,
+                        null, null, null,
+                        SceneSeasonNumber: season,
+                        SceneEpisodeNumber: episodeNumber,
                         null,
+                        episode.Value),
+                    SeriesNumberingSchemes.Dvd => new(
+                        SeriesNumberingSchemes.Dvd,
+                        null, null, null, null, null,
                         null,
-                        null,
-                        season,
-                        episodeNumber,
-                        null,
-                        episode.Value)
-                    : new(
+                        episode.Value,
+                        DvdSeasonNumber: season,
+                        DvdEpisodeNumber: episodeNumber),
+                    _ => new(
                         SeriesNumberingSchemes.Standard,
                         season,
                         episodeNumber,
+                        null, null, null,
                         null,
-                        null,
-                        null,
-                        null,
-                        episode.Value));
+                        episode.Value)
+                });
             }
         }
 

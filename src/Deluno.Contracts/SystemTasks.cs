@@ -86,6 +86,7 @@ public static class SystemTasks
     public const string RssSync = "rss.sync";
     public const string HealthChecks = "health.checks";
     public const string SceneMappingRefresh = "scene.mapping.refresh";
+    public const string EpisodeGroupRefresh = "episode.group.refresh";
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
 
     /// <summary>
@@ -192,6 +193,13 @@ public static class SystemTasks
         new(SceneMappingRefresh, "Refresh anime scene numbering",
             "Checks TheXEM for scene-numbering corrections on your anime titles, so a release named by fansub order still matches the right episode.",
             TimeSpan.FromHours(12)),
+        // Once a day: TMDb's episode groups (DVD order, absolute numbering,
+        // story arcs) change about as often as a physical release schedule
+        // does, which is to say rarely, and every title is asked for on its
+        // own request (#863).
+        new(EpisodeGroupRefresh, "Refresh episode ordering options",
+            "Checks TMDb for DVD-order and absolute-numbering episode groups on your titles, so the numbering switcher only offers orderings a title actually has.",
+            TimeSpan.FromHours(24)),
         // #932 (cleanup sheet row M1): off by default, per #936's later,
         // standing rule - this is one of the setup guide's automation
         // questions now, the same as every other automatic behaviour, not
