@@ -117,8 +117,28 @@ public sealed class RemotePathMappingHealthCheckTests
     {
         var now = DateTimeOffset.UnixEpoch;
         return new DownloadClientItem(
-            "client-1", "Test Client", "qbittorrent", "localhost", 8080, null, null, null,
-            "movies", null, null, 1, true, "healthy", null, null, null, now, now, now);
+            Id: "client-1",
+            Name: "Test Client",
+            Protocol: "qbittorrent",
+            Host: "localhost",
+            Port: 8080,
+            Username: null,
+            Secret: null,
+            EndpointUrl: null,
+            UseSsl: false,
+            UrlBase: null,
+            MoviesCategory: "movies",
+            TvCategory: null,
+            CategoryTemplate: null,
+            Priority: 1,
+            IsEnabled: true,
+            HealthStatus: "healthy",
+            LastHealthMessage: null,
+            LastHealthFailureCategory: null,
+            LastHealthLatencyMs: null,
+            LastHealthTestUtc: now,
+            CreatedUtc: now,
+            UpdatedUtc: now);
     }
 
     private static IConnectionsRepository ConnectionsReturning(

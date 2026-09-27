@@ -114,20 +114,36 @@ public sealed class FreeSpaceReportingTests
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static DownloadClientItem QbitClient()
-        => new("qbit-1", "qBittorrent", "qbittorrent", "localhost", 8080, null, null, "http://localhost:8080/", "movies", "tv", null, 1, true,
-            "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        => new(
+            Id: "qbit-1", Name: "qBittorrent", Protocol: "qbittorrent", Host: "localhost", Port: 8080,
+            Username: null, Secret: null, EndpointUrl: "http://localhost:8080/", UseSsl: false, UrlBase: null,
+            MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null, Priority: 1, IsEnabled: true,
+            HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
+            LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
 
     private static DownloadClientItem TransmissionClient()
-        => new("transmission-1", "Transmission", "transmission", "localhost", 9091, null, null, "http://localhost:9091/", "movies", "tv", null, 1, true,
-            "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        => new(
+            Id: "transmission-1", Name: "Transmission", Protocol: "transmission", Host: "localhost", Port: 9091,
+            Username: null, Secret: null, EndpointUrl: "http://localhost:9091/", UseSsl: false, UrlBase: null,
+            MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null, Priority: 1, IsEnabled: true,
+            HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
+            LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
 
     private static DownloadClientItem DelugeClient()
-        => new("deluge-1", "Deluge", "deluge", "localhost", 8112, null, null, "http://localhost:8112/", "movies", "tv", null, 1, true,
-            "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        => new(
+            Id: "deluge-1", Name: "Deluge", Protocol: "deluge", Host: "localhost", Port: 8112,
+            Username: null, Secret: null, EndpointUrl: "http://localhost:8112/", UseSsl: false, UrlBase: null,
+            MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null, Priority: 1, IsEnabled: true,
+            HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
+            LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
 
     private static DownloadClientItem UTorrentClient()
-        => new("utorrent-1", "uTorrent", "utorrent", "localhost", 8081, null, null, "http://localhost:8081/", "movies", "tv", null, 1, true,
-            "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        => new(
+            Id: "utorrent-1", Name: "uTorrent", Protocol: "utorrent", Host: "localhost", Port: 8081,
+            Username: null, Secret: null, EndpointUrl: "http://localhost:8081/", UseSsl: false, UrlBase: null,
+            MoviesCategory: "movies", TvCategory: "tv", CategoryTemplate: null, Priority: 1, IsEnabled: true,
+            HealthStatus: "healthy", LastHealthMessage: null, LastHealthFailureCategory: null, LastHealthLatencyMs: null,
+            LastHealthTestUtc: null, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
 
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {

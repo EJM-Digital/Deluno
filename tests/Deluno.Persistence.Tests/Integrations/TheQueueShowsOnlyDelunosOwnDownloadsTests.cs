@@ -83,6 +83,8 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
             Username: null,
             Secret: null,
             EndpointUrl: "http://localhost:8080",
+            UseSsl: false,
+            UrlBase: null,
             MoviesCategory: moviesCategory,
             TvCategory: tvCategory,
             CategoryTemplate: null,
