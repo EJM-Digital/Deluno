@@ -106,7 +106,8 @@ public static class PlatformDatabaseMigrations
         new V0098LibrarySearchWindowDays(),
         new V0099IntakeSourceMinimumAvailability(),
         new V0100TraktConnection(),
-        new V0101NotificationWebhookProviders()
+        new V0101NotificationWebhookProviders(),
+        new V0102QbittorrentLocation()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

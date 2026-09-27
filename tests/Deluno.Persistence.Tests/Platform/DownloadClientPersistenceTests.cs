@@ -446,4 +446,46 @@ public sealed class DownloadClientPersistenceTests
         // storage will still read back.
         Assert.Contains("Supported protocols: deluge, nzbget, qbittorrent, rtorrent, sabnzbd, transmission, utorrent.", error.Message, StringComparison.Ordinal);
     }
+
+    // ── Save path / location (#811) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateDownloadClientAsync_persists_the_save_path_and_defaults_it_to_null()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var withLocation = await repo.CreateDownloadClientAsync(BaseCreateRequest() with { Location = @"D:\Downloads\Movies" }, CancellationToken.None);
+        Assert.Equal(@"D:\Downloads\Movies", withLocation.Location);
+        var reloaded = Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None), item => item.Id == withLocation.Id);
+        Assert.Equal(@"D:\Downloads\Movies", reloaded.Location);
+
+        var withoutLocation = await repo.CreateDownloadClientAsync(BaseCreateRequest(name: "qBittorrent 2"), CancellationToken.None);
+        Assert.Null(withoutLocation.Location);
+    }
+
+    [Fact]
+    public async Task UpdateDownloadClientAsync_can_set_and_clear_the_save_path()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+
+        var updated = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, Location: @"E:\Torrents"),
+            CancellationToken.None);
+        Assert.NotNull(updated);
+        Assert.Equal(@"E:\Torrents", updated.Location);
+
+        var reopened = Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None), item => item.Id == created.Id);
+        Assert.Equal(@"E:\Torrents", reopened.Location);
+
+        var cleared = await repo.UpdateDownloadClientAsync(
+            created.Id,
+            new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, ClearLocation: true),
+            CancellationToken.None);
+        Assert.NotNull(cleared);
+        Assert.Null(cleared.Location);
+    }
 }

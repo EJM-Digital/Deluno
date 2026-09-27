@@ -129,6 +129,45 @@ public sealed class QbittorrentAdapterGapsTests
         Assert.Null(handler.ShareLimitsBody);
     }
 
+    [Fact]
+    public async Task Grab_sends_savepath_at_add_time_and_reasserts_it_with_setLocation()
+    {
+        var handler = new AddThenNewHashHandler(newHash: "abc123");
+        var client = QbitClient() with { Location = @"D:\Downloads\Movies" };
+
+        var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(client, GrabRequest(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.NotNull(handler.AddBody);
+        Assert.Contains("savepath=", handler.AddBody, StringComparison.Ordinal);
+        Assert.NotNull(handler.LocationBody);
+        Assert.Contains("hashes=abc123", handler.LocationBody, StringComparison.Ordinal);
+        Assert.Contains(Uri.EscapeDataString(client.Location!), handler.LocationBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Grab_never_calls_setLocation_when_no_save_path_is_configured()
+    {
+        var handler = new AddThenNewHashHandler(newHash: "abc123");
+
+        await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
+
+        Assert.Null(handler.LocationBody);
+    }
+
+    [Fact]
+    public async Task Grab_reasserts_the_resolved_category_with_setCategory()
+    {
+        var handler = new AddThenNewHashHandler(newHash: "abc123");
+
+        var result = await new QbittorrentDownloadClient(() => handler).GrabAsync(QbitClient(), GrabRequest(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.NotNull(handler.CategoryBody);
+        Assert.Contains("hashes=abc123", handler.CategoryBody, StringComparison.Ordinal);
+        Assert.Contains("category=movies", handler.CategoryBody, StringComparison.Ordinal);
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static DownloadClientGrabRequest GrabRequest()
@@ -206,18 +245,37 @@ public sealed class QbittorrentAdapterGapsTests
 
         public string? ShareLimitsBody { get; private set; }
 
+        public string? AddBody { get; private set; }
+
+        public string? LocationBody { get; private set; }
+
+        public string? CategoryBody { get; private set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             if (path.Contains("torrents/add", StringComparison.Ordinal))
             {
                 _added = true;
+                AddBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
                 return JsonResponse("Ok.");
             }
 
             if (path.Contains("setShareLimits", StringComparison.Ordinal))
             {
                 ShareLimitsBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+                return JsonResponse("{}");
+            }
+
+            if (path.Contains("setLocation", StringComparison.Ordinal))
+            {
+                LocationBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+                return JsonResponse("{}");
+            }
+
+            if (path.Contains("setCategory", StringComparison.Ordinal))
+            {
+                CategoryBody = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
                 return JsonResponse("{}");
             }
 

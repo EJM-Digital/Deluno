@@ -170,7 +170,8 @@ public sealed class SqliteConnectionsRepository(
                 last_health_failure_json, use_ssl, url_base, add_paused, tags,
                 remove_completed, remove_failed,
                 skip_hash_check, sequential_download, first_last_piece_prio,
-                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes
+                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes,
+                location
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -210,7 +211,8 @@ public sealed class SqliteConnectionsRepository(
                 FirstLastPiecePrio: reader.GetInt64(29) == 1,
                 ShareRatioLimit: reader.IsDBNull(30) ? null : reader.GetDouble(30),
                 ShareSeedingTimeLimitMinutes: reader.IsDBNull(31) ? null : reader.GetInt32(31),
-                ShareInactiveSeedingTimeLimitMinutes: reader.IsDBNull(32) ? null : reader.GetInt32(32))
+                ShareInactiveSeedingTimeLimitMinutes: reader.IsDBNull(32) ? null : reader.GetInt32(32),
+                Location: reader.IsDBNull(33) ? null : reader.GetString(33))
             {
                 LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
             });
@@ -696,7 +698,8 @@ public sealed class SqliteConnectionsRepository(
             FirstLastPiecePrio: request.FirstLastPiecePrio,
             ShareRatioLimit: request.ShareRatioLimit,
             ShareSeedingTimeLimitMinutes: request.ShareSeedingTimeLimitMinutes,
-            ShareInactiveSeedingTimeLimitMinutes: request.ShareInactiveSeedingTimeLimitMinutes);
+            ShareInactiveSeedingTimeLimitMinutes: request.ShareInactiveSeedingTimeLimitMinutes,
+            Location: NormalizePath(request.Location));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -712,7 +715,8 @@ public sealed class SqliteConnectionsRepository(
                 is_enabled, health_status, last_health_message, created_utc, updated_utc, tags,
                 remove_completed, remove_failed,
                 skip_hash_check, sequential_download, first_last_piece_prio,
-                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes
+                share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes,
+                location
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
@@ -721,7 +725,8 @@ public sealed class SqliteConnectionsRepository(
                 @isEnabled, @healthStatus, @lastHealthMessage, @createdUtc, @updatedUtc, @tags,
                 @removeCompleted, @removeFailed,
                 @skipHashCheck, @sequentialDownload, @firstLastPiecePrio,
-                @shareRatioLimit, @shareSeedingTimeLimitMinutes, @shareInactiveSeedingTimeLimitMinutes
+                @shareRatioLimit, @shareSeedingTimeLimitMinutes, @shareInactiveSeedingTimeLimitMinutes,
+                @location
             );
             """;
 
@@ -759,6 +764,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@shareRatioLimit", item.ShareRatioLimit);
         AddParameter(command, "@shareSeedingTimeLimitMinutes", item.ShareSeedingTimeLimitMinutes);
         AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", item.ShareInactiveSeedingTimeLimitMinutes);
+        AddParameter(command, "@location", item.Location);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -901,6 +907,7 @@ public sealed class SqliteConnectionsRepository(
         var newShareRatioLimit = request.ClearShareRatioLimit ? null : request.ShareRatioLimit ?? existing.ShareRatioLimit;
         var newShareSeedingTimeLimitMinutes = request.ClearShareSeedingTimeLimitMinutes ? null : request.ShareSeedingTimeLimitMinutes ?? existing.ShareSeedingTimeLimitMinutes;
         var newShareInactiveSeedingTimeLimitMinutes = request.ClearShareInactiveSeedingTimeLimitMinutes ? null : request.ShareInactiveSeedingTimeLimitMinutes ?? existing.ShareInactiveSeedingTimeLimitMinutes;
+        var newLocation = request.ClearLocation ? null : request.Location is not null ? NormalizePath(request.Location) : existing.Location;
 
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
         var newMsg    = newEnabled && !existing.IsEnabled ? "Re-enabled — test connection to confirm." : existing.LastHealthMessage;
@@ -936,7 +943,8 @@ public sealed class SqliteConnectionsRepository(
                 first_last_piece_prio = @firstLastPiecePrio,
                 share_ratio_limit = @shareRatioLimit,
                 share_seeding_time_limit_minutes = @shareSeedingTimeLimitMinutes,
-                share_inactive_seeding_time_limit_minutes = @shareInactiveSeedingTimeLimitMinutes
+                share_inactive_seeding_time_limit_minutes = @shareInactiveSeedingTimeLimitMinutes,
+                location = @location
             WHERE id = @id;
             """;
 
@@ -973,6 +981,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@shareRatioLimit", newShareRatioLimit);
         AddParameter(command, "@shareSeedingTimeLimitMinutes", newShareSeedingTimeLimitMinutes);
         AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", newShareInactiveSeedingTimeLimitMinutes);
+        AddParameter(command, "@location", newLocation);
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
 
@@ -1004,6 +1013,7 @@ public sealed class SqliteConnectionsRepository(
             ShareRatioLimit  = newShareRatioLimit,
             ShareSeedingTimeLimitMinutes = newShareSeedingTimeLimitMinutes,
             ShareInactiveSeedingTimeLimitMinutes = newShareInactiveSeedingTimeLimitMinutes,
+            Location         = newLocation,
             UpdatedUtc       = now
         };
     }

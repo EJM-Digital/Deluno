@@ -58,6 +58,14 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             addTimePairs.Add(new("tags", client.Tags));
         }
+        // #811: savepath, when this client has one configured -- sent at add
+        // time same as the others, and reapplied with setLocation once the
+        // hash is known below, since qBittorrent's own Automatic Torrent
+        // Management can otherwise silently override the add-time value.
+        if (!string.IsNullOrWhiteSpace(client.Location))
+        {
+            addTimePairs.Add(new("savepath", client.Location));
+        }
 
         // A .torrent Deluno fetched with a tracker's sign-in goes up as a file;
         // qBittorrent could not fetch it by URL itself (#606).
@@ -178,6 +186,21 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             await TrySetShareLimitsAsync(http, client, added, cancellationToken);
         }
 
+        // #811: setCategory and setLocation, once the hash is known — the
+        // same explicit-write path setShareLimits above uses, so a category
+        // or save path Deluno resolved is not left to whatever the add-time
+        // form field happened to take (qBittorrent's Automatic Torrent
+        // Management can override an add-time savepath; the explicit call
+        // does not go through it the same way).
+        if (added is not null)
+        {
+            await TrySetCategoryAsync(http, client, request, added, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(client.Location))
+            {
+                await TrySetLocationAsync(http, client, added, cancellationToken);
+            }
+        }
+
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to qBittorrent.") with
         {
             ExternalId = added
@@ -188,6 +211,56 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         => client.ShareRatioLimit is not null
             || client.ShareSeedingTimeLimitMinutes is not null
             || client.ShareInactiveSeedingTimeLimitMinutes is not null;
+
+    /// <summary>
+    /// #811: qBittorrent's setCategory, applied to the torrent this grab just
+    /// added — a best-effort re-assertion of the category already sent at add
+    /// time, since a failure here never fails the grab (the category from the
+    /// add-time form field is still whatever qBittorrent already took).
+    /// </summary>
+    private static async Task TrySetCategoryAsync(HttpClient http, DownloadClientItem client, DownloadClientGrabRequest request, string hash, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pairs = new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("category", DownloadClientHelpers.ResolveCategory(client, request))
+            };
+            using var response = await http.PostAsync("api/v2/torrents/setCategory", new FormUrlEncodedContent(pairs), cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            // Left alone: the add-time category field already took.
+        }
+    }
+
+    /// <summary>
+    /// #811: qBittorrent's setLocation, applied to the torrent this grab just
+    /// added. Automatic Torrent Management can silently override an add-time
+    /// <c>savepath</c>, so this client's configured save path is reasserted
+    /// explicitly once the hash is known — best-effort, since a failure here
+    /// never fails the grab.
+    /// </summary>
+    private static async Task TrySetLocationAsync(HttpClient http, DownloadClientItem client, string hash, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var pairs = new[]
+            {
+                new KeyValuePair<string, string>("hashes", hash),
+                new KeyValuePair<string, string>("location", client.Location!)
+            };
+            using var response = await http.PostAsync("api/v2/torrents/setLocation", new FormUrlEncodedContent(pairs), cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            // Left alone: the add-time savepath field already took, or the
+            // client keeps whatever location it chose on its own.
+        }
+    }
 
     /// <summary>
     /// qBittorrent's setShareLimits, applied to the one torrent this grab just

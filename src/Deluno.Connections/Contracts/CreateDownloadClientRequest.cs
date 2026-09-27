@@ -33,4 +33,6 @@ public sealed record CreateDownloadClientRequest(
     /// <summary>#811 (qBittorrent only): minutes to seed before the client's own share limits stop it.</summary>
     int? ShareSeedingTimeLimitMinutes = null,
     /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding.</summary>
-    int? ShareInactiveSeedingTimeLimitMinutes = null);
+    int? ShareInactiveSeedingTimeLimitMinutes = null,
+    /// <summary>#811 (qBittorrent only): save path sent at add time. Null leaves the client's own default (or its category's save path).</summary>
+    string? Location = null);
