@@ -3161,6 +3161,17 @@ public sealed class SqliteJobStore(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM activity_events;";
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(
         int take,
         string? relatedEntityType,

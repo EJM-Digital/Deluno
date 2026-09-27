@@ -1,6 +1,7 @@
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Jobs;
 
@@ -35,6 +36,7 @@ public static class JobsServiceCollectionExtensions
             provider.GetRequiredService<SqliteMachineTelemetryRepository>());
 
         services.AddSingleton<IJobLaneSignal, JobLaneSignal>();
+        services.TryAddSingleton<IActivityDisplaySettingsStore, FileActivityDisplaySettingsStore>();
 
         services.AddSingleton<SqliteJobStore>();
         services.AddSingleton<IJobScheduler>(provider => provider.GetRequiredService<SqliteJobStore>());
