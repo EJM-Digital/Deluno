@@ -77,6 +77,7 @@ import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
+import { readAlternateTitles } from "../lib/ui-adapters";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -213,6 +214,11 @@ export function ShowDetailPage() {
     (item) => item.title.trim().toLowerCase() === series.title.trim().toLowerCase()
   );
   const { cast, crew } = readStoredCredits(series.metadataJson);
+  // #861: region-specific spellings TMDb's alternative_titles endpoint
+  // reported, beyond the original title already shown above.
+  const alternateTitles = readAlternateTitles(series.metadataJson).filter(
+    (candidate) => candidate !== series.title && candidate !== series.originalTitle
+  );
   const meta = useMemo<Record<string, unknown> | null>(() => {
     if (!series.metadataJson) return null;
     try { return JSON.parse(series.metadataJson) as Record<string, unknown>; } catch { return null; }
@@ -905,6 +911,11 @@ export function ShowDetailPage() {
                 </button>
               </div>
               {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
+              {alternateTitles.length ? (
+                <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
+                  Alternate titles: {alternateTitles.join(", ")}
+                </p>
+              ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 {metaText("Certification") ? (
                   <span className="rounded border border-hairline px-1.5 py-px text-xs font-bold uppercase tracking-wide" title="Classification">

@@ -28,6 +28,27 @@ function splitGenres(value: string | null | undefined) {
 }
 
 /**
+ * The region-specific spellings TMDb's alternative_titles endpoint reported
+ * for a title, read back out of the stored metadata blob (#861) — the
+ * frontend twin of `CatalogueMetadata.ReadAlternateTitles`, which is what
+ * `AlternateTitles` rides along inside on the way in. Kept here, one place,
+ * for the same reason that one is one place: the movie and show detail pages
+ * would otherwise each grow their own copy of "parse the blob, read this one
+ * field out of it".
+ */
+export function readAlternateTitles(metadataJson: string | null | undefined): string[] {
+  if (!metadataJson) return [];
+  try {
+    const parsed = JSON.parse(metadataJson) as Record<string, unknown>;
+    const value = parsed.AlternateTitles ?? parsed.alternateTitles;
+    if (!Array.isArray(value)) return [];
+    return value.filter((title): title is string => typeof title === "string" && title.trim().length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * The stored provider blob, with its keys folded to lower case.
  *
  * **This is a fix, and the defect it fixes was total.** `metadata_json` is
