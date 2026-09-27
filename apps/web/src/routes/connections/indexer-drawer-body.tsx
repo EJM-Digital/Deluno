@@ -15,6 +15,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeGlobalSharingRule, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { formatSeconds, healthChip, relative, vipWarningActive } from "./format";
+import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
 export function IndexerDrawerBody({
@@ -144,14 +145,15 @@ export function IndexerDrawerBody({
 
       <DrawerSection title="Search details">
         <Disclosure title="Categories" summary={categoriesSummary} open={categoriesOpen} onOpenChange={setCategoriesOpen}>
-          <Field label="Category ids" help="The numbers this indexer uses for movies and TV. Change them only if your indexer uses non-standard ones.">
-            <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
-          </Field>
+          <CategoryPicker value={form.categories} scope={form.scope} onChange={(categories) => setForm((current) => ({ ...current, categories }))} />
           {standardCategories ? null : (
             <Button type="button" variant="outline" size="sm" onClick={() => setForm((current) => ({ ...current, categories: preset.defaultCategories(current.scope) }))}>
               Use the standard {scopeWords} categories
             </Button>
           )}
+          <Field label="Category ids" help="A number your indexer uses that the picker above doesn't know a name for yet. Comma-separated; ticking a box above edits this too.">
+            <Input value={form.categories} onChange={(event) => setForm((current) => ({ ...current, categories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="2000,2040,5000,5040" />
+          </Field>
           {form.scope === "tv" || form.scope === "both" ? (
             <Field label="Anime categories" help="This indexer's own category numbers for anime, if it catalogues anime separately from normal TV. Leave blank to use the categories above for anime too.">
               <Input value={form.animeCategories} onChange={(event) => setForm((current) => ({ ...current, animeCategories: event.target.value }))} className="font-mono text-[length:var(--type-caption)]" placeholder="5070" />
