@@ -519,6 +519,58 @@ public sealed class CustomFormatDecisionParityTests
         Assert.False(CustomFormatDefinitionMatcher.Evaluate("Movie.2026.1080p.BluRay-GRP", definition, anyCondition: false).IsMatch);
     }
 
+    /// <summary>
+    /// PreviewImportedConditions (#777, #774): every condition it can
+    /// interpret is kept, and one it cannot is reported by name rather than
+    /// silently dropped.
+    /// </summary>
+    [Fact]
+    public void Preview_keeps_every_supported_condition_and_names_the_ones_it_drops()
+    {
+        const string definition =
+            "[{\"implementation\":\"SourceSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"web-dl\"}]},"
+            + "{\"implementation\":\"LanguageSpecification\",\"fields\":[{\"name\":\"value\",\"value\":\"english\"}]},"
+            + "{\"implementation\":\"QualityModifierSpecification\",\"fields\":[{\"name\":\"value\",\"value\":99}]}]";
+
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions(definition);
+
+        var supported = Assert.Single(preview.Supported);
+        Assert.Equal("source", supported.Type);
+        Assert.Equal(2, preview.Dropped.Count);
+        Assert.Contains(preview.Dropped, item => item.Contains("LanguageSpecification", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(preview.Dropped, item => item.Contains("QualityModifierSpecification", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Preview_keeps_every_condition_of_a_fully_supported_format()
+    {
+        const string definition = "[{\"type\":\"source\",\"value\":\"web\"},{\"type\":\"hdr\",\"value\":\"HDR10\"}]";
+
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions(definition);
+
+        Assert.Equal(2, preview.Supported.Count);
+        Assert.Empty(preview.Dropped);
+    }
+
+    [Fact]
+    public void Preview_of_a_legacy_newline_pattern_is_fully_supported()
+    {
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions("\\bNetflix\\b\n\\bNF\\b");
+
+        Assert.Equal(2, preview.Supported.Count);
+        Assert.All(preview.Supported, condition => Assert.Equal("releaseTitle", condition.Type));
+        Assert.Empty(preview.Dropped);
+    }
+
+    [Fact]
+    public void Preview_of_invalid_json_reports_a_readable_error_instead_of_throwing()
+    {
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions("[{not json");
+
+        Assert.Empty(preview.Supported);
+        Assert.NotEmpty(preview.Dropped);
+    }
+
     private sealed record MatchCase(
         string Id,
         string Conditions,

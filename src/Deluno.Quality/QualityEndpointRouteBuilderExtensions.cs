@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
@@ -1124,6 +1125,72 @@ public static class QualityEndpointRouteBuilderExtensions
             return removed ? Results.NoContent() : Results.NotFound();
         });
 
+        // #777: JSON import/export, separate from TRaSH guide sync. Export
+        // always re-derives Deluno's own re-importable condition shape
+        // (CustomFormatDefinitionMatcher.PreviewImportedConditions), even for
+        // a format saved from an imported Radarr/Sonarr array, so exporting
+        // and re-importing a format is always a clean round trip.
+        customFormats.MapGet("export", async ([FromServices] IQualityRepository repository, CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListCustomFormatsAsync(cancellationToken);
+            return Results.Json(items.Select(ToCustomFormatExportItem).ToArray(), ReleasePreferenceJson.Options);
+        });
+
+        customFormats.MapGet("{id}/export", async (
+            string id,
+            [FromServices] IQualityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListCustomFormatsAsync(cancellationToken);
+            var item = items.FirstOrDefault(candidate => candidate.Id == id);
+            return item is null
+                ? Results.NotFound()
+                : Results.Json(ToCustomFormatExportItem(item), ReleasePreferenceJson.Options);
+        });
+
+        customFormats.MapPost("import", async (
+            HttpContext httpContext,
+            [FromBody] JsonElement body,
+            [FromServices] IQualityRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            // One format or an array of them (#777's single/bulk import).
+            var items = body.ValueKind == JsonValueKind.Array
+                ? body.EnumerateArray().ToArray()
+                : [body];
+            if (items.Length == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["conditions"] = ["Nothing to import."]
+                });
+            }
+
+            var existing = (await repository.ListCustomFormatsAsync(cancellationToken)).ToList();
+            var results = new List<CustomFormatImportResult>();
+            foreach (var item in items)
+            {
+                var result = await ImportOneCustomFormatAsync(item, repository, existing, cancellationToken);
+                results.Add(result);
+                if (result.Imported)
+                {
+                    // A second item in the same batch reusing the name of the
+                    // one just created must also be caught as a duplicate.
+                    existing.Add(new CustomFormatItem(
+                        result.Id!, result.Name!, ReadImportString(item, "mediaType") ?? "movies", 0, null, "[]", true,
+                        DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+                }
+            }
+
+            return Results.Json(results, ReleasePreferenceJson.Options);
+        });
+
         policySets.MapGet(string.Empty, async ([FromServices] IQualityRepository repository, CancellationToken cancellationToken) =>
         {
             var items = await repository.ListPolicySetsAsync(cancellationToken);
@@ -1594,6 +1661,105 @@ public static class QualityEndpointRouteBuilderExtensions
             ];
         }
     }
+
+    private static CustomFormatExportItem ToCustomFormatExportItem(CustomFormatItem item)
+    {
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions(item.Conditions, item.MediaType);
+        return new CustomFormatExportItem(item.Name, item.MediaType, item.Score, item.UpgradeAllowed, preview.Supported);
+    }
+
+    /// <summary>
+    /// Imports one format from an import payload item (#777). A condition
+    /// this matcher cannot interpret is dropped from what gets saved, but
+    /// always reported in <see cref="CustomFormatImportResult.DroppedConditions"/>
+    /// (#774) rather than silently lost or failing the whole batch over it.
+    /// </summary>
+    private static async Task<CustomFormatImportResult> ImportOneCustomFormatAsync(
+        JsonElement item,
+        IQualityRepository repository,
+        IReadOnlyList<CustomFormatItem> existing,
+        CancellationToken cancellationToken)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+        {
+            return new CustomFormatImportResult(null, false, null, [], "Each imported item must be a JSON object.");
+        }
+
+        var name = ReadImportString(item, "name");
+        var mediaType = MediaPolicyCatalog.NormalizeMediaType(ReadImportString(item, "mediaType"));
+        var score = ReadImportInt(item, "score") ?? 0;
+        var upgradeAllowed = ReadImportBool(item, "upgradeAllowed") ?? true;
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return new CustomFormatImportResult(name, false, null, [], "Give this custom format a name.");
+        }
+
+        var trimmedName = name.Trim();
+        if (existing.Any(candidate =>
+                string.Equals(candidate.Name.Trim(), trimmedName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(MediaPolicyCatalog.NormalizeMediaType(candidate.MediaType), mediaType, StringComparison.OrdinalIgnoreCase)))
+        {
+            return new CustomFormatImportResult(
+                trimmedName,
+                false,
+                null,
+                [],
+                $"A {mediaType} custom rule named '{trimmedName}' already exists. Rename it before importing, or edit that rule instead.");
+        }
+
+        if (!item.TryGetProperty("conditions", out var conditionsElement)
+            || (conditionsElement.ValueKind != JsonValueKind.Array && conditionsElement.ValueKind != JsonValueKind.String))
+        {
+            return new CustomFormatImportResult(trimmedName, false, null, [], "No conditions were supplied.");
+        }
+
+        var rawConditions = conditionsElement.ValueKind == JsonValueKind.String
+            ? conditionsElement.GetString()
+            : conditionsElement.GetRawText();
+        var preview = CustomFormatDefinitionMatcher.PreviewImportedConditions(rawConditions, mediaType);
+        if (preview.Supported.Count == 0)
+        {
+            return new CustomFormatImportResult(
+                trimmedName,
+                false,
+                null,
+                preview.Dropped,
+                "None of this format's conditions could be understood.");
+        }
+
+        var finalConditions = JsonSerializer.Serialize(preview.Supported, ReleasePreferenceJson.Options);
+        var created = await repository.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(trimmedName, mediaType, score, TrashId: null, Conditions: finalConditions, upgradeAllowed),
+            cancellationToken);
+
+        return new CustomFormatImportResult(created.Name, true, created.Id, preview.Dropped, null);
+    }
+
+    private static string? ReadImportString(JsonElement element, string propertyName)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(propertyName, out var value)
+           && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int? ReadImportInt(JsonElement element, string propertyName)
+        => element.ValueKind == JsonValueKind.Object
+           && element.TryGetProperty(propertyName, out var value)
+           && value.ValueKind == JsonValueKind.Number
+           && value.TryGetInt32(out var number)
+            ? number
+            : null;
+
+    private static bool? ReadImportBool(JsonElement element, string propertyName)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var value)
+            ? value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => (bool?)null
+            }
+            : null;
 
     private static Dictionary<string, string[]> ValidateCustomFormat(string? name)
     {
