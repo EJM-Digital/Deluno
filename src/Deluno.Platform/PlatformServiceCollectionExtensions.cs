@@ -1,5 +1,7 @@
 using Deluno.Platform.Data;
 using Deluno.Contracts;
+using Deluno.Contracts.Connectivity;
+using Deluno.Platform.Connectivity;
 using Deluno.Platform.Migration;
 using Deluno.Security;
 using Deluno.Security.Hardening;
@@ -16,6 +18,11 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<IUnifiedExclusionRepository, SqliteUnifiedExclusionRepository>();
         services.AddSingleton<IRecycleBinService, RecycleBinService>();
         services.AddSingleton<IDownloadHealthRepository, SqliteDownloadHealthRepository>();
+        // #901: shared by every judge that would otherwise strike, blocklist,
+        // clean up, escalate a backoff or search again, so an internet outage
+        // is never mistaken for a bad release.
+        services.AddSingleton<IConnectivityOutageRepository, SqliteConnectivityOutageRepository>();
+        services.AddSingleton<IConnectivityMonitor, ConnectivityMonitor>();
         services.AddSingleton<IDownloadSharingRepository, SqliteDownloadSharingRepository>();
         services.AddSingleton<IRssSyncStateRepository, SqliteRssSyncStateRepository>();
         services.AddSingleton<IKeptDownloadsRepository, SqliteKeptDownloadsRepository>();
