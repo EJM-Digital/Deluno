@@ -80,7 +80,7 @@ import { Switch } from "../components/ui/switch";
 import { ColumnPicker } from "../components/ui/column-picker";
 import { realtimeToast, toast } from "../components/shell/toaster";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
-import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
+import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
 /**
@@ -1315,6 +1315,13 @@ export function QueuePage() {
                         Dismiss
                       </Button>
                     </div>
+                    {/* #905: which rule is tripping, its strikes so far, and
+                        when the next strike or action is due - a finding
+                        outside the rule engine (client-stalled, and so on)
+                        has no ruleId and shows only its strike count. */}
+                    <span className="text-[length:var(--type-caption)] text-muted-foreground">
+                      {healthFindingRuleSummary(finding, preferences)}
+                    </span>
                     {finding.recommendedAction ? (
                       <span className="text-[length:var(--type-caption)] text-muted-foreground">{finding.recommendedAction}</span>
                     ) : null}
@@ -2676,6 +2683,44 @@ function isHealthyClient(status: string) {
 /** #815: the torrent's own reported tracker privacy, or "Unknown" when the client did not say. */
 function privacyLabel(isPrivate: boolean | null | undefined) {
   return isPrivate === true ? "Private" : isPrivate === false ? "Public" : "Unknown";
+}
+
+/** Matches Settings -> Download health's own copy for each rule kind (settings-download-health-page.tsx). */
+const HEALTH_RULE_KIND_LABELS: Record<string, string> = {
+  "no-progress": "No progress",
+  "too-slow": "Too slow",
+  "low-peers": "Not enough peers",
+  "dead-torrent": "Dead torrent"
+};
+
+/** Matches Settings -> Download health's own copy for each action preset (settings-download-health-page.tsx). */
+const HEALTH_RULE_ACTION_LABELS: Record<string, string> = {
+  "just-tell-me": "Just tell me",
+  "retry-elsewhere": "Retry elsewhere, keep files",
+  replace: "Replace it"
+};
+
+/**
+ * #905: "which rule it is tripping, its strikes so far and when the next
+ * strike or action is due". A finding outside the rule engine (the client
+ * itself reporting stalled, for example) has no ruleId and no per-rule
+ * action, so it only ever shows its own strike count.
+ */
+export function healthFindingRuleSummary(finding: DownloadHealthFinding, preferences: DisplayPreferences) {
+  const strikes = `${finding.strikeCount} strike${finding.strikeCount === 1 ? "" : "s"} so far`;
+  if (!finding.ruleId) return strikes;
+
+  const rule = HEALTH_RULE_KIND_LABELS[finding.kind] ?? finding.kind;
+  const action = finding.ruleActionPreset ? HEALTH_RULE_ACTION_LABELS[finding.ruleActionPreset] ?? finding.ruleActionPreset : null;
+  const limit = finding.ruleStrikeLimit ? ` of ${finding.ruleStrikeLimit}` : "";
+  const due = finding.nextStrikeUtc ? `next strike due ${formatPreferenceDateTime(finding.nextStrikeUtc, preferences)}` : null;
+
+  return [
+    `${rule} rule`,
+    `${strikes}${limit}`,
+    due,
+    action ? `set to ${action.toLowerCase()}` : null
+  ].filter(Boolean).join(" · ");
 }
 
 function formatEta(seconds: number) {

@@ -1149,6 +1149,12 @@ export interface DownloadHealthFinding {
   strikeCount: number;
   candidateBlocked: boolean;
   ignoredUntilUtc: string | null;
+  /** #905: the configured rule (Settings -> Download health) driving this finding's strikes, when one matched. Null for a finding outside the rule engine. */
+  ruleId: string | null;
+  ruleActionPreset: string | null;
+  ruleStrikeLimit: number | null;
+  /** #905: when the next strike is due, given the rule's own timer (or the platform-wide fallback for a finding outside the rule engine). */
+  nextStrikeUtc: string | null;
 }
 
 export interface DownloadHealthRecord {
