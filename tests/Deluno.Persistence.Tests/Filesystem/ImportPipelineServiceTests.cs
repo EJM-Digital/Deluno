@@ -3465,7 +3465,7 @@ public sealed class ImportPipelineServiceTests
         var completed = Assert.Single(history, item => item.Category == "filesystem.import.completed");
         Assert.Contains("Sintel.2010.1080p.NF.WEB-DL.DDP5.1.H.264-DELUNO", completed.Message, StringComparison.Ordinal);
         var named = Assert.Single(history, item => item.Category == "filesystem.import.named");
-        Assert.Contains("Sintel (2010) [WEB 1080p] [NF].mkv", named.Message, StringComparison.Ordinal);
+        Assert.True(named.Message.Contains("Sintel (2010) [WEB 1080p] [NF].mkv", StringComparison.Ordinal), $"named message was: {named.Message}");
         Assert.Contains(history, item => item.Category == "filesystem.import.started");
     }
 
