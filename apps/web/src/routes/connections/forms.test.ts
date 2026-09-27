@@ -120,6 +120,14 @@ describe("client form Use SSL and URL Base", () => {
     expect(Object.keys(indexerFormErrors({ ...base, requiredWords: long }, false))).toEqual(["requiredWords"]);
     expect(Object.keys(indexerFormErrors({ ...base, ignoredWords: long }, false))).toEqual(["ignoredWords"]);
   });
+
+  // #746: a per-indexer MultiLanguages setting, validated like the other
+  // free-text acquisition fields.
+  it("refuses a multi-languages value over 200 characters", () => {
+    const base = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    expect(indexerFormErrors({ ...base, multiLanguages: "Original, French" }, false)).toEqual({});
+    expect(Object.keys(indexerFormErrors({ ...base, multiLanguages: "a".repeat(201) }, false))).toEqual(["multiLanguages"]);
+  });
 });
 
 // #606: a built-in tracker is chosen from Deluno's list, not typed as a URL.

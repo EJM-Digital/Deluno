@@ -77,7 +77,7 @@ public sealed class SqliteConnectionsRepository(
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
                 api_path, additional_parameters, anime_categories, minimum_seeders,
-                required_words, ignored_words
+                required_words, ignored_words, multi_languages
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -133,7 +133,8 @@ public sealed class SqliteConnectionsRepository(
                 AnimeCategories = reader.IsDBNull(41) ? null : reader.GetString(41),
                 MinimumSeeders = reader.IsDBNull(42) ? null : reader.GetInt32(42),
                 RequiredWords = reader.IsDBNull(43) ? null : reader.GetString(43),
-                IgnoredWords = reader.IsDBNull(44) ? null : reader.GetString(44)
+                IgnoredWords = reader.IsDBNull(44) ? null : reader.GetString(44),
+                MultiLanguages = reader.IsDBNull(45) ? null : reader.GetString(45)
             });
         }
 
@@ -285,6 +286,7 @@ public sealed class SqliteConnectionsRepository(
             PreferIndexerFlags = request.PreferIndexerFlags,
             RequiredWords = NormalizeBlankToNull(request.RequiredWords),
             IgnoredWords = NormalizeBlankToNull(request.IgnoredWords),
+            MultiLanguages = NormalizeBlankToNull(request.MultiLanguages),
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
             AutomaticSearchEnabled = request.AutomaticSearchEnabled,
@@ -308,7 +310,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
                 definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
-                minimum_seeders, required_words, ignored_words
+                minimum_seeders, required_words, ignored_words, multi_languages
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -317,7 +319,7 @@ public sealed class SqliteConnectionsRepository(
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
                 @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
-                @minimumSeeders, @requiredWords, @ignoredWords
+                @minimumSeeders, @requiredWords, @ignoredWords, @multiLanguages
             );
             """;
 
@@ -363,6 +365,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@minimumSeeders", item.MinimumSeeders);
         AddParameter(command, "@requiredWords", item.RequiredWords);
         AddParameter(command, "@ignoredWords", item.IgnoredWords);
+        AddParameter(command, "@multiLanguages", item.MultiLanguages);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -429,6 +432,9 @@ public sealed class SqliteConnectionsRepository(
         var newIgnoredWords = request.ClearIgnoredWords == true
             ? null
             : NormalizeBlankToNull(request.IgnoredWords) ?? existing.IgnoredWords;
+        var newMultiLanguages = request.ClearMultiLanguages == true
+            ? null
+            : NormalizeBlankToNull(request.MultiLanguages) ?? existing.MultiLanguages;
         var newAvailabilityDelay = request.ClearAvailabilityDelay == true
             ? null
             : request.AvailabilityDelayDays ?? existing.AvailabilityDelayDays;
@@ -471,6 +477,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_seeders = @minimumSeeders,
                 required_words = @requiredWords,
                 ignored_words = @ignoredWords,
+                multi_languages = @multiLanguages,
                 prefer_indexer_flags = @preferIndexerFlags,
                 availability_delay_days = @availabilityDelayDays,
                 rss_enabled = @rssEnabled,
@@ -515,6 +522,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@minimumSeeders", newMinimumSeeders);
         AddParameter(command, "@requiredWords", newRequiredWords);
         AddParameter(command, "@ignoredWords", newIgnoredWords);
+        AddParameter(command, "@multiLanguages", newMultiLanguages);
         AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
         AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
@@ -554,6 +562,7 @@ public sealed class SqliteConnectionsRepository(
             MinimumSeeders = newMinimumSeeders,
             RequiredWords = newRequiredWords,
             IgnoredWords = newIgnoredWords,
+            MultiLanguages = newMultiLanguages,
             PreferIndexerFlags = newPreferIndexerFlags,
             AvailabilityDelayDays = newAvailabilityDelay,
             RssEnabled = newRssEnabled,

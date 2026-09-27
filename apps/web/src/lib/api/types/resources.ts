@@ -741,6 +741,8 @@ export interface IndexerItem {
   requiredWords?: string | null;
   /** Comma-separated, case-insensitive words that reject a release from this indexer before grab (#744). */
   ignoredWords?: string | null;
+  /** What this indexer's own MULTI tag means, e.g. "Original, French" (#746). Null uses Deluno's fixed "Multilingual" default. */
+  multiLanguages?: string | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;
   automaticSearchEnabled?: boolean;

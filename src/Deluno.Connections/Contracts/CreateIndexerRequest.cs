@@ -35,6 +35,9 @@ public sealed record CreateIndexerRequest(
     // before grab (#744), separate from PreferIndexerFlags' ranking nudge.
     string? RequiredWords = null,
     string? IgnoredWords = null,
+    // The languages this indexer's own MULTI tag means (#746). Null uses
+    // Deluno's fixed "Multilingual" default.
+    string? MultiLanguages = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,
     bool AutomaticSearchEnabled = true,

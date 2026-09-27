@@ -49,6 +49,8 @@ public sealed record UpdateIndexerRequest(
     bool? ClearRequiredWords = null,
     string? IgnoredWords = null,
     bool? ClearIgnoredWords = null,
+    string? MultiLanguages = null,
+    bool? ClearMultiLanguages = null,
     int? AvailabilityDelayDays = null,
     bool? ClearAvailabilityDelay = null,
     bool? RssEnabled = null,

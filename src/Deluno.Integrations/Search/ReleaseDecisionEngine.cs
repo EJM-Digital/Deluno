@@ -447,7 +447,8 @@ public static partial class ReleaseDecisionEngine
                     preferencePlan,
                     input.ReleaseName,
                     normalizedCandidate,
-                    indexerFlags: input.IndexerFlags),
+                    indexerFlags: input.IndexerFlags,
+                    multiLanguages: input.MultiLanguages),
                 input.Seeders,
                 isSeasonPack);
             preferenceEvaluation = ReleasePreferenceEvaluator.Evaluate(
@@ -981,6 +982,11 @@ public sealed record ReleaseDecisionInput(
     /// </summary>
     string? RequiredWords = null,
     string? IgnoredWords = null,
+    /// <summary>
+    /// What this indexer's own MULTI tag means (#746), e.g. "Original,
+    /// French". Null keeps Deluno's fixed "Multilingual" default.
+    /// </summary>
+    string? MultiLanguages = null,
     DateTimeOffset? AvailableUtc = null,
     int? AvailabilityDelayDays = null,
     ReleasePreferencePlan? PreferencePlan = null,
