@@ -225,12 +225,12 @@ public sealed class DownloadClientPersistenceTests
     }
 
     [Fact]
-    public async Task Download_client_path_mappings_are_scoped_to_the_client_and_can_be_removed()
+    public async Task Download_client_path_mappings_are_scoped_to_the_clients_host_and_can_be_removed()
     {
         using var storage = TestStorage.Create();
         var repo = await CreateRepositoryAsync(storage);
-        var first = await repo.CreateDownloadClientAsync(BaseCreateRequest("qBittorrent"), CancellationToken.None);
-        var second = await repo.CreateDownloadClientAsync(BaseCreateRequest("SABnzbd"), CancellationToken.None);
+        var first = await repo.CreateDownloadClientAsync(BaseCreateRequest("qBittorrent") with { Host = "torrent-box" }, CancellationToken.None);
+        var second = await repo.CreateDownloadClientAsync(BaseCreateRequest("SABnzbd") with { Host = "usenet-box" }, CancellationToken.None);
 
         var mapping = await repo.CreateDownloadClientPathMappingAsync(
             first.Id,
@@ -242,6 +242,7 @@ public sealed class DownloadClientPersistenceTests
             CancellationToken.None);
 
         Assert.NotNull(mapping);
+        // Different hosts: each client sees only its own mapping (#809).
         var firstMappings = await repo.ListDownloadClientPathMappingsAsync(first.Id, CancellationToken.None);
         Assert.Single(firstMappings);
         Assert.Equal("/downloads/complete", firstMappings[0].RemotePath);
@@ -251,6 +252,34 @@ public sealed class DownloadClientPersistenceTests
         Assert.True(removed);
         Assert.Empty(await repo.ListDownloadClientPathMappingsAsync(first.Id, CancellationToken.None));
         Assert.Single(await repo.ListDownloadClientPathMappingsAsync(second.Id, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// #809: a mapping added under one client is visible and reusable for a
+    /// second client sharing the same host — Radarr/Sonarr's own "one global
+    /// list keyed by host" behaviour, instead of every client re-entering the
+    /// same remote-to-local translation for itself.
+    /// </summary>
+    [Fact]
+    public async Task Download_client_path_mapping_added_for_one_client_applies_to_a_second_client_sharing_its_host()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var first = await repo.CreateDownloadClientAsync(BaseCreateRequest("qBittorrent") with { Host = "nas.local" }, CancellationToken.None);
+        var second = await repo.CreateDownloadClientAsync(BaseCreateRequest("Transmission") with { Host = "NAS.LOCAL" }, CancellationToken.None);
+
+        var mapping = await repo.CreateDownloadClientPathMappingAsync(
+            first.Id,
+            new CreateDownloadClientPathMappingRequest("/downloads/complete", "D:\\Downloads\\complete", true, 10),
+            CancellationToken.None);
+        Assert.NotNull(mapping);
+
+        var secondMappings = await repo.ListDownloadClientPathMappingsAsync(second.Id, CancellationToken.None);
+
+        var shared = Assert.Single(secondMappings);
+        Assert.Equal(mapping!.Id, shared.Id);
+        Assert.Equal("/downloads/complete", shared.RemotePath);
+        Assert.Equal("D:\\Downloads\\complete", shared.LocalPath);
     }
 
     // ── UpdateDownloadClientAsync — null/patch semantics ──────────────────────

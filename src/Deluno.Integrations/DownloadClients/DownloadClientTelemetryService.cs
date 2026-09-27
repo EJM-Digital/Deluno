@@ -176,8 +176,12 @@ public sealed class DownloadClientTelemetryService(
                 client.LastHealthFailure));
         }
 
+        var clientHostsById = orderedClients.ToDictionary(
+            item => item.Id,
+            item => string.IsNullOrWhiteSpace(item.Host) ? null : item.Host.Trim().ToLowerInvariant(),
+            StringComparer.OrdinalIgnoreCase);
         var mappedSnapshots = snapshots
-            .Select(snapshot => ApplyPathMappings(snapshot, pathMappings))
+            .Select(snapshot => ApplyPathMappings(snapshot, pathMappings, clientHostsById.GetValueOrDefault(snapshot.ClientId)))
             .ToArray();
 
         // Ownership is decided once, here, and carried into everything below
@@ -2548,12 +2552,23 @@ public sealed class DownloadClientTelemetryService(
         return segments.Aggregate(match.Mapping.LocalPath, Path.Combine);
     }
 
+    /// <summary>
+    /// A mapping applies to any client whose host matches, not only the
+    /// client it was originally added under (#809) - <paramref name="clientHost"/>
+    /// is this snapshot's own client's host, already normalized the same way
+    /// a mapping's <see cref="DownloadClientPathMappingItem.Host"/> is. A
+    /// client with no host recorded falls back to exactly today's behaviour:
+    /// only the mappings created under its own id.
+    /// </summary>
     private static DownloadClientTelemetrySnapshot ApplyPathMappings(
         DownloadClientTelemetrySnapshot snapshot,
-        IReadOnlyList<DownloadClientPathMappingItem> mappings)
+        IReadOnlyList<DownloadClientPathMappingItem> mappings,
+        string? clientHost)
     {
         var clientMappings = mappings
-            .Where(item => string.Equals(item.DownloadClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase))
+            .Where(item =>
+                string.Equals(item.DownloadClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase) ||
+                (clientHost is not null && item.Host is not null && string.Equals(item.Host, clientHost, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
         if (clientMappings.Length == 0) return snapshot;
 
