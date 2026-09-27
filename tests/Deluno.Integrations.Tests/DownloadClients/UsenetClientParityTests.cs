@@ -208,6 +208,64 @@ public sealed class UsenetClientParityTests
         Assert.Equal("healthy", snapshot!.HealthStatus);
     }
 
+    // ── Standby/pause state and client version (#812) ───────────────────────
+
+    [Fact]
+    public async Task NzbGet_snapshot_reads_paused_when_downloads_are_paused()
+    {
+        var handler = new RoutedNzbGetHandler(
+            listgroups: "[]",
+            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500000,"ServerStandBy":true,"DownloadPaused":true,"PostPaused":false,"ScanPaused":false}""",
+            history: "[]",
+            version: "\"21.1\"");
+
+        var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.True(snapshot!.ClientPaused);
+        Assert.Equal("21.1", snapshot.ClientVersion);
+    }
+
+    [Fact]
+    public async Task NzbGet_standby_alone_with_nothing_explicitly_paused_is_not_read_as_paused()
+    {
+        var handler = new RoutedNzbGetHandler(
+            listgroups: "[]",
+            status: """{"DownloadRate":0,"FreeDiskSpaceMB":500000,"ServerStandBy":true,"DownloadPaused":false,"PostPaused":false,"ScanPaused":false}""",
+            history: "[]",
+            version: "\"21.1\"");
+
+        var snapshot = await new NzbGetDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(NzbGetClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.False(snapshot!.ClientPaused);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_snapshot_reads_paused_and_version()
+    {
+        var handler = new RoutedSabHandler(
+            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","paused":true}}""",
+            history: """{"history":{"slots":[]}}""",
+            version: """{"version":"4.3.2"}""");
+
+        var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.True(snapshot!.ClientPaused);
+        Assert.Equal("4.3.2", snapshot.ClientVersion);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_snapshot_is_not_paused_when_the_client_says_so()
+    {
+        var handler = new RoutedSabHandler(
+            queue: """{"queue":{"speed":"0","slots":[],"diskspace1":"925.3","diskspacetotal1":"2000.0","paused":false}}""",
+            history: """{"history":{"slots":[]}}""",
+            version: """{"version":"4.3.2"}""");
+
+        var snapshot = await new SabnzbdDownloadClient(new StubHttpClientFactory(handler)).GetSnapshotAsync(SabClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.False(snapshot!.ClientPaused);
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
     private static DownloadClientItem NzbGetClient()
@@ -235,8 +293,8 @@ public sealed class UsenetClientParityTests
         }
     }
 
-    /// <summary>Answers NZBGet's JSON-RPC calls by method name, as a snapshot poll makes three of them.</summary>
-    private sealed class RoutedNzbGetHandler(string listgroups, string status, string history) : HttpMessageHandler
+    /// <summary>Answers NZBGet's JSON-RPC calls by method name, as a snapshot poll makes four of them.</summary>
+    private sealed class RoutedNzbGetHandler(string listgroups, string status, string history, string version = "\"0.0\"") : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -248,19 +306,24 @@ public sealed class UsenetClientParityTests
                 "listgroups" => listgroups,
                 "status" => status,
                 "history" => history,
+                "version" => version,
                 _ => "null"
             };
             return JsonResponse($$"""{"version":"1.1","result":{{result}}}""");
         }
     }
 
-    /// <summary>Answers SABnzbd's <c>mode=</c> calls, as a snapshot poll makes queue and history calls.</summary>
-    private sealed class RoutedSabHandler(string queue, string history) : HttpMessageHandler
+    /// <summary>Answers SABnzbd's <c>mode=</c> calls, as a snapshot poll makes queue, history and version calls.</summary>
+    private sealed class RoutedSabHandler(string queue, string history, string? version = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var query = request.RequestUri?.Query ?? string.Empty;
-            var body = query.Contains("mode=history", StringComparison.OrdinalIgnoreCase) ? history : queue;
+            var body = query.Contains("mode=history", StringComparison.OrdinalIgnoreCase)
+                ? history
+                : query.Contains("mode=version", StringComparison.OrdinalIgnoreCase)
+                    ? version ?? """{"version":""}"""
+                    : queue;
             return Task.FromResult(JsonResponse(body));
         }
     }

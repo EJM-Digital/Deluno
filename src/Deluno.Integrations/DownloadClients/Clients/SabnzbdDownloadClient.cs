@@ -124,7 +124,13 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             $"Connected to SABnzbd at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             ParseGbString(payload?.Queue?.DiskSpaceTotal1));
-        return CreateSnapshot(client, queue, capturedUtc, health, message, history.Count > 0 ? history : null, freeSpaceBytes: freeSpaceBytes);
+        // #812: SABnzbd's own global pause, read from the same queue/status
+        // call rather than a second request.
+        var clientPaused = payload?.Queue?.Paused;
+        var clientVersion = await GetVersionAsync(http, baseUri, apiKey, cancellationToken);
+        return CreateSnapshot(
+            client, queue, capturedUtc, health, message, history.Count > 0 ? history : null,
+            freeSpaceBytes: freeSpaceBytes, clientPaused: clientPaused, clientVersion: clientVersion);
     }
 
     public override async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -400,6 +406,26 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             ? Convert.ToInt64(gb * 1_000_000_000d)
             : null;
 
+    // #812: mode=version is its own call, separate from queue/status. A
+    // failure here should never take down the whole snapshot — an older or
+    // momentarily unreachable SABnzbd still has a queue worth showing.
+    private static async Task<string?> GetVersionAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=version&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+            var payload = await response.Content.ReadFromJsonAsync<SabVersionResponse>(cancellationToken);
+            return string.IsNullOrWhiteSpace(payload?.Version) ? null : payload.Version;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record SabVersionResponse([property: JsonPropertyName("version")] string? Version);
+
     private static async Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryCoreAsync(HttpClient http, DownloadClientItem client, Uri baseUri, string apiKey, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
     {
         using var response = await http.GetAsync(new Uri(baseUri, $"api?mode=history&output=json&apikey={Uri.EscapeDataString(apiKey)}"), cancellationToken);
@@ -620,7 +646,11 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         [property: JsonPropertyName("speed")] string? Speed,
         [property: JsonPropertyName("slots")] IReadOnlyList<SabSlot>? Slots,
         [property: JsonPropertyName("diskspace1")] string? DiskSpace1,
-        [property: JsonPropertyName("diskspacetotal1")] string? DiskSpaceTotal1);
+        [property: JsonPropertyName("diskspacetotal1")] string? DiskSpaceTotal1,
+        // #812: SABnzbd's own global pause flag.
+        [property: JsonPropertyName("paused")] bool? Paused,
+        // #813: set once SABnzbd has a queue-level warning waiting.
+        [property: JsonPropertyName("have_warnings")] string? HaveWarnings);
     private sealed record SabSlot([property: JsonPropertyName("nzo_id")] string? NzoId, [property: JsonPropertyName("filename")] string? Filename, [property: JsonPropertyName("cat")] string? Category, [property: JsonPropertyName("status")] string? Status, [property: JsonPropertyName("mb")] string? Mb, [property: JsonPropertyName("mbleft")] string? Mbleft, [property: JsonPropertyName("timeleft")] string? TimeLeft);
     private sealed record SabHistoryResponse([property: JsonPropertyName("history")] SabHistory? History);
     private sealed record SabHistory([property: JsonPropertyName("slots")] IReadOnlyList<SabHistorySlot>? Slots);

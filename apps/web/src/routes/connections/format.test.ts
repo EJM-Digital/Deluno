@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { healthChip, indexerFlagSelected, splitIndexerFlags, toggleIndexerFlag, vipWarningActive } from "./format";
 
+// #812: the client itself reporting paused/standby has to read as "Paused",
+// not the generic unhealthy/idle status Deluno shows when it simply cannot
+// reach the client.
+describe("healthChip client-paused state (#812)", () => {
+  const item = { isEnabled: true, healthStatus: "healthy" };
+
+  it("shows Paused when the client itself reports it is paused", () => {
+    expect(healthChip(item, true)).toEqual({ tone: "info", label: "Paused" });
+  });
+
+  it("shows the ordinary health chip when the client is not paused", () => {
+    expect(healthChip(item, false)).toEqual({ tone: "ok", label: "Healthy" });
+  });
+
+  it("Off still wins over a stale paused reading for a disabled client", () => {
+    expect(healthChip({ ...item, isEnabled: false }, true)).toEqual({ tone: "idle", label: "Off" });
+  });
+});
+
 describe("indexer flag helpers (#745)", () => {
   it("splits and trims a comma-separated flag list", () => {
     expect(splitIndexerFlags(" freeleech ,  double upload,")).toEqual(["freeleech", "double upload"]);

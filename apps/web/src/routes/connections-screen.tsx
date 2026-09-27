@@ -825,15 +825,15 @@ export function IndexersPage() {
               <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Categories" }, { label: "Now" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
                 {clients.map((item) => {
                   const sentBy = routing.filter((route) => route.downloadClients.some((client) => client.downloadClientId === item.id)).map((route) => route.libraryName);
-                  const chip = unusedChip(item, sentBy.length, libraries.length) ?? healthChip(item);
-                  const preset = CLIENT_PRESETS.find((candidate) => candidate.protocol === item.protocol);
                   const live = telemetryByClient.get(item.id);
+                  const chip = unusedChip(item, sentBy.length, libraries.length) ?? healthChip(item, live?.clientPaused ?? false);
+                  const preset = CLIENT_PRESETS.find((candidate) => candidate.protocol === item.protocol);
                   const movies = item.moviesCategory ?? item.categoryTemplate ?? "";
                   const tv = item.tvCategory ?? "";
                   const mappings = mappingsByClient.get(item.id) ?? [];
                   return (
                     <ListRow key={item.id} onClick={() => openClient(item)} selected={drawer.kind === "client" && drawer.id === item.id}>
-                      <ListNameCell name={item.name} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
+                      <ListNameCell name={live?.clientVersion ? `${item.name} (v${live.clientVersion})` : item.name} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
                       <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? "No library sends downloads here" : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />

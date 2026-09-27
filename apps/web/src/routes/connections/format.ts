@@ -30,8 +30,12 @@ export function vipWarningActive(item: { vipExpiresUtc?: string | null; vipWarni
   return Date.now() >= warnsFrom;
 }
 
-export function healthChip(item: { isEnabled: boolean; healthStatus: string; rateLimitedUntilUtc?: string | null; vipExpiresUtc?: string | null; vipWarningAcknowledgedExpiryUtc?: string | null }): { tone: NonNullable<ChipProps["tone"]>; label: string } {
+export function healthChip(item: { isEnabled: boolean; healthStatus: string; rateLimitedUntilUtc?: string | null; vipExpiresUtc?: string | null; vipWarningAcknowledgedExpiryUtc?: string | null }, clientPaused?: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (!item.isEnabled) return statusPresentation("connection.off");
+  // #812: the client itself reports it is paused/on standby — say that
+  // instead of a generic unhealthy/idle status; nothing here calls for the
+  // usual "check the config" response.
+  if (clientPaused) return statusPresentation("connection.clientPaused");
   // Deluno backed off deliberately and resumes on its own, so this is motion,
   // not something a person has to deal with. It was amber.
   if (item.rateLimitedUntilUtc && new Date(item.rateLimitedUntilUtc).getTime() > Date.now()) return statusPresentation("connection.rateLimited");
