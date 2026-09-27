@@ -4672,13 +4672,16 @@ public sealed class ImportPipelineServiceTests
         }
         var corruptPath = episodePaths[2];
 
+        var scheduler = new FakeJobScheduler();
         var service = CreateService(
             storage,
             timeProvider,
             platform,
             libraries,
             new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
-            mediaProbeService: new PerPathProbeService(corruptPath, "moov atom not found"));
+            seriesCatalogRepository: repository,
+            mediaProbeService: new PerPathProbeService(corruptPath, "moov atom not found"),
+            mediaServerJobScheduler: scheduler);
         var request = new ImportExecuteRequest(
             new ImportPreviewRequest(
                 packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
@@ -4704,9 +4707,71 @@ public sealed class ImportPipelineServiceTests
         var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
         Assert.True(detail!.Episodes.Single(episode => episode.EpisodeNumber == 1).HasFile);
         Assert.True(detail.Episodes.Single(episode => episode.EpisodeNumber == 3).HasFile);
-        // Still missing, not blocked - the ordinary "search for missing
-        // episodes" job will look for it again on its own.
-        Assert.False(detail.Episodes.Single(episode => episode.EpisodeNumber == 2).HasFile);
+        // Still missing, not blocked.
+        var missingEpisode = detail.Episodes.Single(episode => episode.EpisodeNumber == 2);
+        Assert.False(missingEpisode.HasFile);
+
+        // #889: a search is queued for exactly the missing episode - never
+        // the whole show, which already has two episodes it does not need
+        // searched again.
+        var searchJob = Assert.Single(scheduler.Requests, request => request.RelatedEntityType == "episode" && request.RelatedEntityId == missingEpisode.EpisodeId);
+        Assert.Contains("\"targetEntityId\":\"" + missingEpisode.EpisodeId + "\"", searchJob.PayloadJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(scheduler.Requests, request => request.RelatedEntityType == "episode" &&
+            (request.RelatedEntityId == detail.Episodes.Single(episode => episode.EpisodeNumber == 1).EpisodeId ||
+             request.RelatedEntityId == detail.Episodes.Single(episode => episode.EpisodeNumber == 3).EpisodeId));
+    }
+
+    /// <summary>
+    /// #889: a whole-pack problem - here, nobody chose which show the pack
+    /// belongs to, a setup gap rather than anything wrong with a release -
+    /// still blocks every file (unlike a single file's own problem), but it
+    /// is recorded as "unmatched", never "blocked": a setup gap or an outage
+    /// is never treated as a bad release, whole-pack block or not.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_with_no_chosen_show_blocks_everything_but_never_blocklists()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, Path.Combine(storage.DataRoot, "movies"), downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+
+        var packDirectory = Path.Combine(downloadsPath, "No.Show.Chosen.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"No.Show.Chosen.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x60 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var service = CreateService(
+            storage, timeProvider, platform, libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository);
+        var request = new ImportExecuteRequest(
+            // No SeriesId: exactly the setup gap the pack cannot get past.
+            new ImportPreviewRequest(packDirectory, null, "tv", "No Show Chosen", 2026, [], [], null, null),
+            "copy", false, true);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(409, result.StatusCode);
+        Assert.Contains("Choose the existing TV show", result.Message, StringComparison.Ordinal);
+
+        var recovery = await repository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        var recorded = Assert.Single(recovery.RecentCases, item => item.Summary.Contains("No.Show.Chosen", StringComparison.OrdinalIgnoreCase) || item.Summary.Contains("Choose the existing TV show", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("unmatched", recorded.FailureKind);
+        Assert.DoesNotContain(recovery.RecentCases, item => item.FailureKind == "blocked" || item.Summary.Contains("blocklist", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

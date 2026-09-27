@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Libraries.Data;
 
 namespace Deluno.Filesystem;
 
@@ -119,6 +120,92 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return Results.Json(
                 new { message = result.Message },
                 statusCode: result.StatusCode);
+        });
+
+        // #889 (cleanup sheet E9): a season pack's own leftovers - an extra,
+        // sample, or unlisted special that never resolved to a canonical
+        // episode - are never deleted on their own. This is the screen
+        // action that lets a person confirm the deletion once they have seen
+        // what did not match, one file (or several) at a time.
+        filesystem.MapPost("/import/season-pack/leftovers/delete", async (
+            [FromBody] DeleteSeasonPackLeftoversRequest request,
+            ILibrariesRepository librariesRepository,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            if (request?.Paths is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["paths"] = ["Choose at least one leftover file to delete."]
+                });
+            }
+
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var downloadRoots = libraries
+                .Select(library => library.DownloadsPath)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => Path.GetFullPath(path!))
+                .ToArray();
+
+            var deleted = new List<string>();
+            var refused = new List<string>();
+            foreach (var rawPath in request.Paths.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(rawPath);
+                }
+                catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+                {
+                    refused.Add(rawPath);
+                    continue;
+                }
+
+                // Only ever a file already sitting under a configured
+                // download path - never an arbitrary path a request happens
+                // to name. The same trust boundary the import pipeline
+                // itself reads from.
+                var withinDownloads = downloadRoots.Any(root =>
+                    string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase) ||
+                    fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+                if (!withinDownloads)
+                {
+                    refused.Add(rawPath);
+                    continue;
+                }
+
+                if (!File.Exists(fullPath))
+                {
+                    // Already gone - nothing to confirm, and not a refusal.
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(fullPath);
+                    deleted.Add(fullPath);
+                }
+                catch (IOException)
+                {
+                    refused.Add(rawPath);
+                }
+            }
+
+            if (deleted.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "filesystem.import.season-pack.leftovers-deleted",
+                    $"Deleted {deleted.Count} leftover file(s) from a season pack that never matched a canonical episode: {string.Join(", ", deleted.Select(Path.GetFileName))}.",
+                    System.Text.Json.JsonSerializer.Serialize(new { Deleted = deleted, Refused = refused }),
+                    null,
+                    null,
+                    null,
+                    cancellationToken);
+            }
+
+            return Results.Ok(new { deleted = deleted.Count, refused });
         });
 
         filesystem.MapPost("/import/scan-folder", async (
@@ -647,6 +734,13 @@ public sealed record PathDiagnosticRequest(string? Path);
 public sealed record NativeFolderPickerRequest(string? InitialPath);
 
 public sealed record NativeFolderPickerResponse(string? Path, bool Cancelled);
+
+/// <summary>
+/// The exact leftover paths a person confirmed for deletion, read straight
+/// back from an <see cref="ImportPackSkippedFile"/> the pack's own import
+/// response already named (#889).
+/// </summary>
+public sealed record DeleteSeasonPackLeftoversRequest(IReadOnlyList<string> Paths);
 
 /// <summary>
 /// What Deluno can actually do with a path.
