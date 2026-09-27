@@ -37,6 +37,7 @@ import {
   guideBundleTargets,
   guideFormatAppliesTo,
   guideSpecifications,
+  isAnimeDefaultFormat,
   isGenuineGuideFormat,
   readSpecifications,
   specificationKind,
@@ -1175,7 +1176,10 @@ export function SettingsCustomFormatsPage() {
                     <optgroup key={category} label={GUIDE_CATEGORY_LABELS[category] ?? category}>
                       {entries.map((cf) => (
                         <option key={cf.trashId} value={cf.trashId}>
-                          {friendlyRuleName(cf.name)}
+                          {/* #781: marks the release-group tiers and Anime Versions that a
+                              fresh anime profile already gets, so this reads as "already on
+                              for anime" rather than one more choice to hunt for. */}
+                          {friendlyRuleName(cf.name)}{isAnimeDefaultFormat(cf, guide) ? " · Default for anime profiles" : ""}
                         </option>
                       ))}
                     </optgroup>

@@ -183,6 +183,60 @@ public sealed class GuidePackageTests
         });
     }
 
+    /// <summary>
+    /// #781: a fresh anime profile is meant to get the anime release-group
+    /// tiers and the Anime Versions (v0-v4) set without a user hunting for
+    /// them under Advanced. The frontend's "apply a starter" flow
+    /// (ensureRecommendedFormats) attaches whatever a guide quality profile
+    /// recommends, so the promise is only real if the "anime-1080p" starter's
+    /// own recommendedFormats actually names every one of those formats.
+    /// </summary>
+    [Fact]
+    public void The_anime_starter_recommends_every_anime_release_group_tier_and_version_tag()
+    {
+        var package = GuidePackageCatalog.Current;
+        var animeStarter = package.QualityProfiles.Single(profile => profile.Id == "anime-1080p");
+        var recommendedIds = animeStarter.RecommendedFormats.Select(item => item.TrashId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var animeDefaultGroupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "[Release Groups] Anime",
+            "[Required] Anime Versions"
+        };
+        var animeDefaultTrashIds = (package.SourceInventory!.FormatGroups ?? [])
+            .Where(group => animeDefaultGroupNames.Contains(group.Name))
+            .SelectMany(group => group.CustomFormats ?? [])
+            .Select(format => format.TrashId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.NotEmpty(animeDefaultTrashIds);
+        Assert.All(animeDefaultTrashIds, trashId => Assert.Contains(trashId, recommendedIds));
+    }
+
+    /// <summary>
+    /// A non-anime starter must never pick up these formats by the same
+    /// mechanism, or every profile would quietly gain anime scoring.
+    /// </summary>
+    [Fact]
+    public void A_non_anime_starter_does_not_recommend_the_anime_default_formats()
+    {
+        var package = GuidePackageCatalog.Current;
+        var webStarter = package.QualityProfiles.Single(profile => profile.Id == "web-1080p");
+        var recommendedIds = webStarter.RecommendedFormats.Select(item => item.TrashId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var animeDefaultGroupNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "[Release Groups] Anime",
+            "[Required] Anime Versions"
+        };
+        var animeDefaultTrashIds = (package.SourceInventory!.FormatGroups ?? [])
+            .Where(group => animeDefaultGroupNames.Contains(group.Name))
+            .SelectMany(group => group.CustomFormats ?? [])
+            .Select(format => format.TrashId);
+
+        Assert.All(animeDefaultTrashIds, trashId => Assert.DoesNotContain(trashId, recommendedIds));
+    }
+
     [Fact]
     public void Regional_categories_do_not_swallow_the_dedicated_anime_group()
     {

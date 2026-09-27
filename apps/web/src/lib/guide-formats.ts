@@ -19,6 +19,25 @@ export function isGenuineGuideFormat(format: GuideCustomFormat): boolean {
 }
 
 /**
+ * #781: the two upstream TRaSH groups a fresh anime profile gets by default —
+ * the release-group tiers ("[Release Groups] Anime": BD/Web tiers, Raws, LQ
+ * Groups) and the version-tag scoring set ("[Required] Anime Versions":
+ * v0-v4) — rather than the rest of the "anime" category (Dual Audio,
+ * Uncensored, 10bit, ...), which stays something a user adds by hand.
+ */
+const ANIME_DEFAULT_SOURCE_GROUP_NAMES = new Set(["[release groups] anime", "[required] anime versions"]);
+
+/** True for a format in one of the two upstream groups #781 promotes by default for anime. */
+export function isAnimeDefaultFormat(format: GuideCustomFormat, guide: GuidePackage): boolean {
+  if (format.category !== "anime" || !format.sourceGroupIds?.length) return false;
+  const groups = guide.sourceInventory?.formatGroups ?? [];
+  return format.sourceGroupIds.some((groupId) => {
+    const name = groups.find((group) => group.trashId === groupId)?.name;
+    return Boolean(name && ANIME_DEFAULT_SOURCE_GROUP_NAMES.has(name.trim().toLowerCase()));
+  });
+}
+
+/**
  * Makes a rule from a guide format. Only the guide id is sent: the server
  * gives the rule the guide's own conditions. Screens used to write them
  * themselves, three different ways, and one of them made every TRaSH pattern
