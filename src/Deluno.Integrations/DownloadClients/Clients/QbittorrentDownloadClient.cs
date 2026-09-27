@@ -618,7 +618,6 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
         var normalized = nativeStatus?.ToLowerInvariant() ?? string.Empty;
-        if ((progress ?? 0) >= 1 || normalized.Contains("upload")) return DownloadQueueStatuses.ImportReady;
         // The data on disk is gone and this torrent cannot progress on its own
         // (#660, top priority): it used to match none of the checks below and
         // fall through to Downloading, an invisible "healthy" transfer that
@@ -628,7 +627,13 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // on the wire either way, so this is its own state rather than
         // Downloading, which is what let the no-progress/speed rules (#659)
         // reason about throughput a checking or moving torrent cannot have.
+        // Checked ahead of the progress-based ImportReady test below (#912):
+        // qBittorrent reports progress 1.0 throughout a re-check or a move of
+        // an already-complete torrent, and reading progress first raced the
+        // import against a file qBittorrent still had open for relocation or
+        // was still hashing.
         if (normalized.Contains("checking") || normalized == "moving") return DownloadQueueStatuses.NotTransferring;
+        if ((progress ?? 0) >= 1 || normalized.Contains("upload")) return DownloadQueueStatuses.ImportReady;
         // A person stopped this, incomplete, download — distinct from
         // queuedDL, which is qBittorrent holding it back on its own.
         if (normalized is "pauseddl" or "stoppeddl") return DownloadQueueStatuses.Paused;

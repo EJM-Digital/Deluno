@@ -93,6 +93,21 @@ public sealed class UTorrentSnapshotTests
         Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
     }
 
+    /// <summary>
+    /// #912: a torrent already at 100% before uTorrent re-checks it (a
+    /// restart, a moved data folder) still carries the Checking bit while it
+    /// verifies. Checked ahead of the progress-based ImportReady test, so a
+    /// re-check never races the import against a file uTorrent is still
+    /// hashing.
+    /// </summary>
+    [Fact]
+    public async Task Checking_torrent_never_reads_as_import_ready_even_at_full_progress()
+    {
+        var item = await Snapshot(statusBits: Checking, progress: 100, speed: 0, statusMessage: string.Empty);
+
+        Assert.Equal(DownloadQueueStatuses.Downloading, item.Status);
+    }
+
     [Fact]
     public async Task Actively_downloading_torrent_reads_as_downloading()
     {

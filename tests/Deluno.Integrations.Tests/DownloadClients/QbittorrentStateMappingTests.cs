@@ -57,6 +57,25 @@ public sealed class QbittorrentStateMappingTests
         Assert.Equal(expected, item.Status);
     }
 
+    /// <summary>
+    /// #912: qBittorrent reports progress 1.0 throughout a re-check of an
+    /// already-complete torrent, and while it relocates a finished torrent's
+    /// files (moving). Checked ahead of the progress-based ImportReady test,
+    /// so a re-check or a move never races the import against a file
+    /// qBittorrent still has open.
+    /// </summary>
+    [Theory]
+    [InlineData("checkingDL")]
+    [InlineData("checkingUP")]
+    [InlineData("checkingResumeData")]
+    [InlineData("moving")]
+    public async Task Checking_or_moving_never_reads_as_import_ready_even_at_full_progress(string state)
+    {
+        var item = await Snapshot(state, progress: 1.0);
+
+        Assert.Equal(DownloadQueueStatuses.NotTransferring, item.Status);
+    }
+
     [Fact]
     public async Task MissingFiles_carries_a_plain_words_explanation()
     {

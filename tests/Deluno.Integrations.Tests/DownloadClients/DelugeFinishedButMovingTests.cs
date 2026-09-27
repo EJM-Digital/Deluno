@@ -26,6 +26,17 @@ public sealed class DelugeFinishedButMovingTests
     public async Task A_torrent_being_moved_is_not_ready()
         => Assert.Equal(DownloadQueueStatuses.Downloading, (await Snapshot(state: "Moving", savePath: @"C:\Deluno\Downloads-Complete\Deluge")).Status);
 
+    /// <summary>
+    /// #912: Deluge re-checking an already-complete torrent (a restart, a
+    /// moved data folder) reports its own "Checking" state at whatever
+    /// progress it already reached, including 100. That must never read as
+    /// ready to import — Deluge could still rewrite the file underneath an
+    /// import that raced ahead of the check.
+    /// </summary>
+    [Fact]
+    public async Task A_torrent_being_rechecked_is_not_ready_even_at_full_progress()
+        => Assert.Equal(DownloadQueueStatuses.NotTransferring, (await Snapshot(state: "Checking", savePath: @"C:\Deluno\Downloads-Complete\Deluge")).Status);
+
     [Fact]
     public async Task Once_moved_it_is_ready_where_it_now_is()
     {

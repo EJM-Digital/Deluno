@@ -431,6 +431,19 @@ internal static class DownloadClientHelpers
             return DownloadQueueStatuses.Processing;
         }
 
+        // Deluge (and any other client normalising through this shared text
+        // path) reports its own "Checking" state — re-hashing a torrent, on a
+        // restart or after the data folder moved — at whatever progress the
+        // torrent already reached, including 100 for one already complete
+        // (#912). Checked ahead of the progress-based ImportReady test below,
+        // the same way qBittorrent's and uTorrent's own checking states are,
+        // so a re-check never races the import against a file still being
+        // verified.
+        if (normalized.Contains("checking"))
+        {
+            return DownloadQueueStatuses.NotTransferring;
+        }
+
         if ((progress ?? 0) >= 99.9 || normalized.Contains("complete") || normalized.Contains("seeding")) return DownloadQueueStatuses.ImportReady;
         if (normalized.Contains("pause") || normalized.Contains("queue")) return DownloadQueueStatuses.Queued;
         return DownloadQueueStatuses.Downloading;
