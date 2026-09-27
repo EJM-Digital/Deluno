@@ -31,6 +31,14 @@ export interface DisplayPreferences {
   longDateFormat: LongDateFormat;
   timeFormat: TimeFormat;
   showRelativeDates: boolean;
+  /**
+   * The IANA zone (e.g. "Australia/Sydney") an air date/time is converted
+   * into before it is shown (#860). Empty means none chosen — every
+   * formatter below then omits `timeZone` from its `Intl.DateTimeFormat`
+   * options entirely, which is what makes `Intl` fall back to the
+   * browser/OS zone rather than UTC.
+   */
+  timezone: string;
 }
 
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
@@ -41,7 +49,8 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   shortDateFormat: "dmy",
   longDateFormat: "full",
   timeFormat: "12",
-  showRelativeDates: true
+  showRelativeDates: true,
+  timezone: ""
 };
 
 export function displayPreferencesFromSettings(settings: Partial<PlatformSettingsSnapshot> | null | undefined): DisplayPreferences {
@@ -56,7 +65,8 @@ export function displayPreferencesFromSettings(settings: Partial<PlatformSetting
     shortDateFormat: shortDate === "mdy" || shortDate === "iso" ? shortDate : "dmy",
     longDateFormat: longDate === "mdy" ? "mdy" : "full",
     timeFormat: settings?.timeFormat === "24" ? "24" : "12",
-    showRelativeDates: settings?.showRelativeDates !== false
+    showRelativeDates: settings?.showRelativeDates !== false,
+    timezone: settings?.timezone?.trim() || ""
   };
 }
 
@@ -69,12 +79,43 @@ function parseDate(value: string | Date | null | undefined): Date | null {
   return date && !Number.isNaN(date.getTime()) ? date : null;
 }
 
-function localDayNumber(date: Date) {
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
+/**
+ * The calendar date/time parts `date` falls on in `timeZone` (empty = the
+ * browser/OS zone). A date's year/month/day/hour/minute all shift with the
+ * zone, which is why "Today" and the day component below cannot simply read
+ * `date.getFullYear()` etc — those are always in the browser's own zone,
+ * making the local-time short-date reasoning silently wrong whenever a
+ * timezone preference is set (#860).
+ */
+function zonedParts(date: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    ...(timeZone ? { timeZone } : {}),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  // Midnight in `en-US`'s 24-hour output can read "24"; JS wants "0".
+  const hour = Number(parts.hour) % 24;
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour,
+    minute: Number(parts.minute)
+  };
 }
 
-function relativeDayLabel(date: Date, now: Date) {
-  const difference = localDayNumber(date) - localDayNumber(now);
+function localDayNumber(date: Date, timeZone = "") {
+  const parts = zonedParts(date, timeZone);
+  return Date.UTC(parts.year, parts.month - 1, parts.day) / 86_400_000;
+}
+
+function relativeDayLabel(date: Date, now: Date, timeZone = "") {
+  const difference = localDayNumber(date, timeZone) - localDayNumber(now, timeZone);
   if (difference === 0) return "Today";
   if (difference === -1) return "Yesterday";
   if (difference === 1) return "Tomorrow";
@@ -85,50 +126,81 @@ export function formatShortDate(value: string | Date | null | undefined, prefere
   const date = parseDate(value);
   if (!date) return "—";
   if (preferences.showRelativeDates) {
-    const relative = relativeDayLabel(date, now);
+    const relative = relativeDayLabel(date, now, preferences.timezone);
     if (relative) return relative;
   }
 
+  const { year, month, day } = zonedParts(date, preferences.timezone);
   if (preferences.shortDateFormat === "iso") {
-    return `${date.getFullYear().toString().padStart(4, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
+    return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
   }
 
-  const year = date.getFullYear().toString().padStart(4, "0");
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const day = date.getDate().toString().padStart(2, "0");
-  return preferences.shortDateFormat === "mdy" ? `${month}/${day}/${year}` : `${day}/${month}/${year}`;
+  const yearText = year.toString().padStart(4, "0");
+  const monthText = month.toString().padStart(2, "0");
+  const dayText = day.toString().padStart(2, "0");
+  return preferences.shortDateFormat === "mdy" ? `${monthText}/${dayText}/${yearText}` : `${dayText}/${monthText}/${yearText}`;
 }
 
 export function formatLongDate(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, now = new Date()) {
   const date = parseDate(value);
   if (!date) return "—";
   if (preferences.showRelativeDates) {
-    const relative = relativeDayLabel(date, now);
+    const relative = relativeDayLabel(date, now, preferences.timezone);
     if (relative) return relative;
   }
 
   return new Intl.DateTimeFormat(
     preferences.longDateFormat === "mdy" ? "en-US" : localeFor(preferences),
-    { weekday: "long", month: "long", day: "numeric", year: "numeric" }
+    {
+      ...(preferences.timezone ? { timeZone: preferences.timezone } : {}),
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric"
+    }
   ).format(date);
 }
 
+/** The clock time `value` falls on, converted into the user's chosen timezone (browser/OS zone when none is set) (#860). */
 export function formatTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {
   const date = parseDate(value);
   if (!date) return "—";
   return new Intl.DateTimeFormat(
     localeFor(preferences),
-    preferences.timeFormat === "24"
-      ? { hour: "2-digit", minute: "2-digit", hour12: false }
-      : { hour: "numeric", minute: "2-digit", hour12: true }
+    {
+      ...(preferences.timezone ? { timeZone: preferences.timezone } : {}),
+      ...(preferences.timeFormat === "24"
+        ? { hour: "2-digit", minute: "2-digit", hour12: false }
+        : { hour: "numeric", minute: "2-digit", hour12: true })
+    }
   ).format(date);
 }
 
 export function formatDateTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, now = new Date()) {
   const date = parseDate(value);
   if (!date) return "—";
-  const relative = preferences.showRelativeDates ? relativeDayLabel(date, now) : null;
+  const relative = preferences.showRelativeDates ? relativeDayLabel(date, now, preferences.timezone) : null;
   return `${relative ?? formatShortDate(date, { ...preferences, showRelativeDates: false }, now)} · ${formatTime(date, preferences)}`;
+}
+
+/**
+ * Whether `airDateUtc` carries a real broadcast time (#860) rather than the
+ * midnight-UTC placeholder Deluno stores when no source had one. Read once
+ * here rather than at every call site, the same way `ReadAlternateTitles` is
+ * the one place that reads `AlternateTitles` back out of stored metadata.
+ */
+export function hasBroadcastTime(airDateUtc: string | Date | null | undefined) {
+  const date = parseDate(airDateUtc);
+  return date !== null && (date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0);
+}
+
+/** An episode's air date, with its real broadcast time appended when one is stored, in the user's chosen timezone (#860). */
+export function formatAirDateTime(value: string | Date | null | undefined, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES, now = new Date()) {
+  if (!hasBroadcastTime(value)) {
+    return formatShortDate(value, { ...preferences, showRelativeDates: false }, now);
+  }
+
+  return formatDateTime(value, { ...preferences, showRelativeDates: false }, now);
 }
 
 export function formatCalendarWeekHeader(value: string | Date, preferences: DisplayPreferences = DEFAULT_DISPLAY_PREFERENCES) {

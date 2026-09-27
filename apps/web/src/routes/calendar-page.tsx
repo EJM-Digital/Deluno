@@ -37,6 +37,7 @@ import {
   formatMonth,
   formatRangeDate,
   formatTime as formatPreferenceTime,
+  hasBroadcastTime,
   type CalendarFirstDay,
   type DisplayPreferences,
   useDisplayPreferences
@@ -508,11 +509,10 @@ function formatDayLabel(date: Date, preferences: DisplayPreferences) {
 }
 
 function formatCalendarTime(date: Date, preferences: DisplayPreferences) {
-  // Air dates are date-only, stored at midnight UTC. Read the UTC components:
-  // reading local ones turns "no time known" into a confident "10:00" outside UTC.
-  return date.getUTCHours() === 0 && date.getUTCMinutes() === 0
-    ? "All day"
-    : formatPreferenceTime(date, preferences);
+  // Most air dates carry no real time and are stored at midnight UTC as a
+  // placeholder; a source with the network's actual broadcast time (#860)
+  // gives one worth showing, converted into the user's chosen timezone.
+  return hasBroadcastTime(date) ? formatPreferenceTime(date, preferences) : "All day";
 }
 
 function dayIndex(date: Date, firstDay: CalendarFirstDay) {

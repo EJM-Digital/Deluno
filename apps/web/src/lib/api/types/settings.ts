@@ -55,6 +55,8 @@ export interface PlatformSettingsSnapshot {
   longDateFormat: "full" | "mdy" | string;
   timeFormat: "12" | "24" | string;
   showRelativeDates: boolean;
+  /** #860: the IANA zone episode air times convert into. Empty falls back to the browser/OS timezone. */
+  timezone: string;
   defaultMovieView: string;
   defaultShowView: string;
   metadataNfoEnabled: boolean;
@@ -210,6 +212,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   longDateFormat: "full",
   timeFormat: "12",
   showRelativeDates: true,
+  timezone: "",
   defaultMovieView: "grid",
   defaultShowView: "grid",
   metadataNfoEnabled: false,

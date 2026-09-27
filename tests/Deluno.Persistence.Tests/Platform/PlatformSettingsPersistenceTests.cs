@@ -131,6 +131,45 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal("media", loaded.ChownGroup);
     }
 
+    /// <summary>
+    /// #860: the zone episode air times convert into for display. Empty (no
+    /// zone chosen) is the default, so an existing install falls back to the
+    /// browser/OS zone rather than being silently switched to a stored one.
+    /// A garbage value clears back to empty rather than being stored as a
+    /// zone that will make every future format call throw.
+    /// </summary>
+    [Fact]
+    public async Task Timezone_persists_and_a_value_the_host_cannot_recognise_clears_to_empty()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-27T01:02:03Z"));
+
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var repository = new SqlitePlatformSettingsRepository(
+            storage.Factory,
+            timeProvider,
+            TestSecretProtection.Create(storage));
+
+        var beforeSave = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(string.Empty, beforeSave.Timezone);
+
+        var current = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(current, new PatchPlatformSettingsRequest(Timezone: "Australia/Sydney")),
+            CancellationToken.None);
+        Assert.Equal("Australia/Sydney", (await repository.GetAsync(CancellationToken.None)).Timezone);
+
+        current = await repository.GetAsync(CancellationToken.None);
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(current, new PatchPlatformSettingsRequest(Timezone: "Not/A_Real_Zone")),
+            CancellationToken.None);
+        Assert.Equal(string.Empty, (await repository.GetAsync(CancellationToken.None)).Timezone);
+    }
+
     [Fact]
     public async Task ProperRepackAcquisitionMode_persists_and_defaults_to_prefer_and_upgrade()
     {

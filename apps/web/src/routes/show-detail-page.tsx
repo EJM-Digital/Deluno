@@ -76,7 +76,7 @@ import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
-import { formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
+import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -1222,7 +1222,7 @@ export function ShowDetailPage() {
                         selected={openEpisodeId === episode.episodeId}
                       >
                         <ListNameCell name={formatEpisodeCode(episode)} sub={episode.title ?? "Episode title pending"} />
-                        <ListCell primary={episode.airDateUtc ? formatShortDate(episode.airDateUtc, { ...preferences, showRelativeDates: false }) : "—"} />
+                        <ListCell primary={episode.airDateUtc ? formatAirDateTime(episode.airDateUtc, preferences) : "—"} />
                         <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
                         <ListCell>
                           {/* An episode is a title. Same five marks (DESIGN-001). */}
@@ -1641,7 +1641,7 @@ export function ShowDetailPage() {
                 items={[
                   { label: "Season", value: formatSeasonLabel(openEpisode.seasonNumber) },
                   { label: "Episode", value: `#${openEpisode.episodeNumber}` },
-                  { label: "First aired", value: openEpisode.airDateUtc ? formatShortDate(openEpisode.airDateUtc, { ...preferences, showRelativeDates: false }) : "Not announced" },
+                  { label: "First aired", value: openEpisode.airDateUtc ? formatAirDateTime(openEpisode.airDateUtc, preferences) : "Not announced" },
                   ...(openEpisode.absoluteNumber !== null && openEpisode.absoluteNumber !== undefined ? [{ label: "Absolute", value: `#${openEpisode.absoluteNumber}` }] : []),
                   ...(openEpisode.sceneSeasonNumber !== null && openEpisode.sceneSeasonNumber !== undefined && openEpisode.sceneEpisodeNumber !== null && openEpisode.sceneEpisodeNumber !== undefined
                     ? [{ label: "Scene", value: `S${String(openEpisode.sceneSeasonNumber).padStart(2, "0")}E${String(openEpisode.sceneEpisodeNumber).padStart(2, "0")}` }]

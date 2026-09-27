@@ -151,4 +151,8 @@ public sealed record PlatformSettingsSnapshot(
     string DownloadHealthConnectivityCheckUrls = "",
     // #823's other half: the queue-throughput poll cadence, previously a
     // hardcoded PeriodicTimer interval.
-    int DownloadThroughputSamplerIntervalMinutes = 1);
+    int DownloadThroughputSamplerIntervalMinutes = 1,
+    // #860: the IANA zone episode air times are converted into for display
+    // (e.g. "Australia/Sydney"). Empty means no zone chosen; every display
+    // site falls back to the browser/OS timezone rather than UTC.
+    string Timezone = "");

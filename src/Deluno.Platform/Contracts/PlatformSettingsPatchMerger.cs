@@ -89,5 +89,6 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthStrikeInactivityHours: patch.DownloadHealthStrikeInactivityHours ?? current.DownloadHealthStrikeInactivityHours,
             DownloadHealthConnectivityCheckEnabled: patch.DownloadHealthConnectivityCheckEnabled ?? current.DownloadHealthConnectivityCheckEnabled,
             DownloadHealthConnectivityCheckUrls: patch.DownloadHealthConnectivityCheckUrls ?? current.DownloadHealthConnectivityCheckUrls,
-            DownloadThroughputSamplerIntervalMinutes: patch.DownloadThroughputSamplerIntervalMinutes ?? current.DownloadThroughputSamplerIntervalMinutes);
+            DownloadThroughputSamplerIntervalMinutes: patch.DownloadThroughputSamplerIntervalMinutes ?? current.DownloadThroughputSamplerIntervalMinutes,
+            Timezone: patch.Timezone ?? current.Timezone);
 }
