@@ -14,7 +14,7 @@ import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-statu
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
+import { ArrowLeft, ArrowUpDown, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
@@ -46,7 +46,18 @@ import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
 import { describeSearchNow, describeSearchReason, describeRequestFailure, formatGrabMessage, formatSearchFailureNotice } from "../lib/search-reasons";
 import { candidateLabel, candidateTone, canWinSearch, isTypedCandidate, likesCandidate } from "../lib/release-candidate-status";
+import {
+  type CandidateSortKey,
+  defaultSortDirection,
+  filterCandidates,
+  formatProtocol,
+  formatReleaseAge,
+  formatSeedersAndLeechers,
+  sortCandidates,
+  type SortDirection
+} from "../lib/release-candidate-columns";
 import { Badge } from "../components/ui/badge";
+import { Select } from "../components/ui/select";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
@@ -186,6 +197,10 @@ export function MovieDetailPage() {
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
+  // #753: sort/filter state for the candidates table, reset each fresh search.
+  const [candidateSort, setCandidateSort] = useState<{ key: CandidateSortKey; direction: SortDirection } | null>(null);
+  const [candidateProtocolFilter, setCandidateProtocolFilter] = useState("");
+  const [candidateIndexerFilter, setCandidateIndexerFilter] = useState("");
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
   const [openSearchId, setOpenSearchId] = useState<string | null>(null);
@@ -592,6 +607,22 @@ export function MovieDetailPage() {
       setBusyAction(null);
     }
   }
+
+  // #753: sort/filter the candidates table without touching the fetched
+  // order the server returned (still the default when nothing is chosen).
+  function toggleCandidateSort(key: CandidateSortKey) {
+    setCandidateSort((current) =>
+      current?.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: defaultSortDirection(key) }
+    );
+  }
+  const candidateIndexerOptions = [...new Set(releaseCandidates.map((candidate) => candidate.indexerName))];
+  const candidateProtocolOptions = [...new Set(releaseCandidates.map((candidate) => candidate.indexerProtocol).filter((value): value is string => Boolean(value)))];
+  const visibleCandidates = (() => {
+    const filtered = filterCandidates(releaseCandidates, { protocol: candidateProtocolFilter, indexerName: candidateIndexerFilter });
+    return candidateSort ? sortCandidates(filtered, candidateSort.key, candidateSort.direction) : filtered;
+  })();
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-[var(--page-gap)]">
@@ -1006,16 +1037,37 @@ export function MovieDetailPage() {
       {section === "destination" ? (
         <>
           {releaseCandidates.length ? (
-            <ListCard title="Choose a release" count={`${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
+            <ListCard title="Choose a release" count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
+              {candidateProtocolOptions.length > 1 || candidateIndexerOptions.length > 1 ? (
+                <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-[var(--card-pad-x)]">
+                  <Select
+                    value={candidateProtocolFilter}
+                    onChange={(event) => setCandidateProtocolFilter(event.target.value)}
+                    options={[{ value: "", label: "Every protocol" }, ...candidateProtocolOptions.map((protocol) => ({ value: protocol, label: formatProtocol(protocol) }))]}
+                    aria-label="Filter by protocol"
+                    className="max-w-[10rem]"
+                  />
+                  <Select
+                    value={candidateIndexerFilter}
+                    onChange={(event) => setCandidateIndexerFilter(event.target.value)}
+                    options={[{ value: "", label: "Every indexer" }, ...candidateIndexerOptions.map((name) => ({ value: name, label: name }))]}
+                    aria-label="Filter by indexer"
+                    className="max-w-[12rem]"
+                  />
+                </div>
+              ) : null}
               <ListTable
                 columns={[
                   { label: "Release" },
                   { label: "Quality", mobile: true },
-                  { label: "Size" },
-                  { label: "Decision", width: LIST_TRACK.status }
+                  { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("protocol")} /> },
+                  { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("age")} /> },
+                  { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("seeders")} /> },
+                  { label: <SortHeader label="Size" active={candidateSort?.key === "size"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("size")} /> },
+                  { label: "Decision", width: LIST_TRACK.status, mobile: true }
                 ]}
               >
-                {releaseCandidates.map((candidate, index) => (
+                {visibleCandidates.map((candidate, index) => (
                   <ListRow
                     key={`${candidate.indexerName}:${candidate.releaseName}`}
                     onClick={() => {
@@ -1033,9 +1085,15 @@ export function MovieDetailPage() {
                       sub={`${index === 0 && canWinSearch(candidate) ? "Best match · " : ""}${candidate.indexerName}`}
                     />
                     <ListCell primary={candidate.quality} mobile />
+                    <ListCell primary={formatProtocol(candidate.indexerProtocol)} />
+                    <ListCell primary={formatReleaseAge(candidate.releaseAgeHours)} />
+                    <ListCell primary={formatSeedersAndLeechers(candidate.seeders, candidate.leechers)} />
                     <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
-                    <ListCell>
+                    <ListCell mobile>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
+                      {candidate.decisionStatus?.toLowerCase() === "rejected" && candidate.decisionReasons?.[0] ? (
+                        <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">{candidate.decisionReasons[0]}</span>
+                      ) : null}
                     </ListCell>
                   </ListRow>
                 ))}
@@ -1574,6 +1632,11 @@ interface SearchPlanCandidate {
   downloadUrl?: string | null;
   sizeBytes?: number | null;
   seeders?: number | null;
+  // #753: enriched results columns, alongside the existing seeders and
+  // decisionReasons (a rejection's own reason).
+  leechers?: number | null;
+  indexerProtocol?: string | null;
+  releaseAgeHours?: number | null;
   decisionStatus?: string;
   decisionReasons?: string[];
   riskFlags?: string[];
@@ -1597,6 +1660,21 @@ function candidateRequiresForce(candidate: SearchPlanCandidate): boolean {
   const isPreferred = (candidate.decisionStatus ?? "").toLowerCase() === "preferred";
   const safe = isPreferred && candidate.meetsCutoff && (candidate.qualityDelta ?? 0) >= 0;
   return !safe;
+}
+
+/** #753: a clickable column header for the candidates table, showing which column (if any) currently sorts it and which way. */
+function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction?: SortDirection; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => { event.stopPropagation(); onClick(); }}
+      className="flex items-center gap-1 uppercase tracking-[0.1em] text-muted-foreground hover:text-foreground"
+      aria-label={`Sort by ${label}`}
+    >
+      {label}
+      <ArrowUpDown aria-hidden className={cn("h-3 w-3", active && (direction === "asc" ? "rotate-180" : ""))} />
+    </button>
+  );
 }
 
 function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {

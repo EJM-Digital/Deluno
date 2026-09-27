@@ -31,4 +31,9 @@ public sealed record MediaSearchCandidate(
     // link, or a newznab item's GUID (#802, #874). Null for a release only
     // offered as a .torrent link, since nothing names its hash before it is
     // fetched.
-    string? TorrentHashOrItemId = null);
+    string? TorrentHashOrItemId = null,
+    // #753: enriched result columns, alongside the existing DecisionStatus
+    // (a "rejected" status carries its own reason in DecisionReasons above).
+    string? IndexerProtocol = null,
+    double? ReleaseAgeHours = null,
+    int? Leechers = null);
