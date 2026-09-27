@@ -2136,6 +2136,17 @@ public sealed class TmdbMetadataProvider(
                     using var response = await httpClient.GetAsync(url, token);
                     if (!response.IsSuccessStatusCode)
                     {
+                        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                        {
+                            // TMDb says exactly how long to wait; passing that
+                            // through the typed exception lets the resilience
+                            // policy honor it instead of guessing with the same
+                            // backoff a 500 or a timeout gets (#865).
+                            throw new IntegrationRateLimitedException(
+                                "The service returned HTTP 429.",
+                                IntegrationResiliencePolicy.TryGetRetryAfter(response));
+                        }
+
                         if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
                         {
                             // "The service returned HTTP 503" - not the name of
