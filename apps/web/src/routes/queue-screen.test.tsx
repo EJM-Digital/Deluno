@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, unmonitorRequestFor, visibleFindings } from "./queue-screen";
+import { buildImportRequest, findDispatchForQueueItem, ImportPreviewFacts, visibleFindings } from "./queue-screen";
 
 function packPreview(canExecute: boolean): ImportPreviewResponse {
   return {
@@ -162,26 +162,6 @@ describe("the Queue's removal-reason dialog", () => {
     expect(screen.getByRole("button", { name: /It's bad/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /I don't want it/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Just stop tracking it/ })).toBeDisabled();
-  });
-});
-
-describe("unmonitoring a title after \"I don't want it\"", () => {
-  it("sends a movie to the movies bulk endpoint", () => {
-    expect(unmonitorRequestFor("movie-1", "movie")).toEqual({
-      url: "/api/movies/bulk",
-      body: { movieIds: ["movie-1"], operation: "monitoring", monitored: false }
-    });
-  });
-
-  it("sends a series to the series bulk endpoint", () => {
-    expect(unmonitorRequestFor("series-1", "tv")).toEqual({
-      url: "/api/series/bulk",
-      body: { seriesIds: ["series-1"], operation: "monitoring", monitored: false }
-    });
-  });
-
-  it("treats a null media type as a movie rather than guessing wrong silently", () => {
-    expect(unmonitorRequestFor("movie-2", null).url).toBe("/api/movies/bulk");
   });
 });
 

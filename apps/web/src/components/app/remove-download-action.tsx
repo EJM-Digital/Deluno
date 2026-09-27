@@ -17,7 +17,7 @@ import { Button } from "../ui/button";
 import { RemovalReasonDialog, type RemovalReason } from "../ui/removal-reason-dialog";
 import { toast } from "../shell/toaster";
 import { checkQueueMatch, type QueueMatch, type ReleaseIdentity } from "../../lib/block-release";
-import { submitQueueRemoval, unmonitorTitleAfterRemoval } from "../../lib/remove-download";
+import { submitQueueRemoval } from "../../lib/remove-download";
 
 interface RemoveDownloadActionProps extends ReleaseIdentity {
   /** Called after a successful removal (any reason), so the caller can revalidate and close its own drawer. */
@@ -61,10 +61,10 @@ export function RemoveDownloadAction({
     if (!match) return;
     setBusyReason(reason);
     try {
+      // The server does the unmonitor itself now when reason is "unwanted"
+      // (#924), so there is nothing left to follow up here — the returned
+      // message already says so.
       const result = await submitQueueRemoval(match.clientId, match.queueItemId, reason);
-      if (reason === "unwanted" && result.entityId) {
-        await unmonitorTitleAfterRemoval(result.entityId, result.mediaType);
-      }
       toast.success(result.message);
       setOpen(false);
       onRemoved?.();

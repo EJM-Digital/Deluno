@@ -59,7 +59,7 @@ import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
-import { submitQueueRemoval, unmonitorTitleAfterRemoval } from "../lib/remove-download";
+import { submitQueueRemoval } from "../lib/remove-download";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -282,19 +282,13 @@ export function QueuePage() {
 
   // Cleanup sheet J1/J2 (#924): removing a download asks why, in plain
   // words, and each choice does exactly what it says. The client action, the
-  // blocklist entry and the replacement search all happen on the server in
-  // one call; "I don't want it" also unmonitors the title, which happens on
-  // the movie or series side rather than here — Deluno's engines stay
-  // separate, so that step is a second, best-effort call through the same
-  // bulk endpoint the title's own screen uses.
+  // blocklist entry, the replacement search and — for "I don't want it" —
+  // the unmonitor all happen on the server in this one call now, so there is
+  // nothing left to follow up here; the returned message already says so.
   async function removeWithReason(item: DownloadQueueItem, reason: RemovalReason) {
     setRemovalReasonBusy(reason);
     try {
       const result = await submitQueueRemoval(item.clientId, item.id, reason);
-
-      if (reason === "unwanted" && result.entityId) {
-        await unmonitorTitleAfterRemoval(result.entityId, result.mediaType);
-      }
 
       toast.success(result.message);
       setPendingRemoval(null);
@@ -1976,10 +1970,6 @@ export function buildImportRequest(
       : null
   };
 }
-
-// Moved to lib/remove-download.ts so the title pages' and Activity's own
-// removal actions (#924) can reuse it instead of duplicating the mapping.
-export { unmonitorRequestFor } from "../lib/remove-download";
 
 export function findDispatchForQueueItem(
   item: DownloadQueueItem,

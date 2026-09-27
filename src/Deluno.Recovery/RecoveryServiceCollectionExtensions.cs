@@ -20,6 +20,10 @@ public static class RecoveryServiceCollectionExtensions
             new CompositeDispatchRecoveryHandler(provider.GetServices<IDispatchRecoveryHandlerComponent>().ToList()));
         services.AddSingleton<IDispatchRecoveryHandler>(provider =>
             provider.GetRequiredService<CompositeDispatchRecoveryHandler>());
+        services.AddSingleton<CompositeDispatchTitleUnmonitorService>(provider =>
+            new CompositeDispatchTitleUnmonitorService(provider.GetServices<IDispatchTitleUnmonitorComponent>().ToList()));
+        services.AddSingleton<IDispatchTitleUnmonitorService>(provider =>
+            provider.GetRequiredService<CompositeDispatchTitleUnmonitorService>());
         // Scoped, because it reaches the download-client connection service,
         // which is.
         services.AddScoped<IDeletedThingCleanup, DeletedThingCleanupService>();

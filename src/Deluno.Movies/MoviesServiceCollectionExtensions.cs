@@ -49,6 +49,7 @@ public static class MoviesServiceCollectionExtensions
         services.AddSingleton<IMovieWorkflowService, MovieWorkflowService>();
         services.AddScoped<IMovieCollectionService, MovieCollectionService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, MovieDispatchRecoveryHandler>();
+        services.AddSingleton<IDispatchTitleUnmonitorComponent, MovieDispatchTitleUnmonitorService>();
         services.AddSingleton<IMigrationCatalogImporter, MovieMigrationCatalogImporter>();
         services.AddHostedService<MoviesSchemaInitializer>();
         services.AddHostedService<CollectionExclusionMigrationHostedService>();

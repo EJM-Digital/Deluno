@@ -46,6 +46,7 @@ public static class SeriesServiceCollectionExtensions
         services.AddSingleton<IEpisodeWorkflowService, EpisodeWorkflowService>();
         services.AddSingleton<IEpisodeImportRecoveryService, EpisodeImportRecoveryService>();
         services.AddSingleton<IDispatchRecoveryHandlerComponent, SeriesDispatchRecoveryHandler>();
+        services.AddSingleton<IDispatchTitleUnmonitorComponent, SeriesDispatchTitleUnmonitorService>();
         services.AddSingleton<IMigrationCatalogImporter, SeriesMigrationCatalogImporter>();
         services.AddSingleton<ISceneMappingRefreshService, SceneMappingRefreshService>();
         services.AddHostedService<SeriesSchemaInitializer>();

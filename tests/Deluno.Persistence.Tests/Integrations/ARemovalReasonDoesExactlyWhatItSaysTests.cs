@@ -7,8 +7,13 @@ using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Movies.Contracts;
+using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Data;
+using Deluno.Recovery.Services;
+using Deluno.Series.Contracts;
+using Deluno.Series.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Integrations;
@@ -86,9 +91,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
         Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
 
-        // The caller still gets the title back, so the frontend can carry out
-        // "unmonitor the title" itself through the existing movie/series bulk
-        // endpoint — this reason never touches the blocklist to get there.
+        // The caller still gets the title back — the entity id and media type
+        // this removal resolved, for a caller (or an older web client build)
+        // that wants to confirm the outcome for itself.
         Assert.Equal(world.EntityId, result.EntityId);
         Assert.Equal(world.MediaType, result.MediaType);
 
@@ -96,6 +101,75 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             .Single(entry => entry.Category == "download.queue.removed");
         Assert.Contains("don't want", activity.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("blocklist", activity.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// #924: "I don't want it" does the unmonitor itself now, server-side, so
+    /// an API caller that never makes the web client's old separate call
+    /// gets the same outcome — and Activity says so in the same sentence as
+    /// the removal and the deletion, rather than needing a second line.
+    /// </summary>
+    [Fact]
+    public async Task I_dont_want_it_also_unmonitors_the_movie_and_says_so_in_one_line()
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Unwanted);
+
+        Assert.True(result.Succeeded);
+        var movie = await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None);
+        Assert.NotNull(movie);
+        Assert.False(movie!.Monitored);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+        Assert.Contains("don't want", activity.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stopped wanting it", activity.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Same as above for TV, and scoped to only the episode that was
+    /// downloaded — not its whole series (an automatic per-episode search
+    /// dispatches with entity type "episode", the same distinction
+    /// <c>SupportsReplacementSearch</c> already makes for the replacement
+    /// search).
+    /// </summary>
+    [Fact]
+    public async Task I_dont_want_it_also_unmonitors_only_the_episode_and_says_so_in_one_line()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Episode);
+
+        var result = await world.RemoveAsync(QueueRemovalReasons.Unwanted);
+
+        Assert.True(result.Succeeded);
+        var detail = await world.Series!.GetInventoryDetailAsync(world.SeriesId!, CancellationToken.None);
+        var episode = Assert.Single(detail!.Episodes);
+        Assert.False(episode.Monitored);
+        // Unmonitoring one episode never touches the series' own flag.
+        var series = await world.Series!.GetByIdAsync(world.SeriesId!, CancellationToken.None);
+        Assert.True(series!.Monitored);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+        Assert.Contains("don't want", activity.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stopped wanting it", activity.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// "It's bad" and "just stop tracking it" never unmonitor — only "I don't
+    /// want it" means that.
+    /// </summary>
+    [Theory]
+    [InlineData(QueueRemovalReasons.Failed)]
+    [InlineData(QueueRemovalReasons.Forget)]
+    public async Task Every_other_reason_leaves_the_movie_monitored(string reason)
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+
+        await world.RemoveAsync(reason);
+
+        var movie = await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None);
+        Assert.True(movie!.Monitored);
     }
 
     [Theory]
@@ -183,6 +257,16 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
+    /// <summary>Which real catalog title (if any) the world wires up behind the dispatch's entity id, so #924's unmonitor step has something real to flip.</summary>
+    private enum TitleKind
+    {
+        /// <summary>No catalog wired up — the entity id is synthetic, as it was before #924. Unmonitoring silently finds nothing.</summary>
+        None,
+        Movie,
+        Series,
+        Episode
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -196,7 +280,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             string entityId,
             string mediaType,
             SqliteJobStore jobs,
-            SqliteBlockedReleaseRepository blocklist)
+            SqliteBlockedReleaseRepository blocklist,
+            SqliteMovieCatalogRepository? movies,
+            SqliteSeriesCatalogRepository? series,
+            string? seriesId)
         {
             _storage = storage;
             _service = service;
@@ -207,6 +294,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             Jobs = jobs;
             Activity = jobs;
             Blocklist = blocklist;
+            Movies = movies;
+            Series = series;
+            SeriesId = seriesId;
         }
 
         public FakeClient Client { get; }
@@ -223,7 +313,18 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public SqliteBlockedReleaseRepository Blocklist { get; }
 
-        public static async Task<World> CreateAsync(string protocol)
+        /// <summary>Set only for <see cref="TitleKind.Movie"/>.</summary>
+        public SqliteMovieCatalogRepository? Movies { get; }
+
+        /// <summary>Set for <see cref="TitleKind.Series"/> and <see cref="TitleKind.Episode"/>.</summary>
+        public SqliteSeriesCatalogRepository? Series { get; }
+
+        /// <summary>The parent series id, when <see cref="EntityId"/> names an episode instead.</summary>
+        public string? SeriesId { get; }
+
+        public static Task<World> CreateAsync(string protocol) => CreateAsync(protocol, TitleKind.None);
+
+        public static async Task<World> CreateAsync(string protocol, TitleKind titleKind)
         {
             var storage = TestStorage.Create();
             var now = DateTimeOffset.Parse("2026-09-27T09:00:00Z");
@@ -243,7 +344,54 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, time);
             var jobs = new SqliteJobStore(storage.Factory, time, new NullRealtimeEventPublisher(), dispatches);
             var entityType = mediaType == "tv" ? "series" : "movie";
-            var entityId = $"{entityType}-1";
+
+            SqliteMovieCatalogRepository? movies = null;
+            SqliteSeriesCatalogRepository? series = null;
+            string? seriesId = null;
+            string entityId;
+            IDispatchTitleUnmonitorComponent? unmonitorComponent = null;
+
+            switch (titleKind)
+            {
+                case TitleKind.Movie:
+                    await new MoviesSchemaInitializer(storage.Factory, migrator, NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+                    movies = new SqliteMovieCatalogRepository(storage.Factory, time);
+                    var addedMovie = await movies.AddAsync(new CreateMovieRequest(Release, 2024, null), CancellationToken.None);
+                    entityType = "movie";
+                    entityId = addedMovie.Id;
+                    unmonitorComponent = new MovieDispatchTitleUnmonitorService(movies);
+                    break;
+
+                case TitleKind.Series:
+                    await new SeriesSchemaInitializer(storage.Factory, migrator, NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+                    series = new SqliteSeriesCatalogRepository(storage.Factory, time);
+                    var addedSeries = await series.AddAsync(new CreateSeriesRequest(Release, 2024, null), CancellationToken.None);
+                    entityType = "series";
+                    entityId = addedSeries.Id;
+                    unmonitorComponent = new SeriesDispatchTitleUnmonitorService(series);
+                    break;
+
+                case TitleKind.Episode:
+                    await new SeriesSchemaInitializer(storage.Factory, migrator, NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+                    series = new SqliteSeriesCatalogRepository(storage.Factory, time);
+                    var parentSeries = await series.AddAsync(new CreateSeriesRequest(Release, 2024, null), CancellationToken.None);
+                    await series.SyncEpisodeCatalogueAsync(
+                        parentSeries.Id,
+                        [new CatalogueEpisodeItem(1, 1, "Pilot", null, time.GetUtcNow())],
+                        "provider",
+                        CancellationToken.None);
+                    var detail = await series.GetInventoryDetailAsync(parentSeries.Id, CancellationToken.None);
+                    entityType = "episode";
+                    entityId = detail!.Episodes.Single().EpisodeId;
+                    seriesId = parentSeries.Id;
+                    unmonitorComponent = new SeriesDispatchTitleUnmonitorService(series);
+                    break;
+
+                default:
+                    entityId = $"{entityType}-1";
+                    break;
+            }
+
             var dispatchId = await jobs.RecordDownloadDispatchAsync(
                 library.Id, mediaType, entityType, entityId, Release, Indexer, client.Id, client.Name, "sent", null,
                 cancellationToken: CancellationToken.None);
@@ -252,6 +400,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
             var fakeClient = new FakeClient(protocol);
             var registry = new DownloadClientRegistry([fakeClient]);
+            var titleUnmonitorService = unmonitorComponent is null
+                ? null
+                : new CompositeDispatchTitleUnmonitorService([unmonitorComponent]);
             var service = new DownloadClientTelemetryService(
                 settings,
                 new SqliteDownloadHealthRepository(storage.Factory, time),
@@ -267,9 +418,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 new Deluno.Recovery.Policies.DownloadHealthEvaluator(),
                 null!,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
-                blocklist);
+                blocklist,
+                titleUnmonitorService: titleUnmonitorService);
 
-            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist);
+            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId);
         }
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)
