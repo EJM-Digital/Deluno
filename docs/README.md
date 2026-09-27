@@ -32,6 +32,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `upgrade-guide-0x-to-1x.md`: user upgrade procedure from prerelease line to GA line.
 - `MEDIA_AUTOMATION_TERMINOLOGY.md`: familiar media-automation terms and Deluno's simpler, media-first equivalents.
 - `tracker-definitions.md`: the tracker definition format Deluno's native tracker engine reads (#606): fields, how to add a definition without a Deluno release, and the starter set Deluno ships.
+- `security-allowed-hosts.md`: System &rarr; Security &rarr; Allowed Hosts (#939) -- what it does, the setup-guide question, the lock-out protection, and the config/env-var + tray recovery path.
 
 ## Execution Plans
 
