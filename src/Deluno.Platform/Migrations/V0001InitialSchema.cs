@@ -115,7 +115,9 @@ public static class PlatformDatabaseMigrations
         new V0107IndexerSeasonPackSeedTime(),
         new V0108SharingRuleMatrix(),
         new V0109DownloadClientPathMappingHost(),
-        new V0110SeerrWebhookSecret()
+        new V0110SeerrWebhookSecret(),
+        new V0111TrackerDefinitionUpdateState(),
+        new V0112IndexerHistoryEvents()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

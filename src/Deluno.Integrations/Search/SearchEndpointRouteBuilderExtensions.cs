@@ -28,6 +28,22 @@ public static class SearchEndpointRouteBuilderExtensions
         // user looks for is never simply missing.
         endpoints.MapGet("/api/trackers", (Trackers.ITrackerDefinitionCatalog catalog) => Results.Ok(catalog.List()));
 
+        // #756: the scheduled/manual tracker-definition update's own state --
+        // on/off, cadence, and what its last pass did.
+        endpoints.MapGet("/api/trackers/definitions/update-check", async (
+            Trackers.ITrackerDefinitionUpdateService updateService,
+            CancellationToken cancellationToken) => Results.Ok(await updateService.GetAsync(cancellationToken)));
+
+        endpoints.MapPut("/api/trackers/definitions/update-check", async (
+            Trackers.UpdateTrackerDefinitionUpdateSettingsRequest request,
+            Trackers.ITrackerDefinitionUpdateService updateService,
+            CancellationToken cancellationToken) => Results.Ok(
+                await updateService.SetSettingsAsync(request.IsEnabled, request.IntervalHours, cancellationToken)));
+
+        endpoints.MapPost("/api/trackers/definitions/update-check/run", async (
+            Trackers.ITrackerDefinitionUpdateService updateService,
+            CancellationToken cancellationToken) => Results.Ok(await updateService.UpdateNowAsync(cancellationToken)));
+
         // Whether a Cloudflare helper answers at an address (#628), before it is saved.
         endpoints.MapPost("/api/trackers/cloudflare-helper/test", async (
             CloudflareHelperTestRequest request,

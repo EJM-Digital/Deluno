@@ -29,6 +29,18 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHttpClient(Search.Trackers.FlareSolverrCloudflareHelper.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(75));
         services.AddSingleton<Search.Trackers.ICloudflareHelper, Search.Trackers.FlareSolverrCloudflareHelper>();
         services.AddHostedService<Search.Trackers.CloudflareHelperSessionCleanupService>();
+        // Scheduled/manual tracker-definition update (#756): off by default
+        // (#936). Writes into the same data-folder trackers directory the
+        // catalog above already treats as an override.
+        services.AddHttpClient(Search.Trackers.GitHubTrackerDefinitionSource.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Deluno tracker-definitions-update/1.0");
+        });
+        services.AddSingleton<Search.Trackers.IRemoteTrackerDefinitionSource, Search.Trackers.GitHubTrackerDefinitionSource>();
+        services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateStore, Search.Trackers.SqliteTrackerDefinitionUpdateStore>();
+        services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateService, Search.Trackers.TrackerDefinitionUpdateService>();
+        services.AddHostedService<Search.Trackers.TrackerDefinitionAutoUpdateHostedService>();
         services.AddSingleton<Search.Trackers.ITrackerEngine, Search.Trackers.TrackerEngine>();
         services.AddSingleton<Search.Trackers.TrackerIndexers>();
         services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());
