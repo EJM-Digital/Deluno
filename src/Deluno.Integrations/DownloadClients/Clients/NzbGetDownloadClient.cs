@@ -110,6 +110,37 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     }
 
     /// <summary>
+    /// NZBGet's own <c>listfiles(FileID, LockFileID, NZBID)</c> (#816): called
+    /// with 0/0 and this item's NZBID, it lists every file NZBGet still holds
+    /// for that group. Only covers a download still in NZBGet's queue -
+    /// NZBGet drops per-file detail once a group moves to history, the same
+    /// point past which the content blocklist stops mattering because the
+    /// files are already on disk for the import step to see directly. Null
+    /// when the address or id is missing, or the call itself fails.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || !DownloadClientHelpers.TryParseId(queueItemId, out var id)) return null;
+
+        try
+        {
+            var http = CreateHttp(client);
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetFile>>>(
+                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("listfiles", [0, 0, id]), cancellationToken);
+            return response?.Result
+                ?.Select(file => file.Filename)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// One NZBGet command per Deluno verb, and every one of them acting on the
     /// download the caller named.
     ///
@@ -494,6 +525,7 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record NzbGetRequest([property: JsonPropertyName("method")] string Method, [property: JsonPropertyName("params")] object[] Params);
     private sealed record NzbGetResponse<T>([property: JsonPropertyName("result")] T? Result, [property: JsonPropertyName("error")] NzbGetError? Error = null);
     private sealed record NzbGetError([property: JsonPropertyName("code")] int? Code, [property: JsonPropertyName("message")] string? Message);
+    private sealed record NzbGetFile([property: JsonPropertyName("Filename")] string? Filename);
     private sealed record NzbGetQueueItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("RemainingSizeHi")] long RemainingSizeHi, [property: JsonPropertyName("DestDir")] string? DestDir);
     private sealed record NzbGetHistoryItem([property: JsonPropertyName("NZBID")] int NzbId, [property: JsonPropertyName("NZBName")] string? NzbName, [property: JsonPropertyName("Name")] string? Name, [property: JsonPropertyName("Category")] string? Category, [property: JsonPropertyName("Status")] string? Status, [property: JsonPropertyName("FileSizeHi")] long FileSizeHi, [property: JsonPropertyName("HistoryTime")] long? HistoryTime, [property: JsonPropertyName("DestDir")] string? DestDir, [property: JsonPropertyName("ScriptStatuses")] IReadOnlyList<NzbGetScriptStatus>? ScriptStatuses);
 

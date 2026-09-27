@@ -75,14 +75,85 @@ public sealed class ContentBlocklistFileListingTests
     }
 
     [Fact]
-    public async Task Utorrent_and_usenet_clients_do_not_support_file_listing_yet()
+    public async Task Utorrent_does_not_support_file_listing_yet()
     {
-        // #816: "where available" - uTorrent's WebUI, SABnzbd and NZBGet have
-        // no file-listing call wired up in this pass, so the base
-        // implementation's "unknown" answer is what a caller sees, and the
-        // content blocklist falls back to the release name for them.
+        // #816: "where available" - uTorrent's WebUI has no file-listing call
+        // wired up in this pass, so the base implementation's "unknown"
+        // answer is what a caller sees, and the content blocklist falls back
+        // to the release name for it.
         var files = await new UTorrentDownloadClient(() => new NeverCalledHandler())
             .GetFilesAsync(UTorrentClient(), "abc123", CancellationToken.None);
+
+        Assert.Null(files);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_lists_files_from_get_files()
+    {
+        var handler = new SabnzbdFilesHandler("""{"files":[{"filename":"Example.Movie.2026.mkv"},{"filename":"Setup.exe"}]}""");
+
+        var files = await new SabnzbdDownloadClient(new Factory(handler))
+            .GetFilesAsync(SabnzbdClient(), "SABnzbd_nzo_1", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+    }
+
+    [Fact]
+    public async Task Sabnzbd_reports_no_files_when_the_client_will_not_say()
+    {
+        var handler = new SabnzbdFilesHandler(body: null);
+
+        var files = await new SabnzbdDownloadClient(new Factory(handler))
+            .GetFilesAsync(SabnzbdClient(), "SABnzbd_nzo_1", CancellationToken.None);
+
+        Assert.Null(files);
+    }
+
+    [Fact]
+    public async Task NzbGet_lists_files_from_listfiles()
+    {
+        var handler = new NzbGetFilesHandler("""{"result":[{"Filename":"Example.Movie.2026.mkv"},{"Filename":"Setup.exe"}]}""");
+
+        var files = await new NzbGetDownloadClient(new Factory(handler))
+            .GetFilesAsync(NzbGetClient(), "42", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+    }
+
+    [Fact]
+    public async Task NzbGet_reports_no_files_when_the_queue_item_id_does_not_parse()
+    {
+        var files = await new NzbGetDownloadClient(new Factory(new NeverCalledHandler()))
+            .GetFilesAsync(NzbGetClient(), "not-a-number", CancellationToken.None);
+
+        Assert.Null(files);
+    }
+
+    [Fact]
+    public async Task Rtorrent_lists_files_from_f_multicall()
+    {
+        var handler = new RtorrentFilesHandler(
+            "<?xml version=\"1.0\"?><methodResponse><params><param><value><array><data>"
+            + "<value><array><data><value><string>Example.Movie.2026.mkv</string></value></data></array></value>"
+            + "<value><array><data><value><string>Setup.exe</string></value></data></array></value>"
+            + "</data></array></value></param></params></methodResponse>");
+
+        var files = await new RtorrentDownloadClient(new Factory(handler))
+            .GetFilesAsync(RtorrentClient(), "abc123hash", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+    }
+
+    [Fact]
+    public async Task Rtorrent_reports_no_files_when_the_call_fails()
+    {
+        var handler = new RtorrentFaultHandler();
+
+        var files = await new RtorrentDownloadClient(new Factory(handler))
+            .GetFilesAsync(RtorrentClient(), "abc123hash", CancellationToken.None);
 
         Assert.Null(files);
     }
@@ -105,6 +176,15 @@ public sealed class ContentBlocklistFileListingTests
 
     private static DownloadClientItem UTorrentClient()
         => QbitClient() with { Id = "utorrent-1", Name = "uTorrent", Protocol = "utorrent" };
+
+    private static DownloadClientItem SabnzbdClient()
+        => QbitClient() with { Id = "sab-1", Name = "SABnzbd", Protocol = "sabnzbd", Secret = "sab-api-key" };
+
+    private static DownloadClientItem NzbGetClient()
+        => QbitClient() with { Id = "nzbget-1", Name = "NZBGet", Protocol = "nzbget" };
+
+    private static DownloadClientItem RtorrentClient()
+        => QbitClient() with { Id = "rtorrent-1", Name = "rTorrent", Protocol = "rtorrent" };
 
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
     {
@@ -151,6 +231,49 @@ public sealed class ContentBlocklistFileListingTests
     private sealed class NeverCalledHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => throw new InvalidOperationException("uTorrent's base GetFilesAsync must not make an HTTP call.");
+            => throw new InvalidOperationException("This call must not reach the network.");
+    }
+
+    private sealed class SabnzbdFilesHandler(string? body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var query = request.RequestUri?.Query ?? string.Empty;
+            if (!query.Contains("mode=get_files", StringComparison.Ordinal))
+            {
+                return Task.FromResult(JsonResponse("{}"));
+            }
+
+            return body is null
+                ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))
+                : Task.FromResult(JsonResponse(body));
+        }
+    }
+
+    private sealed class NzbGetFilesHandler(string reply) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            return JsonResponse(body.Contains("\"listfiles\"", StringComparison.Ordinal) ? reply : """{"result":null}""");
+        }
+    }
+
+    private sealed class RtorrentFilesHandler(string reply) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var xml = body.Contains("<methodName>f.multicall</methodName>", StringComparison.Ordinal)
+                ? reply
+                : """<?xml version="1.0"?><methodResponse><params><param><value><array><data></data></array></value></param></params></methodResponse>""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(xml, Encoding.UTF8, "text/xml") };
+        }
+    }
+
+    private sealed class RtorrentFaultHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError));
     }
 }

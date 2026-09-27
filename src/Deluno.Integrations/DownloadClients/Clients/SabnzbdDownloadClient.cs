@@ -205,6 +205,39 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         return await GetHistoryCoreAsync(http, client, baseUri, client.Secret, capturedUtc, cancellationToken);
     }
 
+    /// <summary>
+    /// SABnzbd's own <c>mode=get_files&amp;value=&lt;nzo_id&gt;</c> (#816):
+    /// every file SABnzbd still holds for that job, by its own filename. Only
+    /// meaningful while the job is still queued or downloading - like NZBGet,
+    /// SABnzbd has already written the finished files to disk by the time a
+    /// job reaches history, where the import step reads them directly. Null
+    /// when the address, API key or queue item id is missing, or the call
+    /// itself fails.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        var apiKey = client.Secret ?? client.Username;
+        if (baseUri is null || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(queueItemId)) return null;
+
+        try
+        {
+            var http = httpClientFactory.CreateClient("download-clients");
+            http.Timeout = TimeSpan.FromSeconds(8);
+            var uri = new Uri(baseUri, $"api?mode=get_files&value={Uri.EscapeDataString(queueItemId)}&output=json&apikey={Uri.EscapeDataString(apiKey)}");
+            var payload = await http.GetFromJsonAsync<SabFilesResponse>(uri, cancellationToken);
+            return payload?.Files
+                ?.Select(file => file.Filename)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
     public override async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(
         DownloadClientItem client,
         string category,
@@ -718,6 +751,8 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         };
     }
 
+    private sealed record SabFilesResponse([property: JsonPropertyName("files")] IReadOnlyList<SabFile>? Files);
+    private sealed record SabFile([property: JsonPropertyName("filename")] string? Filename);
     private sealed record SabQueueResponse([property: JsonPropertyName("queue")] SabQueue? Queue);
     // diskspace1/diskspacetotal1 (#663): the "complete" download folder's free
     // and total space, in GB as SABnzbd's own decimal string — the field the
