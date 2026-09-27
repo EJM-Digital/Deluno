@@ -9,12 +9,15 @@
  * existed (#936); the first read of /api/download-health/rules synthesizes
  * that starting point once, server-side.
  *
- * Two rule kinds Cleanuparr and #905's own wishlist name - "magnet stuck
- * fetching metadata" and "dangerous or junk files" among them - are not
- * offered here: no client adapter reports the telemetry they would need yet
- * (see Deluno.Contracts.DownloadHealthRuleKinds). Also on this page: the
- * ignore list (#817) and purge-all-strikes (#826), both part of the same
- * engine rather than separate screens.
+ * "Dangerous or junk file" (#816/#879) is offered here too, once a client
+ * adapter can list what is actually inside a download - it checks that
+ * listing against the content blocklist configured on Search & Cycles ->
+ * Failed downloads, rather than reading a threshold of its own. "Magnet
+ * stuck fetching metadata", from the same #905 wishlist, is still not
+ * offered: no client adapter reports that telemetry yet (see
+ * Deluno.Contracts.DownloadHealthRuleKinds). Also on this page: the ignore
+ * list (#817) and purge-all-strikes (#826), both part of the same engine
+ * rather than separate screens.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
