@@ -1477,13 +1477,17 @@ public sealed partial class ImportPipelineService(
                 }
             }
 
+            // #892: a copy import's source is checked and cleaned up once the
+            // pack is committed, the same as a single file - IsTvPackAlreadyCommittedAsync
+            // no longer needs the source to still be there to recognise a
+            // retry of this same pack, so packs get the same cleanup a single
+            // file already did rather than being left out of it.
             var sharedByClient = await IsStillSharedByClientAsync(request.DispatchId, cancellationToken);
             var cleanup = placements.Select(placement => ApplyWorkflowCleanup(
                 placement.File.Preview.SourcePath,
                 ResolveLibraryForImport(placement.File.Preview.DestinationPath, "tv", libraries),
                 sharedByClient,
-                modeUsed,
-                enforceCopyCleanup: false)).ToArray();
+                modeUsed)).ToArray();
             var matchedLibrary = ResolveLibraryForImport(plan.Summary.DestinationPath, "tv", libraries);
             var provenance = BuildImportProvenance(
                 request,
@@ -1672,9 +1676,18 @@ public sealed partial class ImportPipelineService(
             episode => episode.EpisodeId);
         foreach (var file in files)
         {
-            await using (var source = File.OpenRead(file.Preview.SourcePath))
-            await using (var destination = File.OpenRead(file.Preview.DestinationPath))
+            // #892: a copy import's own source is cleaned up (checked, then
+            // deleted) once the pack is committed, same as a single file. A
+            // retry of an already-committed pack most often finds that source
+            // already gone - which is not evidence of anything wrong, so it
+            // is not re-hashed against a destination it can no longer reach.
+            // The destination's already-verified size, plus the catalogue
+            // still tracking this exact path below, is what "already
+            // committed" is resting on for that file instead.
+            if (File.Exists(file.Preview.SourcePath))
             {
+                await using var source = File.OpenRead(file.Preview.SourcePath);
+                await using var destination = File.OpenRead(file.Preview.DestinationPath);
                 var sourceHash = await SHA256.HashDataAsync(source, cancellationToken);
                 var destinationHash = await SHA256.HashDataAsync(destination, cancellationToken);
                 if (!sourceHash.AsSpan().SequenceEqual(destinationHash))
@@ -3836,23 +3849,18 @@ public sealed partial class ImportPipelineService(
         string sourcePath,
         LibraryItem? library,
         bool stillSharedByClient,
-        string transferModeUsed,
-        // #892 is scoped to a single file's own source: a season pack's
-        // already-committed retry re-derives its answer by re-hashing each
-        // source file against its destination, which needs the pack's
-        // sources to still be there. Packs keep the opt-in setting below
-        // unchanged until that check no longer needs the files themselves.
-        bool enforceCopyCleanup = true)
+        string transferModeUsed)
     {
         // #892: a copy import leaves a second, full copy of the data on disk -
         // the source and the library file no longer share anything. A hardlink
         // import's "source" is the same bytes under a second name, so removing
         // it is the opt-in housekeeping setting below and nothing changes for
         // an install that never turned it on. A copy import gets no such
-        // choice: once the copy is verified (it is, or this method would not
-        // have been reached) the original is checked and cleared, subject to
-        // the same sharing rule as everything else.
-        var cleanupEnabled = (enforceCopyCleanup && string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase))
+        // choice, single file or season pack alike: once the copy is verified
+        // (it is, or this method would not have been reached) the original is
+        // checked and cleared, subject to the same sharing rule as everything
+        // else.
+        var cleanupEnabled = string.Equals(transferModeUsed, "copy", StringComparison.OrdinalIgnoreCase)
             || (library is not null && string.Equals(library.CleanupMode, "remove-source-after-import", StringComparison.OrdinalIgnoreCase));
 
         if (library is null || !cleanupEnabled)
