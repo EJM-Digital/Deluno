@@ -220,6 +220,7 @@ GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
 GET /api/trackers
+GET /api/trakt/status
 GET /api/updates/preferences
 GET /api/updates/status
 GET /api/v1/dispatch-alerts/
@@ -420,6 +421,10 @@ POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
 POST /api/tags/
 POST /api/trackers/cloudflare-helper/test
+POST /api/trakt/connect
+POST /api/trakt/connect/poll
+POST /api/trakt/credentials
+POST /api/trakt/disconnect
 POST /api/updates/apply-on-restart
 POST /api/updates/check
 POST /api/updates/download
