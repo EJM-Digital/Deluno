@@ -36,8 +36,8 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
     {
         endpoints.MapGet("/api/subtitles/wanted", async (
             HttpContext httpContext,
-            ILibrariesRepository librariesRepository,
-            IMediaSubtitleRepository mediaSubtitleRepository,
+            [FromServices] ILibrariesRepository librariesRepository,
+            [FromServices] IMediaSubtitleRepository mediaSubtitleRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -88,8 +88,8 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/subtitles/wanted/search-all", async (
             HttpContext httpContext,
             [FromBody] SearchAllWantedRequest request,
-            ISeriesCatalogRepository seriesCatalogRepository,
-            IJobScheduler jobScheduler,
+            [FromServices] ISeriesCatalogRepository seriesCatalogRepository,
+            [FromServices] IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
