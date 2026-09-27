@@ -147,6 +147,10 @@ interface CleanupForm {
   // default (#936).
   maxSearchesPerHourEnabled: boolean;
   maxSearchesPerHour: string;
+  // #818: zero seeders, or the tracker itself saying unregistered, past a
+  // grace period since the download was added. Off by default (#936).
+  deadTorrentEnabled: boolean;
+  deadTorrentGraceMinutes: string;
 }
 
 export function SearchCyclesPage() {
@@ -344,6 +348,8 @@ export function SearchCyclesPage() {
             downloadHealthMinPeersMinutes: Math.max(1, Math.min(1440, Number(cleanup.minPeersMinutes || 30))),
             maxSearchesPerHourEnabled: cleanup.maxSearchesPerHourEnabled,
             maxSearchesPerHour: Math.max(1, Math.min(100_000, Number(cleanup.maxSearchesPerHour || 200))),
+            downloadHealthDeadTorrentEnabled: cleanup.deadTorrentEnabled,
+            downloadHealthDeadTorrentGraceMinutes: Math.max(0, Math.min(1440, Number(cleanup.deadTorrentGraceMinutes || 60))),
             sharingMode: sharing.mode,
             // A blank target is sent as null, which the API stores as
             // "deliberately not part of this rule" rather than "never set".
@@ -589,7 +595,7 @@ export function SearchCyclesPage() {
       {view === "failed" ? <ListCard title="Download health" count="What counts as stuck, before it is struck">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
-            What counts as stuck, and what Deluno does about it, moved to its own page (#905): each rule now has its own strikes, its own timer and its own action, instead of one flat switch shared by every kind. Nothing changed for this installation until you open it and edit a rule there.
+            What counts as stuck, and what Deluno does about it, moved to its own page (#905): each rule now has its own strikes, its own timer and its own action, instead of one flat switch shared by every kind. Nothing changed for this installation until you open it and edit a rule there. A tracker the client itself says is unregistered feeds the same Dead torrent rule there, and is otherwise handled separately (Downloading: torrents) — removed and replaced as soon as it is seen, once removal is turned on.
           </p>
           <div>
             <Button asChild variant="outline" size="sm">
@@ -803,7 +809,9 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     minPeers: String(settings.downloadHealthMinPeers ?? 1),
     minPeersMinutes: String(settings.downloadHealthMinPeersMinutes ?? 30),
     maxSearchesPerHourEnabled: settings.maxSearchesPerHourEnabled,
-    maxSearchesPerHour: String(settings.maxSearchesPerHour ?? 200)
+    maxSearchesPerHour: String(settings.maxSearchesPerHour ?? 200),
+    deadTorrentEnabled: settings.downloadHealthDeadTorrentEnabled,
+    deadTorrentGraceMinutes: String(settings.downloadHealthDeadTorrentGraceMinutes ?? 60)
   };
 }
 function nextSearchLabel(view: string, library: LibraryItem, state: LibraryAutomationStateItem | undefined): string | null {

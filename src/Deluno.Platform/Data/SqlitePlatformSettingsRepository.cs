@@ -226,6 +226,10 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.enabled", request.DownloadHealthMinPeersEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.count", Math.Clamp(request.DownloadHealthMinPeers ?? 1, 0, 1000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-health.minPeers.minutes", Math.Clamp(request.DownloadHealthMinPeersMinutes ?? 30, 1, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #818: zero seeders, or the tracker itself saying unregistered, past
+        // a grace period since the download was added. Off by default (#936).
+        await UpsertSettingAsync(connection, transaction, "download-health.deadTorrent.enabled", request.DownloadHealthDeadTorrentEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "download-health.deadTorrent.graceMinutes", Math.Clamp(request.DownloadHealthDeadTorrentGraceMinutes ?? 60, 0, 1440).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #905's remaining global settings: the per-rule engine itself lives
         // in IDownloadHealthRepository (download-health.rules.v1), these are
         // what sits alongside it. Off/at their old defaults (#936).
@@ -599,6 +603,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthMinPeersEnabled: string.Equals(GetValue(settings, "download-health.minPeers.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             DownloadHealthMinPeers: ReadPositiveInt(GetValue(settings, "download-health.minPeers.count"), 1, 0, 1000),
             DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440),
+            DownloadHealthDeadTorrentEnabled: string.Equals(GetValue(settings, "download-health.deadTorrent.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            DownloadHealthDeadTorrentGraceMinutes: ReadPositiveInt(GetValue(settings, "download-health.deadTorrent.graceMinutes"), 60, 0, 1440),
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
             LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
             SubtitleFetchAutomaticEnabled: string.Equals(GetValue(settings, "subtitles.fetchAutomatically"), "true", StringComparison.OrdinalIgnoreCase),

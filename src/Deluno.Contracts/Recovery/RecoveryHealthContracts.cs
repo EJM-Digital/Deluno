@@ -1,6 +1,30 @@
 namespace Deluno.Contracts;
 
 /// <summary>
+/// The normalized reading of what a torrent's tracker is saying about it
+/// (#878, cleanup sheet C5). Each client adapter maps its own protocol's
+/// tracker fields onto this one shape: qBittorrent's <c>api/v2/torrents/trackers</c>,
+/// Transmission's <c>trackerStats</c>, Deluge's <c>tracker_status</c>. Usenet has
+/// no trackers, so its snapshots never carry anything but <see cref="Unknown"/>.
+/// </summary>
+public static class DownloadTrackerStatuses
+{
+    /// <summary>The client did not report anything usable, or the protocol has no trackers at all.</summary>
+    public const string Unknown = "unknown";
+
+    /// <summary>The tracker answered normally.</summary>
+    public const string Ok = "ok";
+
+    /// <summary>
+    /// The tracker explicitly said this torrent is unregistered, removed, or
+    /// otherwise something it will never serve again — distinct from the
+    /// tracker being merely unreachable right now, which stays
+    /// <see cref="Unknown"/> or <see cref="Ok"/> rather than this.
+    /// </summary>
+    public const string Unregistered = "unregistered";
+}
+
+/// <summary>
 /// The small, normalized snapshot needed to evaluate download health. Keeping this
 /// contract outside the integration adapters lets recovery remain independent of
 /// any particular download-client protocol.
@@ -30,7 +54,9 @@ public sealed record RecoveryQueueSnapshot(
     /// <summary>Usenet has no peers or seeders, so peer/seed-based rules never apply to it.</summary>
     bool IsUsenetProtocol = false,
     /// <summary>Whether the tracker is private, as the client itself reports it (#815). Null when unknown; a rule scoped to public-only or private-only never matches an unknown privacy.</summary>
-    bool? IsPrivate = null);
+    bool? IsPrivate = null,
+    /// <summary>One of <see cref="DownloadTrackerStatuses"/> (#878).</summary>
+    string TrackerStatus = DownloadTrackerStatuses.Unknown);
 
 public sealed record RecoveryHealthFinding(
     string Severity,

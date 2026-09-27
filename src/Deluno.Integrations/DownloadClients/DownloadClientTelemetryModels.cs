@@ -285,7 +285,15 @@ public sealed record DownloadQueueItem(
     /// or private-only never matches an unknown privacy, so an unreadable
     /// flag never wrongly narrows a private-tracker download's protection.
     /// </summary>
-    bool? IsPrivate = null);
+    bool? IsPrivate = null,
+    /// <summary>
+    /// One of <see cref="Deluno.Contracts.DownloadTrackerStatuses"/> (#878):
+    /// each torrent client adapter reads its own protocol's tracker fields
+    /// (qBittorrent's <c>api/v2/torrents/trackers</c>, Transmission's
+    /// <c>trackerStats</c>, Deluge's <c>tracker_status</c>) and normalizes them
+    /// here. Usenet clients never set this to anything but Unknown.
+    /// </summary>
+    string TrackerStatus = Deluno.Contracts.DownloadTrackerStatuses.Unknown);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

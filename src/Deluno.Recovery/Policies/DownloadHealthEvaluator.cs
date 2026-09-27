@@ -140,12 +140,17 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // #818: a torrent with nobody left to seed it is not "slow", it is
         // dead - a separate, sharper check from the configurable low-peers
         // floor above, with its own grace period so a magnet that has not
-        // yet announced is not judged the instant it is added.
+        // yet announced is not judged the instant it is added. A tracker
+        // explicitly saying the torrent is unregistered is the same verdict
+        // by a different route, so it trips this rule too - a temporary
+        // "tracker unreachable" read never sets TrackerStatus to Unregistered
+        // (it stays Unknown/Ok), so an outage cannot be mistaken for this.
         var deadTorrent = MatchRule(rules, DownloadHealthRuleKinds.DeadTorrent, item);
+        var trackerUnregistered = item.TrackerStatus == DownloadTrackerStatuses.Unregistered;
         if (deadTorrent is not null &&
             !item.IsUsenetProtocol &&
             item.Status == "downloading" &&
-            item.Peers <= 0 &&
+            (item.Peers <= 0 || trackerUnregistered) &&
             capturedUtc - item.AddedUtc >= TimeSpan.FromMinutes(deadTorrent.Threshold) &&
             capturedUtc - item.AddedUtc >= deadTorrent.Timer)
         {
@@ -153,9 +158,35 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 deadTorrent,
                 "warning",
                 DownloadHealthStrikes.DeadTorrent,
-                "This torrent has no seeds or peers left.",
-                $"0 peers for at least {deadTorrent.Timer.TotalMinutes:0} minutes, past its {deadTorrent.Threshold:0}-minute grace period.",
+                trackerUnregistered
+                    ? "This torrent's tracker reports it unregistered or removed."
+                    : "This torrent has no seeds or peers left.",
+                trackerUnregistered
+                    ? $"Tracker reports this torrent unregistered, past its {deadTorrent.Threshold:0}-minute grace period."
+                    : $"0 peers for at least {deadTorrent.Timer.TotalMinutes:0} minutes, past its {deadTorrent.Threshold:0}-minute grace period.",
                 "This release may no longer be available anywhere. A replacement search may find a healthier one."));
+        }
+
+        // #878, cleanup sheet C5 (the owner's decided behaviour): the tracker
+        // itself saying a torrent is unregistered is treated as certain, not
+        // merely suspicious - unlike every rule above, this is not something
+        // a person opts into, and it does not wait for repeated sightings.
+        // RuleStrikeLimit of 1 is what makes the very first observation act;
+        // RuleActionPreset is left unset so the platform's own cleanup
+        // switches (#936) still decide whether anything actually removes,
+        // deletes, blocklists or searches.
+        if (trackerUnregistered && !item.IsUsenetProtocol && item.Status != "importReady")
+        {
+            findings.Add(new(
+                Severity: "critical",
+                Kind: DownloadHealthStrikes.TrackerUnregistered,
+                Summary: "The tracker says this torrent is unregistered or removed.",
+                Evidence: "The tracker rejected this torrent's announce as unregistered, not merely unreachable.",
+                RecommendedAction: "Deluno treats this release as dead: it removes it from the client with its files, blocklists it, and searches again, once your cleanup switches are on.",
+                CanSafelyRetry: false,
+                CanSafelyRemove: true,
+                RuleStrikeLimit: 1,
+                RuleTimerMinutes: 1));
         }
 
         // Only a download still downloading has a completion time. qBittorrent
