@@ -912,7 +912,7 @@ export function MovieDetailPage() {
 
       {nextStep ? (
         <ListCard title="Next step" count={nextStep.eyebrow}>
-          <ListTable chevron={false} columns={[{ label: "What Deluno suggests" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
+          <ListTable chevron={false} columns={[{ label: "What Deluno suggests" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
             <ListRow>
               <ListNameCell name={nextStep.title} sub={nextStep.description} />
               <div role="cell" className="flex justify-end">
@@ -1016,7 +1016,7 @@ export function MovieDetailPage() {
           </ListCard>
 
           <ListCard title="Automation" count={movie.monitored ? "Monitored" : "Unmonitored"}>
-            <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
+            <ListTable chevron={false} columns={[{ label: "Control" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
               <ListRow>
                 <ListNameCell
                   name="Background automation"
@@ -1103,7 +1103,7 @@ export function MovieDetailPage() {
         <>
           {importCases.length ? (
             <ListCard title="Import issues" count={`${importCases.length} open`}>
-              <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: "auto", align: "end", mobile: true }]}>
+              <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
                 {importCases.map((item) => (
                   <ListRow key={item.id}>
                     <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />

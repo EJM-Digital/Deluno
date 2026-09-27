@@ -223,7 +223,7 @@ export function EpisodeSearchPage() {
               { label: "Last search" },
               { label: "Next try" },
               { label: "Status", width: LIST_TRACK.status },
-              { label: "Search", width: "auto", align: "end", mobile: true }
+              { label: "Search", width: LIST_TRACK.action, align: "end", mobile: true }
             ]}
             chevron={false}
           >

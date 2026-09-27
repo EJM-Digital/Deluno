@@ -8,7 +8,7 @@ import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Field } from "../ui/field";
-import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { LIST_TRACK, ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { Select } from "../ui/select";
 import { STATUS_PRESENTATION } from "../../lib/status-tones";
 
@@ -107,7 +107,7 @@ export function LibraryMembershipCard({
         count={memberships.length > 1 ? `in ${memberships.length}` : undefined}
         actions={canKeepElsewhere ? <Button type="button" variant="outline" size="sm" onClick={() => open({ kind: "keep" })} disabled={busy}>Keep in another library…</Button> : undefined}
       >
-        <ListTable chevron={false} columns={[{ label: "Library" }, { label: "Copy" }, { label: "", width: "auto", align: "end", mobile: true, srOnly: true }]}>
+        <ListTable chevron={false} columns={[{ label: "Library" }, { label: "Copy" }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }]}>
           {memberships.map((membership) => {
             const chip = membership.hasFile ? STATUS_PRESENTATION["transfer.imported"] : { tone: "idle" as const, label: "No file" };
             return (

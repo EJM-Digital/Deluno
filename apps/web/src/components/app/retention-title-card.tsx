@@ -5,7 +5,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
-import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { LIST_TRACK, ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { RetentionKeepDialog, type KeepChoice } from "./retention-keep-dialog";
 import { retentionMarkPresentation, STATUS_PRESENTATION } from "../../lib/status-tones";
 
@@ -88,7 +88,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
   return (
     <>
       <ListCard title="Retention" count={`${rows} ${rows === 1 ? "item" : "items"}`}>
-        <ListTable chevron={false} columns={[{ label: "Rule" }, { label: "Why" }, { label: "When" }, { label: "", width: "auto", align: "end", mobile: true, srOnly: true }]}>
+        <ListTable chevron={false} columns={[{ label: "Rule" }, { label: "Why" }, { label: "When" }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }]}>
           {status.marks.map((mark) => (
             <ListRow key={`${mark.ruleId}:${mark.entityId}`}>
               <ListNameCell name={`“${mark.ruleName}”`} sub={mark.level === "movie" || mark.level === "show" ? undefined : mark.title} />
