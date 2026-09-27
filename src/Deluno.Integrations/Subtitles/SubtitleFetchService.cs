@@ -503,6 +503,12 @@ public sealed class SubtitleFetchService(
             : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
         var names = SubtitleNamePolicyCodec.Normalize(namePolicy);
         var configured = await repository.ListAsync(cancellationToken);
+        // Rank's hearing-impaired filter now takes the full preference vocabulary
+        // (#836, #923); a manual search only ever asks a plain yes/no, so it
+        // maps onto the two ends of that scale rather than the middle ground.
+        var hearingImpairedPreference = excludeHearingImpaired
+            ? SubtitleHearingImpairedPreferences.PlainOnly
+            : SubtitleHearingImpairedPreferences.PlainPreferred;
 
         var askable = configured
             .Where(item => item.IsAskable(timeProvider.GetUtcNow()))
@@ -528,7 +534,7 @@ public sealed class SubtitleFetchService(
                 continue;
             }
 
-            results.AddRange(Rank(candidates, language, excludeHearingImpaired, videoPath, names)
+            results.AddRange(Rank(candidates, language, hearingImpairedPreference, videoPath, names)
                 .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider!.Key, candidate.DownloadToken)))
                 .Select(candidate =>
                 {

@@ -196,7 +196,7 @@ public sealed class SubtitleRejectionBlocklistTests
             string language,
             bool isEpisodeMedia,
             string videoPath,
-            bool excludeHearingImpaired,
+            string hearingImpairedPreference,
             CancellationToken cancellationToken,
             SubtitleContentModificationPolicy? contentPolicy = null,
             SubtitleNamePolicy? namePolicy = null,
@@ -208,6 +208,18 @@ public sealed class SubtitleRejectionBlocklistTests
             _index++;
             return Task.FromResult(outcome);
         }
+
+        public Task<SubtitleFetchOutcome> FetchForcedAsync(
+            SubtitleSearchRequest request,
+            string language,
+            bool isEpisodeMedia,
+            string videoPath,
+            CancellationToken cancellationToken,
+            SubtitleContentModificationPolicy? contentPolicy = null,
+            SubtitleNamePolicy? namePolicy = null,
+            bool omitLanguageCode = false,
+            IReadOnlyCollection<string>? blockedKeys = null)
+            => Task.FromResult(new SubtitleFetchOutcome(language, Found: false, ProviderKey: null, WrittenPath: null, HearingImpaired: false, Reason: "Not asked for in this test."));
 
         public Task<IReadOnlyList<SubtitleSearchCandidate>> SearchCandidatesAsync(
             SubtitleSearchRequest request,
