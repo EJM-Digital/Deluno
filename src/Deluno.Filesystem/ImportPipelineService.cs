@@ -299,12 +299,17 @@ public sealed partial class ImportPipelineService(
         var lost = await WhatTheProcessorLostAsync(request, preview, cancellationToken);
         if (lost is not null)
         {
+            // The broken processed copy is deleted; the original -- already
+            // shown good at Checkpoint A -- is kept until a person chooses
+            // (#919). Only the processed file, never the download it came
+            // from (request.ProcessedFromPath).
+            DeleteBrokenProcessedCopy(preview.SourcePath);
             await RecordImportFailureAsync(
                 request,
                 request.Preview,
                 ImportFailurePolicy.ProcessedFileIsLess,
                 lost,
-                "Check the processor, then either fix it and try again or import the original download instead.",
+                "Import the original, run the processor again, or search for another release.",
                 cancellationToken);
             return Failed(StatusCodes.Status400BadRequest, lost);
         }
@@ -1798,10 +1803,22 @@ public sealed partial class ImportPipelineService(
 
         var before = await mediaProbeService.ProbeAsync(source, cancellationToken);
         var after = preview.MediaProbe;
-        // Nothing to compare with is not evidence of a problem. It is recorded
-        // on the import's decision trail either way, so an install that cannot
-        // probe can still see that nothing was checked.
-        if (before.Status != "succeeded" || after?.Status != "succeeded") return null;
+        // Nothing to compare the original with is not evidence of a problem.
+        // It is recorded on the import's decision trail either way, so an
+        // install that cannot probe can still see that nothing was checked.
+        if (before.Status != "succeeded") return null;
+
+        // Checkpoint A already showed the original opens and plays; a
+        // processed copy that does not is the processor's fault, not the
+        // release's (#919).
+        if (after?.Status == "failed")
+        {
+            return after.Message is { Length: > 0 } message
+                ? $"The processed file will not open or play: {message}"
+                : "The processed file will not open or play.";
+        }
+
+        if (after?.Status != "succeeded") return null;
 
         if (before.DurationSeconds is > 0 and var wasSeconds &&
             after.DurationSeconds is > 0 and var nowSeconds &&
@@ -1821,6 +1838,28 @@ public sealed partial class ImportPipelineService(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The processed copy is the processor's own work, and it is broken; the
+    /// download it was made from is kept regardless, because Checkpoint A
+    /// already showed that one is fine (#919). Best-effort: a delete that
+    /// fails is logged, not thrown, and does not stop the fault being held
+    /// and shown.
+    /// </summary>
+    private void DeleteBrokenProcessedCopy(string processedFilePath)
+    {
+        try
+        {
+            if (File.Exists(processedFilePath))
+            {
+                File.Delete(processedFilePath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Could not delete the broken processed copy at {Path}.", processedFilePath);
+        }
     }
 
     /// <summary>

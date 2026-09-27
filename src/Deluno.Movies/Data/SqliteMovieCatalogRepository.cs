@@ -3290,6 +3290,21 @@ public sealed class SqliteMovieCatalogRepository(
             // download has been detected - a vanished download has nothing
             // left with a processor to hand off.
             "vanished-downloading" => "vanished-downloading",
+            // Processor-fault and processor-hold kinds (#511, #914, #919,
+            // #921, #929, #930): each is a distinct case with its own
+            // recommended action, and without a case here every one of them
+            // silently became "importFailed" -- storing the same case under a
+            // different name than the one every caller, test and screen reads
+            // it back by.
+            "processedfileisless" => "processedFileIsLess",
+            "processor-output-missing" => "processor-output-missing",
+            "processor-unmatched-output" => "processor-unmatched-output",
+            "processor-lost" => "processor-lost",
+            "processor-timeout" => "processor-timeout",
+            "processor-stalled" => "processor-stalled",
+            "processor-failed" => "processor-failed",
+            "processor-held" => "processor-held",
+            "processor-refuses-every-copy" => "processor-refuses-every-copy",
             _ => "importFailed"
         };
     }
