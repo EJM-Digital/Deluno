@@ -95,6 +95,14 @@ export interface MediaSubtitleRow {
   codec: string | null;
   provider: string | null;
   sourceKey: string | null;
+  /**
+   * What the last timing sync found — `"moved"`, `"already_in_time"`, or
+   * `"not_checked"` when it could not decide either way (#922). Null for a
+   * subtitle no sync has run against yet.
+   */
+  timingStatus?: "moved" | "already_in_time" | "not_checked" | string | null;
+  /** The one-sentence reason behind `timingStatus`. */
+  timingReason?: string | null;
 }
 
 export interface SubtitleNamePolicy {
