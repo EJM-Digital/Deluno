@@ -40,6 +40,15 @@ public static class ServiceHost
         builder.WebHost.ConfigureKestrel(opts => opts.ListenAnyIP(settings.Port));
         builder.Configuration["Storage:DataRoot"] = settings.DataRoot;
 
+        // Same recovery override as DelunoServer.cs (#939): a service
+        // install honours the tray's "Let any address in" action too, since
+        // running as a service is exactly when there is no tray icon to fall
+        // back on.
+        if (settings.AllowedHostsForceDisabled)
+        {
+            builder.Configuration["Security:AllowedHosts:ForceDisabled"] = "true";
+        }
+
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
 
