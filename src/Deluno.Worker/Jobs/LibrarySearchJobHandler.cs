@@ -190,6 +190,9 @@ public abstract class LibrarySearchJobHandler(
                 candidate.FilePath,
                 candidate.FileSizeBytes,
                 cancellationToken);
+            var movieTitleTags = mediaTagStore is null
+                ? []
+                : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray();
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -200,9 +203,7 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    TagNames: mediaTagStore is null
-                        ? []
-                     : (await mediaTagStore.ListAsync(MediaKind.Movie, candidate.MovieId, cancellationToken)).Select(tag => tag.Name).ToArray(),
+                    TagNames: movieTitleTags,
                      SearchKind: AcquisitionSearchKinds.Automatic,
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
@@ -305,6 +306,17 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
+                    cancellationToken);
+
+                await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
+                    activityFeedRepository,
+                    acquisitionPipeline,
+                    grabResult,
+                    downloadClient.DownloadClientId,
+                    downloadClient.DownloadClientName,
+                    movieTitleTags,
+                    "movie",
+                    candidate.MovieId,
                     cancellationToken);
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(
@@ -831,6 +843,9 @@ public abstract class LibrarySearchJobHandler(
                 candidate.FilePath,
                 candidate.FileSizeBytes,
                 cancellationToken);
+            var seriesTitleTags = mediaTagStore is null
+                ? []
+                : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray();
             var decisionPlan = await acquisitionPipeline.PlanAsync(
                 new AcquisitionDecisionRequest(
                     candidate.Title,
@@ -841,9 +856,7 @@ public abstract class LibrarySearchJobHandler(
                     routing?.Sources ?? [],
                     routing?.DownloadClients ?? [],
                     customFormats,
-                    TagNames: mediaTagStore is null
-                        ? []
-                     : (await mediaTagStore.ListAsync(MediaKind.Series, candidate.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray(),
+                    TagNames: seriesTitleTags,
                      SearchKind: AcquisitionSearchKinds.Automatic,
                      AvailableUtc: candidate.AvailableUtc,
                      CurrentFilePresent: candidate.HasFile,
@@ -947,6 +960,17 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
+                    cancellationToken);
+
+                await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
+                    activityFeedRepository,
+                    acquisitionPipeline,
+                    grabResult,
+                    downloadClient.DownloadClientId,
+                    downloadClient.DownloadClientName,
+                    seriesTitleTags,
+                    "series",
+                    candidate.SeriesId,
                     cancellationToken);
 
                 await jobQueueRepository.RecordDownloadDispatchAsync(

@@ -155,6 +155,51 @@ internal static class SearchExecutionSupport
             cancellationToken);
     }
 
+    /// <summary>
+    /// #808: the same plain-English reason a manual grab explains in Activity
+    /// (a title's tags sent it to this client rather than another one routed
+    /// to the same library), carried into automatic search too. A no-op for
+    /// the ordinary case of an untagged client or a failed grab — an
+    /// automatic grab already writes its own record on failure through
+    /// <see cref="BlockDeadReleaseAsync"/> or
+    /// <see cref="RetryConnectivityFailureAsync"/>, and there is nothing
+    /// about tags to explain when they played no part in the choice.
+    /// </summary>
+    internal static async Task RecordAutomaticGrabRoutingAsync(
+        IActivityFeedRepository activityFeedRepository,
+        IAcquisitionDecisionPipeline acquisitionPipeline,
+        DownloadClientGrabResult grabResult,
+        string downloadClientId,
+        string downloadClientName,
+        IReadOnlyList<string>? titleTags,
+        string entityType,
+        string entityId,
+        CancellationToken cancellationToken)
+    {
+        if (!grabResult.Succeeded)
+        {
+            return;
+        }
+
+        var routingReason = await acquisitionPipeline.ExplainDownloadClientRoutingAsync(
+            downloadClientId,
+            titleTags,
+            cancellationToken);
+        if (routingReason is null)
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            $"{entityType}.release.grabbed",
+            $"{grabResult.ReleaseName} was automatically sent to {downloadClientName}. {routingReason}",
+            null,
+            null,
+            entityType,
+            entityId,
+            cancellationToken);
+    }
+
     /// <summary>How long Deluno waits before automatically trying the same release again after a connectivity or setup problem (#875).</summary>
     internal static readonly TimeSpan ConnectivityRetryDelay = TimeSpan.FromMinutes(15);
 

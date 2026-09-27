@@ -128,6 +128,9 @@ public sealed class EpisodeSearchJobHandler(
             cancellationToken,
             customFormats);
 
+        var episodeTitleTags = mediaTagStore is null
+            ? []
+            : (await mediaTagStore.ListAsync(MediaKind.Series, payload.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray();
         var decisionPlan = await acquisitionPipeline.PlanAsync(
             new AcquisitionDecisionRequest(
                 // The show, not the episode: an indexer reads a TV search's
@@ -143,9 +146,7 @@ public sealed class EpisodeSearchJobHandler(
                 CustomFormats: customFormats,
                 SeasonNumber: payload.SeasonNumber,
                 EpisodeNumber: payload.EpisodeNumber,
-                TagNames: mediaTagStore is null
-                    ? []
-                    : (await mediaTagStore.ListAsync(MediaKind.Series, payload.SeriesId, cancellationToken)).Select(tag => tag.Name).ToArray(),
+                TagNames: episodeTitleTags,
                 SearchKind: AcquisitionSearchKinds.Automatic,
                 AvailableUtc: null,
                 CurrentFilePresent: !string.IsNullOrWhiteSpace(currentFilePath),
@@ -223,6 +224,17 @@ public sealed class EpisodeSearchJobHandler(
                 seriesItem?.Title ?? bestCandidate!.ReleaseName,
                 downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
+                cancellationToken);
+
+            await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
+                activityFeedRepository,
+                acquisitionPipeline,
+                grabResult,
+                downloadClient.DownloadClientId,
+                downloadClient.DownloadClientName,
+                episodeTitleTags,
+                "episode",
+                payload.EpisodeId,
                 cancellationToken);
 
             await jobQueueRepository.RecordDownloadDispatchAsync(
