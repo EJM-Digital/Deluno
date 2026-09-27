@@ -25,6 +25,7 @@ using Deluno.Quality;
 using Deluno.Recovery;
 using Deluno.Security;
 using Deluno.Security.Hardening;
+using Microsoft.AspNetCore.HttpOverrides;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
@@ -71,6 +72,22 @@ if (OperatingSystem.IsWindows())
 {
     builder.Services.AddSingleton<IBundledComponentDetection, WindowsBundledComponentDetection>();
 }
+
+// Allowed Hosts (#939) matches against context.Request.Host, so a reverse
+// proxy or Docker host in front of Deluno needs its X-Forwarded-Host header
+// applied before that check runs. KnownNetworks/KnownProxies are cleared
+// rather than left at their loopback-only default: Deluno is never exposed
+// publicly without deliberately opting into LAN or Docker (see AllowLan
+// above), so the usual "an untrusted network could forge this header" risk
+// does not apply the way it would to an always-on public service, and a
+// proxy is exactly as likely to run on another Docker container's IP as on
+// loopback.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddDelunoInfrastructure(builder.Configuration);
 // Login is the one endpoint an unauthenticated caller can hit repeatedly, and
@@ -218,6 +235,16 @@ app.Use(async (context, next) =>
     }
     await next();
 });
+
+app.UseForwardedHeaders();
+
+// Allowed Hosts (#939): refuses a request addressed to a host Deluno was not
+// told to answer on, before routing decides anything -- covering the UI, the
+// API, SignalR/websocket upgrades and the external integration API alike.
+// Off by default and never turned on by an update (#936): a fresh install or
+// an existing one that has never opted in behaves exactly like every earlier
+// release here.
+app.UseDelunoAllowedHosts();
 
 app.UseDelunoApiVersioning();
 
