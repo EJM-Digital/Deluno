@@ -131,5 +131,39 @@ describe("Discover page (#785)", () => {
     expect(body.title).toBe("The Matrix");
     expect(body.libraryId).toBe("lib-1");
     expect(body.monitored).toBe(true);
+    expect(body.searchForMissingNow).toBe(false);
+    expect(body.searchForCutoffUnmetNow).toBe(false);
+  });
+
+  it("sends search-on-add choices when their switches are turned on, off by default", async () => {
+    const response = discoverResponse();
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/discover/add") {
+        return jsonResponse({ id: "movie-99", mediaType: "movies", libraryId: "lib-1" });
+      }
+      if (path.startsWith("/api/discover")) return jsonResponse(response);
+      return jsonResponse([]);
+    });
+
+    const { DiscoverPage } = await import("./discover-page");
+    render(
+      <MemoryRouter>
+        <DiscoverPage />
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(screen.getByText("The Matrix")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Add The Matrix" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Add The Matrix/ })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("switch", { name: /Search for missing now/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("/api/discover/add", expect.anything()));
+    const addCall = authedFetch.mock.calls.filter(([path]) => path === "/api/discover/add").at(-1)!;
+    const [, init] = addCall as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.searchForMissingNow).toBe(true);
+    expect(body.searchForCutoffUnmetNow).toBe(false);
   });
 });

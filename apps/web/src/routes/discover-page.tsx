@@ -13,7 +13,7 @@
  * Contracts: GET /api/discover?mediaType=, POST /api/discover/add,
  * GET /api/libraries, GET /api/quality-profiles.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 import { CircleSlash, Compass, Plus, ShieldCheck } from "lucide-react";
 import {
@@ -122,11 +122,21 @@ export function DiscoverPage() {
     };
   }, [mediaType]);
 
-  const relevantLibraries = libraries.filter((library) =>
-    mediaType === "series" ? library.mediaType === "tv" || library.mediaType === "shows" : library.mediaType === "movies"
+  // Memoized so the Add drawer's own reset-on-open effect (keyed on this
+  // array's identity) does not fire on every unrelated re-render of this
+  // page and silently wipe whatever the person had just chosen in the
+  // drawer - a plain .filter() here made a fresh array every render.
+  const relevantLibraries = useMemo(
+    () => libraries.filter((library) =>
+      mediaType === "series" ? library.mediaType === "tv" || library.mediaType === "shows" : library.mediaType === "movies"
+    ),
+    [libraries, mediaType]
   );
-  const relevantProfiles = qualityProfiles.filter((profile) =>
-    mediaType === "series" ? profile.mediaType === "tv" || profile.mediaType === "shows" : profile.mediaType === "movies"
+  const relevantProfiles = useMemo(
+    () => qualityProfiles.filter((profile) =>
+      mediaType === "series" ? profile.mediaType === "tv" || profile.mediaType === "shows" : profile.mediaType === "movies"
+    ),
+    [qualityProfiles, mediaType]
   );
 
   function markPopularAdded(title: string, year: number | null) {
@@ -315,6 +325,8 @@ function DiscoverAddDrawer({
   const [libraryId, setLibraryId] = useState<string>("");
   const [qualityProfileId, setQualityProfileId] = useState<string>("");
   const [monitored, setMonitored] = useState(true);
+  const [searchForMissingNow, setSearchForMissingNow] = useState(false);
+  const [searchForCutoffUnmetNow, setSearchForCutoffUnmetNow] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -322,6 +334,8 @@ function DiscoverAddDrawer({
     setLibraryId(libraries[0]?.id ?? "");
     setQualityProfileId("");
     setMonitored(true);
+    setSearchForMissingNow(false);
+    setSearchForCutoffUnmetNow(false);
   }, [target, libraries]);
 
   if (!target) {
@@ -345,7 +359,9 @@ function DiscoverAddDrawer({
         backdropUrl: candidate.backdropUrl,
         libraryId: libraryId || null,
         qualityProfileId: qualityProfileId || null,
-        monitored
+        monitored,
+        searchForMissingNow,
+        searchForCutoffUnmetNow
       };
       const response = await authedFetch("/api/discover/add", {
         method: "POST",
@@ -414,6 +430,18 @@ function DiscoverAddDrawer({
           description="Matches the same toggle the Add title dialog offers everywhere else in Deluno."
           checked={monitored}
           onCheckedChange={setMonitored}
+        />
+        <SwitchRow
+          label="Search for missing now"
+          description="Runs a search for this title right away instead of waiting for the next scheduled cycle."
+          checked={searchForMissingNow}
+          onCheckedChange={setSearchForMissingNow}
+        />
+        <SwitchRow
+          label="Search for cutoff unmet now"
+          description="Runs an upgrade search right away if this title is already held below its quality cutoff."
+          checked={searchForCutoffUnmetNow}
+          onCheckedChange={setSearchForCutoffUnmetNow}
         />
       </DrawerSection>
     </Drawer>

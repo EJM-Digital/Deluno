@@ -1,7 +1,10 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Intake.Contracts;
 using Deluno.Intake.Data;
 using Deluno.Integrations.Metadata;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Contracts;
@@ -123,6 +126,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
             ISeriesCatalogRepository seriesRepository,
             ILibrariesRepository librariesRepository,
             IMediaDecisionService mediaDecisionService,
+            IJobScheduler jobScheduler,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -154,9 +158,18 @@ public static class DiscoverEndpointRouteBuilderExtensions
                         Overview: request.Overview,
                         PosterUrl: request.PosterUrl,
                         BackdropUrl: request.BackdropUrl,
-                        LibraryId: target?.Id),
+                        LibraryId: target?.Id,
+                        SearchForMissingNow: request.SearchForMissingNow,
+                        SearchForCutoffUnmetNow: request.SearchForCutoffUnmetNow),
                     cancellationToken);
 
+                // Same immediate-search wiring the main add-title flow uses
+                // (#793): a pending search rides along on the catalogue
+                // refresh job rather than racing it, so it runs once the
+                // refresh has had a chance to fill in metadata the search
+                // decision may need. Discover's own "search-on-add" checkboxes
+                // (#785) are that same promise, kept the same way.
+                var seriesPendingSearches = new List<object>();
                 if (target is not null)
                 {
                     var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
@@ -177,12 +190,43 @@ public static class DiscoverEndpointRouteBuilderExtensions
                         decision.TargetQuality,
                         decision.QualityCutoffMet,
                         cancellationToken);
+
+                    var searchOnAddRequested =
+                        (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                        (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                    if (searchOnAddRequested || (series.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
+                    {
+                        seriesPendingSearches.Add(new
+                        {
+                            libraryId = target.Id,
+                            libraryName = target.Name,
+                            mediaType = target.MediaType,
+                            retryDelayHours = target.RetryDelayHours,
+                            triggeredBy = "series-added",
+                            targetEntityId = series.Id
+                        });
+                    }
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
                 {
                     await seriesRepository.UpdateQualityProfileAsync(series.Id, request.QualityProfileId, cancellationToken);
                 }
+
+                await jobScheduler.EnqueueAsync(
+                    new EnqueueJobRequest(
+                        JobType: "series.catalog.refresh",
+                        Source: "series",
+                        PayloadJson: JsonSerializer.Serialize(new
+                        {
+                            series.Id,
+                            series.Title,
+                            series.ImdbId,
+                            pendingSearches = seriesPendingSearches
+                        }),
+                        RelatedEntityType: "series",
+                        RelatedEntityId: series.Id),
+                    cancellationToken);
 
                 return Results.Created($"/api/series/{series.Id}", new DiscoverAddResponse(series.Id, "series", target?.Id));
             }
@@ -199,9 +243,12 @@ public static class DiscoverEndpointRouteBuilderExtensions
                     Overview: request.Overview,
                     PosterUrl: request.PosterUrl,
                     BackdropUrl: request.BackdropUrl,
-                    LibraryId: target?.Id),
+                    LibraryId: target?.Id,
+                    SearchForMissingNow: request.SearchForMissingNow,
+                    SearchForCutoffUnmetNow: request.SearchForCutoffUnmetNow),
                 cancellationToken);
 
+            var moviePendingSearches = new List<object>();
             if (target is not null)
             {
                 var decision = mediaDecisionService.DecideWantedState(new MediaWantedDecisionInput(
@@ -222,12 +269,43 @@ public static class DiscoverEndpointRouteBuilderExtensions
                     decision.TargetQuality,
                     decision.QualityCutoffMet,
                     cancellationToken);
+
+                var searchOnAddRequested =
+                    (request.SearchForMissingNow && decision.WantedStatus == WantedStatuses.Missing) ||
+                    (request.SearchForCutoffUnmetNow && decision.WantedStatus == WantedStatuses.Upgrade);
+                if (searchOnAddRequested || (movie.Monitored && WantedStatuses.IsSearchable(decision.WantedStatus)))
+                {
+                    moviePendingSearches.Add(new
+                    {
+                        libraryId = target.Id,
+                        libraryName = target.Name,
+                        mediaType = target.MediaType,
+                        retryDelayHours = target.RetryDelayHours,
+                        triggeredBy = "movie-added",
+                        targetEntityId = movie.Id
+                    });
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(request.QualityProfileId))
             {
                 await movieRepository.UpdateQualityProfileAsync(movie.Id, request.QualityProfileId, cancellationToken);
             }
+
+            await jobScheduler.EnqueueAsync(
+                new EnqueueJobRequest(
+                    JobType: "movies.catalog.refresh",
+                    Source: "movies",
+                    PayloadJson: JsonSerializer.Serialize(new
+                    {
+                        movie.Id,
+                        movie.Title,
+                        movie.ImdbId,
+                        pendingSearches = moviePendingSearches
+                    }),
+                    RelatedEntityType: "movie",
+                    RelatedEntityId: movie.Id),
+                cancellationToken);
 
             return Results.Created($"/api/movies/{movie.Id}", new DiscoverAddResponse(movie.Id, "movies", target?.Id));
         });
@@ -280,6 +358,10 @@ public sealed record DiscoverAddRequest(
     string? BackdropUrl,
     string? LibraryId,
     string? QualityProfileId,
-    bool Monitored);
+    bool Monitored,
+    /// <summary>Search for this title's missing content right away, once it is added from Discover (#785, mirroring #793). Off by default.</summary>
+    bool SearchForMissingNow = false,
+    /// <summary>Search for this title's cutoff-unmet content right away, once it is added from Discover (#785, mirroring #793). Off by default.</summary>
+    bool SearchForCutoffUnmetNow = false);
 
 public sealed record DiscoverAddResponse(string Id, string MediaType, string? LibraryId);
