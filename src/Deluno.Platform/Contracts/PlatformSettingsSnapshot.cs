@@ -40,16 +40,15 @@ public sealed record PlatformSettingsSnapshot(
     int DownloadHealthStrikeThreshold = 3,
     bool CleanupBlockReleaseAfterThreshold = true,
     bool CleanupQueueReplacementAfterThreshold = true,
-    // #904: on by default from 27 Sep 2026. A release judged bad (genuinely
-    // struck past the threshold — never a setup problem; see #880/#881) is
-    // removed from the client and its files deleted, the same as it is
-    // already blocklisted and replaced. An install that never opened the
-    // cleanup settings and changed these moves to "on" the same way
-    // (SqlitePlatformSettingsRepository reads a missing value the same as
-    // "on", exactly as CleanupBlockReleaseAfterThreshold above already does);
-    // one that explicitly turned either off keeps it off.
-    bool CleanupRemoveClientEntryAfterThreshold = true,
-    bool CleanupPurgePayloadAfterThreshold = true,
+    // #936 (27 Sep 2026): off by default. #904 had made these on by default;
+    // the owner reversed that so a brand-new install starts with nothing
+    // automatic, including removing a bad download from the client and
+    // deleting its files. An install that already existed when #936 shipped
+    // keeps behaving as before — V0071AutomationDefaultsOff froze an
+    // explicit "true" for it — this default is only what a snapshot built
+    // without reading the database (e.g. a test fixture) gets.
+    bool CleanupRemoveClientEntryAfterThreshold = false,
+    bool CleanupPurgePayloadAfterThreshold = false,
     bool WorkflowVerified = false,
     // What Deluno does with the download client's copy once a title is safely
     // in the library (#288). Sits with the cleanup settings above because it is
@@ -95,4 +94,10 @@ public sealed record PlatformSettingsSnapshot(
     // importing into that library the same way it does for an unreachable
     // root, and says so once, not per title.
     int LibraryFreeSpaceWarnPercent = 10,
-    int LibraryFreeSpacePausePercent = 5);
+    int LibraryFreeSpacePausePercent = 5,
+    // #936: the Dashboard shows a plain-words notice for every automatic
+    // behaviour that reads off, each with "Turn on" and "Keep off". Keep off
+    // must stick, so it is stored here rather than in the browser — a
+    // comma-separated list of the notice keys the person has dismissed
+    // (see AUTOMATION_QUESTIONS keys in setup-guide-page.tsx).
+    string DismissedAutomationNotices = "");

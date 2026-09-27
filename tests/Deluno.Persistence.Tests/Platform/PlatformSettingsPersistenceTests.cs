@@ -160,17 +160,40 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     /// <summary>
-    /// #904: an install that never opened the cleanup settings — no row for
-    /// either key at all — reads both as on, the same way
-    /// CleanupBlockReleaseAfterThreshold already defaults an untouched
-    /// install to on. This is the migration: nothing to run, because a
-    /// missing value already reads as "on" once the comparison flips.
+    /// #936 reverses #904: a brand-new install (a freshly created database,
+    /// with no setting stored at all) has never had the chance to explicitly
+    /// turn these on, so both read off. See
+    /// AutomationDefaultsOffMigrationTests for the "install that already
+    /// existed keeps reading on" half of this, at the migration level.
     /// </summary>
     [Fact]
-    public async Task Cleanup_removal_and_purge_default_to_on_for_an_untouched_install()
+    public async Task Cleanup_removal_and_purge_default_to_off_for_a_new_install()
     {
         using var storage = TestStorage.Create();
         var repository = await SettingsAsync(storage);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+
+        Assert.False(loaded.CleanupRemoveClientEntryAfterThreshold);
+        Assert.False(loaded.CleanupPurgePayloadAfterThreshold);
+    }
+
+    /// <summary>
+    /// Once either is explicitly turned on, it stays on until turned off
+    /// again — the comparison only changes what a missing value means.
+    /// </summary>
+    [Fact]
+    public async Task Cleanup_removal_and_purge_stay_on_once_explicitly_turned_on()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(
+                CleanupRemoveClientEntryAfterThreshold: true,
+                CleanupPurgePayloadAfterThreshold: true));
+        await repository.SaveAsync(merged, CancellationToken.None);
 
         var loaded = await repository.GetAsync(CancellationToken.None);
 
@@ -178,11 +201,7 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(loaded.CleanupPurgePayloadAfterThreshold);
     }
 
-    /// <summary>
-    /// #904: an install that explicitly turned either off before the default
-    /// changed keeps that choice — the flipped comparison only changes what a
-    /// missing value means, not what "false" means.
-    /// </summary>
+    /// <summary>Explicitly turning either off is remembered too, not just the on case.</summary>
     [Fact]
     public async Task Cleanup_removal_and_purge_stay_off_once_explicitly_turned_off()
     {
@@ -200,6 +219,23 @@ public sealed class PlatformSettingsPersistenceTests
 
         Assert.False(loaded.CleanupRemoveClientEntryAfterThreshold);
         Assert.False(loaded.CleanupPurgePayloadAfterThreshold);
+    }
+
+    /// <summary>#936: renaming on import follows the same reversed default as the cleanup settings above.</summary>
+    [Fact]
+    public async Task RenameOnImport_defaults_to_off_for_a_new_install_and_stays_on_once_turned_on()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        Assert.False((await repository.GetAsync(CancellationToken.None)).RenameOnImport);
+
+        var merged = PlatformSettingsPatchMerger.Apply(
+            await repository.GetAsync(CancellationToken.None),
+            new PatchPlatformSettingsRequest(RenameOnImport: true));
+        await repository.SaveAsync(merged, CancellationToken.None);
+
+        Assert.True((await repository.GetAsync(CancellationToken.None)).RenameOnImport);
     }
 
     private static async Task<SqlitePlatformSettingsRepository> SettingsAsync(TestStorage storage)
@@ -304,7 +340,9 @@ public sealed class PlatformSettingsPersistenceTests
             CancellationToken.None);
         var loaded = await repository.GetSetupProgressAsync(CancellationToken.None);
 
-        Assert.Equal(4, saved.LastCompletedStep);
+        // #936 added an Automation step before Finish, so the setup guide now
+        // has 6 steps (indices 0-5) and the clamp moved from 4 to 5.
+        Assert.Equal(5, saved.LastCompletedStep);
         Assert.True(saved.IsCompleted);
         Assert.Equal(saved, loaded);
     }

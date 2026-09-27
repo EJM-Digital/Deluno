@@ -51,7 +51,74 @@ import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 
-type StepId = "mode" | "folders" | "quality" | "services" | "finish";
+type StepId = "mode" | "folders" | "quality" | "services" | "automation" | "finish";
+
+/** One Yes/No question on the Automation step. Nothing is pre-selected (#936). */
+type AutomationChoiceKey =
+  | "searchMissingTitles"
+  | "rssGrabs"
+  | "qualityUpgrades"
+  | "renameOnImport"
+  | "subtitleFetching"
+  | "removeBadDownloads"
+  | "deleteBadDownloadFiles"
+  | "leftoverCleanup";
+
+export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
+
+const AUTOMATION_UNANSWERED: AutomationChoices = {
+  searchMissingTitles: null,
+  rssGrabs: null,
+  qualityUpgrades: null,
+  renameOnImport: null,
+  subtitleFetching: null,
+  removeBadDownloads: null,
+  deleteBadDownloadFiles: null,
+  leftoverCleanup: null
+};
+
+export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string; help: string }[] = [
+  {
+    key: "searchMissingTitles",
+    question: "Search for missing titles on its own?",
+    help: "If off, a title stays missing until you search for it yourself."
+  },
+  {
+    key: "rssGrabs",
+    question: "Watch your search sources and grab new releases as they appear?",
+    help: "If off, nothing downloads until you search for it yourself."
+  },
+  {
+    key: "qualityUpgrades",
+    question: "Look for a better version once you already have a title?",
+    help: "If off, Deluno keeps the version you already have."
+  },
+  {
+    key: "renameOnImport",
+    question: "Rename files to match your naming format when they come in?",
+    help: "If off, files keep the name they arrived with."
+  },
+  {
+    key: "subtitleFetching",
+    question: "Fetch subtitles on its own?",
+    help: "If off, you add subtitles yourself."
+  },
+  {
+    key: "removeBadDownloads",
+    question: "Remove a bad download from the download client on its own?",
+    help: "A download is judged bad after it fails Deluno's own checks."
+  },
+  {
+    key: "deleteBadDownloadFiles",
+    question: "Delete a bad download's files on its own?",
+    help: "Only applies once a download has already been judged bad."
+  },
+  {
+    key: "leftoverCleanup",
+    question: "Clean up empty leftover folders after an import?",
+    help: "If off, empty folders are left behind for you to remove."
+  }
+];
 
 interface SetupGuideLoaderData {
   settings: PlatformSettingsSnapshot;
@@ -89,6 +156,7 @@ interface GuideForm {
   firstTitleYear: string;
   firstTitleMonitored: boolean;
   firstTitleMetadata: MetadataSearchResult | null;
+  automation: AutomationChoices;
 }
 
 type ServiceTestState = {
@@ -114,6 +182,46 @@ type SetupCompletion = {
   firstTitlePath: string | null;
 };
 
+/** Start stays disabled until every Automation question has an explicit Yes or No (#936). */
+export function hasAnsweredAllAutomationQuestions(automation: AutomationChoices): boolean {
+  return AUTOMATION_QUESTIONS.every((item) => automation[item.key] !== null);
+}
+
+/**
+ * The global platform-settings fields the Automation step's answers map to.
+ * Every one of these keys reads "off" when unset (#936), so an unanswered
+ * item (null) is treated as off here too — the caller is expected to have
+ * already refused to finish setup until every item has a real answer.
+ */
+export function buildAutomationSettingsPayload(automation: AutomationChoices) {
+  return {
+    autoStartJobs: automation.searchMissingTitles === true
+      || automation.rssGrabs === true
+      || automation.qualityUpgrades === true,
+    renameOnImport: automation.renameOnImport === true,
+    cleanupEmptyFolders: automation.leftoverCleanup === true,
+    cleanupRemoveClientEntryAfterThreshold: automation.removeBadDownloads === true,
+    cleanupPurgePayloadAfterThreshold: automation.deleteBadDownloadFiles === true
+  };
+}
+
+/** The per-library search fields a new library is created with (#936). */
+export function buildLibraryAutomationFields(automation: AutomationChoices) {
+  return {
+    autoSearchEnabled: automation.searchMissingTitles === true || automation.qualityUpgrades === true,
+    missingSearchEnabled: automation.searchMissingTitles === true,
+    upgradeSearchEnabled: automation.qualityUpgrades === true
+  };
+}
+
+/** The per-indexer search fields a new indexer is created with (#936). */
+export function buildIndexerAutomationFields(automation: AutomationChoices) {
+  return {
+    rssEnabled: automation.rssGrabs === true,
+    automaticSearchEnabled: automation.searchMissingTitles === true || automation.qualityUpgrades === true
+  };
+}
+
 function toSetupDraft(form: GuideForm) {
   return {
     mode: form.mode, mediaIntent: form.mediaIntent, movieRootPath: form.movieRootPath, seriesRootPath: form.seriesRootPath,
@@ -131,6 +239,7 @@ const STEPS: { id: StepId; label: string; copy: string }[] = [
   { id: "folders", label: "Folders", copy: "Tell Deluno where your media lives." },
   { id: "quality", label: "Library Profiles", copy: "Choose the quality and release experience you want." },
   { id: "services", label: "Find & Download", copy: "Connect search sources and downloads when you are ready." },
+  { id: "automation", label: "Automation", copy: "What should Deluno do by itself?" },
   { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard." }
 ];
 
@@ -292,7 +401,8 @@ export function SetupGuidePage() {
     firstTitle: data.draft.firstTitle,
     firstTitleYear: data.draft.firstTitleYear,
     firstTitleMonitored: data.draft.firstTitleMonitored,
-    firstTitleMetadata: null
+    firstTitleMetadata: null,
+    automation: { ...AUTOMATION_UNANSWERED }
   }));
 
   const current = STEPS[stepIndex];
@@ -313,7 +423,10 @@ export function SetupGuidePage() {
   // simple path at all, which is not something Sonarr or Radarr demand. The
   // readiness ladder already carries "configured but not operationally
   // ready", so an untested install can finish and connect later (#246).
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice;
+  // Nothing automatic is pre-selected (#936): Start stays disabled until every
+  // Automation question has an explicit Yes or No answer.
+  const hasAllAutomationAnswers = hasAnsweredAllAutomationQuestions(form.automation);
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers;
   // A connection typed in but never proven is different from one never
   // attempted: warn about it rather than silently baking in something broken.
   const connectionsUnproven =
@@ -395,9 +508,12 @@ export function SetupGuidePage() {
       if (!canCreateMovies && !canCreateTv) {
         setError("Choose at least one Movies or TV root folder before finishing simple setup.");
         setStepIndex(1);
-      } else {
+      } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
         setError("Choose a picture quality and release preference before finishing simple setup.");
         setStepIndex(2);
+      } else {
+        setError("Answer every automation question before finishing setup.");
+        setStepIndex(STEPS.findIndex((step) => step.id === "automation"));
       }
       return;
     }
@@ -405,7 +521,7 @@ export function SetupGuidePage() {
     setBusy(true);
     const createdEntities: CreatedEntity[] = [];
     try {
-      await saveSettings(data.settings, form);
+      await saveSettings(data.settings, form, form.automation);
       const qualityProfileCache = [...data.qualityProfiles];
       const customFormatCache = [...data.customFormats];
       const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
@@ -635,6 +751,7 @@ export function SetupGuidePage() {
                 onTestClient={() => void testClientConnection()}
               />
             ) : null}
+            {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
             {current.id === "finish" ? (
           <FinishStep
             form={form}
@@ -686,7 +803,9 @@ export function SetupGuidePage() {
                     ? "Create the libraries, profiles and rules you chose"
                     : !canCreateMovies && !canCreateTv
                       ? "Choose a Movies or TV root folder first"
-                      : "Choose a picture quality and release preference first"}
+                      : !hasQualityChoice || !hasReleaseRuleChoice
+                        ? "Choose a picture quality and release preference first"
+                        : "Answer every automation question first"}
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
                   Create baseline
@@ -1021,6 +1140,66 @@ function ServicesStep({
         </div>
       </FieldShell>
     </div>
+  );
+}
+
+function AutomationStep({
+  form,
+  patch
+}: {
+  form: GuideForm;
+  patch: (patchValue: Partial<GuideForm>) => void;
+}) {
+  function setAnswer(key: AutomationChoiceKey, value: boolean) {
+    patch({ automation: { ...form.automation, [key]: value } });
+  }
+
+  return (
+    <FieldShell
+      icon={ShieldCheck}
+      label="What should Deluno do by itself?"
+      copy="Nothing is chosen yet. Answer Yes or No for each — you can change any of these later in Settings."
+    >
+      <div className="divide-y divide-hairline">
+        {AUTOMATION_QUESTIONS.map((item) => {
+          const value = form.automation[item.key];
+          return (
+            <div key={item.key} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+              <div className="max-w-xl">
+                <p className="font-medium text-foreground">{item.question}</p>
+                <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">{item.help}</p>
+              </div>
+              {/* Unique accessible names per row: plain "Yes"/"No" would repeat
+                  across eight rows and break assistive tech and the smoke tests. */}
+              <div className="flex shrink-0 gap-2" role="radiogroup" aria-label={item.question}>
+                <Button
+                  type="button"
+                  variant={value === true ? "default" : "outline"}
+                  size="sm"
+                  role="radio"
+                  aria-checked={value === true}
+                  aria-label={`${item.question} Yes`}
+                  onClick={() => setAnswer(item.key, true)}
+                >
+                  Yes
+                </Button>
+                <Button
+                  type="button"
+                  variant={value === false ? "default" : "outline"}
+                  size="sm"
+                  role="radio"
+                  aria-checked={value === false}
+                  aria-label={`${item.question} No`}
+                  onClick={() => setAnswer(item.key, false)}
+                >
+                  No
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </FieldShell>
   );
 }
 
@@ -1452,19 +1631,18 @@ async function recordSetupCompleted(result: SetupCompletion) {
   }
 }
 
-async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm) {
+async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm, automation: AutomationChoices) {
+  const automationSettings = buildAutomationSettingsPayload(automation);
   const payload = {
     appInstanceName: settings.appInstanceName || "Deluno",
     movieRootPath: form.movieRootPath.trim() || settings.movieRootPath,
     seriesRootPath: form.seriesRootPath.trim() || settings.seriesRootPath,
     downloadsPath: settings.downloadsPath,
     incompleteDownloadsPath: settings.incompleteDownloadsPath,
-    autoStartJobs: true,
     enableNotifications: settings.enableNotifications,
-    renameOnImport: true,
     useHardlinks: settings.useHardlinks,
-    cleanupEmptyFolders: true,
     removeCompletedDownloads: settings.removeCompletedDownloads,
+    ...automationSettings,
     movieFolderFormat: settings.movieFolderFormat || "{Movie Title} ({Release Year})",
     seriesFolderFormat: settings.seriesFolderFormat || "{Series Title} ({Series Year})",
     episodeFileFormat: settings.episodeFileFormat || "{Series Title} - S{season:00}E{episode:00} - {Episode Title}",
@@ -1652,7 +1830,9 @@ function buildIndexerPayload(form: GuideForm) {
         : "2000,2010,2020,2030,2040,2045,2050,5000,5010,5020,5030,5040,5045,5050",
     tags: "",
     mediaScope: form.mediaIntent === "both" ? "both" : form.mediaIntent,
-    isEnabled: true
+    isEnabled: true,
+    // #936: nothing automatic is on until the Automation step says so.
+    ...buildIndexerAutomationFields(form.automation)
   };
 }
 
@@ -1694,9 +1874,8 @@ async function ensureLibrary(
       rootPath,
       downloadsPath: null,
       qualityProfileId,
-      autoSearchEnabled: true,
-      missingSearchEnabled: true,
-      upgradeSearchEnabled: true,
+      // #936: nothing automatic is on until the Automation step says so.
+      ...buildLibraryAutomationFields(form.automation),
       searchIntervalHours: 12,
       retryDelayHours: 6,
       maxItemsPerRun: form.qualityPreset === "premium4k" ? 15 : 10

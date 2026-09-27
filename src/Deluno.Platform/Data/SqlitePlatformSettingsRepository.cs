@@ -49,7 +49,7 @@ public sealed class SqlitePlatformSettingsRepository(
         CancellationToken cancellationToken)
     {
         var updatedUtc = timeProvider.GetUtcNow();
-        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 4);
+        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 5);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -213,6 +213,15 @@ public sealed class SqlitePlatformSettingsRepository(
         // round even if validation is ever bypassed.
         await UpsertSettingAsync(connection, transaction, "library.freeSpace.warnPercent", Math.Clamp(request.LibraryFreeSpaceWarnPercent ?? 10, 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "library.freeSpace.pausePercent", Math.Clamp(Math.Min(request.LibraryFreeSpacePausePercent ?? 5, request.LibraryFreeSpaceWarnPercent ?? 10), 1, 50).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // Written only when the caller actually touches it. Every other full
+        // settings save (the setup guide, the Settings screen) resends the
+        // whole payload without this field, and null must mean "leave the
+        // dismissed notices alone", not "clear them" (the same shape as the
+        // API keys just above).
+        if (request.DismissedAutomationNotices is not null)
+        {
+            await UpsertSettingAsync(connection, transaction, "dashboard.dismissedAutomationNotices", request.DismissedAutomationNotices, updatedUtc, cancellationToken);
+        }
         // The sharing rule is written only when the caller is actually setting
         // it. Writing it on every settings PATCH meant that saving anything
         // else — a metadata key, a rename format — silently cleared both
@@ -461,7 +470,12 @@ public sealed class SqlitePlatformSettingsRepository(
             IncompleteDownloadsPath: GetValue(roots, "downloads.incomplete"),
             AutoStartJobs: string.Equals(GetValue(settings, "jobs.autoStart"), "true", StringComparison.OrdinalIgnoreCase),
             EnableNotifications: string.Equals(GetValue(settings, "notifications.enabled"), "true", StringComparison.OrdinalIgnoreCase),
-            RenameOnImport: !string.Equals(GetValue(settings, "media.renameOnImport"), "false", StringComparison.OrdinalIgnoreCase),
+            // #936 reverses this to "off unless explicitly turned on". A
+            // brand-new install reads a missing key as off; an install that
+            // existed before #936 shipped keeps its old "on" behaviour
+            // because V0071AutomationDefaultsOff wrote an explicit "true" for
+            // any such install that had not already stored a value.
+            RenameOnImport: string.Equals(GetValue(settings, "media.renameOnImport"), "true", StringComparison.OrdinalIgnoreCase),
             UseHardlinks: !string.Equals(GetValue(settings, "media.useHardlinks"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupEmptyFolders: string.Equals(GetValue(settings, "media.cleanupEmptyFolders"), "true", StringComparison.OrdinalIgnoreCase),
             RemoveCompletedDownloads: string.Equals(GetValue(settings, "media.removeCompletedDownloads"), "true", StringComparison.OrdinalIgnoreCase),
@@ -495,19 +509,19 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
-            // #904: defaults to on. An install that never wrote this key (never
-            // opened the cleanup settings, or upgraded from before this
-            // default changed) reads the same as "on", same as
-            // CleanupBlockReleaseAfterThreshold just above; one that explicitly
-            // set it to "false" stays off.
-            CleanupRemoveClientEntryAfterThreshold: !string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
+            // #936 reverses #904's "on by default": a brand-new install reads
+            // a missing key as off, same reasoning as RenameOnImport above.
+            // An install that already existed keeps reading "on" because
+            // V0071AutomationDefaultsOff froze an explicit "true" for it.
+            CleanupRemoveClientEntryAfterThreshold: string.Equals(GetValue(settings, "cleanup.removeClientEntryAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             SharingMode: SharingPolicy.NormalizeMode(GetValue(settings, "sharing.mode")),
             SharingForHours: ReadOptionalInt(GetValue(settings, "sharing.forHours"), SharingPolicy.Default.ForHours),
             SharingUntilRatio: ReadOptionalDouble(GetValue(settings, "sharing.untilRatio")),
             SharingStuckAction: SharingPolicy.NormalizeStuckAction(GetValue(settings, "sharing.stuckAction")),
             SharingStuckAfterDays: ReadOptionalInt(GetValue(settings, "sharing.stuckAfterDays"), SharingPolicy.Default.StuckAfterDays) ?? SharingPolicy.Default.StuckAfterDays,
-            // #904: defaults to on, same reasoning as CleanupRemoveClientEntryAfterThreshold above.
-            CleanupPurgePayloadAfterThreshold: !string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
+            // #936 reverses #904's "on by default", same reasoning as
+            // CleanupRemoveClientEntryAfterThreshold above.
+            CleanupPurgePayloadAfterThreshold: string.Equals(GetValue(settings, "cleanup.purgePayloadAfterThreshold"), "true", StringComparison.OrdinalIgnoreCase),
             WorkflowVerified: string.Equals(GetValue(settings, "setup.workflowVerified"), "true", StringComparison.OrdinalIgnoreCase),
             UiColorMode: NormalizeUiColorMode(GetValue(settings, "ui.colorMode")),
             UiLanguage: NormalizeUiLanguage(GetValue(settings, "ui.language")),
@@ -527,7 +541,8 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthMinPeers: ReadPositiveInt(GetValue(settings, "download-health.minPeers.count"), 1, 0, 1000),
             DownloadHealthMinPeersMinutes: ReadPositiveInt(GetValue(settings, "download-health.minPeers.minutes"), 30, 1, 1440),
             LibraryFreeSpaceWarnPercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.warnPercent"), 10, 1, 50),
-            LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50));
+            LibraryFreeSpacePausePercent: ReadPositiveInt(GetValue(settings, "library.freeSpace.pausePercent"), 5, 1, 50),
+            DismissedAutomationNotices: GetValue(settings, "dashboard.dismissedAutomationNotices") ?? string.Empty);
     }
 
     private static int ReadPositiveInt(string? value, int fallback, int min, int max)
@@ -543,7 +558,7 @@ public sealed class SqlitePlatformSettingsRepository(
     private static SetupProgressItem CreateSetupProgress(IReadOnlyDictionary<string, string> settings)
     {
         var lastCompletedStep = int.TryParse(GetValue(settings, "setup.lastCompletedStep"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? Math.Clamp(parsed, 0, 4)
+            ? Math.Clamp(parsed, 0, 5)
             : 0;
         var isSkipped = string.Equals(GetValue(settings, "setup.isSkipped"), "true", StringComparison.OrdinalIgnoreCase);
         var isCompleted = string.Equals(GetValue(settings, "setup.isCompleted"), "true", StringComparison.OrdinalIgnoreCase);

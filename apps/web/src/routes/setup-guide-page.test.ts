@@ -1,5 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { getEffectiveFormatGoal, resolveDraftFormatGoal } from "./setup-guide-page";
+import {
+  AUTOMATION_QUESTIONS,
+  buildAutomationSettingsPayload,
+  buildIndexerAutomationFields,
+  buildLibraryAutomationFields,
+  getEffectiveFormatGoal,
+  hasAnsweredAllAutomationQuestions,
+  resolveDraftFormatGoal,
+  type AutomationChoices
+} from "./setup-guide-page";
+
+const UNANSWERED: AutomationChoices = {
+  searchMissingTitles: null,
+  rssGrabs: null,
+  qualityUpgrades: null,
+  renameOnImport: null,
+  subtitleFetching: null,
+  removeBadDownloads: null,
+  deleteBadDownloadFiles: null,
+  leftoverCleanup: null
+};
+
+const ALL_NO: AutomationChoices = {
+  searchMissingTitles: false,
+  rssGrabs: false,
+  qualityUpgrades: false,
+  renameOnImport: false,
+  subtitleFetching: false,
+  removeBadDownloads: false,
+  deleteBadDownloadFiles: false,
+  leftoverCleanup: false
+};
+
+const ALL_YES: AutomationChoices = {
+  searchMissingTitles: true,
+  rssGrabs: true,
+  qualityUpgrades: true,
+  renameOnImport: true,
+  subtitleFetching: true,
+  removeBadDownloads: true,
+  deleteBadDownloadFiles: true,
+  leftoverCleanup: true
+};
 
 describe("setup guide draft format goal (#731)", () => {
   it("keeps a saved anime draft instead of silently rewriting it to balanced", () => {
@@ -38,5 +80,95 @@ describe("setup guide effective format goal per media type", () => {
     const form = { formatGoal: "archive" } as Form;
     expect(getEffectiveFormatGoal("movies", form)).toBe("archive");
     expect(getEffectiveFormatGoal("tv", form)).toBe("balanced");
+  });
+});
+
+describe("setup guide Automation step (#936)", () => {
+  it("has nothing pre-selected: an unanswered set of choices is not complete", () => {
+    expect(hasAnsweredAllAutomationQuestions(UNANSWERED)).toBe(false);
+  });
+
+  it("is not complete until every single question has an answer, even if only one is missing", () => {
+    for (const item of AUTOMATION_QUESTIONS) {
+      const almostAllAnswered: AutomationChoices = { ...ALL_NO, [item.key]: null };
+      expect(hasAnsweredAllAutomationQuestions(almostAllAnswered)).toBe(false);
+    }
+  });
+
+  it("is complete once every question has an explicit Yes or No, even if every answer is No", () => {
+    expect(hasAnsweredAllAutomationQuestions(ALL_NO)).toBe(true);
+    expect(hasAnsweredAllAutomationQuestions(ALL_YES)).toBe(true);
+  });
+
+  it("asks exactly the eight behaviours #936 lists, each with its own key", () => {
+    const keys = AUTOMATION_QUESTIONS.map((item) => item.key).sort();
+    expect(keys).toEqual([
+      "deleteBadDownloadFiles",
+      "leftoverCleanup",
+      "qualityUpgrades",
+      "removeBadDownloads",
+      "renameOnImport",
+      "rssGrabs",
+      "searchMissingTitles",
+      "subtitleFetching"
+    ]);
+  });
+
+  it("never hints that removing or deleting a bad download is recommended", () => {
+    const removeQuestion = AUTOMATION_QUESTIONS.find((item) => item.key === "removeBadDownloads")!;
+    const deleteQuestion = AUTOMATION_QUESTIONS.find((item) => item.key === "deleteBadDownloadFiles")!;
+    for (const question of [removeQuestion, deleteQuestion]) {
+      expect(question.question.toLowerCase()).not.toContain("recommended");
+      expect(question.help.toLowerCase()).not.toContain("recommended");
+    }
+  });
+
+  it("maps every 'No' answer to every automatic setting reading off", () => {
+    expect(buildAutomationSettingsPayload(ALL_NO)).toEqual({
+      autoStartJobs: false,
+      renameOnImport: false,
+      cleanupEmptyFolders: false,
+      cleanupRemoveClientEntryAfterThreshold: false,
+      cleanupPurgePayloadAfterThreshold: false
+    });
+    expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
+      autoSearchEnabled: false,
+      missingSearchEnabled: false,
+      upgradeSearchEnabled: false
+    });
+    expect(buildIndexerAutomationFields(ALL_NO)).toEqual({
+      rssEnabled: false,
+      automaticSearchEnabled: false
+    });
+  });
+
+  it("maps a 'Yes' answer to its own setting turning on, and only that setting", () => {
+    const onlyRenameYes: AutomationChoices = { ...ALL_NO, renameOnImport: true };
+    expect(buildAutomationSettingsPayload(onlyRenameYes)).toMatchObject({
+      renameOnImport: true,
+      cleanupEmptyFolders: false,
+      cleanupRemoveClientEntryAfterThreshold: false,
+      cleanupPurgePayloadAfterThreshold: false
+    });
+
+    const onlyMissingSearchYes: AutomationChoices = { ...ALL_NO, searchMissingTitles: true };
+    expect(buildLibraryAutomationFields(onlyMissingSearchYes)).toEqual({
+      autoSearchEnabled: true,
+      missingSearchEnabled: true,
+      upgradeSearchEnabled: false
+    });
+
+    const onlyRssYes: AutomationChoices = { ...ALL_NO, rssGrabs: true };
+    expect(buildIndexerAutomationFields(onlyRssYes)).toEqual({
+      rssEnabled: true,
+      automaticSearchEnabled: false
+    });
+  });
+
+  it("turns the background scheduler on if any one of missing search, RSS or upgrades is on", () => {
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, searchMissingTitles: true }).autoStartJobs).toBe(true);
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, rssGrabs: true }).autoStartJobs).toBe(true);
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, qualityUpgrades: true }).autoStartJobs).toBe(true);
+    expect(buildAutomationSettingsPayload(ALL_NO).autoStartJobs).toBe(false);
   });
 });
