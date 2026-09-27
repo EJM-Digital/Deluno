@@ -4362,7 +4362,7 @@ public sealed class SqliteSeriesCatalogRepository(
             $"""
             SELECT
                 e.id, e.series_id, e.season_number, e.episode_number, e.title,
-                ews.last_search_utc, ews.next_eligible_search_utc
+                ews.last_search_utc, ews.next_eligible_search_utc, ews.wanted_status
             FROM episode_wanted_state ews
             INNER JOIN episode_entries e ON e.id = ews.episode_id
             INNER JOIN series_entries s ON s.id = e.series_id
@@ -4401,7 +4401,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 EpisodeNumber: reader.GetInt32(3),
                 Title: reader.IsDBNull(4) ? null : reader.GetString(4),
                 LastSearchUtc: reader.IsDBNull(5) ? null : ParseTimestamp(reader.GetString(5)),
-                NextEligibleSearchUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6))));
+                NextEligibleSearchUtc: reader.IsDBNull(6) ? null : ParseTimestamp(reader.GetString(6)),
+                WantedStatus: reader.GetString(7)));
         }
 
         return items;
