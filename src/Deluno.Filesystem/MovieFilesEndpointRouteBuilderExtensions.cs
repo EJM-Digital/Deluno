@@ -144,6 +144,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             string id,
             [FromBody] UpdateMovieFileQualityRequest request,
             IMovieCatalogRepository repository,
+            IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -155,20 +156,32 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 });
             }
 
-            var updated = await repository.UpdateCurrentQualityOverrideAsync(id, request.Quality.Trim(), cancellationToken);
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            var trimmedQuality = request.Quality.Trim();
+            var updated = await repository.UpdateCurrentQualityOverrideAsync(id, trimmedQuality, cancellationToken);
             if (!updated)
             {
                 return Results.NotFound(new { message = "This movie has no tracked file to correct." });
             }
 
+            await activityFeedRepository.RecordActivityAsync(
+                "library.movie.file-quality-edited",
+                $"{movie?.Title ?? "A title"}'s file was marked as {trimmedQuality}.",
+                null,
+                null,
+                "movie",
+                id,
+                cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
-            return Results.Ok(new { quality = request.Quality.Trim() });
+            return Results.Ok(new { quality = trimmedQuality });
         });
 
         movies.MapPut("/{id}/files/language", async (
             string id,
             [FromBody] UpdateMovieFileLanguageRequest request,
             IMovieCatalogRepository repository,
+            IActivityFeedRepository activityFeedRepository,
+            IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
@@ -212,6 +225,15 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 }
             }
 
+            await activityFeedRepository.RecordActivityAsync(
+                "library.movie.file-language-edited",
+                $"A subtitle for {movie.Title} was marked as {request.Language}.",
+                null,
+                null,
+                "movie",
+                id,
+                cancellationToken);
+            await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
             return Results.Ok(new { path = newPath, language = request.Language });
         });
 
