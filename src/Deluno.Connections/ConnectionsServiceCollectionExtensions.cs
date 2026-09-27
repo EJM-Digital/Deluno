@@ -16,6 +16,7 @@ public static class ConnectionsServiceCollectionExtensions
         services.AddSingleton<IMediaServerRepository, SqliteMediaServerRepository>();
         services.AddSingleton<IMediaServerRefreshBacklogRepository, SqliteMediaServerRefreshBacklogRepository>();
         services.AddSingleton<ISeerrRepository, SqliteSeerrRepository>();
+        services.AddSingleton<ITraktConnectionRepository, SqliteTraktConnectionRepository>();
         // Per-indexer Query/Grab Limit caps (#750), in-memory and per
         // process the same way IOutboundRequestThrottle's pacing is.
         services.AddSingleton<IIndexerCallLimiter, IndexerCallLimiter>();

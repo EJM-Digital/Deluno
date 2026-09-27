@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Deluno.Integrations.Metadata;
+using Deluno.Integrations.Trakt;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -541,6 +542,100 @@ public sealed class IntakeSyncServiceTests
                     "application/json")
             });
         }
+    }
+
+    [Fact]
+    public async Task PreviewAsync_reads_traktS_built_in_trending_list_once_connected()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-trakt-trending",
+            Provider = "trakt-trending",
+            FeedUrl = string.Empty
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([CreateMovieLibrary()]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var tokenProvider = new Mock<ITraktTokenProvider>();
+        tokenProvider.Setup(p => p.GetAuthContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TraktAuthContext("client-id", "access-1"));
+        var traktClient = new Mock<ITraktClient>();
+        traktClient.Setup(c => c.GetAsync("client-id", "access-1", "/movies/trending", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("[{\"watchers\":10,\"movie\":{\"title\":\"Arrival\",\"year\":2016,\"ids\":{\"imdb\":\"tt2543164\"}}}]");
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StubHttpMessageHandler()),
+            NullLogger<IntakeSyncService>.Instance,
+            tokenProvider.Object,
+            traktClient.Object);
+
+        var preview = await service.PreviewAsync(source.Id, CancellationToken.None);
+
+        Assert.Equal(1, preview.FetchedCount);
+        Assert.Equal("Arrival", preview.Items[0].Title);
+        Assert.Equal(2016, preview.Items[0].Year);
+        Assert.Equal("tt2543164", preview.Items[0].ImdbId);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_refuses_a_built_in_trakt_list_when_trakt_is_not_connected()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-trakt-popular",
+            Provider = "trakt-popular",
+            FeedUrl = string.Empty
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var tokenProvider = new Mock<ITraktTokenProvider>();
+        tokenProvider.Setup(p => p.GetAuthContextAsync(It.IsAny<CancellationToken>())).ReturnsAsync((TraktAuthContext?)null);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            new Mock<IMovieCatalogRepository>().Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StubHttpMessageHandler()),
+            NullLogger<IntakeSyncService>.Instance,
+            tokenProvider.Object,
+            Mock.Of<ITraktClient>());
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.PreviewAsync(source.Id, CancellationToken.None));
+        Assert.Contains("Connect Trakt", exception.Message);
     }
 
     [Fact]

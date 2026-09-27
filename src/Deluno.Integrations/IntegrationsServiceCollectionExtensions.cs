@@ -85,6 +85,12 @@ public static class IntegrationsServiceCollectionExtensions
 
         // Jellyseerr and Overseerr (#522), over the media servers' HTTP client.
         services.AddSingleton<Seerr.ISeerrClient, Seerr.SeerrClient>();
+        // Trakt OAuth (#846): a device-code sign-in, not RSS scraping, so
+        // private lists and Trakt's own built-in Popular/Trending/
+        // Anticipated/Top-Watched/Recommended lists work.
+        services.AddHttpClient(Trakt.TraktClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddSingleton<Trakt.ITraktClient, Trakt.TraktClient>();
+        services.AddSingleton<Trakt.ITraktTokenProvider, Trakt.TraktTokenProvider>();
 
         // Six subtitle sources, registered as themselves so the registry can
         // list what Deluno ships without a second table saying so.

@@ -302,6 +302,14 @@ export interface IntakeListExclusionItem {
   updatedUtc: string;
 }
 
+/** Trakt OAuth connection state (#846): a real sign-in, not scraping the public RSS feed. */
+export interface TraktConnectionStatus {
+  clientConfigured: boolean;
+  connected: boolean;
+  expiresUtc: string | null;
+  needsReconnect: boolean;
+}
+
 export interface MediaExclusionItem {
   id: string;
   mediaType: string;
