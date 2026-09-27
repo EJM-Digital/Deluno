@@ -284,6 +284,63 @@ function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot
   );
 }
 
+/**
+ * #824: a person's own reachability guard, separate from #901's built-in
+ * outage detector - Deluno's own integrations can look fine while a site the
+ * person actually relies on is down for them specifically. Off by default.
+ */
+function ConnectivityCheckCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+  const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const [enabled, setEnabled] = useState(settings.downloadHealthConnectivityCheckEnabled);
+  const [urls, setUrls] = useState(settings.downloadHealthConnectivityCheckUrls);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const dirty = urls !== settings.downloadHealthConnectivityCheckUrls;
+
+  async function onToggle(checked: boolean) {
+    setEnabled(checked);
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({ downloadHealthConnectivityCheckEnabled: checked });
+      setEnabled(next.downloadHealthConnectivityCheckEnabled);
+      setSaveState("saved");
+    } catch {
+      setEnabled(settings.downloadHealthConnectivityCheckEnabled);
+      setSaveState("error");
+    }
+  }
+
+  async function saveUrls() {
+    setSaveState("saving");
+    try {
+      const next = await mutation.mutate({ downloadHealthConnectivityCheckUrls: urls });
+      setUrls(next.downloadHealthConnectivityCheckUrls);
+      setSaveState("saved");
+    } catch {
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="Connectivity check" count="A reachability guard before every pass">
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <SwitchRow
+          label="Check before every pass"
+          description="Before the strike/blocklist pass, the seeding-reclaim pass, and evaluating strikes at all, Deluno sends a GET to each URL below. If none answer, the pass is skipped entirely - nothing struck, blocklisted, or reclaimed - and it's said in Activity."
+          checked={enabled}
+          onCheckedChange={(checked) => void onToggle(checked)}
+        />
+        <Field label="URLs to check" help="Comma-separated. At least one must answer with a successful (2xx) response to proceed.">
+          <div className="flex items-center gap-2">
+            <Input value={urls} onChange={(event) => setUrls(event.target.value)} placeholder="https://1.1.1.1, https://8.8.8.8" disabled={!enabled} />
+            <Button type="button" size="sm" onClick={() => void saveUrls()} disabled={!dirty || saveState === "saving"}>Save</Button>
+          </div>
+        </Field>
+        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      </div>
+    </ListCard>
+  );
+}
+
 interface RuleForm {
   kind: string;
   enabled: boolean;
@@ -582,6 +639,8 @@ export function SettingsDownloadHealthPage() {
       <TimingCard settings={settings} />
 
       <HistoryRetentionCard settings={settings} />
+
+      <ConnectivityCheckCard settings={settings} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">
