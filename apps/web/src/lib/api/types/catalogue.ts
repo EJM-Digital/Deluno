@@ -433,6 +433,15 @@ export interface SeriesUpcomingEpisodeItem {
   airDateUtc: string;
 }
 
+/** One series/season row on the cross-series Season Pass screen (#791). */
+export interface SeriesSeasonPassItem {
+  seriesId: string;
+  seriesTitle: string;
+  seasonNumber: number;
+  episodeCount: number;
+  monitoredCount: number;
+}
+
 export interface SeriesSearchHistoryItem {
   id: string;
   seriesId: string;

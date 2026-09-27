@@ -4467,6 +4467,87 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    /// <summary>
+    /// Every series' seasons, with episode counts and monitor state, for the
+    /// cross-series Season Pass screen (#791).
+    /// </summary>
+    public async Task<IReadOnlyList<SeriesSeasonPassItem>> ListSeasonPassAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT s.id, s.title, e.season_number, COUNT(*) AS episode_count, SUM(e.monitored) AS monitored_count
+            FROM series_entries s
+            JOIN episode_entries e ON e.series_id = s.id
+            GROUP BY s.id, s.title, e.season_number
+            ORDER BY s.title COLLATE NOCASE, e.season_number;
+            """;
+
+        var results = new List<SeriesSeasonPassItem>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(new SeriesSeasonPassItem(
+                SeriesId: reader.GetString(0),
+                SeriesTitle: reader.GetString(1),
+                SeasonNumber: (int)reader.GetInt64(2),
+                EpisodeCount: (int)reader.GetInt64(3),
+                MonitoredCount: (int)reader.GetInt64(4)));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Bulk-toggles episode monitoring at the season or series level (#791).
+    /// One statement per scope rather than one per episode - a series-wide
+    /// scope can cover hundreds of episodes, and the scope list itself is
+    /// bounded by what a person selected on screen, not by library size.
+    /// </summary>
+    public async Task<int> SetSeasonPassMonitoringAsync(
+        IReadOnlyList<SeasonPassScope> scopes,
+        bool monitored,
+        CancellationToken cancellationToken)
+    {
+        if (scopes.Count == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var now = timeProvider.GetUtcNow().ToString("O");
+        var updated = 0;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var scope in scopes)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = scope.SeasonNumber is null
+                ? "UPDATE episode_entries SET monitored = @monitored, updated_utc = @now WHERE series_id = @seriesId;"
+                : "UPDATE episode_entries SET monitored = @monitored, updated_utc = @now WHERE series_id = @seriesId AND season_number = @seasonNumber;";
+            AddParameter(command, "@monitored", monitored ? 1 : 0);
+            AddParameter(command, "@now", now);
+            AddParameter(command, "@seriesId", scope.SeriesId);
+            if (scope.SeasonNumber is not null)
+            {
+                AddParameter(command, "@seasonNumber", scope.SeasonNumber.Value);
+            }
+
+            updated += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
+    }
+
     private static DateOnly? ParseAirDateKey(string? value)
         => DateOnly.TryParseExact(
             value,

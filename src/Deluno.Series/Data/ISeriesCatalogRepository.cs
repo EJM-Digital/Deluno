@@ -430,6 +430,23 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// </summary>
     Task<bool> UpdateMonitorNewEpisodesAsync(string seriesId, bool monitorNewEpisodes, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every series' seasons, with episode counts and monitor state, for the
+    /// cross-series Season Pass screen (#791). One query across the whole TV
+    /// library rather than one inventory fetch per series.
+    /// </summary>
+    Task<IReadOnlyList<SeriesSeasonPassItem>> ListSeasonPassAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Bulk-toggles episode monitoring at the season or series level, across
+    /// as many series as the Season Pass screen's selection covers (#791).
+    /// A scope with a null season number is the whole series.
+    /// </summary>
+    Task<int> SetSeasonPassMonitoringAsync(
+        IReadOnlyList<SeasonPassScope> scopes,
+        bool monitored,
+        CancellationToken cancellationToken);
+
     /// <summary>Reassign wanted-state library mapping for a batch of series.</summary>
     Task<int> ReassignLibraryAsync(
         IReadOnlyList<string> seriesIds,

@@ -572,6 +572,58 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated });
         });
 
+        // The cross-series Season Pass screen (#791): every series' seasons,
+        // episode counts and monitor state, in one query rather than one
+        // inventory fetch per series.
+        series.MapGet("/season-pass", async (
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return Results.Ok(await repository.ListSeasonPassAsync(cancellationToken));
+        });
+
+        // Bulk-toggles monitoring at the season or series level, across as
+        // many series as the Season Pass screen's selection covers.
+        series.MapPut("/season-pass/monitoring", async (
+            HttpContext httpContext,
+            [FromBody] UpdateSeasonPassMonitoringRequest request,
+            ISeriesCatalogRepository repository,
+            IRealtimeEventPublisher realtimeEventPublisher,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (request.Scopes is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["scopes"] = ["Choose at least one series or season before updating monitoring."]
+                });
+            }
+
+            var updated = await repository.SetSeasonPassMonitoringAsync(request.Scopes, request.Monitored, cancellationToken);
+            if (updated > 0)
+            {
+                foreach (var seriesId in request.Scopes.Select(scope => scope.SeriesId).Distinct(StringComparer.Ordinal))
+                {
+                    await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+                }
+            }
+
+            return Results.Ok(new { updated });
+        });
+
         // Why a title will not download, and what could be done about it.
         //
         // The question a person asks of a title that never arrives is not "what
