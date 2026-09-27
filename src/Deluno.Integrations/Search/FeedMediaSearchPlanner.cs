@@ -1156,7 +1156,12 @@ public sealed class FeedMediaSearchPlanner(
             MustNotContain: rules.MustNotContain,
             PreferredTerms: [],
             CreatedUtc: DateTimeOffset.UnixEpoch,
-            UpdatedUtc: DateTimeOffset.UnixEpoch);
+            UpdatedUtc: DateTimeOffset.UnixEpoch,
+            // The profile's own acquisition answer always applies wherever the
+            // library uses this profile: it cannot be disabled or scoped to a
+            // subset of indexers the way a user-authored release profile can.
+            Enabled: true,
+            IndexerIds: []);
 
     private static bool SearchKindEnabled(IndexerItem indexer, string searchKind)
     {
