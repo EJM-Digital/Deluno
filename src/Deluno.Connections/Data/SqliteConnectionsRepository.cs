@@ -793,6 +793,19 @@ public sealed class SqliteConnectionsRepository(
         string? downloadClientId,
         CancellationToken cancellationToken)
     {
+        // A mapping applies to every client at its host (#809), not only the
+        // client it was created under, so listing "for client X" also has to
+        // surface mappings created under a different client at X's own host.
+        // A client with no host recorded falls back to exactly today's
+        // behaviour: only the mappings created under its own id.
+        string? host = null;
+        if (!string.IsNullOrWhiteSpace(downloadClientId))
+        {
+            var owner = (await ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, downloadClientId, StringComparison.OrdinalIgnoreCase));
+            host = NormalizeHost(owner?.Host);
+        }
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
@@ -801,12 +814,15 @@ public sealed class SqliteConnectionsRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, download_client_id, remote_path, local_path, is_enabled, priority, created_utc, updated_utc
+            SELECT id, download_client_id, remote_path, local_path, is_enabled, priority, created_utc, updated_utc, host
             FROM download_client_path_mappings
-            WHERE @downloadClientId IS NULL OR download_client_id = @downloadClientId
+            WHERE @downloadClientId IS NULL
+               OR download_client_id = @downloadClientId
+               OR (@host IS NOT NULL AND host = @host)
             ORDER BY priority ASC, LENGTH(remote_path) DESC, remote_path ASC;
             """;
         AddParameter(command, "@downloadClientId", string.IsNullOrWhiteSpace(downloadClientId) ? null : downloadClientId.Trim());
+        AddParameter(command, "@host", host);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -819,7 +835,8 @@ public sealed class SqliteConnectionsRepository(
                 reader.GetInt64(4) == 1,
                 reader.GetInt32(5),
                 ParseTimestamp(reader.GetString(6)),
-                ParseTimestamp(reader.GetString(7))));
+                ParseTimestamp(reader.GetString(7)),
+                reader.IsDBNull(8) ? null : reader.GetString(8)));
         }
 
         return items;
@@ -838,6 +855,11 @@ public sealed class SqliteConnectionsRepository(
         var localPath = NormalizePath(request.LocalPath);
         if (string.IsNullOrWhiteSpace(remotePath) || string.IsNullOrWhiteSpace(localPath)) return null;
 
+        // Left blank, a mapping takes the host of the client it is added
+        // under (#809) - that is what makes it reusable for any other client
+        // sharing that host without anyone having to type the host twice.
+        var host = NormalizeHost(request.Host) ?? NormalizeHost(client.Host);
+
         var now = timeProvider.GetUtcNow();
         var item = new DownloadClientPathMappingItem(
             Guid.CreateVersion7().ToString("N"),
@@ -847,7 +869,8 @@ public sealed class SqliteConnectionsRepository(
             request.IsEnabled,
             request.Priority is >= 1 ? request.Priority.Value : 10,
             now,
-            now);
+            now,
+            host);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -856,8 +879,8 @@ public sealed class SqliteConnectionsRepository(
         command.CommandText =
             """
             INSERT INTO download_client_path_mappings (
-                id, download_client_id, remote_path, local_path, is_enabled, priority, created_utc, updated_utc)
-            VALUES (@id, @downloadClientId, @remotePath, @localPath, @isEnabled, @priority, @createdUtc, @updatedUtc);
+                id, download_client_id, remote_path, local_path, is_enabled, priority, created_utc, updated_utc, host)
+            VALUES (@id, @downloadClientId, @remotePath, @localPath, @isEnabled, @priority, @createdUtc, @updatedUtc, @host);
             """;
         AddParameter(command, "@id", item.Id);
         AddParameter(command, "@downloadClientId", item.DownloadClientId);
@@ -867,9 +890,14 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@priority", item.Priority);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@host", item.Host);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return item;
     }
+
+    /// <summary>Trimmed and lowercased, or null for blank — the shape a host is stored and compared in (#809).</summary>
+    private static string? NormalizeHost(string? host)
+        => string.IsNullOrWhiteSpace(host) ? null : host.Trim().ToLowerInvariant();
 
     public async Task<bool> DeleteDownloadClientPathMappingAsync(
         string downloadClientId,

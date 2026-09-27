@@ -109,8 +109,13 @@ public sealed class RemotePathMappingHealthCheck(
             return [];
         }
 
+        // A mapping applies to every client at its host, not only the client
+        // it was originally added under (#809).
+        var clientHost = string.IsNullOrWhiteSpace(client.Host) ? null : client.Host.Trim().ToLowerInvariant();
         var clientMappings = mappings
-            .Where(item => string.Equals(item.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
+            .Where(item =>
+                string.Equals(item.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase) ||
+                (clientHost is not null && item.Host is not null && string.Equals(item.Host, clientHost, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
 
         var categories = new[] { client.MoviesCategory, client.TvCategory }

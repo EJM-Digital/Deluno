@@ -214,7 +214,7 @@ export function ClientDrawerBody({
           onOpenChange={setPathMappingOpen}
         >
           <p className="text-[length:var(--type-caption)] text-muted-foreground">
-            Configure completed-download folders in the client itself. Use this only when the client reports a path Deluno cannot use directly — for example, the client reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>.
+            Configure completed-download folders in the client itself. Use this only when the client reports a path Deluno cannot use directly — for example, the client reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping is shared by host (#809): add it once here, and any other client at the same host reuses it automatically.
           </p>
           {mappings.length ? (
             <div className="grid gap-2">
