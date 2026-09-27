@@ -544,6 +544,128 @@ public sealed class IntakeSyncServiceTests
         }
     }
 
+    [Theory]
+    [InlineData("tmdb-popular", "", "/movie/popular")]
+    [InlineData("tmdb-discover", "9715", "/discover/movie")]
+    [InlineData("tmdb-company-credits", "1", "/discover/movie")]
+    public async Task PreviewAsync_fetches_each_new_opt_in_tmdb_source_type(string provider, string feedUrl, string expectedPathFragment)
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = $"source-{provider}",
+            Provider = provider,
+            FeedUrl = feedUrl
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        platform.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("tmdb-secret");
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([CreateMovieLibrary()]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var handler = new TmdbResultsHandler(expectedPathFragment);
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(handler),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var preview = await service.PreviewAsync(source.Id, CancellationToken.None);
+
+        Assert.Equal(1, preview.FetchedCount);
+        Assert.Equal("Dune", preview.Items[0].Title);
+        Assert.Equal(2021, preview.Items[0].Year);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_fetches_every_movie_in_a_tmdb_collection()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-tmdb-collection",
+            Provider = "tmdb-collection",
+            FeedUrl = "263"
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        platform.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("tmdb-secret");
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([CreateMovieLibrary()]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new TmdbCollectionHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var preview = await service.PreviewAsync(source.Id, CancellationToken.None);
+
+        Assert.Equal(2, preview.FetchedCount);
+        Assert.Equal("Dune", preview.Items[0].Title);
+        Assert.Equal("Dune: Part Two", preview.Items[1].Title);
+    }
+
+    private sealed class TmdbResultsHandler(string expectedPathFragment) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Contains(expectedPathFragment, request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"results\":[{\"id\":438631,\"title\":\"Dune\",\"release_date\":\"2021-10-22\",\"vote_average\":8.0}]}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
+    private sealed class TmdbCollectionHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Contains("api.themoviedb.org/3/collection/263", request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"parts\":[{\"id\":438631,\"title\":\"Dune\",\"release_date\":\"2021-10-22\"},{\"id\":693134,\"title\":\"Dune: Part Two\",\"release_date\":\"2024-02-27\"}]}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
     [Fact]
     public async Task PreviewAsync_reads_traktS_built_in_trending_list_once_connected()
     {

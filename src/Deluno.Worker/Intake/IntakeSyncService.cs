@@ -581,6 +581,10 @@ public sealed class IntakeSyncService(
         {
             "tmdb" => await FetchTmdbListAsync(source, mediaType, cancellationToken),
             "tmdb-person" => await FetchTmdbPersonCreditsAsync(source, mediaType, cancellationToken),
+            "tmdb-popular" => await FetchTmdbPopularAsync(mediaType, cancellationToken),
+            "tmdb-discover" => await FetchTmdbDiscoverAsync(source, mediaType, cancellationToken),
+            "tmdb-collection" => await FetchTmdbCollectionAsync(source, cancellationToken),
+            "tmdb-company-credits" => await FetchTmdbCompanyCreditsAsync(source, mediaType, cancellationToken),
             "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
             "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
@@ -759,13 +763,115 @@ public sealed class IntakeSyncService(
         using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
         var json = await client.GetStringAsync(url, cancellationToken);
         using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+        return doc.RootElement.TryGetProperty("items", out var items)
+            ? ParseTmdbMediaArray(items, mediaType)
+            : [];
+    }
+
+    /// <summary>
+    /// TMDb Popular (#845) — opt-in like every other source: nothing reads it
+    /// until a person adds one on the Lists screen.
+    /// </summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbPopularAsync(string mediaType, CancellationToken cancellationToken)
+        => await FetchTmdbEndpointAsync($"/{TmdbMediaSegment(mediaType)}/popular", mediaType, cancellationToken);
+
+    /// <summary>
+    /// TMDb Discover, filtered by keyword id(s) in the source's feed field
+    /// (#845) — e.g. <c>9715</c> or <c>9715,818</c>.
+    /// </summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbDiscoverAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
+    {
+        var keywordIds = source.FeedUrl.Trim();
+        if (string.IsNullOrWhiteSpace(keywordIds))
+        {
+            throw new InvalidOperationException("TMDb Discover/Keywords source requires one or more TMDb keyword IDs.");
+        }
+
+        return await FetchTmdbEndpointAsync(
+            $"/discover/{TmdbMediaSegment(mediaType)}",
+            mediaType,
+            cancellationToken,
+            $"&with_keywords={Uri.EscapeDataString(keywordIds)}");
+    }
+
+    /// <summary>
+    /// A TMDb Collection (#845) — Radarr's Collections feature has no
+    /// Deluno equivalent otherwise. Every movie in the collection is a
+    /// candidate entry the same way any other list's entries are; movies
+    /// only, since TMDb has no concept of a TV collection.
+    /// </summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbCollectionAsync(IntakeSourceItem source, CancellationToken cancellationToken)
+    {
+        var apiKey = await GetManagedSecretAsync("Deluno:Metadata:TMDbApiKey", "TMDB_API_KEY", "tmdb", cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("The Deluno metadata service is not configured for TMDb import lists.");
+        }
+
+        var collectionId = ResolveTmdbNumericId(source.FeedUrl);
+        if (string.IsNullOrWhiteSpace(collectionId))
+        {
+            throw new InvalidOperationException("TMDb Collection source requires a collection id or TMDb collection URL.");
+        }
+
+        var url = $"https://api.themoviedb.org/3/collection/{Uri.EscapeDataString(collectionId)}?api_key={Uri.EscapeDataString(apiKey)}";
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+        var json = await client.GetStringAsync(url, cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("parts", out var parts)
+            ? ParseTmdbMediaArray(parts, "movies")
+            : [];
+    }
+
+    /// <summary>TMDb Discover, filtered by production company id in the source's feed field (#845).</summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbCompanyCreditsAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
+    {
+        var companyId = ResolveTmdbNumericId(source.FeedUrl);
+        if (string.IsNullOrWhiteSpace(companyId))
+        {
+            throw new InvalidOperationException("TMDb Company Credits source requires a company id or TMDb company URL.");
+        }
+
+        return await FetchTmdbEndpointAsync(
+            $"/discover/{TmdbMediaSegment(mediaType)}",
+            mediaType,
+            cancellationToken,
+            $"&with_companies={Uri.EscapeDataString(companyId)}");
+    }
+
+    private static string TmdbMediaSegment(string mediaType) => mediaType == "tv" ? "tv" : "movie";
+
+    private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbEndpointAsync(
+        string path,
+        string mediaType,
+        CancellationToken cancellationToken,
+        string extraQuery = "")
+    {
+        var apiKey = await GetManagedSecretAsync("Deluno:Metadata:TMDbApiKey", "TMDB_API_KEY", "tmdb", cancellationToken);
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("The Deluno metadata service is not configured for TMDb import lists.");
+        }
+
+        var url = $"https://api.themoviedb.org/3{path}?api_key={Uri.EscapeDataString(apiKey)}{extraQuery}";
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+        var json = await client.GetStringAsync(url, cancellationToken);
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("results", out var results)
+            ? ParseTmdbMediaArray(results, mediaType)
+            : [];
+    }
+
+    /// <summary>The one item shape every TMDb list/discover/collection endpoint shares, used by every TMDb fetch above.</summary>
+    private static IReadOnlyList<IntakeEntry> ParseTmdbMediaArray(JsonElement arrayElement, string mediaType)
+    {
+        if (arrayElement.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
         var results = new List<IntakeEntry>();
-        foreach (var item in items.EnumerateArray())
+        foreach (var item in arrayElement.EnumerateArray())
         {
             var title = ReadString(item, "title") ?? ReadString(item, "name");
             var year = ParseYear(ReadString(item, "release_date") ?? ReadString(item, "first_air_date"));
@@ -786,6 +892,19 @@ public sealed class IntakeSyncService(
         }
 
         return results;
+    }
+
+    /// <summary>A bare TMDb numeric id, or the id at the end of a themoviedb.org URL (collection/company/etc).</summary>
+    private static string? ResolveTmdbNumericId(string value)
+    {
+        var trimmed = value.Trim();
+        if (int.TryParse(trimmed, out _))
+        {
+            return trimmed;
+        }
+
+        var match = TmdbListIdRegex.Match(trimmed);
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     private async Task<IReadOnlyList<IntakeEntry>> FetchMdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)
