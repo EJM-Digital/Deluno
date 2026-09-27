@@ -282,6 +282,40 @@ public sealed class DownloadClientPersistenceTests
         Assert.Equal("D:\\Downloads\\complete", shared.LocalPath);
     }
 
+    /// <summary>
+    /// #809: the shared Remote Path Mappings settings screen lists every
+    /// mapping across every host in one call — GET /api/download-clients/path-mappings
+    /// passes no client id through to exactly this same repository method.
+    /// A mapping must appear once even though two clients share its host, not
+    /// once per client that happens to match it.
+    /// </summary>
+    [Fact]
+    public async Task ListDownloadClientPathMappingsAsync_with_no_client_id_lists_every_mapping_once_across_every_host()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+        var first = await repo.CreateDownloadClientAsync(BaseCreateRequest("qBittorrent") with { Host = "nas.local" }, CancellationToken.None);
+        // Shares the host with `first` on purpose: proves a mapping shows up
+        // once, not once per client that matches it.
+        await repo.CreateDownloadClientAsync(BaseCreateRequest("Transmission") with { Host = "nas.local" }, CancellationToken.None);
+        var third = await repo.CreateDownloadClientAsync(BaseCreateRequest("SABnzbd") with { Host = "usenet-box" }, CancellationToken.None);
+
+        await repo.CreateDownloadClientPathMappingAsync(
+            first.Id,
+            new CreateDownloadClientPathMappingRequest("/downloads/complete", "D:\\Downloads\\complete", true, 10),
+            CancellationToken.None);
+        await repo.CreateDownloadClientPathMappingAsync(
+            third.Id,
+            new CreateDownloadClientPathMappingRequest("/sab/complete", "E:\\Usenet", true, 10),
+            CancellationToken.None);
+
+        var all = await repo.ListDownloadClientPathMappingsAsync(null, CancellationToken.None);
+
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, item => item.RemotePath == "/downloads/complete" && item.Host == "nas.local");
+        Assert.Contains(all, item => item.RemotePath == "/sab/complete" && item.Host == "usenet-box");
+    }
+
     // ── UpdateDownloadClientAsync — null/patch semantics ──────────────────────
 
     [Fact]

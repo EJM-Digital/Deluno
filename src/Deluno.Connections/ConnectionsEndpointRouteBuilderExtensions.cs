@@ -453,6 +453,19 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
+        // The shared Remote Path Mappings screen (#809): one list across every
+        // host, rather than only what one client's drawer shows. Reuses the
+        // same repository call the per-client route already makes, with no
+        // client id to scope it, which is exactly the "list everything"
+        // behaviour ListDownloadClientPathMappingsAsync already has.
+        downloadClients.MapGet("path-mappings", async (
+            [FromServices] IConnectionsRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var items = await repository.ListDownloadClientPathMappingsAsync(null, cancellationToken);
+            return Results.Ok(items);
+        });
+
         downloadClients.MapGet("{id}/path-mappings", async (
             string id,
             [FromServices] IConnectionsRepository repository,

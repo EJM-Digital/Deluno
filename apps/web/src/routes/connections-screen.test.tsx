@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildClientSavePayload, buildIndexerSavePayload } from "./connections-screen";
-import { clientFormFrom, emptyClientForm, emptyIndexerForm } from "./connections/forms";
-import type { DownloadClientItem } from "../lib/api";
+import { clientFormFrom, clientsForPathMapping, emptyClientForm, emptyIndexerForm } from "./connections/forms";
+import type { DownloadClientItem, DownloadClientPathMappingItem } from "../lib/api";
 
 /**
  * #730 — tags: "" was hard-coded into every indexer save, so an indexer that
@@ -325,5 +325,80 @@ describe("client save payload tags (#808)", () => {
   it("sends an empty string for an untagged client", () => {
     const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", tags: "" };
     expect(buildClientSavePayload(form).tags).toBe("");
+  });
+});
+
+function client(overrides: Partial<DownloadClientItem>): DownloadClientItem {
+  return {
+    id: "client-1",
+    name: "Client",
+    protocol: "qbittorrent",
+    host: null,
+    port: null,
+    username: null,
+    endpointUrl: null,
+    useSsl: false,
+    urlBase: "",
+    addPaused: false,
+    moviesCategory: "",
+    tvCategory: "",
+    categoryTemplate: null,
+    priority: 1,
+    isEnabled: true,
+    healthStatus: "healthy",
+    lastHealthMessage: null,
+    createdUtc: "2026-01-01T00:00:00Z",
+    updatedUtc: "2026-01-01T00:00:00Z",
+    ...overrides
+  };
+}
+
+function mapping(overrides: Partial<DownloadClientPathMappingItem>): DownloadClientPathMappingItem {
+  return {
+    id: "mapping-1",
+    downloadClientId: "client-1",
+    remotePath: "/downloads/complete",
+    localPath: "D:\\Downloads\\complete",
+    isEnabled: true,
+    priority: 10,
+    createdUtc: "2026-01-01T00:00:00Z",
+    updatedUtc: "2026-01-01T00:00:00Z",
+    host: "nas.local",
+    ...overrides
+  };
+}
+
+/**
+ * #809 — the shared Remote Path Mappings screen's "Applies to" column has to
+ * show the same set of clients the backend will actually match a release's
+ * reported path against (SqliteConnectionsRepository.ListDownloadClientPathMappingsAsync),
+ * not just the one client the mapping happens to be filed under.
+ */
+describe("clientsForPathMapping (#809)", () => {
+  it("lists every client sharing the mapping's host, not only the one it was created under", () => {
+    const qbit = client({ id: "client-1", name: "qBittorrent", host: "nas.local" });
+    const transmission = client({ id: "client-2", name: "Transmission", host: "NAS.LOCAL" });
+    const sab = client({ id: "client-3", name: "SABnzbd", host: "usenet-box" });
+
+    const shared = clientsForPathMapping(mapping({ downloadClientId: "client-1", host: "nas.local" }), [qbit, transmission, sab]);
+
+    expect(shared.map((item) => item.name)).toEqual(["qBittorrent", "Transmission"]);
+  });
+
+  it("falls back to just the owning client when it has no host recorded", () => {
+    const owner = client({ id: "client-1", name: "qBittorrent", host: null });
+    const other = client({ id: "client-2", name: "Transmission", host: "nas.local" });
+
+    const shared = clientsForPathMapping(mapping({ downloadClientId: "client-1", host: null }), [owner, other]);
+
+    expect(shared.map((item) => item.name)).toEqual(["qBittorrent"]);
+  });
+
+  it("shows nothing when the owning client has since been removed and no host matches", () => {
+    const other = client({ id: "client-2", name: "Transmission", host: "different-host" });
+
+    const shared = clientsForPathMapping(mapping({ downloadClientId: "client-1", host: "nas.local" }), [other]);
+
+    expect(shared).toEqual([]);
   });
 });

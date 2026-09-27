@@ -75,6 +75,7 @@ GET /api/diagnostics/secrets-backend
 GET /api/discover/
 GET /api/download-clients/
 GET /api/download-clients/orphans
+GET /api/download-clients/path-mappings
 GET /api/download-clients/sharing
 GET /api/download-clients/telemetry
 GET /api/download-clients/throughput
