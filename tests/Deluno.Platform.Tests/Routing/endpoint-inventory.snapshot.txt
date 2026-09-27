@@ -310,6 +310,7 @@ POST /api/integrations/processors/connections/{id}/test
 POST /api/integrations/processors/events
 POST /api/integrations/processors/handoffs/{id}/dismiss
 POST /api/integrations/processors/handoffs/{id}/import-original
+POST /api/integrations/processors/handoffs/{id}/keep-waiting
 POST /api/integrations/processors/handoffs/{id}/outcome/send-again
 POST /api/integrations/processors/handoffs/{id}/retry
 POST /api/integrations/processors/handoffs/{id}/stop-waiting

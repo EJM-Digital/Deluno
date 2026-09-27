@@ -671,6 +671,20 @@ export function QueuePage() {
     });
   }
 
+  /**
+   * Keep waiting for a hand-off Deluno already gave up on, with a fresh
+   * limit, instead of importing the original or resubmitting to the
+   * processor (#914/#929).
+   */
+  async function keepWaiting(handoff: ProcessorHandoffItem) {
+    await run(`handoff:keep-waiting:${handoff.id}`, async () => {
+      const response = await authedFetch(`/api/integrations/processors/handoffs/${handoff.id}/keep-waiting`, { method: "POST" });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message || "Deluno could not keep waiting for this hand-off.");
+      toast.success(body?.message ?? `Deluno will keep waiting for ${handoff.releaseName}.`);
+    });
+  }
+
   function manualRequest(): ImportPreviewRequest {
     return {
       sourcePath: manualImport.sourcePath.trim(),
@@ -1851,12 +1865,20 @@ export function QueuePage() {
         {openHandoff && canImportOriginal(openHandoff.status) ? (
           <DrawerSection title="Use the original" aside={processorStageLabel(openHandoff.status)}>
             <p className="text-[length:var(--type-caption)] text-muted-foreground">
-              The processor did not finish this file. Deluno can import the download as it is, unprocessed, with the same naming as any other import.
+              The processor did not finish this file. Deluno can import the download as it is, unprocessed, with the same naming as any other import, keep waiting a while longer, or ask the processor about it again.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" onClick={() => void importOriginal(openHandoff)} disabled={busyKey !== null}>
                 {busyKey === `original:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Import original
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void keepWaiting(openHandoff)} disabled={busyKey !== null}>
+                {busyKey === `handoff:keep-waiting:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Keep waiting
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void retryHandoff(openHandoff)} disabled={busyKey !== null}>
+                {busyKey === `handoff:${openHandoff.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Ask the processor again
               </Button>
             </div>
           </DrawerSection>
