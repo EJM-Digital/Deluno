@@ -110,7 +110,7 @@ public sealed class DownloadClientTelemetryService(
             {
                 liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, downloadHealthRules, cancellationToken);
                 var clientDispatches = dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>());
-                await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken);
+                liveSnapshot = await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken);
                 snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
                     EnrichQueueImportState(
                         EnrichWithDispatchHistory(
@@ -1350,7 +1350,7 @@ public sealed class DownloadClientTelemetryService(
     /// completed, and Deluno had itself handed to Weir, were failed that way and
     /// grabbed again.</para>
     /// </summary>
-    internal async Task RecordWhatTheClientShowsAsync(
+    internal async Task<DownloadClientTelemetrySnapshot> RecordWhatTheClientShowsAsync(
         DownloadClientTelemetrySnapshot live,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
         CancellationToken cancellationToken)
@@ -1359,12 +1359,33 @@ public sealed class DownloadClientTelemetryService(
         // queue, not in history - used to be noticed only hours later, by
         // the grab/detection timeouts ageing out. Comparing against what the
         // client actually shows, on every poll, notices it in minutes.
+        var recovered = new List<DownloadQueueItem>();
         if (dispatchAlertRepository is not null)
         {
             foreach (var dispatch in VanishedFromClient(live, clientDispatches))
             {
                 try
                 {
+                    // Stage 2: the client had already finished with it before
+                    // it disappeared (SABnzbd and NZBGet both clear finished
+                    // items from their own history quickly). Deluno looks for
+                    // the file where the client would have saved it, and
+                    // imports it exactly like an ordinary completed download,
+                    // rather than asking a person about a file that is
+                    // already there.
+                    var foundOnDisk = dispatch.ClientCompletedUtc is not null
+                        ? await FindVanishedFileOnDiskAsync(dispatch, cancellationToken)
+                        : null;
+                    if (foundOnDisk is not null)
+                    {
+                        recovered.Add(foundOnDisk);
+                        await RecordFoundOnDiskAsync(dispatch, foundOnDisk.SourcePath!, cancellationToken);
+                        continue;
+                    }
+
+                    // Stage 1 (or stage 2 with nothing found on disk): only a
+                    // person decides what happens next. No automatic search,
+                    // no blocklist - it may have been removed on purpose.
                     await RecordClientVanishedAsync(dispatch, live.ClientName, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1409,7 +1430,97 @@ public sealed class DownloadClientTelemetryService(
                 // next pass tries again, and the grab timeout is still there.
             }
         }
+
+        // A file stage 2 found on disk joins this snapshot's queue exactly
+        // like any other completed download, so the ordinary import pass
+        // (which reads this same snapshot) hands it through catalogue naming,
+        // processor routing and replacement checks unchanged - nothing here
+        // duplicates that logic.
+        return recovered.Count == 0 ? live : live with { Queue = live.Queue.Concat(recovered).ToArray() };
     }
+
+    /// <summary>
+    /// #927 stage 2: looks in the library's own download folder for a file or
+    /// folder matching the release this dispatch grabbed - the same name
+    /// matching <see cref="OrphanedDownloads.WasGrabbed"/> uses, so a client's
+    /// own duplicate suffix (<c>.1</c>, <c>.2</c>) is still recognised. A
+    /// synthetic queue item pointing at it, or null when nothing matches.
+    /// </summary>
+    private async Task<DownloadQueueItem?> FindVanishedFileOnDiskAsync(DownloadDispatchItem dispatch, CancellationToken cancellationToken)
+    {
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var library = libraries.FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+        if (library is null || string.IsNullOrWhiteSpace(library.DownloadsPath))
+        {
+            return null;
+        }
+
+        var grabbed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { dispatch.ReleaseName.Trim() };
+        string? sourcePath = null;
+        try
+        {
+            if (!Directory.Exists(library.DownloadsPath))
+            {
+                return null;
+            }
+
+            foreach (var entry in new DirectoryInfo(library.DownloadsPath).EnumerateFileSystemInfos())
+            {
+                var name = entry is DirectoryInfo ? entry.Name : Path.GetFileNameWithoutExtension(entry.Name);
+                if (OrphanedDownloads.WasGrabbed(name, grabbed))
+                {
+                    sourcePath = entry.FullName;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (sourcePath is null)
+        {
+            return null;
+        }
+
+        return new DownloadQueueItem(
+            Id: dispatch.TorrentHashOrItemId ?? dispatch.Id,
+            ClientId: dispatch.DownloadClientId,
+            ClientName: dispatch.DownloadClientName,
+            Protocol: "unknown",
+            MediaType: dispatch.MediaType,
+            Title: dispatch.ReleaseName,
+            ReleaseName: dispatch.ReleaseName,
+            Category: library.MediaType,
+            Status: DownloadQueueStatuses.Completed,
+            Progress: 100,
+            SpeedMbps: 0,
+            EtaSeconds: 0,
+            SizeBytes: 0,
+            DownloadedBytes: 0,
+            Peers: 0,
+            IndexerName: dispatch.IndexerName,
+            ErrorMessage: null,
+            AddedUtc: dispatch.CreatedUtc,
+            SourcePath: sourcePath,
+            LibraryId: library.Id);
+    }
+
+    /// <summary>
+    /// Told once: the client cleared this download from its own list before
+    /// Deluno imported it, but the file was still exactly where the client
+    /// would have saved it, so Deluno imported it without asking (#927 stage 2).
+    /// </summary>
+    private async Task RecordFoundOnDiskAsync(DownloadDispatchItem dispatch, string sourcePath, CancellationToken cancellationToken)
+        => await activityFeedRepository.RecordActivityAsync(
+            "download.vanished.recovered",
+            $"{dispatch.ReleaseName} was no longer in {dispatch.DownloadClientName}'s list, but Deluno found its files at {sourcePath} and is importing them as normal.",
+            null,
+            null,
+            dispatch.EntityType,
+            dispatch.EntityId,
+            cancellationToken);
 
     /// <summary>
     /// The client's own history said this release failed — NZBGet's FAILURE,
