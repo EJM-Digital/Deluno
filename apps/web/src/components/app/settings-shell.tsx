@@ -124,6 +124,7 @@ export const systemSettingsNavItems = [
 export const systemHealthNavItems = [
   { to: "/system", label: "Health", end: true },
   { to: "/system/audit", label: "Audit", end: false },
+  { to: "/system/security", label: "Security", end: false },
   { to: "/system/backups", label: "Backups", end: false },
   { to: "/system/recycle-bin", label: "Recycle bin", end: false },
   { to: "/system/updates", label: "Updates", end: false },
@@ -164,6 +165,7 @@ const SystemWorkspaceContext = createContext(false);
 const systemNavItems = [
   { to: "/system", label: "Health", end: true, tip: "Provider health, background jobs, and system status" },
   { to: "/system/audit", label: "Audit", end: false, tip: "Searchable event timeline and live activity stream" },
+  { to: "/system/security", label: "Security", end: false, tip: "Allowed Hosts and every other security setting, in one place" },
   { to: "/system/api", label: "API", end: false, tip: "Generate and revoke API keys for integrations and automation" },
   { to: "/system/docs", label: "Guide", end: false, tip: "Plain-English workflow guide for setup, routing, scoring, imports, and integrations" },
   { to: "/system/backups", label: "Backups", end: false, tip: "Manual backups, automatic schedule, restore preview, and downloads" },
@@ -326,6 +328,11 @@ const systemPageMeta = [
     match: (path: string) => path.startsWith("/system/docs"),
     title: "Workflow Guide",
     description: "How Deluno should be configured, routed, scored, integrated, and recovered in plain English."
+  },
+  {
+    match: (path: string) => path.startsWith("/system/security"),
+    title: "Security",
+    description: "Allowed Hosts, sign-in, and API keys -- every security setting in one place."
   },
   {
     match: (path: string) => path.startsWith("/system/backups"),

@@ -614,6 +614,13 @@ export const router = createBrowserRouter([
               const module = await import("./routes/system-page");
               return { loader: module.systemLoader, Component: module.SystemPage };
             })
+          },
+          {
+            path: "security",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/system-security-page");
+              return { loader: module.systemSecurityLoader, Component: module.SystemSecurityPage };
+            })
           }
         ]
       }

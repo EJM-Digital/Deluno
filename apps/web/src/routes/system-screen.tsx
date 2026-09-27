@@ -1441,7 +1441,19 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                     <Chip tone={check.status === "ok" ? "ok" : check.status === "problem" ? (isSnoozed ? "idle" : "bad") : "warn"}>
                       {check.status === "ok" ? "ok" : isSnoozed ? "snoozed" : check.status}
                     </Chip>
-                    {outputDetails ? (
+                    {check.id === "security:allowed-hosts" && check.status !== "ok" ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[length:var(--type-caption)]"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate("/system/security");
+                        }}
+                      >
+                        Fix
+                      </Button>
+                    ) : outputDetails ? (
                       <div className="flex gap-1.5">
                         {outputDetails.isMedia ? (
                           <Button
