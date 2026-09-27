@@ -35,6 +35,7 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-27T12:00:00Z");
     private const string DelunoItemId = "deluno-item-1";
     private const string ForeignItemId = "foreign-item-1";
+    private const string HandAddedInCategoryItemId = "hand-added-in-category-1";
 
     [Fact]
     public async Task A_foreign_stalled_item_gets_no_strike_and_is_never_remediated()
@@ -49,11 +50,17 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
         var snapshot = Assert.Single(overview.Clients);
         Assert.Single(snapshot.Queue, item => item.Id == DelunoItemId);
         Assert.DoesNotContain(snapshot.Queue, item => item.Id == ForeignItemId);
+        // #933: a download added by hand straight into Deluno's own category
+        // matches no dispatch Deluno ever recorded, so it is left off the
+        // Queue exactly like a download in an unrelated category is -
+        // category alone was the defect this fixed.
+        Assert.DoesNotContain(snapshot.Queue, item => item.Id == HandAddedInCategoryItemId);
 
         // No strike record exists for the foreign item, though it stalled
         // exactly like Deluno's own download did.
         var records = await world.Health.ListDownloadHealthRecordsPageAsync(new PageRequest(50, null), CancellationToken.None);
         Assert.DoesNotContain(records.Items, record => record.QueueItemId == ForeignItemId);
+        Assert.DoesNotContain(records.Items, record => record.QueueItemId == HandAddedInCategoryItemId);
         // The guard is selective, not simply broken: Deluno's own stalled
         // download still gets struck.
         Assert.Contains(records.Items, record => record.QueueItemId == DelunoItemId);
@@ -66,6 +73,9 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
         Assert.DoesNotContain(
             await world.Jobs.ListAsync(100, CancellationToken.None),
             job => job.RelatedEntityId == ForeignItemId);
+        Assert.DoesNotContain(
+            await world.Jobs.ListAsync(100, CancellationToken.None),
+            job => job.RelatedEntityId == HandAddedInCategoryItemId);
     }
 
     private sealed class World : IDisposable
@@ -135,9 +145,12 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
     }
 
     /// <summary>
-    /// A client reporting two stalled downloads: one Deluno sent (its item id
-    /// matches a recorded dispatch), one it did not - added by another tool or
-    /// by hand, in a category Deluno does not use.
+    /// A client reporting three stalled downloads: one Deluno sent (its item
+    /// id matches a recorded dispatch), one added by another tool or by hand
+    /// in a category Deluno does not use, and one added by hand straight into
+    /// the category Deluno itself uses for movies - the #933 defect: nothing
+    /// Deluno recorded mentions it, so the category it happens to share with
+    /// Deluno's own downloads must not be enough to claim it.
     /// </summary>
     private sealed class StalledQueueClient(DownloadClientItem client, DateTimeOffset addedUtc) : IDownloadClient
     {
@@ -153,12 +166,15 @@ public sealed class AForeignDownloadIsNeverStruckOrRemediatedTests
             var foreignItem = new DownloadQueueItem(
                 ForeignItemId, client.Id, client.Name, Protocol, "movies", "Someone Else's Download", "Someone.Elses.Download.2026.1080p.WEB",
                 "manual-downloads", DownloadQueueStatuses.Stalled, 0.4, 0, 0, 1024, 400, 0, "Fixture", null, addedUtc);
+            var handAddedInCategoryItem = new DownloadQueueItem(
+                HandAddedInCategoryItemId, client.Id, client.Name, Protocol, "movies", "Added By Hand", "Added.By.Hand.2026.1080p.WEB",
+                "deluno-movies", DownloadQueueStatuses.Stalled, 0.4, 0, 0, 1024, 400, 0, "Fixture", null, addedUtc);
 
             return Task.FromResult<DownloadClientTelemetrySnapshot?>(new DownloadClientTelemetrySnapshot(
                 client.Id, client.Name, Protocol, null, "healthy", null,
                 Capabilities,
-                DownloadQueueSummary.Of([delunoItem, foreignItem]),
-                [delunoItem, foreignItem],
+                DownloadQueueSummary.Of([delunoItem, foreignItem, handAddedInCategoryItem]),
+                [delunoItem, foreignItem, handAddedInCategoryItem],
                 [],
                 capturedUtc));
         }

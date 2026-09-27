@@ -1,6 +1,5 @@
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Contracts;
-using Deluno.Connections.Contracts;
 
 namespace Deluno.Persistence.Tests.Integrations;
 
@@ -17,88 +16,89 @@ namespace Deluno.Persistence.Tests.Integrations;
 ///
 /// <para><c>IsDelunosOwnDownload</c> is the one test the Queue's rows pass
 /// through: matched first against the dispatch Deluno recorded when it
-/// grabbed the release (the hash or item id the client gave back), and only
-/// failing that, against the category/label Deluno routes its own downloads
-/// through - the same test <c>RunConfiguredHealthRemediationAsync</c> already
-/// applied before touching a client entry (<c>IsDelunoCategory</c>). Neither
-/// matching an item added by another tool or by hand, so it is left off.</para>
+/// grabbed the release - the hash, NZB id or client item id the client gave
+/// back. A client that has not yet handed that id back still lets Deluno
+/// claim the item, but only through the dispatch record itself: the same
+/// client, the same release name, recorded recently. It never falls back to
+/// category or label alone any more - that was the defect #933 found: a
+/// category is a convention a person can reuse by hand, so on its own it
+/// proves nothing about who actually sent an item, and a hand-added download
+/// sitting in Deluno's own category used to be counted as Deluno's because of
+/// it.</para>
 /// </summary>
 public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
 {
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-27T12:00:00Z");
+
     [Fact]
     public void An_item_matching_Delunos_own_dispatch_by_hash_is_Delunos()
     {
-        var client = Client();
         var item = Queue(id: "abc123", category: "not-deluno");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: "abc123") };
 
-        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(
-            client, item, dispatches, RouteCategories()));
+        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
     }
 
     [Fact]
-    public void An_item_matching_no_dispatch_but_the_configured_movies_category_is_Delunos()
+    public void An_item_whose_id_the_client_has_not_reported_yet_is_still_matched_by_the_recent_dispatch()
     {
-        var client = Client(moviesCategory: "deluno-movies");
-        var item = Queue(id: "abc123", category: "deluno-movies", mediaType: "movies");
+        // The grab succeeded a minute ago; the client has not yet handed the
+        // hash back to a poll, so the dispatch still has no
+        // TorrentHashOrItemId. Deluno still claims it, by the dispatch record
+        // itself: same client, same release name, recent.
+        var item = Queue(id: "not-yet-known-to-deluno", category: "not-deluno");
+        var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddMinutes(-1)) };
 
-        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(
-            client, item, [], RouteCategories()));
+        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+    }
+
+    [Fact]
+    public void A_stale_dispatch_still_missing_its_id_no_longer_claims_a_same_named_item()
+    {
+        // Long past the window a client should have reported an id in: this
+        // is not "Deluno's grab, id still pending" any more, it is a stale
+        // record that must not reach out and claim an unrelated later item
+        // just because the release name happens to match.
+        var item = Queue(id: "someone-elses-torrent", category: "not-deluno");
+        var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddDays(-3)) };
+
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+    }
+
+    [Fact]
+    public void A_hand_added_item_sitting_in_Delunos_own_category_is_not_Delunos()
+    {
+        // The defect #933 fixed: nothing Deluno recorded ever mentions this
+        // item, so a category matching what Deluno happens to use on this
+        // client must not be enough to claim it.
+        var item = Queue(id: "someone-elses-torrent", category: "deluno-movies", mediaType: "movies");
+
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, [], Now));
     }
 
     [Fact]
     public void An_item_added_by_another_tool_or_by_hand_is_not_Delunos()
     {
-        var client = Client(moviesCategory: "deluno-movies", tvCategory: "deluno-tv");
         var item = Queue(id: "someone-elses-torrent", category: "manual-downloads", mediaType: "movies");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: "a-different-hash") };
 
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(
-            client, item, dispatches, RouteCategories()));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
     }
 
     [Fact]
-    public void An_item_in_the_movies_category_is_not_claimed_by_a_tv_search()
+    public void A_different_release_recorded_recently_does_not_claim_this_item()
     {
-        // The category has to line up with what the item actually is, not
-        // just with any category Deluno happens to use on this client -
-        // otherwise a tv release routed through the movies category (or vice
-        // versa) would be claimed by accident.
-        var client = Client(moviesCategory: "deluno-movies", tvCategory: "deluno-tv");
-        var item = Queue(id: "someone-elses-torrent", category: "deluno-tv", mediaType: "movies");
+        // Same client, still pending an id, but a different release: the
+        // release name has to line up too, not just the timing.
+        var item = Queue(id: "someone-elses-torrent", category: "not-deluno", releaseName: "Someone.Elses.Download.2026.1080p.WEB");
+        var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddMinutes(-1)) };
 
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(
-            client, item, [], RouteCategories()));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
     }
 
     // ------------------------------------------------------------------ helpers
 
-    private static DownloadClientItem Client(string? moviesCategory = null, string? tvCategory = null)
-        => new(
-            Id: "client-1",
-            Name: "Fixture Client",
-            Protocol: "qbittorrent",
-            Host: "localhost",
-            Port: 8080,
-            Username: null,
-            Secret: null,
-            EndpointUrl: "http://localhost:8080",
-            UseSsl: false,
-            UrlBase: null,
-            MoviesCategory: moviesCategory,
-            TvCategory: tvCategory,
-            CategoryTemplate: null,
-            Priority: 0,
-            IsEnabled: true,
-            HealthStatus: "healthy",
-            LastHealthMessage: null,
-            LastHealthFailureCategory: null,
-            LastHealthLatencyMs: null,
-            LastHealthTestUtc: null,
-            CreatedUtc: DateTimeOffset.UnixEpoch,
-            UpdatedUtc: DateTimeOffset.UnixEpoch);
-
-    private static DownloadQueueItem Queue(string id, string category, string mediaType = "movies")
+    private static DownloadQueueItem Queue(string id, string category, string mediaType = "movies", string releaseName = "Example.2026.1080p.WEB")
         => new(
             Id: id,
             ClientId: "client-1",
@@ -106,7 +106,7 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
             Protocol: "qbittorrent",
             MediaType: mediaType,
             Title: "Example",
-            ReleaseName: "Example.2026.1080p.WEB",
+            ReleaseName: releaseName,
             Category: category,
             Status: "downloading",
             Progress: 0.5,
@@ -119,7 +119,7 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
             ErrorMessage: null,
             AddedUtc: DateTimeOffset.UnixEpoch);
 
-    private static DownloadDispatchItem Dispatch(string torrentHashOrItemId)
+    private static DownloadDispatchItem Dispatch(string? torrentHashOrItemId, DateTimeOffset? createdUtc = null)
         => new(
             Id: "dispatch-1",
             LibraryId: "library-1",
@@ -132,9 +132,9 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
             DownloadClientName: "Fixture Client",
             Status: "sent",
             NotesJson: null,
-            CreatedUtc: DateTimeOffset.UnixEpoch,
+            CreatedUtc: createdUtc ?? DateTimeOffset.UnixEpoch,
             GrabStatus: "succeeded",
-            GrabAttemptedUtc: DateTimeOffset.UnixEpoch,
+            GrabAttemptedUtc: createdUtc ?? DateTimeOffset.UnixEpoch,
             GrabResponseCode: 200,
             GrabMessage: null,
             GrabFailureCode: null,
@@ -151,7 +151,4 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
             CircuitOpenUntilUtc: null,
             NextRetryEligibleUtc: null,
             AttemptCount: 1);
-
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> RouteCategories()
-        => new Dictionary<string, IReadOnlyDictionary<string, string>>();
 }
