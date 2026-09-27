@@ -94,6 +94,17 @@ public static class DownloadHealthStrikes
     /// </summary>
     public const string ClientSetupProblem = "client-setup-problem";
 
+    /// <summary>
+    /// The client's own post-processing script failed or warned after the
+    /// download itself finished (#910) — NZBGet's FAILURE/SCRIPT and
+    /// WARNING/SCRIPT. A setup problem with the client's script, not the
+    /// release: deliberately excluded from <see cref="Counts"/> the same way
+    /// <see cref="ClientSetupProblem"/> is, so it never blocklists, removes or
+    /// searches for a replacement on its own. The downloaded file is still
+    /// probed and imported when it is complete and playable.
+    /// </summary>
+    public const string ClientScriptFailed = "client-script-failed";
+
     /// <summary>Nothing has arrived for at least half an hour.</summary>
     public const string NoThroughput = "no-throughput";
 

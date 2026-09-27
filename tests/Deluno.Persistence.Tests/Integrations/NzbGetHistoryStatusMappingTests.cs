@@ -18,7 +18,6 @@ public sealed class NzbGetHistoryStatusMappingTests
     [Theory]
     [InlineData("SUCCESS/UNPACK", DownloadQueueStatuses.Completed)]
     [InlineData("SUCCESS/NONE", DownloadQueueStatuses.Completed)]
-    [InlineData("WARNING/SCRIPT", DownloadQueueStatuses.Completed)]
     [InlineData("FAILURE/HEALTH", "failed")]
     [InlineData("FAILURE/PAR", "failed")]
     [InlineData("FAILURE/UNPACK", "failed")]
@@ -35,6 +34,20 @@ public sealed class NzbGetHistoryStatusMappingTests
     [InlineData("DELETED/MANUAL", "failed")]
     public void Outcome_matches_NZBGets_MAIN_DETAIL_status(string status, string expectedOutcome)
         => Assert.Equal(expectedOutcome, NzbGetDownloadClient.NormalizeOutcome(status));
+
+    /// <summary>
+    /// #910: FAILURE/SCRIPT and WARNING/SCRIPT are the download itself
+    /// finishing but NZBGet's own post-processing script failing or warning —
+    /// a setup problem with the script, not a bad release, so neither is read
+    /// as "failed" any more (WARNING/SCRIPT used to be silently read as a
+    /// plain success, which hid the warning entirely).
+    /// </summary>
+    [Fact]
+    public void Outcome_reads_NZBGets_script_failure_and_warning_apart_from_a_bad_release()
+    {
+        Assert.Equal(DownloadClientHistoryOutcomes.ScriptFailed, NzbGetDownloadClient.NormalizeOutcome("FAILURE/SCRIPT"));
+        Assert.Equal(DownloadClientHistoryOutcomes.ScriptWarning, NzbGetDownloadClient.NormalizeOutcome("WARNING/SCRIPT"));
+    }
 
     [Theory]
     [InlineData("DELETED/DUPE")]
@@ -60,7 +73,6 @@ public sealed class NzbGetHistoryStatusMappingTests
     [InlineData("FAILURE/PAR", "NZBGet could not download it: it could not repair the download; too much data is missing or damaged.")]
     [InlineData("FAILURE/UNPACK", "NZBGet could not download it: unpacking the download failed.")]
     [InlineData("FAILURE/MOVE", "NZBGet could not download it: it could not move the finished files into place.")]
-    [InlineData("FAILURE/SCRIPT", "NZBGet could not download it: a post-processing script failed it.")]
     [InlineData("FAILURE/NONE", "NZBGet could not download it: no reason was given.")]
     [InlineData("WARNING/HEALTH", "NZBGet finished it with a warning: too many articles are missing.")]
     [InlineData("DELETED/HEALTH", "NZBGet deleted it: a health check failed.")]
@@ -81,4 +93,24 @@ public sealed class NzbGetHistoryStatusMappingTests
         => Assert.Equal(
             "NZBGet finished downloading this, but unpacking stopped because the disk is full: free space and re-run post-processing in NZBGet.",
             NzbGetDownloadClient.AttentionReason("WARNING/SPACE"));
+
+    [Fact]
+    public void ScriptReason_names_the_failing_script_from_NZBGets_own_ScriptStatuses()
+        => Assert.Equal(
+            "Your client's script \"CustomProcess.py\" failed.",
+            NzbGetDownloadClient.ScriptReason(
+            [
+                new NzbGetDownloadClient.NzbGetScriptStatus("Unpack", "SUCCESS"),
+                new NzbGetDownloadClient.NzbGetScriptStatus("CustomProcess.py", "FAILURE")
+            ]));
+
+    [Fact]
+    public void ScriptReason_names_a_warning_script_as_warned_not_failed()
+        => Assert.Equal(
+            "Your client's script \"Notify.py\" warned.",
+            NzbGetDownloadClient.ScriptReason([new NzbGetDownloadClient.NzbGetScriptStatus("Notify.py", "WARNING")]));
+
+    [Fact]
+    public void ScriptReason_falls_back_when_NZBGet_gives_no_script_statuses()
+        => Assert.Equal("Your client's post-processing script reported a problem.", NzbGetDownloadClient.ScriptReason(null));
 }

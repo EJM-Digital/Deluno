@@ -1217,6 +1217,10 @@ public sealed class DownloadClientTelemetryService(
                 {
                     await RecordClientNeedsAttentionAsync(sighting.Dispatch, sighting.AttentionReason, cancellationToken);
                 }
+                else if (sighting.ScriptProblem)
+                {
+                    await RecordClientScriptProblemAsync(sighting.Dispatch, sighting.IsScriptFailure, sighting.ScriptMessage, cancellationToken);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -1448,6 +1452,66 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
+    /// The download itself finished, but the client's own post-processing
+    /// script failed or warned (#910) — NZBGet's FAILURE/SCRIPT and
+    /// WARNING/SCRIPT. A problem with the client's script, not the release:
+    /// never blocklisted, never searched for again, and no import outcome is
+    /// recorded here — the finished file is left for the ordinary import path
+    /// to probe, which imports it when it is complete and playable, or
+    /// follows the bad-release path for that reason if it turns out broken
+    /// (#918).
+    ///
+    /// <para>Shown on System &gt; Health, so it stays visible after the
+    /// activity feed scrolls past it, as well as in Activity — naming the
+    /// script where the client reports which one it was. A soft warning is
+    /// recorded too, at a lower severity, rather than silently read as a
+    /// plain success.</para>
+    /// </summary>
+    private async Task RecordClientScriptProblemAsync(
+        DownloadDispatchItem dispatch,
+        bool isFailure,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch.ImportStatus is not null)
+        {
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(reason)
+            ? $"{dispatch.DownloadClientName}'s post-processing script {(isFailure ? "failed" : "warned")} on this download."
+            : reason;
+        var queueItemId = dispatch.TorrentHashOrItemId ?? dispatch.Id;
+
+        await healthRepository.RecordDownloadHealthObservationsAsync(
+            dispatch.DownloadClientId,
+            [queueItemId],
+            [new DownloadHealthObservation(
+                dispatch.DownloadClientId,
+                queueItemId,
+                dispatch.ReleaseName,
+                DownloadHealthStrikes.ClientScriptFailed,
+                isFailure ? "critical" : "warning",
+                message)],
+            cancellationToken);
+
+        await dispatchesRepository.RecordTimelineEventAsync(
+            dispatch.Id,
+            isFailure ? "client-reported-script-failed" : "client-reported-script-warning",
+            JsonSerializer.Serialize(new { reason = message, source = "history" }),
+            cancellationToken);
+
+        await activityFeedRepository.RecordActivityAsync(
+            isFailure ? "download.client.script-failed" : "download.client.script-warning",
+            $"Your client's script {(isFailure ? "failed" : "warned")} on {dispatch.ReleaseName}: {message}",
+            null,
+            null,
+            "download_dispatch",
+            dispatch.Id,
+            cancellationToken);
+    }
+
+    /// <summary>
     /// "Follow the existing item" for a duplicate (#663): another dispatch for
     /// the same title that has already imported, so this dispatch's release is
     /// already on the shelf under a different id. Matched on entity rather than
@@ -1515,7 +1579,17 @@ public sealed class DownloadClientTelemetryService(
         /// lost, so nothing is blocklisted and nothing is searched for again.
         /// </summary>
         bool NeedsAttention = false,
-        string? AttentionReason = null);
+        string? AttentionReason = null,
+        /// <summary>
+        /// The download itself finished, but the client's own post-processing
+        /// script failed or warned (#910). Distinct from <see cref="Failed"/>:
+        /// a problem with the client's script, not the release, so nothing is
+        /// blocklisted and nothing is searched for — the finished file still
+        /// goes to the ordinary import path to be probed.
+        /// </summary>
+        bool ScriptProblem = false,
+        bool IsScriptFailure = false,
+        string? ScriptMessage = null);
 
     /// <summary>
     /// The downloads this client shows that their records do not know about yet:
@@ -1529,9 +1603,9 @@ public sealed class DownloadClientTelemetryService(
         DownloadClientTelemetrySnapshot live,
         IEnumerable<DownloadDispatchItem> clientDispatches)
     {
-        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason, bool Duplicate, string? DuplicateReason, bool NeedsAttention, string? AttentionReason)>(StringComparer.OrdinalIgnoreCase);
+        var shown = new Dictionary<string, (long? Bytes, bool Finished, bool Failed, string? Reason, bool Duplicate, string? DuplicateReason, bool NeedsAttention, string? AttentionReason, bool ScriptProblem, bool IsScriptFailure, string? ScriptMessage)>(StringComparer.OrdinalIgnoreCase);
 
-        void Add(string? id, long? bytes, bool finished, bool failed, string? reason, bool duplicate, string? duplicateReason, bool needsAttention, string? attentionReason)
+        void Add(string? id, long? bytes, bool finished, bool failed, string? reason, bool duplicate, string? duplicateReason, bool needsAttention, string? attentionReason, bool scriptProblem, bool isScriptFailure, string? scriptMessage)
         {
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -1541,13 +1615,14 @@ public sealed class DownloadClientTelemetryService(
             var key = id.Trim();
             shown[key] = shown.TryGetValue(key, out var seen)
                 ? (bytes ?? seen.Bytes, finished || seen.Finished, failed || seen.Failed, reason ?? seen.Reason, duplicate || seen.Duplicate, duplicateReason ?? seen.DuplicateReason,
-                    needsAttention || seen.NeedsAttention, attentionReason ?? seen.AttentionReason)
-                : (bytes, finished, failed, reason, duplicate, duplicateReason, needsAttention, attentionReason);
+                    needsAttention || seen.NeedsAttention, attentionReason ?? seen.AttentionReason,
+                    scriptProblem || seen.ScriptProblem, isScriptFailure || seen.IsScriptFailure, scriptMessage ?? seen.ScriptMessage)
+                : (bytes, finished, failed, reason, duplicate, duplicateReason, needsAttention, attentionReason, scriptProblem, isScriptFailure, scriptMessage);
         }
 
         foreach (var item in live.Queue)
         {
-            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null, false, null, false, null);
+            Add(item.Id, item.DownloadedBytes, item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed, false, null, false, null, false, null, false, false, null);
         }
 
         foreach (var item in live.History)
@@ -1576,13 +1651,23 @@ public sealed class DownloadClientTelemetryService(
             // ClientCompletedUtc is already set — the recovered download
             // would never be picked up.
             var attentionByClient = item.Outcome == DownloadClientHistoryOutcomes.NeedsAttention && item.HistorySource == "native";
-            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient;
+            // The client's own post-processing script failed or warned (#910)
+            // — NZBGet's FAILURE/SCRIPT and WARNING/SCRIPT. Unlike a disk-full
+            // NeedsAttention sighting, the download itself really did finish
+            // here, so this counts towards `finished` the same as a plain
+            // success: the file is handed to the ordinary import path once,
+            // and the script problem is only ever told once.
+            var scriptFailedByClient = item.Outcome == DownloadClientHistoryOutcomes.ScriptFailed && item.HistorySource == "native";
+            var scriptWarningByClient = item.Outcome == DownloadClientHistoryOutcomes.ScriptWarning && item.HistorySource == "native";
+            var scriptProblemByClient = scriptFailedByClient || scriptWarningByClient;
+            var finished = item.Outcome is DownloadQueueStatuses.Completed or DownloadQueueStatuses.ImportReady || failedByClient || duplicateByClient || scriptProblemByClient;
             var bytes = item.SizeBytes > 0 ? item.SizeBytes : (long?)null;
             var reason = failedByClient ? item.ErrorMessage : null;
             var duplicateReason = duplicateByClient ? item.ErrorMessage : null;
             var attentionReason = attentionByClient ? item.ErrorMessage : null;
-            Add(item.Id, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason);
-            Add(item.ExternalId, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason);
+            var scriptMessage = scriptProblemByClient ? item.ErrorMessage : null;
+            Add(item.Id, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason, scriptProblemByClient, scriptFailedByClient, scriptMessage);
+            Add(item.ExternalId, bytes, finished, failedByClient, reason, duplicateByClient, duplicateReason, attentionByClient, attentionReason, scriptProblemByClient, scriptFailedByClient, scriptMessage);
         }
 
         var sightings = new List<ClientSighting>();
@@ -1605,7 +1690,7 @@ public sealed class DownloadClientTelemetryService(
                 || (seen.Finished && dispatch.ClientCompletedUtc is null)
                 || (seen.NeedsAttention && dispatch.ClientCompletedUtc is null))
             {
-                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason, seen.NeedsAttention, seen.AttentionReason));
+                sightings.Add(new ClientSighting(dispatch, seen.Bytes, seen.Finished, seen.Failed, seen.Reason, seen.Duplicate, seen.DuplicateReason, seen.NeedsAttention, seen.AttentionReason, seen.ScriptProblem, seen.IsScriptFailure, seen.ScriptMessage));
             }
         }
 
