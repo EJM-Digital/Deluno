@@ -56,6 +56,22 @@ public static class MediaFileNameFacts
         (Build(@"(cam|ts|telesync)"), "CAM")
     ];
 
+    /// <summary>
+    /// Ordered most-specific first: HDR10+ and Dolby Vision both also contain
+    /// (or imply) plain "HDR", so the more specific token has to win.
+    /// </summary>
+    private static readonly (Regex Pattern, string Value)[] DynamicRanges =
+    [
+        (Build(@"(hdr10\+|hdr10plus)"), "HDR10+"),
+        (Build(@"(dv|dolby-?vision)"), "Dolby Vision"),
+        (Build(@"(hdr10)"), "HDR10"),
+        (Build(@"(hdr)"), "HDR")
+    ];
+
+    /// <summary>8, 10 or 12-bit colour depth, welded to "bit" the way scene names write it: "10bit", not "10 bit".</summary>
+    private static readonly Regex BitDepthPattern =
+        new(@"(?<![A-Za-z0-9])(?<bits>8|10|12)-?bit(?![A-Za-z0-9])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private static readonly (Regex Pattern, string Value)[] AudioCodecs =
     [
         (BuildAudio(@"(truehd)"), "TrueHD"),
@@ -156,7 +172,15 @@ public static class MediaFileNameFacts
             AudioCodec: MatchFirst(AudioCodecs, name),
             AudioChannels: ParseChannels(name),
             ReleaseGroup: ParseReleaseGroup(name),
-            Source: MatchFirst(Sources, name));
+            Source: MatchFirst(Sources, name),
+            DynamicRange: MatchFirst(DynamicRanges, name),
+            BitDepth: ParseBitDepth(name));
+    }
+
+    private static string? ParseBitDepth(string name)
+    {
+        var match = BitDepthPattern.Match(name);
+        return match.Success ? $"{match.Groups["bits"].Value}-bit" : null;
     }
 
     private static string StripPathAndExtension(string value)
@@ -244,7 +268,11 @@ public sealed record MediaFileFacts(
     /// not at all on how many pixels the picture has, which is why Bazarr scores
     /// source at 25 and resolution at 1.</para>
     /// </summary>
-    string? Source = null)
+    string? Source = null,
+    /// <summary>HDR10+, Dolby Vision, HDR10 or HDR -- null when the name says nothing about it (most files do not).</summary>
+    string? DynamicRange = null,
+    /// <summary>"8-bit", "10-bit" or "12-bit" -- null when the name says nothing about it.</summary>
+    string? BitDepth = null)
 {
     public static MediaFileFacts Empty { get; } = new(null, null, null, null);
 

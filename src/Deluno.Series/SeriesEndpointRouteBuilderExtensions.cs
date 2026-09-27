@@ -2102,6 +2102,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         tvDbId: ReadMetadataText(seriesItem.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
                         network: ReadMetadataText(seriesItem.MetadataJson, "Network", "network"),
                         genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                        decision: new NamingDecision(OriginalTitle: seriesItem.OriginalTitle),
                         replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
                         colonReplacementMode: settings.ColonReplacementMode)
                 });

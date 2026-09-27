@@ -111,4 +111,43 @@ public sealed class NamingTemplateRendererTests
 
         Assert.Equal("Series Title", rendered);
     }
+
+    /// <summary>#760: every new token renders from the decision that carries it.</summary>
+    [Fact]
+    public void RenderSegment_renders_every_new_760_token_from_the_decision()
+    {
+        var decision = new NamingDecision(
+            OriginalTitle: "El Laberinto del Fauno",
+            OriginalFileName: "pans.labyrinth.2006.1080p.bluray-grp",
+            ReleaseHash: "a1b2c3d4",
+            VideoCodec: "H.264",
+            AudioCodec: "DTS-HD",
+            AudioChannels: "5.1",
+            VideoDynamicRangeType: "HDR10",
+            VideoBitDepth: "10-bit",
+            AirDate: new DateOnly(2024, 3, 5),
+            AbsoluteEpisodeNumber: 42);
+
+        var rendered = NamingTemplateRenderer.RenderSegment(
+            "{Original Title} {Original Filename} {Release Hash} {MediaInfo VideoCodec} {MediaInfo AudioCodec} {MediaInfo AudioChannels} {MediaInfo VideoDynamicRangeType} {MediaInfo VideoBitDepth} {Air-Date} {absolute:000}",
+            "Pan's Labyrinth",
+            2006,
+            decision: decision);
+
+        Assert.Equal(
+            "El Laberinto del Fauno pans.labyrinth.2006.1080p.bluray-grp a1b2c3d4 H.264 DTS-HD 5.1 HDR10 10-bit 2024-03-05 042",
+            rendered);
+    }
+
+    /// <summary>#760: a token whose data was never supplied renders as nothing rather than an error or a literal token.</summary>
+    [Fact]
+    public void RenderSegment_falls_back_to_empty_for_760_tokens_with_no_data()
+    {
+        var rendered = NamingTemplateRenderer.RenderSegment(
+            "{Movie Title}_{MediaInfo VideoDynamicRangeType}_{Release Hash}_{Air-Date}",
+            "Arrival",
+            2016);
+
+        Assert.Equal("Arrival___", rendered);
+    }
 }

@@ -94,6 +94,24 @@ public sealed class MediaFileNameFactsTests
         Assert.Null(facts.ReleaseGroup);
     }
 
+    /// <summary>#760: MediaInfo dynamic-range token, ordered most-specific first so HDR10+ and Dolby Vision are not read as plain HDR.</summary>
+    [Theory]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.HDR10Plus-GROUP", "HDR10+")]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.DV-GROUP", "Dolby Vision")]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.HDR10-GROUP", "HDR10")]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.HDR-GROUP", "HDR")]
+    [InlineData("Arrival.2016.1080p.BluRay.x264-GROUP", null)]
+    public void Dynamic_range_is_read_from_the_name(string name, string? expected)
+        => Assert.Equal(expected, MediaFileNameFacts.Parse(name).DynamicRange);
+
+    /// <summary>#760: MediaInfo bit-depth token.</summary>
+    [Theory]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.10bit-GROUP", "10-bit")]
+    [InlineData("Arrival.2016.2160p.UHD.BluRay.x265.8bit-GROUP", "8-bit")]
+    [InlineData("Arrival.2016.1080p.BluRay.x264-GROUP", null)]
+    public void Bit_depth_is_read_from_the_name(string name, string? expected)
+        => Assert.Equal(expected, MediaFileNameFacts.Parse(name).BitDepth);
+
     [Fact]
     public void Bitrate_is_derived_from_size_and_runtime_or_not_at_all()
     {

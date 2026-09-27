@@ -1860,6 +1860,47 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Series -  Title (2020).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
     }
 
+    /// <summary>#760: MediaInfo and Original Filename tokens read the same release-name evidence Quality already does, on the real import path.</summary>
+    [Fact]
+    public async Task ExecuteAsync_renders_MediaInfo_and_original_filename_tokens_from_the_release_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        const string releaseName = "Silent.Hill.2020.2160p.WEB-DL.DTS-HD.5.1.x265-DELUNO";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year}) [{MediaInfo VideoCodec} {MediaInfo AudioChannels}] {Original Filename}");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Silent Hill", 2020, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(
+            $"Silent Hill (2020) [HEVC 5.1] {releaseName}.mkv",
+            Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
     [Fact]
     public async Task Where_a_copy_came_from_outlives_the_dispatch_that_brought_it()
     {

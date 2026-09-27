@@ -3792,9 +3792,12 @@ public sealed partial class ImportPipelineService(
         CancellationToken cancellationToken)
     {
         var mediaType = NormalizeMediaType(request.MediaType);
-        var evidence = string.IsNullOrWhiteSpace(releaseName)
-            ? Path.GetFileNameWithoutExtension(string.IsNullOrWhiteSpace(request.FileName) ? request.SourcePath : request.FileName)
-            : releaseName.Trim();
+        // The incoming file's own name, independent of releaseName: a dispatch
+        // resolves the decision from the release Deluno grabbed, but the
+        // {Original Filename} token means the file that actually arrived.
+        var originalFileName = Path.GetFileNameWithoutExtension(
+            string.IsNullOrWhiteSpace(request.FileName) ? request.SourcePath : request.FileName);
+        var evidence = string.IsNullOrWhiteSpace(releaseName) ? originalFileName : releaseName.Trim();
         if (string.IsNullOrWhiteSpace(evidence))
         {
             return NamingDecision.None;
@@ -3804,9 +3807,26 @@ public sealed partial class ImportPipelineService(
         var releaseGroup = ReleaseGroupPattern().Match(evidence) is { Success: true } group
             ? group.Groups["group"].Value
             : null;
+        // #760: MediaInfo tokens read the same name evidence Quality and the
+        // release group already do -- a probe pipeline is a larger feature
+        // than a naming token, and the name carries this by convention the
+        // same way it carries codec and audio for the library list.
+        var mediaFacts = MediaFileNameFacts.Parse(evidence);
+        // A short, stable identifier for the release, so two files that
+        // otherwise render the same name can still be told apart.
+        var releaseHash = Convert.ToHexString(SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(evidence)))[..8].ToLowerInvariant();
         if (qualityRepository is null)
         {
-            return new NamingDecision(quality, releaseGroup);
+            return new NamingDecision(
+                quality,
+                releaseGroup,
+                OriginalFileName: originalFileName,
+                ReleaseHash: releaseHash,
+                VideoCodec: mediaFacts.VideoCodec,
+                AudioCodec: mediaFacts.AudioCodec,
+                AudioChannels: mediaFacts.AudioChannels,
+                VideoDynamicRangeType: mediaFacts.DynamicRange,
+                VideoBitDepth: mediaFacts.BitDepth);
         }
 
         var profileId = ResolveLibrary(libraries, mediaType, request.LibraryId)?.QualityProfileId;
@@ -3820,7 +3840,16 @@ public sealed partial class ImportPipelineService(
             .ToArray();
         if (rules.Length == 0)
         {
-            return new NamingDecision(quality, releaseGroup);
+            return new NamingDecision(
+                quality,
+                releaseGroup,
+                OriginalFileName: originalFileName,
+                ReleaseHash: releaseHash,
+                VideoCodec: mediaFacts.VideoCodec,
+                AudioCodec: mediaFacts.AudioCodec,
+                AudioChannels: mediaFacts.AudioChannels,
+                VideoDynamicRangeType: mediaFacts.DynamicRange,
+                VideoBitDepth: mediaFacts.BitDepth);
         }
 
         var guide = guidePackageStore is null
@@ -3858,7 +3887,14 @@ public sealed partial class ImportPipelineService(
             quality,
             releaseGroup,
             names.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
-            editions.OrderBy(name => name, StringComparer.Ordinal).ToArray());
+            editions.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
+            OriginalFileName: originalFileName,
+            ReleaseHash: releaseHash,
+            VideoCodec: mediaFacts.VideoCodec,
+            AudioCodec: mediaFacts.AudioCodec,
+            AudioChannels: mediaFacts.AudioChannels,
+            VideoDynamicRangeType: mediaFacts.DynamicRange,
+            VideoBitDepth: mediaFacts.BitDepth);
     }
 
     private static IEnumerable<string> SplitIds(string? csv)
@@ -3956,6 +3992,15 @@ public sealed partial class ImportPipelineService(
         var quality = decision.Quality
             ?? LibraryQualityDecider.DetectQuality($"{incomingName} {request.SourcePath}")
             ?? string.Empty;
+        // #760/#761: {Air-Date} and {absolute:000} come from this exact
+        // episode's own catalogued numbering, never re-parsed from the
+        // incoming name -- the same reasoning NamingDecision already applies
+        // to Quality and the release group.
+        var episodeDecision = decision with
+        {
+            AirDate = cataloguedEpisode?.AirDate,
+            AbsoluteEpisodeNumber = cataloguedEpisode?.AbsoluteNumber
+        };
         var formatted = settings.EpisodeFileFormat
             .Replace("{Series Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
             .Replace("{Title}", SanitizeFileName(title, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode), StringComparison.OrdinalIgnoreCase)
@@ -3966,7 +4011,7 @@ public sealed partial class ImportPipelineService(
             .Replace("{Episode Title}", episodeTitle, StringComparison.OrdinalIgnoreCase)
             .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
         return new ResolvedDestinationFileName(
-            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: decision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode)}{extension}",
+            $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: episodeDecision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode)}{extension}",
             null);
     }
 
