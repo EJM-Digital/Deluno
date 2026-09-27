@@ -82,6 +82,13 @@ public sealed record IndexerItem(
 
     public int? MaximumSizeMb { get; init; }
 
+    /// <summary>
+    /// The seeder floor a torrent from this indexer must clear to be grabbed
+    /// (#738). Null means unrestricted; ignored for usenet/RSS indexers,
+    /// which have no seeder count to check.
+    /// </summary>
+    public int? MinimumSeeders { get; init; }
+
     public string? PreferIndexerFlags { get; init; }
 
     public int? AvailabilityDelayDays { get; init; }

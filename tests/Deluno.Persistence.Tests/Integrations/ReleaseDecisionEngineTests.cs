@@ -24,6 +24,7 @@ public sealed class ReleaseDecisionEngineTests
         int? minimumAgeMinutes = null,
         int? retentionDays = null,
         int? maximumSizeMb = null,
+        int? minimumSeeders = null,
         string? indexerFlags = null,
         string? preferIndexerFlags = null)
         => new(
@@ -45,6 +46,7 @@ public sealed class ReleaseDecisionEngineTests
             MinimumAgeMinutes: minimumAgeMinutes,
             RetentionDays: retentionDays,
             MaximumSizeMb: maximumSizeMb,
+            MinimumSeeders: minimumSeeders,
             IndexerFlags: indexerFlags,
             PreferIndexerFlags: preferIndexerFlags);
 
@@ -384,6 +386,41 @@ public sealed class ReleaseDecisionEngineTests
         var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 1000));
 
         Assert.Equal(220, decision.SeederScore);
+    }
+
+    // ── Minimum-seeders floor (#738) ───────────────────────────────────────
+
+    [Fact]
+    public void Decide_rejects_a_torrent_below_the_configured_minimum_seeders()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 4, minimumSeeders: 5));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, r => r.Contains("below this indexer's configured minimum of 5", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_accepts_a_torrent_at_the_configured_minimum_seeders()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 5, minimumSeeders: 5));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_leaves_seeders_unrestricted_when_minimum_is_not_set()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: 1, minimumSeeders: null));
+
+        Assert.NotEqual("rejected", decision.Status);
+    }
+
+    [Fact]
+    public void Decide_ignores_minimum_seeders_for_a_usenet_indexer()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(seeders: null, minimumSeeders: 5, indexerProtocol: "newznab"));
+
+        Assert.NotEqual("rejected", decision.Status);
     }
 
     // ── Size scoring ──────────────────────────────────────────────────────

@@ -41,6 +41,8 @@ public sealed record UpdateIndexerRequest(
     bool? ClearRetention = null,
     int? MaximumSizeMb = null,
     bool? ClearMaximumSize = null,
+    int? MinimumSeeders = null,
+    bool? ClearMinimumSeeders = null,
     string? PreferIndexerFlags = null,
     bool? ClearPreferIndexerFlags = null,
     int? AvailabilityDelayDays = null,

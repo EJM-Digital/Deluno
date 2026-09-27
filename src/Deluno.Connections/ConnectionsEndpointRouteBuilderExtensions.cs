@@ -138,6 +138,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 MinimumAgeMinutes = request.MinimumAgeMinutes,
                 RetentionDays = request.RetentionDays,
                 MaximumSizeMb = request.MaximumSizeMb,
+                MinimumSeeders = request.MinimumSeeders,
                 PreferIndexerFlags = request.PreferIndexerFlags,
                 AvailabilityDelayDays = request.AvailabilityDelayDays,
                 RssEnabled = request.RssEnabled,
@@ -761,7 +762,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             request.RetentionDays,
             request.MaximumSizeMb,
             request.PreferIndexerFlags,
-            request.AvailabilityDelayDays);
+            request.AvailabilityDelayDays,
+            request.MinimumSeeders);
 
         return errors;
     }
@@ -790,6 +792,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             AddNonNegativeError(errors, "availabilityDelayDays", request.AvailabilityDelayDays, "Availability delay cannot be negative.");
         }
 
+        if (request.ClearMinimumSeeders != true && request.MinimumSeeders is not null)
+        {
+            AddNonNegativeError(errors, "minimumSeeders", request.MinimumSeeders, "Minimum seeders cannot be negative.");
+        }
+
         if (request.ClearPreferIndexerFlags != true && request.PreferIndexerFlags is { Length: > 500 })
         {
             errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];
@@ -803,12 +810,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         int? retentionDays,
         int? maximumSizeMb,
         string? preferIndexerFlags,
-        int? availabilityDelayDays)
+        int? availabilityDelayDays,
+        int? minimumSeeders = null)
     {
         AddNonNegativeError(errors, "minimumAgeMinutes", minimumAgeMinutes, "Minimum age cannot be negative.");
         AddNonNegativeError(errors, "retentionDays", retentionDays, "Retention cannot be negative.");
         AddNonNegativeError(errors, "maximumSizeMb", maximumSizeMb, "Maximum size cannot be negative.");
         AddNonNegativeError(errors, "availabilityDelayDays", availabilityDelayDays, "Availability delay cannot be negative.");
+        AddNonNegativeError(errors, "minimumSeeders", minimumSeeders, "Minimum seeders cannot be negative.");
         if (preferIndexerFlags is { Length: > 500 })
         {
             errors["preferIndexerFlags"] = ["Indexer flags must be 500 characters or fewer."];

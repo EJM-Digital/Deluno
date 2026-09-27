@@ -89,7 +89,8 @@ public static class PlatformDatabaseMigrations
         new V0081LibraryRandomizeSearchOrder(),
         new V0082DownloadClientTags(),
         new V0083MediaServerRefreshBacklog(),
-        new V0084RenameFoldersOnImportDefaultsExisting()
+        new V0084RenameFoldersOnImportDefaultsExisting(),
+        new V0083IndexerMinimumSeeders()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
