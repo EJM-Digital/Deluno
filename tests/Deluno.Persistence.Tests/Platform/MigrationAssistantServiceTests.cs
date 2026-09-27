@@ -293,7 +293,7 @@ public sealed class MigrationAssistantServiceTests
                       "score": 999,
                       "upgradeAllowed": false,
                       "specifications": [
-                        { "name": "indexer flag", "implementation": "IndexerFlagSpecification", "fields": [{ "name": "value", "value": "freeleech" }], "negate": true, "required": false }
+                        { "name": "size", "implementation": "SizeSpecification", "fields": [{ "name": "value", "value": "20000" }], "negate": true, "required": false }
                       ]
                     }
                   ],
