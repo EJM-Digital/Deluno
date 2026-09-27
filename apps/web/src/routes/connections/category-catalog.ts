@@ -71,3 +71,28 @@ export function customCategoryIds(categories: string): string[] {
   const standardIds = new Set(STANDARD_CATEGORIES.map((category) => category.id));
   return splitCategoryIds(categories).filter((id) => !standardIds.has(id));
 }
+
+/**
+ * A custom category's nearest standard group (#751): Newznab/Torznab groups
+ * a family of categories under one thousands-numbered parent (2000 Movies,
+ * 5000 TV, and so on) with its own kind spelled out in the hundreds place —
+ * 2045 is a kind of 2000 Movies, 5070 a kind of 5000 TV. An indexer's own
+ * custom category still belongs to whichever family its number falls in,
+ * even when nobody has named that exact number, so it is placed under that
+ * group instead of only ever appearing as a bare, ungrouped number.
+ *
+ * Returns null when the id isn't numeric, or its family (the id rounded down
+ * to the nearest thousand) isn't one of Deluno's own standard parents —
+ * Newznab reserves 3000 (Audio), 4000 (PC), 6000 (XXX), 7000/8000 (Books,
+ * Other) too, but Deluno has no group for those, so there is nothing to map
+ * a category in them onto.
+ */
+export function nearestStandardGroupFor(id: string): CategoryDefinition | null {
+  const numeric = Number(id);
+  if (!Number.isFinite(numeric) || numeric < 1000) {
+    return null;
+  }
+
+  const familyId = String(Math.floor(numeric / 1000) * 1000);
+  return STANDARD_CATEGORIES.find((category) => category.id === familyId) ?? null;
+}
