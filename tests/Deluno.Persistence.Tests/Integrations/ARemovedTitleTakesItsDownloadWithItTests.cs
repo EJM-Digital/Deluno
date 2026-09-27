@@ -225,6 +225,112 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
         Assert.Contains("Severance was removed from Deluno", activity.Message);
     }
 
+    /// <summary>
+    /// #900: unmonitoring a title mid-download is not just a flag - the same
+    /// cancel-with-data path removal uses runs for it too, without removing
+    /// the title itself.
+    /// </summary>
+    [Fact]
+    public async Task Unmonitoring_a_title_mid_download_cancels_it_with_its_data_and_never_blocklists()
+    {
+        using var world = await World.CreateAsync();
+        var movie = await world.ImportMovieAsync("Arrival");
+        world.Dispatch(movie.Id, "Arrival.2016.1080p.WEB-DL-GROUP", "client-1", "hash-arrival");
+
+        var metadata = await world.UnmonitorAsync("movie", movie.Id, "Arrival");
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("client-1", call.ClientId);
+        Assert.Equal(DownloadClientActions.DeleteWithData, call.Action);
+        Assert.Equal("hash-arrival", call.QueueItemId);
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "movie.download-cancelled");
+        Assert.Contains("Arrival is no longer monitored", activity.Message);
+        Assert.Contains("cancelled its download", activity.Message);
+    }
+
+    /// <summary>Unmonitoring an upgrade in progress cancels the upgrade download, but there is no library file for this test to check is untouched, so it is proven at the endpoint layer that the existing file is never referenced by this path.</summary>
+    [Fact]
+    public async Task Unmonitoring_a_title_with_nothing_in_flight_reports_nothing_cancelled_and_writes_no_activity()
+    {
+        using var world = await World.CreateAsync();
+        var movie = await world.ImportMovieAsync("Arrival");
+
+        var metadata = await world.UnmonitorAsync("movie", movie.Id, "Arrival");
+
+        Assert.Equal("0", metadata["cancelledClientDownloadCount"]);
+        Assert.Empty(world.Telemetry.Calls);
+        Assert.DoesNotContain(
+            await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None),
+            entry => entry.Category == "movie.download-cancelled");
+    }
+
+    /// <summary>The TV side of #900, same as series removal reuses the same code (#899/#902/#903).</summary>
+    [Fact]
+    public async Task Unmonitoring_a_series_mid_download_cancels_it_the_same_way()
+    {
+        using var world = await World.CreateAsync();
+        var series = await world.ImportSeriesAsync("Severance");
+        world.Dispatch(series.Id, "Severance.S01E01.1080p.WEB-DL-GROUP", "client-1", "hash-severance", entityType: "series");
+
+        var metadata = await world.UnmonitorAsync("series", series.Id, "Severance");
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("hash-severance", call.QueueItemId);
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "series.download-cancelled");
+        Assert.Contains("Severance is no longer monitored", activity.Message);
+    }
+
+    /// <summary>A download for a title you did not unmonitor is left running, same as removal leaves other titles alone.</summary>
+    [Fact]
+    public async Task A_download_for_a_different_title_is_left_running_when_unmonitoring()
+    {
+        using var world = await World.CreateAsync();
+        var unmonitored = await world.ImportMovieAsync("Arrival");
+        var other = await world.ImportMovieAsync("Dune");
+        world.Dispatch(unmonitored.Id, "Arrival.2016.1080p.WEB-DL-GROUP", "client-1", "hash-arrival");
+        var otherDispatchId = world.Dispatch(other.Id, "Dune.2021.2160p.WEB-DL-GROUP", "client-1", "hash-dune");
+
+        await world.UnmonitorAsync("movie", unmonitored.Id, "Arrival");
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("hash-arrival", call.QueueItemId);
+
+        var untouched = await world.Dispatches.GetDispatchAsync(otherDispatchId, CancellationToken.None);
+        Assert.NotNull(untouched);
+        Assert.NotEqual("archived", untouched!.Status, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A processor already mid-run on the cancelled download's release has its
+    /// output discarded rather than waited for, matching #903's rule for
+    /// removal.
+    /// </summary>
+    [Fact]
+    public async Task Unmonitoring_mid_processing_discards_the_processors_output_even_though_it_already_started()
+    {
+        using var world = await World.CreateAsync();
+        var movie = await world.ImportMovieAsync("Arrival");
+        const string release = "Arrival.2016.1080p.WEB-DL-GROUP";
+        world.Dispatch(movie.Id, release, "client-1", "hash-arrival");
+        var handoffId = await world.HandOffToProcessorAsync(release, ProcessorHandoffStatuses.Started);
+        world.ProcessorConnections.NextCancelResult = new ProcessorHandoffCancelResult(ProcessorAnswer.Busy, "Remuxing.");
+
+        var metadata = await world.UnmonitorAsync("movie", movie.Id, "Arrival");
+
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+        Assert.Equal("1", metadata["stoppedProcessorHandoffCount"]);
+        var handoff = await world.Processors.GetProcessorHandoffAsync(handoffId, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, handoff!.Status);
+    }
+
     private sealed class FakeDownloadClientTelemetryService : IDownloadClientTelemetryService
     {
         public List<(string ClientId, string Action, string QueueItemId)> Calls { get; } = [];
@@ -514,6 +620,9 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<Dictionary<string, string?>> RemoveSeriesAsync(SeriesListItem seriesItem, TitleRemovalOptions options)
             => removal.RemoveAsync(SeriesRemoval.Target(seriesItem, series), options, CancellationToken.None);
+
+        public Task<Dictionary<string, string?>> UnmonitorAsync(string entityType, string entityId, string title)
+            => removal.CancelDownloadForUnmonitoredTitleAsync(entityType, entityId, title, CancellationToken.None);
 
         public void Dispose() => storage.Dispose();
     }

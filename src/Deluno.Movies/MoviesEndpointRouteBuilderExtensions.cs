@@ -581,6 +581,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateMovieMonitoringRequest request,
             IMovieCatalogRepository repository,
+            TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -598,12 +599,29 @@ public static class MoviesEndpointRouteBuilderExtensions
                 });
             }
 
+            var movieIds = request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+            // #900: unmonitoring is "I don't want this any more", not just "stop
+            // searching later" - an in-flight download for it is cancelled right
+            // now, with its data, rather than left to finish and import anyway.
+            if (!request.Monitored)
+            {
+                foreach (var movieId in movieIds)
+                {
+                    var movie = await repository.GetByIdAsync(movieId, cancellationToken);
+                    if (movie is not null)
+                    {
+                        await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("movie", movieId, movie.Title, cancellationToken);
+                    }
+                }
+            }
+
             var updated = await repository.UpdateMonitoredAsync(
-                request.MovieIds,
+                movieIds,
                 request.Monitored,
                 cancellationToken);
 
-            foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var movieId in movieIds)
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
 
             return Results.Ok(new { updated });

@@ -84,7 +84,7 @@ public sealed class TitleRemovalService(
         // in-flight download for it is never left running, untracked, at the
         // client. Never blocklisted and never searched again - the release
         // was not bad, the title just is not wanted any more.
-        metadata["cancelledClientDownloadCount"] = (await CancelActiveDownloadsAsync(title, cancellationToken)).ToString();
+        metadata["cancelledClientDownloadCount"] = (await CancelActiveDownloadsAsync(title.EntityType, title.Id, cancellationToken)).ToString();
 
         if (options.DeleteFiles)
         {
@@ -175,9 +175,9 @@ public sealed class TitleRemovalService(
             throw new InvalidOperationException(title.EntityType == "series" ? "TV show was not removed from Deluno." : "Movie was not removed from Deluno.");
         }
 
-        var grabs = await ArchiveGrabsAsync(title, cancellationToken);
+        var grabs = await ArchiveGrabsAsync(title.EntityType, title.Id, title.Title, cancellationToken);
         metadata["archivedGrabCount"] = grabs.Archived.ToString();
-        metadata["stoppedProcessorHandoffCount"] = (await StopWaitingAsync(title, grabs, cancellationToken)).ToString();
+        metadata["stoppedProcessorHandoffCount"] = (await StopWaitingAsync(title.Title, grabs, cancellationToken)).ToString();
         metadata["settledRecoveryCaseCount"] = (await title.SettleRecoveryCases(
             ImportRecoveryCaseScope.ForRemovedTitle(grabs.DispatchIds, grabs.ReleaseNames),
             $"{title.Title} was removed from Deluno, so this is no longer something to answer.",
@@ -193,6 +193,56 @@ public sealed class TitleRemovalService(
             null,
             title.EntityType,
             title.Id,
+            cancellationToken);
+
+        return metadata;
+    }
+
+    /// <summary>
+    /// #900: unmonitoring a title mid-download stops wanting it right now, not
+    /// only at the next automatic pass. Its in-flight download (a first grab
+    /// or an upgrade in progress) is cancelled at the client with its data,
+    /// any processor already working on it is dropped, and its own dispatch
+    /// is archived so nothing later treats the cancelled download as a
+    /// download that vanished. The library file, if any, is left alone -
+    /// cancelling an upgrade keeps the current file. Never blocklisted, never
+    /// searched again: the release was not bad, the title just is not wanted
+    /// any more.
+    ///
+    /// <para>Does nothing, and reports nothing, when the title had no active
+    /// download to cancel - unmonitoring a title with nothing in flight is
+    /// not itself news.</para>
+    /// </summary>
+    public async Task<Dictionary<string, string?>> CancelDownloadForUnmonitoredTitleAsync(
+        string entityType,
+        string entityId,
+        string title,
+        CancellationToken cancellationToken)
+    {
+        var metadata = new Dictionary<string, string?>();
+        var cancelled = await CancelActiveDownloadsAsync(entityType, entityId, cancellationToken);
+        metadata["cancelledClientDownloadCount"] = cancelled.ToString();
+
+        if (cancelled == 0)
+        {
+            return metadata;
+        }
+
+        var grabs = await ArchiveGrabsAsync(entityType, entityId, title, cancellationToken);
+        metadata["archivedGrabCount"] = grabs.Archived.ToString();
+        metadata["stoppedProcessorHandoffCount"] = (await StopWaitingAsync(
+            title,
+            grabs,
+            cancellationToken,
+            stoppedWaitingReason: "is no longer monitored")).ToString();
+
+        await activityFeedRepository.RecordActivityAsync(
+            $"{entityType}.download-cancelled",
+            $"{title} is no longer monitored, so Deluno cancelled its download and discarded any processed output.",
+            JsonSerializer.Serialize(new { metadata }),
+            null,
+            entityType,
+            entityId,
             cancellationToken);
 
         return metadata;
@@ -224,7 +274,7 @@ public sealed class TitleRemovalService(
     /// mostly archived — and a case raised about one of them is still open and
     /// still counted (#563).</para>
     /// </summary>
-    private async Task<Grabs> ArchiveGrabsAsync(TitleToRemove title, CancellationToken cancellationToken)
+    private async Task<Grabs> ArchiveGrabsAsync(string entityType, string entityId, string title, CancellationToken cancellationToken)
     {
         if (dispatchesRepository is null)
         {
@@ -238,7 +288,7 @@ public sealed class TitleRemovalService(
         do
         {
             var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
-                new DispatchQueryFilter { EntityType = title.EntityType, EntityId = title.Id, IncludeArchived = true },
+                new DispatchQueryFilter { EntityType = entityType, EntityId = entityId, IncludeArchived = true },
                 pagination,
                 cancellationToken);
             foreach (var dispatch in items)
@@ -251,7 +301,7 @@ public sealed class TitleRemovalService(
 
                 if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
                 {
-                    await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title.Title} was removed from Deluno.", cancellationToken);
+                    await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title} was removed from Deluno.", cancellationToken);
                     archived++;
                 }
             }
@@ -274,7 +324,7 @@ public sealed class TitleRemovalService(
     /// nothing left running; one already archived has already been settled by
     /// an earlier removal or by the client itself.</para>
     /// </summary>
-    private async Task<int> CancelActiveDownloadsAsync(TitleToRemove title, CancellationToken cancellationToken)
+    private async Task<int> CancelActiveDownloadsAsync(string entityType, string entityId, CancellationToken cancellationToken)
     {
         if (dispatchesRepository is null || downloadClientTelemetry is null)
         {
@@ -286,7 +336,7 @@ public sealed class TitleRemovalService(
         do
         {
             var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
-                new DispatchQueryFilter { EntityType = title.EntityType, EntityId = title.Id },
+                new DispatchQueryFilter { EntityType = entityType, EntityId = entityId },
                 pagination,
                 cancellationToken);
             foreach (var dispatch in items)
@@ -328,7 +378,7 @@ public sealed class TitleRemovalService(
     /// <para>A processor already mid-run is left alone — its hand-off ends the
     /// ordinary way, when it answers.</para>
     /// </summary>
-    private async Task<int> StopWaitingAsync(TitleToRemove title, Grabs grabs, CancellationToken cancellationToken)
+    private async Task<int> StopWaitingAsync(string title, Grabs grabs, CancellationToken cancellationToken, string stoppedWaitingReason = "was removed from Deluno")
     {
         if (processorRepository is null || grabs.ReleaseNames.Count == 0)
         {
@@ -344,7 +394,7 @@ public sealed class TitleRemovalService(
                 processorConnections,
                 activityFeedRepository,
                 handoff,
-                _ => $"{title.Title} was removed from Deluno, so Deluno stopped waiting",
+                _ => $"{title} {stoppedWaitingReason}, so Deluno stopped waiting",
                 cancellationToken,
                 // Not "cancelled": that is a row on Transfers waiting for a
                 // person, and the title it was about is gone.
