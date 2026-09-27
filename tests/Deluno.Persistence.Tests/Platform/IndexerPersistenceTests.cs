@@ -97,6 +97,7 @@ public sealed class IndexerPersistenceTests
                 MinimumAgeMinutes = 30,
                 RetentionDays = 14,
                 MaximumSizeMb = 20_000,
+                MinimumSeeders = 5,
                 PreferIndexerFlags = "freeleech",
                 AvailabilityDelayDays = 2,
                 RssEnabled = false,
@@ -109,6 +110,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(30, persisted.MinimumAgeMinutes);
         Assert.Equal(14, persisted.RetentionDays);
         Assert.Equal(20_000, persisted.MaximumSizeMb);
+        Assert.Equal(5, persisted.MinimumSeeders);
         Assert.Equal("freeleech", persisted.PreferIndexerFlags);
         Assert.Equal(2, persisted.AvailabilityDelayDays);
         Assert.False(persisted.RssEnabled);
@@ -133,6 +135,7 @@ public sealed class IndexerPersistenceTests
                 MinimumAgeMinutes: 60,
                 RetentionDays: 14,
                 MaximumSizeMb: 20_000,
+                MinimumSeeders: 5,
                 PreferIndexerFlags: "double-upload",
                 AvailabilityDelayDays: 3,
                 RssEnabled: false,
@@ -144,6 +147,7 @@ public sealed class IndexerPersistenceTests
         Assert.Equal(60, updated.MinimumAgeMinutes);
         Assert.Equal(14, updated.RetentionDays);
         Assert.Equal(20_000, updated.MaximumSizeMb);
+        Assert.Equal(5, updated.MinimumSeeders);
         Assert.Equal("double-upload", updated.PreferIndexerFlags);
         Assert.Equal(3, updated.AvailabilityDelayDays);
         Assert.False(updated.RssEnabled);
@@ -156,6 +160,7 @@ public sealed class IndexerPersistenceTests
                 ClearMinimumAge: true,
                 ClearRetention: true,
                 ClearMaximumSize: true,
+                ClearMinimumSeeders: true,
                 ClearPreferIndexerFlags: true,
                 ClearAvailabilityDelay: true),
             CancellationToken.None);
@@ -164,6 +169,7 @@ public sealed class IndexerPersistenceTests
         Assert.Null(cleared.MinimumAgeMinutes);
         Assert.Null(cleared.RetentionDays);
         Assert.Null(cleared.MaximumSizeMb);
+        Assert.Null(cleared.MinimumSeeders);
         Assert.Null(cleared.PreferIndexerFlags);
         Assert.Null(cleared.AvailabilityDelayDays);
         Assert.False(cleared.RssEnabled);

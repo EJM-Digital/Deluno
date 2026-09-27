@@ -47,6 +47,31 @@ describe("indexer save payload API path (#740)", () => {
   });
 });
 
+// #738: a per-indexer minimum-seeders floor is sent when typed and cleared
+// when the field is emptied on an edit, the same clear-flag pattern as the
+// other acquisition limits.
+describe("indexer save payload minimum seeders (#738)", () => {
+  it("sends a typed minimum-seeders floor", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", minimumSeeders: "5" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.minimumSeeders).toBe(5);
+    expect(payload.clearMinimumSeeders).toBe(false);
+  });
+
+  it("clears the minimum-seeders floor on an edit when the field is emptied", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", minimumSeeders: "" };
+    const payload = buildIndexerSavePayload(form, form, true, "");
+    expect(payload.minimumSeeders).toBeNull();
+    expect(payload.clearMinimumSeeders).toBe(true);
+  });
+
+  it("does not ask to clear minimum seeders when creating a new indexer", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    const payload = buildIndexerSavePayload(form, form, false, "");
+    expect(payload.clearMinimumSeeders).toBe(false);
+  });
+});
+
 /**
  * #807 — Priority existed in the API contract and server-side ordering but the
  * drawer never rendered it, so create/edit always sent a hard-coded fallback

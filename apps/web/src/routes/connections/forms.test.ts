@@ -100,6 +100,16 @@ describe("client form Use SSL and URL Base", () => {
     expect(Object.keys(indexerFormErrors({ ...base, minimumAgeMinutes: "3.5", retentionDays: "-1", maximumSizeMb: "big" }, false)).sort())
       .toEqual(["maximumSizeMb", "minimumAgeMinutes", "retentionDays"]);
   });
+
+  // #738: a minimum-seeders floor is validated the same way as the other
+  // acquisition limits, and stays unrestricted when left blank.
+  it("accepts a whole-number minimum-seeders floor and refuses a negative one", () => {
+    const base = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
+    expect(indexerFormErrors({ ...base, minimumSeeders: "5" }, false)).toEqual({});
+    expect(indexerFormErrors({ ...base, minimumSeeders: "" }, false)).toEqual({});
+    expect(Object.keys(indexerFormErrors({ ...base, minimumSeeders: "-1" }, false)))
+      .toEqual(["minimumSeeders"]);
+  });
 });
 
 // #606: a built-in tracker is chosen from Deluno's list, not typed as a URL.

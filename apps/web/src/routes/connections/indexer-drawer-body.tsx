@@ -205,6 +205,14 @@ export function IndexerDrawerBody({
               </div>
             </Field>
           </FieldRow>
+          {form.protocol !== "newznab" ? (
+            <Field label="Minimum seeders" error={errors.minimumSeeders} help="Reject a torrent with fewer seeders than this before it can be grabbed.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" value={form.minimumSeeders} onChange={(event) => { clearError("minimumSeeders"); setForm((current) => ({ ...current, minimumSeeders: event.target.value })); }} placeholder="No minimum" />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seeders</span>
+              </div>
+            </Field>
+          ) : null}
           <Field label="Preferred indexer flags" error={errors.preferIndexerFlags} help="Pick a flag this indexer reports, or type your own below; matching releases receive a ranking boost.">
             <IndexerFlagPicker
               value={form.preferIndexerFlags}

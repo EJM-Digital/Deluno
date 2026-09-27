@@ -27,6 +27,9 @@ public sealed record CreateIndexerRequest(
     int? MinimumAgeMinutes = null,
     int? RetentionDays = null,
     int? MaximumSizeMb = null,
+    // The seeder floor a torrent from this indexer must clear to be grabbed
+    // (#738). Null means unrestricted.
+    int? MinimumSeeders = null,
     string? PreferIndexerFlags = null,
     int? AvailabilityDelayDays = null,
     bool RssEnabled = true,

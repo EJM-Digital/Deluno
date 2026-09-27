@@ -76,7 +76,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled,
                 last_health_failure_json, definition_id, definition_settings_json, definition_secrets,
-                api_path, additional_parameters, anime_categories
+                api_path, additional_parameters, anime_categories, minimum_seeders
             FROM indexer_sources
             ORDER BY priority ASC, name ASC;
             """;
@@ -129,7 +129,8 @@ public sealed class SqliteConnectionsRepository(
                 DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38))),
                 ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39),
                 AdditionalParameters = reader.IsDBNull(40) ? null : reader.GetString(40),
-                AnimeCategories = reader.IsDBNull(41) ? null : reader.GetString(41)
+                AnimeCategories = reader.IsDBNull(41) ? null : reader.GetString(41),
+                MinimumSeeders = reader.IsDBNull(42) ? null : reader.GetInt32(42)
             });
         }
 
@@ -277,6 +278,7 @@ public sealed class SqliteConnectionsRepository(
             MinimumAgeMinutes = request.MinimumAgeMinutes,
             RetentionDays = request.RetentionDays,
             MaximumSizeMb = request.MaximumSizeMb,
+            MinimumSeeders = request.MinimumSeeders,
             PreferIndexerFlags = request.PreferIndexerFlags,
             AvailabilityDelayDays = request.AvailabilityDelayDays,
             RssEnabled = request.RssEnabled,
@@ -300,7 +302,8 @@ public sealed class SqliteConnectionsRepository(
                 sharing_mode, sharing_for_hours, sharing_until_ratio, sharing_stuck_action, sharing_stuck_after_days,
                 minimum_age_minutes, retention_days, maximum_size_mb, prefer_indexer_flags, availability_delay_days,
                 rss_enabled, automatic_search_enabled, interactive_search_enabled, definition_id,
-                definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories
+                definition_settings_json, definition_secrets, api_path, additional_parameters, anime_categories,
+                minimum_seeders
             )
             VALUES (
                 @id, @name, @protocol, @privacy, @baseUrl, @apiKey, @priority, @categories, @tags,
@@ -308,7 +311,8 @@ public sealed class SqliteConnectionsRepository(
                 @sharingMode, @sharingForHours, @sharingUntilRatio, @sharingStuckAction, @sharingStuckAfterDays,
                 @minimumAgeMinutes, @retentionDays, @maximumSizeMb, @preferIndexerFlags, @availabilityDelayDays,
                 @rssEnabled, @automaticSearchEnabled, @interactiveSearchEnabled, @definitionId,
-                @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories
+                @definitionSettings, @definitionSecrets, @apiPath, @additionalParameters, @animeCategories,
+                @minimumSeeders
             );
             """;
 
@@ -351,6 +355,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@apiPath", item.ApiPath);
         AddParameter(command, "@additionalParameters", item.AdditionalParameters);
         AddParameter(command, "@animeCategories", item.AnimeCategories);
+        AddParameter(command, "@minimumSeeders", item.MinimumSeeders);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -407,6 +412,7 @@ public sealed class SqliteConnectionsRepository(
         var newMinimumAge = request.ClearMinimumAge == true ? null : request.MinimumAgeMinutes ?? existing.MinimumAgeMinutes;
         var newRetention = request.ClearRetention == true ? null : request.RetentionDays ?? existing.RetentionDays;
         var newMaximumSize = request.ClearMaximumSize == true ? null : request.MaximumSizeMb ?? existing.MaximumSizeMb;
+        var newMinimumSeeders = request.ClearMinimumSeeders == true ? null : request.MinimumSeeders ?? existing.MinimumSeeders;
         var newPreferIndexerFlags = request.ClearPreferIndexerFlags == true
             ? null
             : request.PreferIndexerFlags ?? existing.PreferIndexerFlags;
@@ -449,6 +455,7 @@ public sealed class SqliteConnectionsRepository(
                 minimum_age_minutes = @minimumAgeMinutes,
                 retention_days = @retentionDays,
                 maximum_size_mb = @maximumSizeMb,
+                minimum_seeders = @minimumSeeders,
                 prefer_indexer_flags = @preferIndexerFlags,
                 availability_delay_days = @availabilityDelayDays,
                 rss_enabled = @rssEnabled,
@@ -490,6 +497,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@minimumAgeMinutes", newMinimumAge);
         AddParameter(command, "@retentionDays", newRetention);
         AddParameter(command, "@maximumSizeMb", newMaximumSize);
+        AddParameter(command, "@minimumSeeders", newMinimumSeeders);
         AddParameter(command, "@preferIndexerFlags", newPreferIndexerFlags);
         AddParameter(command, "@availabilityDelayDays", newAvailabilityDelay);
         AddParameter(command, "@rssEnabled", newRssEnabled ? 1 : 0);
@@ -526,6 +534,7 @@ public sealed class SqliteConnectionsRepository(
             MinimumAgeMinutes = newMinimumAge,
             RetentionDays = newRetention,
             MaximumSizeMb = newMaximumSize,
+            MinimumSeeders = newMinimumSeeders,
             PreferIndexerFlags = newPreferIndexerFlags,
             AvailabilityDelayDays = newAvailabilityDelay,
             RssEnabled = newRssEnabled,

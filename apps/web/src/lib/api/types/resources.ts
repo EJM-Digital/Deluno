@@ -734,6 +734,8 @@ export interface IndexerItem {
   minimumAgeMinutes?: number | null;
   retentionDays?: number | null;
   maximumSizeMb?: number | null;
+  /** The seeder floor a torrent from this indexer must clear to be grabbed (#738). Null means unrestricted. */
+  minimumSeeders?: number | null;
   preferIndexerFlags?: string | null;
   availabilityDelayDays?: number | null;
   rssEnabled?: boolean;

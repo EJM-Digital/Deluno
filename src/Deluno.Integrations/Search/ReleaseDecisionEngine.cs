@@ -342,6 +342,17 @@ public static partial class ReleaseDecisionEngine
             rejectionGate ??= "No one is seeding this torrent, so it cannot download.";
         }
 
+        // #738: a per-indexer seeder floor, stricter than the always-on
+        // zero-seeder gate above. Usenet has no seeder count, so this only
+        // ever applies to torrents.
+        if (input.MinimumSeeders is > 0
+            && DownloadProtocols.SourceKind(input.IndexerProtocol) == DownloadProtocols.Torrent
+            && input.Seeders is { } seederCount
+            && seederCount < input.MinimumSeeders.Value)
+        {
+            Refuse($"Release has {seederCount} seeder(s), below this indexer's configured minimum of {input.MinimumSeeders.Value}.");
+        }
+
         var sizeScore = ScoreSize(input.SizeBytes, normalizedCandidate, input.SizeRules, IsSingleEpisode(input.MediaType, input.ReleaseName), input.RuntimeMinutes, risks, reasons, out var estimatedBitrate, out var sizeOutOfRange);
         if (sizeOutOfRange)
         {
@@ -933,6 +944,11 @@ public sealed record ReleaseDecisionInput(
     int? MinimumAgeMinutes = null,
     int? RetentionDays = null,
     int? MaximumSizeMb = null,
+    /// <summary>
+    /// The seeder floor a torrent from this indexer must clear to be grabbed
+    /// (#738). Null means unrestricted; ignored for usenet/RSS sources.
+    /// </summary>
+    int? MinimumSeeders = null,
     string? IndexerFlags = null,
     string? PreferIndexerFlags = null,
     DateTimeOffset? AvailableUtc = null,

@@ -957,6 +957,7 @@ public sealed class FeedMediaSearchPlanner(
                 MinimumAgeMinutes: indexer.MinimumAgeMinutes,
                 RetentionDays: indexer.RetentionDays,
                 MaximumSizeMb: indexer.MaximumSizeMb,
+                MinimumSeeders: indexer.MinimumSeeders,
                 IndexerFlags: indexerFlags,
                 PreferIndexerFlags: indexer.PreferIndexerFlags,
                 AvailableUtc: availableUtc,
