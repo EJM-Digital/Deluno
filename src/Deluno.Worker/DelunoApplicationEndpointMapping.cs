@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Deluno.Api;
 using Deluno.Api.Backup;
 using Deluno.Api.Calendar;
@@ -28,6 +30,7 @@ using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Worker.Automation;
 using Deluno.Series;
+using Deluno.Movies.Testing;
 
 namespace Deluno.Worker;
 
@@ -105,6 +108,19 @@ public static class DelunoApplicationEndpointMapping
         importsEndpoints.MapDelunoFilesystemEndpoints();
         queueEndpoints.MapDownloadDispatchesEndpoints();
         readEndpoints.MapDelunoRealtime();
+
+        // #934 — never mapped unless a smoke process explicitly opts in. See
+        // MoviesLargeLibrarySeedEndpoints's own doc comment for why this is
+        // safe: the shipped app's configuration has no
+        // Testing:EnableLargeLibrarySeedEndpoint key, so it reads false and
+        // the route is never added to the shipped binary's endpoint table —
+        // not merely unauthorized, absent.
+        var configuration = endpoints.ServiceProvider.GetRequiredService<IConfiguration>();
+        if (configuration.GetValue<bool>("Testing:EnableLargeLibrarySeedEndpoint"))
+        {
+            writeEndpoints.MapDelunoMoviesLargeLibrarySeedEndpoints();
+        }
+
         return endpoints;
     }
 }
