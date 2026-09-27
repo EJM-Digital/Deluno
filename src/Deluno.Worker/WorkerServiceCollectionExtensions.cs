@@ -76,6 +76,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, MetadataProviderHealthCheck>();
         services.AddScoped<IHealthCheck, SystemDiskSpaceHealthCheck>();
         services.AddScoped<IHealthCheck, DispatchRecoveryPollerHealthCheck>();
+        services.AddScoped<IProxyReachabilityTester, HttpProxyReachabilityTester>();
         services.AddScoped<IHealthCheck, ProxyHealthCheck>();
         services.AddScoped<IHealthCheck, RemotePathMappingHealthCheck>();
         services.AddScoped<IHealthCheck, SystemTimeHealthCheck>();
@@ -83,6 +84,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, DownloadHardlinkHealthCheck>();
         services.AddScoped<IHealthCheck, AllowedHostsHealthCheck>();
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.SystemTime, client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.Proxy, client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<HealthCheckRunner>();
         services.AddHostedService<HealthCheckHostedService>();
         return services;

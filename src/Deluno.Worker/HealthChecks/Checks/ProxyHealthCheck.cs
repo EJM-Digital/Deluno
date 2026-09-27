@@ -1,34 +1,75 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Contracts;
 
 namespace Deluno.Worker.HealthChecks.Checks;
 
 /// <summary>
-/// Whether an outbound or indexer proxy is configured and reachable (#868).
+/// Whether each configured indexer proxy (#748) is actually reachable (#868).
 ///
-/// <para>Deluno has no proxy configuration surface yet -- no settings field,
-/// no per-indexer option, nothing a person can turn on -- so there is
-/// currently nothing for this check to test. Per #868's acceptance, a check
-/// with nothing configured to check must report "not in use", not a
-/// failure, so that is what this always reports today. Once outbound or
-/// indexer proxy settings exist, this check should read them and actually
-/// attempt a request through the configured proxy instead of always
-/// short-circuiting here -- the stable id and category are already in place
-/// for that.</para>
+/// <para>Before #748 there was no proxy configuration surface at all, so this
+/// always reported "not in use". Now that proxies can be configured on their
+/// own page, this reads them and asks <see cref="IProxyReachabilityTester"/>
+/// to attempt a real request through each enabled one, one named, dismissable
+/// row per proxy -- "not in use" only when none is configured.</para>
 /// </summary>
-public sealed class ProxyHealthCheck : IHealthCheck
+public sealed class ProxyHealthCheck(IConnectionsRepository connections, IProxyReachabilityTester tester) : IHealthCheck
 {
-    private const string Id = "system:proxy";
-    private const string Name = "Outbound and indexer proxy";
+    private const string NotInUseId = "system:proxy";
+    private const string NotInUseName = "Outbound and indexer proxy";
 
     public string Category => HealthCheckCategories.Proxy;
 
-    public Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
-        => Task.FromResult<IReadOnlyList<HealthCheckOutcome>>(
-        [
-            HealthCheckOutcome.Ok(
-                Id,
+    public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
+    {
+        var proxies = (await connections.ListProxiesAsync(cancellationToken))
+            .Where(proxy => proxy.IsEnabled)
+            .ToArray();
+
+        if (proxies.Length == 0)
+        {
+            return [HealthCheckOutcome.Ok(
+                NotInUseId,
                 Category,
-                Name,
-                "Not in use: Deluno has no outbound or indexer proxy configured.")
-        ]);
+                NotInUseName,
+                "Not in use: Deluno has no outbound or indexer proxy configured.")];
+        }
+
+        var outcomes = new List<HealthCheckOutcome>(proxies.Length);
+        foreach (var proxy in proxies)
+        {
+            outcomes.Add(await TestAsync(proxy, cancellationToken));
+        }
+
+        return outcomes;
+    }
+
+    private async Task<HealthCheckOutcome> TestAsync(ProxyItem proxy, CancellationToken cancellationToken)
+    {
+        var id = $"proxy:{proxy.Id}";
+        var name = $"{proxy.Name} (proxy)";
+        var usedBy = proxy.AssignedIndexerNames.Count > 0
+            ? $" Used by {string.Join(", ", proxy.AssignedIndexerNames)}."
+            : " Not assigned to an indexer yet.";
+
+        ProxyReachabilityResult result;
+        try
+        {
+            result = await tester.TestAsync(proxy, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            return HealthCheckOutcome.Unknown(
+                id, Category, name,
+                $"Deluno could not test {proxy.Name}: {exception.Message}");
+        }
+
+        return result.Reachable
+            ? HealthCheckOutcome.Ok(id, Category, name, $"{result.Message}{usedBy}")
+            : HealthCheckOutcome.Problem(
+                id, Category, name,
+                $"{result.Message}{usedBy}",
+                cause: "Deluno could not complete a request through this proxy.",
+                fix: "Confirm the proxy is running and its address is correct, then check again.");
+    }
 }
