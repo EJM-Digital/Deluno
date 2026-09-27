@@ -69,10 +69,29 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         var after = await WaitForNewHashAsync(http, baseUri, before, cancellationToken);
         if (before is not null && after is not null && !after.Except(before).Any())
         {
+            // #877: no new hash appearing is also what a link rTorrent could
+            // not read looks like, so only a hash Deluno already knows and
+            // finds in rTorrent's own list is a genuine duplicate. A magnet
+            // link names its own hash, so it can be checked directly against
+            // what rTorrent already held before this request — the same
+            // check qBittorrent's adapter makes (cleanup sheet B3).
+            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
+            if (knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
+            {
+                return DownloadClientHelpers.GrabSuccess(
+                    client,
+                    request,
+                    "rTorrent already holds this release. Deluno is following the copy it has instead of sending another.") with
+                {
+                    ExternalId = duplicateHash,
+                    IsDuplicateFollow = true
+                };
+            }
+
             return DownloadClientHelpers.GrabFailure(
                 client,
                 request,
-                "rTorrent accepted the request but added no torrent. Either it already holds this release, or it could not read what the link returned.");
+                "rTorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned.");
         }
 
         var added = before is not null && after is not null ? after.Except(before).FirstOrDefault() : null;

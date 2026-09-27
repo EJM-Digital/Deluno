@@ -60,6 +60,27 @@ public sealed class RtorrentDownloadClientTests
         Assert.Contains("added no torrent", result.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #877, cleanup sheet B3: rTorrent already holding the release is
+    /// nobody's fault -- Deluno should follow the copy it has, the way
+    /// qBittorrent and the Usenet clients already do, rather than reporting
+    /// a failed grab.
+    /// </summary>
+    [Fact]
+    public async Task A_magnet_rtorrent_already_holds_is_followed_instead_of_failed()
+    {
+        const string hash = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+        var handler = new RtorrentHandler(downloadListBefore: $"[\"{hash}\"]", downloadListAfter: $"[\"{hash}\"]");
+        var request = new DownloadClientGrabRequest(
+            "Example.Movie.2024.1080p", $"magnet:?xt=urn:btih:{hash}&dn=Example", "movies", "movies", "Fixture indexer");
+
+        var result = await new RtorrentDownloadClient(new StubFactory(handler)).GrabAsync(Client(), request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(hash, result.ExternalId);
+        Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(DownloadClientActions.Pause, "d.pause")]
     [InlineData(DownloadClientActions.Resume, "d.resume")]

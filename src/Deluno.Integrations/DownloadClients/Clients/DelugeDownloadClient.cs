@@ -29,6 +29,31 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         var added = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string>>(http, new Uri(baseUri, "json"), add, cancellationToken);
         if (string.IsNullOrWhiteSpace(added?.Result))
         {
+            // #877: Deluge's add calls answer with a null result both when the
+            // release is malformed and when it already holds this exact
+            // torrent — nothing in the RPC tells the two apart. A magnet link
+            // names its own hash, so it can be checked directly against
+            // Deluge's own session state instead of failing outright the way
+            // a torrent client used to (cleanup sheet B3; Usenet clients
+            // already follow the existing item).
+            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
+            if (knownHash is { Length: 40 } duplicateHash)
+            {
+                var session = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(
+                    http, new Uri(baseUri, "json"), new DelugeRequest("core.get_session_state", [], 9), cancellationToken);
+                if (session?.Result?.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase) == true)
+                {
+                    return DownloadClientHelpers.GrabSuccess(
+                        client,
+                        request,
+                        "Deluge already holds this release. Deluno is following the copy it has instead of sending another.") with
+                    {
+                        ExternalId = duplicateHash,
+                        IsDuplicateFollow = true
+                    };
+                }
+            }
+
             return DownloadClientHelpers.GrabFailure(client, request, $"Deluge did not add the release: {added?.Error?.Message ?? "it may already hold it"}.");
         }
 

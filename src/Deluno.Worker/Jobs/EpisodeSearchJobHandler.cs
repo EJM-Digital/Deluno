@@ -203,6 +203,13 @@ public sealed class EpisodeSearchJobHandler(
                 downloadClient.DownloadClientName,
                 cancellationToken);
 
+            await SearchExecutionSupport.RecordDuplicateFollowAsync(
+                activityFeedRepository,
+                grabResult,
+                "episode",
+                payload.EpisodeId,
+                cancellationToken);
+
             await SearchExecutionSupport.RetryConnectivityFailureAsync(
                 jobScheduler,
                 activityFeedRepository,

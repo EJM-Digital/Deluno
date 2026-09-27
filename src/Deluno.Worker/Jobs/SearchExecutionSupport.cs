@@ -125,6 +125,36 @@ internal static class SearchExecutionSupport
             cancellationToken);
     }
 
+    /// <summary>
+    /// #877 (cleanup sheet B3): a torrent client saying it already holds this
+    /// release is nobody's fault, and Deluno follows the copy it has instead
+    /// of sending another — but that is still an automatic decision, so it is
+    /// written to Activity in plain words rather than looking, from the
+    /// dispatch's ordinary "sent" record alone, exactly like every other
+    /// grab.
+    /// </summary>
+    internal static async Task RecordDuplicateFollowAsync(
+        IActivityFeedRepository activityFeedRepository,
+        DownloadClientGrabResult grabResult,
+        string entityType,
+        string entityId,
+        CancellationToken cancellationToken)
+    {
+        if (!grabResult.IsDuplicateFollow)
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.grab.duplicate",
+            grabResult.Message,
+            null,
+            null,
+            entityType,
+            entityId,
+            cancellationToken);
+    }
+
     /// <summary>How long Deluno waits before automatically trying the same release again after a connectivity or setup problem (#875).</summary>
     internal static readonly TimeSpan ConnectivityRetryDelay = TimeSpan.FromMinutes(15);
 

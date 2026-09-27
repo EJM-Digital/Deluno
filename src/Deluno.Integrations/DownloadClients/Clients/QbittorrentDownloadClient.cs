@@ -141,7 +141,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 {
                     ExternalId = duplicateHash,
                     ResponseCode = (int)response.StatusCode,
-                    ResponseJson = payload
+                    ResponseJson = payload,
+                    IsDuplicateFollow = true
                 };
             }
 

@@ -293,6 +293,13 @@ public abstract class LibrarySearchJobHandler(
                     downloadClient.DownloadClientName,
                     cancellationToken);
 
+                await SearchExecutionSupport.RecordDuplicateFollowAsync(
+                    activityFeedRepository,
+                    grabResult,
+                    "movie",
+                    candidate.MovieId,
+                    cancellationToken);
+
                 await SearchExecutionSupport.RetryConnectivityFailureAsync(
                     jobScheduler,
                     activityFeedRepository,
@@ -806,6 +813,13 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     bestCandidate!.IndexerName,
                     downloadClient.DownloadClientName,
+                    cancellationToken);
+
+                await SearchExecutionSupport.RecordDuplicateFollowAsync(
+                    activityFeedRepository,
+                    grabResult,
+                    "series",
+                    candidate.SeriesId,
                     cancellationToken);
 
                 await SearchExecutionSupport.RetryConnectivityFailureAsync(
