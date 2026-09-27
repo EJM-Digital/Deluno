@@ -535,10 +535,16 @@ test.describe("indexer and download client CRUD", () => {
     const formatName = `Smoke-Trace-Format-${stamp}`;
     const profileName = `Smoke-Trace-Profile-${stamp}`;
     const trashId = `smoke-trace-${stamp}`;
+    // #745 taught CustomFormatDefinitionMatcher to read IndexerFlagSpecification
+    // as a real typed condition (ExactTyped), so it stopped being an example of
+    // a legacy rule with no safe typed translation - the same fixture drift
+    // MigrationAssistantServiceTests hit and fixed in the same way (Refs #745).
+    // SizeSpecification has no typed mapping, so it stays genuinely unmapped
+    // and still exercises the "kept as-is" advanced-review path this test names.
     const conditions = JSON.stringify([{
-      name: "Indexer flag",
-      implementation: "IndexerFlagSpecification",
-      fields: [{ name: "value", value: "freeleech" }],
+      name: "Size",
+      implementation: "SizeSpecification",
+      fields: [{ name: "value", value: "20000" }],
       negate: false,
       required: true
     }]);
