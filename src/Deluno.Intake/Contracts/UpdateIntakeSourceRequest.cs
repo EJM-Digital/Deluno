@@ -15,4 +15,6 @@ public sealed record UpdateIntakeSourceRequest(
     string? Audience,
     int? SyncIntervalHours,
     bool SearchOnAdd,
-    bool IsEnabled);
+    bool IsEnabled,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.MinimumAvailability"/> (#849).</summary>
+    string? MinimumAvailability = null);

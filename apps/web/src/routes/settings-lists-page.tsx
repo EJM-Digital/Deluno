@@ -98,6 +98,8 @@ interface ListForm {
   searchOnAdd: boolean;
   isEnabled: boolean;
   personCreditTypes: TmdbPersonCreditType[];
+  /** Minimum release stage (movies only) a list-added title must reach before Deluno searches for it (#849). */
+  minimumAvailability: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -551,6 +553,19 @@ export function SettingsListsPage() {
             <SwitchRow label="Search when a title is added" description="Turn off to add titles without downloading anything yet." checked={form.searchOnAdd} onCheckedChange={(checked) => setForm((current) => ({ ...current, searchOnAdd: checked }))} />
             <SwitchRow label="Enabled" description="Checked on the schedule above. Syncing never removes titles already in your library." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />
           </FieldRow>
+          {form.mediaType === "movies" ? (
+            <Field label="Don't search until" help="Holds a list-added movie back from searching until it reaches this release stage.">
+              <Select
+                value={form.minimumAvailability}
+                onChange={(event) => setForm((current) => ({ ...current, minimumAvailability: event.target.value }))}
+                options={[
+                  { value: "announced", label: "Announced — search right away" },
+                  { value: "inCinemas", label: "In cinemas" },
+                  { value: "released", label: "Released (digital/physical)" }
+                ]}
+              />
+            </Field>
+          ) : null}
         </DrawerSection>
 
         {editing ? (
@@ -711,7 +726,8 @@ function emptyForm(libraries: LibraryItem[]): ListForm {
     syncIntervalHours: "24",
     searchOnAdd: true,
     isEnabled: true,
-    personCreditTypes: ["cast"]
+    personCreditTypes: ["cast"],
+    minimumAvailability: "announced"
   };
 }
 
@@ -732,7 +748,8 @@ function formFrom(item: IntakeSourceItem): ListForm {
     syncIntervalHours: String(item.syncIntervalHours ?? 24),
     searchOnAdd: item.searchOnAdd,
     isEnabled: item.isEnabled,
-    personCreditTypes: item.provider === "tmdb-person" ? parseTmdbPersonAddress(item.feedUrl).creditTypes : ["cast"]
+    personCreditTypes: item.provider === "tmdb-person" ? parseTmdbPersonAddress(item.feedUrl).creditTypes : ["cast"],
+    minimumAvailability: item.minimumAvailability ?? "announced"
   };
 }
 
@@ -752,7 +769,8 @@ function toPayload(form: ListForm) {
     audience: form.audience,
     syncIntervalHours: form.syncIntervalHours.trim() ? Number(form.syncIntervalHours) : 24,
     searchOnAdd: form.searchOnAdd,
-    isEnabled: form.isEnabled
+    isEnabled: form.isEnabled,
+    minimumAvailability: form.mediaType === "movies" ? form.minimumAvailability : "announced"
   };
 }
 

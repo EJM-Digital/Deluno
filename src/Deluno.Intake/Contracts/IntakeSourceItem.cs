@@ -23,4 +23,6 @@ public sealed record IntakeSourceItem(
     bool SearchOnAdd,
     bool IsEnabled,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.MinimumAvailability"/> (#849). Always normalized to Announced/In Cinemas/Released.</summary>
+    string MinimumAvailability = "announced");

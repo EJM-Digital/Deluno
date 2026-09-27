@@ -36,7 +36,7 @@ public sealed class SqliteIntakeRepository(
                 s.required_genres, s.minimum_rating, s.minimum_year, s.maximum_age_days,
                 s.allowed_certifications, s.audience, s.sync_interval_hours,
                 s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
-                s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc
+                s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc, s.minimum_availability
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
             LEFT JOIN quality_profiles q ON q.id = s.quality_profile_id
@@ -365,7 +365,8 @@ public sealed class SqliteIntakeRepository(
             SearchOnAdd: request.SearchOnAdd,
             IsEnabled: request.IsEnabled,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            MinimumAvailability: NormalizeIntakeMinimumAvailability(request.MinimumAvailability));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -374,13 +375,13 @@ public sealed class SqliteIntakeRepository(
                 id, name, provider, feed_url, media_type, library_id, quality_profile_id,
                 required_genres, minimum_rating, minimum_year, maximum_age_days,
                 allowed_certifications, audience, sync_interval_hours, last_sync_utc, last_sync_status, last_sync_summary,
-                search_on_add, is_enabled, created_utc, updated_utc
+                search_on_add, is_enabled, created_utc, updated_utc, minimum_availability
             )
             VALUES (
                 @id, @name, @provider, @feedUrl, @mediaType, @libraryId, @qualityProfileId,
                 @requiredGenres, @minimumRating, @minimumYear, @maximumAgeDays,
                 @allowedCertifications, @audience, @syncIntervalHours, @lastSyncUtc, @lastSyncStatus, @lastSyncSummary,
-                @searchOnAdd, @isEnabled, @createdUtc, @updatedUtc
+                @searchOnAdd, @isEnabled, @createdUtc, @updatedUtc, @minimumAvailability
             );
             """;
 
@@ -405,6 +406,7 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@minimumAvailability", item.MinimumAvailability);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return (await GetIntakeSourceAsync(connection, item.Id, cancellationToken))!;
@@ -447,7 +449,8 @@ public sealed class SqliteIntakeRepository(
                 sync_interval_hours = @syncIntervalHours,
                 search_on_add = @searchOnAdd,
                 is_enabled = @isEnabled,
-                updated_utc = @updatedUtc
+                updated_utc = @updatedUtc,
+                minimum_availability = @minimumAvailability
             WHERE id = @id;
             """;
 
@@ -468,6 +471,7 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@searchOnAdd", request.SearchOnAdd ? 1 : 0);
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        AddParameter(command, "@minimumAvailability", NormalizeIntakeMinimumAvailability(request.MinimumAvailability));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetIntakeSourceAsync(connection, id, cancellationToken);
@@ -538,7 +542,7 @@ public sealed class SqliteIntakeRepository(
                 s.required_genres, s.minimum_rating, s.minimum_year, s.maximum_age_days,
                 s.allowed_certifications, s.audience, s.sync_interval_hours,
                 s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
-                s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc
+                s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc, s.minimum_availability
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
             LEFT JOIN quality_profiles q ON q.id = s.quality_profile_id
@@ -560,6 +564,15 @@ public sealed class SqliteIntakeRepository(
 
         return $"title:{title.Trim().ToLowerInvariant()}:{year?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}";
     }
+
+    /// <summary>
+    /// Unlike <see cref="MovieAvailability.Normalize"/>, an unset value here
+    /// means Announced — the gate always passes — not Released, so an
+    /// existing source (and any client that has not been updated for #849)
+    /// keeps searching on add immediately.
+    /// </summary>
+    private static string NormalizeIntakeMinimumAvailability(string? value)
+        => string.IsNullOrWhiteSpace(value) ? MovieAvailability.Announced : MovieAvailability.Normalize(value);
 
     private static string NormalizeIntakeSyncStatus(string? value)
     {
@@ -598,7 +611,8 @@ public sealed class SqliteIntakeRepository(
             SearchOnAdd: reader.GetInt64(19) == 1,
             IsEnabled: reader.GetInt64(20) == 1,
             CreatedUtc: ParseTimestamp(reader.GetString(21)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(22)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(22)),
+            MinimumAvailability: NormalizeIntakeMinimumAvailability(reader.IsDBNull(23) ? null : reader.GetString(23)));
     }
 
     private static IntakeListExclusionItem ReadIntakeListExclusion(System.Data.Common.DbDataReader reader)

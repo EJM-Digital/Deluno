@@ -456,6 +456,94 @@ public sealed class IntakeSyncServiceTests
     }
 
     [Fact]
+    public async Task RunAsync_withholds_the_search_for_a_movie_that_has_not_reached_the_lists_minimum_availability()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-tmdb-list",
+            Provider = "tmdb",
+            FeedUrl = "12345",
+            SearchOnAdd = true,
+            MinimumAvailability = "released"
+        };
+        var library = CreateMovieLibrary();
+        var platform = new Mock<IPlatformSettingsRepository>();
+        platform.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("tmdb-secret");
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var movies = new Mock<IMovieCatalogRepository>();
+        var metadata = new Mock<IMetadataProvider>();
+        var decisions = new Mock<IMediaDecisionService>();
+
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        intake.Setup(repo => repo.RecordIntakeTitleOriginAsync(It.IsAny<CreateIntakeTitleOriginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeTitleOriginItem?)null);
+        intake.Setup(repo => repo.RecordIntakeSourceSyncResultAsync(
+                source.Id, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSourceItem?)null);
+        metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        movies.Setup(repo => repo.FindExistingIdAsync(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        movies.Setup(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MovieListItem(
+                "movie-notyet", "Not Yet Released", 2099, null, true, false, null, null, null, null, null, null, null,
+                [], null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch));
+        movies.Setup(repo => repo.EnsureWantedStateAsync(
+                "movie-notyet", library.Id, It.IsAny<string>(), It.IsAny<string>(), false,
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        // Not out yet, so the wanted-state decision itself reflects IsReleased
+        // = false the same way movie collections and manual adds do.
+        decisions.Setup(service => service.DecideWantedState(It.Is<MediaWantedDecisionInput>(input => !input.IsReleased)))
+            .Returns(new LibraryQualityDecision("upcoming", "This movie is not out yet.", false, null, "WEBDL-1080p", "test"));
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            metadata.Object,
+            decisions.Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new TmdbFutureReleaseListHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var result = await service.RunAsync(source.Id, relatedJobId: null, manual: true, CancellationToken.None);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.AddedCount);
+        // The gate: search-on-add is true and the title was added, but its
+        // release date has not reached "released" yet, so nothing is queued.
+        Assert.False(result.SearchRequested);
+        movies.Verify(repo => repo.UpdateMinimumAvailabilityAsync("movie-notyet", "released", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private sealed class TmdbFutureReleaseListHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Contains("api.themoviedb.org/3/list/12345", request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"items\":[{\"id\":1,\"title\":\"Not Yet Released\",\"release_date\":\"2099-01-01\"}]}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
+    [Fact]
     public async Task PreviewAsync_parses_a_stevenlu_feeds_title_and_imdb_id_entries()
     {
         var source = CreateWatchlistSource() with
