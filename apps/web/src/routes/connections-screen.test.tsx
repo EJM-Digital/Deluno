@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildIndexerSavePayload } from "./connections-screen";
-import { emptyIndexerForm } from "./connections/forms";
+import { buildClientSavePayload, buildIndexerSavePayload } from "./connections-screen";
+import { emptyClientForm, emptyIndexerForm } from "./connections/forms";
 
 /**
  * #730 — tags: "" was hard-coded into every indexer save, so an indexer that
@@ -44,5 +44,22 @@ describe("indexer save payload API path (#740)", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
     const payload = buildIndexerSavePayload(form, form, false, "");
     expect(payload.clearApiPath).toBe(false);
+  });
+});
+
+/**
+ * #807 — Priority existed in the API contract and server-side ordering but the
+ * drawer never rendered it, so create/edit always sent a hard-coded fallback
+ * (10 or 1) instead of the value the person chose.
+ */
+describe("client save payload (#807)", () => {
+  it("sends the person's chosen priority instead of the hard-coded fallback", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", priority: "37" };
+    expect(buildClientSavePayload(form).priority).toBe(37);
+  });
+
+  it("falls back to 1 only when the priority field is actually blank", () => {
+    const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost", priority: "" };
+    expect(buildClientSavePayload(form).priority).toBe(1);
   });
 });

@@ -80,6 +80,9 @@ export function clientFormErrors(form: ClientForm): Record<string, string> {
   if (!form.name.trim()) errors.name = "Give this client a name.";
   if (!form.host.trim()) errors.host = "Enter the host or IP.";
   if (!form.port.trim() || Number.isNaN(Number(form.port))) errors.port = "Enter a port number.";
+  if (form.priority.trim() && (!/^\d+$/.test(form.priority.trim()) || Number(form.priority) < 1 || Number(form.priority) > 50)) {
+    errors.priority = "Priority must be between 1 (highest) and 50 (lowest).";
+  }
   return errors;
 }
 
