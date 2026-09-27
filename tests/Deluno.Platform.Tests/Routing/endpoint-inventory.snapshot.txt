@@ -419,6 +419,8 @@ POST /api/retention/leaving-soon/remove
 POST /api/retention/rules
 POST /api/retention/rules/trial
 POST /api/retention/rules/{id}/check
+POST /api/search
+POST /api/search/grab
 POST /api/seerr-servers/
 POST /api/seerr-servers/test
 POST /api/seerr-servers/{id}/test

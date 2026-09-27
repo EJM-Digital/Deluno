@@ -84,7 +84,9 @@ const libraryNav = [
   { to: "/tv", label: "TV Shows", icon: "shows", end: false, attention: "tv" as const },
   { to: "/collections", label: "Collections", icon: "library", end: false, attention: "none" as const },
   { to: "/calendar", label: "Schedule", icon: "schedule", end: false, attention: "none" as const },
-  { to: "/discover", label: "Discover", icon: "discover", end: false, attention: "none" as const }
+  { to: "/discover", label: "Discover", icon: "discover", end: false, attention: "none" as const },
+  // #753: a free-text search across every enabled indexer, no title required.
+  { to: "/search", label: "Search", icon: "search", end: false, attention: "none" as const }
 ] as const;
 
 const operationsNav = [
@@ -99,6 +101,7 @@ const routeMeta = [
   { match: (path: string) => path.startsWith("/collections"), title: "Collections", subtitle: "Follow movie franchises and keep their libraries current" },
   { match: (path: string) => path.startsWith("/calendar"), title: "Schedule", subtitle: "Upcoming releases and retry windows" },
   { match: (path: string) => path.startsWith("/discover"), title: "Discover", subtitle: "Browse what TMDb and your lists recommend, and add what you want" },
+  { match: (path: string) => path.startsWith("/search"), title: "Search", subtitle: "Search every enabled indexer at once, no title required" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
   { match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
