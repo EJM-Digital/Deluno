@@ -5561,7 +5561,6 @@ public sealed class ImportPipelineServiceTests
                 RenameOnImport: renameOnImport,
                 UseHardlinks: false,
                 CleanupEmptyFolders: false,
-                RemoveCompletedDownloads: false,
                 MovieFolderFormat: "{Movie Title} ({Release Year})",
                 SeriesFolderFormat: "{Series Title} ({Series Year})",
                 MovieFileFormat: movieFileFormat,

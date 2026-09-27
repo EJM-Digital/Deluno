@@ -16,7 +16,6 @@ public static class PlatformSettingsPatchMerger
             RenameOnImport: patch.RenameOnImport ?? current.RenameOnImport,
             UseHardlinks: patch.UseHardlinks ?? current.UseHardlinks,
             CleanupEmptyFolders: patch.CleanupEmptyFolders ?? current.CleanupEmptyFolders,
-            RemoveCompletedDownloads: patch.RemoveCompletedDownloads ?? current.RemoveCompletedDownloads,
             MovieFolderFormat: patch.MovieFolderFormat ?? current.MovieFolderFormat,
             SeriesFolderFormat: patch.SeriesFolderFormat ?? current.SeriesFolderFormat,
             MovieFileFormat: patch.MovieFileFormat ?? current.MovieFileFormat,

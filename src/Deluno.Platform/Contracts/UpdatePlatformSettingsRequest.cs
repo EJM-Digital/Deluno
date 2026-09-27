@@ -11,7 +11,6 @@ public sealed record UpdatePlatformSettingsRequest(
     bool RenameOnImport,
     bool UseHardlinks,
     bool CleanupEmptyFolders,
-    bool RemoveCompletedDownloads,
     string? MovieFolderFormat,
     string? SeriesFolderFormat,
     string? MovieFileFormat,

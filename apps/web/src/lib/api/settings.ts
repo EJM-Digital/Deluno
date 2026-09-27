@@ -9,7 +9,6 @@ export interface PlatformSettingsPatch {
   renameOnImport?: boolean;
   useHardlinks?: boolean;
   cleanupEmptyFolders?: boolean;
-  removeCompletedDownloads?: boolean;
   movieFolderFormat?: string;
   seriesFolderFormat?: string;
   movieFileFormat?: string;

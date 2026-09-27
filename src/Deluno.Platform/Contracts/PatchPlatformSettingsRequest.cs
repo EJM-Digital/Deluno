@@ -16,7 +16,6 @@ public sealed record PatchPlatformSettingsRequest(
     bool? RenameOnImport = null,
     bool? UseHardlinks = null,
     bool? CleanupEmptyFolders = null,
-    bool? RemoveCompletedDownloads = null,
     string? MovieFolderFormat = null,
     string? SeriesFolderFormat = null,
     string? MovieFileFormat = null,

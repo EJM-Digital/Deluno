@@ -391,7 +391,6 @@ public sealed class APausedLibraryTests
                 RenameOnImport: true,
                 UseHardlinks: true,
                 CleanupEmptyFolders: true,
-                RemoveCompletedDownloads: true,
                 MovieFolderFormat: "{Movie}",
                 SeriesFolderFormat: "{Series}",
                 MovieFileFormat: "{Movie}",

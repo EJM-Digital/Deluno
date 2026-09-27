@@ -30,7 +30,6 @@ export interface PlatformSettingsSnapshot {
   renameOnImport: boolean;
   useHardlinks: boolean;
   cleanupEmptyFolders: boolean;
-  removeCompletedDownloads: boolean;
   movieFolderFormat: string;
   seriesFolderFormat: string;
   movieFileFormat: string;
@@ -240,7 +239,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   renameOnImport: false,
   useHardlinks: false,
   cleanupEmptyFolders: false,
-  removeCompletedDownloads: false,
   movieFolderFormat: "{Movie Title} ({Release Year})",
   seriesFolderFormat: "{Series Title} ({Series Year})",
   movieFileFormat: "{Movie Title} ({Release Year}) [{Quality}] [{Custom Formats}]",
