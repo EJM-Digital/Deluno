@@ -68,7 +68,10 @@ public sealed class RetentionRuleTests
         _servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([_server]);
         _qualityModel.Setup(service => service.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new QualityModelSnapshot(
             "quality-model/v2",
-            [new QualityTierDefinition("SD", 1, 0, 2, 0, 400, 100), new QualityTierDefinition("HD-1080p", 5, 4, 12, 800, 3000, 100)],
+            [
+                new QualityTierDefinition("SD", 1, 0, QualityTierDefinition.DefaultPreferred(0, 2), 2, 0, QualityTierDefinition.DefaultPreferred(0, 400), 400, 100),
+                new QualityTierDefinition("HD-1080p", 5, 4, QualityTierDefinition.DefaultPreferred(4, 12), 12, 800, QualityTierDefinition.DefaultPreferred(800, 3000), 3000, 100)
+            ],
             new QualityUpgradeStopPolicy(true, false),
             Now));
         _jellyfin.SetupGet(client => client.Kind).Returns("jellyfin");
