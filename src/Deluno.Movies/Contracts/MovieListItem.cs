@@ -102,4 +102,12 @@ public sealed record MovieListItem(
     /// <see cref="SubtitleLanguagesHeld"/> in green: you have it, you can watch
     /// it, and something better may still turn up.</para>
     /// </summary>
-    int SubtitleLanguagesSettled = 0);
+    int SubtitleLanguagesSettled = 0,
+    /// <summary>
+    /// The per-title quality profile override, set through
+    /// <c>UpdateQualityProfileAsync</c> and the bulk quality-profile action.
+    /// Populated only by <c>GetByIdAsync</c> via a dedicated lookup (#784) - it
+    /// was write-only before, with nothing reading it back for the movie
+    /// detail page's edit surface to show as the current value.
+    /// </summary>
+    string? QualityProfileId = null);

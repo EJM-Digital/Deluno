@@ -2730,6 +2730,20 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<string?> GetQualityProfileIdAsync(string movieId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT quality_profile_id FROM movie_entries WHERE id = @id LIMIT 1;";
+        AddParameter(command, "@id", movieId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : value.ToString();
+    }
+
     public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

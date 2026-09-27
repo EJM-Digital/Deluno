@@ -52,6 +52,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
+import { MovieEditDrawer } from "../components/app/movie-edit-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
 import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
@@ -182,6 +183,7 @@ export function MovieDetailPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
   const [isMetadataOpen, setIsMetadataOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [releaseCandidates, setReleaseCandidates] = useState<SearchPlanCandidate[]>([]);
   const [openCandidate, setOpenCandidate] = useState<SearchPlanCandidate | null>(null);
   const [forceReason, setForceReason] = useState<string | null>(null);
@@ -827,6 +829,14 @@ export function MovieDetailPage() {
                 Refresh metadata
               </Button>
               <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              {/*
+                Separate from Edit metadata (#784): that drawer covers only
+                descriptive fields, and monitored state, quality profile and
+                path had no in-page edit surface at all — only the separate
+                bulk tools, which meant a single-title change needed the
+                multi-select flow.
+              */}
+              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsEditOpen(true)}>Edit movie</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button
@@ -1519,6 +1529,18 @@ export function MovieDetailPage() {
           externalUrl: movie.externalUrl ?? "",
           imdbId: movie.imdbId ?? ""
         }}
+        onChanged={() => revalidator.revalidate()}
+      />
+
+      <MovieEditDrawer
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        movieId={movie.id}
+        monitored={movie.monitored}
+        qualityProfileId={movie.qualityProfileId ?? null}
+        libraryId={movie.libraryId ?? null}
+        filePath={movie.filePath ?? null}
+        metadataJson={movie.metadataJson}
         onChanged={() => revalidator.revalidate()}
       />
 
