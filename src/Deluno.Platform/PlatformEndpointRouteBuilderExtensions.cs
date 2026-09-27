@@ -431,7 +431,88 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(model);
         });
 
+        // The seeding-rule matrix (#820): category/tracker/tag exceptions to
+        // the global sharing rule, evaluated in priority order.
+        var sharingRules = write.MapGroup("/api/sharing-rules");
+
+        sharingRules.MapGet(string.Empty, async (ISharingRulesRepository repository, CancellationToken cancellationToken) =>
+            Results.Ok(await repository.ListAsync(cancellationToken)));
+
+        sharingRules.MapPost(string.Empty, async (
+            CreateSharingRuleRequest request,
+            ISharingRulesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = ValidateSharingRule(request.CategoryPattern, request.TrackerPattern, request.TagsCsv, request.MinSeeders, request.MaxInactiveDays);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            return Results.Ok(await repository.CreateAsync(request, cancellationToken));
+        });
+
+        sharingRules.MapPut("/{id}", async (
+            string id,
+            UpdateSharingRuleRequest request,
+            ISharingRulesRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            // Unlike create, null here can mean "leave unchanged" rather than
+            // "not set" — the same field carries two meanings depending on
+            // context, so only the two guards (which are never ambiguous)
+            // are checked before an update reaches the repository.
+            var errors = ValidateSharingRuleGuards(request.MinSeeders, request.MaxInactiveDays);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var updated = await repository.UpdateAsync(id, request, cancellationToken);
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
+        sharingRules.MapDelete("/{id}", async (
+            string id,
+            ISharingRulesRepository repository,
+            CancellationToken cancellationToken) =>
+            await repository.DeleteAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+
         return endpoints;
+    }
+
+    private static Dictionary<string, string[]> ValidateSharingRule(
+        string? categoryPattern,
+        string? trackerPattern,
+        string? tagsCsv,
+        int? minSeeders,
+        int? maxInactiveDays)
+    {
+        var errors = ValidateSharingRuleGuards(minSeeders, maxInactiveDays);
+
+        if (string.IsNullOrWhiteSpace(categoryPattern) && string.IsNullOrWhiteSpace(trackerPattern) && string.IsNullOrWhiteSpace(tagsCsv))
+        {
+            errors["categoryPattern"] = ["Match this rule against a category, a tracker, or a tag — a rule that matches nothing would never apply."];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> ValidateSharingRuleGuards(int? minSeeders, int? maxInactiveDays)
+    {
+        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        if (minSeeders is < 0)
+        {
+            errors["minSeeders"] = ["Minimum seeders cannot be negative."];
+        }
+
+        if (maxInactiveDays is < 0)
+        {
+            errors["maxInactiveDays"] = ["Maximum inactive days cannot be negative."];
+        }
+
+        return errors;
     }
 
     private static Dictionary<string, string[]> ValidateSettings(UpdatePlatformSettingsRequest request)

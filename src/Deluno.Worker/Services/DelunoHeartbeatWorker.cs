@@ -350,7 +350,9 @@ public sealed class DelunoHeartbeatWorker(
                 services.GetRequiredService<IHardlinkInspector>(),
                 services.GetRequiredService<IDownloadHealthRepository>(),
                 services.GetRequiredService<Deluno.Integrations.DownloadClients.IDownloadHealthConnectivityCheck>(),
-                stoppingToken);
+                stoppingToken,
+                services.GetRequiredService<ISharingRulesRepository>(),
+                services.GetRequiredService<ISharingActivityTracker>());
         }
 
         if (lane.PlanMaintenance)

@@ -593,7 +593,9 @@ public sealed class WorkPlanner(
         IHardlinkInspector hardlinkInspector,
         IDownloadHealthRepository healthRepository,
         Deluno.Integrations.DownloadClients.IDownloadHealthConnectivityCheck connectivityCheck,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ISharingRulesRepository? sharingRulesRepository = null,
+        ISharingActivityTracker? sharingActivityTracker = null)
     {
         await RunScheduledPassAsync(
             SystemTasks.SharingReclaim,
@@ -661,6 +663,12 @@ public sealed class WorkPlanner(
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var librariesById = libraries.ToDictionary(library => library.Id, StringComparer.OrdinalIgnoreCase);
 
+        // The rule matrix (#820), read once per pass rather than once per
+        // item — it rarely changes, and a pass can hold hundreds of items.
+        IReadOnlyList<SharingRuleItem> sharingRules = sharingRulesRepository is null
+            ? []
+            : await sharingRulesRepository.ListAsync(cancellationToken);
+
         // What the clients are still holding, for the dashboard to explain.
         var holds = new List<DownloadSharingHold>();
         string? driveNote = null;
@@ -707,11 +715,16 @@ public sealed class WorkPlanner(
                     item.Ratio,
                     item.SeedingMinutes,
                     item.IsPrivate,
-                    item.ReleaseName),
+                    item.ReleaseName,
+                    item.Category,
+                    Seeders: item.Peers,
+                    IsActiveNow: item.SpeedMbps > 0 || item.UploadSpeedMbps > 0),
                 globalPolicy,
                 source,
                 dryRun,
-                cancellationToken);
+                cancellationToken,
+                sharingRules,
+                sharingActivityTracker);
 
             if (outcome.WouldReclaim)
             {

@@ -69,7 +69,8 @@ public static class SharingPolicyEvaluator
         bool supportsSharing,
         double? ratio,
         int? seedingMinutes,
-        bool? isPrivate = null)
+        bool? isPrivate = null,
+        SharingGuards? guards = null)
     {
         var mode = SharingPolicy.NormalizeMode(policy.Mode);
 
@@ -124,7 +125,7 @@ public static class SharingPolicyEvaluator
         // of the rule, which is the half that gets accounts banned.
         if (timeMet && ratioMet)
         {
-            return new(completionAction, $"{completionVerb}{DescribeMet(policy, ratio, sharedMinutes)}.");
+            return CheckGuards(guards) ?? new(completionAction, $"{completionVerb}{DescribeMet(policy, ratio, sharedMinutes)}.");
         }
 
         var stuckAfterMinutes = Math.Max(1, policy.StuckAfterDays) * 24 * 60;
@@ -141,7 +142,7 @@ public static class SharingPolicyEvaluator
                     SharingAction.Ask,
                     $"Shared for {policy.StuckAfterDays} days and {shortfall}. Deluno is waiting for you to decide.",
                     $"{policy.StuckAfterDays} days in, {shortfall} — waiting for you to decide"),
-                _ => new(
+                _ => CheckGuards(guards) ?? new(
                     completionAction,
                     $"Gave up after {policy.StuckAfterDays} days: {shortfall}.")
             };
@@ -149,6 +150,50 @@ public static class SharingPolicyEvaluator
 
         var remaining = DescribeRemaining(policy, ratio, sharedMinutes, timeMet, ratioMet);
         return new(SharingAction.Wait, $"Still sharing{(remaining is null ? string.Empty : $" — {remaining}")}.", remaining);
+    }
+
+    /// <summary>
+    /// The rule matrix's two guards (#820), from a matched
+    /// <c>SharingRuleItem</c> — kept out of <see cref="Deluno.Platform.Contracts.SharingPolicy"/>
+    /// because they hold a decision at Wait rather than change what the
+    /// decision would otherwise be, which is a different kind of input to the
+    /// same evaluation.
+    /// </summary>
+    /// <param name="MinSeeders">Hold at Wait while fewer than this many peers are seeding it.</param>
+    /// <param name="CurrentSeeders">What the client currently reports.</param>
+    /// <param name="MaxInactiveDays">Hold at Wait once it has gone this long with no speed at all.</param>
+    /// <param name="InactiveDays">How many days it has already gone with no speed.</param>
+    public sealed record SharingGuards(int? MinSeeders, int? CurrentSeeders, int? MaxInactiveDays, int? InactiveDays);
+
+    /// <summary>
+    /// Null when neither guard applies or both are satisfied, meaning the
+    /// caller's own Reclaim/Stop/give-up decision stands.
+    /// </summary>
+    private static SharingDecision? CheckGuards(SharingGuards? guards)
+    {
+        if (guards is null)
+        {
+            return null;
+        }
+
+        if (guards.MinSeeders is > 0 && (guards.CurrentSeeders ?? 0) < guards.MinSeeders.Value)
+        {
+            var seeders = guards.CurrentSeeders ?? 0;
+            return new(
+                SharingAction.Wait,
+                $"Still sharing — only {seeders} {(seeders == 1 ? "seeder" : "seeders")}, below the {guards.MinSeeders} this rule holds out for.",
+                $"only {seeders} of {guards.MinSeeders} seeders");
+        }
+
+        if (guards.MaxInactiveDays is > 0 && guards.InactiveDays is >= 0 && guards.InactiveDays >= guards.MaxInactiveDays)
+        {
+            return new(
+                SharingAction.Wait,
+                $"Still sharing — inactive for {guards.InactiveDays} days, and this rule holds an inactive download rather than removing it.",
+                $"inactive {guards.InactiveDays} days");
+        }
+
+        return null;
     }
 
     private static string DescribeMet(SharingPolicy policy, double? ratio, int sharedMinutes)
