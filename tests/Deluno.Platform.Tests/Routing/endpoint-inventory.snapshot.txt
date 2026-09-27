@@ -378,6 +378,7 @@ POST /api/movies/{id}/metadata/link/preview
 POST /api/movies/{id}/metadata/refresh
 POST /api/movies/{id}/search
 POST /api/movies/{id}/subtitles/{language}/reject
+POST /api/movies/{id}/subtitles/{language}/resync
 POST /api/notification-webhooks/
 POST /api/notification-webhooks/deliveries/{deliveryId}/replay
 POST /api/notification-webhooks/{id}/test
@@ -415,6 +416,7 @@ POST /api/series/bulk/search
 POST /api/series/bulk/subtitle-rescan
 POST /api/series/bulk/tags
 POST /api/series/episodes/{episodeId}/subtitles/{language}/reject
+POST /api/series/episodes/{episodeId}/subtitles/{language}/resync
 POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss
 POST /api/series/import-recovery/{id}/resolve
