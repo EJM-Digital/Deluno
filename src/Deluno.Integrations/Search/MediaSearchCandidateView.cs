@@ -34,6 +34,12 @@ public static class MediaSearchCandidateView
             candidate.DownloadUrl,
             candidate.SizeBytes,
             candidate.Seeders,
+            // #753: the enriched results columns, alongside the existing
+            // Seeders and DecisionStatus/DecisionReasons (a rejection's own
+            // reason) above.
+            candidate.Leechers,
+            candidate.IndexerProtocol,
+            candidate.ReleaseAgeHours,
             candidate.DecisionStatus,
             candidate.DecisionReasons,
             candidate.RiskFlags,

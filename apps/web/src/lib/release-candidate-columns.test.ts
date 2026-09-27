@@ -1,0 +1,102 @@
+import { describe, expect, it } from "vitest";
+import {
+  defaultSortDirection,
+  filterCandidates,
+  formatProtocol,
+  formatReleaseAge,
+  formatSeedersAndLeechers,
+  sortCandidates,
+  type CandidateColumnsInput
+} from "./release-candidate-columns";
+
+/**
+ * #753: the shared sort/filter/format logic behind the enriched results
+ * columns (protocol, release age, seeders/leechers, size) on both the
+ * per-title interactive search results and the dedicated Search page.
+ */
+
+function candidate(overrides: Partial<CandidateColumnsInput> & { indexerName: string }): CandidateColumnsInput {
+  return { indexerProtocol: null, releaseAgeHours: null, seeders: null, leechers: null, sizeBytes: null, ...overrides };
+}
+
+describe("sortCandidates", () => {
+  it("sorts by seeders descending by default", () => {
+    const items = [
+      candidate({ indexerName: "a", seeders: 5 }),
+      candidate({ indexerName: "b", seeders: 50 }),
+      candidate({ indexerName: "c", seeders: 1 })
+    ];
+
+    const sorted = sortCandidates(items, "seeders", defaultSortDirection("seeders"));
+
+    expect(sorted.map((item) => item.indexerName)).toEqual(["b", "a", "c"]);
+  });
+
+  it("sorts by protocol alphabetically ascending by default", () => {
+    const items = [
+      candidate({ indexerName: "a", indexerProtocol: "torznab" }),
+      candidate({ indexerName: "b", indexerProtocol: "newznab" })
+    ];
+
+    const sorted = sortCandidates(items, "protocol", defaultSortDirection("protocol"));
+
+    expect(sorted.map((item) => item.indexerName)).toEqual(["b", "a"]);
+  });
+
+  it("sorts unknown release age last regardless of direction", () => {
+    const items = [
+      candidate({ indexerName: "known", releaseAgeHours: 2 }),
+      candidate({ indexerName: "unknown", releaseAgeHours: null })
+    ];
+
+    expect(sortCandidates(items, "age", "asc").map((item) => item.indexerName)).toEqual(["known", "unknown"]);
+    expect(sortCandidates(items, "age", "desc").map((item) => item.indexerName)).toEqual(["unknown", "known"]);
+  });
+
+  it("reverses ascending order for descending", () => {
+    const items = [candidate({ indexerName: "a", sizeBytes: 100 }), candidate({ indexerName: "b", sizeBytes: 200 })];
+
+    expect(sortCandidates(items, "size", "asc").map((item) => item.indexerName)).toEqual(["a", "b"]);
+    expect(sortCandidates(items, "size", "desc").map((item) => item.indexerName)).toEqual(["b", "a"]);
+  });
+});
+
+describe("filterCandidates", () => {
+  const items = [
+    candidate({ indexerName: "EZTV", indexerProtocol: "torznab" }),
+    candidate({ indexerName: "NZBGeek", indexerProtocol: "newznab" })
+  ];
+
+  it("filters by protocol", () => {
+    expect(filterCandidates(items, { protocol: "newznab" }).map((item) => item.indexerName)).toEqual(["NZBGeek"]);
+  });
+
+  it("filters by indexer name", () => {
+    expect(filterCandidates(items, { indexerName: "EZTV" }).map((item) => item.indexerName)).toEqual(["EZTV"]);
+  });
+
+  it("returns everything when no filter is set", () => {
+    expect(filterCandidates(items, {})).toHaveLength(2);
+  });
+});
+
+describe("formatting helpers", () => {
+  it("formats protocol codes in plain English", () => {
+    expect(formatProtocol("torznab")).toBe("Torrent");
+    expect(formatProtocol("newznab")).toBe("Usenet");
+    expect(formatProtocol("tracker")).toBe("Torrent");
+    expect(formatProtocol(null)).toBe("—");
+  });
+
+  it("formats release age", () => {
+    expect(formatReleaseAge(0.5)).toBe("<1h");
+    expect(formatReleaseAge(5)).toBe("5h");
+    expect(formatReleaseAge(72)).toBe("3d");
+    expect(formatReleaseAge(null)).toBe("—");
+  });
+
+  it("formats seeders and leechers together, missing values as a dash", () => {
+    expect(formatSeedersAndLeechers(12, 3)).toBe("12 / 3");
+    expect(formatSeedersAndLeechers(null, null)).toBe("— / —");
+  });
+});

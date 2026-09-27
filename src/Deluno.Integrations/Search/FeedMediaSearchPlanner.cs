@@ -994,6 +994,9 @@ public sealed class FeedMediaSearchPlanner(
 
             var size = ReadLongAttr(attrs, "size") ?? ReadLong(item.Elements("enclosure").FirstOrDefault()?.Attribute("length")?.Value);
             var seeders = ReadIntAttr(attrs, "seeders");
+            // #753: shown alongside seeders in the enriched results columns.
+            // Never used in scoring -- only seeders drives any decision.
+            var leechers = ReadIntAttr(attrs, "peers");
             var torrentHashOrItemId = ReadHashOrItemId(attrs, item, indexer.Protocol, downloadUrl);
             var releaseAgeHours = ReadReleaseAgeHours(item);
             var indexerFlags = string.Join(", ", attrs
@@ -1100,7 +1103,10 @@ public sealed class FeedMediaSearchPlanner(
                 MatchedCustomFormats: matchedFormats,
                 PreferenceEvaluation: decision.PreferenceEvaluation,
                 PreferenceComparison: decision.PreferenceComparison,
-                TorrentHashOrItemId: torrentHashOrItemId));
+                TorrentHashOrItemId: torrentHashOrItemId,
+                IndexerProtocol: indexer.Protocol,
+                ReleaseAgeHours: releaseAgeHours,
+                Leechers: leechers));
         }
 
         return new ParsedCandidates(results, feedItems.Length == requestedLimit);

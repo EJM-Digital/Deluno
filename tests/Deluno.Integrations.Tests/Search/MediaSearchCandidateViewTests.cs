@@ -27,7 +27,10 @@ public class MediaSearchCandidateViewTests
             SeederScore: 220,
             SizeScore: 80,
             MatchedCustomFormats: [new CustomFormatMatchResult("format-1", "AMZN", 100, ["releaseTitle", "source:webrip"], [], true)],
-            PreferenceEvaluation: evaluation);
+            PreferenceEvaluation: evaluation,
+            IndexerProtocol: "torznab",
+            ReleaseAgeHours: 5.5,
+            Leechers: 3);
 
     [Fact]
     public void A_candidate_carries_what_it_matched_when_there_is_no_typed_evaluation()
@@ -51,6 +54,21 @@ public class MediaSearchCandidateViewTests
         var json = JsonSerializer.SerializeToElement(MediaSearchCandidateView.For(Candidate()));
 
         Assert.Equal("indexer-1", json.GetProperty("IndexerId").GetString());
+    }
+
+    /// <summary>
+    /// #753: the enriched results columns (protocol, release age,
+    /// seeders/leechers) the manual Search page and the per-title interactive
+    /// search results both add.
+    /// </summary>
+    [Fact]
+    public void A_candidate_carries_its_protocol_age_and_leechers()
+    {
+        var json = JsonSerializer.SerializeToElement(MediaSearchCandidateView.For(Candidate()));
+
+        Assert.Equal("torznab", json.GetProperty("IndexerProtocol").GetString());
+        Assert.Equal(5.5, json.GetProperty("ReleaseAgeHours").GetDouble());
+        Assert.Equal(3, json.GetProperty("Leechers").GetInt32());
     }
 
     /// <summary>
