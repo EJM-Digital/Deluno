@@ -6,7 +6,7 @@ namespace Deluno.Persistence.Tests.Platform;
 /// <summary>
 /// #936 reverses the "on unless explicitly turned off" reading of
 /// <c>media.renameOnImport</c> back to "off unless explicitly turned on".
-/// <see cref="V0071AutomationDefaultsOff"/> is the migration that keeps an
+/// <see cref="V0073AutomationDefaultsOff"/> is the migration that keeps an
 /// install that already existed reading exactly as it did before, by writing
 /// an explicit "true" for that one key if the install had not already stored
 /// a value for it.
@@ -143,7 +143,7 @@ public sealed class AutomationDefaultsOffMigrationTests
     private static async Task MigrateAsync(SqliteConnection connection)
     {
         await using var transaction = await connection.BeginTransactionAsync();
-        await new V0071AutomationDefaultsOff().UpAsync(connection, transaction, CancellationToken.None);
+        await new V0073AutomationDefaultsOff().UpAsync(connection, transaction, CancellationToken.None);
         await transaction.CommitAsync();
     }
 
