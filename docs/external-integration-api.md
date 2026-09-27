@@ -491,6 +491,16 @@ Deluno accepts a completed event only when all of these are true:
 
 Deluno will not infer a library from `mediaType`, accept a sibling/prefix path, create an unknown hand-off, or queue the same active output import twice. A repeated completed callback reuses the active import job. A callback is optional: the normal watched-output path imports exactly one video below `processed-output/<source-folder>/...` when that folder matches a waiting Deluno hand-off. Ambiguous, unmatched, or top-level files become recovery items for human review rather than being guessed at.
 
+### Temporary output names (#915)
+
+A processor that reports completion through the callback is safe already: Deluno only ever reads `outputPath`/`outputFiles` once that report arrives. A drop-folder processor — one with no processor connection configured, whose output Deluno watches directly — has no callback to say "this file is finished," so Deluno instead waits for a file's size to stop changing for 20 seconds before treating it as importable.
+
+A processor that writes a file in place can pause mid-write for longer than that without anything being wrong — a throttled disk, a paused job queue — and a 20-second gap alone cannot tell that apart from a finished file. **A drop-folder processor must therefore write its output under a temporary name and rename it to its final name only once the file is complete** — for example `Film.mkv.partial`, renamed to `Film.mkv` when done. Deluno's own import extension allow-list already ignores any file whose name does not end in a supported video extension, so `.partial`, `.tmp`, `.temp`, `.part` and `.crdownload` (or any other suffix that is not itself a supported extension) are never matched for import — the rename is what releases the file, not a size check. The 20-second stability check remains in place as a backup, for a processor that cannot follow this convention.
+
+### Hand-off cleanup after import (#915, sheet row H4)
+
+The processor's copy in the processed-output folder is only ever a working copy. After Deluno successfully imports from it — or a hand-off is abandoned (import-original, given up, or released) — Deluno removes everything that hand-off left in the processed-output folder: the output it imported, any temporary/partial file the processor never finished renaming, scrap files (`.nfo`, samples, subtitles it does not want), and the hand-off's own now-empty folder. This happens regardless of the library's Cleanup mode, which answers a different question — what happens to the *original* download, still governed by the sharing rule (#288). Only the files belonging to that one hand-off are ever touched: a hand-off in its own subfolder (the documented folder-hand-off shape) owns that subfolder outright; a loose file sharing the processed-output root with other hand-offs only ever loses files with its own name and a temporary suffix, never a sibling hand-off's files. Every cleanup is written to Activity.
+
 ## Why This Exists
 
 External tools should not need to know Deluno internals.
