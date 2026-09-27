@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Deluno.Infrastructure.Resilience;
 
 namespace Deluno.Integrations.Subtitles;
 
@@ -188,12 +189,7 @@ public static class SubtitleProviderHttp
             return;
         }
 
-        var retryAfter = response.Headers.RetryAfter?.Delta
-            ?? (response.Headers.RetryAfter?.Date is { } date
-                ? date - DateTimeOffset.UtcNow
-                : null);
-
-        throw new SubtitleProviderRateLimitedException(providerKey, retryAfter);
+        throw new SubtitleProviderRateLimitedException(providerKey, IntegrationResiliencePolicy.TryGetRetryAfter(response));
     }
 
     private static void ThrowIfHttpFailure(HttpResponseMessage response, string providerKey)

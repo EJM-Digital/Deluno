@@ -336,6 +336,77 @@ public sealed class IntegrationResiliencePolicyTests
     }
 
     [Fact]
+    public async Task Honors_a_429s_retry_after_instead_of_the_generic_backoff()
+    {
+        // #865: TMDb (and any other integration) can say exactly how long to
+        // wait on a 429. A generic backoff here would use InitialDelay (5s
+        // below); honoring Retry-After (20ms) finishes long before that.
+        var policy = CreatePolicy();
+        var calls = 0;
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await policy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                "metadata:rate-limited",
+                "metadata.tmdb.search",
+                InitialDelay: TimeSpan.FromSeconds(5),
+                MaxDelay: TimeSpan.FromSeconds(5)),
+            _ =>
+            {
+                calls++;
+                if (calls == 1)
+                {
+                    throw new IntegrationRateLimitedException("HTTP 429", TimeSpan.FromMilliseconds(20));
+                }
+
+                return Task.FromResult("ok");
+            },
+            value => value == "ok"
+                ? IntegrationResilienceOutcome.Success
+                : IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+        stopwatch.Stop();
+
+        Assert.Equal("ok", result.Value);
+        Assert.Equal(2, result.Attempts);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+            $"Expected the short Retry-After wait, not the 5s generic backoff; took {stopwatch.Elapsed}.");
+    }
+
+    [Fact]
+    public async Task Falls_back_to_the_generic_backoff_when_a_429_has_no_retry_after()
+    {
+        var policy = CreatePolicy();
+        var calls = 0;
+
+        var result = await policy.ExecuteAsync(
+            new IntegrationResilienceRequest(
+                "metadata:rate-limited-no-header",
+                "metadata.tmdb.search",
+                InitialDelay: TimeSpan.Zero,
+                MaxDelay: TimeSpan.Zero),
+            _ =>
+            {
+                calls++;
+                if (calls == 1)
+                {
+                    throw new IntegrationRateLimitedException("HTTP 429", retryAfter: null);
+                }
+
+                return Task.FromResult("ok");
+            },
+            value => value == "ok"
+                ? IntegrationResilienceOutcome.Success
+                : IntegrationResilienceOutcome.RetryableFailure,
+            CancellationToken.None);
+
+        Assert.Equal("ok", result.Value);
+        Assert.Equal(2, result.Attempts);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public async Task Converts_non_retryable_http_exceptions_to_typed_failures_without_opening_a_circuit()
     {
         var policy = CreatePolicy();

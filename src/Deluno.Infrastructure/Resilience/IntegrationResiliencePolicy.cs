@@ -34,6 +34,22 @@ public interface IIntegrationResiliencePolicy
     Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Raised for an HTTP 429 so the real wait the service asked for survives the
+/// trip through <see cref="IIntegrationResiliencePolicy"/> instead of being
+/// collapsed into a bare status code. A 429 is still a transient failure
+/// (<see cref="IntegrationResiliencePolicy.IsTransientHttpStatusCode"/> already
+/// says so) but it is not the same shape as a 500 or a timeout: the service
+/// said exactly how long to wait, and guessing with the same exponential
+/// backoff wastes the budget it was trying to protect.
+/// </summary>
+public sealed class IntegrationRateLimitedException(string message, TimeSpan? retryAfter)
+    : HttpRequestException(message, null, HttpStatusCode.TooManyRequests)
+{
+    /// <summary>What the response's Retry-After header asked for. Null means it did not send one.</summary>
+    public TimeSpan? RetryAfter { get; } = retryAfter;
+}
+
 public sealed record IntegrationResilienceRequest(
     string Key,
     string Operation,
@@ -155,9 +171,11 @@ public sealed class IntegrationResiliencePolicy(
         T? lastValue = default;
         var attemptsMade = 0;
         var retryableFailure = false;
+        TimeSpan? retryAfterOverride;
         for (var attempt = 1; attempt <= normalized.MaxAttempts; attempt++)
         {
             attemptsMade = attempt;
+            retryAfterOverride = null;
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
@@ -189,6 +207,11 @@ public sealed class IntegrationResiliencePolicy(
 
                 lastException = exception;
                 retryableFailure = IsTransient(exception);
+                if (exception is IntegrationRateLimitedException rateLimited)
+                {
+                    retryAfterOverride = rateLimited.RetryAfter;
+                }
+
                 if (!retryableFailure)
                 {
                     break;
@@ -199,7 +222,10 @@ public sealed class IntegrationResiliencePolicy(
             {
                 DelunoObservability.IntegrationRetries.Add(1,
                     new KeyValuePair<string, object?>("operation", normalized.Operation));
-                await Task.Delay(CalculateDelay(normalized, attempt), timeProvider, cancellationToken);
+                var delay = retryAfterOverride is { } explicitDelay && explicitDelay > TimeSpan.Zero
+                    ? explicitDelay
+                    : CalculateDelay(normalized, attempt);
+                await Task.Delay(delay, timeProvider, cancellationToken);
             }
         }
 
@@ -326,6 +352,18 @@ public sealed class IntegrationResiliencePolicy(
                    HttpStatusCode.TooManyRequests ||
                code >= 500;
     }
+
+    /// <summary>
+    /// The wait a 429 response asked for, however it said it: a delta in
+    /// seconds or an absolute retry date. Shared by every caller that turns a
+    /// 429 into <see cref="IntegrationRateLimitedException"/>, so the header
+    /// is parsed once rather than once per integration.
+    /// </summary>
+    public static TimeSpan? TryGetRetryAfter(HttpResponseMessage response)
+        => response.Headers.RetryAfter?.Delta
+            ?? (response.Headers.RetryAfter?.Date is { } date
+                ? date - DateTimeOffset.UtcNow
+                : null);
 
     private static IntegrationResilienceRequest Normalize(IntegrationResilienceRequest request)
         => request with
