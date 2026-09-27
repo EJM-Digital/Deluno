@@ -18,7 +18,13 @@ vi.mock("../lib/use-api-mutation", () => ({
 
 vi.mock("../hooks/use-unsaved-changes", () => ({ useUnsavedChanges: () => undefined }));
 
-const settings = { ...emptyPlatformSettingsSnapshot, libraryFreeSpaceWarnPercent: 10, libraryFreeSpacePausePercent: 5 };
+const settings = {
+  ...emptyPlatformSettingsSnapshot,
+  libraryFreeSpaceWarnPercent: 10,
+  libraryFreeSpacePausePercent: 5,
+  minimumFreeSpaceMb: 100,
+  skipFreeSpaceCheck: false
+};
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
   useLocation: () => ({ pathname: "/settings/import-policy" }),
@@ -76,5 +82,47 @@ describe("import policy storage safety thresholds (#909)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("The pause threshold must be at or below the warn threshold.");
     expect(mutate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #765: the import-time minimum free space guard (Radarr/Sonarr's 100MB
+ * default floor) and its skip switch, added to the same Storage safety
+ * section.
+ */
+describe("import-time minimum free space (#765)", () => {
+  afterEach(() => {
+    mutate.mockReset();
+  });
+
+  it("shows the saved minimum free space and skip switch", () => {
+    render(
+      <MemoryRouter>
+        <SettingsMediaManagementPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByLabelText("Minimum free space")).toHaveValue(100);
+    expect(screen.getByRole("switch", { name: /^Skip free space check/ })).not.toBeChecked();
+  });
+
+  it("saves the minimum free space and skip switch together", async () => {
+    mutate.mockResolvedValueOnce({ ...settings, minimumFreeSpaceMb: 500, skipFreeSpaceCheck: true });
+
+    render(
+      <MemoryRouter>
+        <SettingsMediaManagementPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText("Minimum free space"), { target: { value: "500" } });
+    fireEvent.click(screen.getByRole("switch", { name: /^Skip free space check/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save import settings" }));
+
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate).toHaveBeenCalledWith(expect.objectContaining({
+      minimumFreeSpaceMb: 500,
+      skipFreeSpaceCheck: true
+    }));
   });
 });

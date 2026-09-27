@@ -270,6 +270,11 @@ public sealed class SqlitePlatformSettingsRepository(
         // Checkpoint A (#917): off by default (#936).
         await UpsertSettingAsync(connection, transaction, "download-integrity.checkEnabled", request.DownloadIntegrityCheckEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "download-integrity.minimumRuntimePercent", Math.Clamp(request.DownloadIntegrityMinimumRuntimePercent ?? 80, 1, 100).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #765: matches Radarr/Sonarr's import-time free-space guard (100MB
+        // default floor). SkipFreeSpaceCheck is for a filesystem that cannot
+        // report free space at all, not a substitute for lowering the floor.
+        await UpsertSettingAsync(connection, transaction, "import.minimumFreeSpaceMb", Math.Max(request.MinimumFreeSpaceMb ?? 100, 0).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "import.skipFreeSpaceCheck", request.SkipFreeSpaceCheck == true ? "true" : "false", updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -634,7 +639,9 @@ public sealed class SqlitePlatformSettingsRepository(
             MaxSearchesPerHourEnabled: string.Equals(GetValue(settings, "search.maxSearchesPerHour.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             MaxSearchesPerHour: ReadPositiveInt(GetValue(settings, "search.maxSearchesPerHour"), 200, 1, 100_000),
             DownloadIntegrityCheckEnabled: string.Equals(GetValue(settings, "download-integrity.checkEnabled"), "true", StringComparison.OrdinalIgnoreCase),
-            DownloadIntegrityMinimumRuntimePercent: ReadPositiveInt(GetValue(settings, "download-integrity.minimumRuntimePercent"), 80, 1, 100));
+            DownloadIntegrityMinimumRuntimePercent: ReadPositiveInt(GetValue(settings, "download-integrity.minimumRuntimePercent"), 80, 1, 100),
+            MinimumFreeSpaceMb: ReadPositiveInt(GetValue(settings, "import.minimumFreeSpaceMb"), 100, 0, int.MaxValue),
+            SkipFreeSpaceCheck: string.Equals(GetValue(settings, "import.skipFreeSpaceCheck"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

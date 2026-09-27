@@ -116,4 +116,8 @@ export interface PlatformSettingsPatch {
   multiEpisodeStyle?: string;
   /** #764: independent of renameOnImport. */
   renameFoldersOnImport?: boolean;
+  /** #765: minimum free space (MB) the destination volume must keep after an import. */
+  minimumFreeSpaceMb?: number;
+  /** #765: for a filesystem that cannot report free space at all. */
+  skipFreeSpaceCheck?: boolean;
 }

@@ -103,5 +103,7 @@ public static class PlatformSettingsPatchMerger
             MaxSearchesPerHourEnabled: patch.MaxSearchesPerHourEnabled ?? current.MaxSearchesPerHourEnabled,
             MaxSearchesPerHour: patch.MaxSearchesPerHour ?? current.MaxSearchesPerHour,
             DownloadIntegrityCheckEnabled: patch.DownloadIntegrityCheckEnabled ?? current.DownloadIntegrityCheckEnabled,
-            DownloadIntegrityMinimumRuntimePercent: patch.DownloadIntegrityMinimumRuntimePercent ?? current.DownloadIntegrityMinimumRuntimePercent);
+            DownloadIntegrityMinimumRuntimePercent: patch.DownloadIntegrityMinimumRuntimePercent ?? current.DownloadIntegrityMinimumRuntimePercent,
+            MinimumFreeSpaceMb: patch.MinimumFreeSpaceMb ?? current.MinimumFreeSpaceMb,
+            SkipFreeSpaceCheck: patch.SkipFreeSpaceCheck ?? current.SkipFreeSpaceCheck);
 }

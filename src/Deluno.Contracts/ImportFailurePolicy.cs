@@ -91,6 +91,14 @@ public static class ImportFailurePolicy
     public const string MissingLibraryRoot = "missingLibraryRoot";
 
     /// <summary>
+    /// The destination volume would drop below the configured minimum free
+    /// space if the import completed (#765). Nothing about the release: a
+    /// fresh copy of the same file would fail the same way until space is
+    /// freed or the floor is lowered.
+    /// </summary>
+    public const string InsufficientFreeSpace = "insufficientFreeSpace";
+
+    /// <summary>
     /// The move or copy itself threw. Still downloading, locked by another
     /// process, or on a network path that went away — none of which is the
     /// release's doing.

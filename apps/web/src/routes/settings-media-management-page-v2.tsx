@@ -415,6 +415,8 @@ function ImportPolicyPage() {
         useHardlinks: form.useHardlinks,
         libraryFreeSpaceWarnPercent: form.libraryFreeSpaceWarnPercent,
         libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent,
+        minimumFreeSpaceMb: form.minimumFreeSpaceMb,
+        skipFreeSpaceCheck: form.skipFreeSpaceCheck,
         setPermissionsOnImport: form.setPermissionsOnImport,
         folderChmod: form.folderChmod,
         chownGroup: form.chownGroup,
@@ -457,6 +459,9 @@ function libraryFreeSpaceThresholdError(form: PlatformSettingsSnapshot): string 
   }
   if (form.libraryFreeSpacePausePercent > form.libraryFreeSpaceWarnPercent) {
     return "The pause threshold must be at or below the warn threshold.";
+  }
+  if (form.minimumFreeSpaceMb < 0) {
+    return "Choose a minimum free space of 0 MB or more.";
   }
   return null;
 }
@@ -516,6 +521,15 @@ function ImportPolicyFields({
             </div>
           </Field>
         </FieldRow>
+        <FieldRow>
+          <Field label="Minimum free space" help="Deluno blocks an import that would leave the destination volume below this, with a dismissable Activity entry saying why (#765).">
+            <div className="flex items-center gap-2">
+              <Input type="number" min={0} value={form.minimumFreeSpaceMb} onChange={(event) => onFormChange((current) => ({ ...current, minimumFreeSpaceMb: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+            </div>
+          </Field>
+        </FieldRow>
+        <SwitchRow label="Skip free space check" description="Only for a filesystem that cannot report free space at all. Lower the minimum above instead of turning this on just to allow a tighter margin." checked={form.skipFreeSpaceCheck} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, skipFreeSpaceCheck: checked }))} />
       </div>
       <div className="border-t border-hairline p-[var(--card-pad-x)]">
         <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">

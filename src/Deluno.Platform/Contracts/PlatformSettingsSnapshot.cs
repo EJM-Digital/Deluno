@@ -211,4 +211,11 @@ public sealed record PlatformSettingsSnapshot(
     // turns it on. MinimumRuntimePercent is the "much shorter than known"
     // threshold's own setting, with the sensible default the issue names.
     bool DownloadIntegrityCheckEnabled = false,
-    int DownloadIntegrityMinimumRuntimePercent = 80);
+    int DownloadIntegrityMinimumRuntimePercent = 80,
+    // #765: Radarr/Sonarr's import-time free-space guard. The default
+    // matches their 100MB floor. SkipFreeSpaceCheck exists for a filesystem
+    // that cannot report free space at all (some network mounts and FUSE
+    // layers return nothing usable) rather than for someone who merely
+    // disagrees with the floor -- lower MinimumFreeSpaceMb for that instead.
+    int MinimumFreeSpaceMb = 100,
+    bool SkipFreeSpaceCheck = false);
