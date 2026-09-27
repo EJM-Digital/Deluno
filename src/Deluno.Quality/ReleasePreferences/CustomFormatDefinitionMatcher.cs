@@ -415,12 +415,17 @@ public static partial class CustomFormatDefinitionMatcher
         };
 
     /// <summary>
-    /// Radarr's Quality Modifier disambiguates a source/resolution pair with
-    /// exactly five values (source: wiki.servarr.com/radarr/settings,
-    /// confirmed against the shipped Modifier enum): 1 Regional, 2 Screener,
-    /// 3 Raw-HD, 4 BR-DISK, 5 Remux. Only value 5 was ever mapped before
-    /// (#774); an unrecognized value returns null and is left for the
-    /// generic review-only path rather than guessed at.
+    /// Radarr's Quality Modifier disambiguates a source/resolution pair
+    /// (source: wiki.servarr.com/radarr/settings, confirmed against the
+    /// shipped Modifier enum): 1 Regional, 2 Screener, 3 Raw-HD, 4 BR-DISK,
+    /// 5 Remux, plus the Proper/Repack/Real revision values a TRaSH-sourced
+    /// format also uses in this field (#774; 6 Proper, 7 Repack, 8 Real).
+    /// Every one of these maps to a "source" condition MatchSource already
+    /// evaluates by falling back to a plain substring search, so "proper"
+    /// matches a release tagged PROPER the same way "regional" already
+    /// matches REGIONAL. Only value 5 was ever mapped before #774; an
+    /// unrecognized value still returns null and is left for the generic
+    /// review-only path rather than guessed at.
     /// </summary>
     private static string? MapQualityModifier(string value)
         => value switch
@@ -430,6 +435,9 @@ public static partial class CustomFormatDefinitionMatcher
             "3" => "rawhd",
             "4" => "brdisk",
             "5" => "remux",
+            "6" => "proper",
+            "7" => "repack",
+            "8" => "real",
             _ => null
         };
 
