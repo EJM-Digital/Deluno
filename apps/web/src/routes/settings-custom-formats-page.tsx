@@ -81,6 +81,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { KNOWN_INDEXER_FLAGS } from "./connections/presets";
 
 const TABS = configurationNavAreas.find((area) => area.label === "Quality & Release")?.items ?? [];
 
@@ -1183,14 +1184,31 @@ export function SettingsCustomFormatsPage() {
                     />
                   </Field>
                 </FieldRow>
-                <Field label="Words to match" help="Plain text is enough. Deluno also accepts a pattern for advanced matching.">
-                  <Input
-                    value={condition.value}
-                    onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
-                    placeholder="e.g. WEB-DL, HDR, or GROUP"
-                    className={selectedGuide ? "font-mono" : undefined}
-                  />
-                </Field>
+                {condition.type === "indexerFlag" ? (
+                  // #773: a picker of the flags an indexer actually reports,
+                  // not free text — the same known-flag list the indexer form
+                  // itself offers (KNOWN_INDEXER_FLAGS), with "Other" for a
+                  // site's own unlisted flag.
+                  <Field label="Flag to match" help="Matched against what the indexer itself reports for a release, never against the release name.">
+                    <PresetField
+                      value={condition.value}
+                      onChange={(value) => updateCondition(setForm, index, { value })}
+                      options={KNOWN_INDEXER_FLAGS.map((flag) => ({ value: flag, label: flag }))}
+                      customLabel="Other flag"
+                      customPlaceholder="Flag name"
+                      placeholder="Choose a flag"
+                    />
+                  </Field>
+                ) : (
+                  <Field label="Words to match" help="Plain text is enough. Deluno also accepts a pattern for advanced matching.">
+                    <Input
+                      value={condition.value}
+                      onChange={(event) => updateCondition(setForm, index, { value: event.target.value })}
+                      placeholder="e.g. WEB-DL, HDR, or GROUP"
+                      className={selectedGuide ? "font-mono" : undefined}
+                    />
+                  </Field>
+                )}
                 <div className="flex justify-end">
                   <Button
                     type="button"
