@@ -1099,6 +1099,94 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.Null(lookup.Result?.BannerUrl);
     }
 
+    /// <summary>
+    /// #860: TMDb only gives a calendar date per episode, so every episode
+    /// used to collapse to exactly midnight UTC. TVmaze's airstamp is the
+    /// network's real broadcast instant; an episode it has data for should
+    /// use that instead, and an episode it does not match should keep the
+    /// existing midnight-UTC fallback rather than fail the whole catalogue.
+    /// </summary>
+    [Fact]
+    public async Task GetSeriesCatalogueAsync_uses_tvmazes_real_broadcast_time_and_falls_back_to_midnight()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("direct", string.Empty));
+
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-09-25T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(request =>
+            {
+                var uri = request.RequestUri!;
+                string payload;
+                if (uri.AbsolutePath.Contains("/external_ids", StringComparison.Ordinal))
+                {
+                    payload = """{ "imdb_id": "tt0944947" }""";
+                }
+                else if (uri.AbsolutePath.Contains("/season/", StringComparison.Ordinal))
+                {
+                    payload = """
+                    {
+                      "episodes": [
+                        { "episode_number": 1, "name": "Winter Is Coming", "air_date": "2011-04-17" },
+                        { "episode_number": 2, "name": "The Kingsroad", "air_date": "2011-04-24" }
+                      ]
+                    }
+                    """;
+                }
+                else if (uri.Host.Equals("api.tvmaze.com", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.Contains("/lookup/shows", StringComparison.Ordinal))
+                {
+                    payload = """{ "id": 82 }""";
+                }
+                else if (uri.Host.Equals("api.tvmaze.com", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.Contains("/episodes", StringComparison.Ordinal))
+                {
+                    // Only episode 1 has a TVmaze match; episode 2 must fall back.
+                    payload = """[ { "season": 1, "number": 1, "airstamp": "2011-04-17T21:00:00-04:00" } ]""";
+                }
+                else if (uri.AbsolutePath.Contains("/tv/", StringComparison.Ordinal))
+                {
+                    payload = """{ "seasons": [ { "season_number": 1, "name": "Season 1", "air_date": "2011-04-17", "episode_count": 2 } ] }""";
+                }
+                else
+                {
+                    return new HttpResponseMessage(HttpStatusCode.NotFound);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json")
+                };
+            })),
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Deluno:Metadata:TMDbApiKey"] = "test-key"
+                })
+                .Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var seasons = await provider.GetSeriesCatalogueAsync("1399", CancellationToken.None);
+
+        var season = Assert.Single(seasons);
+        var episode1 = season.Episodes.Single(episode => episode.EpisodeNumber == 1);
+        var episode2 = season.Episodes.Single(episode => episode.EpisodeNumber == 2);
+        Assert.Equal(DateTimeOffset.Parse("2011-04-17T21:00:00-04:00"), episode1.AirDateUtc);
+        Assert.Equal(new DateTimeOffset(2011, 4, 24, 0, 0, 0, TimeSpan.Zero), episode2.AirDateUtc);
+    }
+
     private static PlatformSettingsSnapshot CreateSettingsSnapshot(
         string providerMode,
         string brokerUrl,

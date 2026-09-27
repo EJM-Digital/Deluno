@@ -1843,6 +1843,72 @@ public sealed class TmdbMetadataProvider(
         return urls.Length == 0 ? null : urls;
     }
 
+    /// <summary>
+    /// Every episode's real broadcast instant TVmaze has for this show,
+    /// keyed by season and episode number. TVmaze's own <c>airstamp</c> is
+    /// already the network's local air time converted to an offset
+    /// timestamp, which is exactly what an episode without one collapses to
+    /// midnight UTC for lack of (#860). Chosen over TheTVDB because it needs
+    /// no API key and answers a lookup-by-IMDb-id directly; keyless also
+    /// means no settings plumbing to gate it behind.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<(int Season, int Episode), DateTimeOffset>> GetTvMazeAirTimesAsync(
+        string? imdbId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(imdbId))
+        {
+            return EmptyAirTimes;
+        }
+
+        var show = await GetJsonWithResilienceAsync<TvMazeShow>(
+            $"https://api.tvmaze.com/lookup/shows?imdb={Uri.EscapeDataString(imdbId)}",
+            $"metadata:tvmaze:lookup:{imdbId}",
+            "metadata.tvmaze.lookup",
+            cancellationToken);
+        if (show?.Id is not { } showId)
+        {
+            return EmptyAirTimes;
+        }
+
+        var episodes = await GetJsonWithResilienceAsync<IReadOnlyList<TvMazeEpisode>>(
+            $"https://api.tvmaze.com/shows/{showId.ToString(CultureInfo.InvariantCulture)}/episodes",
+            $"metadata:tvmaze:episodes:{showId}",
+            "metadata.tvmaze.episodes",
+            cancellationToken);
+        if (episodes is not { Count: > 0 })
+        {
+            return EmptyAirTimes;
+        }
+
+        var airTimes = new Dictionary<(int Season, int Episode), DateTimeOffset>();
+        foreach (var episode in episodes)
+        {
+            if (episode.Season is not { } season || episode.Number is not { } number
+                || string.IsNullOrWhiteSpace(episode.Airstamp))
+            {
+                continue;
+            }
+
+            if (DateTimeOffset.TryParse(episode.Airstamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var airstamp))
+            {
+                airTimes[(season, number)] = airstamp;
+            }
+        }
+
+        return airTimes;
+    }
+
+    private static readonly IReadOnlyDictionary<(int Season, int Episode), DateTimeOffset> EmptyAirTimes =
+        new Dictionary<(int Season, int Episode), DateTimeOffset>();
+
+    private sealed record TvMazeShow([property: JsonPropertyName("id")] int? Id);
+
+    private sealed record TvMazeEpisode(
+        [property: JsonPropertyName("season")] int? Season,
+        [property: JsonPropertyName("number")] int? Number,
+        [property: JsonPropertyName("airstamp")] string? Airstamp);
+
     private async Task<IReadOnlyList<MetadataSeason>> GetTmdbCatalogueAsync(
         int id,
         string apiKey,
@@ -1858,6 +1924,14 @@ public sealed class TmdbMetadataProvider(
         {
             return [];
         }
+
+        // TMDb has no broadcast time at all (#860); TVmaze does, keyed off
+        // the same IMDb id every other cross-reference in this file already
+        // resolves. Best-effort: a show TVmaze does not carry (or is down)
+        // leaves every episode on TMDb's midnight-UTC date, unchanged from
+        // before this existed.
+        var externalIds = await GetExternalIdsAsync(id, "tv", apiKey, cancellationToken);
+        var realBroadcastTimes = await GetTvMazeAirTimesAsync(externalIds.ImdbId, cancellationToken);
 
         var seasons = new List<MetadataSeason>();
         foreach (var season in detail.Seasons.Where(item => item.SeasonNumber >= 0).OrderBy(item => item.SeasonNumber).Take(50))
@@ -1883,7 +1957,11 @@ public sealed class TmdbMetadataProvider(
                     episode.EpisodeNumber,
                     NullIfBlank(episode.Name),
                     NullIfBlank(episode.Overview),
-                    ParseAirDate(episode.AirDate)))
+                    ParseAirDate(
+                        episode.AirDate,
+                        realBroadcastTimes.TryGetValue((season.SeasonNumber, episode.EpisodeNumber), out var broadcastTime)
+                            ? broadcastTime
+                            : null)))
                 .ToArray();
 
             seasons.Add(new MetadataSeason(
@@ -1959,10 +2037,19 @@ public sealed class TmdbMetadataProvider(
             ? parsed
             : null;
 
-    private static DateTimeOffset? ParseAirDate(string? value)
-        => ParseDateOnly(value) is { } date
-            ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
-            : null;
+    /// <summary>
+    /// TMDb gives only a calendar date, so this used to collapse every
+    /// episode to exactly midnight UTC. <paramref name="realBroadcastTime"/>
+    /// is the network's actual broadcast instant, when a source that has one
+    /// (TVmaze) could match this episode; it wins over the midnight guess.
+    /// Falls back to midnight only when no such source had this episode
+    /// (#860).
+    /// </summary>
+    private static DateTimeOffset? ParseAirDate(string? value, DateTimeOffset? realBroadcastTime = null)
+        => realBroadcastTime
+           ?? (ParseDateOnly(value) is { } date
+               ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+               : null);
 
     private sealed record BrokerCatalogueResponse(
         [property: JsonPropertyName("seasons")] IReadOnlyList<BrokerSeason>? Seasons);
