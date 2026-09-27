@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
 import { Field, FieldRow } from "../components/ui/field";
@@ -764,8 +765,8 @@ export function SearchCyclesPage() {
             />
           </div>
           <Field label="Custom patterns" help="One glob pattern per line, e.g. *.exe or autorun.inf.">
-            <textarea
-              className="min-h-[6rem] w-full rounded-[var(--radius-md)] border border-hairline bg-transparent p-[var(--space-sm)] text-[length:var(--type-body-sm)]"
+            <Textarea
+              rows={4}
               value={contentBlocklist.customPatterns}
               onChange={(event) => setContentBlocklist((current) => ({ ...current, customPatterns: event.target.value }))}
               placeholder={"*.exe\n*.scr"}
