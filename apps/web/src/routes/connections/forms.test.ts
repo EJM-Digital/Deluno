@@ -70,6 +70,13 @@ describe("client form Use SSL and URL Base", () => {
     expect(clientFormFrom({ ...baseItem, addPaused: false }).addPaused).toBe(false);
   });
 
+  // #807 — the drawer never rendered Priority, so create/edit always sent a
+  // hard-coded fallback instead of what the person chose. Reopening the
+  // drawer has to show the value that was actually saved.
+  it("reads a saved client's priority into the form on reopen", () => {
+    expect(clientFormFrom({ ...baseItem, priority: 37 }).priority).toBe("37");
+  });
+
   it("a new indexer says what is missing instead of nothing", () => {
     const errors = indexerFormErrors(emptyIndexerForm(), true);
     expect(Object.keys(errors).sort()).toEqual(["apiKey", "baseUrl", "name"]);
@@ -185,5 +192,14 @@ describe("client validation", () => {
 
   it("rejects a blank host", () => {
     expect(clientFormErrors({ ...emptyClientForm(), host: "  " }).host).toBeTruthy();
+  });
+
+  // #807 — Priority matches the existing contract range: 1 (highest) to 50 (lowest).
+  it("accepts a priority within 1-50 and rejects anything outside it", () => {
+    expect(clientFormErrors({ ...emptyClientForm(), priority: "1" })).toEqual({});
+    expect(clientFormErrors({ ...emptyClientForm(), priority: "50" })).toEqual({});
+    expect(clientFormErrors({ ...emptyClientForm(), priority: "0" }).priority).toBeTruthy();
+    expect(clientFormErrors({ ...emptyClientForm(), priority: "51" }).priority).toBeTruthy();
+    expect(clientFormErrors({ ...emptyClientForm(), priority: "abc" }).priority).toBeTruthy();
   });
 });

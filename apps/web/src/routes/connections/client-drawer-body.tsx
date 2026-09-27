@@ -123,13 +123,16 @@ export function ClientDrawerBody({
         </FieldRow>
       </DrawerSection>
 
-      {preset?.kind === "Usenet" ? (
-        <Disclosure title="Advanced" summary={form.urlBase.trim() ? `URL base: /${form.urlBase.trim().replace(/^\/|\/$/g, "")}` : "Only needed behind a reverse proxy"} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+      <Disclosure title="Advanced" summary={`Priority ${form.priority || "1"}`} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <Field label="Priority" error={errors.priority} help="1 (highest) to 50 (lowest). Used to order same-type clients when Deluno round-robins downloads between them.">
+          <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />
+        </Field>
+        {preset?.kind === "Usenet" ? (
           <Field label="URL base" help={`For example "sabnzbd" if this client is reached at a path like https://host/sabnzbd/ through a reverse proxy.`}>
             <Input value={form.urlBase} onChange={(event) => setForm((current) => ({ ...current, urlBase: event.target.value }))} placeholder="sabnzbd" autoComplete="off" />
           </Field>
-        </Disclosure>
-      ) : null}
+        ) : null}
+      </Disclosure>
 
       {editing ? (
         <Disclosure

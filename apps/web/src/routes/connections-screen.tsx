@@ -200,6 +200,30 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
   };
 }
 
+/** The body of PUT/POST /api/download-clients — shared by Save and Test, same reason as buildIndexerSavePayload (#626). */
+export function buildClientSavePayload(form: ClientForm) {
+  const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
+  const port = Number(form.port || preset?.defaultPort || 8080);
+  const urlBase = form.urlBase.trim().replace(/^\/|\/$/g, "");
+  return {
+    name: form.name.trim(),
+    protocol: form.protocol,
+    host: form.host.trim(),
+    port,
+    username: form.username || undefined,
+    password: form.password || undefined,
+    endpointUrl: `${form.useSsl ? "https" : "http"}://${form.host.trim()}:${port}${urlBase ? `/${urlBase}` : ""}`,
+    useSsl: form.useSsl,
+    urlBase: urlBase || undefined,
+    moviesCategory: form.moviesCategory,
+    tvCategory: form.tvCategory,
+    categoryTemplate: form.moviesCategory,
+    priority: Number(form.priority || 1),
+    isEnabled: form.isEnabled,
+    addPaused: form.addPaused
+  };
+}
+
 export function IndexersPage() {
   const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard } = useLoaderData() as LoaderData;
   const location = useLocation();
@@ -454,26 +478,7 @@ export function IndexersPage() {
   }
 
   function clientPayload() {
-    const preset = CLIENT_PRESETS.find((item) => item.protocol === clientForm.protocol);
-    const port = Number(clientForm.port || preset?.defaultPort || 8080);
-    const urlBase = clientForm.urlBase.trim().replace(/^\/|\/$/g, "");
-    return {
-      name: clientForm.name.trim(),
-      protocol: clientForm.protocol,
-      host: clientForm.host.trim(),
-      port,
-      username: clientForm.username || undefined,
-      password: clientForm.password || undefined,
-      endpointUrl: `${clientForm.useSsl ? "https" : "http"}://${clientForm.host.trim()}:${port}${urlBase ? `/${urlBase}` : ""}`,
-      useSsl: clientForm.useSsl,
-      urlBase: urlBase || undefined,
-      moviesCategory: clientForm.moviesCategory,
-      tvCategory: clientForm.tvCategory,
-      categoryTemplate: clientForm.moviesCategory,
-      priority: Number(clientForm.priority || 1),
-      isEnabled: clientForm.isEnabled,
-      addPaused: clientForm.addPaused
-    };
+    return buildClientSavePayload(clientForm);
   }
 
   /**
