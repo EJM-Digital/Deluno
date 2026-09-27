@@ -2003,6 +2003,16 @@ public sealed partial class ImportPipelineService(
         // incoming name is all there is; an import resolves the decision first
         // and passes it in, and both then name the file the same way.
         decision ??= await ResolveNamingDecisionAsync(request, libraries, releaseName: null, cancellationToken);
+        // #764: the release folder a download client (or a processor) handed
+        // Deluno, captured before ResolveDirectorySource resolves the source
+        // down to the video file inside it. This is the only "existing
+        // folder name" Deluno has -- there is no persisted movie/series
+        // folder path to preserve -- so it is what RenameFoldersOnImport off
+        // falls back to, the same way RenameOnImport off falls back to the
+        // incoming file name.
+        var incomingFolderName = string.IsNullOrWhiteSpace(request.SourcePath) || !Directory.Exists(request.SourcePath)
+            ? null
+            : Path.GetFileName(request.SourcePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         request = ResolveDirectorySource(request);
         var mediaType = NormalizeMediaType(request.MediaType);
         var seriesNumbering = mediaType == "tv"
@@ -2036,7 +2046,7 @@ public sealed partial class ImportPipelineService(
                        string.Empty;
         var template = rule?.FolderTemplate ??
                        (mediaType == "tv" ? settings.SeriesFolderFormat : settings.MovieFolderFormat);
-        var folder = ApplyTemplate(
+        var templatedFolder = ApplyTemplate(
             template,
             title,
             request.Year,
@@ -2048,6 +2058,14 @@ public sealed partial class ImportPipelineService(
             request.Network,
             settings.ReplaceIllegalCharacters,
             settings.ColonReplacementMode);
+        // #764: independent of RenameOnImport, which only ever governs the
+        // file name below. Off keeps the release folder Deluno was handed
+        // (when there was one to keep); on, or when the source was a single
+        // file with no folder of its own, the templated movie/series name is
+        // still the only name there is.
+        var folder = !settings.RenameFoldersOnImport && incomingFolderName is not null
+            ? SanitizeFileName(incomingFolderName, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode)
+            : templatedFolder;
         var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering, decision);
         // #762: a season (or specials, for season 0) subfolder under the
         // series folder, only for TV and only when the matching format is

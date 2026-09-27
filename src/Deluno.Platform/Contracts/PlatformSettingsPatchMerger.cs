@@ -95,5 +95,6 @@ public static class PlatformSettingsPatchMerger
             LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours,
             SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
-            MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle);
+            MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
+            RenameFoldersOnImport: patch.RenameFoldersOnImport ?? current.RenameFoldersOnImport);
 }

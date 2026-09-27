@@ -411,6 +411,7 @@ function ImportPolicyPage() {
     try {
       const nextSettings = await settingsMutation.mutate({
         renameOnImport: form.renameOnImport,
+        renameFoldersOnImport: form.renameFoldersOnImport,
         useHardlinks: form.useHardlinks,
         libraryFreeSpaceWarnPercent: form.libraryFreeSpaceWarnPercent,
         libraryFreeSpacePausePercent: form.libraryFreeSpacePausePercent,
@@ -470,9 +471,15 @@ function ImportPolicyFields({
   const thresholdError = libraryFreeSpaceThresholdError(form);
   return (
     <>
-      <div className="grid divide-y divide-hairline md:grid-cols-2 md:divide-x md:divide-y-0">
+      <div className="grid divide-y divide-hairline md:grid-cols-3 md:divide-x md:divide-y-0">
       <div className="p-[var(--card-pad-x)]">
         <SwitchRow label="Rename files when imported" description="Apply the naming choices from Media Naming as the file enters the library." checked={form.renameOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameOnImport: checked }))} />
+      </div>
+      <div className="p-[var(--card-pad-x)]">
+        {/* #764: independent of the file switch above -- a movie/series folder
+            can be renamed to Deluno's naming choice while the file inside it
+            keeps its original name, or the other way around. */}
+        <SwitchRow label="Rename folders when imported" description="Apply the naming choices from Media Naming to the movie or show folder itself, separately from the file switch." checked={form.renameFoldersOnImport} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, renameFoldersOnImport: checked }))} />
       </div>
       <div className="p-[var(--card-pad-x)]">
         <SwitchRow label="Keep seeding without a second copy" description="Use a hardlink when the drives support it, so the download client and library share one set of file data." checked={form.useHardlinks} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, useHardlinks: checked }))} />

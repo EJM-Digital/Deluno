@@ -99,4 +99,5 @@ public sealed record PatchPlatformSettingsRequest(
     string? SeasonFolderFormat = null,
     string? SpecialsFolderFormat = null,
     // #763: one of Deluno.Series.Contracts.MultiEpisodeStyles.
-    string? MultiEpisodeStyle = null);
+    string? MultiEpisodeStyle = null,
+    bool? RenameFoldersOnImport = null);
