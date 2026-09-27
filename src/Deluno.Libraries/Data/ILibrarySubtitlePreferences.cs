@@ -31,7 +31,9 @@ public sealed record LibrarySubtitlePreference(
     /// </summary>
     string UnknownLanguage = "",
     /// <summary>Whether a track inside the container counts as held.</summary>
-    bool EmbeddedCounts = true)
+    bool EmbeddedCounts = true,
+    /// <summary>Per-language hearing-impaired and forced-track preferences (#836, #835).</summary>
+    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null)
 {
     /// <summary>
     /// The <c>wanted</c> half of the bar under a poster, per file. One rule,

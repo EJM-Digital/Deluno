@@ -27,4 +27,10 @@ public sealed record UpdateLibrarySubtitlesRequest(
     /// <summary>Automatic timing-repair policy for fetched subtitles.</summary>
     SubtitleTimingPolicy? TimingPolicy = null,
     SubtitleNamePolicy? NamePolicy = null,
-    bool OmitLanguageCode = false);
+    bool OmitLanguageCode = false,
+    /// <summary>
+    /// Per-language hearing-impaired and forced-track preferences. A language
+    /// with no row here gets the defaults — see
+    /// <see cref="SubtitleLanguageTypePreference"/>.
+    /// </summary>
+    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null);

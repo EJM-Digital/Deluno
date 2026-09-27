@@ -81,7 +81,11 @@ public interface ISubtitleFetchService
         string language,
         bool isEpisodeMedia,
         string videoPath,
-        bool excludeHearingImpaired,
+        // This language's hearing-impaired preference — one of
+        // SubtitleHearingImpairedPreferences. A wrong-type candidate is
+        // filtered out before ranking, so it is never picked and the next
+        // candidate is tried instead (#836, #923).
+        string hearingImpairedPreference,
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
         SubtitleNamePolicy? namePolicy = null,
@@ -105,13 +109,14 @@ public sealed class SubtitleFetchService(
         string language,
         bool isEpisodeMedia,
         string videoPath,
-        bool excludeHearingImpaired,
+        string hearingImpairedPreference,
         CancellationToken cancellationToken,
         SubtitleContentModificationPolicy? contentPolicy = null,
         SubtitleNamePolicy? namePolicy = null,
         bool omitLanguageCode = false,
         IReadOnlyCollection<string>? blockedKeys = null)
     {
+        var hiPreference = SubtitleHearingImpairedPreferences.Normalize(hearingImpairedPreference);
         var blocked = blockedKeys is null or { Count: 0 }
             ? null
             : new HashSet<string>(blockedKeys, StringComparer.OrdinalIgnoreCase);
@@ -172,7 +177,7 @@ public sealed class SubtitleFetchService(
                 // candidates, which the old "give up on the first pick" shape
                 // did, nor the rest of this file's languages, which a
                 // provider-level failure would have.
-                var ranked = Rank(candidates, language, excludeHearingImpaired, videoPath, names)
+                var ranked = Rank(candidates, language, hiPreference, videoPath, names)
                     .Where(candidate => blocked is null || !blocked.Contains(SubtitleBlockKeys.For(provider.Key, candidate.DownloadToken)))
                     .ToArray();
 
@@ -301,23 +306,35 @@ public sealed class SubtitleFetchService(
     ///
     /// <para>Forced is never chosen: a forced track is four lines of Elvish, and
     /// the rest of Deluno already refuses to count it as coverage.</para>
+    ///
+    /// <para><b>Hearing-impaired is a per-language choice, not a fixed rule
+    /// (#836).</b> <see cref="SubtitleHearingImpairedPreferences.PlainOnly"/>
+    /// refuses a hearing-impaired candidate outright — the wrong type is never
+    /// picked, so the next candidate is tried instead of it, which is what
+    /// #923 asks for without needing a second mechanism.
+    /// <see cref="SubtitleHearingImpairedPreferences.PlainPreferred"/> is the
+    /// default above: either is coverage, plain wins a tie.
+    /// <see cref="SubtitleHearingImpairedPreferences.HearingImpairedPreferred"/>
+    /// is the same list with that tiebreak inverted.</para>
     /// </summary>
     private static IEnumerable<SubtitleCandidate> Rank(
         IReadOnlyList<SubtitleCandidate> candidates,
         string language,
-        bool excludeHearingImpaired,
+        string hearingImpairedPreference,
         string? videoPath,
         SubtitleNamePolicy? namePolicy = null)
         => candidates
             .Where(candidate => !candidate.Forced)
-            .Where(candidate => !excludeHearingImpaired || !candidate.HearingImpaired)
+            .Where(candidate => hearingImpairedPreference != SubtitleHearingImpairedPreferences.PlainOnly || !candidate.HearingImpaired)
             // The library's own words about release names. Applied before
             // ranking rather than after, so a refused release cannot win on
             // filename similarity and then be discarded.
             .Where(candidate => namePolicy?.Accepts(candidate.ReleaseName) ?? true)
             .Where(candidate => candidate.Language.StartsWith(language[..Math.Min(2, language.Length)], StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(candidate => SubtitleMatchRanking.Rank(candidate.ReleaseName, videoPath))
-            .ThenBy(candidate => candidate.HearingImpaired ? 1 : 0)
+            .ThenBy(candidate => hearingImpairedPreference == SubtitleHearingImpairedPreferences.HearingImpairedPreferred
+                ? (candidate.HearingImpaired ? 0 : 1)
+                : (candidate.HearingImpaired ? 1 : 0))
             .ThenByDescending(candidate => candidate.DownloadCount ?? 0);
 
     /// <summary>

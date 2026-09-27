@@ -99,7 +99,8 @@ public static class PlatformDatabaseMigrations
         new V0091IndexerSeasonPackSearchMode(),
         new V0092DownloadClientRemoveCompletedFailed(),
         new V0093DropGlobalRemoveCompletedDownloads(),
-        new V0094QbittorrentAddTimeAndShareLimits()
+        new V0094QbittorrentAddTimeAndShareLimits(),
+        new V0095SubtitleLanguageTypePreferences()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
