@@ -2048,8 +2048,16 @@ public sealed partial class ImportPipelineService(
             request.Network,
             settings.ReplaceIllegalCharacters,
             settings.ColonReplacementMode);
-        var destinationFolder = string.IsNullOrWhiteSpace(rootPath) ? folder : Path.Combine(rootPath, folder);
         var resolvedName = ResolveDestinationFileName(request, settings, mediaType, title, seriesNumbering, decision);
+        // #762: a season (or specials, for season 0) subfolder under the
+        // series folder, only for TV and only when the matching format is
+        // configured. Resolved after the file name so the subfolder uses the
+        // exact same season this import already matched against the
+        // catalogue, rather than re-parsing the incoming name a second time.
+        var seasonSubfolder = mediaType == "tv" ? BuildSeasonSubfolder(settings, resolvedName.SeasonNumber) : null;
+        var destinationFolder = string.IsNullOrWhiteSpace(rootPath)
+            ? (seasonSubfolder is null ? folder : Path.Combine(folder, seasonSubfolder))
+            : (seasonSubfolder is null ? Path.Combine(rootPath, folder) : Path.Combine(rootPath, folder, seasonSubfolder));
         var fileName = resolvedName.FileName;
         var destinationPath = Path.Combine(destinationFolder, SanitizeFileName(fileName, settings.ReplaceIllegalCharacters, settings.ColonReplacementMode));
         var canHardlink = CanLikelyHardlink(request.SourcePath, destinationPath);
@@ -4022,6 +4030,39 @@ public sealed partial class ImportPipelineService(
             colonReplacementMode: colonReplacementMode);
 
     /// <summary>
+    /// #762: the per-season subfolder a series folder splits into, or null
+    /// for no subfolder at all -- the fallback both when the season could not
+    /// be resolved and when its format is blank, which is today's behaviour
+    /// for every install that has never opened this setting. Season 0 (a
+    /// specials episode) uses SpecialsFolderFormat instead of
+    /// SeasonFolderFormat, the way Sonarr splits the two.
+    /// </summary>
+    private static string? BuildSeasonSubfolder(PlatformSettingsSnapshot settings, int? seasonNumber)
+    {
+        if (seasonNumber is not int season)
+        {
+            return null;
+        }
+
+        var template = season == 0 ? settings.SpecialsFolderFormat : settings.SeasonFolderFormat;
+        if (string.IsNullOrWhiteSpace(template))
+        {
+            return null;
+        }
+
+        var withSeason = template
+            .Replace("{season:00}", season.ToString("D2"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{season}", season.ToString(), StringComparison.OrdinalIgnoreCase);
+        var rendered = NamingTemplateRenderer.RenderSegment(
+            withSeason,
+            title: null,
+            year: null,
+            replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+            colonReplacementMode: settings.ColonReplacementMode);
+        return string.IsNullOrWhiteSpace(rendered) ? null : rendered;
+    }
+
+    /// <summary>
     /// What Deluno decided about the release being imported: the quality it
     /// counts as, the group that made it, and the custom formats it matched.
     ///
@@ -4268,7 +4309,8 @@ public sealed partial class ImportPipelineService(
             .Replace("{Quality}", quality, StringComparison.OrdinalIgnoreCase);
         return new ResolvedDestinationFileName(
             $"{NamingTemplateRenderer.RenderSegment(formatted, title: null, year: null, decision: episodeDecision, replaceIllegalCharacters: settings.ReplaceIllegalCharacters, colonReplacementMode: settings.ColonReplacementMode)}{extension}",
-            null);
+            null,
+            seasonNumber);
     }
 
     [GeneratedRegex(@"(^|[.\-_\s])sample([.\-_\s]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
@@ -4289,7 +4331,12 @@ public sealed partial class ImportPipelineService(
         return string.IsNullOrWhiteSpace(cleaned) ? "Untitled" : cleaned;
     }
 
-    private sealed record ResolvedDestinationFileName(string FileName, string? Warning);
+    // #762: the resolved episode's season, so the caller can build a season
+    // (or specials) subfolder without re-parsing the incoming file name.
+    // Null for a movie, or a TV file whose season could not be determined --
+    // both cases fall back to no season subfolder, same as an unconfigured
+    // SeasonFolderFormat/SpecialsFolderFormat.
+    private sealed record ResolvedDestinationFileName(string FileName, string? Warning, int? SeasonNumber = null);
 
     private static string TitleForActivity(ImportPreviewRequest request)
         => string.IsNullOrWhiteSpace(request.Title)

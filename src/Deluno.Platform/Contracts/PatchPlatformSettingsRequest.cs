@@ -93,4 +93,8 @@ public sealed record PatchPlatformSettingsRequest(
     // browser/OS timezone rather than UTC.
     string? Timezone = null,
     bool? LeftoverDownloadCleanupEnabled = null,
-    int? LeftoverDownloadCleanupAgeHours = null);
+    int? LeftoverDownloadCleanupAgeHours = null,
+    // #762: blank clears the subfolder, matching how a movie/series folder
+    // format already works.
+    string? SeasonFolderFormat = null,
+    string? SpecialsFolderFormat = null);

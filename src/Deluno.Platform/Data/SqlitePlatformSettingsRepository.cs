@@ -244,6 +244,11 @@ public sealed class SqlitePlatformSettingsRepository(
         // automation questions - a missing key reads as off.
         await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.enabled", request.LeftoverDownloadCleanupEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.ageHours", Math.Clamp(request.LeftoverDownloadCleanupAgeHours ?? 24, 1, 8760).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #762: blank means no season/specials subfolder, the same "off"
+        // value a brand-new install already reads for every other naming
+        // format below.
+        await UpsertSettingAsync(connection, transaction, "media.seasonFolderFormat", request.SeasonFolderFormat ?? string.Empty, updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "media.specialsFolderFormat", request.SpecialsFolderFormat ?? string.Empty, updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -595,7 +600,9 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadThroughputSamplerIntervalMinutes: ReadPositiveInt(GetValue(settings, "download-health.throughputSampler.intervalMinutes"), 1, 1, 60),
             Timezone: GetValue(settings, "ui.timezone") ?? string.Empty,
             LeftoverDownloadCleanupEnabled: string.Equals(GetValue(settings, "downloads.leftoverCleanup.enabled"), "true", StringComparison.OrdinalIgnoreCase),
-            LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760));
+            LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760),
+            SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
+            SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty);
     }
 
     private static string NormalizeProperRepackAcquisitionMode(string? value)
