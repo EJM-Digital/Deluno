@@ -165,6 +165,47 @@ public sealed class ADeletedFileUnmonitorsItselfTests
         Assert.DoesNotContain("stopped wanting it", activity, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #931's other guard: deleting a title in Deluno itself - DELETE
+    /// /api/movies/{id}?deleteFiles=true, the real "delete in Deluno" path -
+    /// removes the whole catalogue entry through TitleRemovalService rather
+    /// than marking a file missing, so it must never write the
+    /// reconciliation's "removed outside Deluno" sentence either.
+    /// </summary>
+    [Fact]
+    public async Task Deleting_a_film_in_Deluno_never_writes_the_removed_outside_Deluno_line()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var rootPath = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var libraryId = await CreateLibraryAsync(app, "movies", rootPath);
+
+        var filePath = Path.Combine(rootPath, "Dune (2021)", "Dune (2021) [Bluray-1080p].mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        await File.WriteAllBytesAsync(filePath, [1, 2, 3, 4]);
+
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        await movies.ImportExistingAsync(
+            libraryId,
+            "Dune",
+            2021,
+            wantedStatus: "covered",
+            wantedReason: "Imported from your existing library.",
+            currentQuality: "Bluray-1080p",
+            targetQuality: "Bluray-1080p",
+            qualityCutoffMet: true,
+            filePath: filePath,
+            fileSizeBytes: 4,
+            cancellationToken: CancellationToken.None);
+
+        var movieId = Assert.Single(await movies.ListAsync(CancellationToken.None)).Id;
+
+        var response = await app.Client.DeleteAsync($"/api/movies/{movieId}?deleteFiles=true");
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+
+        var activity = await ActivityBodyAsync(app);
+        Assert.DoesNotContain("removed outside Deluno", activity, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static async Task<string> CreateLibraryAsync(ApplicationTestHost app, string mediaType, string rootPath)
