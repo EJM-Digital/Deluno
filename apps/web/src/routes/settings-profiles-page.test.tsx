@@ -22,8 +22,8 @@ vi.mock("../lib/api", async (importOriginal) => ({
 const qualityModel: QualityModelSnapshot = {
   version: "test",
   tiers: [
-    { name: "WEB 720p", rank: 1, movieMinGb: 1, movieMaxGb: 4, episodeMinMb: 100, episodeMaxMb: 800, scoreCeiling: 0 },
-    { name: "WEB 1080p", rank: 2, movieMinGb: 2, movieMaxGb: 8, episodeMinMb: 200, episodeMaxMb: 1600, scoreCeiling: 0 }
+    { name: "WEB 720p", rank: 1, movieMinGb: 1, moviePreferredGb: 2.5, movieMaxGb: 4, episodeMinMb: 100, episodePreferredMb: 400, episodeMaxMb: 800, scoreCeiling: 0 },
+    { name: "WEB 1080p", rank: 2, movieMinGb: 2, moviePreferredGb: 5, movieMaxGb: 8, episodeMinMb: 200, episodePreferredMb: 800, episodeMaxMb: 1600, scoreCeiling: 0 }
   ],
   upgradeStop: { stopWhenCutoffMet: true, requireCustomFormatGainForSameQuality: true },
   updatedUtc: new Date(0).toISOString()

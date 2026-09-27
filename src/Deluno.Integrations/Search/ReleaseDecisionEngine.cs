@@ -791,6 +791,8 @@ public static partial class ReleaseDecisionEngine
         out double? estimatedBitrate,
         out bool outOfRange)
     {
+        const double Gb = 1_073_741_824d;
+        const double Mb = 1_048_576d;
         estimatedBitrate = null;
         outOfRange = false;
         if (sizeBytes is null or <= 0)
@@ -844,6 +846,31 @@ public static partial class ReleaseDecisionEngine
             outOfRange = true;
             risks.Add($"Size {size} is above the {DescribeLimit(max, episode)} maximum configured for {quality} for a {runtimeDescription} runtime.");
             return -80;
+        }
+
+        // #771: within the accepted band, a release closer to the tier's
+        // Preferred size (Settings > Quality) beats one further from it — the
+        // same idea as Radarr's Preferred column, just expressed as a score
+        // bonus rather than a second rejection line, since being off-Preferred
+        // is a taste, not a fault. The bonus caps at 20 so it can never turn an
+        // out-of-range release into an in-range one; it only orders same-tier
+        // in-range candidates against each other.
+        var preferredRaw = episode
+            ? QualityTypicalSizes.For(quality)?.EpisodePreferredMb * Mb
+            : QualityTypicalSizes.For(quality)?.MoviePreferredGb * Gb;
+        if (preferredRaw is { } preferredUnscaled)
+        {
+            var preferred = preferredUnscaled * runtimeScale;
+            var bandRadius = Math.Max(preferred - min, max > 0 ? max - preferred : preferred - min);
+            if (bandRadius > 0)
+            {
+                var closeness = Math.Clamp(1 - Math.Abs(sizeBytes.Value - preferred) / bandRadius, 0, 1);
+                var preferenceBonus = (int)Math.Round(closeness * 20);
+                reasons.Add(closeness >= 0.85
+                    ? $"Size {size} is close to the preferred size for {quality}."
+                    : $"Size {size} is within the expected range for {quality}.");
+                return 80 + preferenceBonus;
+            }
         }
 
         reasons.Add($"Size {size} is within the expected range for {quality}.");
