@@ -753,8 +753,11 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         var added = Long(entry, "addedAt") is > 0 and var addedSeconds ? DateTimeOffset.FromUnixTimeSeconds(addedSeconds) : (DateTimeOffset?)null;
         var inProgress = !played && (Long(entry, "viewOffset") ?? 0) > 0;
         var userRating = Double(entry, "userRating");
+        // Plex has no separate favourite flag; a maxed-out rating (10, the
+        // "loved" state Plexamp shows as a heart) is its favourite signal.
+        var favourite = userRating is double rating ? rating >= 10 : (bool?)null;
         var viewer = played || inProgress || views > 0 || lastViewed is not null || userRating is not null
-            ? new MediaServerViewer(account, played, views, lastViewed, inProgress, Favourite: null, userRating)
+            ? new MediaServerViewer(account, played, views, lastViewed, inProgress, favourite, userRating)
             : null;
 
         return new MediaServerItem(
