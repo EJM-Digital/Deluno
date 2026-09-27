@@ -16,7 +16,7 @@ internal static class DownloadClientProtocolCatalog
 {
     private static readonly HashSet<string> Dispatchable = new(StringComparer.OrdinalIgnoreCase)
     {
-        "qbittorrent", "sabnzbd", "nzbget", "transmission", "deluge", "utorrent"
+        "qbittorrent", "sabnzbd", "nzbget", "transmission", "deluge", "utorrent", "rtorrent"
     };
 
     private static readonly HashSet<string> Loadable = new(Dispatchable, StringComparer.OrdinalIgnoreCase)

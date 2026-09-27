@@ -1415,6 +1415,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 "deluge" => await TestDelugeAsync(item, uri, cancellationToken),
                 "nzbget" => await TestNzbGetAsync(item, uri, cancellationToken),
                 "utorrent" => await TestUTorrentAsync(item, uri, cancellationToken),
+                "rtorrent" => await TestRtorrentAsync(item, uri, cancellationToken),
                 // Unreachable: the dispatchable guard above covers every other value.
                 _ => ("degraded", $"Deluno cannot send downloads to a '{item.Protocol}' client.", "configuration")
             };
@@ -1538,6 +1539,33 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
             ? ("healthy", $"Connected to uTorrent at {uri.Host}:{uri.Port}.", null)
             : ("degraded", "uTorrent token endpoint did not return the expected response.", "unexpected-response");
+    }
+
+    /// <summary>
+    /// #803: a minimal XML-RPC call (system.client_version, which takes no
+    /// arguments and every rTorrent build answers) — enough to prove the
+    /// endpoint is reachable and speaking rTorrent's RPC, without needing the
+    /// adapter's own fuller codec here.
+    /// </summary>
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestRtorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    {
+        using var handler = new HttpClientHandler();
+        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
+        AddBasicAuth(client, item);
+        const string requestXml = "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>";
+        using var content = new StringContent(requestXml, Encoding.UTF8, "text/xml");
+        using var response = await client.PostAsync(uri, content, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return ("degraded", $"rTorrent returned {(int)response.StatusCode} at {uri.Host}:{uri.Port}.", "unreachable");
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return body.Contains("<fault>", StringComparison.OrdinalIgnoreCase)
+            ? ("degraded", "rTorrent's RPC endpoint answered with a fault. Check the address and that it fronts rTorrent's XML-RPC over HTTP.", "unexpected-response")
+            : body.Contains("<methodResponse>", StringComparison.OrdinalIgnoreCase)
+                ? ("healthy", $"Connected to rTorrent at {uri.Host}:{uri.Port}.", null)
+                : ("degraded", "The address did not answer with an XML-RPC response. Check it points at rTorrent's own RPC endpoint (often /RPC2).", "unexpected-response");
     }
 
     private static Uri? ResolveDownloadClientEndpoint(DownloadClientItem item)
