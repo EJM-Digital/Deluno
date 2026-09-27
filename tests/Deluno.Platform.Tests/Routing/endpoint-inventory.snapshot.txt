@@ -329,6 +329,7 @@ POST /api/integrations/processors/handoffs/{id}/import-original
 POST /api/integrations/processors/handoffs/{id}/keep-waiting
 POST /api/integrations/processors/handoffs/{id}/outcome/send-again
 POST /api/integrations/processors/handoffs/{id}/retry
+POST /api/integrations/processors/handoffs/{id}/search-again
 POST /api/integrations/processors/handoffs/{id}/stop-waiting
 POST /api/integrations/processors/output/delete
 POST /api/intelligent-routing/recommend-release
@@ -367,8 +368,10 @@ POST /api/movies/bulk/subtitle-rescan
 POST /api/movies/bulk/tags
 POST /api/movies/import-recovery
 POST /api/movies/import-recovery/{id}/dismiss
+POST /api/movies/import-recovery/{id}/import-original
 POST /api/movies/import-recovery/{id}/resolve
 POST /api/movies/import-recovery/{id}/retry
+POST /api/movies/import-recovery/{id}/search-again
 POST /api/movies/import-recovery/{id}/stop-wanting
 POST /api/movies/metadata/jobs
 POST /api/movies/{id}/automation/defer
@@ -428,8 +431,10 @@ POST /api/series/episodes/{episodeId}/subtitles/{language}/reject
 POST /api/series/episodes/{episodeId}/subtitles/{language}/resync
 POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss
+POST /api/series/import-recovery/{id}/import-original
 POST /api/series/import-recovery/{id}/resolve
 POST /api/series/import-recovery/{id}/retry
+POST /api/series/import-recovery/{id}/search-again
 POST /api/series/import-recovery/{id}/stop-wanting
 POST /api/series/metadata/jobs
 POST /api/series/{id}/automation/defer
