@@ -326,6 +326,9 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             Recorded.Clear();
             return Task.FromResult(count);
         }
+
+        public Task<ActivityStatsSnapshot> GetActivityStatsAsync(DateTimeOffset sinceUtc, int windowHours, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class RecordingJobScheduler : IJobScheduler

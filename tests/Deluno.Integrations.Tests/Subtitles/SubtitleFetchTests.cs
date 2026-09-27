@@ -813,5 +813,8 @@ public sealed class SubtitleFetchTests
 
         public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
             => throw new NotSupportedException();
+
+        public Task<ActivityStatsSnapshot> GetActivityStatsAsync(DateTimeOffset sinceUtc, int windowHours, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

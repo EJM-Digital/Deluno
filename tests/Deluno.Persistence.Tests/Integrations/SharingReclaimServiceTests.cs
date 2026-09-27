@@ -30,7 +30,7 @@ public sealed class SharingReclaimServiceTests
         int? seedingMinutes = 0,
         string protocol = "qbittorrent",
         string? releaseName = null)
-        => new("hash-1", "client-1", "qBittorrent", "Sintel (2010)", protocol, ratio, seedingMinutes, releaseName);
+        => new("hash-1", "client-1", "qBittorrent", "Sintel (2010)", protocol, ratio, seedingMinutes, ReleaseName: releaseName);
 
     private static IndexerItem Source(
         string? mode = null,

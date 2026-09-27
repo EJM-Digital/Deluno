@@ -207,5 +207,8 @@ public sealed class UnmatchedImportGiveUpServiceTests
             LastQueueItemId = queueItemId;
             return Task.FromResult(new DownloadClientRemovalResult(true, "Removed."));
         }
+
+        public Task<DownloadClientRemovalResult> StopSeedingAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }
