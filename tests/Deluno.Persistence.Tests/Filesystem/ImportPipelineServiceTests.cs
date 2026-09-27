@@ -100,9 +100,11 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("copy", result.Response.TransferModeUsed);
 
         var destinationPath = Path.Combine(movieRootPath, "Arrival (2016)", "Arrival (2016) [WEB 1080p].mkv");
-        Assert.True(File.Exists(sourcePath));
+        // #892: a copy import's original is checked and cleared by default,
+        // once nothing (no client, no sharing rule) still needs it.
+        Assert.False(File.Exists(sourcePath));
         Assert.True(File.Exists(destinationPath));
-        Assert.Equal(new FileInfo(sourcePath).Length, new FileInfo(destinationPath).Length);
+        Assert.Equal(4096, new FileInfo(destinationPath).Length);
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(destinationPath)!, "*.deluno-*"));
         Assert.False((await platform.GetAsync(CancellationToken.None)).WorkflowVerified);
 
@@ -1716,6 +1718,94 @@ public sealed class ImportPipelineServiceTests
 
         Assert.True(result.Response?.Executed);
         Assert.False(File.Exists(sourcePath));
+    }
+
+    /// <summary>
+    /// #892: a copy import leaves a full second copy of the download's bytes
+    /// on disk. Once the copy is verified (the import already succeeded),
+    /// the original is checked and cleared - this must happen regardless of
+    /// the opt-in "remove source after import" setting, which stays off by
+    /// default (#936).
+    /// </summary>
+    [Fact]
+    public async Task A_copy_import_deletes_its_checked_original_even_with_cleanup_off_by_default()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-26T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        // Deliberately no cleanupMode override: the library keeps the
+        // default, off setting.
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: true, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Response?.Executed);
+        Assert.False(File.Exists(sourcePath), "a copy import's checked original must be cleared even though the opt-in cleanup setting is off");
+    }
+
+    /// <summary>
+    /// The opt-in "remove source after import" setting still governs a
+    /// hardlink import unchanged (#936: never flip an existing install's
+    /// automatic behaviour on) - a hardlinked source is the same bytes as the
+    /// library file under a second name, not a second copy, so there is no
+    /// disk space to reclaim by clearing it.
+    /// </summary>
+    [Fact]
+    public async Task A_hardlink_import_still_keeps_its_source_when_cleanup_is_off_by_default()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-26T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Interstellar.2014.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Interstellar", Year: 2014, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "hardlink", Overwrite: true, AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Response?.Executed);
+        Assert.True(File.Exists(sourcePath), "a hardlink import's source must be left alone while cleanup is off by default");
     }
 
     [Fact]
