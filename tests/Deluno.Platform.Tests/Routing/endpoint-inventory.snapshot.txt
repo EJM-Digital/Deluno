@@ -14,6 +14,7 @@ DELETE /api/download-health/ignore-list/{id}
 DELETE /api/download-health/rules/{id}
 DELETE /api/exclusions/{id}
 DELETE /api/failure-rules/{reasonCode}
+DELETE /api/indexer-proxies/{id}
 DELETE /api/indexers/{id}
 DELETE /api/intake-sources/{id}
 DELETE /api/intake-sources/{id}/exclusions/{exclusionId}
@@ -86,6 +87,7 @@ GET /api/filesystem/directories
 GET /api/filesystem/reconciliation
 GET /api/health/live
 GET /api/health/ready
+GET /api/indexer-proxies/
 GET /api/indexers/
 GET /api/indexers/scoreboard
 GET /api/intake-sources/
@@ -296,6 +298,7 @@ POST /api/filesystem/import/scan-folder
 POST /api/filesystem/native-folder-picker
 POST /api/filesystem/path-diagnostics
 POST /api/filesystem/reconciliation/repair
+POST /api/indexer-proxies/
 POST /api/indexers/
 POST /api/indexers/test
 POST /api/indexers/{id}/reset-circuit
@@ -460,6 +463,7 @@ PUT /api/destination-rules/{id}
 PUT /api/download-clients/{id}
 PUT /api/download-health/rules/{id}
 PUT /api/failure-rules/{reasonCode}
+PUT /api/indexer-proxies/{id}
 PUT /api/indexers/{id}
 PUT /api/intake-sources/{id}
 PUT /api/integrations/processors/connections/{id}
