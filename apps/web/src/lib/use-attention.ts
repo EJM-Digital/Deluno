@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchJson,
   fetchPageItems,
@@ -64,8 +64,22 @@ export function attentionTotal(snapshot: AttentionSnapshot): number {
 
 export function useAttention(pollMs = 45000) {
   const [snapshot, setSnapshot] = useState<AttentionSnapshot>(empty);
+  // Guards against a second call landing while the eleven-fetch batch below
+  // is still in flight (#937). Nothing here waited its turn: the 45s ticker,
+  // every ActivityEventAdded in FAILED_JOB_CATEGORIES, and every HealthChanged
+  // all called the same `load`, so a slow batch -- a loaded dev server, a
+  // throttled CI runner -- let the next trigger start an identical batch on
+  // top of the one still running, and the one after that on top of both.
+  // Each batch never really disappears, it just joins a pile that keeps
+  // growing faster than any single batch can drain, which is what turns an
+  // ordinary slow response into a page that never goes network-idle. One
+  // in-flight batch at a time; a trigger that arrives mid-batch is dropped,
+  // not queued -- the next poll or event finds the loop again.
+  const loadingRef = useRef(false);
 
   const load = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setSnapshot((s) => ({ ...s, loading: true }));
     try {
       const [failed, indexers, movieWanted, seriesWanted, movieRecovery, seriesRecovery, dispatches, handoffs, telemetry, orphans, health] = await Promise.all([
@@ -105,6 +119,8 @@ export function useAttention(pollMs = 45000) {
       });
     } catch {
       setSnapshot((s) => ({ ...s, loading: false }));
+    } finally {
+      loadingRef.current = false;
     }
   }, []);
 

@@ -53,16 +53,24 @@ test.describe("mobile route matrix", () => {
   test("no owner route scrolls the page sideways", async ({ page }) => {
     // 27 full navigations, each waiting out trackDataRequests' quiet window,
     // is several times the work of a typical smoke test (crud-flows.spec.ts
-    // sets its own 60s budget for the same reason). Comfortably under load
-    // this settles in ~15-20s total; under the load of a full suite run
-    // (hundreds of prior tests sharing the one dev server) it was seen to
-    // clear 30s and trip the default test timeout with nothing actually
-    // stuck -- every route it reached had already gone quiet on its own.
-    // #937's worker ticker was investigated and ruled out: none of its
-    // subscribers (5s/15s/45s/60s) fire anywhere near fast enough to keep
-    // a single route from settling; the per-route settle times captured
-    // while chasing this were consistently under 2.5s each.
-    test.setTimeout(90_000);
+    // sets its own 60s budget for the same reason), so this gets the same
+    // treatment rather than the default 30s.
+    //
+    // A first attempt at explaining a CI-only failure here raised this to
+    // 90s and blamed general load, but the real cause was `useAttention`
+    // (apps/web/src/lib/use-attention.ts, mounted for every route via
+    // app-layout.tsx): its `load()` had no guard against a second call
+    // landing while its own eleven-fetch batch was still in flight. On a
+    // quiet install that never matters, but every ActivityEventAdded/
+    // HealthChanged envelope also called it, and a CI runner slow enough
+    // (CPU-throttled, sharing one dev server with hundreds of prior tests'
+    // background jobs still draining) let a burst of those land mid-batch --
+    // each one starting a fresh batch on top of the last, so the number of
+    // outstanding requests only grew and trackDataRequests().settled() never
+    // saw its 500ms of quiet. Fixed at the source with an in-flight guard;
+    // this budget stays for the genuine cost of 27 real navigations under
+    // suite load, not for that hang.
+    test.setTimeout(60_000);
     await authenticateAndNavigate(page, "/movies");
     const data = trackDataRequests(page);
 
