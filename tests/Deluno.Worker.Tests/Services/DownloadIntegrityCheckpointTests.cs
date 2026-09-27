@@ -116,6 +116,145 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// #917: the check runs the same way whether the library hands its
+    /// downloads to a processor first or imports them directly -- a failure
+    /// stops either path before the processor ever sees the file.
+    /// </summary>
+    [Fact]
+    public async Task A_failed_check_on_a_processor_library_never_reaches_the_processor()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out _);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1",
+                It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.DeleteWithData && request.QueueItemId == "queue-1"),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var processorLibrary = Library(ImportWorkflows.RefineBeforeImport, "Weir");
+        var processorRepository = new Mock<IProcessorRepository>(MockBehavior.Strict);
+        processorRepository
+            .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
+        processorRepository
+            .Setup(repository => repository.FindProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProcessorHandoffItem?)null);
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), libraryOverride: processorLibrary, processorRepositoryOverride: processorRepository);
+
+        blocked.Verify(instance => instance.BlockAsync(
+            It.Is<BlockedRelease>(release => release.ReasonCode == ImportFailurePolicy.DownloadIntegrityFailed),
+            It.IsAny<CancellationToken>()), Times.Once);
+        telemetry.Verify(instance => instance.ExecuteActionAsync(
+            "client-1",
+            It.Is<DownloadClientActionRequest>(request => request.Action == DownloadClientActions.DeleteWithData),
+            It.IsAny<CancellationToken>()), Times.Once);
+        // Strict: any call to EnsureProcessorHandoffAsync (the hand-off itself)
+        // would throw for being unconfigured, which is exactly the point --
+        // the processor never sees a file Checkpoint A has already refused.
+        processorRepository.Verify(repository => repository.EnsureProcessorHandoffAsync(It.IsAny<CreateProcessorHandoffRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>A film in its own folder -- the common case -- is resolved to its own video file (#917).</summary>
+    [Fact]
+    public async Task A_movie_in_its_own_folder_is_resolved_and_checked()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "Downloads", ReleaseName)).FullName;
+        var video = Path.Combine(folder, ReleaseName + ".mkv");
+        File.WriteAllText(video, "finished download");
+        File.SetLastWriteTimeUtc(video, DateTime.UtcNow.AddHours(-1));
+        File.WriteAllText(Path.Combine(folder, ReleaseName + ".nfo"), "nfo");
+        var sampleFolder = Directory.CreateDirectory(Path.Combine(folder, "Sample")).FullName;
+        var sample = Path.Combine(sampleFolder, "sample.mkv");
+        File.WriteAllText(sample, "sample");
+        File.SetLastWriteTimeUtc(sample, DateTime.UtcNow.AddHours(-1));
+
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = TelemetryWithSource(folder);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1", It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var seenPaths = new List<string>();
+
+        await RunWithProbe(scheduler, telemetry, blocked, checkEnabled: true, (path, _) =>
+        {
+            seenPaths.Add(path);
+            return Task.FromResult(Probe.Failed().Info);
+        });
+
+        // Only the real film's own file was opened -- the sample never was.
+        Assert.Equal(video, Assert.Single(seenPaths));
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>A season pack checks every episode file, not only the largest (#917).</summary>
+    [Fact]
+    public async Task A_season_pack_folder_checks_every_episode_file()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "Downloads", ReleaseName)).FullName;
+        var episode1 = Path.Combine(folder, "S01E01.mkv");
+        var episode2 = Path.Combine(folder, "S01E02.mkv");
+        File.WriteAllText(episode1, "episode one, bigger");
+        File.WriteAllText(episode2, "e2");
+        foreach (var file in new[] { episode1, episode2 })
+        {
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
+        }
+
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = TelemetryWithSource(folder);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1", It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        // The larger file (checked first) passes; the smaller episode fails --
+        // proving the pack is not judged solely on its biggest file.
+        await RunWithProbe(scheduler, telemetry, blocked, checkEnabled: true, (path, _) =>
+            Task.FromResult(string.Equals(path, episode2, StringComparison.OrdinalIgnoreCase) ? Probe.Failed().Info : Probe.Ok().Info));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>"Not the film the title says", on strong evidence: the file's own embedded title names a different film (#917).</summary>
+    [Fact]
+    public async Task An_embedded_title_naming_a_different_film_fails()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out _);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1", It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.WithTitle("Some Completely Different Movie"), activity: activity);
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory,
+            It.Is<string>(message => message.Contains("title says", StringComparison.OrdinalIgnoreCase)),
+            It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>Weak evidence -- an embedded title that overlaps with the known one -- never fails a file (#917).</summary>
+    [Fact]
+    public async Task An_embedded_title_that_overlaps_the_known_title_is_weak_evidence_and_passes()
+    {
+        var scheduler = new Mock<IJobScheduler>();
+        scheduler.Setup(instance => instance.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((JobQueueItem)RuntimeHelpers.GetUninitializedObject(typeof(JobQueueItem)) with { Id = "import-job" });
+        var telemetry = Telemetry(out _);
+        var blocked = new Mock<IBlockedReleaseRepository>();
+
+        // "Sintel" is known; "Sintel Extended Cut" merely extends it.
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.WithTitle("Sintel Extended Cut"));
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static Mock<IActivityFeedRepository> Activity()
     {
         var activity = new Mock<IActivityFeedRepository>();
@@ -130,12 +269,16 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllText(file, "finished download");
         File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
+        return TelemetryWithSource(file);
+    }
 
+    private static Mock<IDownloadClientTelemetryService> TelemetryWithSource(string sourcePath)
+    {
         var summary = new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0);
         var item = new DownloadQueueItem(
             "queue-1", "client-1", "qBittorrent", "qbittorrent", "movies", "Sintel", ReleaseName,
             "deluno-movies", DownloadQueueStatuses.Completed, 1, 0, 0, 100, 100, 0, "Indexer", null,
-            DateTimeOffset.UnixEpoch, file, "library-1");
+            DateTimeOffset.UnixEpoch, sourcePath, "library-1");
         var overview = new DownloadTelemetryOverview(
             summary,
             [new DownloadClientTelemetrySnapshot(
@@ -155,7 +298,24 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
         Mock<IBlockedReleaseRepository> blocked,
         bool checkEnabled,
         Probe probe,
-        Mock<IActivityFeedRepository>? activity = null)
+        Mock<IActivityFeedRepository>? activity = null,
+        LibraryItem? libraryOverride = null,
+        Mock<IProcessorRepository>? processorRepositoryOverride = null)
+        => await RunWithProbe(
+            scheduler, telemetry, blocked, checkEnabled,
+            (_, _) => Task.FromResult(probe.Info),
+            activity, libraryOverride, processorRepositoryOverride);
+
+    /// <summary>Like <see cref="Run"/>, but lets a test answer differently per file path -- needed to prove a season pack's files are each checked (#917).</summary>
+    private async Task RunWithProbe(
+        Mock<IJobScheduler> scheduler,
+        Mock<IDownloadClientTelemetryService> telemetry,
+        Mock<IBlockedReleaseRepository> blocked,
+        bool checkEnabled,
+        Func<string, CancellationToken, Task<MediaProbeInfo>> probeByPath,
+        Mock<IActivityFeedRepository>? activity = null,
+        LibraryItem? libraryOverride = null,
+        Mock<IProcessorRepository>? processorRepositoryOverride = null)
     {
         var jobs = new Mock<IJobQueueRepository>();
         jobs.Setup(repository => repository.TryClaimScheduledPassAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
@@ -165,7 +325,7 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             .ReturnsAsync(new DispatchCatalogueLink("dispatch-1", "movie", "movie-1", IndexerName: "Indexer", LibraryId: "library-1"));
 
         var libraries = new Mock<ILibrariesRepository>();
-        libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Library()]);
+        libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([libraryOverride ?? Library()]);
 
         var movies = new Mock<IMovieCatalogRepository>();
         movies.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>()))
@@ -176,13 +336,15 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             .ReturnsAsync(Settings(checkEnabled));
 
         var probeService = new Mock<IMediaProbeService>();
-        probeService.Setup(service => service.ProbeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(probe.Info);
+        probeService.Setup(service => service.ProbeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns<string, CancellationToken>(probeByPath);
+
+        var processorRepository = processorRepositoryOverride ?? NoProcessorHandoffs();
 
         await new WorkPlanner(new FailingLogger(), jobs.Object, new ConfigurationBuilder().Build(), TimeProvider.System)
             .PlanImportAutomationAsync(
                 scheduler.Object,
-                Mock.Of<IProcessorRepository>(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>())
-                    == Task.FromResult<IReadOnlyList<ProcessorHandoffItem>>(Array.Empty<ProcessorHandoffItem>())),
+                processorRepository.Object,
                 libraries.Object,
                 new LibraryAvailabilityService(Mock.Of<IActivityFeedRepository>(), TimeProvider.System, NullLogger<LibraryAvailabilityService>.Instance),
                 telemetry.Object,
@@ -196,6 +358,15 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
                 probeService.Object,
                 blocked.Object,
                 Mock.Of<IQualityRepository>());
+    }
+
+    private static Mock<IProcessorRepository> NoProcessorHandoffs()
+    {
+        var processorRepository = new Mock<IProcessorRepository>();
+        processorRepository
+            .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ProcessorHandoffItem>());
+        return processorRepository;
     }
 
     private static PlatformSettingsSnapshot Settings(bool checkEnabled) => new(
@@ -238,12 +409,12 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
         DownloadIntegrityCheckEnabled: checkEnabled,
         DownloadIntegrityMinimumRuntimePercent: 80);
 
-    private LibraryItem Library()
+    private LibraryItem Library(string importWorkflow = "standard", string? processorName = null)
     {
         var now = DateTimeOffset.UnixEpoch;
         return new LibraryItem(
             "library-1", "Movies", "movies", "main", _root, Path.Combine(_root, "Downloads"), null, null, null,
-            true, true, "standard", null, null, 360, "block",
+            true, true, importWorkflow, processorName, null, 360, "block",
             true, true, true, 6, 6, 10, null, null, "active", false, null, null, now, now);
     }
 
@@ -274,5 +445,12 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             []));
 
         public static Probe Failed() => new(new MediaProbeInfo("succeeded", "ffprobe", null, 120 * 60, "mkv", null, [], [], []));
+
+        public static Probe WithTitle(string embeddedTitle) => new(new MediaProbeInfo(
+            "succeeded", "ffprobe", null, 120 * 60, "mkv", null,
+            [new MediaVideoStreamInfo(0, "h264", null, 3840, 2160, "yuv420p", 24, null, null)],
+            [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+            [],
+            embeddedTitle));
     }
 }

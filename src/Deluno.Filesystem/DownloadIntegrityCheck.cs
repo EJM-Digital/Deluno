@@ -40,9 +40,12 @@ public sealed record DownloadIntegrityResult(DownloadIntegrityOutcome Outcome, s
 /// that requires a language at all can fail a file for lacking one, so an
 /// install that never set a language preference sees no change here.</para>
 ///
-/// <para>Not yet checked: a folder-shaped download (a season pack, a movie
-/// with extras) is not resolved to "the" file to probe -- see the
-/// worker-side caller for where a folder is passed over today.</para>
+/// <para>The source may be a single file or a folder:
+/// <see cref="DownloadIntegrityFileResolver"/> resolves a folder to the
+/// film's own file (a movie in a folder, extras and samples set aside) or,
+/// for a season pack, to every episode file inside it -- each one gets its
+/// own run of every rule below, and the first failure ends the whole
+/// check.</para>
 /// </summary>
 public static class DownloadIntegrityCheck
 {
@@ -50,13 +53,52 @@ public static class DownloadIntegrityCheck
     private const double MaximumRuntimePercent = 200.0;
 
     public static async Task<DownloadIntegrityResult> RunAsync(
+        string sourcePath,
+        string releaseName,
+        int? knownRuntimeMinutes,
+        int minimumRuntimePercent,
+        IMediaProbeService probeService,
+        CancellationToken cancellationToken,
+        ProfileLanguagePreference? languagePreference = null,
+        // The title Deluno already knows for this grab (the catalogue's own
+        // title, not the release name) -- read by the "not the film/episode
+        // the title says" rule below. Null means Deluno has nothing to
+        // compare an embedded title tag against, so that rule never fires.
+        string? knownTitle = null)
+    {
+        var files = DownloadIntegrityFileResolver.Resolve(sourcePath);
+        if (files.Count == 0)
+        {
+            // Nothing recognisable to check yet -- still unpacking, or only a
+            // sample has arrived so far. Waited for, not failed.
+            return DownloadIntegrityResult.StillWriting;
+        }
+
+        // A season pack's files are each checked in turn; the first one that
+        // fails or is still settling ends the check for the whole download,
+        // the same as it would for a single file.
+        foreach (var filePath in files)
+        {
+            var result = await RunOnFileAsync(
+                filePath, releaseName, knownRuntimeMinutes, minimumRuntimePercent, probeService, cancellationToken, languagePreference, knownTitle);
+            if (result.Outcome != DownloadIntegrityOutcome.Pass)
+            {
+                return result;
+            }
+        }
+
+        return DownloadIntegrityResult.Passed;
+    }
+
+    private static async Task<DownloadIntegrityResult> RunOnFileAsync(
         string filePath,
         string releaseName,
         int? knownRuntimeMinutes,
         int minimumRuntimePercent,
         IMediaProbeService probeService,
         CancellationToken cancellationToken,
-        ProfileLanguagePreference? languagePreference = null)
+        ProfileLanguagePreference? languagePreference,
+        string? knownTitle)
     {
         // A file still being written or locked is waited for, not failed.
         if (!ImportFileReadiness.IsReady(filePath))
@@ -145,6 +187,52 @@ public static class DownloadIntegrityCheck
             }
         }
 
+        // "Not the film/episode the title says", the other strong-evidence
+        // route: the file's own embedded title tag names something else
+        // entirely. Anything less than a clean, confident mismatch -- no tag
+        // at all, a tag too short to mean much, or one that overlaps at all
+        // with the known title -- is weak or missing evidence and never fails
+        // a file (#917).
+        if (EmbeddedTitleContradicts(probe.EmbeddedTitle, knownTitle))
+        {
+            return DownloadIntegrityResult.Failed(
+                $"The file's own title says \"{probe.EmbeddedTitle}\", not \"{knownTitle}\". This may not be the right film or episode.");
+        }
+
         return DownloadIntegrityResult.Passed;
     }
+
+    /// <summary>
+    /// Whether an embedded title tag is strong evidence of a different film,
+    /// per #917's "only on strong evidence" rule. Deliberately conservative:
+    /// a missing tag, a short/generic one, or one that shares any overlap
+    /// with the known title (a studio's own longer or shorter naming, a
+    /// subtitle appended to the main title) is left alone.
+    /// </summary>
+    private static bool EmbeddedTitleContradicts(string? embeddedTitle, string? knownTitle)
+    {
+        if (string.IsNullOrWhiteSpace(embeddedTitle) || string.IsNullOrWhiteSpace(knownTitle))
+        {
+            return false;
+        }
+
+        var normalizedEmbedded = Normalize(embeddedTitle);
+        var normalizedKnown = Normalize(knownTitle);
+        if (normalizedEmbedded.Length < 3 || normalizedKnown.Length < 3)
+        {
+            return false;
+        }
+
+        if (normalizedEmbedded == normalizedKnown ||
+            normalizedEmbedded.Contains(normalizedKnown, StringComparison.Ordinal) ||
+            normalizedKnown.Contains(normalizedEmbedded, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string Normalize(string value)
+        => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 }

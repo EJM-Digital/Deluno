@@ -1343,10 +1343,14 @@ public sealed class WorkPlanner(
         ISeriesCatalogRepository seriesCatalogRepository,
         CancellationToken cancellationToken)
     {
+        // A folder-shaped download (a film in its own folder -- the common
+        // case -- or a season pack) is resolved to its own file(s) inside
+        // DownloadIntegrityCheck.RunAsync, not here, so both a plain file and
+        // a folder are let through this guard (#917).
         if (platformSettingsRepository is null ||
             mediaProbeService is null ||
             item.SourcePath is not { Length: > 0 } sourcePath ||
-            !File.Exists(sourcePath))
+            !(File.Exists(sourcePath) || Directory.Exists(sourcePath)))
         {
             return false;
         }
@@ -1361,6 +1365,7 @@ public sealed class WorkPlanner(
             ? null
             : await LanguagePreferenceForAsync(library, qualityRepository, cancellationToken);
         var knownRuntimeMinutes = await KnownRuntimeMinutesAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
+        var knownTitle = await KnownTitleAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken);
 
         var result = await DownloadIntegrityCheck.RunAsync(
             sourcePath,
@@ -1369,7 +1374,8 @@ public sealed class WorkPlanner(
             settings.DownloadIntegrityMinimumRuntimePercent,
             mediaProbeService,
             cancellationToken,
-            languagePreference);
+            languagePreference,
+            knownTitle);
 
         if (result.Outcome == DownloadIntegrityOutcome.StillWriting)
         {
@@ -1540,6 +1546,34 @@ public sealed class WorkPlanner(
 
         var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
         return movie?.RuntimeMinutes;
+    }
+
+    /// <summary>
+    /// The title Deluno already knows for this grab, read the same way as
+    /// <see cref="KnownRuntimeMinutesAsync"/> -- what Checkpoint A's "not the
+    /// film/episode the title says" rule compares a file's own embedded title
+    /// tag against (#917). Null under the same conditions.
+    /// </summary>
+    private static async Task<string?> KnownTitleAsync(
+        DispatchCatalogueLink? dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        {
+            return null;
+        }
+
+        if (CatalogueImportNaming.IsShowGrab(dispatch))
+        {
+            var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+            var series = seriesId is null ? null : await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
+            return series?.Title;
+        }
+
+        var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+        return movie?.Title;
     }
 
     private static async Task RecordUnmatchedProcessorOutputsAsync(

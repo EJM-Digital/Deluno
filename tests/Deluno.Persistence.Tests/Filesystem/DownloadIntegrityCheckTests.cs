@@ -164,12 +164,132 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
         Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
     }
 
+    /// <summary>A film in its own folder -- the common case -- is resolved to its own video file rather than passed over (#917).</summary>
+    [Fact]
+    public async Task A_movie_in_its_own_folder_is_resolved_to_its_video_file()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-integrity-folder-{Guid.NewGuid():n}")).FullName;
+        try
+        {
+            var video = Path.Combine(folder, "Sintel.2010.1080p.WEB-DL.mkv");
+            File.WriteAllText(video, "content");
+            File.SetLastWriteTimeUtc(video, DateTime.UtcNow.AddMinutes(-5));
+            File.WriteAllText(Path.Combine(folder, "Sintel.2010.1080p.WEB-DL.nfo"), "nfo");
+
+            var result = await DownloadIntegrityCheck.RunAsync(
+                folder, "Sintel.2010.2160p.WEB-DL", 120, 80, Probe.Ok(1920, 1080, 120 * 60), CancellationToken.None);
+
+            // The picture is 1080p, but the release name (used for the
+            // resolution rule) says 2160p -- proving the folder's own video
+            // file was actually opened and checked, not passed over.
+            Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+            Assert.Contains("Name said 2160p", result.Reason);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>A folder with nothing recognisable yet (still unpacking) is waited for, not failed (#917).</summary>
+    [Fact]
+    public async Task A_folder_with_no_video_file_yet_is_waited_for()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-integrity-empty-{Guid.NewGuid():n}")).FullName;
+        try
+        {
+            var result = await DownloadIntegrityCheck.RunAsync(
+                folder, "Sintel.2010.1080p.WEB-DL", 120, 80, Probe.Ok(1920, 1080, 120 * 60), CancellationToken.None);
+
+            Assert.Equal(DownloadIntegrityOutcome.StillWriting, result.Outcome);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>A season pack folder checks each episode file (#917).</summary>
+    [Fact]
+    public async Task A_season_pack_folder_fails_on_any_episode_that_fails()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"deluno-integrity-pack-{Guid.NewGuid():n}")).FullName;
+        try
+        {
+            var episode1 = Path.Combine(folder, "Show.S01E01.1080p.WEB-DL.mkv");
+            var episode2 = Path.Combine(folder, "Show.S01E02.1080p.WEB-DL.mkv");
+            File.WriteAllText(episode1, "bigger content, checked first");
+            File.WriteAllText(episode2, "e2");
+            File.SetLastWriteTimeUtc(episode1, DateTime.UtcNow.AddMinutes(-5));
+            File.SetLastWriteTimeUtc(episode2, DateTime.UtcNow.AddMinutes(-5));
+
+            var okInfo = new MediaProbeInfo(
+                "succeeded", "ffprobe", null, 24 * 60, "mkv", null,
+                [new MediaVideoStreamInfo(0, "h264", null, 1920, 1080, "yuv420p", 24, null, null)],
+                [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+                []);
+            var noVideoInfo = new MediaProbeInfo(
+                "succeeded", "ffprobe", null, 24 * 60, "mkv", null,
+                [],
+                [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+                []);
+            var probe = new PerPathProbe(path => string.Equals(path, episode2, StringComparison.OrdinalIgnoreCase)
+                ? noVideoInfo
+                : okInfo);
+
+            var result = await DownloadIntegrityCheck.RunAsync(
+                folder, "Show.S01E01.1080p.WEB-DL", null, 80, probe, CancellationToken.None);
+
+            Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+            Assert.Contains("No video stream", result.Reason);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>"Not the film the title says", on strong evidence: the embedded title tag names a different film (#917).</summary>
+    [Fact]
+    public async Task An_embedded_title_naming_a_different_film_fails()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "Some Completely Different Movie"), "Sintel.2010.1080p.WEB-DL", 120, knownTitle: "Sintel");
+
+        Assert.Equal(DownloadIntegrityOutcome.Failed, result.Outcome);
+        Assert.Contains("title says", result.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Some Completely Different Movie", result.Reason);
+    }
+
+    /// <summary>Weak evidence -- no known title to compare against -- never fails a file (#917).</summary>
+    [Fact]
+    public async Task An_embedded_title_with_no_known_title_to_compare_passes()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "Some Completely Different Movie"), "Sintel.2010.1080p.WEB-DL", 120, knownTitle: null);
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    /// <summary>Weak evidence -- an embedded title overlapping the known one -- never fails a file (#917).</summary>
+    [Fact]
+    public async Task An_embedded_title_overlapping_the_known_title_passes()
+    {
+        var result = await Run(Probe.WithTitle(1920, 1080, 120 * 60, "Sintel Extended Cut"), "Sintel.2010.1080p.WEB-DL", 120, knownTitle: "Sintel");
+
+        Assert.Equal(DownloadIntegrityOutcome.Pass, result.Outcome);
+    }
+
+    private sealed class PerPathProbe(Func<string, MediaProbeInfo> byPath) : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken) => Task.FromResult(byPath(path));
+    }
+
     private async Task<DownloadIntegrityResult> Run(
         IMediaProbeService probe,
         string releaseName,
         int knownRuntimeMinutes,
-        ProfileLanguagePreference? languagePreference = null)
-        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None, languagePreference);
+        ProfileLanguagePreference? languagePreference = null,
+        string? knownTitle = null)
+        => await DownloadIntegrityCheck.RunAsync(_path, releaseName, knownRuntimeMinutes, minimumRuntimePercent: 80, probe, CancellationToken.None, languagePreference, knownTitle);
 
     private sealed class Probe(MediaProbeInfo info) : IMediaProbeService
     {
@@ -194,6 +314,13 @@ public sealed class DownloadIntegrityCheckTests : IDisposable
             []));
 
         public static Probe Failed(string message) => new(new MediaProbeInfo("failed", "ffprobe", message, null, null, null, [], [], []));
+
+        public static Probe WithTitle(int width, int height, double durationSeconds, string embeddedTitle) => new(new MediaProbeInfo(
+            "succeeded", "ffprobe", null, durationSeconds, "mkv", null,
+            [new MediaVideoStreamInfo(0, "h264", null, width, height, "yuv420p", 24, null, null)],
+            [new MediaAudioStreamInfo(1, "aac", null, 2, "stereo", 48000, null, "eng")],
+            [],
+            embeddedTitle));
 
         public static Probe Unavailable() => new(new MediaProbeInfo("unavailable", "ffprobe", "ffprobe is not installed.", null, null, null, [], [], []));
     }

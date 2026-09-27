@@ -122,7 +122,8 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
                 ParseLong(document.Format?.BitRate),
                 video,
                 audio,
-                subtitles);
+                subtitles,
+                TitleOf(document.Format?.Tags));
         }
         catch (OperationCanceledException)
         {
@@ -168,11 +169,15 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
     private static MediaProbeInfo Unreadable(string message)
         => new("unreadable", "ffprobe", message, null, null, null, [], [], []);
 
+
     private static bool IsDisposed(FfprobeStream stream, string flag)
         => stream.Disposition is not null && stream.Disposition.TryGetValue(flag, out var value) && value == 1;
 
     private static string? TitleOf(FfprobeStream stream)
-        => stream.Tags is not null && stream.Tags.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title)
+        => TitleOf(stream.Tags);
+
+    private static string? TitleOf(IReadOnlyDictionary<string, string>? tags)
+        => tags is not null && tags.TryGetValue("title", out var title) && !string.IsNullOrWhiteSpace(title)
             ? title
             : null;
 
@@ -216,7 +221,8 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
     private sealed record FfprobeFormat(
         [property: JsonPropertyName("format_name")] string? FormatName,
         [property: JsonPropertyName("duration")] string? Duration,
-        [property: JsonPropertyName("bit_rate")] string? BitRate);
+        [property: JsonPropertyName("bit_rate")] string? BitRate,
+        [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags);
 
     private sealed record FfprobeStream(
         [property: JsonPropertyName("index")] int Index,
