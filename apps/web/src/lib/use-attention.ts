@@ -4,6 +4,7 @@ import {
   fetchPageItems,
   type DownloadDispatchItem,
   type DownloadTelemetryOverview,
+  type HealthCheckSummary,
   type IndexerItem,
   type MovieImportRecoverySummary,
   type MovieWantedSummary,
@@ -34,6 +35,8 @@ export interface AttentionSnapshot {
   failedImportJobs: number;
   movieWanted: number;
   tvWanted: number;
+  /** Health checks currently reporting a problem that is not snoozed (#909). */
+  healthProblems: number;
   loading: boolean;
 }
 
@@ -45,6 +48,7 @@ const empty: AttentionSnapshot = {
   failedImportJobs: 0,
   movieWanted: 0,
   tvWanted: 0,
+  healthProblems: 0,
   loading: true
 };
 
@@ -55,7 +59,7 @@ const empty: AttentionSnapshot = {
  * downloads on Transfers asking for Try again or Dismiss (#556).
  */
 export function attentionTotal(snapshot: AttentionSnapshot): number {
-  return snapshot.failedJobs + snapshot.indexerAlerts + snapshot.downloadsNeedingAction;
+  return snapshot.failedJobs + snapshot.indexerAlerts + snapshot.downloadsNeedingAction + snapshot.healthProblems;
 }
 
 export function useAttention(pollMs = 45000) {
@@ -64,7 +68,7 @@ export function useAttention(pollMs = 45000) {
   const load = useCallback(async () => {
     setSnapshot((s) => ({ ...s, loading: true }));
     try {
-      const [failed, indexers, movieWanted, seriesWanted, movieRecovery, seriesRecovery, dispatches, handoffs, telemetry, orphans] = await Promise.all([
+      const [failed, indexers, movieWanted, seriesWanted, movieRecovery, seriesRecovery, dispatches, handoffs, telemetry, orphans, health] = await Promise.all([
         fetchFailedJobs().catch(() => []),
         fetchJson<IndexerItem[]>("/api/indexers").catch(() => []),
         fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => null),
@@ -75,7 +79,9 @@ export function useAttention(pollMs = 45000) {
         fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60").catch(() => []),
         fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch(() => []),
         fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
-        fetchJson<OrphanedDownloadItem[]>("/api/download-clients/orphans").catch(() => [])
+        fetchJson<OrphanedDownloadItem[]>("/api/download-clients/orphans").catch(() => []),
+        // #909: the same summary System -> Health and the Dashboard tile read.
+        fetchJson<HealthCheckSummary>("/api/system/health/summary").catch(() => null)
       ]);
 
       // A job Deluno will try again on its own is not one the pill should
@@ -94,6 +100,7 @@ export function useAttention(pollMs = 45000) {
         failedImportJobs: stopped.filter((job) => job.jobType === "filesystem.import.execute").length,
         movieWanted: movieWanted?.totalWanted ?? 0,
         tvWanted: seriesWanted?.totalWanted ?? 0,
+        healthProblems: health?.unsnoozedProblemCount ?? 0,
         loading: false
       });
     } catch {
@@ -113,6 +120,9 @@ export function useAttention(pollMs = 45000) {
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     if (FAILED_JOB_CATEGORIES.has(event.category)) void load();
   });
+  // #909: a health check starting or clearing lights (or clears) the bell's
+  // dot immediately, rather than waiting for the next poll.
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => void load());
 
   return { ...snapshot, refresh: load };
 }

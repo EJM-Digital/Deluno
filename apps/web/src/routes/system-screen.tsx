@@ -25,6 +25,7 @@ import { AuditTimeline, type TimelineEvent } from "../components/shell/audit-tim
 import { SaveStatus, useSaveStatus } from "../components/shell/save-status";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { categoryLabel } from "../lib/activity-format";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
@@ -33,6 +34,8 @@ import {
   type BackupSettingsSnapshot,
   type DownloadClientItem,
   type ProcessorConnectionItem,
+  type HealthCheckListResponse,
+  type HealthCheckResultItem,
   type IndexerItem,
   type JobQueueItem,
   type LibraryItem,
@@ -85,10 +88,11 @@ interface SystemLoaderData {
   recycleBin: RecycleBinItem[];
   recycleBinSettings: RecycleBinSettings;
   lanAccess: LanAccessStatus | null;
+  healthChecks: HealthCheckListResponse;
 }
 
 export async function systemLoader(): Promise<SystemLoaderData> {
-  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess] = await Promise.all([
+  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess, healthChecks] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
@@ -112,17 +116,20 @@ export async function systemLoader(): Promise<SystemLoaderData> {
     // as if they were live; Kestrel actually binds from Server:Port /
     // Server:AllowLan configuration, so this reads the same effective values
     // LanAccessNotice does (#736).
-    fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null)
+    fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null),
+    // #909: every health check's latest result, read by System -> Health, the
+    // Dashboard tile, the bell and outbound notifications alike.
+    fetchJson<HealthCheckListResponse>("/api/system/health")
   ]);
 
-  return { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
+  return { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus };
 }
 
 export function SystemPage() {
   const location = useLocation();
   const revalidator = useRevalidator();
   const loaderData = useLoaderData() as SystemLoaderData;
-  const { activity, automation, backupSettings, backups, downloadClients, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
+  const { activity, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
@@ -148,6 +155,11 @@ export function SystemPage() {
   const [liveActiveJobs, setLiveActiveJobs] = useState(activeJobs);
   useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => n + 1));
   useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, () => setLiveActiveJobs((n) => Math.max(0, n - 1)));
+  // #909: a health check starting or clearing revalidates the whole loader,
+  // the same coarse refresh SettingsChanged and friends already use here --
+  // health rows are read once per page load, not worth a live socket of
+  // their own.
+  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => revalidator.revalidate());
 
   // The timeline has its own tab; repeating all 500 events here made Health
   // three times taller than everything on it that actually answers "is it well?".
@@ -203,6 +215,8 @@ export function SystemPage() {
       <ProviderHealthDrawer selection={selectedProvider} onClose={() => setSelectedProvider(null)} />
     </ListCard>
   );
+
+  const healthChecksCard = <HealthChecksCard checks={healthChecks.checks} onChanged={() => revalidator.revalidate()} />;
 
   const jobsCard = (
     <ListCard title="Background jobs" count={jobs.length ? `latest ${Math.min(jobs.length, 12)} of ${jobs.length}` : undefined}>
@@ -293,11 +307,13 @@ export function SystemPage() {
             ? [{ label: "Processors", value: `${healthyProcessors}/${enabledProcessors.length}`, help: healthyProcessors === enabledProcessors.length ? "all answering" : "one is not answering", tone: healthyProcessors < enabledProcessors.length ? "warning" as const : undefined }]
             : []),
           { label: "Alerts", value: String(monitoring.alerts.length), help: monitoring.alerts.length ? "need a look" : "nothing raised", tone: monitoring.alerts.length ? "danger" : undefined },
+          { label: "Health", value: String(healthChecks.summary.problemCount), help: healthChecks.summary.problemCount ? "checks need attention" : "all checks pass", tone: healthChecks.summary.unsnoozedProblemCount ? "danger" : undefined },
           { label: "Media roots", value: String(mediaRoots), help: "folders Deluno writes to" }
         ]}
       />
 
       <LanAccessNotice />
+      {healthChecksCard}
       {monitoring.alerts.length ? <MonitoringCard monitoring={monitoring} /> : null}
       {providerCard}
       <SystemTasksCard tasks={systemTasks} />
@@ -1304,6 +1320,103 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
         onSave={() => preferences && void savePreferences(preferences)}
       />
     </>
+  );
+}
+
+/**
+ * Every health check Deluno runs, in one list (#909): last result, when it
+ * last ran, and -- for a problem -- the cause and fix in plain words. Stays
+ * on screen until the same check reports ok again; a snooze hides it from
+ * asking for attention without pretending it passed.
+ */
+function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem[]; onChanged: () => void }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const problems = checks.filter((check) => check.status !== "ok");
+  const sorted = [...checks].sort((a, b) => {
+    const rank = (status: string) => (status === "problem" ? 0 : status === "unknown" ? 1 : 2);
+    return rank(a.status) - rank(b.status);
+  });
+
+  async function snooze(check: HealthCheckResultItem) {
+    setBusyId(check.id);
+    try {
+      await authedFetch(`/api/system/health/${encodeURIComponent(check.id)}/snooze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hours: 24 })
+      });
+      onChanged();
+    } catch {
+      // The list simply keeps showing the problem; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function unsnooze(check: HealthCheckResultItem) {
+    setBusyId(check.id);
+    try {
+      await authedFetch(`/api/system/health/${encodeURIComponent(check.id)}/unsnooze`, { method: "POST" });
+      onChanged();
+    } catch {
+      // As above.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <ListCard
+      title="Health"
+      count={problems.length === 0 ? "everything checked out" : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
+    >
+      {sorted.length === 0 ? (
+        <ListEmpty title="No checks have run yet" description="Deluno checks download clients, indexers, libraries and connections every fifteen minutes." />
+      ) : (
+        <ListTable
+          columns={[
+            { label: "Check" },
+            { label: "Result", width: "minmax(0,1.6fr)" },
+            { label: "Status", width: LIST_TRACK.status, mobile: true }
+          ]}
+          chevron={false}
+        >
+          {sorted.map((check) => {
+            const isSnoozed = check.snoozedUntilUtc !== null && new Date(check.snoozedUntilUtc).getTime() > Date.now();
+            return (
+              <ListRow key={check.id}>
+                <ListNameCell name={check.name} sub={categoryLabel(check.category)} />
+                <ListCell
+                  primary={check.message}
+                  secondary={check.status === "problem" && (check.cause || check.fix) ? [check.cause, check.fix].filter(Boolean).join(" ") : undefined}
+                />
+                <ListCell mobile>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Chip tone={check.status === "ok" ? "ok" : check.status === "problem" ? (isSnoozed ? "idle" : "bad") : "warn"}>
+                      {check.status === "ok" ? "ok" : isSnoozed ? "snoozed" : check.status}
+                    </Chip>
+                    {check.status !== "ok" ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[length:var(--type-caption)]"
+                        disabled={busyId === check.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void (isSnoozed ? unsnooze(check) : snooze(check));
+                        }}
+                      >
+                        {isSnoozed ? "Unsnooze" : "Snooze 24h"}
+                      </Button>
+                    ) : null}
+                  </div>
+                </ListCell>
+              </ListRow>
+            );
+          })}
+        </ListTable>
+      )}
+    </ListCard>
   );
 }
 

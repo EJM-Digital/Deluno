@@ -185,11 +185,13 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
         aria-label={
           attention.failedJobs > 0
             ? `Notifications — ${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}`
-            : "Notifications"
+            : attention.healthProblems > 0
+              ? `Notifications — ${attention.healthProblems} health check${attention.healthProblems === 1 ? "" : "s"} need attention`
+              : "Notifications"
         }
       >
         <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
-        {attention.failedJobs > 0 ? (
+        {attention.failedJobs > 0 || attention.healthProblems > 0 ? (
           <span className="absolute right-1.5 top-1.5 h-[5px] w-[5px] rounded-full bg-destructive shadow-[0_0_0_1.5px_hsl(var(--background)),0_0_6px_hsl(var(--destructive)/0.7)]" />
         ) : null}
       </button>
