@@ -52,7 +52,8 @@ const PROVIDERS = [
   { label: "TMDb", value: "tmdb" },
   { label: "TMDb person", value: "tmdb-person" },
   { label: "Letterboxd", value: "letterboxd" },
-  { label: "RSS feed", value: "rss" }
+  { label: "RSS feed", value: "rss" },
+  { label: "StevenLu", value: "stevenlu" }
 ];
 const TMDB_PERSON_CREDIT_TYPES = [
   { value: "cast", label: "Cast", description: "Films and shows where this person acts." },
@@ -807,6 +808,8 @@ function listAddressHelp(provider: string) {
       return "Paste a public Letterboxd list URL or its RSS feed.";
     case "rss":
       return "Paste a public RSS or Atom feed URL.";
+    case "stevenlu":
+      return "Paste a StevenLu-format JSON feed URL — a plain list of { title, imdb_id } entries, movies only.";
     default:
       return "Paste a public list URL. Deluno recognises compatible list sites automatically.";
   }

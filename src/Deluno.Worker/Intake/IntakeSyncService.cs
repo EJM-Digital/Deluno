@@ -562,6 +562,7 @@ public sealed class IntakeSyncService(
             "mdblist" => await FetchMdbListAsync(source, mediaType, cancellationToken),
             "imdb" => await FetchImdbListAsync(source, mediaType, cancellationToken),
             "trakt" => await FetchTraktListAsync(source, mediaType, cancellationToken),
+            "stevenlu" => await FetchStevenLuListAsync(source, cancellationToken),
             "rss" or "letterboxd" or "url-list" => await FetchGenericListAsync(source, mediaType, cancellationToken),
             _ => await FetchGenericListAsync(source, mediaType, cancellationToken)
         };
@@ -660,6 +661,53 @@ public sealed class IntakeSyncService(
             "writing" => string.Equals(department, "Writing", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
+    }
+
+    /// <summary>
+    /// Radarr's built-in StevenLu curated list (#847): a plain JSON array of
+    /// <c>{ "title": "...", "imdb_id": "tt..." }</c> entries, movies only.
+    /// Matched entries flow through the same intake-to-library pipeline
+    /// (dedupe, routing, search-on-add) as every other list source.
+    /// </summary>
+    private async Task<IReadOnlyList<IntakeEntry>> FetchStevenLuListAsync(IntakeSourceItem source, CancellationToken cancellationToken)
+    {
+        var url = source.FeedUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new InvalidOperationException("StevenLu source requires a feed URL.");
+        }
+
+        using var client = httpClientFactory.CreateClient(IntakeHttpClientName);
+        var json = await client.GetStringAsync(url, cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var results = new List<IntakeEntry>();
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            var title = ReadString(item, "title");
+            var imdbId = ReadString(item, "imdb_id");
+            if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(imdbId))
+            {
+                continue;
+            }
+
+            results.Add(new IntakeEntry(
+                Title: title,
+                Year: null,
+                MediaType: "movies",
+                ImdbId: string.IsNullOrWhiteSpace(imdbId) ? null : imdbId,
+                GenresCsv: string.Empty,
+                Rating: null,
+                ReleaseDateUtc: null,
+                Certification: null,
+                Audience: "any"));
+        }
+
+        return results;
     }
 
     private async Task<IReadOnlyList<IntakeEntry>> FetchTmdbListAsync(IntakeSourceItem source, string mediaType, CancellationToken cancellationToken)

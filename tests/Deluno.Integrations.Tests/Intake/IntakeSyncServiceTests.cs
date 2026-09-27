@@ -455,6 +455,58 @@ public sealed class IntakeSyncServiceTests
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task PreviewAsync_parses_a_stevenlu_feeds_title_and_imdb_id_entries()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-stevenlu",
+            Provider = "stevenlu",
+            FeedUrl = "https://s3.amazonaws.com/popular-movies/movies.json"
+        };
+        var platform = new Mock<IPlatformSettingsRepository>();
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([CreateMovieLibrary()]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+
+        var movies = new Mock<IMovieCatalogRepository>();
+        movies.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            new Mock<IJobQueueRepository>().Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            new Mock<IMetadataProvider>().Object,
+            new Mock<IMediaDecisionService>().Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            TimeProvider.System,
+            new SingleClientFactory(new StevenLuHandler()),
+            NullLogger<IntakeSyncService>.Instance);
+
+        var preview = await service.PreviewAsync(source.Id, CancellationToken.None);
+
+        Assert.Equal(2, preview.FetchedCount);
+        Assert.Collection(
+            preview.Items,
+            first =>
+            {
+                Assert.Equal("Arrival", first.Title);
+                Assert.Equal("tt2543164", first.ImdbId);
+                Assert.Equal("movies", first.MediaType);
+            },
+            second =>
+            {
+                Assert.Equal("Sicario", second.Title);
+                Assert.Equal("tt3397884", second.ImdbId);
+            });
+    }
+
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
@@ -487,6 +539,21 @@ public sealed class IntakeSyncServiceTests
             {
                 Content = new StringContent(
                     "[{\"title\":\"90 Day Fianc\\u00e9\",\"release_year\":2014,\"imdb_id\":\"tt3469050\",\"mediatype\":\"show\"}]",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
+    private sealed class StevenLuHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Equal("https://s3.amazonaws.com/popular-movies/movies.json", request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "[{\"title\":\"Arrival\",\"imdb_id\":\"tt2543164\"},{\"title\":\"Sicario\",\"imdb_id\":\"tt3397884\"}]",
                     Encoding.UTF8,
                     "application/json")
             });
