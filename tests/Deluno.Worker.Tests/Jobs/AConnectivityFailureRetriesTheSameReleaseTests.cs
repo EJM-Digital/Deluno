@@ -29,6 +29,7 @@ namespace Deluno.Worker.Tests.Jobs;
 public sealed class AConnectivityFailureRetriesTheSameReleaseTests
 {
     private const string Release = "Tears.of.Steel.2012.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+    private const string CandidateHash = "abc123hash-nzo-guid";
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-22T00:00:00Z");
 
     [Theory]
@@ -71,6 +72,29 @@ public sealed class AConnectivityFailureRetriesTheSameReleaseTests
                     request.PayloadJson.Contains(Release) &&
                     request.PayloadJson.Contains("http://fixture.invalid/release.nzb") &&
                     request.PayloadJson.Contains("client-1")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// #874/#942: the candidate's own hash/NZB id is carried into the retry
+    /// payload, so if the retry itself turns out to be a dead release, it
+    /// still blocklists keyed on the release's identity rather than only
+    /// its name.
+    /// </summary>
+    [Fact]
+    public async Task The_scheduled_retry_carries_the_candidates_hash()
+    {
+        var world = new World(IntegrationFailureKind.Unavailable);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.Scheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request =>
+                    request.JobType == "download-client.retry-grab" &&
+                    request.PayloadJson != null &&
+                    request.PayloadJson.Contains(CandidateHash)),
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -224,7 +248,7 @@ public sealed class AConnectivityFailureRetriesTheSameReleaseTests
                     It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>()))
                 .ReturnsAsync([]);
 
-            var candidate = new MediaSearchCandidate(Release, "indexer-1", "Fixture", "WEB 1080p", 100, true, "Best.", DownloadUrl: "http://fixture.invalid/release.nzb");
+            var candidate = new MediaSearchCandidate(Release, "indexer-1", "Fixture", "WEB 1080p", 100, true, "Best.", DownloadUrl: "http://fixture.invalid/release.nzb", TorrentHashOrItemId: CandidateHash);
             Pipeline.Setup(pipeline => pipeline.PlanAsync(It.IsAny<AcquisitionDecisionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new AcquisitionDecisionPlan(
                     new MediaSearchPlan(candidate, [candidate], "Found one."),

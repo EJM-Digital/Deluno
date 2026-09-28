@@ -20,6 +20,7 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
 {
     private const string Release = "Tears.of.Steel.2012.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
     private const string DownloadUrl = "http://fixture.invalid/release.nzb";
+    private const string CandidateHash = "abc123hash-nzo-guid";
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-22T00:00:00Z");
 
     [Fact]
@@ -97,6 +98,11 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
         await world.Handler().HandleAsync(world.Job(attemptNumber: 1), CancellationToken.None);
 
         world.BlockedReleases.Verify(repository => repository.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Once);
+        world.BlockedReleases.Verify(
+            repository => repository.BlockAsync(
+                It.Is<BlockedRelease>(release => release.TorrentHashOrItemId == CandidateHash),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
         world.Scheduler.Verify(
             scheduler => scheduler.EnqueueAsync(
                 It.Is<EnqueueJobRequest>(request => request.PayloadJson != null && request.PayloadJson.Contains("\"AttemptNumber\"")),
@@ -161,7 +167,8 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
                     Priority = (int?)null,
                     Password = (string?)null,
                     TorrentFile = (byte[]?)null,
-                    AttemptNumber = attemptNumber
+                    AttemptNumber = attemptNumber,
+                    TorrentHashOrItemId = CandidateHash
                 }));
     }
 

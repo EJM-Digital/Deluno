@@ -34,6 +34,7 @@ namespace Deluno.Worker.Tests.Jobs;
 public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
 {
     private const string Release = "Tears.of.Steel.2012.1080p.WEB-DL.DDP5.1.H.264-DELUNO";
+    private const string CandidateHash = "abc123hash-nzo-guid";
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-22T00:00:00Z");
 
     [Fact]
@@ -194,6 +195,54 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
             Times.Never);
     }
 
+    /// <summary>
+    /// #874/#942: the block is keyed on the release's identity, not only its
+    /// name, so a renamed re-upload of the same dead content on another
+    /// indexer is still caught. The candidate's own hash/NZB id, known at
+    /// grab time, is stored on the blocked release rather than left null.
+    /// </summary>
+    [Fact]
+    public async Task A_dead_link_block_carries_the_candidates_hash_for_a_movie()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.MoviesHandler().HandleAsync(LibraryJob("movies"), CancellationToken.None);
+
+        world.BlockedReleases.Verify(
+            repository => repository.BlockAsync(
+                It.Is<BlockedRelease>(release => release.TorrentHashOrItemId == CandidateHash),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_dead_link_block_carries_the_candidates_hash_for_a_series()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.TvHandler().HandleAsync(LibraryJob("tv"), CancellationToken.None);
+
+        world.BlockedReleases.Verify(
+            repository => repository.BlockAsync(
+                It.Is<BlockedRelease>(release => release.TorrentHashOrItemId == CandidateHash),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task A_dead_link_block_carries_the_candidates_hash_for_an_episode()
+    {
+        var world = new World(DownloadQueueStatuses.DeadRelease);
+
+        await world.EpisodeHandler().HandleAsync(EpisodeJob(), CancellationToken.None);
+
+        world.BlockedReleases.Verify(
+            repository => repository.BlockAsync(
+                It.Is<BlockedRelease>(release => release.TorrentHashOrItemId == CandidateHash),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task A_successful_grab_is_never_blocklisted()
     {
@@ -269,7 +318,7 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
                     It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>()))
                 .ReturnsAsync([]);
 
-            var candidate = new MediaSearchCandidate(Release, "indexer-1", "Fixture", "WEB 1080p", 100, true, "Best.", DownloadUrl: "http://fixture.invalid/release.nzb");
+            var candidate = new MediaSearchCandidate(Release, "indexer-1", "Fixture", "WEB 1080p", 100, true, "Best.", DownloadUrl: "http://fixture.invalid/release.nzb", TorrentHashOrItemId: CandidateHash);
             Pipeline.Setup(pipeline => pipeline.PlanAsync(It.IsAny<AcquisitionDecisionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new AcquisitionDecisionPlan(
                     new MediaSearchPlan(candidate, [candidate], "Found one."),

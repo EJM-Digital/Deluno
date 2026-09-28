@@ -214,7 +214,8 @@ public sealed class EpisodeSearchJobHandler(
                 cancellationToken,
                 jobScheduler,
                 payload.LibraryId,
-                payload.LibraryId);
+                payload.LibraryId,
+                bestCandidate.TorrentHashOrItemId);
 
             await SearchExecutionSupport.RecordDuplicateFollowAsync(
                 activityFeedRepository,
@@ -236,7 +237,8 @@ public sealed class EpisodeSearchJobHandler(
                 seriesItem?.Title ?? bestCandidate!.ReleaseName,
                 downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
-                cancellationToken);
+                cancellationToken,
+                bestCandidate.TorrentHashOrItemId);
 
             await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                 activityFeedRepository,

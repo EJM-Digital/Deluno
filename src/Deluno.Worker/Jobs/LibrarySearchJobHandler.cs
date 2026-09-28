@@ -296,7 +296,8 @@ public abstract class LibrarySearchJobHandler(
                     cancellationToken,
                     jobScheduler,
                     payload.LibraryId,
-                    payload.LibraryName);
+                    payload.LibraryName,
+                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,
@@ -318,7 +319,8 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
-                    cancellationToken);
+                    cancellationToken,
+                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                     activityFeedRepository,
@@ -953,7 +955,8 @@ public abstract class LibrarySearchJobHandler(
                     cancellationToken,
                     jobScheduler,
                     payload.LibraryId,
-                    payload.LibraryName);
+                    payload.LibraryName,
+                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,
@@ -975,7 +978,8 @@ public abstract class LibrarySearchJobHandler(
                     candidate.Title,
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
-                    cancellationToken);
+                    cancellationToken,
+                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                     activityFeedRepository,

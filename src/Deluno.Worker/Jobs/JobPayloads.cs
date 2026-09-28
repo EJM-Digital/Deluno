@@ -93,7 +93,11 @@ internal static class JobPayloads
         int? Priority,
         string? Password,
         byte[]? TorrentFile,
-        int AttemptNumber);
+        int AttemptNumber,
+        // #874/#942: the candidate's hash or NZB id, when the original
+        // search knew one, so a retry that turns out dead still blocklists
+        // keyed on the release's identity rather than only its name.
+        string? TorrentHashOrItemId = null);
 
     /// <summary>
     /// A targeted library search an add endpoint wants to run once this

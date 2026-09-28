@@ -96,7 +96,13 @@ internal static class SearchExecutionSupport
         CancellationToken cancellationToken,
         IJobScheduler? jobScheduler = null,
         string? libraryId = null,
-        string? libraryName = null)
+        string? libraryName = null,
+        // #874/#942: the candidate's own hash or NZB id, when the search
+        // that grabbed it knew one — carried through so the block is keyed
+        // on the release's identity, not only its name. A renamed re-upload
+        // of the same dead content on another indexer is still caught
+        // without this; a hash key catches it even sooner.
+        string? torrentHashOrItemId = null)
     {
         if (blockedReleases is null || grabResult.Status != DownloadQueueStatuses.DeadRelease)
         {
@@ -114,7 +120,7 @@ internal static class SearchExecutionSupport
                 title,
                 ImportFailurePolicy.DeadOrBrokenLink,
                 grabResult.Message,
-                null,
+                string.IsNullOrWhiteSpace(torrentHashOrItemId) ? null : torrentHashOrItemId,
                 null,
                 null,
                 DateTimeOffset.MinValue),
@@ -273,7 +279,11 @@ internal static class SearchExecutionSupport
         string title,
         string downloadClientId,
         string clientName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // #874/#942: carried into the retry payload so a resend that turns
+        // out to be a dead release blocklists it with its hash/NZB id, the
+        // same as the first attempt would have.
+        string? torrentHashOrItemId = null)
     {
         if (jobScheduler is null || grabResult.Succeeded || !IsConnectivityOrSetupProblem(grabResult.Failure))
         {
@@ -293,7 +303,8 @@ internal static class SearchExecutionSupport
             grabResult.ReleaseName,
             request,
             attemptNumber: 1,
-            cancellationToken);
+            cancellationToken,
+            torrentHashOrItemId);
 
         await activityFeedRepository.RecordActivityAsync(
             "download.client.connectivity-retry-scheduled",
@@ -324,7 +335,8 @@ internal static class SearchExecutionSupport
         string releaseName,
         DownloadClientGrabRequest request,
         int attemptNumber,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? torrentHashOrItemId = null)
     {
         var retryAt = timeProvider.GetUtcNow() + ConnectivityRetryDelay;
         var payload = new JobPayloads.DownloadClientRetryGrabPayload(
@@ -344,7 +356,8 @@ internal static class SearchExecutionSupport
             request.Priority,
             request.Password,
             request.TorrentFile,
-            attemptNumber);
+            attemptNumber,
+            torrentHashOrItemId);
 
         await jobScheduler.EnqueueAsync(
             new EnqueueJobRequest(
