@@ -5,6 +5,29 @@ using System.Text.Json.Serialization;
 namespace Deluno.Tray;
 
 /// <summary>
+/// A separate installer that must run and succeed before its owning
+/// component's own installer is attempted -- e.g. Transmission's .msi
+/// LaunchConditions refuse with exit code 1603 ("The Visual C++ Runtime is
+/// not installed or is outdated") on a machine that has never installed
+/// anything built with a recent MSVC toolchain, which a clean Windows Server
+/// VM is. Verified and run the same way as any other bundled installer:
+/// downloaded, checked against <see cref="MinimumBytes"/> and either a
+/// pinned checksum or <see cref="MustBeSigned"/>, then run -- never "just
+/// this once" unverified. Skipped when <see cref="SkipRegistryValueName"/>
+/// already reads non-zero under HKLM\<see cref="SkipRegistryKeyPath"/>, so a
+/// machine that already has the runtime is never asked to reinstall it.
+/// </summary>
+public sealed record BundledComponentPrerequisite(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("url")] string Url,
+    [property: JsonPropertyName("fileName")] string FileName,
+    [property: JsonPropertyName("minimumBytes")] long MinimumBytes,
+    [property: JsonPropertyName("mustBeSigned")] bool MustBeSigned,
+    [property: JsonPropertyName("silentArgs")] string? SilentArgs,
+    [property: JsonPropertyName("skipRegistryKeyPath")] string SkipRegistryKeyPath,
+    [property: JsonPropertyName("skipRegistryValueName")] string SkipRegistryValueName);
+
+/// <summary>
 /// The six components the installer's picker can offer (#640): five download
 /// clients and Weir. Read from the embedded copy of
 /// <c>installer/bundled-components.json</c>, so what ships is exactly what the
@@ -30,6 +53,10 @@ public sealed record BundledComponentSpec(
     [property: JsonPropertyName("githubAsset")] string? GithubAsset,
     [property: JsonPropertyName("githubChecksumAsset")] string? GithubChecksumAsset,
     [property: JsonPropertyName("postInstallCommand")] string? PostInstallCommand = null,
+    /// <summary>A regex matched against each GitHub release asset's own file name to find the *checksum* file, for a vendor (like NZBGet) whose checksum file name also embeds the version, e.g. "nzbget-21.1.sig.txt". Takes precedence over <see cref="GithubChecksumAsset"/> when set.</summary>
+    [property: JsonPropertyName("githubChecksumAssetPattern")] string? GithubChecksumAssetPattern = null,
+    /// <summary>Prerequisite software (e.g. a runtime redistributable) that must be installed before this component's own installer will run. Skipped when already present, verified the same way as any other bundled installer, and run before the component's own installer.</summary>
+    [property: JsonPropertyName("prerequisite")] BundledComponentPrerequisite? Prerequisite = null,
     [property: JsonPropertyName("postInstallArgs")] string? PostInstallArgs = null,
     [property: JsonPropertyName("readinessUrl")] string? ReadinessUrl = null,
     [property: JsonPropertyName("readinessField")] string? ReadinessField = null,

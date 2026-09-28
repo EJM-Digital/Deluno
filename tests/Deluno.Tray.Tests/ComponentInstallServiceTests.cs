@@ -358,6 +358,129 @@ public sealed class ComponentInstallServiceTests
         Assert.True(readiness.CallCount > 0);
     }
 
+    private static readonly BundledComponentPrerequisite Prerequisite = new(
+        Name: "Test Runtime",
+        Url: "https://example.invalid/test-runtime.exe",
+        FileName: "test-runtime.exe",
+        MinimumBytes: 10,
+        MustBeSigned: true,
+        SilentArgs: "/install /quiet /norestart",
+        SkipRegistryKeyPath: "SOFTWARE\\Test\\Runtime",
+        SkipRegistryValueName: "Installed");
+
+    [Fact]
+    public async Task A_present_prerequisite_is_skipped_without_downloading_anything()
+    {
+        var mainDownload = WriteTempFile(new byte[20]);
+        var downloader = new RecordingDownloader(mainDownload);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            downloader,
+            new FakeSignatures(signed: true),
+            processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: true));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        // Only the component's own installer ran -- the prerequisite's own
+        // download URL was never fetched because it was already present.
+        Assert.Equal(Spec.Url, downloader.LastUrl);
+    }
+
+    [Fact]
+    public async Task A_missing_prerequisite_is_downloaded_verified_and_run_before_the_component()
+    {
+        var mainDownload = WriteTempFile(new byte[20]);
+        var prereqDownload = WriteTempFile(new byte[20]);
+        // InstallAsync downloads and verifies the component's own installer
+        // first, then handles its prerequisite, so the component's URL is
+        // resolved before the prerequisite's own.
+        var downloader = new SequencedDownloader(mainDownload, prereqDownload);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            downloader,
+            new FakeSignatures(signed: true),
+            processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        Assert.Equal(2, downloader.CallCount);
+        Assert.Equal(Spec.Url, downloader.Urls[0]);
+        Assert.Equal(Prerequisite.Url, downloader.Urls[1]);
+    }
+
+    [Fact]
+    public async Task An_unsigned_prerequisite_is_refused_and_the_component_never_installs()
+    {
+        var mainDownload = WriteTempFile(new byte[20]);
+        var prereqDownload = WriteTempFile(new byte[20]);
+        // InstallAsync verifies the component's own installer first, so only
+        // the prerequisite's file needs to be unsigned to reach this path.
+        var downloader = new SequencedDownloader(mainDownload, prereqDownload);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            downloader,
+            new SignedForPaths(mainDownload),
+            processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
+    }
+
+    [Fact]
+    public async Task A_prerequisite_exit_code_3010_reboot_required_still_counts_as_success()
+    {
+        var mainDownload = WriteTempFile(new byte[20]);
+        var prereqDownload = WriteTempFile(new byte[20]);
+        var downloader = new SequencedDownloader(mainDownload, prereqDownload);
+        var processes = new SequencedExitCodeProcesses(3010, 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            downloader,
+            new FakeSignatures(signed: true),
+            processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+    }
+
+    [Fact]
+    public async Task A_prerequisite_that_fails_to_install_stops_the_component_installing()
+    {
+        var mainDownload = WriteTempFile(new byte[20]);
+        var prereqDownload = WriteTempFile(new byte[20]);
+        var downloader = new SequencedDownloader(mainDownload, prereqDownload);
+        var processes = new SequencedExitCodeProcesses(1603, 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            downloader,
+            new FakeSignatures(signed: true),
+            processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
+        // Only the prerequisite ran -- the component's own installer never got a turn.
+        Assert.Equal(1, processes.RunCount);
+    }
+
     private static string WriteTempFile(byte[] content, string extension = ".bin")
     {
         var path = Path.Combine(Path.GetTempPath(), "deluno-tray-tests-" + Guid.NewGuid().ToString("N") + extension);
@@ -380,15 +503,56 @@ public sealed class ComponentInstallServiceTests
         public bool IsSigned(string path) => signed;
     }
 
+    /// <summary>Signed only for the given path(s) -- everything else answers false, for telling a prerequisite's own file apart from the component's.</summary>
+    private sealed class SignedForPaths(params string[] signedPaths) : IAuthenticodeVerifier
+    {
+        public bool IsSigned(string path) => signedPaths.Contains(path);
+    }
+
     private sealed class RecordingDownloader(string? path = null) : IComponentDownloader
     {
         public bool WasCalled { get; private set; }
+        public string? LastUrl { get; private set; }
 
         public Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
         {
             WasCalled = true;
+            LastUrl = url;
             return Task.FromResult(path);
         }
+    }
+
+    /// <summary>Answers each call's download from a fixed list, in order -- for a prerequisite download followed by the component's own.</summary>
+    private sealed class SequencedDownloader(params string?[] paths) : IComponentDownloader
+    {
+        public int CallCount { get; private set; }
+        public List<string> Urls { get; } = [];
+
+        public Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken)
+        {
+            Urls.Add(url);
+            var path = CallCount < paths.Length ? paths[CallCount] : null;
+            CallCount++;
+            return Task.FromResult(path);
+        }
+    }
+
+    /// <summary>Answers each call's exit code from a fixed list, in order -- for a prerequisite run followed by the component's own.</summary>
+    private sealed class SequencedExitCodeProcesses(params int?[] exitCodes) : IProcessRunner
+    {
+        public int RunCount { get; private set; }
+
+        public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            var exitCode = RunCount < exitCodes.Length ? exitCodes[RunCount] : null;
+            RunCount++;
+            return Task.FromResult(exitCode);
+        }
+    }
+
+    private sealed class FakePrerequisiteRegistry(bool present) : IPrerequisiteRegistryReader
+    {
+        public bool IsPresent(string subKeyPath, string valueName) => present;
     }
 
     private sealed class RecordingProcesses(int? exitCode = null) : IProcessRunner

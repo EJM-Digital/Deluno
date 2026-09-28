@@ -56,6 +56,49 @@ public sealed class BundledComponentsTests
     }
 
     [Fact]
+    public void Qbittorrent_seeds_its_config_at_the_roaming_path_it_actually_reads()
+    {
+        // qBittorrent (portable=false) reads %AppData%\qBittorrent\qBittorrent.ini
+        // (Roaming) -- a clean-VM run showed the Web UI never answering on
+        // 8081 because the seed used to write %LocalAppData% instead, a file
+        // qbittorrent.exe never looks at.
+        var qbittorrent = BundledComponents.Load().Single(s => s.Kind == "qbittorrent");
+
+        Assert.Equal("%AppData%\\qBittorrent\\qBittorrent.ini", qbittorrent.ConfigFilePath);
+        Assert.Contains("[LegalNotice]", qbittorrent.ConfigFileContent);
+        Assert.Contains("Accepted=true", qbittorrent.ConfigFileContent);
+    }
+
+    [Fact]
+    public void Transmission_installs_its_vc_plus_plus_prerequisite_before_its_own_msi()
+    {
+        // Transmission's .msi LaunchConditions refuse with exit code 1603
+        // ("The Visual C++ Runtime is not installed or is outdated") on a
+        // machine with no recent MSVC-built software already on it, which a
+        // clean Windows Server VM is.
+        var transmission = BundledComponents.Load().Single(s => s.Kind == "transmission");
+
+        Assert.NotNull(transmission.Prerequisite);
+        Assert.Equal("https://aka.ms/vs/17/release/vc_redist.x64.exe", transmission.Prerequisite!.Url);
+        Assert.True(transmission.Prerequisite.MustBeSigned);
+        Assert.Equal("SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64", transmission.Prerequisite.SkipRegistryKeyPath);
+        Assert.Equal("Installed", transmission.Prerequisite.SkipRegistryValueName);
+    }
+
+    [Fact]
+    public void Nzbget_resolves_its_checksum_from_its_own_versioned_signature_file()
+    {
+        // NZBGet does publish checksums with its release, just not as a
+        // fixed-name SHA256SUMS.txt -- the file name itself embeds the
+        // version (nzbget-21.1.sig.txt), so it needs a pattern the same way
+        // the installer asset itself does.
+        var nzbget = BundledComponents.Load().Single(s => s.Kind == "nzbget");
+
+        Assert.False(string.IsNullOrWhiteSpace(nzbget.GithubChecksumAssetPattern));
+        Assert.Matches(nzbget.GithubChecksumAssetPattern!, "nzbget-21.1.sig.txt");
+    }
+
+    [Fact]
     public void Deluge_resolves_its_latest_windows_build_from_a_directory_listing_not_a_dead_page_url()
     {
         var deluge = BundledComponents.Load().Single(s => s.Kind == "deluge");
