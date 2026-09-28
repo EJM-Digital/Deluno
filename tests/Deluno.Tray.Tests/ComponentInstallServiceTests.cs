@@ -154,6 +154,107 @@ public sealed class ComponentInstallServiceTests
         Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
     }
 
+    [Fact]
+    public async Task A_per_machine_msi_is_run_through_msiexec_not_shellexecuted_directly()
+    {
+        var downloadedPath = WriteTempFile(new byte[20], ".msi");
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, FileName = "test-client.msi" }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        Assert.Equal("msiexec.exe", processes.LastPath);
+        Assert.Contains($"/i \"{downloadedPath}\"", processes.LastArguments);
+        Assert.Contains("ALLUSERS=1", processes.LastArguments);
+        Assert.Contains("/S", processes.LastArguments); // the manifest's own silentArgs still applies
+        Assert.Contains("/l*v", processes.LastArguments);
+    }
+
+    [Fact]
+    public async Task A_non_msi_installer_still_runs_directly()
+    {
+        var downloadedPath = WriteTempFile(new byte[20], ".exe");
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes);
+
+        await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+
+        Assert.Equal(downloadedPath, processes.LastPath);
+        Assert.Equal("/S", processes.LastArguments);
+    }
+
+    [Fact]
+    public async Task A_config_file_is_seeded_before_the_component_first_starts()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var configWriter = new RecordingConfigFileWriter();
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            configWriter: configWriter);
+
+        var spec = Spec with
+        {
+            MustBeSigned = true,
+            ConfigFilePath = "%TEST_CONFIG_DIR%\\client.ini",
+            ConfigFileContent = "[Preferences]\nWebUI\\Enabled=true\n"
+        };
+        await service.InstallAsync(spec, CancellationToken.None);
+
+        Assert.True(configWriter.WasCalled);
+        Assert.Equal(Environment.ExpandEnvironmentVariables("%TEST_CONFIG_DIR%\\client.ini"), configWriter.LastPath);
+        Assert.Equal("[Preferences]\nWebUI\\Enabled=true\n", configWriter.LastContent);
+    }
+
+    [Fact]
+    public async Task A_pre_start_command_is_fired_before_the_main_post_install_command()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: false));
+        var readiness = new FakeReadinessChecker(readyOnCall: 1);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            starter,
+            readiness);
+
+        var spec = Spec with
+        {
+            MustBeSigned = true,
+            PreStartCommand = "%TEST_DAEMON_HOME%\\deluged.exe",
+            PostInstallCommand = "%TEST_DAEMON_HOME%\\deluge-web.exe",
+            PostInstallArgs = "--port 8112",
+            ReadinessUrl = "http://127.0.0.1:8112/json",
+            ReadinessTimeoutSeconds = 1
+        };
+        var result = await service.InstallAsync(spec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        // The started daemon and the tracked Web UI/API process are both
+        // started, with the daemon started first, but only the Web UI/API
+        // process's readiness is polled.
+        Assert.Equal(Environment.ExpandEnvironmentVariables("%TEST_DAEMON_HOME%\\deluge-web.exe"), starter.LastPath);
+    }
+
     private static readonly BundledComponentSpec WeirLikeSpec = Spec with
     {
         DisplayName = "Test Processor",
@@ -257,9 +358,9 @@ public sealed class ComponentInstallServiceTests
         Assert.True(readiness.CallCount > 0);
     }
 
-    private static string WriteTempFile(byte[] content)
+    private static string WriteTempFile(byte[] content, string extension = ".bin")
     {
-        var path = Path.Combine(Path.GetTempPath(), "deluno-tray-tests-" + Guid.NewGuid().ToString("N") + ".bin");
+        var path = Path.Combine(Path.GetTempPath(), "deluno-tray-tests-" + Guid.NewGuid().ToString("N") + extension);
         File.WriteAllBytes(path, content);
         return path;
     }
@@ -293,13 +394,30 @@ public sealed class ComponentInstallServiceTests
     private sealed class RecordingProcesses(int? exitCode = null) : IProcessRunner
     {
         public bool WasCalled { get; private set; }
+        public string? LastPath { get; private set; }
         public string? LastArguments { get; private set; }
 
         public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
         {
             WasCalled = true;
+            LastPath = path;
             LastArguments = arguments;
             return Task.FromResult(exitCode);
+        }
+    }
+
+    private sealed class RecordingConfigFileWriter : IConfigFileWriter
+    {
+        public bool WasCalled { get; private set; }
+        public string? LastPath { get; private set; }
+        public string? LastContent { get; private set; }
+
+        public Task<bool> WriteIfAbsentAsync(string path, string content, CancellationToken cancellationToken)
+        {
+            WasCalled = true;
+            LastPath = path;
+            LastContent = content;
+            return Task.FromResult(true);
         }
     }
 

@@ -39,8 +39,15 @@
     "minimumBytes": 20000000,
     "mustBeSigned": false,
     "silentArgs": "/S",
-    "defaultPort": 8080,
-    "uninstallDisplayNameHint": "qBittorrent"
+    "defaultPort": 8081,
+    "uninstallDisplayNameHint": "qBittorrent",
+    "configFilePath": "%LocalAppData%\\qBittorrent\\qBittorrent.ini",
+    "configFileContent": "[Preferences]\nWebUI\\Enabled=true\nWebUI\\Port=8081\nWebUI\\Address=*\nWebUI\\LocalHostAuth=false\nWebUI\\AuthSubnetWhitelistEnabled=true\nWebUI\\AuthSubnetWhitelist=127.0.0.1/32\nWebUI\\CSRFProtection=false\nWebUI\\HostHeaderValidation=false\n",
+    "postInstallCommand": "%ProgramFiles%\\qBittorrent\\qbittorrent.exe",
+    "postInstallArgs": null,
+    "readinessUrl": "http://127.0.0.1:8081/api/v2/app/version",
+    "readinessTimeoutSeconds": 45,
+    "note": "qBittorrent's default Web UI port (8080) is given to SABnzbd instead, since both default there and only one can bind it; qBittorrent moves to 8081. The config file is seeded before first start so the Web UI is already on and reachable for clients on localhost without a password -- qbittorrent.exe itself is a normal (non-headless) build that keeps running in the tray once started; #968's start/poll shape applies here too."
   },
 
   "transmission": {
@@ -57,7 +64,12 @@
     "mustBeSigned": true,
     "silentArgs": "/qn",
     "defaultPort": 9091,
-    "uninstallDisplayNameHint": "Transmission"
+    "uninstallDisplayNameHint": "Transmission",
+    "postInstallCommand": "%ProgramFiles%\\Transmission\\transmission-daemon.exe",
+    "postInstallArgs": null,
+    "readinessUrl": "http://127.0.0.1:9091/transmission/rpc",
+    "readinessTimeoutSeconds": 30,
+    "note": "The .msi is a per-machine Windows Installer package: ComponentInstallService runs it through msiexec.exe itself (ALLUSERS=1, a verbose /l*v log next to the download) rather than launching the .msi path directly through ShellExecute's file-type association, which returned exit code 1603 unattended on a clean VM. transmission-daemon.exe ships in the same MSI as the Qt client and opens its RPC web interface on 9091 with no extra flags needed."
   },
 
   "deluge": {
@@ -68,14 +80,23 @@
     "licenceUrl": "https://github.com/deluge-torrent/deluge/blob/develop/LICENSE",
     "version": "latest",
     "fileName": "deluge-setup.exe",
-    "url": "https://download.deluge-torrent.org/windows/",
+    "url": null,
+    "directoryListingUrl": "https://ftp.osuosl.org/pub/deluge/windows/",
+    "assetPattern": "^deluge-[0-9][0-9.]*-win64-setup\\.exe$",
+    "checksumSuffix": ".sha256",
     "sha256": null,
     "minimumBytes": 20000000,
     "mustBeSigned": true,
     "silentArgs": "/S",
     "defaultPort": 8112,
     "uninstallDisplayNameHint": "Deluge",
-    "note": "No fixed per-version asset name is published; the download page always serves the current installer. Authenticode is the only integrity check available until a specific release is pinned the way qBittorrent's is."
+    "preStartCommand": "%ProgramFiles%\\Deluge\\deluged.exe",
+    "preStartArgs": null,
+    "postInstallCommand": "%ProgramFiles%\\Deluge\\deluge-web.exe",
+    "postInstallArgs": "--port 8112",
+    "readinessUrl": "http://127.0.0.1:8112/json",
+    "readinessTimeoutSeconds": 45,
+    "note": "deluge-torrent/deluge publishes no GitHub Releases (tags only), so the old https://download.deluge-torrent.org/windows/ page URL was never an installer -- it downloaded that page itself, far short of minimumBytes. The real Windows builds are versioned files in a plain directory listing at ftp.osuosl.org (the same host download.deluge-torrent.org serves from), each with its own '<file>.sha256' next to it in the same 'hash  filename' shape as a GitHub SHA256SUMS.txt line, resolved the same way #640/#968 already resolve Weir's latest release, just from a directory listing instead of the GitHub API. Both the 64-bit ('win64') and libtorrent<2.0 compatibility ('win64-lt2.0') builds are published; the pattern picks the plain win64 build. deluged (the torrent daemon) is started untracked ahead of deluge-web (the Web UI/API Deluno talks to on 8112); deluge-web comes up and answers even before a host is added in it, but full transfers need deluged already reachable -- unverified without a real VM."
   },
 
   "sabnzbd": {
@@ -92,7 +113,14 @@
     "mustBeSigned": true,
     "silentArgs": "/S",
     "defaultPort": 8080,
-    "uninstallDisplayNameHint": "SABnzbd"
+    "uninstallDisplayNameHint": "SABnzbd",
+    "configFilePath": "%AppData%\\SABnzbd\\sabnzbd.ini",
+    "configFileContent": "[misc]\nhost = 0.0.0.0\nport = 8080\nhost_whitelist = \nenable_https = 0\napi_key = \nusername = \npassword = \n\n[categories]\n",
+    "postInstallCommand": "%ProgramFiles%\\SABnzbd\\SABnzbd.exe",
+    "postInstallArgs": "--server 0.0.0.0:8080 --browser 0",
+    "readinessUrl": "http://127.0.0.1:8080/api?mode=version&output=json",
+    "readinessTimeoutSeconds": 45,
+    "note": "Keeps SABnzbd's own default port 8080; qBittorrent moves to 8081 instead so the two never clash. The seeded ini and --browser 0 are meant to skip SABnzbd's first-run setup wizard (which otherwise opens a browser and waits for answers no unattended install can give) and to blank the host whitelist so a loopback API call is accepted -- unverified without a real VM; #968 stays open if a live run still shows the wizard."
   },
 
   "nzbget": {
@@ -103,13 +131,20 @@
     "licenceUrl": "https://github.com/nzbget/nzbget/blob/master/COPYING",
     "version": "latest",
     "fileName": "nzbget-setup.exe",
-    "url": "https://github.com/nzbget/nzbget/releases/latest",
+    "url": null,
+    "githubRepo": "nzbget/nzbget",
+    "githubAssetPattern": "^nzbget-[0-9][0-9.]*-bin-windows-setup\\.exe$",
     "sha256": null,
     "minimumBytes": 5000000,
     "mustBeSigned": true,
     "silentArgs": "/S",
     "defaultPort": 6789,
-    "uninstallDisplayNameHint": "NZBGet"
+    "uninstallDisplayNameHint": "NZBGet",
+    "postInstallCommand": "%ProgramFiles%\\NZBGet\\nzbget.exe",
+    "postInstallArgs": "-D",
+    "readinessUrl": "http://127.0.0.1:6789/jsonrpc",
+    "readinessTimeoutSeconds": 30,
+    "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. No checksum file is published for it, so mustBeSigned stays the only verification path. '-D' runs NZBGet as a background daemon; its default nzbget.conf already opens the control (Web UI/API) port 6789 on loopback with no extra flags."
   },
 
   "weir": {
