@@ -165,6 +165,16 @@ public static class DownloadHealthStrikes
     /// </summary>
     public const string DangerousFile = "dangerous-file";
 
+    /// <summary>
+    /// The same client-reported failure as <see cref="ClientStalled"/>, but
+    /// struck through the dedicated, configurable rule (#951, off by
+    /// default) instead of the platform-wide fallback threshold.
+    /// </summary>
+    public const string ClientFailure = "client-failure";
+
+    /// <summary>A magnet stuck fetching its own metadata, past the dedicated rule's timer (#951, off by default). qBittorrent only.</summary>
+    public const string MagnetMetadata = "magnet-metadata";
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||
@@ -172,7 +182,9 @@ public static class DownloadHealthStrikes
            string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, TrackerUnregistered, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, DangerousFile, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, DangerousFile, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, ClientFailure, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, MagnetMetadata, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Strikes for a problem seen without a break since <paramref name="since"/>, under <paramref name="window"/>.</summary>
     public static int For(DateTimeOffset since, DateTimeOffset now, TimeSpan window)

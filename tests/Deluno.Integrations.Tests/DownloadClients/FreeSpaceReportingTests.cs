@@ -43,6 +43,33 @@ public sealed class FreeSpaceReportingTests
         Assert.Contains("GB free", snapshot.LastHealthMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    // #951: the same sync/maindata call also carries whether qBittorrent's
+    // own alternate/scheduled speed limit is on, for the "too slow" rule's
+    // skip-while-throttled option.
+    [Fact]
+    public async Task Qbittorrent_reads_the_alternate_speed_limit_flag_from_sync_maindata()
+    {
+        var handler = new QbittorrentHandler(
+            torrentsInfo: "[]",
+            mainData: """{"server_state":{"use_alt_speed_limits":true}}""");
+
+        var snapshot = await new QbittorrentDownloadClient(() => handler)
+            .GetSnapshotAsync(QbitClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.True(snapshot!.AlternateSpeedLimitEnabled);
+    }
+
+    [Fact]
+    public async Task Qbittorrent_reports_no_alternate_speed_limit_reading_when_the_client_will_not_say()
+    {
+        var handler = new QbittorrentHandler(torrentsInfo: "[]", mainData: "{}");
+
+        var snapshot = await new QbittorrentDownloadClient(() => handler)
+            .GetSnapshotAsync(QbitClient(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Null(snapshot!.AlternateSpeedLimitEnabled);
+    }
+
     [Fact]
     public async Task Qbittorrent_reports_no_free_space_when_the_client_will_not_say()
     {

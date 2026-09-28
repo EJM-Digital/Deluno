@@ -98,6 +98,44 @@ public sealed class DownloadProgressIsRememberedAcrossRestartsTests
         Assert.True(Start.AddMinutes(31) - afterThirtyMinutes >= TimeSpan.FromMinutes(30));
     }
 
+    // #951: "reset strikes on progress" - a rule can turn resetting off
+    // entirely, or require a minimum gain for a gain to count as "real"
+    // progress. Both default to the original "any gain always resets"
+    // behaviour, exercised above.
+    [Fact]
+    public async Task Reset_disabled_never_moves_the_clock_again_once_a_prior_sighting_exists()
+    {
+        using var world = await World.CreateAsync();
+        await world.SeeAsync(Start, downloadedBytes: 716_145, allowReset: false);
+
+        var lastIncrease = await world.SeeAsync(Start.AddMinutes(14), downloadedBytes: 900_000, allowReset: false);
+
+        Assert.Equal(Start, lastIncrease);
+    }
+
+    [Fact]
+    public async Task A_gain_below_the_configured_minimum_does_not_reset_the_clock()
+    {
+        using var world = await World.CreateAsync();
+        await world.SeeAsync(Start, downloadedBytes: 716_145, minimumGainBytes: 1_000_000);
+
+        // A trickle of 1,000 bytes - well under the configured 1 MB minimum.
+        var lastIncrease = await world.SeeAsync(Start.AddMinutes(14), downloadedBytes: 717_145, minimumGainBytes: 1_000_000);
+
+        Assert.Equal(Start, lastIncrease);
+    }
+
+    [Fact]
+    public async Task A_gain_at_or_above_the_configured_minimum_still_resets_the_clock()
+    {
+        using var world = await World.CreateAsync();
+        await world.SeeAsync(Start, downloadedBytes: 716_145, minimumGainBytes: 1_000_000);
+
+        var lastIncrease = await world.SeeAsync(Start.AddMinutes(14), downloadedBytes: 716_145 + 1_000_000, minimumGainBytes: 1_000_000);
+
+        Assert.Equal(Start.AddMinutes(14), lastIncrease);
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -116,13 +154,15 @@ public sealed class DownloadProgressIsRememberedAcrossRestartsTests
         }
 
         /// <summary>One poll, its own repository instance, standing in for one process lifetime.</summary>
-        public async Task<DateTimeOffset> SeeAsync(DateTimeOffset at, long downloadedBytes)
+        public async Task<DateTimeOffset> SeeAsync(DateTimeOffset at, long downloadedBytes, bool allowReset = true, long minimumGainBytes = 0)
         {
             var repository = new SqliteDownloadHealthRepository(_storage.Factory, new FixedTimeProvider(at));
             var result = await repository.RecordDownloadProgressAsync(
                 Client,
                 [(QueueItemId, downloadedBytes)],
-                CancellationToken.None);
+                CancellationToken.None,
+                allowReset,
+                minimumGainBytes);
             return result[QueueItemId];
         }
 

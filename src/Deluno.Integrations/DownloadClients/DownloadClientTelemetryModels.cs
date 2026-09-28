@@ -327,7 +327,15 @@ public sealed record DownloadQueueItem(
     /// <summary>#811: when the client last saw any activity on this item (qBittorrent's <c>last_activity</c>). Null where the protocol has no such reading.</summary>
     DateTimeOffset? LastActivityUtc = null,
     /// <summary>#811: when the client finished this item (qBittorrent's <c>completion_on</c>). Null while still in progress, or where the protocol has no such reading.</summary>
-    DateTimeOffset? CompletionUtc = null);
+    DateTimeOffset? CompletionUtc = null,
+    /// <summary>
+    /// #951: a torrent added as a magnet link that has not yet resolved its
+    /// own metadata (name, file list, size) - qBittorrent's own
+    /// <c>metaDL</c> state. Only qBittorrent's adapter sets this; every
+    /// other client leaves it false, since nothing else in what Deluno reads
+    /// from them distinguishes this from ordinary downloading.
+    /// </summary>
+    bool IsFetchingMetadata = false);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove
@@ -427,6 +435,16 @@ public sealed record DownloadClientTelemetrySnapshot(
     /// concept.
     /// </summary>
     public IReadOnlyList<string>? ClientWarnings { get; init; }
+
+    /// <summary>
+    /// #951: whether the client's own alternate/scheduled speed limit is
+    /// turned on right now, for the "too slow" rule's skip-while-throttled
+    /// option. Only qBittorrent's adapter reads this (its
+    /// <c>server_state.use_alt_speed_limits</c>); null everywhere else,
+    /// which the evaluator reads the same as "off" - never a false trip on a
+    /// client that never claimed to be throttled.
+    /// </summary>
+    public bool? AlternateSpeedLimitEnabled { get; init; }
 }
 
 public sealed record DownloadTelemetryOverview(

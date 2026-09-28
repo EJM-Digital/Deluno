@@ -1,9 +1,10 @@
 namespace Deluno.Contracts;
 
 /// <summary>
-/// The rule kinds Deluno can actually detect today (#905). Each is a condition
-/// a download can be in, independent of any other kind, so a download can trip
-/// more than one at once (different releases fail differently).
+/// The rule kinds Deluno can actually detect today (#905, #951). Each is a
+/// condition a download can be in, independent of any other kind, so a
+/// download can trip more than one at once (different releases fail
+/// differently).
 ///
 /// <para>The wishlist in #905 named four more — magnet stuck fetching
 /// metadata, never-starts-at-0%, tracker-says-unregistered as its own signal,
@@ -12,12 +13,15 @@ namespace Deluno.Contracts;
 /// <see cref="Deluno.Contracts.DownloadTrackerStatuses"/> reading, and #818
 /// folded "the tracker says unregistered" into <see cref="DeadTorrent"/>
 /// alongside its existing zero-seeder check, rather than adding a fifth kind
-/// for the same underlying dead-release verdict. The remaining three still
-/// have no telemetry source: no client adapter reports metadata-fetch state,
-/// and the file/client-failure findings (#879, #882-#885) are not built.
-/// Adding them here without a real signal behind them would be a switch that
-/// does nothing, which is worse than not offering it — so they are left for
-/// whichever of those issues lands the telemetry first.</para>
+/// for the same underlying dead-release verdict. #951 lands two more of the
+/// wishlist: <see cref="ClientFailure"/>, once #879/#882-#885 gave the
+/// evaluator a client-reported-failure signal to strike on, and
+/// <see cref="MagnetMetadata"/>, once qBittorrent's adapter started telling
+/// a magnet still fetching metadata apart from ordinary downloading. A
+/// download starting at 0% and never moving is handled separately, as an
+/// always-on informational finding rather than a rule kind — see
+/// <see cref="Deluno.Recovery.Policies.DownloadHealthEvaluator"/>'s
+/// zero-percent finding.</para>
 /// </summary>
 public static class DownloadHealthRuleKinds
 {
@@ -48,14 +52,41 @@ public static class DownloadHealthRuleKinds
     /// </summary>
     public const string DangerousFile = "dangerous-file";
 
-    public static readonly IReadOnlyList<string> All = [NoProgress, TooSlow, LowPeers, DeadTorrent, DangerousFile];
+    /// <summary>
+    /// The download client itself reported this item stalled or errored
+    /// (#951). This is a configurable twin of the always-on "client-stalled"
+    /// finding the evaluator already produces for every item, whatever rules
+    /// are configured — that unconditional finding still shows and still
+    /// falls back to the platform-wide strike threshold on Search &amp;
+    /// Cycles, so upgrading never changes what an existing install already
+    /// does. Turning this rule on instead gives that same signal its own
+    /// strikes, timer, scope and action, the same as every other rule here.
+    /// Off by default (#936): a brand-new kind, so there is nothing for an
+    /// existing install to have had on already.
+    /// </summary>
+    public const string ClientFailure = "client-failure";
+
+    /// <summary>
+    /// A torrent added as a magnet link that has not yet resolved its own
+    /// metadata (name, file list, size) — qBittorrent's own <c>metaDL</c>
+    /// state (#951). Only qBittorrent's adapter reports this signal today;
+    /// Transmission and Deluge expose no equivalent field in what Deluno
+    /// already reads from them, so this rule never trips for a download on
+    /// those clients (see <see cref="Deluno.Contracts.RecoveryQueueSnapshot.IsFetchingMetadata"/>).
+    /// Usenet has no magnets or metadata phase, so this never applies there
+    /// either. Off by default (#936).
+    /// </summary>
+    public const string MagnetMetadata = "magnet-metadata";
+
+    public static readonly IReadOnlyList<string> All = [NoProgress, TooSlow, LowPeers, DeadTorrent, DangerousFile, ClientFailure, MagnetMetadata];
 
     public static bool IsKnown(string kind) => All.Contains(kind, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Whether this kind ever needs a client the download reached over BitTorrent (as opposed to Usenet, which has no peers or seeders).</summary>
     public static bool RequiresTorrentSwarm(string kind)
         => string.Equals(kind, LowPeers, StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase);
+           string.Equals(kind, DeadTorrent, StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(kind, MagnetMetadata, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -160,7 +191,43 @@ public sealed record DownloadHealthRule(
     /// </summary>
     double Threshold = 0,
     /// <summary>#815: which tracker-privacy downloads this rule watches. "both" (the default) is every existing rule's value, so nothing narrows for an existing install until it is edited.</summary>
-    string PrivacyScope = DownloadHealthPrivacyScopes.Both)
+    string PrivacyScope = DownloadHealthPrivacyScopes.Both,
+    /// <summary>
+    /// <see cref="DownloadHealthRuleKinds.TooSlow"/> only (#951, G157): once
+    /// a download has spent this many minutes in the queue, in total, it
+    /// trips this rule regardless of its current speed - a hard ceiling
+    /// under the ordinary speed-floor-and-timer check above, for a release
+    /// that trickles just fast enough to keep dodging the floor. Null (the
+    /// default) means no ceiling, matching every rule before this option
+    /// existed.
+    /// </summary>
+    int? TooSlowMaxTotalMinutes = null,
+    /// <summary>
+    /// <see cref="DownloadHealthRuleKinds.TooSlow"/> only (#951, parity sheet
+    /// G157): a download whose total size is above this many bytes never
+    /// trips this rule - a large release is expected to take longer. Null or
+    /// 0 (the default) means no size ceiling.
+    /// </summary>
+    long? IgnoreAboveSizeBytes = null,
+    /// <summary>
+    /// <see cref="DownloadHealthRuleKinds.TooSlow"/> only (#951): while the
+    /// download client's own alternate/scheduled speed limit is turned on,
+    /// this rule never trips - a download a person deliberately throttled is
+    /// not unhealthy. False (the default) leaves every existing rule's
+    /// behaviour unchanged. Only qBittorrent's adapter reports whether this
+    /// is on today; for every other client this option has no effect, since
+    /// nothing about that client's speed limit is known.
+    /// </summary>
+    bool SkipWhileAlternateSpeedLimitOn = false,
+    /// <summary>
+    /// How many further bytes a download must gain, at minimum, for that
+    /// gain to reset this rule's strikes (#951). Null or 0 (the default)
+    /// keeps the original behaviour: any byte of further progress ends the
+    /// spell, exactly as <see cref="ResetStrikesOnProgress"/> already
+    /// documented before this option existed. Set only when
+    /// <see cref="ResetStrikesOnProgress"/> is true; ignored otherwise.
+    /// </summary>
+    long? ResetStrikesMinimumProgressBytes = null)
 {
     public TimeSpan Timer => TimeSpan.FromMinutes(Math.Clamp(TimerMinutes, 1, 1440));
 
@@ -248,6 +315,24 @@ public static class DownloadHealthRuleValidator
                 return "The grace period must be between 0 minutes and 24 hours.";
         }
 
+        if (candidate.Kind == DownloadHealthRuleKinds.TooSlow)
+        {
+            if (candidate.TooSlowMaxTotalMinutes is { } maxTotalMinutes && (maxTotalMinutes < 1 || maxTotalMinutes > 43_200))
+            {
+                return "The maximum total time must be between 1 minute and 30 days.";
+            }
+
+            if (candidate.IgnoreAboveSizeBytes is { } ignoreAboveSizeBytes && ignoreAboveSizeBytes < 0)
+            {
+                return "The ignore-above size cannot be negative.";
+            }
+        }
+
+        if (candidate.ResetStrikesMinimumProgressBytes is { } resetMinimumBytes && resetMinimumBytes < 0)
+        {
+            return "The minimum progress amount cannot be negative.";
+        }
+
         var conflict = existing.FirstOrDefault(candidate.Overlaps);
         if (conflict is not null)
         {
@@ -264,6 +349,8 @@ public static class DownloadHealthRuleValidator
         DownloadHealthRuleKinds.LowPeers => "Not enough peers",
         DownloadHealthRuleKinds.DeadTorrent => "Dead torrent",
         DownloadHealthRuleKinds.DangerousFile => "Dangerous or junk file",
+        DownloadHealthRuleKinds.ClientFailure => "Client-reported failure",
+        DownloadHealthRuleKinds.MagnetMetadata => "Magnet stuck fetching metadata",
         _ => kind
     };
 
