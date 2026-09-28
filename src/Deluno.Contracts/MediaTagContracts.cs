@@ -7,6 +7,9 @@ namespace Deluno.Contracts;
 /// </summary>
 public sealed record MediaTagAssignment(string TagId, string Name);
 
+/// <summary>One title with the tag names it carries (none for an untagged title), for checks that need every title (#1043).</summary>
+public sealed record MediaTitleTags(string Id, string Title, bool IsMonitored, IReadOnlyList<string> Tags);
+
 /// <summary>One managed tag's usage count in one catalogue.</summary>
 public sealed record MediaTagUsage(string Name, int TitleCount);
 
@@ -35,6 +38,11 @@ public interface IMediaTagStore
         MediaKind kind,
         string mediaId,
         IReadOnlyList<MediaTagAssignment> assignments,
+        CancellationToken cancellationToken);
+
+    /// <summary>Every title in one catalogue with its tag names, untagged titles included (#1043).</summary>
+    Task<IReadOnlyList<MediaTitleTags>> ListAllTitleTagsAsync(
+        MediaKind kind,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MediaTagUsage>> ListUsageAsync(

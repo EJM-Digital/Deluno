@@ -31,6 +31,9 @@ public static class HealthCheckCategories
     public const string System = "system";
     public const string Grab = "grab";
 
+    /// <summary>Tags that leave a connection with no titles, or titles with no indexer or client (#1043).</summary>
+    public const string Tags = "tags";
+
     /// <summary>An outbound or indexer proxy, when one is configured (#868).</summary>
     public const string Proxy = "proxy";
 
