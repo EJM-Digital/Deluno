@@ -343,6 +343,26 @@ public sealed class SubtitleFetchService(
                 await RecordAsync(connection, "rate-limited",
                     failure.Message, true, until, cancellationToken, failure);
             }
+            catch (SubtitleProviderQuotaExhaustedException quotaExhausted)
+            {
+                // The account's own daily allowance, not a login and not a
+                // minute-scale rate limit (#946). Paused with the reset time
+                // the provider gave, or the next UTC midnight when it did
+                // not say — the same pause Authentication uses, so it comes
+                // back on its own once that time passes, or the moment a
+                // person turns it back on themselves.
+                var until = quotaExhausted.ResetUtc ?? NextUtcMidnight(now);
+                var failure = IntegrationFailureFactory.QuotaExceeded(
+                    "subtitle",
+                    provider!.Key,
+                    provider.DisplayName,
+                    operation,
+                    until,
+                    $"{provider.DisplayName}'s daily quota is used up: {quotaExhausted.Message}");
+                failures.Add(failure);
+                await RecordAsync(connection, "degraded", failure.Message, false, until, cancellationToken, failure);
+                await NoteIfPausedAsync(provider!, failure, cancellationToken);
+            }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 logger.LogWarning(exception, "Subtitle provider {Provider} failed for {Title}.", provider!.Key, request.Title);
@@ -707,6 +727,16 @@ public sealed class SubtitleFetchService(
             _ => true
         };
 
+    /// <summary>
+    /// The reset time a quota exception did not give one. OpenSubtitles
+    /// documents its allowance as a rolling 24 hours, but every quota answer
+    /// Deluno has actually seen carries its own reset timestamp (#946); UTC
+    /// midnight is only ever used for the "accepted but no link" shape,
+    /// which does not.
+    /// </summary>
+    private static DateTimeOffset NextUtcMidnight(DateTimeOffset now)
+        => new(now.UtcDateTime.Date.AddDays(1), TimeSpan.Zero);
+
     private static string BuildSuccessReason(
         string providerName,
         SubtitleMatch match,
@@ -740,16 +770,18 @@ public sealed class SubtitleFetchService(
     /// so this only decides whether to say so, from the same fact the
     /// repository acted on.
     ///
-    /// <para>A wrong login and a used-up quota answer the same way over HTTP
-    /// — 401 or 403 — so both read as <see cref="IntegrationFailureKind.Authentication"/>
-    /// and both get paused the same way: asking again would waste a search
-    /// attempt every cycle for a source that cannot answer until a person
-    /// does something about it.</para>
+    /// <para>A wrong login (<see cref="IntegrationFailureKind.Authentication"/>)
+    /// and a used-up quota (<see cref="IntegrationFailureKind.QuotaExceeded"/>,
+    /// #946) both get paused and both write this same Activity line — asking
+    /// again would waste a search attempt every cycle for a source that
+    /// cannot answer. They differ only in how they come back: a login needs a
+    /// person to fix it, a quota resets on its own.</para>
     /// </summary>
     private async Task NoteIfPausedAsync(
         ISubtitleProvider provider, IntegrationFailure failure, CancellationToken cancellationToken)
     {
-        if (failure.Kind != IntegrationFailureKind.Authentication || activityFeedRepository is null)
+        if (failure.Kind is not (IntegrationFailureKind.Authentication or IntegrationFailureKind.QuotaExceeded)
+            || activityFeedRepository is null)
         {
             return;
         }

@@ -23,6 +23,14 @@ public enum IntegrationFailureKind
     RejectedAction,
     Configuration,
     CircuitOpen,
+    /// <summary>
+    /// An account-level allowance is spent — a daily download quota, not a
+    /// wrong credential and not a minute-scale rate limit. It behaves like
+    /// <see cref="RateLimit"/> (working, and comes back on its own once the
+    /// allowance resets) rather than like <see cref="Authentication"/>, which
+    /// needs a person to fix something before it will ever answer again.
+    /// </summary>
+    QuotaExceeded,
     Unknown
 }
 
@@ -60,7 +68,8 @@ public sealed record IntegrationFailure(
         => Kind is IntegrationFailureKind.RateLimit
             or IntegrationFailureKind.Timeout
             or IntegrationFailureKind.Unavailable
-            or IntegrationFailureKind.CircuitOpen;
+            or IntegrationFailureKind.CircuitOpen
+            or IntegrationFailureKind.QuotaExceeded;
 
     /// <summary>The old category used by health persistence, retained for backwards-compatible consumers.</summary>
     public string LegacyCategory => Kind switch
@@ -74,6 +83,7 @@ public sealed record IntegrationFailure(
         IntegrationFailureKind.RejectedAction => "rejected",
         IntegrationFailureKind.Configuration => "configuration",
         IntegrationFailureKind.CircuitOpen => "circuit-open",
+        IntegrationFailureKind.QuotaExceeded => "quota-exceeded",
         _ => "unknown"
     };
 
@@ -98,6 +108,9 @@ public sealed record IntegrationFailure(
         IntegrationFailureKind.CircuitOpen => RetryAfterUtc is { } circuitUntil
             ? $"Deluno paused this integration until {circuitUntil.ToLocalTime():HH:mm}; test it after that time."
             : "Deluno paused this integration after repeated failures; test it before retrying.",
+        IntegrationFailureKind.QuotaExceeded => RetryAfterUtc is { } quotaUntil
+            ? $"The quota resets on its own around {quotaUntil.ToLocalTime():HH:mm}; nothing to fix unless you want it sooner."
+            : "The quota will reset on its own; nothing to fix unless you want it sooner.",
         _ => "Review the integration details and test the connection again."
     };
 }
@@ -284,6 +297,28 @@ public static class IntegrationFailureFactory
             operation,
             IntegrationFailureKind.CircuitOpen,
             message ?? "Deluno paused this integration after repeated failures.",
+            retryAfterUtc: retryAfterUtc);
+
+    /// <summary>
+    /// An account's own allowance, not a bad credential and not a busy
+    /// minute — OpenSubtitles' daily download quota is the one example so
+    /// far (#946). <paramref name="retryAfterUtc"/> is the reset time the
+    /// provider gave, or a caller's best guess when it did not say.
+    /// </summary>
+    public static IntegrationFailure QuotaExceeded(
+        string serviceType,
+        string serviceId,
+        string serviceName,
+        string operation,
+        DateTimeOffset? retryAfterUtc,
+        string? message = null)
+        => Create(
+            serviceType,
+            serviceId,
+            serviceName,
+            operation,
+            IntegrationFailureKind.QuotaExceeded,
+            message ?? "The daily quota is used up.",
             retryAfterUtc: retryAfterUtc);
 
     private static IntegrationFailure Create(

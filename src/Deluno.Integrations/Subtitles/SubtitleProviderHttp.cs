@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Deluno.Infrastructure.Resilience;
 
 namespace Deluno.Integrations.Subtitles;
@@ -23,6 +24,25 @@ public sealed class SubtitleProviderRateLimitedException(string providerKey, Tim
 
     /// <summary>What the provider asked for, where it said. Null means it did not.</summary>
     public TimeSpan? RetryAfter { get; } = retryAfter;
+}
+
+/// <summary>
+/// Raised when a provider says an account-level allowance is what stopped
+/// it, not the request — OpenSubtitles' daily download quota (HTTP 406) is
+/// the one example so far (#946).
+///
+/// <para>Distinct from <see cref="SubtitleProviderRateLimitedException"/>: a
+/// 429 clears itself in minutes and says nothing about the account; a used-up
+/// quota does not come back until the daily allowance resets, and the message
+/// needs to say so rather than reading as a broken source.</para>
+/// </summary>
+public sealed class SubtitleProviderQuotaExhaustedException(string providerKey, string message, DateTimeOffset? resetUtc = null)
+    : Exception(message)
+{
+    public string ProviderKey { get; } = providerKey;
+
+    /// <summary>When the provider said the allowance resets. Null when it did not say.</summary>
+    public DateTimeOffset? ResetUtc { get; } = resetUtc;
 }
 
 /// <summary>
@@ -112,6 +132,7 @@ public static class SubtitleProviderHttp
         {
             using var response = await client.SendAsync(request, cancellationToken);
             ThrowIfRateLimited(response, providerKey);
+            await ThrowIfQuotaExhaustedAsync(response, providerKey, cancellationToken);
 
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
@@ -191,6 +212,40 @@ public static class SubtitleProviderHttp
 
         throw new SubtitleProviderRateLimitedException(providerKey, IntegrationResiliencePolicy.TryGetRetryAfter(response));
     }
+
+    /// <summary>
+    /// OpenSubtitles answers a spent daily download allowance with HTTP 406
+    /// on <c>/download</c>, with a body naming when the quota resets (#946).
+    /// The reset time is read here, generically, so any provider using the
+    /// same shape gets the same treatment rather than a second copy of this
+    /// parsing living in one provider's own file.
+    /// </summary>
+    private static async Task ThrowIfQuotaExhaustedAsync(
+        HttpResponseMessage response, string providerKey, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode != HttpStatusCode.NotAcceptable)
+        {
+            return;
+        }
+
+        DateTimeOffset? resetUtc = null;
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<QuotaExhaustedBody>(cancellationToken);
+            resetUtc = body?.ResetTimeUtc;
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
+        {
+            // The allowance is still spent even without a body Deluno can
+            // read; the caller falls back to a sensible guess for when.
+        }
+
+        throw new SubtitleProviderQuotaExhaustedException(
+            providerKey, "The daily download allowance is used up for today.", resetUtc);
+    }
+
+    private sealed record QuotaExhaustedBody(
+        [property: JsonPropertyName("reset_time_utc")] DateTimeOffset? ResetTimeUtc);
 
     private static void ThrowIfHttpFailure(HttpResponseMessage response, string providerKey)
     {
