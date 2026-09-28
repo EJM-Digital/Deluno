@@ -106,13 +106,123 @@ public sealed class RetentionAnswersTests
         Assert.Null(answer.Holds);
     }
 
+    // #834: server.watchersSinceAdded and server.allEpisodesSeenBySinceAdded --
+    // the same since-added filter server.watchedBySinceAdded already gets
+    // (above), but computed across a show's episodes rather than one item.
+
+    [Fact]
+    public void Watchers_since_added_counts_anyone_who_finished_an_episode_after_the_show_joined_deluno()
+    {
+        var unit = Show(addedUtc: Now.AddDays(-10));
+        var (show, episodes) = ShowWithEpisodes(
+            // James finished episode 1 before the show joined Deluno -- does not count.
+            episode1Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-20), false, null)],
+            // Ben finished episode 2 after -- counts.
+            episode2Viewers: [new MediaServerViewer("ben", true, 1, Now.AddDays(-5), false, null)]);
+
+        var answers = Answers([show, .. episodes]);
+        var field = RetentionFieldCatalog.Find("server.watchersSinceAdded")!;
+
+        var answer = answers.Answer(unit, field, RetentionOperators.Anyone, null);
+
+        Assert.True(answer.Holds);
+        Assert.Contains("ben", answer.Sentence);
+        Assert.DoesNotContain("james", answer.Sentence);
+    }
+
+    [Fact]
+    public void Watchers_since_added_cannot_say_when_deluno_does_not_know_when_the_show_was_added()
+    {
+        var unit = Show(addedUtc: null);
+        var (show, episodes) = ShowWithEpisodes(
+            episode1Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-5), false, null)],
+            episode2Viewers: []);
+
+        var answers = Answers([show, .. episodes]);
+        var field = RetentionFieldCatalog.Find("server.watchersSinceAdded")!;
+
+        var answer = answers.Answer(unit, field, RetentionOperators.Anyone, null);
+
+        Assert.Null(answer.Holds);
+        Assert.Contains("does not know when it was added", answer.Sentence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void All_episodes_seen_by_since_added_requires_every_episode_finished_after_the_show_joined_deluno()
+    {
+        var unit = Show(addedUtc: Now.AddDays(-10));
+        var (show, episodes) = ShowWithEpisodes(
+            // James finished both episodes, but episode 1 was before the show joined Deluno.
+            episode1Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-20), false, null)],
+            episode2Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-5), false, null)]);
+
+        var answers = Answers([show, .. episodes]);
+        var field = RetentionFieldCatalog.Find("server.allEpisodesSeenBySinceAdded")!;
+
+        var answer = answers.Answer(unit, field, RetentionOperators.Anyone, null);
+
+        // Nobody has finished *every* episode since the show was added --
+        // episode 1's play predates it -- so the all-time field would say
+        // James finished it all, but the since-added one must not.
+        Assert.False(answer.Holds);
+        Assert.Contains("nobody", answer.Sentence, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void All_episodes_seen_by_since_added_holds_once_every_episode_was_finished_after_added()
+    {
+        var unit = Show(addedUtc: Now.AddDays(-10));
+        var (show, episodes) = ShowWithEpisodes(
+            episode1Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-7), false, null)],
+            episode2Viewers: [new MediaServerViewer("james", true, 1, Now.AddDays(-5), false, null)]);
+
+        var answers = Answers([show, .. episodes]);
+        var field = RetentionFieldCatalog.Find("server.allEpisodesSeenBySinceAdded")!;
+
+        var answer = answers.Answer(unit, field, RetentionOperators.Anyone, null);
+
+        Assert.True(answer.Holds);
+        Assert.Contains("james", answer.Sentence);
+    }
+
     private const string Path = @"C:\Deluno\RetentionLab\Movies\Nosferatu (1922)\Nosferatu (1922).mkv";
+    private const string ShowTmdbId = "12345";
 
     private static RetentionFieldAnswers Answers(params MediaServerItem[] items)
         => new([new RetentionServerIndex(Server, new MediaServerLibrary(items, ["james", "ben"]))], new NullDisk(), Now);
 
     private static RetentionUnit Movie(DateTimeOffset? addedUtc)
         => new(RetentionLevels.Movie, "m1", null, null, null, "Nosferatu", "Nosferatu", 1922, "tt0013442", "653", null, 1024, [Path], [], AddedUtc: addedUtc);
+
+    private static RetentionUnit Show(DateTimeOffset? addedUtc)
+        => new(RetentionLevels.Show, "s1", null, null, null, "Land of the Dead", "Land of the Dead", 2005, null, ShowTmdbId, null, 1024, ["/deluno/tv/Land of the Dead"], [], AddedUtc: addedUtc);
+
+    private static (MediaServerItem Show, MediaServerItem[] Episodes) ShowWithEpisodes(
+        IReadOnlyList<MediaServerViewer> episode1Viewers,
+        IReadOnlyList<MediaServerViewer> episode2Viewers)
+    {
+        var show = new MediaServerItem("show-1", "tv", "Land of the Dead", 2005, ShowTmdbId, null, null, ["/deluno/tv/Land of the Dead"], Now.AddDays(-100), MediaServerWatchState.Unplayed)
+        {
+            Level = MediaServerItemLevels.Show
+        };
+        var episode1 = new MediaServerItem("ep-1", "tv", "Land of the Dead — S01E01", 2005, null, null, null, [], Now.AddDays(-100), MediaServerWatchState.Unplayed)
+        {
+            Level = MediaServerItemLevels.Episode,
+            ShowServerItemId = "show-1",
+            SeasonNumber = 1,
+            EpisodeNumber = 1,
+            Viewers = episode1Viewers
+        };
+        var episode2 = new MediaServerItem("ep-2", "tv", "Land of the Dead — S01E02", 2005, null, null, null, [], Now.AddDays(-100), MediaServerWatchState.Unplayed)
+        {
+            Level = MediaServerItemLevels.Episode,
+            ShowServerItemId = "show-1",
+            SeasonNumber = 1,
+            EpisodeNumber = 2,
+            Viewers = episode2Viewers
+        };
+        return (show, [episode1, episode2]);
+    }
 
     private static RetentionUnit Episode(string quality)
         => new(RetentionLevels.Episode, "e1", "s1", 1, 1, "Show — S01E01", "Show", 2020, null, null, null, 1024, [Path], [],
