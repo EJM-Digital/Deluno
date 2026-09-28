@@ -27,7 +27,7 @@
  * separate screens.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -41,10 +41,19 @@ import { automationNavItems } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type DownloadHealthIgnoreEntry, type DownloadHealthRule, type PlatformSettingsSnapshot } from "../lib/api";
+import {
+  fetchJson,
+  fetchPageItems,
+  type ActivityEventItem,
+  type DownloadHealthIgnoreEntry,
+  type DownloadHealthRule,
+  type PlatformSettingsSnapshot
+} from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+import { formatEventAge } from "../lib/activity-format";
+import { useDisplayPreferences } from "../lib/display-preferences";
 
 const RULE_KIND_COPY: Record<string, { label: string; description: string; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
   "no-progress": {
@@ -109,15 +118,28 @@ interface LoaderData {
   rules: DownloadHealthRule[];
   ignoreEntries: DownloadHealthIgnoreEntry[];
   settings: PlatformSettingsSnapshot;
+  connectivityCheckSkips: ActivityEventItem[];
 }
 
+/**
+ * #964: every skip written by the remediation pass (see
+ * DownloadClientTelemetryService.RunConfiguredHealthRemediationAsync) is
+ * filed under this same related-entity pair, so the card below can read its
+ * own history back rather than keeping a counter of its own.
+ */
+const CONNECTIVITY_CHECK_RELATED_ENTITY_TYPE = "download_client";
+const CONNECTIVITY_CHECK_RELATED_ENTITY_ID = "connectivity-check";
+
 export async function settingsDownloadHealthLoader(): Promise<LoaderData> {
-  const [rules, ignoreEntries, settings] = await Promise.all([
+  const [rules, ignoreEntries, settings, connectivityCheckSkips] = await Promise.all([
     fetchJson<DownloadHealthRule[]>("/api/download-health/rules"),
     fetchJson<DownloadHealthIgnoreEntry[]>("/api/download-health/ignore-list"),
-    fetchJson<PlatformSettingsSnapshot>("/api/settings")
+    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
+    fetchPageItems<ActivityEventItem>(
+      `/api/activity?pageSize=50&relatedEntityType=${CONNECTIVITY_CHECK_RELATED_ENTITY_TYPE}&relatedEntityId=${CONNECTIVITY_CHECK_RELATED_ENTITY_ID}`
+    )
   ]);
-  return { rules, ignoreEntries, settings };
+  return { rules, ignoreEntries, settings, connectivityCheckSkips };
 }
 
 /**
@@ -337,12 +359,28 @@ function HistoryRetentionCard({ settings }: { settings: PlatformSettingsSnapshot
  * outage detector - Deluno's own integrations can look fine while a site the
  * person actually relies on is down for them specifically. Off by default.
  */
-function ConnectivityCheckCard({ settings }: { settings: PlatformSettingsSnapshot }) {
+const CONNECTIVITY_SKIP_RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function ConnectivityCheckCard({
+  settings,
+  skips
+}: {
+  settings: PlatformSettingsSnapshot;
+  skips: ActivityEventItem[];
+}) {
   const mutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
+  const { preferences } = useDisplayPreferences();
   const [enabled, setEnabled] = useState(settings.downloadHealthConnectivityCheckEnabled);
   const [urls, setUrls] = useState(settings.downloadHealthConnectivityCheckUrls);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const dirty = urls !== settings.downloadHealthConnectivityCheckUrls;
+
+  // Newest first, per GET /api/activity (ListActivityPageAsync orders by
+  // created_utc DESC), so the first entry is the most recent skip.
+  const lastSkip = skips[0];
+  const recentSkipCount = skips.filter(
+    (skip) => Date.now() - new Date(skip.createdUtc).getTime() <= CONNECTIVITY_SKIP_RECENT_WINDOW_MS
+  ).length;
 
   async function onToggle(checked: boolean) {
     setEnabled(checked);
@@ -384,6 +422,18 @@ function ConnectivityCheckCard({ settings }: { settings: PlatformSettingsSnapsho
           </div>
         </Field>
         {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[length:var(--type-body-sm)] text-muted-foreground">
+          <span>
+            {lastSkip
+              ? `Last skipped a pass ${formatEventAge(lastSkip.createdUtc, preferences)}, ${recentSkipCount} time${recentSkipCount === 1 ? "" : "s"} in the last 24 hours.`
+              : "Has not skipped a pass."}
+          </span>
+          {lastSkip ? (
+            <Link to="/activity" className="shrink-0 text-primary underline-offset-2 hover:underline">
+              See in Activity
+            </Link>
+          ) : null}
+        </div>
       </div>
     </ListCard>
   );
@@ -462,7 +512,7 @@ function actionLabel(preset: string) {
 }
 
 export function SettingsDownloadHealthPage() {
-  const { rules, ignoreEntries, settings } = useLoaderData() as LoaderData;
+  const { rules, ignoreEntries, settings, connectivityCheckSkips } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<RuleForm>(emptyForm("no-progress"));
@@ -712,7 +762,7 @@ export function SettingsDownloadHealthPage() {
 
       <HistoryRetentionCard settings={settings} />
 
-      <ConnectivityCheckCard settings={settings} />
+      <ConnectivityCheckCard settings={settings} skips={connectivityCheckSkips} />
 
       <ListCard title="Strikes">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)] sm:grid-cols-[1fr_auto] sm:items-center">

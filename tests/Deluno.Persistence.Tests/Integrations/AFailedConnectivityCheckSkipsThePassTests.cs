@@ -66,6 +66,28 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
     }
 
     /// <summary>
+    /// #964: the Download health screen's connectivity-check card reads its
+    /// skip history from Activity rather than a counter of its own, so the
+    /// write here (in the remediation pass, not the poll above) is the whole
+    /// contract the card depends on.
+    /// </summary>
+    [Fact]
+    public async Task A_skipped_remediation_pass_is_recorded_in_activity_for_the_settings_card_to_read()
+    {
+        var check = new FakeConnectivityCheck(reachable: false);
+        using var world = await World.CreateAsync(check, connectivityCheckEnabled: true);
+        var overview = await world.PollAsync();
+
+        var report = await world.RemediateAsync(overview);
+
+        Assert.Contains(report.Notes, note => note.Contains("skipped", StringComparison.OrdinalIgnoreCase));
+        var activity = await world.Jobs.ListActivityAsync(10, "download_client", "connectivity-check", CancellationToken.None);
+        var entry = Assert.Single(activity);
+        Assert.Equal("download.health.connectivity-check-skipped", entry.Category);
+        Assert.Contains("no reachable URL", entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// The crux: a strike already accruing before the outage is frozen, not
     /// wiped, by the skipped poll - a naive "no observation this poll" would
     /// otherwise read as "the problem cleared", which is the opposite of what
@@ -138,15 +160,18 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
         private readonly DownloadClientTelemetryService _service;
         private readonly FixedTimeProvider _time;
 
-        private World(TestStorage storage, DownloadClientTelemetryService service, SqliteDownloadHealthRepository healthRepository, FixedTimeProvider time)
+        private World(TestStorage storage, DownloadClientTelemetryService service, SqliteDownloadHealthRepository healthRepository, SqliteJobStore jobs, FixedTimeProvider time)
         {
             _storage = storage;
             _service = service;
             HealthRepository = healthRepository;
+            Jobs = jobs;
             _time = time;
         }
 
         public SqliteDownloadHealthRepository HealthRepository { get; }
+
+        public SqliteJobStore Jobs { get; }
 
         public static async Task<World> CreateAsync(FakeConnectivityCheck check, bool connectivityCheckEnabled)
         {
@@ -193,12 +218,15 @@ public sealed class AFailedConnectivityCheckSkipsThePassTests
                 new DownloadHealthEvaluator(), processors, NullConnectivityMonitor.Instance,
                 connectivityCheck: check);
 
-            return new World(storage, service, healthRepository, time);
+            return new World(storage, service, healthRepository, jobs, time);
         }
 
         public void Advance(TimeSpan duration) => _time.Advance(duration);
 
         public Task<DownloadTelemetryOverview> PollAsync() => _service.GetOverviewAsync(CancellationToken.None);
+
+        public Task<DownloadHealthRemediationReport> RemediateAsync(DownloadTelemetryOverview overview)
+            => _service.RunConfiguredHealthRemediationAsync(overview, CancellationToken.None);
 
         public void Dispose() => _storage.Dispose();
     }
