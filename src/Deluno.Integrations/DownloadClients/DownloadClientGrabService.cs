@@ -161,6 +161,8 @@ public sealed class DownloadClientGrabService(
 
         grabResult = WithoutARetryPromise(grabResult);
 
+        await RecordUTorrentNoHashAsync(client, request, grabResult, cancellationToken);
+
         if (!string.IsNullOrWhiteSpace(request.DispatchId))
         {
             await dispatchesRepository.RecordGrabAsync(
@@ -189,6 +191,47 @@ public sealed class DownloadClientGrabService(
         }
 
         return grabResult;
+    }
+
+    /// <summary>
+    /// #942: uTorrent's WebUI add-url/add-file answers only with a build
+    /// number, not a refusal a dead link can be told apart by — so a grab
+    /// that never surfaces a new hash is genuinely ambiguous, not a release
+    /// Deluno can blocklist on a guess. The owner's decision (28 Sep 2026): say
+    /// so in plain words and let the normal stall handling
+    /// (<c>DownloadDispatchPollingService</c>'s grab-timeout path) settle it
+    /// later, the same as it would for any other client whose download never
+    /// shows.
+    ///
+    /// <para>A no-op for every other client, for a failed grab, for the
+    /// "already held" duplicate-follow case (that already explains itself),
+    /// and for the ordinary case where a hash did come back -- including the
+    /// magnet-hash fallback <see cref="GrabCoreAsync"/> applies just above
+    /// this call, which already answers the question for a magnet link.</para>
+    /// </summary>
+    private async Task RecordUTorrentNoHashAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        DownloadClientGrabResult grabResult,
+        CancellationToken cancellationToken)
+    {
+        if (activityFeedRepository is null
+            || !grabResult.Succeeded
+            || grabResult.IsDuplicateFollow
+            || !string.IsNullOrWhiteSpace(grabResult.ExternalId)
+            || !string.Equals(client.Protocol, "utorrent", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "download.grab.unconfirmed",
+            $"{grabResult.ReleaseName} was sent to {client.Name}, but {client.Name} never showed a new download for it. Deluno is not blocklisting it on that guess alone -- it will keep watching and follow the usual rules if it never appears.",
+            null,
+            null,
+            "download",
+            request.DispatchId,
+            cancellationToken);
     }
 
     /// <summary>
