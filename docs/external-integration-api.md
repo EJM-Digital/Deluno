@@ -503,6 +503,54 @@ A processor that writes a file in place can pause mid-write for longer than that
 
 The processor's copy in the processed-output folder is only ever a working copy. After Deluno successfully imports from it — or a hand-off is abandoned (import-original, given up, or released) — Deluno removes everything that hand-off left in the processed-output folder: the output it imported, any temporary/partial file the processor never finished renaming, scrap files (`.nfo`, samples, subtitles it does not want), and the hand-off's own now-empty folder. This happens regardless of the library's Cleanup mode, which answers a different question — what happens to the *original* download, still governed by the sharing rule (#288). Only the files belonging to that one hand-off are ever touched: a hand-off in its own subfolder (the documented folder-hand-off shape) owns that subfolder outright; a loose file sharing the processed-output root with other hand-offs only ever loses files with its own name and a temporary suffix, never a sibling hand-off's files. Every cleanup is written to Activity.
 
+## Cloudflare Helper (FlareSolverr / Byparr)
+
+Deluno does not solve Cloudflare (or DDoS-Guard) challenges itself. When a tracker sits behind one, Deluno calls out to a helper the person runs — FlareSolverr, or a drop-in replacement such as Byparr that answers the same `/v1` API — whose address is set once under **Settings -> General -> Cloudflare helper**. This section documents exactly what Deluno sends and reads, checked against each helper's own source rather than its wiki, because #972 found the wiki out of date with what the code actually does.
+
+**Checked against:**
+- FlareSolverr [`v3.5.2`](https://github.com/FlareSolverr/FlareSolverr/tree/v3.5.2) — `src/flaresolverr_service.py`, `src/dtos.py`
+- Byparr [`v3.0.4`](https://github.com/ThePhaseless/Byparr/tree/v3.0.4) — `src/endpoints.py`, `src/models.py`
+
+Deluno's client code: `src/Deluno.Integrations/Search/Trackers/CloudflareHelper.cs` (`FlareSolverrCloudflareHelper`), and the reachability health check in `src/Deluno.Worker/HealthChecks/Checks/HttpProxyReachabilityTester.cs`.
+
+### Endpoint and commands
+
+Every command is a single `POST` to `<CloudflareHelperUrl>/v1` (the `/v1` suffix is appended if the configured address does not already end in it) with a JSON body carrying a `cmd` field. Deluno sends four:
+
+| `cmd` | When Deluno sends it | Request fields it sends |
+| --- | --- | --- |
+| `sessions.create` | Before the first request to a host, so the helper's browser session (and any Cloudflare clearance it earns) is kept between requests instead of solved from scratch every time (49s on the lab rig, vs. seconds with a warm session) | `session` |
+| `request.get` | Fetching a page (`ICloudflareHelper.FetchAsync`) | `cmd`, `url`, `session`, `maxTimeout`, `proxy` (only when the indexer has one assigned, #748/#749) |
+| `request.post` | Fetching a page that only passes its Cloudflare challenge by posting form data (`ICloudflareHelper.PostAsync`) | same as `request.get`, plus `postData` — url-encoded form data as a single string, not JSON |
+| `sessions.destroy` | An indexer is removed, Deluno shuts down (`DestroyAllSessionsAsync`), or reconciliation finds a session for a host no indexer references any more (`ReconcileSessionsAsync`) | `session` |
+
+Deluno also sends `sessions.list` — with no other fields — from the proxy reachability health check, purely to confirm the helper answers `status: "ok"`; it reads and stores nothing from the response beyond that.
+
+The `session` name Deluno uses is always `"deluno-" + host` (one helper session per site, keyed by host so #749's reconciliation can compare against a plain host list). `maxTimeout` is the person's configured **Solve timeout** (1-180 seconds, clamped), sent in **milliseconds**. `proxy`, when present, is `{ "url": "...", "username": "...", "password": "..." }` (username/password omitted when the proxy has none) — this is the helper's own request-level proxy, which makes the *helper* route that one request through it; it is unrelated to how Deluno itself reaches the helper.
+
+### Response fields Deluno reads
+
+From every `request.get`/`request.post` answer:
+
+- `status` — checked for exactly `"ok"` (case-insensitive); anything else is treated as failure.
+- `message` — only inspected on a non-`"ok"` response, and only to detect the word "session" (case-insensitive), which Deluno takes to mean the helper lost its sessions (e.g. it restarted) and recreates the session once before giving up.
+- `solution.url` — the final URL after any redirect; falls back to the URL requested if missing or unparsable.
+- `solution.status` — the HTTP status the fetched page actually returned.
+- `solution.response` — the page HTML.
+- `solution.userAgent` — recorded beside the page, because a Cloudflare clearance cookie only holds with the User-Agent that earned it; any later request replaying these cookies must use the same one.
+- `solution.cookies[].name`, `.value`, `.domain` (defaults to the response URL's host if blank), `.path` (defaults to `/` if blank) — everything else FlareSolverr/Byparr put on each cookie (`expiry`, `httpOnly`, `secure`, `sameSite`) is ignored; Deluno does not need it to replay the cookie on a later direct request.
+
+From `sessions.list` (the health check only): `status`, checked for `"ok"`. Nothing else.
+
+### Where FlareSolverr and Byparr diverge
+
+Byparr advertises itself as a drop-in replacement and answers the same endpoint shape, but reading its source (`src/models.py`, `LinkRequest`) turns up two real gaps rather than a faithful reimplementation:
+
+- **`cmd` is accepted but not dispatched on.** Byparr's own field comment says it plainly: *"currently only supports GET requests. This string is purely for compatibility with FlareSolverr."* Every `POST /v1` — regardless of `cmd` — navigates to `url` with a `goto` (a GET). `sessions.create` and `sessions.destroy` are answered as if they were ordinary page fetches (Byparr has no session store at all — the concept doesn't exist), and `postData` sent with `request.post` is accepted in the JSON body but never read or applied, so a tracker whose Cloudflare challenge is only solved by posting form data will not work through Byparr. This is invisible from Deluno's side because Byparr still answers `status: "ok"` — the request "succeeds," it just silently did a GET instead of the POST Deluno asked for.
+- **No per-request `proxy` field.** Byparr's `LinkRequest` model has no `proxy` key; its only proxy support is a server-level environment variable (`PROXY_SERVER`/`PROXY_USERNAME`/`PROXY_PASSWORD` in `src/consts.py`) applied to every request the helper makes. Deluno's per-indexer proxy (#748/#749) is silently ignored by Byparr rather than rejected — FlareSolverr is the only one of the two that actually routes a request through the `proxy` Deluno sends it.
+
+Both gaps are Byparr limitations, not bugs in Deluno's client: Deluno sends the same request either way, and both helpers report back a normal-looking `"ok"` response, so there is nothing in the protocol itself that would let Deluno tell them apart. Someone relying on POST-only Cloudflare challenges or per-indexer proxies with a helper should use FlareSolverr.
+
 ## Why This Exists
 
 External tools should not need to know Deluno internals.
