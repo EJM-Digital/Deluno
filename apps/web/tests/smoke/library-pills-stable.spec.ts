@@ -119,6 +119,45 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
     expect(unseed.ok(), `Cleaning up failed: HTTP ${unseed.status()}`).toBe(true);
   });
 
+  for (const width of [1669, 1920]) {
+    test(`the search box is the same width on Movies and TV Shows at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await authenticateAndNavigate(page, "/movies");
+      const movies = await page.getByPlaceholder(/^Search /).first().boundingBox();
+      await authenticateAndNavigate(page, "/tv");
+      const tv = await page.getByPlaceholder(/^Search /).first().boundingBox();
+      expect(movies).not.toBeNull();
+      expect(tv).not.toBeNull();
+      expect(tv!.width, "TV Shows draws the search box at a different width from Movies").toBeCloseTo(movies!.width, 0);
+    });
+  }
+
+  test("an unmonitored title with no file reads Unmonitored on its card, never Missing", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await authenticateAndNavigate(page, "/movies");
+    await expect(page.locator(`p[title^="${TITLE_PREFIX}"]`).first()).toBeVisible({ timeout: 10_000 });
+    await page.getByRole("button", { name: /Unmonitored/ }).first().click();
+    await page.waitForTimeout(600);
+
+    const container = page.locator("div.overflow-auto").first();
+    await container.evaluate((element) => { element.scrollTop = 0; });
+    let unmonitoredStrips = 0;
+    const words: string[] = [];
+    for (let step = 0; step < 40; step += 1) {
+      unmonitoredStrips = Math.max(unmonitoredStrips, await page.locator('[role="img"][aria-label="Unmonitored"]').count());
+      words.push(...await page.locator('[role="img"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label") ?? "")));
+      const atEnd = await container.evaluate((element) => {
+        const before = element.scrollTop;
+        element.scrollTop = before + Math.max(200, element.clientHeight * 0.6);
+        return element.scrollTop === before;
+      });
+      if (atEnd) break;
+      await page.waitForTimeout(120);
+    }
+    expect(unmonitoredStrips, "no unmonitored title without a file said Unmonitored").toBeGreaterThan(0);
+    expect(words.filter((word) => /^Missing/.test(word) || /^Subtitles missing/i.test(word)), "an unmonitored card still says Missing").toEqual([]);
+  });
+
   for (const width of [390, 1669, 1920]) {
     test(`clicking every pill at ${width}px moves nothing and matches its number`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

@@ -1,6 +1,7 @@
 import { cn } from "../../lib/utils";
 import {
   TITLE_BAR_SEGMENTS,
+  subtitleStripWord,
   TITLE_MARK_PAINT,
   TITLE_MARK_PRESENTATION,
   UNMONITORED_PAINT,
@@ -402,6 +403,9 @@ function TwoToneBar({
   );
 }
 
+/** The pill's own word for a title Deluno is not watching (#1048). */
+const UNMONITORED_LABEL = "Unmonitored";
+
 const paintVar = (token: string) => `hsl(var(${token}))`;
 
 export interface TitleBarsInput {
@@ -428,6 +432,18 @@ export interface TitleBarsInput {
 function mediaBarOf(item: TitleBarsInput, mark: TitleMark) {
   const design = cardDesign(item.type);
   const word = TITLE_MARK_PRESENTATION[mark].label;
+
+  // #1048: an unmonitored title is in the Unmonitored pill and nowhere else, so
+  // with nothing held its strip says Unmonitored, never Missing. With something
+  // held it keeps its quality label / episode count (painted grey by the caller).
+  if (item.monitored === false) {
+    const heldNothing = design.mediaBar === "episodes"
+      ? Math.max(0, item.airedWithFileCount ?? 0) === 0
+      : !item.hasFile;
+    if (heldNothing) {
+      return { pct: 100, label: UNMONITORED_LABEL, lead: design.mediaBar === "episodes" ? "EPS" : "QLTY", fraction: false };
+    }
+  }
 
   if (design.mediaBar === "episodes") {
     const aired = item.airedEpisodeCount ?? 0;
@@ -503,23 +519,13 @@ export function TitleBars({
     : item.hasFile === false ? 0 : 1;
 
   /*
-    The subtitle bar inherits **Upcoming, and nothing else**.
-
-    Upcoming means the thing cannot exist yet, so nothing can be fetched and
-    calling it Missing is a category error. Downloading means it exists and is
-    arriving — its subtitles exist out there and you do not have them, which is
-    precisely what Missing means. A subtitle is also a few kilobytes: a progress
-    state for one would be gone before it could be read, and a state nobody can
-    ever see should not be modelled.
+    #1048: the strip says the legend's own words (Subtitles complete / partial /
+    none) in a neutral tone. Red means something is needed, and a language that
+    has not arrived is not an alarm. It is drawn only when subtitles are wanted.
   */
-  const subState: TitleMark = files === 0 && mark === "upcoming" ? "upcoming" : "missing";
-  const subSettled = subs.wanted > 0 && subs.held === subs.wanted;
-  const subPct = files === 0
-    ? (subState === "missing" ? 0 : 100)
-    : subs.wanted ? Math.round((subs.held / subs.wanted) * 100) : 0;
-  const subLabel = subs.wanted
-    ? `${subs.held} / ${subs.wanted}`
-    : TITLE_MARK_PRESENTATION[subState].label;
+  const subsWanted = Math.max(0, item.subtitleLanguagesWanted ?? 0) > 0;
+  const subPct = files === 0 || !subs.wanted ? 0 : Math.round((subs.held / subs.wanted) * 100);
+  const subWord = subtitleStripWord(files === 0 ? 0 : subs.held, subs.wanted);
 
   const off = !monitored;
   const paint = (m: TitleMark) => (off ? UNMONITORED_PAINT : TITLE_MARK_PAINT[m]);
@@ -550,11 +556,16 @@ export function TitleBars({
     return { surface: TITLE_MARK_PAINT.missing.surface, label: TITLE_MARK_PAINT.missing.onSurface };
   };
   const topTrack = trackFor(mark, media.pct);
-  const subPaint = paint(files === 0 ? subState : subSettled ? "covered" : "upgrade");
-  const subTrack = trackFor(subState, subPct);
+  // Neutral, not a status colour. An unmonitored title keeps its one flat grey.
+  const neutral = off
+    ? { surface: UNMONITORED_PAINT.surface, label: UNMONITORED_PAINT.onSurface }
+    : { surface: "--mark-idle", label: "--foreground" };
 
-  const rung = TITLE_MARK_PRESENTATION[mark];
-  const watch = monitored ? "" : " · unmonitored";
+  const unmonitoredEmpty = media.label === UNMONITORED_LABEL;
+  const rung = unmonitoredEmpty
+    ? { ...TITLE_MARK_PRESENTATION[mark], label: UNMONITORED_LABEL, hint: "Deluno is not watching this one." }
+    : TITLE_MARK_PRESENTATION[mark];
+  const watch = monitored || unmonitoredEmpty ? "" : " · unmonitored";
 
   return (
     <>
@@ -566,32 +577,30 @@ export function TitleBars({
         onTrack={paintVar(topTrack.label)}
         lead={design.leads === "both" ? media.lead : undefined}
         label={showMediaText ? media.label : undefined}
-        title={rung.hint + (monitored ? "" : " Deluno is not watching this one.")}
+        title={rung.hint + (monitored || unmonitoredEmpty ? "" : " Deluno is not watching this one.")}
         edge="top"
         ariaLabel={`${rung.label}${watch}${
           isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
         }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
       />
-      <TwoToneBar
-        fill={subPct}
-        fillColour={paintVar(subPaint.surface)}
-        onFill={paintVar(subPaint.onSurface)}
-        trackColour={paintVar(subTrack.surface)}
-        onTrack={paintVar(subTrack.label)}
-        lead={design.leads === "none" ? undefined : "SUBS"}
-        label={showSubtitleText ? subLabel : undefined}
-        edge="bottom"
-        title={
-          subs.wanted
-            ? `${subs.held} of ${subs.wanted} subtitle languages you asked for are here.`
-            : TITLE_MARK_PRESENTATION[subState].hint
-        }
-        ariaLabel={
-          subs.wanted
-            ? `${subs.held} of ${subs.wanted} subtitle languages${watch}`
-            : `Subtitles ${TITLE_MARK_PRESENTATION[subState].label.toLowerCase()}${watch}`
-        }
-      />
+      {subsWanted ? (
+        <TwoToneBar
+          fill={subPct}
+          fillColour={paintVar(neutral.surface)}
+          onFill={paintVar(neutral.label)}
+          trackColour={paintVar(neutral.surface)}
+          onTrack={paintVar(neutral.label)}
+          lead={design.leads === "none" ? undefined : "SUBS"}
+          label={showSubtitleText ? subWord : undefined}
+          edge="bottom"
+          title={
+            subs.wanted
+              ? `${subs.held} of ${subs.wanted} subtitle languages you asked for are here.`
+              : "Subtitles: none yet. Deluno looks for them on the library's own cycle."
+          }
+          ariaLabel={`Subtitles ${subWord}${watch}`}
+        />
+      ) : null}
     </>
   );
 }
@@ -953,14 +962,18 @@ export function TitleMarkBarLegend({ className, type }: { className?: string; ty
 export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput; className?: string; type?: MediaType }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const half = !item.monitored && presentation.canBeHalf;
-  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
+  // #1048: an unmonitored title with no file is in the Unmonitored pill, so the
+  // row says Unmonitored rather than "Missing · unmonitored".
+  const bare = !item.monitored && mark !== "covered" && mark !== "upgrade";
+  const half = !bare && !item.monitored && presentation.canBeHalf;
+  const word = bare ? UNMONITORED_LABEL : presentation.label;
+  const label = half ? `${word} · unmonitored` : word;
 
   return (
     <span
       role="img"
       aria-label={label}
-      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={bare ? "Deluno is not watching this one." : half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}
     >
       {/*
@@ -980,7 +993,7 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
         its own poster called it grey.
       */}
       <MarkStrip mark={mark} type={type} monitored={item.monitored} sheen />
-      <span>{presentation.label}</span>
+      <span>{word}</span>
       {half ? <span className="text-muted-foreground">· unmonitored</span> : null}
     </span>
   );
@@ -997,7 +1010,8 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
 export function TitleMarkChip({ item, className }: { item: TitleMarkInput; className?: string }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const half = !item.monitored && presentation.canBeHalf;
+  const bare = !item.monitored && mark !== "covered" && mark !== "upgrade";
+  const half = !bare && !item.monitored && presentation.canBeHalf;
 
   // Shows only, and only once Deluno knows what has aired. Zero of an unknown
   // total is not a fraction, and printing one would claim knowledge it has not
@@ -1007,13 +1021,14 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
     ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired)}/${aired}`
     : null;
 
-  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
+  const word = bare ? UNMONITORED_LABEL : presentation.label;
+  const label = half ? `${word} · unmonitored` : word;
 
   return (
     <span
       role="img"
       aria-label={episodes ? `${label} · ${episodes} aired episodes` : label}
-      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={bare ? "Deluno is not watching this one." : half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2 py-0.5",
         "text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-white backdrop-blur-md",
@@ -1027,7 +1042,7 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
         looked for on the artwork.
       */}
       <TitleMarkDot item={item} size={MARK_DOT_SIZE} decorative />
-      {presentation.label}
+      {word}
       {episodes ? (
         <>
           {/*
