@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Trakt;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -683,6 +684,164 @@ public sealed class IntakeSyncServiceTests
         // release date has not reached "released" yet, so nothing is queued.
         Assert.False(result.SearchRequested);
         movies.Verify(repo => repo.UpdateMinimumAvailabilityAsync("movie-notyet", "released", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // #849: the other two gates besides "released" -- "announced" always
+    // passes (today's behaviour, unchanged), and "in cinemas" withholds a
+    // search the same way "released" does until its date is reached.
+
+    [Fact]
+    public async Task RunAsync_requests_the_search_right_away_for_a_list_gated_at_announced()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-tmdb-list-announced",
+            Provider = "tmdb",
+            FeedUrl = "12345",
+            SearchOnAdd = true,
+            MinimumAvailability = "announced"
+        };
+
+        var result = await RunAvailabilityGatedSyncAsync(source, releaseDateUtc: "2099-01-01", timeProvider: TimeProvider.System);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.AddedCount);
+        // Announced always passes, release date 73 years out and all --
+        // that is the whole point of the gate being "announced".
+        Assert.True(result.SearchRequested);
+    }
+
+    [Fact]
+    public async Task RunAsync_withholds_the_search_for_a_movie_that_has_not_reached_the_lists_in_cinemas_gate()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-tmdb-list-incinemas",
+            Provider = "tmdb",
+            FeedUrl = "12345",
+            SearchOnAdd = true,
+            MinimumAvailability = "inCinemas"
+        };
+
+        var result = await RunAvailabilityGatedSyncAsync(source, releaseDateUtc: "2099-01-01", timeProvider: TimeProvider.System);
+
+        Assert.Equal("success", result.Status);
+        Assert.Equal(1, result.AddedCount);
+        Assert.False(result.SearchRequested);
+    }
+
+    [Fact]
+    public async Task A_search_withheld_below_the_gate_is_requested_once_the_release_date_clears()
+    {
+        var source = CreateWatchlistSource() with
+        {
+            Id = "source-tmdb-list-clears",
+            Provider = "tmdb",
+            FeedUrl = "12345",
+            SearchOnAdd = true,
+            MinimumAvailability = "inCinemas"
+        };
+
+        var clock = new AdvanceableTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+
+        // The list's title releases the day after "now" -- still withheld.
+        var before = await RunAvailabilityGatedSyncAsync(source, releaseDateUtc: "2026-01-02", timeProvider: clock);
+        Assert.False(before.SearchRequested);
+
+        // A day passes and the release date is now in the past -- the same
+        // gate that withheld the search must release it, unprompted, on the
+        // very next sync.
+        clock.Advance(TimeSpan.FromDays(2));
+        var after = await RunAvailabilityGatedSyncAsync(source, releaseDateUtc: "2026-01-02", timeProvider: clock);
+        Assert.True(after.SearchRequested);
+    }
+
+    /// <summary>
+    /// One list-added movie, gated by <paramref name="source"/>'s own
+    /// <c>MinimumAvailability</c> against a single release date returned by a
+    /// stub TMDb list. Shared by the announced/in-cinemas/date-clears tests
+    /// above, which differ only in the gate, the date, and the clock.
+    /// </summary>
+    private static async Task<IntakeSyncRunResult> RunAvailabilityGatedSyncAsync(IntakeSourceItem source, string releaseDateUtc, TimeProvider timeProvider)
+    {
+        var library = CreateMovieLibrary();
+        var platform = new Mock<IPlatformSettingsRepository>();
+        platform.Setup(repo => repo.GetMetadataProviderSecretAsync("tmdb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("tmdb-secret");
+        var libraries = new Mock<ILibrariesRepository>();
+        var intake = new Mock<IIntakeRepository>();
+        var movies = new Mock<IMovieCatalogRepository>();
+        var metadata = new Mock<IMetadataProvider>();
+        var decisions = new Mock<IMediaDecisionService>();
+        var jobs = new Mock<IJobQueueRepository>();
+
+        intake.Setup(repo => repo.GetIntakeSourceAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync(source);
+        libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        intake.Setup(repo => repo.ListActiveIntakeListExclusionsAsync(source.Id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        intake.Setup(repo => repo.RecordIntakeTitleOriginAsync(It.IsAny<CreateIntakeTitleOriginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeTitleOriginItem?)null);
+        intake.Setup(repo => repo.RecordIntakeSourceSyncResultAsync(
+                source.Id, It.IsAny<DateTimeOffset>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSourceItem?)null);
+        metadata.Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        movies.Setup(repo => repo.FindExistingIdAsync(
+                It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        movies.Setup(repo => repo.AddAsync(It.IsAny<CreateMovieRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MovieListItem(
+                "movie-gated", "Gated Movie", 2026, null, true, false, null, null, null, null, null, null, null,
+                [], null, null, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch));
+        movies.Setup(repo => repo.EnsureWantedStateAsync(
+                "movie-gated", library.Id, It.IsAny<string>(), It.IsAny<string>(), false,
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        decisions.Setup(service => service.DecideWantedState(It.IsAny<MediaWantedDecisionInput>()))
+            .Returns(new LibraryQualityDecision("wanted", "Gate test.", false, null, "WEBDL-1080p", "test"));
+        jobs.Setup(repository => repository.RequestLibrarySearchAsync(It.IsAny<LibraryAutomationPlanItem>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var service = new IntakeSyncService(
+            platform.Object,
+            libraries.Object,
+            intake.Object,
+            new Mock<IJobScheduler>().Object,
+            jobs.Object,
+            movies.Object,
+            new Mock<ISeriesCatalogRepository>().Object,
+            metadata.Object,
+            decisions.Object,
+            new Mock<IActivityFeedRepository>().Object,
+            new ConfigurationBuilder().Build(),
+            timeProvider,
+            new SingleClientFactory(new TmdbListReleaseDateHandler(releaseDateUtc)),
+            NullLogger<IntakeSyncService>.Instance);
+
+        return await service.RunAsync(source.Id, relatedJobId: null, manual: true, CancellationToken.None);
+    }
+
+    private sealed class TmdbListReleaseDateHandler(string releaseDateUtc) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Assert.Contains("api.themoviedb.org/3/list/12345", request.RequestUri?.ToString());
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $"{{\"items\":[{{\"id\":1,\"title\":\"Gated Movie\",\"release_date\":\"{releaseDateUtc}\"}}]}}",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        }
+    }
+
+    private sealed class AdvanceableTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        private DateTimeOffset _now = now;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now = _now.Add(by);
     }
 
     private sealed class TmdbFutureReleaseListHandler : HttpMessageHandler
