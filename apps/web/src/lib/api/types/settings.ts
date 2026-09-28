@@ -45,6 +45,8 @@ export interface PlatformSettingsSnapshot {
   cloudflareHelperUrl?: string | null;
   /** The helper's own request timeout, 1-180 seconds, default 60 (#749). */
   cloudflareHelperTimeoutSeconds: number;
+  /** Which helper answers at cloudflareHelperUrl: "auto" (default, probes it), "flaresolverr" or "byparr" (#1029). */
+  cloudflareHelperKind: string;
   requireAuthentication: boolean;
   uiTheme: string;
   uiColorMode: "standard" | "impaired" | string;
@@ -340,6 +342,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   urlBase: "",
   cloudflareHelperUrl: null,
   cloudflareHelperTimeoutSeconds: 60,
+  cloudflareHelperKind: "auto",
   requireAuthentication: true,
   uiTheme: "system",
   uiColorMode: "standard",

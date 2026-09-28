@@ -23,6 +23,8 @@ export interface PlatformSettingsPatch {
   cloudflareHelperUrl?: string;
   /** The helper's own request timeout, 1-180 seconds (#749). */
   cloudflareHelperTimeoutSeconds?: number;
+  /** Which helper answers at cloudflareHelperUrl: "auto" (default), "flaresolverr" or "byparr" (#1029). */
+  cloudflareHelperKind?: string;
   requireAuthentication?: boolean;
   uiTheme?: string;
   uiColorMode?: string;

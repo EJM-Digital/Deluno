@@ -43,7 +43,15 @@ interface GeneralForm {
   appInstanceName: string;
   cloudflareHelperUrl: string;
   cloudflareHelperTimeoutSeconds: string;
+  cloudflareHelperKind: string;
 }
+
+/** #1029: Byparr answers FlareSolverr's own API but silently ignores sessions, a POST body and a per-request proxy; "auto" has Deluno tell them apart itself. */
+const cloudflareHelperKindOptions = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "flaresolverr", label: "FlareSolverr" },
+  { value: "byparr", label: "Byparr" }
+];
 
 export function SettingsGeneralPage() {
   const { settings } = useLoaderData() as LoaderData;
@@ -95,7 +103,8 @@ export function SettingsGeneralPage() {
       await settingsMutation.mutate({
         appInstanceName: form.appInstanceName.trim(),
         cloudflareHelperUrl: form.cloudflareHelperUrl.trim(),
-        cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds.trim() ? Number(form.cloudflareHelperTimeoutSeconds) : 60
+        cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds.trim() ? Number(form.cloudflareHelperTimeoutSeconds) : 60,
+        cloudflareHelperKind: form.cloudflareHelperKind
       });
       setSavedForm(form);
       setSaveState("saved");
@@ -139,6 +148,9 @@ export function SettingsGeneralPage() {
               <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">seconds</span>
             </div>
           </Field>
+          <Field label="Helper kind" optional help="FlareSolverr and Byparr answer almost the same way, but Byparr cannot send a POST or route through a proxy -- it stays quiet about it instead of refusing. Leave this on Auto-detect unless Deluno guesses wrong." error={settingsMutation.fieldErrors.cloudflareHelperKind}>
+            <Select value={form.cloudflareHelperKind} onChange={(event) => setForm((current) => ({ ...current, cloudflareHelperKind: event.target.value }))} options={cloudflareHelperKindOptions} className="max-w-[12rem]" />
+          </Field>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => void testHelper()} disabled={helperBusy || !form.cloudflareHelperUrl.trim()}>
               {helperBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wifi className="h-3.5 w-3.5" />}
@@ -166,7 +178,8 @@ function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
   return {
     appInstanceName: settings.appInstanceName,
     cloudflareHelperUrl: settings.cloudflareHelperUrl ?? "",
-    cloudflareHelperTimeoutSeconds: String(settings.cloudflareHelperTimeoutSeconds ?? 60)
+    cloudflareHelperTimeoutSeconds: String(settings.cloudflareHelperTimeoutSeconds ?? 60),
+    cloudflareHelperKind: settings.cloudflareHelperKind ?? "auto"
   };
 }
 

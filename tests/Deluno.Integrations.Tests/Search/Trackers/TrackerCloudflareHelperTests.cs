@@ -69,6 +69,17 @@ public sealed class TrackerCloudflareHelperTests
         Assert.Contains("Cloudflare", failure.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_helper_that_cannot_perform_the_request_fails_the_search_with_its_own_plain_message()
+    {
+        var (engine, connection) = Connect(new CloudflareSite(honoursClearance: true), new CapabilityRefusingHelper());
+
+        var failure = await Assert.ThrowsAsync<CloudflareHelperCapabilityException>(
+            () => engine.SearchAsync(connection, new TrackerQuery("x"), CancellationToken.None));
+
+        Assert.Contains("Byparr cannot", failure.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>The answer FlareSolverr gave for https://1337x.to/ on the rig, trimmed.</summary>
     [Fact]
     public void Reads_a_FlareSolverr_answer()
@@ -162,6 +173,24 @@ public sealed class TrackerCloudflareHelperTests
                 HelperUserAgent,
                 [new Cookie("cf_clearance", "cleared", "/", url.Host)]));
         }
+
+        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+            => FetchAsync(url, cancellationToken, proxy, helperUrl);
+
+        public Task DestroySessionAsync(string host, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DestroyAllSessionsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    /// <summary>A helper standing in for Byparr refusing something it cannot do (#1029) -- e.g. a proxied request.</summary>
+    private sealed class CapabilityRefusingHelper : ICloudflareHelper
+    {
+        public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null) => Task.FromResult(true);
+
+        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+            => throw new CloudflareHelperCapabilityException($"{url.Host} is assigned a proxy, but Byparr cannot route a request through one. Use FlareSolverr for this tracker instead, or remove its proxy.");
 
         public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
             => FetchAsync(url, cancellationToken, proxy, helperUrl);

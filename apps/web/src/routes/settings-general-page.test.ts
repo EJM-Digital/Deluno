@@ -44,4 +44,15 @@ describe("general settings page", () => {
     expect(source).toMatch(/label="Helper timeout"/);
     expect(source).toMatch(/cloudflareHelperTimeoutSeconds/);
   });
+
+  // #1029: Byparr answers FlareSolverr's own API but silently ignores
+  // sessions, a POST body and a per-request proxy; the person can say which
+  // one they run instead of always trusting Deluno's own probe of it.
+  it("offers a Cloudflare helper kind choice alongside auto-detect", () => {
+    expect(source).toMatch(/label="Helper kind"/);
+    expect(source).toMatch(/cloudflareHelperKind/);
+    expect(source).toMatch(/"auto"/);
+    expect(source).toMatch(/"flaresolverr"/);
+    expect(source).toMatch(/"byparr"/);
+  });
 });

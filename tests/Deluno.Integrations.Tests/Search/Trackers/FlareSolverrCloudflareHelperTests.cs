@@ -221,6 +221,15 @@ public sealed class FlareSolverrCloudflareHelperTests
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.Method == HttpMethod.Get)
+            {
+                // #1029's "auto" kind probe: a plain GET at the helper's own
+                // address, answered the way real FlareSolverr answers it, so
+                // every test here that never sets a kind keeps exercising
+                // today's FlareSolverr behaviour rather than Byparr's.
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("FlareSolverr is ready!") };
+            }
+
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;

@@ -3,9 +3,19 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 
 namespace Deluno.Integrations.Search.Trackers;
+
+/// <summary>
+/// A tracker needs something the configured Cloudflare helper cannot do
+/// (#1029) -- a POST through Byparr, or a proxy through Byparr, both of
+/// which Byparr silently drops rather than refusing. Deluno catches this
+/// itself instead, and says in plain words what the person's other helper
+/// choice (FlareSolverr) can do that this one cannot.
+/// </summary>
+public sealed class CloudflareHelperCapabilityException(string message) : TrackerException(message);
 
 /// <summary>
 /// A page fetched through a Cloudflare helper (#628): what it returned, and
@@ -75,6 +85,13 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
     // Keyed by host, so reconciliation can compare against a plain host list.
     private readonly ConcurrentDictionary<string, bool> sessions = new(StringComparer.OrdinalIgnoreCase);
 
+    // #1029: which helper answered at a given base address, once probed under
+    // "auto". Keyed by the helper's own base URL (there can be more than
+    // one: the instance-wide address, and any indexer's own #976 address),
+    // not by tracker host, since the same helper answers for every tracker
+    // routed through it.
+    private readonly ConcurrentDictionary<string, string> detectedKinds = new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null)
         => !string.IsNullOrWhiteSpace(helperUrl) || !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
 
@@ -97,13 +114,38 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             return null;
         }
 
+        // #1029: Byparr answers the same /v1 shape as FlareSolverr but its
+        // source says it only supports GET -- sessions.create/destroy,
+        // postData and a per-request proxy all do nothing, silently. Deluno
+        // never sends Byparr a request it cannot perform; it tells the
+        // person in plain words instead of letting the request go through
+        // with the proxy or the POST body quietly dropped.
+        var kind = await ResolveKindAsync(baseUrl, current.CloudflareHelperKind, cancellationToken);
+        var isByparr = kind == CloudflareHelperKinds.Byparr;
+        if (isByparr && formData is not null)
+        {
+            throw new CloudflareHelperCapabilityException(
+                $"{url.Host} needs a POST to get past its Cloudflare check, which Byparr cannot send (it only supports GET). Use FlareSolverr for this tracker instead.");
+        }
+
+        if (isByparr && proxy is not null)
+        {
+            throw new CloudflareHelperCapabilityException(
+                $"{url.Host} is assigned a proxy, but Byparr cannot route a request through one -- it would be sent without it. Use FlareSolverr for this tracker instead, or remove its proxy.");
+        }
+
         // #749: previously a hard-coded 60-second SolveBudget; now the value
         // the person configured (1-180 seconds, clamped the same way on save).
         var solveBudget = TimeSpan.FromSeconds(Math.Clamp(current.CloudflareHelperTimeoutSeconds, 1, 180));
         var endpoint = baseUrl.TrimEnd('/').EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? baseUrl.TrimEnd('/') : baseUrl.TrimEnd('/') + "/v1";
         var http = httpClientFactory.CreateClient(HttpClientName);
         var host = url.Host;
-        if (!sessions.ContainsKey(host))
+
+        // Byparr does nothing with sessions.create/destroy -- it never
+        // errors, but there is nothing to gain by sending it, so Deluno
+        // skips straight to the request the same way it would for a helper
+        // with no session concept at all.
+        if (!isByparr && !sessions.ContainsKey(host))
         {
             // An error here usually means the session is already there, which is fine.
             using var created = await http.PostAsJsonAsync(endpoint, new { cmd = "sessions.create", session = SessionName(host) }, cancellationToken);
@@ -111,7 +153,7 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
         }
 
         var answer = await SendAsync(http, endpoint, url, host, formData, proxy, solveBudget, cancellationToken);
-        if (answer?.Status is not null && !string.Equals(answer.Status, "ok", StringComparison.OrdinalIgnoreCase)
+        if (!isByparr && answer?.Status is not null && !string.Equals(answer.Status, "ok", StringComparison.OrdinalIgnoreCase)
             && answer.Message?.Contains("session", StringComparison.OrdinalIgnoreCase) == true)
         {
             // The helper restarted and lost its sessions: start this one again.
@@ -122,6 +164,60 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
         }
 
         return Read(answer, url);
+    }
+
+    /// <summary>
+    /// The kind of helper at <paramref name="baseUrl"/>: the configured
+    /// choice if the person said which one they run, otherwise probed once
+    /// and cached for that address (#1029).
+    /// </summary>
+    private async Task<string> ResolveKindAsync(string baseUrl, string configuredKind, CancellationToken cancellationToken)
+    {
+        var configured = CloudflareHelperKinds.Normalize(configuredKind);
+        if (configured != CloudflareHelperKinds.Auto)
+        {
+            return configured;
+        }
+
+        if (detectedKinds.TryGetValue(baseUrl, out var cached))
+        {
+            return cached;
+        }
+
+        var detected = await DetectKindAsync(baseUrl, cancellationToken);
+        detectedKinds[baseUrl] = detected;
+        return detected;
+    }
+
+    /// <summary>
+    /// Probes the helper's own root address for what it says about itself.
+    /// FlareSolverr's landing page says "FlareSolverr is ready"; Byparr's
+    /// says its own name. Anything else -- unreachable, or neither string
+    /// present -- is read as FlareSolverr, today's only behaviour, so an
+    /// existing FlareSolverr install (almost every install) is unaffected by
+    /// this detection ever being added.
+    /// </summary>
+    private async Task<string> DetectKindAsync(string baseUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var http = httpClientFactory.CreateClient(HttpClientName);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            using var response = await http.GetAsync(baseUrl, timeout.Token);
+            var body = await response.Content.ReadAsStringAsync(timeout.Token);
+            if (body.Contains("byparr", StringComparison.OrdinalIgnoreCase))
+            {
+                return CloudflareHelperKinds.Byparr;
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            // Could not probe it; assume FlareSolverr rather than block a
+            // helper that might not even be Byparr.
+        }
+
+        return CloudflareHelperKinds.FlareSolverr;
     }
 
     private static async Task<Answer?> SendAsync(
