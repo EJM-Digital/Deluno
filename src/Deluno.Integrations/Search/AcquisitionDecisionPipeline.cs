@@ -195,27 +195,34 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var clients = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(indexerId))
-        {
-            return byPriority.FirstOrDefault(client =>
-                !clients.TryGetValue(client.DownloadClientId, out var detail)
-                || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
-        }
+        string? TagsOf(LibraryDownloadClientLinkItem client)
+            => clients.TryGetValue(client.DownloadClientId, out var detail) ? detail.Tags : null;
 
-        var source = (await connectionsRepository.ListIndexersAsync(cancellationToken))
-            .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
+        // A client tagged for this title wins over untagged ones (#1041);
+        // priority orders within each group.
+        var source = string.IsNullOrWhiteSpace(indexerId)
+            ? null
+            : (await connectionsRepository.ListIndexersAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
         if (source is null)
         {
-            return byPriority.FirstOrDefault(client =>
-                !clients.TryGetValue(client.DownloadClientId, out var detail)
-                || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
+            return DownloadClientTagMatch.PreferTagged(
+                    byPriority.Where(client => !clients.ContainsKey(client.DownloadClientId)
+                        || DownloadClientTagMatch.IsEligible(TagsOf(client), titleTags)),
+                    TagsOf,
+                    titleTags)
+                .FirstOrDefault();
         }
 
         var kind = DownloadProtocols.SourceKind(source.Protocol);
-        return byPriority.FirstOrDefault(client =>
-            clients.TryGetValue(client.DownloadClientId, out var detail)
-            && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
-            && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags));
+        return DownloadClientTagMatch.PreferTagged(
+                byPriority.Where(client =>
+                    clients.TryGetValue(client.DownloadClientId, out var detail)
+                    && string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase)
+                    && DownloadClientTagMatch.IsEligible(detail.Tags, titleTags)),
+                TagsOf,
+                titleTags)
+            .FirstOrDefault();
     }
 
     public async Task<string?> ExplainDownloadClientRoutingAsync(
@@ -720,9 +727,16 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                         || string.Equals(DownloadProtocols.ClientKind(detail.Protocol), kind, StringComparison.OrdinalIgnoreCase))
                     .ToArray();
 
-            return byKind
-                .Where(client => !DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail)
-                    || DownloadClientTagMatch.IsEligible(detail.Tags, titleTags))
+            string? TagsOf(LibraryDownloadClientLinkItem client)
+                => DownloadClientDetails.TryGetValue(client.DownloadClientId, out var detail) ? detail.Tags : null;
+
+            // A client tagged for this title wins over the untagged ones, as in
+            // Radarr/Sonarr (#1041); untagged clients are the fallback.
+            return DownloadClientTagMatch.PreferTagged(
+                    byKind.Where(client => !DownloadClientDetails.ContainsKey(client.DownloadClientId)
+                        || DownloadClientTagMatch.IsEligible(TagsOf(client), titleTags)),
+                    TagsOf,
+                    titleTags)
                 .ToArray();
         }
     }
@@ -768,7 +782,43 @@ public static class DownloadClientTagMatch
     /// choice needs explaining.
     /// </summary>
     public static string? Explain(string? clientTags, IReadOnlyList<string>? titleTags, string clientName)
-        => Deluno.Contracts.TagRoutingMatch.Explain(clientTags, titleTags, clientName);
+    {
+        var matchedTag = MatchedTag(clientTags, titleTags);
+        return matchedTag is null
+            ? null
+            : $"{clientName} is tagged \"{matchedTag}\" like this title, so it was chosen before download clients with no tag.";
+    }
+
+    /// <summary>True when the client carries tags and one of them is on the title.</summary>
+    public static bool IsTagMatched(string? clientTags, IReadOnlyList<string>? titleTags)
+        => MatchedTag(clientTags, titleTags) is not null;
+
+    /// <summary>
+    /// Radarr/Sonarr's DownloadClientProvider rule (#1041): among the eligible
+    /// clients (already in priority order), those whose tags match the title
+    /// come first; only when none match do the untagged ones get the grab.
+    /// </summary>
+    public static IEnumerable<T> PreferTagged<T>(
+        IEnumerable<T> eligibleInPriorityOrder,
+        Func<T, string?> tagsOf,
+        IReadOnlyList<string>? titleTags)
+    {
+        var list = eligibleInPriorityOrder.ToArray();
+        var matched = list.Where(item => IsTagMatched(tagsOf(item), titleTags)).ToArray();
+        return matched.Length > 0 ? matched : list;
+    }
+
+    private static string? MatchedTag(string? clientTags, IReadOnlyList<string>? titleTags)
+    {
+        if (string.IsNullOrWhiteSpace(clientTags) || titleTags is null || titleTags.Count == 0)
+        {
+            return null;
+        }
+
+        var held = titleTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return clientTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(held.Contains);
+    }
 }
 
 public sealed record AcquisitionDecisionRequest(

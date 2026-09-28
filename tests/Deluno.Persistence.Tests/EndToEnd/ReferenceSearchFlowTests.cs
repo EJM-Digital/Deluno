@@ -266,6 +266,31 @@ public sealed class ReferenceSearchFlowTests
         Assert.Null(await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: null));
     }
 
+    /// <summary>
+    /// Radarr/Sonarr's DownloadClientProvider rule (#1041): a client tagged for
+    /// the title wins over an untagged one even when the untagged one has the
+    /// better priority; a title without the tag still goes to the untagged one.
+    /// </summary>
+    [Fact]
+    public async Task A_client_tagged_for_the_title_wins_over_an_untagged_client_with_better_priority()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-19T00:00:00Z"));
+        var (pipeline, connections, _) = await CreatePipelineAsync(storage, time);
+        var indexer = await HealthyIndexerAsync(connections, "Torznab fixture", "torznab");
+        var untagged = await HealthyClientAsync(connections, "qBittorrent", "qbittorrent");
+        var kids = await TaggedClientAsync(connections, "qBittorrent Kids", "qbittorrent", "kids");
+        var links = Request(time, [indexer], [(untagged, 1), (kids, 5)]).DownloadClients;
+
+        Assert.Equal(kids.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: ["kids"]))?.DownloadClientId);
+        Assert.Equal(untagged.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: null))?.DownloadClientId);
+        Assert.Equal(untagged.Id, (await pipeline.ChooseDownloadClientAsync(indexer.Id, links, CancellationToken.None, titleTags: ["anime"]))?.DownloadClientId);
+
+        var reason = await pipeline.ExplainDownloadClientRoutingAsync(kids.Id, ["kids"], CancellationToken.None);
+        Assert.Contains("kids", reason);
+        Assert.Contains("chosen before", reason);
+    }
+
     private static async Task<(AcquisitionDecisionPipeline Pipeline, SqliteConnectionsRepository Connections, TorznabFixtureHandler Handler)> CreatePipelineAsync(
         TestStorage storage,
         FixedTimeProvider time)

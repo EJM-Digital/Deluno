@@ -46,6 +46,19 @@ public sealed class DownloadClientTagMatchTests
     }
 
     [Fact]
+    public void A_client_tagged_for_the_title_is_preferred_over_untagged_ones_and_priority_orders_within_each_group()
+    {
+        (string Name, string? Tags)[] inPriorityOrder = [("plain", ""), ("kids-a", "kids"), ("kids-b", "Kids, tv"), ("anime", "anime")];
+        var eligible = inPriorityOrder.Where(c => DownloadClientTagMatch.IsEligible(c.Tags, ["kids"]));
+
+        var chosen = DownloadClientTagMatch.PreferTagged(eligible, c => c.Tags, ["kids"]).Select(c => c.Name);
+        Assert.Equal(["kids-a", "kids-b"], chosen);
+
+        var untaggedTitle = inPriorityOrder.Where(c => DownloadClientTagMatch.IsEligible(c.Tags, null));
+        Assert.Equal(["plain"], DownloadClientTagMatch.PreferTagged(untaggedTitle, c => c.Tags, null).Select(c => c.Name));
+    }
+
+    [Fact]
     public void A_tagged_client_with_no_matching_title_tag_has_nothing_to_explain()
     {
         // IsEligible would already have excluded this client from routing, so
