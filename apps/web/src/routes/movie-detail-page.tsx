@@ -1334,18 +1334,35 @@ export function MovieDetailPage() {
           {importCases.length ? (
             <ListCard title="Import issues" count={`${importCases.length} open`}>
               <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
-                {importCases.map((item) => (
-                  <ListRow key={item.id}>
-                    <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
-                    <ListCell primary={item.recommendedAction} />
-                    <div role="cell" className="flex justify-end">
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleDismissImportCase(item.id)} disabled={busyAction === `import-${item.id}`}>
-                        {busyAction === `import-${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-                        Dismiss
-                      </Button>
-                    </div>
-                  </ListRow>
-                ))}
+                {importCases.map((item) => {
+                  // #957: the movie page offers the same two actions the
+                  // title/season page offers for a processor-output case --
+                  // missing from the output, or unmatched to a hand-off.
+                  const isProcessorOutputCase = item.failureKind === "processor-output-missing" || item.failureKind === "processor-unmatched-output";
+                  return (
+                    <ListRow key={item.id}>
+                      <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
+                      <ListCell primary={item.recommendedAction} />
+                      <div role="cell" className="flex justify-end gap-2">
+                        {isProcessorOutputCase ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => void handleSearchNow("automatic")} disabled={busyAction !== null}>
+                            {busyAction === "automatic-search" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                            Search
+                          </Button>
+                        ) : null}
+                        {isProcessorOutputCase ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => navigate("/queue?manualImportMediaType=movies")}>
+                            Import manually
+                          </Button>
+                        ) : null}
+                        <Button type="button" size="sm" variant="outline" onClick={() => void handleDismissImportCase(item.id)} disabled={busyAction === `import-${item.id}`}>
+                          {busyAction === `import-${item.id}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Dismiss
+                        </Button>
+                      </div>
+                    </ListRow>
+                  );
+                })}
               </ListTable>
             </ListCard>
           ) : null}
@@ -1809,6 +1826,10 @@ function formatFailureKind(value: string) {
       return "Download failed";
     case "importFailed":
       return "Import failed";
+    case "processor-output-missing":
+      return "Missing from processor output";
+    case "processor-unmatched-output":
+      return "Unmatched in processor output";
     default:
       return "Needs review";
   }

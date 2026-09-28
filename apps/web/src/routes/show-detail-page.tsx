@@ -1602,11 +1602,13 @@ export function ShowDetailPage() {
             <ListCard title="Import issues" count={`${importCases.length} open`}>
               <ListTable chevron={false} columns={[{ label: "Issue" }, { label: "What to do", width: "minmax(0,1.4fr)" }, { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }]}>
                 {importCases.map((item) => {
-                  // #930: a file missing from a processor's output whose own
-                  // name resolved to a canonical episode carries that episode's
-                  // id, so Search can act on it directly rather than sending a
-                  // person to look it up themselves.
-                  const missingEpisodeId = item.failureKind === "processor-output-missing" ? episodeIdIn(item.detailsJson) : null;
+                  // #930, #957: a file missing or unmatched from a processor's
+                  // output whose own name resolved to a canonical episode
+                  // carries that episode's id, so Search can act on it
+                  // directly rather than sending a person to look it up
+                  // themselves.
+                  const isProcessorOutputCase = item.failureKind === "processor-output-missing" || item.failureKind === "processor-unmatched-output";
+                  const missingEpisodeId = isProcessorOutputCase ? episodeIdIn(item.detailsJson) : null;
                   return (
                     <ListRow key={item.id}>
                       <ListNameCell name={formatFailureKind(item.failureKind)} sub={item.summary} />
@@ -1618,7 +1620,7 @@ export function ShowDetailPage() {
                             Search
                           </Button>
                         ) : null}
-                        {item.failureKind === "processor-output-missing" ? (
+                        {isProcessorOutputCase ? (
                           <Button type="button" size="sm" variant="outline" onClick={() => navigate("/queue?manualImportMediaType=tv")}>
                             Import manually
                           </Button>
@@ -2478,12 +2480,14 @@ function formatFailureKind(value: string) {
       return "Import failed";
     case "processor-output-missing":
       return "Missing from processor output";
+    case "processor-unmatched-output":
+      return "Unmatched in processor output";
     default:
       return "Needs review";
   }
 }
 
-/** The episode a "missing from a processor's output" case named, if its file name resolved to one (#930). */
+/** The episode a "missing" or "unmatched" processor-output case named, if its file name resolved to one (#930, #957). */
 function episodeIdIn(detailsJson: string | null | undefined): string | null {
   if (!detailsJson) return null;
   try {

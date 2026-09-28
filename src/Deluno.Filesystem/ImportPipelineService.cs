@@ -1709,6 +1709,13 @@ public sealed partial class ImportPipelineService(
             // missing - never the whole show, and never for an extra/sample
             // that was never a wanted episode in the first place.
             await EnqueueMissingEpisodeSearchesAsync(request, plan, libraries, cancellationToken);
+
+            // #957: a skipped file was previously only named in Activity and
+            // the SkippedFiles response - the auto-search above acts on it,
+            // but nothing let a person see or act on it themselves. It gets
+            // the same recovery case a missing processor-output file already
+            // does (#930), read by the same title/season page and Health.
+            await RaiseSkippedFileRecoveryCasesAsync(request, plan, cancellationToken);
             await activityFeedRepository.RecordDecisionAsync(
                 new DecisionExplanationPayload(
                     Scope: "filesystem.import.season-pack",
@@ -2944,6 +2951,72 @@ public sealed partial class ImportPipelineService(
                 IdempotencyKey: $"season-pack-partial-import:{seriesId}:{episodeId}",
                 DedupeKey: $"season-pack-partial-import:{seriesId}:{episodeId}"),
             cancellationToken)));
+    }
+
+    /// <summary>
+    /// #957: a season-pack file left out of the import -- because it never
+    /// resolved to a canonical episode, or resolved to one but was not
+    /// imported for its own reason -- gets the same kind of recovery case a
+    /// missing processor-output file already does (#930): a person sees it
+    /// on the title/season page and on Health, with Search (when an episode
+    /// is known) and Import manually, until it is dealt with. Until now this
+    /// was named only in Activity and the SkippedFiles response.
+    /// </summary>
+    private async Task RaiseSkippedFileRecoveryCasesAsync(
+        ImportExecuteRequest request,
+        TvPackPlan plan,
+        CancellationToken cancellationToken)
+    {
+        if (plan.SkippedFiles.Count == 0)
+        {
+            return;
+        }
+
+        var title = TitleForActivity(request.Preview);
+        var seriesId = request.Preview.SeriesId;
+
+        foreach (var file in plan.SkippedFiles)
+        {
+            var fileName = Path.GetFileName(file.Preview.SourcePath);
+            if (file.EpisodeIds.Count > 0)
+            {
+                foreach (var episodeId in file.EpisodeIds)
+                {
+                    var details = JsonSerializer.Serialize(new
+                    {
+                        libraryId = request.Preview.LibraryId,
+                        seriesId,
+                        episodeId,
+                        sourcePath = file.Preview.SourcePath
+                    });
+                    await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                        new CreateSeriesImportRecoveryCaseRequest(
+                            title,
+                            "processor-unmatched-output",
+                            $"{title}: {fileName} matched an episode but was not imported. {file.Reason}",
+                            "Search for this episode, or import it manually.",
+                            details),
+                        cancellationToken);
+                }
+            }
+            else
+            {
+                var details = JsonSerializer.Serialize(new
+                {
+                    libraryId = request.Preview.LibraryId,
+                    seriesId,
+                    sourcePath = file.Preview.SourcePath
+                });
+                await seriesCatalogRepository.AddImportRecoveryCaseAsync(
+                    new CreateSeriesImportRecoveryCaseRequest(
+                        title,
+                        "processor-unmatched-output",
+                        $"{title}: {fileName} does not resolve to a catalogued episode. {file.Reason}",
+                        "Import what is there manually, or search again.",
+                        details),
+                    cancellationToken);
+            }
+        }
     }
 
     /// <summary>
