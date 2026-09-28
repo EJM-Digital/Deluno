@@ -65,7 +65,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
@@ -141,7 +141,7 @@ public sealed class ImportPipelineServiceTests
                 Name: "Movies", MediaType: "movies", Purpose: "Main", RootPath: movieRootPath, DownloadsPath: downloadsPath,
                 QualityProfileId: null, ImportWorkflow: "standard", ProcessorName: null, ProcessorOutputPath: null,
                 ProcessorTimeoutMinutes: null, ProcessorFailureMode: null, AutoSearchEnabled: true, MissingSearchEnabled: true,
-                UpgradeSearchEnabled: true, SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
+                UpgradeSearchEnabled: true, SearchIntervalMinutes: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
             CancellationToken.None);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
@@ -207,7 +207,7 @@ public sealed class ImportPipelineServiceTests
                 Name: "Movies", MediaType: "movies", Purpose: "Main", RootPath: movieRootPath, DownloadsPath: downloadsPath,
                 QualityProfileId: null, ImportWorkflow: "standard", ProcessorName: null, ProcessorOutputPath: null,
                 ProcessorTimeoutMinutes: null, ProcessorFailureMode: null, AutoSearchEnabled: true, MissingSearchEnabled: true,
-                UpgradeSearchEnabled: true, SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
+                UpgradeSearchEnabled: true, SearchIntervalMinutes: 6, RetryDelayHours: 24, MaxItemsPerRun: 25),
             CancellationToken.None);
 
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
@@ -784,7 +784,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
@@ -857,7 +857,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
@@ -1105,7 +1105,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
@@ -1695,7 +1695,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
@@ -2573,7 +2573,7 @@ public sealed class ImportPipelineServiceTests
                 ProcessorName: "External Refiner", ProcessorOutputPath: processorOutputPath,
                 ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "hold",
                 AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
+                SearchIntervalMinutes: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
                 // Left off on purpose: the processor's own copy is cleaned up
                 // regardless of this setting (#915), which only ever governed
                 // the original download.
@@ -2643,7 +2643,7 @@ public sealed class ImportPipelineServiceTests
                 ProcessorName: "External Refiner", ProcessorOutputPath: processorOutputPath,
                 ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "hold",
                 AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
+                SearchIntervalMinutes: 6, RetryDelayHours: 24, MaxItemsPerRun: 25,
                 CleanupMode: "keep-source"),
             CancellationToken.None);
 
@@ -7243,7 +7243,7 @@ public sealed class ImportPipelineServiceTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25,
             CleanupMode: cleanupMode,
@@ -7272,7 +7272,7 @@ public sealed class ImportPipelineServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);

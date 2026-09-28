@@ -559,7 +559,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
                 lib.AutoSearchEnabled,
                 lib.MissingSearchEnabled,
                 lib.UpgradeSearchEnabled,
-                lib.SearchIntervalHours,
+                lib.SearchIntervalMinutes,
                 lib.RetryDelayHours,
                 lib.MaxItemsPerRun,
                 lib.MaxMissingItemsPerRun,
@@ -744,9 +744,9 @@ public static class LibrariesEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        if (request.SearchIntervalHours is <= 0)
+        if (request.SearchIntervalMinutes is <= 0)
         {
-            errors["searchIntervalHours"] = ["Choose how often Deluno should check this library."];
+            errors["searchIntervalMinutes"] = ["Choose how often Deluno should check this library."];
         }
 
         if (request.RetryDelayHours is <= 0)
@@ -817,7 +817,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
             AutoSearchEnabled: item.AutoSearchEnabled,
             MissingSearchEnabled: item.MissingSearchEnabled,
             UpgradeSearchEnabled: item.UpgradeSearchEnabled,
-            SearchIntervalHours: item.SearchIntervalHours,
+            SearchIntervalMinutes: item.SearchIntervalMinutes,
             RetryDelayHours: item.RetryDelayHours,
             MaxItemsPerRun: item.MaxItemsPerRun,
             SearchWindowStartHour: item.SearchWindowStartHour,

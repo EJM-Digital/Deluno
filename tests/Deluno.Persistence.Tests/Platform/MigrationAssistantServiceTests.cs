@@ -554,7 +554,7 @@ public sealed class MigrationAssistantServiceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 3,
                 MaxItemsPerRun: 10),
             CancellationToken.None);

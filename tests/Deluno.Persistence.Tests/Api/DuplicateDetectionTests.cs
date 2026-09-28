@@ -182,7 +182,7 @@ public sealed class DuplicateDetectionTests
                 AutoSearchEnabled: false,
                 MissingSearchEnabled: false,
                 UpgradeSearchEnabled: false,
-                SearchIntervalHours: null,
+                SearchIntervalMinutes: null,
                 RetryDelayHours: null,
                 MaxItemsPerRun: null),
             CancellationToken.None);

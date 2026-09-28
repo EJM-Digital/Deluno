@@ -18,7 +18,7 @@ const libraries: LibraryItem[] = [
     downloadsPath: null, qualityProfileId: null, qualityProfileName: null, cutoffQuality: null,
     upgradeUntilCutoff: false, upgradeUnknownItems: false, importWorkflow: "standard", processorName: null,
     processorOutputPath: null, processorTimeoutMinutes: 60, processorFailureMode: "block", autoSearchEnabled: false,
-    missingSearchEnabled: false, upgradeSearchEnabled: false, searchIntervalHours: 6, retryDelayHours: 6,
+    missingSearchEnabled: false, upgradeSearchEnabled: false, searchIntervalMinutes: 6, retryDelayHours: 6,
     maxItemsPerRun: 10, searchWindowStartHour: null, searchWindowEndHour: null, automationStatus: "idle",
     searchRequested: false, lastSearchedUtc: null, nextSearchUtc: null, createdUtc: "2026-01-01T00:00:00Z",
     updatedUtc: "2026-01-01T00:00:00Z"
@@ -28,7 +28,7 @@ const libraries: LibraryItem[] = [
     downloadsPath: null, qualityProfileId: null, qualityProfileName: null, cutoffQuality: null,
     upgradeUntilCutoff: false, upgradeUnknownItems: false, importWorkflow: "standard", processorName: null,
     processorOutputPath: null, processorTimeoutMinutes: 60, processorFailureMode: "block", autoSearchEnabled: false,
-    missingSearchEnabled: false, upgradeSearchEnabled: false, searchIntervalHours: 6, retryDelayHours: 6,
+    missingSearchEnabled: false, upgradeSearchEnabled: false, searchIntervalMinutes: 6, retryDelayHours: 6,
     maxItemsPerRun: 10, searchWindowStartHour: null, searchWindowEndHour: null, automationStatus: "idle",
     searchRequested: false, lastSearchedUtc: null, nextSearchUtc: null, createdUtc: "2026-01-01T00:00:00Z",
     updatedUtc: "2026-01-01T00:00:00Z"

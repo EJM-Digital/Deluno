@@ -134,7 +134,7 @@ public sealed class SeerrAcquisitionService(
                     AutoSearchEnabled: library.AutoSearchEnabled,
                     MissingSearchEnabled: library.MissingSearchEnabled,
                     UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-                    SearchIntervalHours: library.SearchIntervalHours,
+                    SearchIntervalMinutes: library.SearchIntervalMinutes,
                     RetryDelayHours: library.RetryDelayHours,
                     MaxItemsPerRun: library.MaxItemsPerRun,
                     MaxMissingItemsPerRun: library.MaxMissingItemsPerRun,

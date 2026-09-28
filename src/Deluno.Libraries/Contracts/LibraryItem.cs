@@ -22,7 +22,7 @@ public sealed record LibraryItem(
     bool AutoSearchEnabled,
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,
-    int SearchIntervalHours,
+    int SearchIntervalMinutes,
     int RetryDelayHours,
     /// <summary>Deprecated: see <see cref="UpdateLibraryAutomationRequest.MaxItemsPerRun"/>. Kept in step with the higher of the two split caps below for any reader still using it.</summary>
     int MaxItemsPerRun,

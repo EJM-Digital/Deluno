@@ -49,14 +49,20 @@ import {
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
+import { formatSearchInterval } from "../lib/search-interval-format";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
+// #984: minutes are the unit on the wire so the interval can go below an
+// hour (Huntarr-style hunting cadence). The presets stay in plain words;
+// only "Custom interval" asks for a raw number, and that number is minutes.
 const INTERVAL_OPTIONS = [
-  { value: "1", label: "Every hour" },
-  { value: "3", label: "Every 3 hours" },
-  { value: "6", label: "Every 6 hours" },
-  { value: "12", label: "Every 12 hours" },
-  { value: "24", label: "Daily" }
+  { value: "15", label: "Every 15 minutes" },
+  { value: "30", label: "Every 30 minutes" },
+  { value: "60", label: "Every hour" },
+  { value: "180", label: "Every 3 hours" },
+  { value: "360", label: "Every 6 hours" },
+  { value: "720", label: "Every 12 hours" },
+  { value: "1440", label: "Daily" }
 ];
 const RETRY_OPTIONS = [
   { value: "1", label: "1 hour" },
@@ -105,7 +111,7 @@ interface AutomationForm {
   autoSearchEnabled: boolean;
   missingSearchEnabled: boolean;
   upgradeSearchEnabled: boolean;
-  searchIntervalHours: string;
+  searchIntervalMinutes: string;
   retryDelayHours: string;
   maxItemsPerRun: string;
   /** How many missing-item candidates a cycle works through, independent of maxUpgradeItemsPerRun (#830). */
@@ -286,7 +292,7 @@ export function SearchCyclesPage() {
         autoSearchEnabled: form.autoSearchEnabled,
         missingSearchEnabled: form.missingSearchEnabled,
         upgradeSearchEnabled: form.upgradeSearchEnabled,
-        searchIntervalHours: Number(form.searchIntervalHours || 12),
+        searchIntervalMinutes: Number(form.searchIntervalMinutes || 360),
         retryDelayHours: Number(form.retryDelayHours || 6),
         maxItemsPerRun: Number(form.maxItemsPerRun || 10),
         maxMissingItemsPerRun: Number(form.maxMissingItemsPerRun || form.maxItemsPerRun || 10),
@@ -521,9 +527,10 @@ export function SearchCyclesPage() {
               const state = stateByLibrary.get(library.id);
               const chip = automationChip(library, state, paused);
               const kinds = [library.missingSearchEnabled ? "Missing" : null, library.upgradeSearchEnabled ? "Upgrades" : null].filter(Boolean).join(" · ") || "Nothing selected";
+              const intervalLabel = formatSearchInterval(library.searchIntervalMinutes);
               const schedule = [
-                library.missingSearchEnabled ? `Missing every ${library.searchIntervalHours} h` : null,
-                library.upgradeSearchEnabled ? `Upgrades every ${library.searchIntervalHours} h` : null
+                library.missingSearchEnabled ? `Missing: ${intervalLabel}` : null,
+                library.upgradeSearchEnabled ? `Upgrades: ${intervalLabel}` : null
               ].filter(Boolean).join(" · ") || "Off";
               const nextSearch = nextSearchLabel(view, library, state);
               return (
@@ -867,7 +874,7 @@ export function SearchCyclesPage() {
         <DrawerSection title="Schedule">
           <FieldRow>
             <Field label="Search every" help="How often a cycle starts for this library.">
-              <PresetField inputType="number" value={form.searchIntervalHours} onChange={(value) => setForm((current) => ({ ...current, searchIntervalHours: value }))} options={INTERVAL_OPTIONS} customLabel="Custom interval" customPlaceholder="Hours" />
+              <PresetField inputType="number" value={form.searchIntervalMinutes} onChange={(value) => setForm((current) => ({ ...current, searchIntervalMinutes: value }))} options={INTERVAL_OPTIONS} customLabel="Custom interval" customPlaceholder="Minutes" />
             </Field>
             <Field label="Retry after" help="Wait this long before retrying a title that found nothing.">
               <PresetField inputType="number" value={form.retryDelayHours} onChange={(value) => setForm((current) => ({ ...current, retryDelayHours: value }))} options={RETRY_OPTIONS} customLabel="Custom delay" customPlaceholder="Hours" />
@@ -962,14 +969,14 @@ function runsLabel(shown: number, total: number) {
 }
 
 function emptyAutomation(): AutomationForm {
-  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalHours: "12", retryDelayHours: "6", maxItemsPerRun: "10", maxMissingItemsPerRun: "10", maxUpgradeItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "", searchWindowDays: daysMaskToFlags(ALL_DAYS_MASK), randomizeSearchOrder: false };
+  return { autoSearchEnabled: true, missingSearchEnabled: true, upgradeSearchEnabled: true, searchIntervalMinutes: "360", retryDelayHours: "6", maxItemsPerRun: "10", maxMissingItemsPerRun: "10", maxUpgradeItemsPerRun: "10", searchWindowStartHour: "", searchWindowEndHour: "", searchWindowDays: daysMaskToFlags(ALL_DAYS_MASK), randomizeSearchOrder: false };
 }
 function automationFrom(library: LibraryItem): AutomationForm {
   return {
     autoSearchEnabled: library.autoSearchEnabled,
     missingSearchEnabled: library.missingSearchEnabled,
     upgradeSearchEnabled: library.upgradeSearchEnabled,
-    searchIntervalHours: String(library.searchIntervalHours),
+    searchIntervalMinutes: String(library.searchIntervalMinutes),
     retryDelayHours: String(library.retryDelayHours),
     maxItemsPerRun: String(library.maxItemsPerRun),
     maxMissingItemsPerRun: String(library.maxMissingItemsPerRun ?? library.maxItemsPerRun),

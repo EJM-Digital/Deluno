@@ -2014,7 +2014,7 @@ public sealed class SqliteJobStore(
     {
         var now = timeProvider.GetUtcNow();
         var nextSearchUtc = library.AutoSearchEnabled
-            ? now.AddHours(Math.Max(1, library.SearchIntervalHours))
+            ? now.AddMinutes(Math.Max(1, library.SearchIntervalMinutes))
             : (DateTimeOffset?)null;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -2202,7 +2202,7 @@ public sealed class SqliteJobStore(
             // shares a cycle or schedule and this was told to you back when I said
             // nothing should be shared or have to wait for another process."</i>
             // Right, and the cost was visible: a newly imported episode waited up
-            // to a full <c>SearchIntervalHours</c>, twelve hours on the rig, before
+            // to a full <c>SearchIntervalMinutes</c>, twelve hours on the rig, before
             // anything even looked at it.
             //
             // So the split is now the whole way down. Subtitles share the
@@ -2211,7 +2211,7 @@ public sealed class SqliteJobStore(
             // and what Weir's Subber got wrong with a lane and a scheduler and
             // a worker of its own. They share <b>no timing at all</b>:
             //
-            // - Not the interval. <c>SearchIntervalHours</c> is how often to go
+            // - Not the interval. <c>SearchIntervalMinutes</c> is how often to go
             //   back to an indexer, chosen for a service that bans you for asking
             //   twice. A subtitle pass costs one query when there is nothing to do,
             //   and is paced when there is by per-title backoff that already exists.
@@ -3756,7 +3756,7 @@ public sealed class SqliteJobStore(
     private static DateTimeOffset NextSearchAfterQueue(
         DateTimeOffset now,
         LibraryAutomationPlanItem library)
-        => now.AddHours(Math.Max(1, library.SearchIntervalHours));
+        => now.AddMinutes(Math.Max(1, library.SearchIntervalMinutes));
 
     private static bool TryResolveScopeSearchKind(string? quickFilter, out string? searchKind)
     {

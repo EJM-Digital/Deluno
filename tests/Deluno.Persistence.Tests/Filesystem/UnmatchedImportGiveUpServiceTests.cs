@@ -312,7 +312,7 @@ public sealed class UnmatchedImportGiveUpServiceTests
                 Name: "TV", MediaType: "tv", Purpose: "Main", RootPath: seriesRootPath, DownloadsPath: downloadsPath,
                 QualityProfileId: null, ImportWorkflow: "standard", ProcessorName: null, ProcessorOutputPath: null,
                 ProcessorTimeoutMinutes: null, ProcessorFailureMode: null, AutoSearchEnabled: true,
-                MissingSearchEnabled: true, UpgradeSearchEnabled: true, SearchIntervalHours: 6, RetryDelayHours: 24,
+                MissingSearchEnabled: true, UpgradeSearchEnabled: true, SearchIntervalMinutes: 6, RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);
 

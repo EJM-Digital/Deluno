@@ -119,7 +119,8 @@ public static class PlatformDatabaseMigrations
         new V0111TrackerDefinitionUpdateState(),
         new V0112IndexerHistoryEvents(),
         new V0113ContentBlocklistDefaultsOnForExistingInstalls(),
-        new V0114ProcessorPathMappings()
+        new V0114ProcessorPathMappings(),
+        new V0115LibrarySearchIntervalMinutes()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -197,7 +197,7 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
                     DownloadsPath: "C:\\Downloads", QualityProfileId: null, QualityProfileName: null, CutoffQuality: null,
                     UpgradeUntilCutoff: false, UpgradeUnknownItems: false, ImportWorkflow: "refine-before-import",
                     ProcessorName: "Weir", ProcessorOutputPath: null, ProcessorTimeoutMinutes: 60, ProcessorFailureMode: "block",
-                    AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true, SearchIntervalHours: 12,
+                    AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true, SearchIntervalMinutes: 12,
                     RetryDelayHours: 24, MaxItemsPerRun: 25, SearchWindowStartHour: null, SearchWindowEndHour: null,
                     AutomationStatus: "idle", SearchRequested: false, LastSearchedUtc: null, NextSearchUtc: null,
                     CreatedUtc: Now, UpdatedUtc: Now)]);

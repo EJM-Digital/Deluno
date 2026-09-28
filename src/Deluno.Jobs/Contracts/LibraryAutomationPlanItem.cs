@@ -7,7 +7,7 @@ public sealed record LibraryAutomationPlanItem(
     bool AutoSearchEnabled,
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,
-    int SearchIntervalHours,
+    int SearchIntervalMinutes,
     int RetryDelayHours,
     int MaxItemsPerRun,
     int? SearchWindowStartHour,

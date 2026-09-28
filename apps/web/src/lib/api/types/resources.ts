@@ -22,7 +22,7 @@ export interface LibraryItem {
   autoSearchEnabled: boolean;
   missingSearchEnabled: boolean;
   upgradeSearchEnabled: boolean;
-  searchIntervalHours: number;
+  searchIntervalMinutes: number;
   retryDelayHours: number;
   maxItemsPerRun: number;
   /** How many missing-item candidates a search cycle works through, independent of maxUpgradeItemsPerRun (#830). */

@@ -46,7 +46,7 @@ public sealed class LibraryRoutingPersistenceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: false,
-                SearchIntervalHours: null,
+                SearchIntervalMinutes: null,
                 RetryDelayHours: null,
                 MaxItemsPerRun: null),
             CancellationToken.None);

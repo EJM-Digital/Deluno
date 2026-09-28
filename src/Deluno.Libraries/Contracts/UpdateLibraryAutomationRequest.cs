@@ -4,7 +4,7 @@ public sealed record UpdateLibraryAutomationRequest(
     bool AutoSearchEnabled,
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,
-    int? SearchIntervalHours,
+    int? SearchIntervalMinutes,
     int? RetryDelayHours,
     /// <summary>
     /// Deprecated: a single cap shared by missing and upgrade searches. Kept

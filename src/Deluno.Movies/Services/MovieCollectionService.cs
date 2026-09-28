@@ -292,7 +292,7 @@ public sealed class MovieCollectionService(
             AutoSearchEnabled: library.AutoSearchEnabled,
             MissingSearchEnabled: library.MissingSearchEnabled,
             UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-            SearchIntervalHours: library.SearchIntervalHours,
+            SearchIntervalMinutes: library.SearchIntervalMinutes,
             RetryDelayHours: library.RetryDelayHours,
             MaxItemsPerRun: library.MaxItemsPerRun,
             SearchWindowStartHour: library.SearchWindowStartHour,

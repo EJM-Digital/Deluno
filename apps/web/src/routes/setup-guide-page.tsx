@@ -2037,7 +2037,7 @@ async function ensureLibrary(
       qualityProfileId,
       // #936: nothing automatic is on until the Automation step says so.
       ...buildLibraryAutomationFields(form.automation),
-      searchIntervalHours: 12,
+      searchIntervalMinutes: 720,
       retryDelayHours: 6,
       maxItemsPerRun: form.qualityPreset === "premium4k" ? 15 : 10
     })
