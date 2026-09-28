@@ -31,7 +31,14 @@ public sealed class IndexerFeedReader(
     IIntegrationResiliencePolicy resiliencePolicy,
     IOutboundRequestThrottle outboundRequestThrottle,
     ILogger<IndexerFeedReader> logger,
-    TrackerIndexers? trackerIndexers = null) : IIndexerFeedReader
+    TrackerIndexers? trackerIndexers = null,
+    Deluno.Connections.Data.IConnectionsRepository? connectionsRepository = null,
+    /// <summary>
+    /// One pooled handler per assigned indexer proxy (#976), so a feed read
+    /// actually goes out through the proxy assigned to that indexer instead
+    /// of always Deluno's own direct connection.
+    /// </summary>
+    Deluno.Connections.Data.IIndexerProxyHttpClientFactory? proxyHttpClientFactory = null) : IIndexerFeedReader
 {
     private static readonly TimeSpan MaxThrottleWait = TimeSpan.FromSeconds(20);
 
@@ -84,7 +91,7 @@ public sealed class IndexerFeedReader(
                     }
                 }
 
-                var http = httpClientFactory.CreateClient("indexers");
+                var http = await CreateIndexerHttpClientAsync(indexer, token);
                 using var response = await http.GetAsync(uri, token);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -118,6 +125,20 @@ public sealed class IndexerFeedReader(
             result.CircuitOpen
                 ? $"{indexer.Name} is resting after repeated failures."
                 : result.FailureMessage ?? $"{indexer.Name} did not answer.");
+    }
+
+    /// <summary>Same routing a search uses (#976): this indexer's assigned proxy when it has one and it is an HTTP/SOCKS one, the shared direct client otherwise.</summary>
+    private async Task<HttpClient> CreateIndexerHttpClientAsync(IndexerItem indexer, CancellationToken cancellationToken)
+    {
+        if (proxyHttpClientFactory is null || connectionsRepository is null || string.IsNullOrWhiteSpace(indexer.ProxyId))
+        {
+            return httpClientFactory.CreateClient("indexers");
+        }
+
+        var proxy = await Deluno.Connections.Data.IndexerProxyResolver.ResolveAsync(indexer, connectionsRepository, cancellationToken);
+        return proxy is null
+            ? httpClientFactory.CreateClient("indexers")
+            : proxyHttpClientFactory.CreateClient(proxy);
     }
 
     private static IndexerFeedRelease[] ReadReleases(XDocument document)

@@ -33,13 +33,28 @@ public sealed record TrackerConnection(
     IReadOnlyDictionary<string, string?> Settings)
 {
     /// <summary>
-    /// This indexer's own assigned proxy (#748), resolved and ready for the
-    /// Cloudflare helper's <c>proxy</c> parameter (#749); null when the
-    /// indexer has no proxy assigned, or its assigned proxy is a FlareSolverr/
-    /// Byparr instance rather than an HTTP/SOCKS one (nesting one helper's
-    /// solve behind another is not what that assignment means).
+    /// This indexer's own assigned HTTP/SOCKS proxy (#748, #976), if it has
+    /// one: routes this connection's own requests -- search, RSS, grab --
+    /// directly, not only the Cloudflare helper's nested request.
+    /// </summary>
+    public Deluno.Connections.Contracts.ProxyItem? Proxy { get; init; }
+
+    /// <summary>
+    /// The same assigned proxy, resolved and ready for the Cloudflare
+    /// helper's <c>proxy</c> parameter (#749); null when the indexer has no
+    /// proxy assigned, or its assigned proxy is a FlareSolverr/Byparr
+    /// instance rather than an HTTP/SOCKS one (that kind is a helper of its
+    /// own -- see <see cref="HelperUrl"/> -- not a forward proxy to nest
+    /// another helper's solve behind).
     /// </summary>
     public CloudflareHelperProxy? HelperProxy { get; init; }
+
+    /// <summary>
+    /// This indexer's own FlareSolverr/Byparr proxy (#976), used as its
+    /// Cloudflare helper in place of the single instance-wide helper URL in
+    /// Settings; null when the indexer has no such proxy assigned.
+    /// </summary>
+    public string? HelperUrl { get; init; }
 }
 
 /// <summary>A release made ready for a download client: a magnet, or a .torrent file's bytes.</summary>
@@ -71,7 +86,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
     private const string BrowserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
     private readonly ConcurrentDictionary<string, TrackerSession> sessions = new(StringComparer.Ordinal);
-    private readonly Func<CookieContainer, HttpMessageHandler> handlerFactory;
+    private readonly Func<CookieContainer, IWebProxy?, HttpMessageHandler> handlerFactory;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<TrackerEngine> logger;
     private readonly ICloudflareHelper? cloudflareHelper;
@@ -88,7 +103,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
     }
 
     public TrackerEngine(
-        Func<CookieContainer, HttpMessageHandler> handlerFactory,
+        Func<CookieContainer, IWebProxy?, HttpMessageHandler> handlerFactory,
         TimeProvider timeProvider,
         ILogger<TrackerEngine> logger,
         ICloudflareHelper? cloudflareHelper = null)
@@ -99,7 +114,12 @@ public sealed partial class TrackerEngine : ITrackerEngine
         this.cloudflareHelper = cloudflareHelper;
     }
 
-    private static HttpMessageHandler DefaultHandler(CookieContainer cookies) => new SocketsHttpHandler
+    /// <summary>
+    /// This connection's own HTTP/SOCKS proxy (#976), when it has one, so a
+    /// tracker's own search, RSS and grab requests go out through the proxy
+    /// assigned to it -- not only the Cloudflare helper's nested request.
+    /// </summary>
+    private static HttpMessageHandler DefaultHandler(CookieContainer cookies, IWebProxy? proxy) => new SocketsHttpHandler
     {
         CookieContainer = cookies,
         UseCookies = true,
@@ -108,15 +128,18 @@ public sealed partial class TrackerEngine : ITrackerEngine
         AutomaticDecompression = DecompressionMethods.All,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(10),
-        // A tracker's proxy is Deluno's own, explicit choice (#748/#749): the
-        // indexer's assigned proxy, resolved into HelperProxy, never an
-        // ambient HTTP_PROXY/HTTPS_PROXY environment variable or WinINET/
-        // WinHTTP system setting left over on the host. Honouring one of
-        // those meant a tracker request could be silently rerouted through
-        // an address nothing listens on any more, and refused there instead
-        // of ever reaching the tracker (#1027) - a leftover a person checking
-        // the OS proxy settings alone would never find.
-        UseProxy = false
+        // A tracker's proxy is Deluno's own, explicit choice (#748/#749/
+        // #976): the indexer's own assigned proxy, passed in as <paramref
+        // name="proxy"/> and set directly below, never an ambient
+        // HTTP_PROXY/HTTPS_PROXY environment variable or WinINET/WinHTTP
+        // system setting left over on the host. Honouring one of those meant
+        // a tracker request could be silently rerouted through an address
+        // nothing listens on any more, and refused there instead of ever
+        // reaching the tracker (#1027) - a leftover a person checking the OS
+        // proxy settings alone would never find. UseProxy is only ever true
+        // when this connection has its own assigned proxy.
+        Proxy = proxy,
+        UseProxy = proxy is not null
     };
 
     public async Task<TrackerSearchResult> SearchAsync(TrackerConnection connection, TrackerQuery query, CancellationToken cancellationToken)
@@ -389,7 +412,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
             return page;
         }
 
-        var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken, session.HelperProxy);
+        var solved = await cloudflareHelper.FetchAsync(request.Uri, cancellationToken, session.HelperProxy, session.HelperUrl);
         if (solved is null || IsCloudflareBody(solved.Html))
         {
             logger.LogInformation("The Cloudflare helper could not get past {Host}.", request.Uri.Host);
@@ -810,11 +833,17 @@ internal sealed class TrackerSession
     private readonly IReadOnlyList<string> links;
     private DateTimeOffset lastRequest = DateTimeOffset.MinValue;
 
-    public TrackerSession(TrackerConnection connection, string fingerprint, Func<CookieContainer, HttpMessageHandler> handlerFactory)
+    public TrackerSession(TrackerConnection connection, string fingerprint, Func<CookieContainer, IWebProxy?, HttpMessageHandler> handlerFactory)
     {
         FingerprintValue = fingerprint;
-        Http = new HttpClient(handlerFactory(cookies), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
+        // The indexer's own assigned HTTP/SOCKS proxy (#976) routes this
+        // session's own requests directly; a FlareSolverr/Byparr assignment
+        // never reaches here (Deluno.Connections.Data.IndexerProxyWebProxy
+        // returns null for it -- that kind is HelperUrl below, not a forward
+        // proxy a plain request can be routed through).
+        Http = new HttpClient(handlerFactory(cookies, Deluno.Connections.Data.IndexerProxyWebProxy.Build(connection.Proxy)), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
         HelperProxy = connection.HelperProxy;
+        HelperUrl = connection.HelperUrl;
         delay = TimeSpan.FromSeconds(Math.Max(connection.Definition.RequestDelaySeconds ?? 0, 0));
         try
         {
@@ -838,6 +867,9 @@ internal sealed class TrackerSession
 
     /// <summary>This tracker's assigned proxy (#748), if any, for the Cloudflare helper to route through (#749).</summary>
     public CloudflareHelperProxy? HelperProxy { get; }
+
+    /// <summary>This tracker's own FlareSolverr/Byparr proxy (#976), used as its Cloudflare helper in place of the instance-wide one.</summary>
+    public string? HelperUrl { get; }
 
     public HttpClient Http { get; }
 
@@ -920,9 +952,14 @@ internal sealed class TrackerSession
         }
     }
 
-    /// <summary>A change to the address or any setting starts a new session: new cookies, signed out.</summary>
+    /// <summary>
+    /// A change to the address, any setting, or the assigned proxy (#976)
+    /// starts a new session: new cookies, signed out, and a handler built
+    /// fresh for whichever proxy now applies.
+    /// </summary>
     /// <remarks>Hashed, so a password is not held a second time as a dictionary key.</remarks>
     public static string Fingerprint(TrackerConnection connection)
         => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(
-            connection.Definition.Id + "|" + connection.BaseUrl + "|" + string.Join("|", connection.Settings.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + "=" + pair.Value)))));
+            connection.Definition.Id + "|" + connection.BaseUrl + "|" + (connection.Proxy?.Id ?? string.Empty) + "|" + (connection.HelperUrl ?? string.Empty) + "|"
+            + string.Join("|", connection.Settings.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + "=" + pair.Value)))));
 }

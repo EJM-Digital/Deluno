@@ -46,34 +46,45 @@ public sealed class TrackerIndexers(
         }
 
         var baseUrl = string.IsNullOrWhiteSpace(indexer.BaseUrl) ? definition.Links.FirstOrDefault() ?? string.Empty : indexer.BaseUrl;
+        var (proxy, helperProxy, helperUrl) = await ResolveProxyAsync(indexer, cancellationToken);
         return new TrackerConnection(indexer.Id, definition, baseUrl, settings)
         {
-            HelperProxy = await ResolveHelperProxyAsync(indexer, cancellationToken)
+            Proxy = proxy,
+            HelperProxy = helperProxy,
+            HelperUrl = helperUrl
         };
     }
 
     /// <summary>
-    /// This indexer's own assigned proxy (#748), resolved for the Cloudflare
-    /// helper's request (#749). A FlareSolverr/Byparr proxy is not resolved
-    /// here -- that assignment means "put this indexer's requests through
-    /// this other helper", not "tell the Cloudflare helper to nest one behind
-    /// it", and there is no protocol for that.
+    /// This indexer's own assigned proxy (#748, #976), resolved for both this
+    /// connection's own requests and the Cloudflare helper's request (#749).
+    /// An HTTP/SOCKS4/SOCKS5 proxy routes the connection's own requests
+    /// directly and travels with the Cloudflare helper's request too, so a
+    /// check behind it is still solved from the same exit IP. A
+    /// FlareSolverr/Byparr proxy is not a forward proxy -- there is no
+    /// protocol for nesting one helper's solve behind another -- so it
+    /// becomes this indexer's own Cloudflare helper instead, replacing the
+    /// single instance-wide helper URL as its only routing option.
     /// </summary>
-    private async Task<CloudflareHelperProxy?> ResolveHelperProxyAsync(IndexerItem indexer, CancellationToken cancellationToken)
+    private async Task<(Deluno.Connections.Contracts.ProxyItem? Proxy, CloudflareHelperProxy? HelperProxy, string? HelperUrl)> ResolveProxyAsync(IndexerItem indexer, CancellationToken cancellationToken)
     {
-        if (connections is null || string.IsNullOrWhiteSpace(indexer.ProxyId))
+        if (connections is null)
         {
-            return null;
+            return (null, null, null);
         }
 
-        var proxy = (await connections.ListProxiesAsync(cancellationToken))
-            .FirstOrDefault(item => item.IsEnabled && string.Equals(item.Id, indexer.ProxyId, StringComparison.OrdinalIgnoreCase));
-        if (proxy is null || string.Equals(proxy.ProxyType, ProxyTypes.FlareSolverr, StringComparison.OrdinalIgnoreCase))
+        var proxy = await Deluno.Connections.Data.IndexerProxyResolver.ResolveAsync(indexer, connections, cancellationToken);
+        if (proxy is null)
         {
-            return null;
+            return (null, null, null);
         }
 
-        return new CloudflareHelperProxy(ProxyAddressFormat.ToUrl(proxy.ProxyType, proxy.Address), proxy.Username, proxy.Password);
+        if (string.Equals(proxy.ProxyType, ProxyTypes.FlareSolverr, StringComparison.OrdinalIgnoreCase))
+        {
+            return (null, null, ProxyAddressFormat.ToUrl(ProxyTypes.Http, proxy.Address));
+        }
+
+        return (proxy, new CloudflareHelperProxy(ProxyAddressFormat.ToUrl(proxy.ProxyType, proxy.Address), proxy.Username, proxy.Password), null);
     }
 
     /// <summary>

@@ -123,7 +123,7 @@ public sealed class TrackerCloudflareHelperTests
                 leechers:
                   text: 0
             """);
-        var engine = new TrackerEngine(cookies => new FakeHandler(request => site.Answer(request, cookies)), TimeProvider.System, NullLogger<TrackerEngine>.Instance, helper);
+        var engine = new TrackerEngine((cookies, _) => new FakeHandler(request => site.Answer(request, cookies)), TimeProvider.System, NullLogger<TrackerEngine>.Instance, helper);
         return (engine, new TrackerConnection("indexer-1", definition, definition.Links[0], new Dictionary<string, string?>()));
     }
 
@@ -150,9 +150,9 @@ public sealed class TrackerCloudflareHelperTests
     {
         public int Calls { get; private set; }
 
-        public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+        public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null) => Task.FromResult(true);
 
-        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
+        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
         {
             Calls++;
             return Task.FromResult<CloudflareSolution?>(new CloudflareSolution(
@@ -163,8 +163,8 @@ public sealed class TrackerCloudflareHelperTests
                 [new Cookie("cf_clearance", "cleared", "/", url.Host)]));
         }
 
-        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
-            => FetchAsync(url, cancellationToken, proxy);
+        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+            => FetchAsync(url, cancellationToken, proxy, helperUrl);
 
         public Task DestroySessionAsync(string host, CancellationToken cancellationToken) => Task.CompletedTask;
 

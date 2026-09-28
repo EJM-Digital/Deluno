@@ -207,7 +207,8 @@ public sealed class TrackerEngineTests
     /// proxy) could silently reroute a tracker request to an address nothing
     /// listens on any more, and get refused there instead of ever reaching
     /// the tracker - a cause checking only the OS proxy settings would miss.
-    /// The engine's own default handler must never honour one.
+    /// The engine's own default handler must never honour one when this
+    /// connection has no proxy of its own assigned (#976).
     /// </summary>
     [Fact]
     public void The_default_handler_never_uses_an_ambient_system_or_environment_proxy()
@@ -215,9 +216,61 @@ public sealed class TrackerEngineTests
         var defaultHandler = typeof(TrackerEngine).GetMethod("DefaultHandler", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(defaultHandler);
 
-        using var handler = (SocketsHttpHandler)defaultHandler!.Invoke(null, [new CookieContainer()])!;
+        using var handler = (SocketsHttpHandler)defaultHandler!.Invoke(null, [new CookieContainer(), null])!;
 
         Assert.False(handler.UseProxy);
+        Assert.Null(handler.Proxy);
+    }
+
+    // #976: an indexer's assigned HTTP/SOCKS proxy routes its own requests
+    // directly, not only the Cloudflare helper's nested one -- and a
+    // different indexer (or one with no proxy) is unaffected.
+    [Fact]
+    public async Task Each_indexers_own_proxy_routes_its_requests_and_leaves_others_unaffected()
+    {
+        // One engine, one handlerFactory: every session built under it shares
+        // this recorder, so the proxy captured for each search can only have
+        // come from that search's own TrackerSession/TrackerConnection.
+        var proxiesSeen = new List<string?>();
+        var definition = TrackerDefinition.Parse(PublicTracker());
+        var engine = new TrackerEngine(
+            (cookies, proxy) =>
+            {
+                var address = proxy is WebProxy webProxy ? webProxy.Address!.ToString() : null;
+                return new RecordingHandler(_ =>
+                {
+                    proxiesSeen.Add(address);
+                    return Html(HttpStatusCode.OK, "<table></table>");
+                });
+            },
+            TimeProvider.System,
+            NullLogger<TrackerEngine>.Instance);
+
+        var proxyA = new Deluno.Connections.Contracts.ProxyItem(
+            Id: "proxy-a", Name: "Proxy A", ProxyType: Deluno.Connections.Contracts.ProxyTypes.Http, Address: "http://10.0.0.1:8080",
+            Username: null, Password: null, IsEnabled: true, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
+        var proxyB = new Deluno.Connections.Contracts.ProxyItem(
+            Id: "proxy-b", Name: "Proxy B", ProxyType: Deluno.Connections.Contracts.ProxyTypes.Http, Address: "http://10.0.0.2:9090",
+            Username: null, Password: null, IsEnabled: true, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
+
+        // Distinct IndexerId values (#976's Fingerprint includes the proxy
+        // id too, but a distinct IndexerId already guarantees a distinct
+        // TrackerSession -- and so a freshly built handler -- per indexer).
+        var connectionWithProxyA = new TrackerConnection("indexer-a", definition, definition.Links[0], new Dictionary<string, string?>()) { Proxy = proxyA };
+        var connectionWithProxyB = new TrackerConnection("indexer-b", definition, definition.Links[0], new Dictionary<string, string?>()) { Proxy = proxyB };
+        var connectionWithNoProxy = new TrackerConnection("indexer-c", definition, definition.Links[0], new Dictionary<string, string?>());
+
+        await engine.SearchAsync(connectionWithProxyA, new TrackerQuery("x"), CancellationToken.None);
+        await engine.SearchAsync(connectionWithProxyB, new TrackerQuery("x"), CancellationToken.None);
+        await engine.SearchAsync(connectionWithNoProxy, new TrackerQuery("x"), CancellationToken.None);
+
+        Assert.Equal(["http://10.0.0.1:8080/", "http://10.0.0.2:9090/", null], proxiesSeen);
+    }
+
+    private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(answer(request));
     }
 
     [Fact]
@@ -338,14 +391,14 @@ public sealed class TrackerEngineTests
     private static (TrackerEngine Engine, TrackerConnection Connection) Connect(FakeTracker site, string yaml, Dictionary<string, string?> settings)
     {
         var definition = TrackerDefinition.Parse(yaml);
-        var engine = new TrackerEngine(cookies => new FakeHandler(request => site.Answer(request, cookies)), TimeProvider.System, NullLogger<TrackerEngine>.Instance);
+        var engine = new TrackerEngine((cookies, _) => new FakeHandler(request => site.Answer(request, cookies)), TimeProvider.System, NullLogger<TrackerEngine>.Instance);
         return (engine, new TrackerConnection("indexer-1", definition, definition.Links[0], settings));
     }
 
     private static (TrackerEngine Engine, TrackerConnection Connection) Connect(Func<HttpRequestMessage, HttpResponseMessage> answer, string yaml, Dictionary<string, string?> settings)
     {
         var definition = TrackerDefinition.Parse(yaml);
-        var engine = new TrackerEngine(_ => new FakeHandler(answer), TimeProvider.System, NullLogger<TrackerEngine>.Instance);
+        var engine = new TrackerEngine((_, _) => new FakeHandler(answer), TimeProvider.System, NullLogger<TrackerEngine>.Instance);
         return (engine, new TrackerConnection("indexer-1", definition, definition.Links[0], settings));
     }
 

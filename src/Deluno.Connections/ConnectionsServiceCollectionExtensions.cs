@@ -21,6 +21,10 @@ public static class ConnectionsServiceCollectionExtensions
         // Per-indexer Query/Grab Limit caps (#750), in-memory and per
         // process the same way IOutboundRequestThrottle's pacing is.
         services.AddSingleton<IIndexerCallLimiter, IndexerCallLimiter>();
+        // One pooled handler per assigned indexer proxy (#976), so an
+        // indexer's own search/RSS/caps/grab requests actually go out
+        // through the proxy assigned to it.
+        services.AddSingleton<IIndexerProxyHttpClientFactory, IndexerProxyHttpClientFactory>();
         return services;
     }
 

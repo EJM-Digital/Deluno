@@ -36,7 +36,7 @@ public sealed class TrackerLiveProbe(ITestOutputHelper output)
             // One engine per tracker, so each trace holds only its own requests.
             var trace = new ConcurrentQueue<string>();
             var engine = new TrackerEngine(
-                cookies => new TracingHandler(new SocketsHttpHandler { CookieContainer = cookies, AutomaticDecompression = System.Net.DecompressionMethods.All }, trace),
+                (cookies, _) => new TracingHandler(new SocketsHttpHandler { CookieContainer = cookies, AutomaticDecompression = System.Net.DecompressionMethods.All }, trace),
                 TimeProvider.System,
                 NullLogger<TrackerEngine>.Instance);
             var connection = new TrackerConnection("probe-" + definition.Id, definition, definition.Links.FirstOrDefault() ?? string.Empty, new Dictionary<string, string?>());
