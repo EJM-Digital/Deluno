@@ -91,6 +91,13 @@ public interface IConfigFileWriter
     Task<bool> WriteIfAbsentAsync(string path, string content, CancellationToken cancellationToken);
 }
 
+/// <summary>Whether a prerequisite (e.g. the VC++ runtime Transmission's MSI refuses to install without) is already on this machine.</summary>
+public interface IPrerequisiteRegistryReader
+{
+    /// <summary>True when HKLM\<paramref name="subKeyPath"/>'s own <paramref name="valueName"/> reads as a non-zero DWORD.</summary>
+    bool IsPresent(string subKeyPath, string valueName);
+}
+
 public sealed class ComponentInstallService(
     IInstalledProgramsReader? programs = null,
     IPortProbe? portProbe = null,
@@ -99,7 +106,8 @@ public sealed class ComponentInstallService(
     IProcessRunner? processes = null,
     IProcessStarter? processStarter = null,
     IReadinessChecker? readiness = null,
-    IConfigFileWriter? configWriter = null)
+    IConfigFileWriter? configWriter = null,
+    IPrerequisiteRegistryReader? prerequisiteRegistry = null)
 {
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
 
@@ -111,6 +119,7 @@ public sealed class ComponentInstallService(
     private readonly IProcessStarter _processStarter = processStarter ?? new RealProcessStarter();
     private readonly IReadinessChecker _readiness = readiness ?? new HttpReadinessChecker();
     private readonly IConfigFileWriter _configWriter = configWriter ?? new RealConfigFileWriter();
+    private readonly IPrerequisiteRegistryReader _prerequisiteRegistry = prerequisiteRegistry ?? new RegistryPrerequisiteReader();
 
     /// <summary>Whether <paramref name="spec"/> is already on this machine, by uninstall entry.</summary>
     public bool IsAlreadyInstalled(BundledComponentSpec spec)
@@ -167,6 +176,16 @@ public sealed class ComponentInstallService(
         {
             TryDelete(path);
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed, verification);
+        }
+
+        if (spec.Prerequisite is not null)
+        {
+            var prerequisiteFailure = await EnsurePrerequisiteAsync(spec, cancellationToken);
+            if (prerequisiteFailure is not null)
+            {
+                TryDelete(path);
+                return prerequisiteFailure;
+            }
         }
 
         var (runPath, runArguments) = BuildInstallCommand(path, spec.SilentArgs);
@@ -281,6 +300,62 @@ public sealed class ComponentInstallService(
     }
 
     /// <summary>
+    /// Installs <see cref="BundledComponentSpec.Prerequisite"/> -- e.g. the
+    /// VC++ runtime Transmission's own .msi LaunchConditions refuse without
+    /// (exit code 1603) -- before the component's own installer runs.
+    /// Skipped entirely when the registry already shows it present. Returns
+    /// null to let the caller proceed with the component's own install, or a
+    /// failure result to stop there, the same outcomes and verification path
+    /// (minimum size, then a pinned checksum or a required signature) as any
+    /// other bundled installer -- a prerequisite is never run unverified
+    /// either.
+    /// </summary>
+    private async Task<ComponentInstallResult?> EnsurePrerequisiteAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        var prerequisite = spec.Prerequisite!;
+        if (_prerequisiteRegistry.IsPresent(prerequisite.SkipRegistryKeyPath, prerequisite.SkipRegistryValueName))
+        {
+            return null;
+        }
+
+        var path = await _downloader.DownloadAsync(prerequisite.Url, prerequisite.FileName, cancellationToken);
+        if (path is null)
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                $"Could not download {prerequisite.Name}, required before {spec.DisplayName} can install.");
+        }
+
+        var length = new FileInfo(path).Length;
+        if (length < prerequisite.MinimumBytes)
+        {
+            TryDelete(path);
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"The downloaded file for {prerequisite.Name} is only {length} bytes -- far smaller than expected ({prerequisite.MinimumBytes}). Deluno did not run it.");
+        }
+
+        if (prerequisite.MustBeSigned && !_signatures.IsSigned(path))
+        {
+            TryDelete(path);
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"{prerequisite.Name} is not Authenticode-signed. Deluno did not run it.");
+        }
+
+        var exitCode = await _processes.RunAsync(path, prerequisite.SilentArgs, TimeSpan.FromMinutes(5), cancellationToken);
+        TryDelete(path);
+
+        // Microsoft's own redistributable installers (and Windows Installer
+        // generally) report 3010 for "succeeded, reboot required" -- still a
+        // success, not a reason to refuse the component that needs it.
+        if (exitCode is null || (exitCode != 0 && exitCode != 3010))
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.InstallerFailed,
+                $"{prerequisite.Name} did not install cleanly (exit code {exitCode?.ToString() ?? "none"}), so {spec.DisplayName} was not installed.");
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// A pinned hash wins when the manifest carries one -- it is the stronger
     /// check and does not depend on the vendor having signed the file at all
     /// (qBittorrent's Windows build historically has not). Otherwise a
@@ -349,6 +424,37 @@ public sealed class RealConfigFileWriter : IConfigFileWriter
         catch
         {
             return Task.FromResult(false);
+        }
+    }
+}
+
+/// <summary>Reads a prerequisite's own install marker straight from the registry, no administrator rights needed since it only reads HKLM.</summary>
+public sealed class RegistryPrerequisiteReader : IPrerequisiteRegistryReader
+{
+    public bool IsPresent(string subKeyPath, string valueName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        return ReadOnWindows(subKeyPath, valueName);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static bool ReadOnWindows(string subKeyPath, string valueName)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(subKeyPath);
+            return key?.GetValue(valueName) is int value && value != 0;
+        }
+        catch
+        {
+            // A locked-down registry hive or a malformed value degrades to
+            // "not present", so the prerequisite is (re-)installed rather
+            // than the component silently skipping a check it could not run.
+            return false;
         }
     }
 }

@@ -41,13 +41,13 @@
     "silentArgs": "/S",
     "defaultPort": 8081,
     "uninstallDisplayNameHint": "qBittorrent",
-    "configFilePath": "%LocalAppData%\\qBittorrent\\qBittorrent.ini",
-    "configFileContent": "[Preferences]\nWebUI\\Enabled=true\nWebUI\\Port=8081\nWebUI\\Address=*\nWebUI\\LocalHostAuth=false\nWebUI\\AuthSubnetWhitelistEnabled=true\nWebUI\\AuthSubnetWhitelist=127.0.0.1/32\nWebUI\\CSRFProtection=false\nWebUI\\HostHeaderValidation=false\n",
+    "configFilePath": "%AppData%\\qBittorrent\\qBittorrent.ini",
+    "configFileContent": "[Preferences]\nWebUI\\Enabled=true\nWebUI\\Port=8081\nWebUI\\Address=*\nWebUI\\LocalHostAuth=false\nWebUI\\AuthSubnetWhitelistEnabled=true\nWebUI\\AuthSubnetWhitelist=127.0.0.1/32\nWebUI\\CSRFProtection=false\nWebUI\\HostHeaderValidation=false\n\n[LegalNotice]\nAccepted=true\n",
     "postInstallCommand": "%ProgramFiles%\\qBittorrent\\qbittorrent.exe",
     "postInstallArgs": null,
     "readinessUrl": "http://127.0.0.1:8081/api/v2/app/version",
     "readinessTimeoutSeconds": 45,
-    "note": "qBittorrent's default Web UI port (8080) is given to SABnzbd instead, since both default there and only one can bind it; qBittorrent moves to 8081. The config file is seeded before first start so the Web UI is already on and reachable for clients on localhost without a password -- qbittorrent.exe itself is a normal (non-headless) build that keeps running in the tray once started; #968's start/poll shape applies here too."
+    "note": "qBittorrent's default Web UI port (8080) is given to SABnzbd instead, since both default there and only one can bind it; qBittorrent moves to 8081. A clean-VM run showed the Web UI never answered on 8081: qBittorrent (portable=false) reads its settings from %AppData%\\qBittorrent\\qBittorrent.ini (Roaming), not %LocalAppData% -- the previous seed path wrote a file qbittorrent.exe never looked at, so it always started with WebUI disabled. The config is seeded at the corrected Roaming path so the Web UI is already on and reachable for clients on localhost without a password. The same seed also carries [LegalNotice]\\nAccepted=true, matching the key qBittorrent's own src/app/main.cpp checks (CachedSettingValue<bool> legalNoticeShown {\"LegalNotice/Accepted\", false}) before showing its first-run legal-notice QMessageBox -- on the non-headless Windows GUI build that dialog is always shown and always blocks (isInteractive is hardcoded true there), so an unattended install without this seeded line hangs forever waiting for a click nobody can make. qbittorrent.exe itself is a normal (non-headless) build that keeps running in the tray once started; #968's start/poll shape applies here too."
   },
 
   "transmission": {
@@ -65,11 +65,21 @@
     "silentArgs": "/qn",
     "defaultPort": 9091,
     "uninstallDisplayNameHint": "Transmission",
+    "prerequisite": {
+      "name": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+      "url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+      "fileName": "vc_redist.x64.exe",
+      "minimumBytes": 10000000,
+      "mustBeSigned": true,
+      "silentArgs": "/install /quiet /norestart",
+      "skipRegistryKeyPath": "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
+      "skipRegistryValueName": "Installed"
+    },
     "postInstallCommand": "%ProgramFiles%\\Transmission\\transmission-daemon.exe",
     "postInstallArgs": null,
     "readinessUrl": "http://127.0.0.1:9091/transmission/rpc",
     "readinessTimeoutSeconds": 30,
-    "note": "The .msi is a per-machine Windows Installer package: ComponentInstallService runs it through msiexec.exe itself (ALLUSERS=1, a verbose /l*v log next to the download) rather than launching the .msi path directly through ShellExecute's file-type association, which returned exit code 1603 unattended on a clean VM. transmission-daemon.exe ships in the same MSI as the Qt client and opens its RPC web interface on 9091 with no extra flags needed."
+    "note": "The .msi is a per-machine Windows Installer package: ComponentInstallService runs it through msiexec.exe itself (ALLUSERS=1, a verbose /l*v log next to the download) rather than launching the .msi path directly through ShellExecute's file-type association, which returned exit code 1603 unattended on a clean VM. That same clean VM traced the 1603 to the MSI's own LaunchConditions: it refuses outright with 'The Visual C++ Runtime is not installed or is outdated. Please download and install the latest version from here: https://aka.ms/vs/17/release/vc_redist.x64.exe' when the VC++ 2015-2022 x64 runtime is missing, which a fresh Windows Server image is. The prerequisite installs that redistributable first (skipped when HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64's own Installed=1 already says it is there), verified by its own Microsoft Authenticode signature since aka.ms is a live redirect with no fixed file to pin a checksum against; exit codes 0 and 3010 (succeeded, reboot required) both count as success, since a plain non-zero/non-3010 exit is the only outcome that should stop Transmission's own install from proceeding. transmission-daemon.exe ships in the same MSI as the Qt client and opens its RPC web interface on 9091 with no extra flags needed."
   },
 
   "deluge": {
@@ -134,6 +144,8 @@
     "url": null,
     "githubRepo": "nzbget/nzbget",
     "githubAssetPattern": "^nzbget-[0-9][0-9.]*-bin-windows-setup\\.exe$",
+    "githubChecksumAsset": null,
+    "githubChecksumAssetPattern": "^nzbget-[0-9][0-9.]*\\.sig\\.txt$",
     "sha256": null,
     "minimumBytes": 5000000,
     "mustBeSigned": true,
@@ -144,7 +156,7 @@
     "postInstallArgs": "-D",
     "readinessUrl": "http://127.0.0.1:6789/jsonrpc",
     "readinessTimeoutSeconds": 30,
-    "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. No checksum file is published for it, so mustBeSigned stays the only verification path. '-D' runs NZBGet as a background daemon; its default nzbget.conf already opens the control (Web UI/API) port 6789 on loopback with no extra flags."
+    "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. The clean-VM refusal ('not Authenticode-signed and carries no pinned checksum') was wrong to treat as a dead end: nzbget's release does publish a checksum file per version, named nzbget-<version>.sig.txt (e.g. nzbget-21.1.sig.txt, fetched and confirmed over HTTPS from github.com/nzbget/nzbget/releases -- not a SHA256SUMS.txt, so it needs its own name pattern the same way the installer asset itself does), just not the plain 'hash  filename' shape GithubLatestRelease.ParseChecksum already reads for Weir/Deluge. It is instead a JSONP body, `nzbget_signatures({ \"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"<hash>\", ... });`, so ParseChecksum now also recognises that shape. mustBeSigned still stays on as a fallback for the rare release that omits the file. '-D' runs NZBGet as a background daemon; its default nzbget.conf already opens the control (Web UI/API) port 6789 on loopback with no extra flags."
   },
 
   "weir": {

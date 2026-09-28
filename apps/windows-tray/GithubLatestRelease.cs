@@ -54,9 +54,16 @@ public static class GithubLatestRelease
             }
 
             string? sha256 = null;
-            if (!string.IsNullOrWhiteSpace(spec.GithubChecksumAsset))
+            var hasChecksumPattern = !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern);
+            if (!string.IsNullOrWhiteSpace(spec.GithubChecksumAsset) || hasChecksumPattern)
             {
-                var checksumAsset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubChecksumAsset, StringComparison.OrdinalIgnoreCase));
+                // Same pattern-wins-over-exact-name rule as the installer
+                // asset itself: NZBGet's own checksum file name also embeds
+                // the version (nzbget-21.1.sig.txt), so a fixed name would
+                // stop matching on the next release.
+                var checksumAsset = hasChecksumPattern
+                    ? release.Assets.FirstOrDefault(a => a.Name is not null && System.Text.RegularExpressions.Regex.IsMatch(a.Name, spec.GithubChecksumAssetPattern!))
+                    : release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubChecksumAsset, StringComparison.OrdinalIgnoreCase));
                 if (checksumAsset?.BrowserDownloadUrl is not null)
                 {
                     var sums = await http.GetStringAsync(checksumAsset.BrowserDownloadUrl, cancellationToken);
@@ -72,7 +79,7 @@ public static class GithubLatestRelease
         }
     }
 
-    /// <summary>Reads a `sha256  filename` line from a standard SHA256SUMS.txt.</summary>
+    /// <summary>Reads a `sha256  filename` line from a standard SHA256SUMS.txt, falling back to NZBGet's own per-release signature file shape (see <see cref="ParseJsonpSignature"/>) when no line matches.</summary>
     public static string? ParseChecksum(string sumsFileContent, string fileName)
     {
         foreach (var line in sumsFileContent.Split('\n'))
@@ -95,7 +102,22 @@ public static class GithubLatestRelease
                 return parts[0];
             }
         }
-        return null;
+
+        return ParseJsonpSignature(sumsFileContent, fileName);
+    }
+
+    /// <summary>
+    /// Reads a SHA-256 hex digest out of NZBGet's own per-release
+    /// <c>nzbget-&lt;version&gt;.sig.txt</c>, a JSONP body shaped like
+    /// <c>nzbget_signatures({ "SHA256(nzbget-21.1-bin-windows-setup.exe)" : "&lt;hash&gt;", ... });</c>
+    /// rather than a plain SHA256SUMS.txt line -- not every vendor's
+    /// "checksums with the release" publishes them in the same shape.
+    /// </summary>
+    private static string? ParseJsonpSignature(string content, string fileName)
+    {
+        var pattern = $"\"SHA256\\({System.Text.RegularExpressions.Regex.Escape(fileName)}\\)\"\\s*:\\s*\"([0-9a-fA-F]{{64}})\"";
+        var match = System.Text.RegularExpressions.Regex.Match(content, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     private sealed class GithubRelease

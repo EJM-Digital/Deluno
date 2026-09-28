@@ -47,6 +47,35 @@ public sealed class GithubLatestReleaseTests
 
         Assert.Equal("d34db33f", hash);
     }
+
+    [Fact]
+    public void Reads_a_hash_out_of_nzbgets_own_jsonp_signature_file()
+    {
+        // NZBGet's nzbget-<version>.sig.txt is not a SHA256SUMS.txt line --
+        // it is a JSONP body naming every asset's SHA256 as its own key.
+        var sig = "nzbget_signatures({\n" +
+                  "\"MD5(nzbget-21.1-bin-windows-setup.exe)\" : \"4298f1eec6d7c8644844a28ceb92c0ed\",\n" +
+                  "\"SHA1(nzbget-21.1-bin-windows-setup.exe)\" : \"61723cec5870438763d21bb7259a76a631c8108f\",\n" +
+                  "\"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"536515ca1e57321c5de664441d3394c4cd63c603183e257275188b3a9e168477\",\n" +
+                  "\"RSA-SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"deadbeef\"\n" +
+                  "});";
+
+        var hash = GithubLatestRelease.ParseChecksum(sig, "nzbget-21.1-bin-windows-setup.exe");
+
+        Assert.Equal("536515ca1e57321c5de664441d3394c4cd63c603183e257275188b3a9e168477", hash);
+    }
+
+    [Fact]
+    public void Jsonp_signature_lookup_answers_null_for_a_different_asset_name()
+    {
+        var sig = "nzbget_signatures({\n" +
+                  "\"SHA256(nzbget-21.1-bin-linux.run)\" : \"9c4bd5169c91c4ad56338d0989d63632abe708bdf496137b484e3faa18708011\"\n" +
+                  "});";
+
+        var hash = GithubLatestRelease.ParseChecksum(sig, "nzbget-21.1-bin-windows-setup.exe");
+
+        Assert.Null(hash);
+    }
 }
 
 public sealed class DirectoryListingLatestReleaseTests
