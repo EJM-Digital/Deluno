@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkDot, TitleMarkTopBar } from "./title-mark";
-import { TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PAINT, TITLE_MARK_PRESENTATION, UNMONITORED_PAINT } from "../../lib/status-tones";
+import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkDot, TitleMarkTopBar, TitleMarkChip, TitleMarkLabel } from "./title-mark";
+import { markWords, TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PAINT, TITLE_MARK_PRESENTATION, UNMONITORED_PAINT } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
 
@@ -392,5 +392,43 @@ describe("unmonitored overrides the mark's colour everywhere it is drawn", () =>
     // the other five can be in — so the default must be "watched".
     const legend = render(<MarkStrip mark="missing" type="movie" />).container.firstElementChild as HTMLElement;
     expect(legend.style.backgroundColor).toContain("--mark-missing-surface");
+  });
+});
+
+describe("every mark component says the same words for an unmonitored title (#1048)", () => {
+  const bare = { monitored: false, wantedStatus: "missing" };
+  const held = { monitored: false, wantedStatus: "covered" };
+  const watched = { monitored: true, wantedStatus: "missing" };
+
+  it("markWords: Unmonitored with no file, rung plus suffix with a file, rung when monitored", () => {
+    expect(markWords(false, "missing")).toMatchObject({ label: "Unmonitored", suffix: "", off: true });
+    expect(markWords(false, "covered")).toMatchObject({ label: "Quality met", suffix: " · unmonitored", off: true });
+    expect(markWords(false, "upgrade", false)).toMatchObject({ label: "Unmonitored" });
+    expect(markWords(true, "missing")).toMatchObject({ label: "Missing", suffix: "", off: false });
+  });
+
+  const components = {
+    dot: (item: typeof bare) => render(<TitleMarkDot item={item} />).container,
+    topBar: (item: typeof bare) => render(<TitleMarkTopBar item={item} />).container,
+    corner: (item: typeof bare) => render(<TitleMarkCorner item={item} />).container,
+    chip: (item: typeof bare) => render(<TitleMarkChip item={item} />).container,
+    label: (item: typeof bare) => render(<TitleMarkLabel item={item} />).container
+  };
+
+  for (const [name, draw] of Object.entries(components)) {
+    it(`${name} follows the shared rule`, () => {
+      const nameOf = (item: typeof bare) => draw(item).querySelector('[role="img"]')!.getAttribute("aria-label");
+      expect(nameOf(bare)).toBe("Unmonitored");
+      expect(nameOf(held)).toBe("Quality met · unmonitored");
+      expect(nameOf(watched)).toBe("Missing");
+    });
+  }
+
+  it("paints the dot, top bar and corner the Unmonitored grey, not the rung", () => {
+    for (const draw of [components.dot, components.topBar, components.corner]) {
+      const html = draw(bare).innerHTML;
+      expect(html).toContain("--mark-unmonitored");
+      expect(html).not.toContain("linear-gradient");
+    }
   });
 });

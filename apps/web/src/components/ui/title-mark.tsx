@@ -2,6 +2,7 @@ import { cn } from "../../lib/utils";
 import {
   TITLE_BAR_SEGMENTS,
   subtitleStripWord,
+  markWords,
   TITLE_MARK_PAINT,
   TITLE_MARK_PRESENTATION,
   UNMONITORED_PAINT,
@@ -176,7 +177,7 @@ export function TitleMarkDot({
 }) {
   const mark: TitleMark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const half = !item.monitored && presentation.canBeHalf;
+  const words = markWords(item.monitored, mark);
 
   // The dot carries the rung and nothing else.
   //
@@ -189,13 +190,13 @@ export function TitleMarkDot({
   // what a fraction needs.
   //
   // So the fraction is text now, on the chip — see TitleMarkChip.
-  const label = half ? `${presentation.label} · unmonitored` : presentation.label;
+  const label = words.label + words.suffix;
 
   return (
     <span
       {...(decorative
         ? { "aria-hidden": true }
-        : { role: "img", "aria-label": label, title: half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint })}
+        : { role: "img", "aria-label": label, title: words.hint })}
       className={cn(
         // No ring. It was there to stop "a dark mark disappearing into dark
         // artwork", and nothing in the ladder is dark any more — red 62%, green
@@ -212,13 +213,12 @@ export function TitleMarkDot({
         // `.replace("bg-", "text-")` is invisible to Tailwind and gets purged.
         // That is exactly what happened to Upcoming: its half rendered with no
         // colour at all, and nothing failed.
-        half ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]" : presentation.dot,
-        half && presentation.text,
+        // Unmonitored is one flat grey (#1048), never a half of the rung colour.
+        words.off ? UNMONITORED_DOT : presentation.dot,
         // Quality met is gold leaf rather than a flat fill, and it glints. It is
-        // the only rung that means Deluno has finished; the other four all mean
-        // it is still working. `canBeHalf` is false for it, so this can never
-        // fight the half-grey gradient above.
-        !half && presentation.sheen,
+        // the only rung that means Deluno has finished; an unmonitored title is
+        // never drawn as finished.
+        !words.off && presentation.sheen,
         className
       )}
       style={{ width: size, height: size }}
@@ -403,8 +403,9 @@ function TwoToneBar({
   );
 }
 
-/** The pill's own word for a title Deluno is not watching (#1048). */
-const UNMONITORED_LABEL = "Unmonitored";
+
+/** Fill class for every non-bar mark of an unmonitored title. Written out so Tailwind sees it. */
+const UNMONITORED_DOT = "bg-[hsl(var(--mark-unmonitored))]";
 
 const paintVar = (token: string) => `hsl(var(${token}))`;
 
@@ -441,7 +442,7 @@ function mediaBarOf(item: TitleBarsInput, mark: TitleMark) {
       ? Math.max(0, item.airedWithFileCount ?? 0) === 0
       : !item.hasFile;
     if (heldNothing) {
-      return { pct: 100, label: UNMONITORED_LABEL, lead: design.mediaBar === "episodes" ? "EPS" : "QLTY", fraction: false };
+      return { pct: 100, label: markWords(false, mark, false).label, lead: design.mediaBar === "episodes" ? "EPS" : "QLTY", fraction: false };
     }
   }
 
@@ -561,11 +562,7 @@ export function TitleBars({
     ? { surface: UNMONITORED_PAINT.surface, label: UNMONITORED_PAINT.onSurface }
     : { surface: "--mark-idle", label: "--foreground" };
 
-  const unmonitoredEmpty = media.label === UNMONITORED_LABEL;
-  const rung = unmonitoredEmpty
-    ? { ...TITLE_MARK_PRESENTATION[mark], label: UNMONITORED_LABEL, hint: "Deluno is not watching this one." }
-    : TITLE_MARK_PRESENTATION[mark];
-  const watch = monitored || unmonitoredEmpty ? "" : " · unmonitored";
+  const words = markWords(monitored, mark, files > 0);
 
   return (
     <>
@@ -577,9 +574,9 @@ export function TitleBars({
         onTrack={paintVar(topTrack.label)}
         lead={design.leads === "both" ? media.lead : undefined}
         label={showMediaText ? media.label : undefined}
-        title={rung.hint + (monitored || unmonitoredEmpty ? "" : " Deluno is not watching this one.")}
+        title={words.hint}
         edge="top"
-        ariaLabel={`${rung.label}${watch}${
+        ariaLabel={`${words.label}${words.suffix}${
           isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
         }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
       />
@@ -598,7 +595,7 @@ export function TitleBars({
               ? `${subs.held} of ${subs.wanted} subtitle languages you asked for are here.`
               : "Subtitles: none yet. Deluno looks for them on the library's own cycle."
           }
-          ariaLabel={`Subtitles ${subWord}${watch}`}
+          ariaLabel={`Subtitles ${subWord}${monitored ? "" : " · unmonitored"}`}
         />
       ) : null}
     </>
@@ -614,13 +611,11 @@ export function TitleMarkTopBar({
 }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const half = !item.monitored && presentation.canBeHalf;
+  const words = markWords(item.monitored, mark);
   const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
   const fillPercent = tracksEpisodes ? Math.round(titleProgress(item) * 100) : 100;
 
-  const description = half
-    ? `${presentation.label} · unmonitored`
-    : presentation.label;
+  const description = words.label + words.suffix;
 
   return (
     <div
@@ -628,7 +623,7 @@ export function TitleMarkTopBar({
       aria-label={tracksEpisodes
         ? `${description} · ${episodesHeld(item)} of ${item.airedEpisodeCount} aired episodes on disk`
         : description}
-      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={words.hint}
       className={cn("absolute inset-x-0 top-0 z-10 h-[5px] overflow-hidden bg-mark-idle", className)}
     >
       {/*
@@ -643,11 +638,8 @@ export function TitleMarkTopBar({
         className={cn(
           "block h-full",
           presentation.stateClass,
-          half
-            ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
-            : presentation.dot,
-          half && presentation.text,
-          !half && presentation.sheen
+          words.off ? UNMONITORED_DOT : presentation.dot,
+          !words.off && presentation.sheen
         )}
         style={{ width: `${fillPercent}%` }}
       />
@@ -681,19 +673,19 @@ function episodesHeld(item: TitleMarkInput): number {
 export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; className?: string }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const half = !item.monitored && presentation.canBeHalf;
+  const words = markWords(item.monitored, mark);
   const tracksEpisodes = typeof item.airedEpisodeCount === "number" && item.airedEpisodeCount > 0;
 
   const text = tracksEpisodes
     ? `${episodesHeld(item)} / ${item.airedEpisodeCount}`
-    : presentation.label;
-  const description = half ? `${presentation.label} · unmonitored` : presentation.label;
+    : words.label;
+  const description = words.label + words.suffix;
 
   return (
     <span
       role="img"
       aria-label={tracksEpisodes ? `${description} · ${text} aired episodes on disk` : description}
-      title={half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={words.hint}
       className={cn(
         "absolute right-2 top-2 z-20 inline-flex items-center gap-1.5 rounded-full",
         "border border-white/15 bg-surface-1 px-2 py-0.5 shadow-card",
@@ -706,11 +698,8 @@ export function TitleMarkCorner({ item, className }: { item: TitleMarkInput; cla
         className={cn(
           "relative flex h-2 w-2 shrink-0 items-center justify-center rounded-full",
           presentation.stateClass,
-          half
-            ? "bg-[linear-gradient(90deg,currentColor_0_50%,hsl(var(--mark-idle))_50%_100%)]"
-            : presentation.dot,
-          half && presentation.text,
-          !half && presentation.sheen
+          words.off ? UNMONITORED_DOT : presentation.dot,
+          !words.off && presentation.sheen
         )}
       >
         <span aria-hidden data-glyph={presentation.glyph} className="title-mark-glyph pointer-events-none text-[0.58em] font-black leading-none text-white" />
@@ -964,16 +953,14 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
   const presentation = TITLE_MARK_PRESENTATION[mark];
   // #1048: an unmonitored title with no file is in the Unmonitored pill, so the
   // row says Unmonitored rather than "Missing · unmonitored".
-  const bare = !item.monitored && mark !== "covered" && mark !== "upgrade";
-  const half = !bare && !item.monitored && presentation.canBeHalf;
-  const word = bare ? UNMONITORED_LABEL : presentation.label;
-  const label = half ? `${word} · unmonitored` : word;
+  const words = markWords(item.monitored, mark);
+  const label = words.label + words.suffix;
 
   return (
     <span
       role="img"
       aria-label={label}
-      title={bare ? "Deluno is not watching this one." : half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={words.hint}
       className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}
     >
       {/*
@@ -993,8 +980,8 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
         its own poster called it grey.
       */}
       <MarkStrip mark={mark} type={type} monitored={item.monitored} sheen />
-      <span>{word}</span>
-      {half ? <span className="text-muted-foreground">· unmonitored</span> : null}
+      <span>{words.label}</span>
+      {words.suffix ? <span className="text-muted-foreground">{words.suffix.trim()}</span> : null}
     </span>
   );
 }
@@ -1010,8 +997,7 @@ export function TitleMarkLabel({ item, className, type }: { item: TitleMarkInput
 export function TitleMarkChip({ item, className }: { item: TitleMarkInput; className?: string }) {
   const mark = titleMark(item);
   const presentation = TITLE_MARK_PRESENTATION[mark];
-  const bare = !item.monitored && mark !== "covered" && mark !== "upgrade";
-  const half = !bare && !item.monitored && presentation.canBeHalf;
+  const words = markWords(item.monitored, mark);
 
   // Shows only, and only once Deluno knows what has aired. Zero of an unknown
   // total is not a fraction, and printing one would claim knowledge it has not
@@ -1021,14 +1007,13 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
     ? `${Math.min(Math.max(0, item.airedWithFileCount ?? 0), aired)}/${aired}`
     : null;
 
-  const word = bare ? UNMONITORED_LABEL : presentation.label;
-  const label = half ? `${word} · unmonitored` : word;
+  const label = words.label + words.suffix;
 
   return (
     <span
       role="img"
       aria-label={episodes ? `${label} · ${episodes} aired episodes` : label}
-      title={bare ? "Deluno is not watching this one." : half ? `${presentation.hint} Deluno is not watching this one.` : presentation.hint}
+      title={words.hint}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2 py-0.5",
         "text-[length:var(--library-badge-size)] font-bold uppercase tracking-wider text-white backdrop-blur-md",
@@ -1042,7 +1027,7 @@ export function TitleMarkChip({ item, className }: { item: TitleMarkInput; class
         looked for on the artwork.
       */}
       <TitleMarkDot item={item} size={MARK_DOT_SIZE} decorative />
-      {word}
+      {words.label}
       {episodes ? (
         <>
           {/*

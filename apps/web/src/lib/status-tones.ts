@@ -611,6 +611,34 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
 ] as const;
 
 /**
+ * The one place a mark's words are decided for a title Deluno may not be
+ * watching (#1048). Every mark component (bars, top bar, corner, chip, list
+ * row, detail label, dot) reads this, so they cannot disagree.
+ *
+ * - Monitored: the rung's own label and hint.
+ * - Unmonitored with no file: "Unmonitored", never the rung (it is in the
+ *   Unmonitored pill and nowhere else).
+ * - Unmonitored with a file: the rung's label with the " · unmonitored" suffix.
+ *
+ * Unmonitored is always painted the Unmonitored grey (`off`). `held` says
+ * whether the title has a file; when omitted it is read from the rung (Quality
+ * met and Upgradable are the two rungs that have one).
+ */
+export function markWords(
+  monitored: boolean,
+  mark: TitleMark,
+  held?: boolean
+): { label: string; suffix: string; hint: string; off: boolean; bare: boolean } {
+  const presentation = TITLE_MARK_PRESENTATION[mark];
+  if (monitored) return { label: presentation.label, suffix: "", hint: presentation.hint, off: false, bare: false };
+  const hasFile = held ?? (mark === "covered" || mark === "upgrade");
+  const watching = "Deluno is not watching this one.";
+  return hasFile
+    ? { label: presentation.label, suffix: " · unmonitored", hint: `${presentation.hint} ${watching}`, off: true, bare: false }
+    : { label: "Unmonitored", suffix: "", hint: watching, off: true, bare: true };
+}
+
+/**
  * The word the card's subtitle strip says (#1048): the legend's own wording,
  * never a status word. Neutral in tone: red is only for "something is needed".
  */
