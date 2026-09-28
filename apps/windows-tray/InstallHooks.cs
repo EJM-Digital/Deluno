@@ -13,12 +13,18 @@ namespace Deluno.Tray;
 /// only record was a line in install-hook.log. Other devices simply could not
 /// connect.</para>
 ///
-/// <para>Velopack's install, update and uninstall callbacks must finish within
-/// 30 seconds (15 for uninstall) and are not meant to show anything, so they
-/// only act when they already have the rights. The Windows permission prompt
-/// comes on the first run after install, which Velopack runs once as the app
-/// itself. If that prompt is declined, the tray menu and System keep offering
-/// the same step.</para>
+/// <para>Velopack's install and update callbacks must finish within 30
+/// seconds and are not meant to show anything. They used to run the firewall
+/// step when already elevated, but on a clean VM checked into an elevated
+/// Administrator session that step itself -- the <c>netsh</c> call, run
+/// elevated -- pushed a cold start (18s before the first log line) past the
+/// 30 second budget and Velopack killed the hook (#968). The fast callbacks
+/// now never touch the firewall, elevated or not: they log one line and
+/// return. The rule still gets added -- from <see cref="OnFirstRun"/> after a
+/// fresh install, and from the tray's own "Allow other devices" item (offered
+/// whenever <c>LanAccess.CanAllow</c> is true) on every normal start,
+/// including the first start after an update, which has no first run of its
+/// own.</para>
 /// </summary>
 internal static class InstallHooks
 {
@@ -26,50 +32,50 @@ internal static class InstallHooks
     private static readonly TimeSpan UninstallBudget = TimeSpan.FromSeconds(12);
 
     /// <summary>
-    /// Test seam only: replaces the elevation check so a test can force the
-    /// non-elevated, fast-return path without depending on how the test
-    /// runner itself happens to be running. Defaults to the real check.
+    /// Test seam only. <see cref="OnAfterInstall"/> no longer reads this --
+    /// the fast callback never runs the firewall step, elevated or not (see
+    /// class remarks, #968) -- but a test still sets it to prove that holds
+    /// in both elevation states without depending on how the test runner
+    /// itself happens to be running. Defaults to the real check.
     /// </summary>
     internal static Func<bool> IsElevatedCheck { get; set; } = () => new WindowsFirewall().IsElevated;
 
     /// <summary>
-    /// Test seam only: lets a test detect (or forbid) a call into
-    /// <see cref="Firewall"/> -- which touches <c>DelunoServer</c>'s statics
-    /// and <c>AppSettings.Load()</c> -- without it actually running. Defaults
-    /// to the real factory.
+    /// Test seam only. <see cref="OnAfterInstall"/> no longer calls this --
+    /// see class remarks (#968) -- so a test uses it only to detect (and
+    /// forbid) a call into <see cref="Firewall"/> -- which touches
+    /// <c>DelunoServer</c>'s statics and <c>AppSettings.Load()</c> -- without
+    /// it actually running. <see cref="OnFirstRun"/> still adds the rule, but
+    /// through <see cref="Firewall"/> directly, not through this seam.
+    /// Defaults to the real factory.
     /// </summary>
     internal static Func<WindowsFirewallLanAccess> FirewallFactory { get; set; } = Firewall;
 
     /// <summary>
-    /// After install or update: adds the rule only when this process may
-    /// already do so. Velopack kills this callback after 30 seconds, so the
-    /// very first thing it does is log, and the common case -- not elevated,
-    /// which is every ordinary install -- returns before touching
-    /// <see cref="Firewall"/> (and so <c>DelunoServer</c>'s statics and
-    /// <c>AppSettings.Load()</c>) at all. A cold, non-elevated run once took
-    /// 23+ seconds to reach its first log line for exactly that reason and
-    /// blew the budget (#968).
+    /// After install or after update: Velopack kills this callback after 30
+    /// seconds, and the firewall step -- <see cref="FirewallFactory"/>, which
+    /// touches <c>DelunoServer</c>'s statics and <c>AppSettings.Load()</c>,
+    /// then runs <c>netsh</c> -- has blown that budget even when elevated: a
+    /// clean-VM run under an elevated Administrator took 18 seconds just to
+    /// reach its first log line, and the elevated <c>netsh</c> call pushed it
+    /// past 30s and Velopack killed the hook (#968). So this fast callback
+    /// never runs the firewall step, elevated or not; it only logs. A fresh
+    /// install still gets the rule from <see cref="OnFirstRun"/>, and an
+    /// update still ends up with it because the tray offers (and, once
+    /// allowed, no longer needs to offer) the same step on every normal
+    /// start.
     /// </summary>
     public static void OnAfterInstall()
     {
         try
         {
-            LogHook("after install: starting.");
-
-            if (!IsElevatedCheck())
-            {
-                LogHook("not elevated here; the first run asks Windows for permission.");
-                return;
-            }
-
-            var firewall = FirewallFactory();
-            Run(() => firewall.AllowAsync(CancellationToken.None), "after install");
+            LogHook("after install/update: starting; the firewall step runs from first run or the tray, not from this hook.");
         }
         catch (Exception ex)
         {
             // An install must never fail over this hook; the tray and System
-            // still offer the firewall step on first run.
-            LogHook($"after install: failed: {ex.Message}");
+            // still offer the firewall step on first run or normal start.
+            LogHook($"after install/update: failed: {ex.Message}");
         }
     }
 
