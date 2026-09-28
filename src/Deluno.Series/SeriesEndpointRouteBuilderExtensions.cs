@@ -845,6 +845,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateSeasonPassMonitoringRequest request,
             ISeriesCatalogRepository repository,
+            TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
         {
@@ -862,7 +863,77 @@ public static class SeriesEndpointRouteBuilderExtensions
                 });
             }
 
+            // #1028: Season Pass's own scopes are series- or season-wide, but
+            // the repository always applies them at episode granularity (a
+            // "whole series" scope still updates every episode row) - so
+            // which episode ids each scope touches has to be resolved the
+            // same way, before the update, to know what to cancel afterwards.
+            var episodeIdsByScopeSeries = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            if (!request.Monitored)
+            {
+                foreach (var scope in request.Scopes)
+                {
+                    var inventory = await repository.GetInventoryDetailAsync(scope.SeriesId, cancellationToken);
+                    if (inventory is null)
+                    {
+                        continue;
+                    }
+
+                    var episodes = scope.SeasonNumber is { } seasonNumber
+                        ? inventory.Episodes.Where(episode => episode.SeasonNumber == seasonNumber)
+                        : inventory.Episodes;
+                    if (!episodeIdsByScopeSeries.TryGetValue(scope.SeriesId, out var episodeIds))
+                    {
+                        episodeIds = [];
+                        episodeIdsByScopeSeries[scope.SeriesId] = episodeIds;
+                    }
+
+                    episodeIds.AddRange(episodes.Select(episode => episode.EpisodeId));
+                }
+            }
+
             var updated = await repository.SetSeasonPassMonitoringAsync(request.Scopes, request.Monitored, cancellationToken);
+
+            // #900/#947: unmonitoring from Season Pass is the same "I don't
+            // want this any more" as unmonitoring from a series or episode
+            // page - an in-flight download is cancelled now, through the
+            // same path (including the season-pack rule: a pack recorded
+            // under the series is only cancelled once every episode it
+            // covers is unmonitored, read fresh here since the update above
+            // already landed).
+            if (!request.Monitored)
+            {
+                foreach (var (seriesId, episodeIds) in episodeIdsByScopeSeries)
+                {
+                    if (episodeIds.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var seriesTitle = (await repository.GetByIdAsync(seriesId, cancellationToken))?.Title;
+                    var label = seriesTitle is { Length: > 0 } ? $"An episode of {seriesTitle}" : "This episode";
+                    var seasonPack = new TitleRemovalService.SeasonPackUnmonitorContext(
+                        seriesId,
+                        async (coveredEpisodeIds, ct) =>
+                        {
+                            var inventory = await repository.GetInventoryDetailAsync(seriesId, ct);
+                            if (inventory is null)
+                            {
+                                return false;
+                            }
+
+                            var monitoredById = inventory.Episodes.ToDictionary(episode => episode.EpisodeId, episode => episode.Monitored, StringComparer.OrdinalIgnoreCase);
+                            return coveredEpisodeIds.All(coveredEpisodeId =>
+                                !monitoredById.TryGetValue(coveredEpisodeId, out var monitored) || !monitored);
+                        });
+
+                    foreach (var episodeId in episodeIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, label, cancellationToken, seasonPack: seasonPack);
+                    }
+                }
+            }
+
             if (updated > 0)
             {
                 foreach (var seriesId in request.Scopes.Select(scope => scope.SeriesId).Distinct(StringComparer.Ordinal))
