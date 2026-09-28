@@ -3004,14 +3004,7 @@ public sealed class SqliteJobStore(
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).GrabEnabled;
             if (enabled)
             {
-                var grabKind = string.Equals(entityType, "movie", StringComparison.OrdinalIgnoreCase)
-                    ? MediaKind.Movie
-                    : string.Equals(entityType, "series", StringComparison.OrdinalIgnoreCase)
-                        ? MediaKind.Series
-                        : (MediaKind?)null;
-                var grabTitleTags = mediaTagStore is null || grabKind is null
-                    ? null
-                    : (await mediaTagStore.ListAsync(grabKind.Value, entityId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
+                var grabTitleTags = await mediaTagStore.ListTitleTagNamesAsync(entityType, entityId, cancellationToken);
                 await outboundNotificationService.DispatchAsync(
                     "grab",
                     $"Grabbed: {releaseName}",

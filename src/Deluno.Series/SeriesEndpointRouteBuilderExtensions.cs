@@ -3566,7 +3566,10 @@ public static class SeriesEndpointRouteBuilderExtensions
                     $"Added: {item.Title}",
                     $"{item.Title} was added to the library.",
                     JsonSerializer.Serialize(new { item.Id, item.Title, mediaType = "tv" }),
-                    cancellationToken);
+                    cancellationToken,
+                    // #1036: a title just added has no tags yet (they are
+                    // assigned afterwards), so it is a title event with none.
+                    titleTags: []);
             }
 
             return Results.Created($"/api/series/{item.Id}", item);

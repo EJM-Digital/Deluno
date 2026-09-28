@@ -44,6 +44,27 @@ public sealed class SqliteMediaTagStore(
         return items;
     }
 
+    public async Task<IReadOnlyList<MediaTagAssignment>?> ListForEpisodeAsync(
+        string episodeId,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(MediaKind.Series);
+        string? seriesId;
+        await using (var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT series_id FROM episode_entries WHERE id = @episodeId;";
+            AddParameter(command, "@episodeId", episodeId);
+            seriesId = await command.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        return string.IsNullOrWhiteSpace(seriesId)
+            ? null
+            : await ListAsync(MediaKind.Series, seriesId, cancellationToken);
+    }
+
     public async Task ReplaceAsync(
         MediaKind kind,
         string mediaId,

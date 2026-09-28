@@ -23,6 +23,14 @@ public interface IMediaTagStore
         string mediaId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The tags of the show an episode belongs to (tags live on the show, not
+    /// the episode), or null when no such episode exists (#1036).
+    /// </summary>
+    Task<IReadOnlyList<MediaTagAssignment>?> ListForEpisodeAsync(
+        string episodeId,
+        CancellationToken cancellationToken);
+
     Task ReplaceAsync(
         MediaKind kind,
         string mediaId,
@@ -45,4 +53,34 @@ public interface IMediaTagStore
         string tagId,
         string name,
         CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// One place that turns "the title this event is about" into tag names for
+/// notification dispatch (#1036). Null means the entity is not a title Deluno
+/// can resolve (so the event is treated as title-less); an empty list means a
+/// real title with no tags.
+/// </summary>
+public static class MediaTagStoreExtensions
+{
+    public static async Task<IReadOnlyList<string>?> ListTitleTagNamesAsync(
+        this IMediaTagStore? store,
+        string? entityType,
+        string? entityId,
+        CancellationToken cancellationToken)
+    {
+        if (store is null || string.IsNullOrWhiteSpace(entityId))
+        {
+            return null;
+        }
+
+        IReadOnlyList<MediaTagAssignment>? assignments = entityType?.Trim().ToLowerInvariant() switch
+        {
+            "movie" or "movies" => await store.ListAsync(MediaKind.Movie, entityId, cancellationToken),
+            "series" or "tv" => await store.ListAsync(MediaKind.Series, entityId, cancellationToken),
+            "episode" => await store.ListForEpisodeAsync(entityId, cancellationToken),
+            _ => null
+        };
+        return assignments?.Select(assignment => assignment.Name).ToArray();
+    }
 }
