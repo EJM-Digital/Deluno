@@ -29,6 +29,26 @@ public sealed class TransmissionGrabDuplicateTests
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #874/#942, cleanup sheet B2: Transmission's own <c>torrent-add</c>
+    /// answers "success" or a reason in words — a reason is Transmission
+    /// looking at the exact link or file it was handed and refusing it
+    /// outright, in the same request, the same shape qBittorrent's "Fails."
+    /// and NZBGet's RPC error already read as a dead release rather than a
+    /// generic failure.
+    /// </summary>
+    [Fact]
+    public async Task A_transmission_refusal_reason_is_read_as_a_dead_release()
+    {
+        var handler = new TransmissionRefusalHandler("invalid or corrupt torrent file");
+        var result = await new TransmissionDownloadClient(new StubFactory(handler))
+            .GrabAsync(Client(), Request(), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("invalid or corrupt torrent file", result.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task An_ordinary_added_torrent_is_not_read_as_a_duplicate()
     {
@@ -61,6 +81,18 @@ public sealed class TransmissionGrabDuplicateTests
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
                 ? """{"result":"success","arguments":{"torrent-duplicate":{"id":7,"hashString":"abc"}}}"""
+                : """{"result":"success","arguments":{}}""";
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    private sealed class TransmissionRefusalHandler(string reason) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var reply = body.Contains("\"torrent-add\"", StringComparison.Ordinal)
+                ? "{\"result\":\"" + reason + "\",\"arguments\":{}}"
                 : """{"result":"success","arguments":{}}""";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(reply, Encoding.UTF8, "application/json") };
         }

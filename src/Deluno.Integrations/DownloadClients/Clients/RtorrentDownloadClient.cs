@@ -66,15 +66,29 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         // (base64, an XML-RPC <base64> value) for a release Deluno fetched
         // itself with a tracker's own sign-in (#606); the plain pair take a
         // URL rTorrent fetches on its own.
-        if (request.TorrentFile is { } file)
+        // #874/#942, cleanup sheet B2: rTorrent answers a load call it could
+        // not honour — a .torrent it could not parse — with an XML-RPC
+        // <fault>, which ParseResponse turns into an
+        // RtorrentFaultException. That is rTorrent looking at the exact
+        // file it was handed and refusing it outright, in the same request,
+        // the same shape qBittorrent's "Fails." and NZBGet's RPC error
+        // already read as a dead release rather than a setup problem.
+        try
         {
-            var method = client.AddPaused ? "load.raw" : "load.raw_start";
-            await SendAsync(http, baseUri, method, [string.Empty, new XmlRpcBase64(file)], cancellationToken);
+            if (request.TorrentFile is { } file)
+            {
+                var method = client.AddPaused ? "load.raw" : "load.raw_start";
+                await SendAsync(http, baseUri, method, [string.Empty, new XmlRpcBase64(file)], cancellationToken);
+            }
+            else
+            {
+                var method = client.AddPaused ? "load.normal" : "load.start";
+                await SendAsync(http, baseUri, method, [string.Empty, request.DownloadUrl], cancellationToken);
+            }
         }
-        else
+        catch (RtorrentFaultException fault)
         {
-            var method = client.AddPaused ? "load.normal" : "load.start";
-            await SendAsync(http, baseUri, method, [string.Empty, request.DownloadUrl], cancellationToken);
+            return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"rTorrent refused the release: {fault.FaultMessage}.");
         }
 
         var after = await WaitForNewHashAsync(http, baseUri, before, cancellationToken);
@@ -528,6 +542,16 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
     /// <summary>Raw bytes for an XML-RPC &lt;base64&gt; value, distinct from a string parameter.</summary>
     private sealed record XmlRpcBase64(byte[] Bytes);
 
+    /// <summary>
+    /// rTorrent's own XML-RPC &lt;fault&gt; response — the method it was
+    /// asked to run could not be honoured, in the same request, with its own
+    /// stated reason (#874/#942).
+    /// </summary>
+    private sealed class RtorrentFaultException(string faultMessage) : Exception($"rTorrent returned a fault: {faultMessage}")
+    {
+        public string FaultMessage { get; } = faultMessage;
+    }
+
     private static object? ParseResponse(string xml)
     {
         var document = XDocument.Parse(xml);
@@ -536,7 +560,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
         {
             var faultValue = fault.Element("value");
             var faultString = faultValue is not null ? ParseValue(faultValue) : null;
-            throw new InvalidOperationException($"rTorrent returned a fault: {faultString}");
+            throw new RtorrentFaultException(faultString?.ToString() ?? "no reason given");
         }
 
         var valueElement = document.Root?.Element("params")?.Element("param")?.Element("value");

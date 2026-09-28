@@ -81,6 +81,25 @@ public sealed class RtorrentDownloadClientTests
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #874/#942, cleanup sheet B2: rTorrent answers a load call it could
+    /// not honour with an XML-RPC &lt;fault&gt; — it looked at the exact
+    /// file or link it was handed and refused it outright, in the same
+    /// request. Read as a dead release the way qBittorrent's "Fails." and
+    /// NZBGet's RPC error already are, not a generic failure.
+    /// </summary>
+    [Fact]
+    public async Task A_load_fault_is_read_as_a_dead_release()
+    {
+        var handler = new RtorrentFaultHandler("Could not create download: invalid torrent file.");
+        var result = await new RtorrentDownloadClient(new StubFactory(handler))
+            .GrabAsync(Client(), Request(), CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("invalid torrent file", result.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(DownloadClientActions.Pause, "d.pause")]
     [InlineData(DownloadClientActions.Resume, "d.resume")]
@@ -323,6 +342,31 @@ public sealed class RtorrentDownloadClientTests
             return XmlResponse(IntResponse(0));
         }
     }
+
+    /// <summary>Answers any load.* call with an XML-RPC &lt;fault&gt; carrying the given message, everything else with success.</summary>
+    private sealed class RtorrentFaultHandler(string faultMessage) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var method = MethodNameOf(body);
+
+            if (method.StartsWith("load.", StringComparison.Ordinal))
+            {
+                return XmlResponse(FaultResponse(faultMessage));
+            }
+
+            if (method == "download_list")
+            {
+                return XmlResponse(MethodResponse(AsValue(ArrayOf([]))));
+            }
+
+            return XmlResponse(IntResponse(0));
+        }
+    }
+
+    private static string FaultResponse(string faultMessage)
+        => $"""<?xml version="1.0"?><methodResponse><fault>{AsValue(TypedString(faultMessage))}</fault></methodResponse>""";
 
     /// <summary>Answers d.base_path with a fixed path and everything else (d.erase) with success, recording every method called.</summary>
     private sealed class RtorrentDeleteWithDataHandler(string basePath) : HttpMessageHandler
