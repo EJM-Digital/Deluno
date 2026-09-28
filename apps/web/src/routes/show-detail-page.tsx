@@ -306,11 +306,18 @@ export function ShowDetailPage() {
   const usedDownloadClients = useMemo(() => {
     if (!titleRouting) return [];
     const clientTags = new Map(titleRouting.downloadClients.map((item) => [item.id, item.tags]));
+    const clientGroups = new Map(
+      titleRouting.downloadClients.map((item) => [
+        item.id,
+        ["sabnzbd", "nzbget", "usenet"].includes(item.protocol?.trim().toLowerCase() ?? "") ? "usenet" : "torrent"
+      ])
+    );
     return describeTitleRouting(
       titleRouting.routing.downloadClients.map((client) => ({
         id: client.downloadClientId,
         name: client.downloadClientName,
-        tags: clientTags.get(client.downloadClientId)
+        tags: clientTags.get(client.downloadClientId),
+        group: clientGroups.get(client.downloadClientId) ?? "torrent"
       })),
       titleRouting.titleTags
     );

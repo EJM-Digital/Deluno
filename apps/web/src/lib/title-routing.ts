@@ -11,6 +11,12 @@ export interface TitleRoutingConnection {
   name: string;
   /** Comma-separated tag names on the connection itself (indexer/client Tags field). Empty/undefined means untagged. */
   tags?: string | null;
+  /**
+   * Download clients only: what the client can be handed ("usenet" or
+   * "torrent"). A client tagged for the title is chosen before untagged
+   * clients of the same kind (Radarr/Sonarr's rule, #1041).
+   */
+  group?: string | null;
 }
 
 export interface TitleRoutingEntry {
@@ -37,9 +43,25 @@ export function describeTitleRouting(
 ): TitleRoutingEntry[] {
   const held = new Set(titleTags.map((tag) => tag.toLowerCase()));
 
+  const matchedTagOf = (connection: TitleRoutingConnection) =>
+    splitTags(connection.tags).find((tag) => held.has(tag.toLowerCase()));
+  const groupsWithTaggedMatch = new Set(
+    connections
+      .filter((connection) => connection.group != null && matchedTagOf(connection))
+      .map((connection) => connection.group)
+  );
+
   return connections.map((connection) => {
     const required = splitTags(connection.tags);
     if (required.length === 0) {
+      if (connection.group != null && groupsWithTaggedMatch.has(connection.group)) {
+        return {
+          id: connection.id,
+          name: connection.name,
+          used: false,
+          reason: `${connection.name} has no tags. A client tagged for this title is chosen first, so it only steps in if that one is unavailable.`
+        };
+      }
       return {
         id: connection.id,
         name: connection.name,
@@ -48,13 +70,16 @@ export function describeTitleRouting(
       };
     }
 
-    const matched = required.find((tag) => held.has(tag.toLowerCase()));
+    const matched = matchedTagOf(connection);
     if (matched) {
       return {
         id: connection.id,
         name: connection.name,
         used: true,
-        reason: `${connection.name} only takes titles tagged "${matched}", and this one is.`
+        reason:
+          connection.group != null
+            ? `${connection.name} is tagged "${matched}" like this title, so it is chosen before clients with no tag.`
+            : `${connection.name} only takes titles tagged "${matched}", and this one is.`
       };
     }
 

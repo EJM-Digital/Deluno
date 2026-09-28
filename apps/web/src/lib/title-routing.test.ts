@@ -28,6 +28,31 @@ describe("describeTitleRouting", () => {
     expect(nonMatching[0]!.reason).toContain("not");
   });
 
+  it("says a client tagged for the title is chosen before untagged clients of the same kind (#1041)", () => {
+    const entries = describeTitleRouting(
+      [
+        { id: "c1", name: "qBittorrent", tags: "", group: "torrent" },
+        { id: "c2", name: "qBittorrent Kids", tags: "kids", group: "torrent" },
+        { id: "c3", name: "SABnzbd", tags: "", group: "usenet" }
+      ],
+      ["kids"]
+    );
+    expect(entries[1]!.used).toBe(true);
+    expect(entries[1]!.reason).toContain("chosen before clients with no tag");
+    expect(entries[0]!.used).toBe(false);
+    expect(entries[2]!.used).toBe(true);
+
+    const untaggedTitle = describeTitleRouting(
+      [
+        { id: "c1", name: "qBittorrent", tags: "", group: "torrent" },
+        { id: "c2", name: "qBittorrent Kids", tags: "kids", group: "torrent" }
+      ],
+      []
+    );
+    expect(untaggedTitle[0]!.used).toBe(true);
+    expect(untaggedTitle[1]!.used).toBe(false);
+  });
+
   it("treats a title with no tags as excluded from every tagged connection", () => {
     const [entry] = describeTitleRouting([{ id: "client-1", name: "Anime qBittorrent", tags: "anime" }], []);
     expect(entry.used).toBe(false);
