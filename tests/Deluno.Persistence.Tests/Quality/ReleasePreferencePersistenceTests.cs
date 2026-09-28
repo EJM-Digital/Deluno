@@ -517,6 +517,148 @@ public sealed class ReleasePreferencePersistenceTests
     }
 
     /// <summary>
+    /// #974: a profile's own stored immutable plan is pinned to whatever
+    /// Proper/Repack acquisition mode was active when it was last compiled.
+    /// Switching the platform setting afterwards must not leave that profile
+    /// permanently stuck on the old choice, or "Do not upgrade automatically"
+    /// only ever works for a profile nobody has saved before.
+    /// </summary>
+    [Fact]
+    public async Task Quality_profile_resolver_recompiles_its_own_stored_plan_when_the_proper_repack_mode_drifts()
+    {
+        const string RepackProperTrashId = "e7718d7a3ce595f289bfee26adc178f5";
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var qualityRepository = new SqliteQualityRepository(storage.Factory, clock);
+        var planRepository = new SqliteReleasePreferencePlanRepository(storage.Factory, clock);
+
+        var format = await qualityRepository.CreateCustomFormatAsync(
+            new CreateCustomFormatRequest(
+                "Repack/Proper",
+                "movies",
+                5,
+                RepackProperTrashId,
+                "[{\"type\":\"releaseTitle\",\"value\":\"PROPER|REPACK\",\"required\":false}]",
+                UpgradeAllowed: true),
+            CancellationToken.None,
+            preferredId: "repack-proper");
+
+        var created = await qualityRepository.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest(
+                "Movies",
+                "movies",
+                "WEB 1080p",
+                "WEB 1080p",
+                format.Id,
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: false,
+                FormatIntents: new Dictionary<string, string> { [format.Id] = ProfileFormatIntents.StronglyPrefer }),
+            CancellationToken.None);
+
+        var compiledUnderPreferAndUpgrade = ReleasePreferencePlanFactory.CreateQualityPlan(
+            created,
+            [format],
+            properRepackAcquisitionMode: ProperRepackAcquisitionModes.PreferAndUpgrade);
+        var storedUnderPreferAndUpgrade = await planRepository.SaveAsync(compiledUnderPreferAndUpgrade, CancellationToken.None);
+        var profile = await qualityRepository.UpdateQualityProfileAsync(
+            created.Id,
+            new UpdateQualityProfileRequest(
+                created.Name,
+                created.CutoffQuality,
+                created.AllowedQualities,
+                created.CustomFormatIds,
+                created.UpgradeUntilCutoff,
+                created.UpgradeUnknownItems,
+                ReleasePreferencePlan: new ReleasePreferencePlanReference(
+                    compiledUnderPreferAndUpgrade.Id,
+                    compiledUnderPreferAndUpgrade.Version,
+                    storedUnderPreferAndUpgrade.PlanHash)),
+            CancellationToken.None);
+        Assert.NotNull(profile);
+
+        // Same mode as when it was compiled: the stored plan is reused as-is.
+        var unchanged = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            planRepository,
+            profile!.Id,
+            CancellationToken.None,
+            [format],
+            ProperRepackAcquisitionModes.PreferAndUpgrade);
+        Assert.Equal(compiledUnderPreferAndUpgrade.Version, unchanged?.Version);
+        var unchangedFamily = Assert.Single(
+            unchanged!.Families,
+            candidate => candidate.Id == CustomFormatPreferenceTraits.Family(format.Id));
+        Assert.True(unchangedFamily.UpgradeDriving);
+
+        // The platform setting moved on to "Do not upgrade automatically"
+        // without the profile being re-saved: the resolver must stop handing
+        // back the stale "Prefer and upgrade" plan.
+        var drifted = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            planRepository,
+            profile.Id,
+            CancellationToken.None,
+            [format],
+            ProperRepackAcquisitionModes.DoNotUpgradeAutomatically);
+        Assert.NotEqual(compiledUnderPreferAndUpgrade.Version, drifted?.Version);
+        var driftedFamily = Assert.Single(
+            drifted!.Families,
+            candidate => candidate.Id == CustomFormatPreferenceTraits.Family(format.Id));
+        Assert.False(driftedFamily.UpgradeDriving);
+    }
+
+    /// <summary>
+    /// A plan pinned by an explicit compile or a migration import was never
+    /// derived from this profile's own fields (its id does not start with
+    /// "quality-profile/"), so the resolver must keep handing it back exactly
+    /// as stored rather than silently replacing it with something the
+    /// profile never asked to compile.
+    /// </summary>
+    [Fact]
+    public async Task Quality_profile_resolver_never_recompiles_a_plan_pinned_from_outside_the_profile()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var qualityRepository = new SqliteQualityRepository(storage.Factory, clock);
+        var planRepository = new SqliteReleasePreferencePlanRepository(storage.Factory, clock);
+        var plan = Plan("1");
+        var stored = await planRepository.SaveAsync(plan, CancellationToken.None);
+        var profile = await qualityRepository.CreateQualityProfileAsync(
+            new CreateQualityProfileRequest(
+                "Pinned profile",
+                "movies",
+                "WEB 1080p",
+                "WEB 720p, WEB 1080p",
+                string.Empty,
+                UpgradeUntilCutoff: true,
+                UpgradeUnknownItems: false,
+                ReleasePreferencePlan: new ReleasePreferencePlanReference(
+                    plan.Id,
+                    plan.Version,
+                    stored.PlanHash)),
+            CancellationToken.None);
+
+        var resolved = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
+            qualityRepository,
+            planRepository,
+            profile.Id,
+            CancellationToken.None,
+            properRepackAcquisitionMode: ProperRepackAcquisitionModes.DoNotUpgradeAutomatically);
+
+        Assert.Equal(ReleasePreferencePlanCodec.Serialize(plan), ReleasePreferencePlanCodec.Serialize(resolved!));
+    }
+
+    /// <summary>
     /// Seen on the physical rig after an upgrade: a profile saved by an older
     /// build had its plan stored under the version its inputs produce, the newer
     /// build compiled a different definition for that version, and every read of
