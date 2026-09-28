@@ -125,23 +125,7 @@ export function MarkStrip({
       // surface be the colour underneath and the grail gradient sit on top, the
       // same layering the bar itself uses.
       style={paintsBars ? { backgroundColor: `hsl(var(${paint.surface}))` } : undefined}
-    >
-      {/*
-        The key wears the texture the strip wears.
-
-        The texture is a carrier of state, not decoration (#318): a reader who
-        cannot separate the hues is meant to read the pattern instead. This
-        swatch painted the hue and nothing else, so the key taught
-        colour -> meaning while the posters below it carried colour AND
-        pattern, and the one reader the texture exists for had no way to join
-        the two up. The owner: *"if its intended then shouldnt it be reflected in
-        the filters key"*.
-
-        It renders the same class the strip does, so the two cannot drift: a
-        pattern changed in one place changes both.
-      */}
-      {monitored ? <span aria-hidden className={cn("title-mark-pattern", presentation.stateClass)} /> : null}
-    </span>
+    />
   );
 }
 
@@ -321,8 +305,7 @@ function TwoToneBar({
   label,
   title,
   ariaLabel,
-  edge,
-  pattern
+  edge
 }: {
   /** 0 to 100. */
   fill: number;
@@ -334,8 +317,6 @@ function TwoToneBar({
   label?: string;
   title: string;
   ariaLabel: string;
-  /** Stable non-colour texture for the title-state bar. */
-  pattern?: string;
   /**
    * Which edge of the artwork this bar pins to.
    *
@@ -400,7 +381,7 @@ function TwoToneBar({
     >
       <span
         aria-hidden="true"
-        className={cn("absolute inset-y-0 left-0 block", pattern)}
+        className="absolute inset-y-0 left-0 block"
         style={{ width: `${pct}%`, background: fillColour }}
       />
       {inner ? (
@@ -417,21 +398,6 @@ function TwoToneBar({
           </span>
         </>
       ) : null}
-      {/* Keep the decorative texture after the two text layers. Apart from
-          preserving the paint order, this means consumers that inspect the
-          aria-hidden layers still see the fill followed by the two clipped
-          label copies, rather than mistaking the texture for a label layer.
-
-          **On every bar, labelled or not.** It was briefly taken off the
-          labelled bar, on the reasoning that the words there already say the
-          state. They do not: the label is the *quality* - "WEB 1080p" - and
-          the state is Quality met / Upgradable / Missing, which that bar
-          carries in hue alone. Three posters reading "WEB 1080p", one green
-          and two yellow, are then distinguishable only by colour, which is the
-          exact thing #318 exists to prevent. Removing it also left the key
-          wearing a pattern the posters did not, so the legend explained
-          something nothing drew. */}
-      {pattern ? <span aria-hidden="true" className={cn("title-mark-pattern", pattern)} /> : null}
     </div>
   );
 }
@@ -605,7 +571,6 @@ export function TitleBars({
         ariaLabel={`${rung.label}${watch}${
           isShow && media.fraction ? ` · ${media.label} aired episodes on disk` : ""
         }${!isShow && item.hasFile && item.quality ? ` · ${item.quality}` : ""}`}
-        pattern={monitored ? rung.stateClass : undefined}
       />
       <TwoToneBar
         fill={subPct}
@@ -677,7 +642,6 @@ export function TitleMarkTopBar({
         )}
         style={{ width: `${fillPercent}%` }}
       />
-      {item.monitored ? <span aria-hidden="true" className={cn("title-mark-pattern", presentation.stateClass)} /> : null}
     </div>
   );
 }
