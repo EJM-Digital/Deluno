@@ -611,6 +611,16 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
 ] as const;
 
 /**
+ * The word the card's subtitle strip says (#1048): the legend's own wording,
+ * never a status word. Neutral in tone: red is only for "something is needed".
+ */
+export function subtitleStripWord(held: number, wanted: number): "complete" | "partial" | "none" {
+  const segment = (mark: TitleMark) => TITLE_BAR_SEGMENTS.find((s) => s.mark === mark)!.label as "complete" | "partial" | "none";
+  if (wanted > 0 && held >= wanted) return segment("covered");
+  return held > 0 ? segment("upgrade") : segment("missing");
+}
+
+/**
  * How much of a title is on disk, 0 to 1 — what the dot's ring is filled to.
  *
  * **Why a ring rather than a fifth word.** On TV the four rungs stop

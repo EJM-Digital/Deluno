@@ -59,7 +59,7 @@ describe("the film card's bars", () => {
   it("says the quality on the top bar and the subtitle count on the bottom", () => {
     const [top, bottom] = bars(film());
     expect(top.textContent).toContain("Bluray-1080p");
-    expect(bottom.textContent).toContain("2 / 2");
+    expect(bottom.textContent).toContain("complete");
     expect(bottom.textContent).toContain("SUBS");
   });
 
@@ -78,25 +78,56 @@ describe("the film card's bars", () => {
   });
 });
 
-describe("the subtitle bar inherits Upcoming, and only Upcoming", () => {
-  it("says Upcoming for a title that is not out", () => {
-    const [, bottom] = bars(film({ wantedStatus: "upcoming", hasFile: false, subtitleLanguagesHeld: 0 }));
-    expect(bottom.textContent).toContain("Upcoming");
-    expect(bottom.textContent).not.toContain("Missing");
+describe("the subtitle strip says the legend's words in a neutral tone (#1048)", () => {
+  it("never says Missing, whatever the title's state", () => {
+    for (const status of ["upcoming", "downloading", "missing"]) {
+      const [, bottom] = bars(film({ wantedStatus: status, hasFile: false, subtitleLanguagesHeld: 0 }));
+      expect(bottom.textContent).toContain("none");
+      expect(bottom.textContent).not.toContain("Missing");
+      expect(bottom.getAttribute("aria-label")).toBe("Subtitles none");
+      expect(bottom.style.background).toContain("--mark-idle");
+      expect(bottom.style.background).not.toContain("missing");
+    }
   });
 
-  it("says Missing — never Downloading — for a title whose bytes are moving", () => {
-    // A subtitle is a few kilobytes: a progress state for one would be gone
-    // before it could be read. And the file exists, so its subtitles exist and
-    // you do not have them, which is what Missing means.
-    const [, bottom] = bars(film({ wantedStatus: "downloading", hasFile: false, subtitleLanguagesHeld: 0 }));
-    expect(bottom.textContent).toContain("Missing");
-    expect(bottom.textContent).not.toContain("Downloading");
+  it("says partial and complete", () => {
+    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 }))[1].textContent).toContain("partial");
+    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 2 }))[1].textContent).toContain("complete");
   });
 
-  it("says Missing for a title that is out and absent", () => {
-    const [, bottom] = bars(film({ wantedStatus: "missing", hasFile: false, subtitleLanguagesHeld: 0 }));
-    expect(bottom.textContent).toContain("Missing");
+  it("is not drawn at all when no subtitles are wanted", () => {
+    expect(bars(film({ subtitleLanguagesWanted: 0, subtitleLanguagesHeld: 0 }))).toHaveLength(1);
+  });
+});
+
+describe("an unmonitored title's top strip follows the Unmonitored pill (#1048)", () => {
+  it("reads Unmonitored, in the unmonitored grey, for a film with no file", () => {
+    const [top] = bars(film({ monitored: false, wantedStatus: "missing", hasFile: false, quality: null }));
+    expect(top.textContent).toContain("Unmonitored");
+    expect(top.textContent).not.toContain("Missing");
+    expect(top.getAttribute("aria-label")).toBe("Unmonitored");
+    expect(fillOf(top).style.background).toContain(UNMONITORED_PAINT.surface);
+  });
+
+  it("keeps the quality label, in the unmonitored grey, for a film with a file", () => {
+    const [top] = bars(film({ monitored: false, wantedStatus: "covered", hasFile: true }));
+    expect(top.textContent).toContain("Bluray-1080p");
+    expect(top.textContent).not.toContain("Unmonitored");
+    expect(fillOf(top).style.background).toContain(UNMONITORED_PAINT.surface);
+    expect(fillOf(top).style.background).not.toContain("leaf");
+  });
+
+  it("reads Unmonitored for a show with nothing on disk, and keeps the count once it has episodes", () => {
+    const [empty] = seriesBars(series({ monitored: false, wantedStatus: "missing", airedWithFileCount: 0 }));
+    expect(empty.textContent).toContain("Unmonitored");
+    expect(empty.textContent).not.toContain("Missing");
+    const [some] = seriesBars(series({ monitored: false, wantedStatus: "missing", airedWithFileCount: 3 }));
+    expect(some.textContent).toContain("3 / 8");
+  });
+
+  it("still says Missing for a monitored title with no file", () => {
+    const [top] = bars(film({ wantedStatus: "missing", hasFile: false }));
+    expect(top.textContent).toContain("Missing");
   });
 });
 
@@ -107,11 +138,10 @@ describe("the TV card uses the approved coverage composition", () => {
     expect(top.textContent).toContain("3 / 8");
     expect(top.textContent).not.toContain("EPS");
     expect(bottom.textContent).toContain("SUBS");
-    expect(bottom.textContent).toContain("1 / 9");
+    expect(bottom.textContent).toContain("partial");
     expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
     expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
-    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
-    expect(fillOf(bottom).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(bottom.style.background).toContain("--mark-idle");
   });
 
   it("keeps the Missing track visible across an empty monitored bar", () => {
@@ -120,8 +150,8 @@ describe("the TV card uses the approved coverage composition", () => {
     expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
     expect(top.style.background).not.toContain("--mark-idle");
     expect(fillOf(top).style.width).toBe("0%");
-    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
-    expect(bottom.style.background).not.toContain("--mark-idle");
+    // The subtitle strip is neutral, never the red track (#1048).
+    expect(bottom.style.background).toContain("--mark-idle");
   });
 
   it("uses a red remainder and green held fill once coverage is visible", () => {
@@ -129,8 +159,7 @@ describe("the TV card uses the approved coverage composition", () => {
 
     expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
     expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
-    expect(bottom.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
-    expect(fillOf(bottom).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
+    expect(bottom.style.background).toContain("--mark-idle");
   });
 
   it("uses green for held Continuing coverage", () => {
@@ -230,11 +259,11 @@ describe("every label is coloured for the ground it sits on", () => {
     // 4.5 the spec requires of every visible label. The spec said both things and
     // the wrong two were connected.
     const [top, bottom] = bars(film({ wantedStatus: "missing", hasFile: false, subtitleLanguagesHeld: 0 }));
-    for (const bar of [top, bottom]) {
-      const back = layers(bar)[0];
-      expect(back.style.color).toContain(TITLE_MARK_PAINT.missing.onSurface);
-      expect(back.style.color).not.toContain(TITLE_MARK_PAINT.missing.onTrack);
-    }
+    const back = layers(top)[0];
+    expect(back.style.color).toContain(TITLE_MARK_PAINT.missing.onSurface);
+    expect(back.style.color).not.toContain(TITLE_MARK_PAINT.missing.onTrack);
+    // The subtitle strip is neutral (#1048): the page's own text colour.
+    expect(layers(bottom)[0].style.color).toContain("--foreground");
   });
 
   it("keeps the unmonitored track's label white too", () => {

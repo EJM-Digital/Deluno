@@ -289,7 +289,11 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
         <div className="px-[calc(var(--tile-pad)*0.8)] py-[calc(var(--tile-pad)*0.65)]">
           <div className="flex flex-wrap items-center gap-2">
             <div className={cn(
-              "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200",
+              // From sm up the search box has one fixed width of its own (#1048).
+              // It used to be `flex-1`, so it took whatever the actions left over
+              // and Movies and TV Shows (which has an extra Season pass action)
+              // drew it at different widths. Below sm it still fills the line.
+              "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200 sm:w-[clamp(15rem,20vw,26rem)] sm:flex-none",
               "min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] dark:bg-white/[0.05]",
               "ring-1 ring-inset ring-hairline/60 dark:ring-white/[0.06]",
               "focus-within:bg-foreground/[0.06] focus-within:ring-primary/35",
