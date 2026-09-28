@@ -103,6 +103,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
             [FromServices] IIndexerQueryStatsRepository statsRepository,
+            [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -176,18 +177,20 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 InteractiveSearchEnabled = request.InteractiveSearchEnabled,
                 DefinitionId = request.DefinitionId,
                 DefinitionSettings = request.DefinitionSettings,
-                DefinitionSecrets = request.DefinitionSecrets
+                DefinitionSecrets = request.DefinitionSecrets,
+                ProxyId = request.ProxyId
             };
 
             var started = Stopwatch.GetTimestamp();
-            var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
+            using var proxiedClient = await CreateIndexerTestHttpClientAsync(draft, repository, proxyHttpClientFactory, cancellationToken);
+            var health = await TestIndexerWithResilienceAsync(draft, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, draft, health, ElapsedMilliseconds(started), cancellationToken);
             // #755: a generic Newznab/Torznab indexer's own t=caps response,
             // fetched alongside the t=search health test (never instead of
             // it) so categories/search modes can pre-fill the drawer. A
             // caps failure never blocks the add - null here just means
             // nothing to pre-fill.
-            var caps = await FetchIndexerCapsAsync(draft, cancellationToken);
+            var caps = await FetchIndexerCapsAsync(draft, proxiedClient, cancellationToken);
             return Results.Ok(new
             {
                 healthStatus = health.HealthStatus,
@@ -260,6 +263,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IIndexerQueryStatsRepository statsRepository,
             [FromServices] IOutboundNotificationService notificationService,
             [FromServices] INotificationService notificationPreferences,
+            [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -278,7 +282,8 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
             var previousHealthStatus = item.HealthStatus;
             var started = Stopwatch.GetTimestamp();
-            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), cancellationToken);
+            using var proxiedClient = await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
             var result = await repository.UpdateIndexerHealthAsync(
                 id,
@@ -1078,10 +1083,36 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private static string NormalizeDownloadProtocol(string? value)
         => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
 
+    /// <summary>
+    /// The client an indexer's own Test (t=search) and caps (t=caps)
+    /// requests go out on (#976): routed through its assigned HTTP/SOCKS
+    /// proxy when it has one, or a plain direct client otherwise -- the same
+    /// routing a search or RSS read uses.
+    /// </summary>
+    private static async Task<HttpClient> CreateIndexerTestHttpClientAsync(
+        IndexerItem item,
+        IConnectionsRepository repository,
+        IIndexerProxyHttpClientFactory? proxyHttpClientFactory,
+        CancellationToken cancellationToken)
+    {
+        ProxyItem? proxy = null;
+        if (proxyHttpClientFactory is not null && !string.IsNullOrWhiteSpace(item.ProxyId))
+        {
+            proxy = await IndexerProxyResolver.ResolveAsync(item, repository, cancellationToken);
+        }
+
+        var client = proxy is not null && proxyHttpClientFactory is not null
+            ? proxyHttpClientFactory.CreateClient(proxy)
+            : new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(8);
+        return client;
+    }
+
     private static async Task<IntegrationHealthCheckResult> TestIndexerWithResilienceAsync(
         IndexerItem item,
         IIntegrationResiliencePolicy resiliencePolicy,
         ITrackerIndexerTester? trackerTester,
+        HttpClient httpClient,
         CancellationToken cancellationToken)
     {
         var result = await resiliencePolicy.ExecuteAsync(
@@ -1101,7 +1132,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 ServiceName: item.Name),
             async token =>
             {
-                var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, trackerTester, token);
+                var (healthStatus, message, failureCategory) = await TestIndexerAsync(item, trackerTester, httpClient, token);
                 return HealthResult("indexer", item.Id, item.Name, "health-test", healthStatus, message, failureCategory);
             },
             ClassifyIntegrationHealth,
@@ -1229,6 +1260,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private static async Task<(string healthStatus, string message, string? failureCategory)> TestIndexerAsync(
         IndexerItem item,
         ITrackerIndexerTester? trackerTester,
+        HttpClient httpClient,
         CancellationToken cancellationToken)
     {
         if (!item.IsEnabled)
@@ -1251,15 +1283,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
         try
         {
-            using var client = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(8)
-            };
-
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             // As searches identify themselves; NZBGeek refuses a request that does not (#625).
             request.Headers.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
-            using var response = await client.SendAsync(request, cancellationToken);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
 
             if ((int)response.StatusCode >= 200 && (int)response.StatusCode < 400)
             {
@@ -1352,7 +1379,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     /// pre-fill" rather than surfaced as a test failure; the t=search test
     /// above is what decides whether the indexer itself is healthy.
     /// </summary>
-    private static async Task<IndexerCapsResult?> FetchIndexerCapsAsync(IndexerItem item, CancellationToken cancellationToken)
+    private static async Task<IndexerCapsResult?> FetchIndexerCapsAsync(IndexerItem item, HttpClient httpClient, CancellationToken cancellationToken)
     {
         var capsUrl = BuildIndexerCapsUrl(item);
         if (capsUrl is null || !Uri.TryCreate(capsUrl, UriKind.Absolute, out var uri))
@@ -1362,10 +1389,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.UserAgent.ParseAdd(IndexerApiEndpoint.UserAgent);
-            using var response = await client.SendAsync(request, cancellationToken);
+            using var response = await httpClient.SendAsync(request, cancellationToken);
             if ((int)response.StatusCode < 200 || (int)response.StatusCode >= 400)
             {
                 return null;

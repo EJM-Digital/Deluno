@@ -34,7 +34,13 @@ public sealed class FeedMediaSearchPlanner(
     IGuidePackageStore? guidePackageStore = null,
     TrackerIndexers? trackerIndexers = null,
     IIndexerCallLimiter? indexerCallLimiter = null,
-    IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null)
+    IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null,
+    /// <summary>
+    /// One pooled handler per assigned indexer proxy (#976), so a
+    /// Torznab/Newznab search actually goes out through the proxy assigned
+    /// to that indexer instead of always Deluno's own direct connection.
+    /// </summary>
+    Deluno.Connections.Data.IIndexerProxyHttpClientFactory? proxyHttpClientFactory = null)
     : IMediaSearchPlanner
 {
     private const int IndexerResultLimit = 100;
@@ -351,6 +357,27 @@ public sealed class FeedMediaSearchPlanner(
     /// </summary>
     public static string ThrottleKey(Uri uri) => uri.Authority.ToLowerInvariant();
 
+    /// <summary>
+    /// The client a Torznab/Newznab indexer's own search request goes out
+    /// on (#976): routed through its assigned HTTP/SOCKS proxy when it has
+    /// one, or the shared direct "indexers" client otherwise. A
+    /// FlareSolverr/Byparr assignment is a Cloudflare helper, not a forward
+    /// proxy a plain feed request can be routed through, so it falls back to
+    /// the direct client the same as no assignment.
+    /// </summary>
+    private async Task<HttpClient> CreateIndexerHttpClientAsync(IndexerItem indexer, CancellationToken cancellationToken)
+    {
+        if (proxyHttpClientFactory is null || string.IsNullOrWhiteSpace(indexer.ProxyId))
+        {
+            return httpClientFactory.CreateClient("indexers");
+        }
+
+        var proxy = await Deluno.Connections.Data.IndexerProxyResolver.ResolveAsync(indexer, connectionsRepository, cancellationToken);
+        return proxy is null
+            ? httpClientFactory.CreateClient("indexers")
+            : proxyHttpClientFactory.CreateClient(proxy);
+    }
+
     private async Task<IndexerSearchOutcome> TrySearchIndexerAsync(
         IndexerItem indexer,
         LibrarySourceLinkItem source,
@@ -580,7 +607,7 @@ public sealed class FeedMediaSearchPlanner(
                         return await ReadCandidatesAsync(trackerDocument, token);
                     }
 
-                    var http = httpClientFactory.CreateClient("indexers");
+                    var http = await CreateIndexerHttpClientAsync(indexer, token);
                     http.Timeout = TimeSpan.FromSeconds(12);
                     using var response = await http.GetAsync(uri, token);
                     if (!response.IsSuccessStatusCode)

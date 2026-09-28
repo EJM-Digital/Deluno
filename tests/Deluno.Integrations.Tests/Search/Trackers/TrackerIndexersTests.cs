@@ -119,6 +119,12 @@ public sealed class TrackerIndexersTests
         Assert.Equal("http://192.168.1.1:8080", connection.HelperProxy!.Url);
         Assert.Equal("user", connection.HelperProxy.Username);
         Assert.Equal("pass", connection.HelperProxy.Password);
+
+        // #976: the same HTTP/SOCKS proxy also routes this connection's own
+        // requests directly, not only the Cloudflare helper's nested one.
+        Assert.NotNull(connection.Proxy);
+        Assert.Equal("proxy-1", connection.Proxy!.Id);
+        Assert.Null(connection.HelperUrl);
     }
 
     [Fact]
@@ -146,6 +152,26 @@ public sealed class TrackerIndexersTests
         var connection = await indexers.ConnectAsync(indexer, CancellationToken.None);
 
         Assert.Null(connection.HelperProxy);
+        Assert.Null(connection.Proxy);
+    }
+
+    [Fact]
+    public async Task An_indexer_assigned_a_flaresolverr_proxy_uses_it_as_its_own_cloudflare_helper()
+    {
+        // #976: a FlareSolverr/Byparr assignment is not ignored -- it becomes
+        // this indexer's own helper, in place of the single instance-wide
+        // helper URL in Settings.
+        var proxy = new ProxyItem(
+            Id: "proxy-1", Name: "Its Own FlareSolverr", ProxyType: ProxyTypes.FlareSolverr, Address: "127.0.0.1:8191",
+            Username: null, Password: null, IsEnabled: true, CreatedUtc: DateTimeOffset.UtcNow, UpdatedUtc: DateTimeOffset.UtcNow);
+        var indexers = new TrackerIndexers(Catalog, engine: null!, connections: ConnectionsReturning([proxy]));
+        var indexer = CreateIndexer("indexer-1", "1337x", definitionId: "1337x") with { ProxyId = "proxy-1" };
+
+        var connection = await indexers.ConnectAsync(indexer, CancellationToken.None);
+
+        Assert.Equal("http://127.0.0.1:8191", connection.HelperUrl);
+        Assert.Null(connection.HelperProxy);
+        Assert.Null(connection.Proxy);
     }
 
     [Fact]

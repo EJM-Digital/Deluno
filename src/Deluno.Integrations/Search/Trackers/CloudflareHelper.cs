@@ -30,22 +30,29 @@ public sealed record CloudflareHelperProxy(string Url, string? Username, string?
 /// </summary>
 public interface ICloudflareHelper
 {
-    /// <summary>Whether a helper is set up at all.</summary>
-    Task<bool> IsConfiguredAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// Whether a helper is set up at all: the instance-wide one in Settings,
+    /// or <paramref name="helperUrl"/> when the indexer has its own
+    /// FlareSolverr/Byparr proxy assigned (#976).
+    /// </summary>
+    Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null);
 
     /// <summary>
     /// The page, or null when there is no helper or it could not get through.
-    /// <paramref name="proxy"/> is the indexer's own assigned proxy (#748), if
-    /// it has one, passed to the helper so it makes this request through it.
+    /// <paramref name="proxy"/> is the indexer's own assigned HTTP/SOCKS proxy
+    /// (#748), if it has one, passed to the helper so it makes this request
+    /// through it. <paramref name="helperUrl"/> is this indexer's own
+    /// FlareSolverr/Byparr proxy (#976), used instead of the single
+    /// instance-wide helper URL in Settings when the indexer has one assigned.
     /// </summary>
-    Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null);
+    Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null);
 
     /// <summary>
     /// The page fetched with a POST instead of a GET (#749), for a tracker
     /// whose Cloudflare challenge is only passed by posting form data -- the
     /// helper's own <c>request.post</c> command.
     /// </summary>
-    Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null);
+    Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null);
 
     /// <summary>Destroys this helper's session for one host, if it has one (#749), rather than leaving it to accumulate.</summary>
     Task DestroySessionAsync(string host, CancellationToken cancellationToken);
@@ -68,19 +75,23 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
     // Keyed by host, so reconciliation can compare against a plain host list.
     private readonly ConcurrentDictionary<string, bool> sessions = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken)
-        => !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
+    public async Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null)
+        => !string.IsNullOrWhiteSpace(helperUrl) || !string.IsNullOrWhiteSpace((await settings.GetAsync(cancellationToken)).CloudflareHelperUrl);
 
-    public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
-        => RequestAsync(url, formData: null, proxy, cancellationToken);
+    public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+        => RequestAsync(url, formData: null, proxy, helperUrl, cancellationToken);
 
-    public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null)
-        => RequestAsync(url, formData, proxy, cancellationToken);
+    public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+        => RequestAsync(url, formData, proxy, helperUrl, cancellationToken);
 
-    private async Task<CloudflareSolution?> RequestAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CloudflareHelperProxy? proxy, CancellationToken cancellationToken)
+    private async Task<CloudflareSolution?> RequestAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CloudflareHelperProxy? proxy, string? helperUrl, CancellationToken cancellationToken)
     {
+        // An indexer's own FlareSolverr/Byparr proxy (#976) replaces the
+        // single instance-wide helper URL as that indexer's Cloudflare
+        // helper, rather than being ignored because there is no protocol for
+        // nesting one helper's solve behind another.
         var current = await settings.GetAsync(cancellationToken);
-        var baseUrl = current.CloudflareHelperUrl;
+        var baseUrl = string.IsNullOrWhiteSpace(helperUrl) ? current.CloudflareHelperUrl : helperUrl;
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return null;
