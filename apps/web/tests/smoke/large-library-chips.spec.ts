@@ -52,6 +52,15 @@ interface SeedResult {
   libraryId: string;
   titlePrefix: string;
   perBucket: Record<string, number>;
+  /**
+   * The monitored half of each bucket. #1032 merged the Wanted shortcut into
+   * the Missing chip: clicking it sets `monitored=true` alongside
+   * `status=missing`, so the Missing chip's own facet — and the rows it shows
+   * — only ever count the monitored half of the seeded "missing" bucket. Every
+   * other chip leaves monitoring at "any", so `perBucket` is still the right
+   * floor for them.
+   */
+  perBucketMonitored: Record<string, number>;
   monitoredCount: number;
   unmonitoredCount: number;
 }
@@ -210,7 +219,15 @@ test.describe("large library status chips at scale (#934)", () => {
       // among the ones this test actually created — a smoke database can
       // hold rows earlier specs left behind, so the floor is the bucket's
       // own seeded count, not the seeded count exactly.
-      expect(facetTotal).toBeGreaterThanOrEqual(seed.perBucket[bucket]);
+      //
+      // Missing is the one chip that narrows the shelf on a second axis too:
+      // #1032 made clicking it also set `monitored=true` (it absorbed the old
+      // Wanted shortcut), so its facet — and the rows the assertions below
+      // find — only ever cover the monitored half of the seeded bucket. Every
+      // other chip leaves monitoring at "any" and still counts the whole
+      // bucket.
+      const floor = bucket === "missing" ? seed.perBucketMonitored[bucket] : seed.perBucket[bucket];
+      expect(facetTotal).toBeGreaterThanOrEqual(floor);
 
       // Sample top, middle and bottom rather than walking every row (see the
       // file header). At every sample: nothing from a different bucket may be
@@ -227,6 +244,21 @@ test.describe("large library status chips at scale (#934)", () => {
           return STATUS_BUCKETS.includes(seenBucket as (typeof STATUS_BUCKETS)[number]) && seenBucket !== bucket;
         });
         expect(foreign, `Titles from another filter appeared while "${chipKey}" was selected: ${foreign.join(", ")}`).toHaveLength(0);
+      }
+
+      // Missing is the one chip that turns the Monitored filter on as a
+      // side effect (#1032) — and nothing else on the rail turns it back off,
+      // because Monitored/Unmonitored is its own axis that a status chip
+      // isn't meant to touch (see the comment above). Left alone, every chip
+      // tested after Missing would silently inherit that monitored-only
+      // narrowing and undercount, exactly like Missing itself does on
+      // purpose. Clear it back to "any" here so the next chip in this loop
+      // is judged against the same baseline Missing was: every seeded title,
+      // not just the monitored half.
+      if (bucket === "missing") {
+        const unmonitoredToggle = page.getByRole("button", { name: /Unmonitored/ });
+        await unmonitoredToggle.click(); // monitored -> unmonitored
+        await unmonitoredToggle.click(); // unmonitored -> any
       }
     }
 
