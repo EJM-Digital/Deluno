@@ -87,6 +87,10 @@ public sealed class TitleRemovalService(
     // a retention rule did (the only two callers of this service).
     IOutboundNotificationService? outboundNotificationService = null,
     INotificationService? notificationService = null,
+    // #990: this title's own tags, read before its row is deleted below, so a
+    // tagged notification connection still fires for a removal it is scoped
+    // to.
+    IMediaTagStore? mediaTagStore = null,
     ILogger<TitleRemovalService>? logger = null)
 {
     public async Task<Dictionary<string, string?>> RemoveAsync(
@@ -170,6 +174,10 @@ public sealed class TitleRemovalService(
 
             if (trackedFiles.Count > 0)
             {
+                var kind = title.EntityType == "series" ? MediaKind.Series : MediaKind.Movie;
+                var titleTags = mediaTagStore is null
+                    ? null
+                    : (await mediaTagStore.ListAsync(kind, title.Id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
                 await NotificationOutboundDispatch.DispatchIfEnabledAsync(
                     outboundNotificationService,
                     notificationService,
@@ -182,7 +190,8 @@ public sealed class TitleRemovalService(
                     prefs => prefs.FileDeletedEnabled,
                     "title-removal",
                     logger ?? NullLogger<TitleRemovalService>.Instance,
-                    cancellationToken);
+                    cancellationToken,
+                    titleTags);
             }
         }
 

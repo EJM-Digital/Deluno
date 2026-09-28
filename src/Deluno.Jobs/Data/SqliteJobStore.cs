@@ -20,7 +20,12 @@ public sealed class SqliteJobStore(
     IDownloadDispatchesRepository downloadDispatchesRepository,
     IJobLaneSignal? laneSignal = null,
     IOutboundNotificationService? outboundNotificationService = null,
-    INotificationService? notificationPreferences = null)
+    INotificationService? notificationPreferences = null,
+    // #990: the grabbed title's own tags, so a tagged notification
+    // connection fires for the "On Grab" event scoped to it. Null for an
+    // "episode" dispatch, whose entity id is the episode rather than the
+    // show Deluno's tag store keys on.
+    IMediaTagStore? mediaTagStore = null)
     : IJobScheduler, IJobQueueRepository, IActivityFeedRepository
 {
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
@@ -2999,12 +3004,21 @@ public sealed class SqliteJobStore(
                 (await notificationPreferences.GetPreferencesAsync(cancellationToken)).GrabEnabled;
             if (enabled)
             {
+                var grabKind = string.Equals(entityType, "movie", StringComparison.OrdinalIgnoreCase)
+                    ? MediaKind.Movie
+                    : string.Equals(entityType, "series", StringComparison.OrdinalIgnoreCase)
+                        ? MediaKind.Series
+                        : (MediaKind?)null;
+                var grabTitleTags = mediaTagStore is null || grabKind is null
+                    ? null
+                    : (await mediaTagStore.ListAsync(grabKind.Value, entityId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
                 await outboundNotificationService.DispatchAsync(
                     "grab",
                     $"Grabbed: {releaseName}",
                     $"Deluno sent {releaseName} to {downloadClientName}.",
                     notesJson,
-                    cancellationToken);
+                    cancellationToken,
+                    grabTitleTags);
             }
         }
 

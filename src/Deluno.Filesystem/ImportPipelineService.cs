@@ -78,7 +78,10 @@ public sealed partial class ImportPipelineService(
     // null in every test that does not exercise that path.
     Deluno.Connections.Data.ISeerrAcquisitionsRepository? seerrAcquisitions = null,
     Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
-    Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null)
+    Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
+    // #990: the imported title's own tags, so a tagged notification
+    // connection fires for import.completed/upgrade events scoped to it.
+    IMediaTagStore? mediaTagStore = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -612,6 +615,7 @@ public sealed partial class ImportPipelineService(
 
             await ReportSeerrAvailabilityAsync(mediaType, catalogImportResult.EntityId, cancellationToken);
 
+            var importedTitleTags = await ResolveTitleTagsAsync(mediaType, catalogImportResult.EntityId, cancellationToken);
             await DispatchImportOutcomeNotificationAsync(
                 "import.completed",
                 $"Import completed: {TitleForActivity(request.Preview)}",
@@ -624,7 +628,8 @@ public sealed partial class ImportPipelineService(
                 }),
                 prefs => prefs.ImportCompletedEnabled,
                 "completion",
-                cancellationToken);
+                cancellationToken,
+                importedTitleTags);
 
             if (catalogImportResult.ReplacedFilePaths.Count > 0)
             {
@@ -635,7 +640,8 @@ public sealed partial class ImportPipelineService(
                     JsonSerializer.Serialize(new { title = TitleForActivity(request.Preview), mediaType }),
                     prefs => prefs.UpgradeEnabled,
                     "upgrade",
-                    cancellationToken);
+                    cancellationToken,
+                    importedTitleTags);
             }
 
             await RecordRenameAsync(
@@ -2729,7 +2735,8 @@ public sealed partial class ImportPipelineService(
         string detailsJson,
         Func<NotificationPreferences, bool> isEnabled,
         string outcomeLabel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? titleTags = null)
         => NotificationOutboundDispatch.DispatchIfEnabledAsync(
             outboundNotificationService,
             notificationService,
@@ -2740,7 +2747,26 @@ public sealed partial class ImportPipelineService(
             isEnabled,
             $"import {outcomeLabel}",
             logger,
-            cancellationToken);
+            cancellationToken,
+            titleTags);
+
+    /// <summary>
+    /// #990: the tags of the title an import event concerns, read while the
+    /// catalogue entry still exists. Null when there is no matched entry yet
+    /// (a failed/unmatched import) or no tag store is wired — in both cases
+    /// only an untagged notification connection fires for the event, the
+    /// same as before tags existed here.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> ResolveTitleTagsAsync(string mediaType, string? entityId, CancellationToken cancellationToken)
+    {
+        if (mediaTagStore is null || string.IsNullOrWhiteSpace(entityId))
+        {
+            return null;
+        }
+
+        var kind = NormalizeMediaType(mediaType) == "tv" ? MediaKind.Series : MediaKind.Movie;
+        return (await mediaTagStore.ListAsync(kind, entityId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
+    }
 
     /// <summary>
     /// A replaced file's own delete/recycle is the same "file delete" concept
