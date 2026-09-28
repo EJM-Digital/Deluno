@@ -2,7 +2,8 @@
  * Tags — list → drawer. Contracts: GET/POST /api/tags, PUT/DELETE /api/tags/{id}.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { Link, useLoaderData, useRevalidator } from "react-router-dom";
+import { describeTagUsage, tagUserDeleteEffect, tagUserKindLabel, unusedTags } from "../lib/tag-users";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -62,6 +63,8 @@ export function SettingsTagsPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmRemoveUnused, setConfirmRemoveUnused] = useState(false);
+  const unused = useMemo(() => unusedTags(tags, usage), [tags, usage]);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -141,12 +144,36 @@ export function SettingsTagsPage() {
     }
   }
 
+  async function handleRemoveUnused() {
+    setBusy(true);
+    try {
+      const response = await authedFetch("/api/tags/delete-unused", { method: "POST" });
+      if (!response.ok) throw new Error("Unused tags could not be deleted.");
+      toast.success(`Deleted ${unused.length} unused tag${unused.length === 1 ? "" : "s"}`);
+      setConfirmRemoveUnused(false);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unused tags could not be deleted.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const editingUsage = editing ? usageById.get(editing.id) : undefined;
+
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
         tabs={librarySetupNavItems}
         actions={
-          <PageToolbarAction onClick={() => open(null)}>New tag</PageToolbarAction>
+          <>
+            {unused.length > 0 ? (
+              <Button type="button" size="sm" variant="outline" onClick={() => setConfirmRemoveUnused(true)}>
+                Delete unused tags ({unused.length})
+              </Button>
+            ) : null}
+            <PageToolbarAction onClick={() => open(null)}>New tag</PageToolbarAction>
+          </>
         }
       />
 
@@ -171,7 +198,7 @@ export function SettingsTagsPage() {
                   <span className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{tag.name}</span>
                 </div>
                 <ListCell primary={capitalise(tag.color)} />
-                <ListCell primary={usageById.get(tag.id)?.totalCount ? `${usageById.get(tag.id)?.totalCount} title${usageById.get(tag.id)!.totalCount === 1 ? "" : "s"}` : "None"} />
+                <ListCell primary={describeTagUsage(usageById.get(tag.id))} />
                 <ListCell primary={tag.description || <span className="text-muted-foreground">—</span>} />
               </ListRow>
             ))}
@@ -191,7 +218,7 @@ export function SettingsTagsPage() {
       >
         <DrawerSection title="Tag details">
           <FieldRow>
-            <Field label="Name" error={nameError} help="Use the same spelling wherever you apply this tag. Tags are case-insensitive.">
+            <Field label="Name" error={nameError} help="Renaming changes the tag everywhere it is used. Tags are case-insensitive.">
               <Input value={form.name} onChange={(event) => { setNameError(null); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Name this tag, for example Kids" autoComplete="off" />
             </Field>
             <Field label="Colour">
@@ -203,13 +230,62 @@ export function SettingsTagsPage() {
           </Field>
         </DrawerSection>
         {editing ? (
+          <DrawerSection title="Where this tag is used" aside="Renaming the tag changes it in all of these.">
+            {editingUsage?.users.length ? (
+              <ul className="grid gap-1.5" aria-label="Settings that use this tag">
+                {editingUsage.users.map((user) => (
+                  <li key={`${user.kind}-${user.id}`} className="flex items-center justify-between gap-3 text-[length:var(--type-body-sm)]">
+                    <Link to={user.link} className="truncate font-medium text-foreground underline-offset-2 hover:underline">{user.name}</Link>
+                    <span className="shrink-0 text-muted-foreground">{tagUserKindLabel(user.kind)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">No indexer, download client, notification, library or rule uses this tag.</p>
+            )}
+            {editingUsage?.totalCount ? (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">{describeTagUsage({ ...editingUsage, users: [] })} carry this tag.</p>
+            ) : null}
+          </DrawerSection>
+        ) : null}
+        {editing ? (
           <DrawerSection>
-            <DrawerDanger title="Delete this tag" description={usageById.get(editing.id)?.totalCount ? `${usageById.get(editing.id)!.totalCount} title${usageById.get(editing.id)!.totalCount === 1 ? "" : "s"} will lose this label.` : "No titles currently carry this label."} action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+            <DrawerDanger title="Delete this tag" description={editingUsage && !editingUsage.isUnused ? "Deleting takes it off everything listed above." : "Nothing uses this tag."} action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
           </DrawerSection>
         ) : null}
       </Drawer>
 
-      <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description={editing && usageById.get(editing.id)?.totalCount ? `${usageById.get(editing.id)!.totalCount} title${usageById.get(editing.id)!.totalCount === 1 ? "" : "s"} will lose this label. This cannot be undone.` : "No titles currently carry this label."} confirmLabel="Delete tag" busy={busy} onConfirm={() => void handleRemove()} />
+      <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title={`Delete “${editing?.name ?? form.name}”?`}
+        description={editingUsage && !editingUsage.isUnused ? "Deleting removes this tag from everything that uses it. This cannot be undone." : "Nothing uses this tag."}
+        confirmLabel={editingUsage && !editingUsage.isUnused ? "Remove it from all of these and delete" : "Delete tag"}
+        busy={busy}
+        onConfirm={() => void handleRemove()}
+        extraContent={editingUsage && !editingUsage.isUnused ? (
+          <div className="grid gap-2 text-[length:var(--type-body-sm)]">
+            {editingUsage.totalCount > 0 ? <p>{describeTagUsage({ ...editingUsage, users: [] })} will lose this label.</p> : null}
+            <ul className="grid gap-1.5" aria-label="What deleting this tag changes">
+              {editingUsage.users.map((user) => (
+                <li key={`${user.kind}-${user.id}`}>
+                  <span className="font-medium">{user.name}</span> <span className="text-muted-foreground">({tagUserKindLabel(user.kind)}). {tagUserDeleteEffect(user.kind)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      />
+      <ConfirmDialog
+        open={confirmRemoveUnused}
+        onOpenChange={setConfirmRemoveUnused}
+        title={`Delete ${unused.length} unused tag${unused.length === 1 ? "" : "s"}?`}
+        description="These tags are not on any title, connection or rule. This cannot be undone."
+        confirmLabel="Delete unused tags"
+        busy={busy}
+        onConfirm={() => void handleRemoveUnused()}
+        extraContent={<p className="text-[length:var(--type-body-sm)]">{unused.map((tag) => tag.name).join(", ")}</p>}
+      />
       <ConfirmDialog
         open={confirmDiscard}
         onOpenChange={(open) => {
