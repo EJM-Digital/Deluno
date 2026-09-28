@@ -21,7 +21,6 @@ namespace Deluno.Persistence.Tests.Api;
 public sealed class ProcessorHandoffSearchAgainTests
 {
     [Theory]
-    [InlineData(ProcessorHandoffStatuses.Lost)]
     [InlineData(ProcessorHandoffStatuses.TimedOut)]
     [InlineData(ProcessorHandoffStatuses.Stalled)]
     [InlineData(ProcessorHandoffStatuses.Failed)]
@@ -40,6 +39,49 @@ public sealed class ProcessorHandoffSearchAgainTests
         var blocked = await app.Client.GetAsync("/api/blocked-releases");
         using var blockedBody = JsonDocument.Parse(await blocked.Content.ReadAsStringAsync());
         Assert.Contains(
+            blockedBody.RootElement.EnumerateArray(),
+            item => item.GetProperty("releaseName").GetString() == handoff.ReleaseName);
+
+        var jobs = await JobQueueRepository(app).ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job =>
+            job.JobType == LibrarySearchJobTypes.For("tv") &&
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains("\"targetEntityId\":\"series-1\"", StringComparison.OrdinalIgnoreCase));
+
+        var feed = await app.Client.GetAsync("/api/activity?pageSize=50");
+        using var feedBody = JsonDocument.Parse(await feed.Content.ReadAsStringAsync());
+        Assert.Contains(
+            feedBody.RootElement.GetProperty("items").EnumerateArray(),
+            item => item.GetProperty("category").GetString() == "processing.search-again");
+    }
+
+    /// <summary>
+    /// #956: a processor that never received the file has a hand-off problem,
+    /// not a bad release (the same rule as #880 and #919). "Search for
+    /// another release" on a <see cref="ProcessorHandoffStatuses.Lost"/>
+    /// hand-off must still end it and search again, but must not blocklist a
+    /// release that was never at fault.
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_on_a_lost_handoff_ends_it_and_searches_again_without_blocklisting()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var handoff = await HandoffWithDispatchAsync(app, ProcessorHandoffStatuses.Lost, mediaType: "tv", entityType: "series", entityId: "series-1");
+
+        var response = await app.Client.PostAsJsonAsync($"/api/integrations/processors/handoffs/{handoff.Id}/search-again", new { });
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var responseBody = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var message = responseBody.RootElement.GetProperty("message").GetString();
+        Assert.Contains("never received", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("did not blocklist", message, StringComparison.OrdinalIgnoreCase);
+
+        var stored = await ProcessorRepository(app).GetProcessorHandoffAsync(handoff.Id, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, stored?.Status);
+
+        var blocked = await app.Client.GetAsync("/api/blocked-releases");
+        using var blockedBody = JsonDocument.Parse(await blocked.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(
             blockedBody.RootElement.EnumerateArray(),
             item => item.GetProperty("releaseName").GetString() == handoff.ReleaseName);
 
