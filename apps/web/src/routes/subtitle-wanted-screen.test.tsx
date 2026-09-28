@@ -19,7 +19,14 @@ const wantedRow = {
   seasonNumber: null,
   episodeNumber: null,
   episodeTitle: null,
-  languagesMissing: ["en"]
+  languagesMissing: ["en"],
+  lastAttempt: null as {
+    language: string;
+    provider: string | null;
+    outcome: string;
+    attemptedUtc: string;
+    score: number | null;
+  } | null
 };
 let loaderData: { wanted: (typeof wantedRow)[] } = { wanted: [wantedRow] };
 
@@ -49,6 +56,27 @@ describe("Subtitle Wanted screen (#840)", () => {
     renderPage();
     expect(screen.getByText("Dune")).toBeInTheDocument();
     expect(screen.getByText("EN")).toBeInTheDocument();
+    expect(screen.getByText("Not tried yet")).toBeInTheDocument();
+  });
+
+  it("shows the latest attempt on the row (#982)", () => {
+    loaderData = {
+      wanted: [
+        {
+          ...wantedRow,
+          lastAttempt: {
+            language: "en",
+            provider: "gestdown",
+            outcome: "Rejected: not found",
+            attemptedUtc: "2026-09-28T00:00:00Z",
+            score: null
+          }
+        }
+      ]
+    };
+    renderPage();
+    expect(screen.getByText(/Rejected: not found via gestdown/)).toBeInTheDocument();
+    loaderData = { wanted: [wantedRow] };
   });
 
   it("shows the empty state once nothing is missing", () => {

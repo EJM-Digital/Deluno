@@ -39,6 +39,29 @@ public sealed class SubtitleAttemptHistoryTests
     }
 
     [Fact]
+    public async Task An_attempt_that_found_a_candidate_records_its_score()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new MutableTimeProvider(Now);
+        var (movies, subtitles) = await CreateAsync(storage, clock);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordAttemptHistoryAsync(
+            MediaKind.Movie, id, "en", "gestdown", "Meets subtitle plan: made for this file",
+            CancellationToken.None, score: 2);
+        clock.Advance(TimeSpan.FromMinutes(1));
+        await subtitles.RecordAttemptHistoryAsync(
+            MediaKind.Movie, id, "en", "gestdown", "Rejected: not found", CancellationToken.None);
+
+        var history = await subtitles.ListAttemptHistoryAsync(MediaKind.Movie, id, CancellationToken.None);
+
+        Assert.Equal(2, history.Count);
+        // Newest first: the failure with no candidate has no score at all.
+        Assert.Null(history[0].Score);
+        Assert.Equal(2, history[1].Score);
+    }
+
+    [Fact]
     public async Task History_is_trimmed_back_to_the_retention_cap()
     {
         using var storage = TestStorage.Create();

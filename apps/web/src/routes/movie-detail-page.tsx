@@ -1226,12 +1226,21 @@ export function MovieDetailPage() {
 
           {subtitleHistory.length > 0 ? (
             <ListCard title="Subtitle search history" count={`Last ${subtitleHistory.length}`}>
-              <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Provider", mobile: true }, { label: "What happened" }]}>
+              <ListTable
+                chevron={false}
+                columns={[
+                  { label: "Language" },
+                  { label: "Provider", mobile: true },
+                  { label: "What happened" },
+                  { label: "Score", mobile: true }
+                ]}
+              >
                 {subtitleHistory.map((entry, index) => (
                   <ListRow key={`${entry.language}-${entry.attemptedUtc}-${index}`}>
                     <ListNameCell name={entry.language.toUpperCase()} sub={new Date(entry.attemptedUtc).toLocaleString()} />
                     <ListCell primary={entry.provider ?? "—"} mobile />
                     <ListCell primary={entry.outcome} />
+                    <ListCell primary={subtitleScoreLabel(entry.score)} mobile />
                   </ListRow>
                 ))}
               </ListTable>
@@ -1863,6 +1872,24 @@ function searchOutcomeTone(outcome: string): Tone {
       return "warn";
     default:
       return "idle";
+  }
+}
+
+/**
+ * The rung a subtitle attempt scored (#982) — the same ladder a held
+ * subtitle's own match carries. "—" for an attempt that found nothing, so
+ * there was no candidate to score.
+ */
+function subtitleScoreLabel(score: number | null) {
+  switch (score) {
+    case 2:
+      return "Made for this file";
+    case 1:
+      return "Same source";
+    case 0:
+      return "Any release";
+    default:
+      return "—";
   }
 }
 
