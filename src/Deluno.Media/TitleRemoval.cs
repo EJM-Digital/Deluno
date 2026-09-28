@@ -44,7 +44,16 @@ public sealed record TitleToRemove(
     /// catalogue holds them, and a case records a release name rather than which
     /// title it belongs to — so the scope names the downloads (#563).
     /// </summary>
-    Func<ImportRecoveryCaseScope, string, CancellationToken, Task<int>> SettleRecoveryCases);
+    Func<ImportRecoveryCaseScope, string, CancellationToken, Task<int>> SettleRecoveryCases,
+    /// <summary>
+    /// #947: a series' own dispatches are recorded under its own id, but the
+    /// most common TV grab — an automatic per-episode search — is recorded
+    /// under its episode's id instead (EntityType "episode"). Only a series'
+    /// own catalogue (<see cref="Deluno.Media"/> cannot reach it — see the
+    /// callers) knows its episode ids, so a series-removal target supplies
+    /// them here; null/empty for a movie, and for a series with none.
+    /// </summary>
+    Func<CancellationToken, Task<IReadOnlyList<string>>>? RelatedEpisodeIds = null);
 
 /// <summary>
 /// Removing a title from Deluno.
@@ -90,11 +99,19 @@ public sealed class TitleRemovalService(
         var cancelledJobs = await jobQueueRepository.CancelPendingForRelatedEntityAsync(title.EntityType, title.Id, cancellationToken);
         metadata["cancelledPendingJobCount"] = cancelledJobs.ToString();
 
+        // #947: removing a series also has to reach the dispatches recorded
+        // under its episodes, not just its own id - the most common TV grab
+        // (an automatic per-episode search) is recorded there.
+        var relatedEpisodeIds = title.RelatedEpisodeIds is null
+            ? []
+            : await title.RelatedEpisodeIds(cancellationToken);
+
         // #899/#900/#902/#903: the title is gone (or no longer wanted), so an
         // in-flight download for it is never left running, untracked, at the
         // client. Never blocklisted and never searched again - the release
         // was not bad, the title just is not wanted any more.
-        metadata["cancelledClientDownloadCount"] = (await CancelActiveDownloadsAsync(title.EntityType, title.Id, cancellationToken)).ToString();
+        metadata["cancelledClientDownloadCount"] =
+            (await CancelActiveDownloadsAsync(title.EntityType, title.Id, relatedEpisodeIds, cancellationToken)).ToString();
 
         if (options.DeleteFiles)
         {
@@ -202,7 +219,7 @@ public sealed class TitleRemovalService(
             throw new InvalidOperationException(title.EntityType == "series" ? "TV show was not removed from Deluno." : "Movie was not removed from Deluno.");
         }
 
-        var grabs = await ArchiveGrabsAsync(title.EntityType, title.Id, title.Title, cancellationToken);
+        var grabs = await ArchiveGrabsAsync(title.EntityType, title.Id, title.Title, relatedEpisodeIds, cancellationToken);
         metadata["archivedGrabCount"] = grabs.Archived.ToString();
         metadata["stoppedProcessorHandoffCount"] = (await StopWaitingAsync(title.Title, grabs, cancellationToken)).ToString();
         metadata["settledRecoveryCaseCount"] = (await title.SettleRecoveryCases(
@@ -239,24 +256,47 @@ public sealed class TitleRemovalService(
     /// <para>Does nothing, and reports nothing, when the title had no active
     /// download to cancel - unmonitoring a title with nothing in flight is
     /// not itself news.</para>
+    ///
+    /// <para>#947: unmonitoring a whole series also has to reach the
+    /// dispatches recorded under its episodes (<paramref name="relatedEpisodeIds"/>
+    /// - the most common TV grab is recorded there, not under the series'
+    /// own id. Unmonitoring one episode also has to consider a season-pack
+    /// dispatch recorded under its series (<paramref name="seasonPack"/>):
+    /// that pack is cancelled with the rest only once every episode it
+    /// covers is unmonitored, otherwise it is left running for the episodes
+    /// still wanted and Activity says so.</para>
     /// </summary>
     public async Task<Dictionary<string, string?>> CancelDownloadForUnmonitoredTitleAsync(
         string entityType,
         string entityId,
         string title,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? relatedEpisodeIds = null,
+        SeasonPackUnmonitorContext? seasonPack = null)
     {
         var metadata = new Dictionary<string, string?>();
-        var cancelled = await CancelActiveDownloadsAsync(entityType, entityId, cancellationToken);
+        var episodeIds = relatedEpisodeIds ?? [];
+        var cancelled = await CancelActiveDownloadsAsync(entityType, entityId, episodeIds, cancellationToken);
+
+        var seasonPackOutcome = await HandleSeasonPackForUnmonitoredEpisodeAsync(entityId, title, seasonPack, cancellationToken);
+        cancelled += seasonPackOutcome.Cancelled;
+
         metadata["cancelledClientDownloadCount"] = cancelled.ToString();
 
-        if (cancelled == 0)
+        var grabs = Grabs.None;
+        if (cancelled > 0)
+        {
+            grabs = await ArchiveGrabsAsync(entityType, entityId, title, episodeIds, cancellationToken);
+        }
+
+        grabs = grabs.Merge(seasonPackOutcome.Grabs);
+        metadata["archivedGrabCount"] = grabs.Archived.ToString();
+
+        if (cancelled == 0 && grabs.Archived == 0)
         {
             return metadata;
         }
 
-        var grabs = await ArchiveGrabsAsync(entityType, entityId, title, cancellationToken);
-        metadata["archivedGrabCount"] = grabs.Archived.ToString();
         metadata["stoppedProcessorHandoffCount"] = (await StopWaitingAsync(
             title,
             grabs,
@@ -276,6 +316,106 @@ public sealed class TitleRemovalService(
     }
 
     /// <summary>
+    /// What unmonitoring one episode needs to know to also settle a
+    /// season-pack dispatch recorded under its series (#947): the series to
+    /// look for open season-pack dispatches under, and how to ask whether
+    /// every episode a given pack covers is now unmonitored (the caller's
+    /// catalogue, not <see cref="Deluno.Media"/>, holds monitored state).
+    /// Null when the caller has nothing to check (no dispatches repository,
+    /// or the episode's series is unknown).
+    /// </summary>
+    public sealed record SeasonPackUnmonitorContext(
+        string SeriesId,
+        Func<IReadOnlyList<string>, CancellationToken, Task<bool>> AreAllEpisodesUnmonitored);
+
+    /// <summary>
+    /// A season-pack dispatch (EntityType "series") that names the episode
+    /// being unmonitored among the ones it covers (#947). Cancelled, archived
+    /// and dismissed only once every episode it covers is unmonitored - a
+    /// pack still wanted for other episodes is left running, and Activity
+    /// says so rather than the person losing track of why it is still there.
+    /// </summary>
+    private async Task<(int Cancelled, Grabs Grabs)> HandleSeasonPackForUnmonitoredEpisodeAsync(
+        string episodeId,
+        string title,
+        SeasonPackUnmonitorContext? seasonPack,
+        CancellationToken cancellationToken)
+    {
+        if (seasonPack is null || dispatchesRepository is null)
+        {
+            return (0, Grabs.None);
+        }
+
+        var cancelled = 0;
+        var dispatchIds = new List<string>();
+        var releaseNames = new HashSet<string>(StringComparer.Ordinal);
+        var archived = 0;
+        var pagination = new DispatchPaginationOptions { PageSize = 200 };
+        do
+        {
+            var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
+                new DispatchQueryFilter { EntityType = "series", EntityId = seasonPack.SeriesId },
+                pagination,
+                cancellationToken);
+            foreach (var dispatch in items)
+            {
+                if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var coveredEpisodeIds = ReplacementSearchQueuer.ExtractSeasonEpisodeIds(dispatch.NotesJson);
+                if (!coveredEpisodeIds.Contains(episodeId, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!await seasonPack.AreAllEpisodesUnmonitored(coveredEpisodeIds, cancellationToken))
+                {
+                    await activityFeedRepository.RecordActivityAsync(
+                        "series.season-pack-kept-running",
+                        $"{title} is no longer monitored, but its season pack keeps downloading: other episodes it covers are still monitored.",
+                        JsonSerializer.Serialize(new { dispatch.Id, coveredEpisodeIds }),
+                        null,
+                        "series",
+                        seasonPack.SeriesId,
+                        cancellationToken);
+                    continue;
+                }
+
+                if (downloadClientTelemetry is not null &&
+                    !string.IsNullOrWhiteSpace(dispatch.DownloadClientId) &&
+                    !string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+                {
+                    var result = await downloadClientTelemetry.ExecuteActionAsync(
+                        dispatch.DownloadClientId,
+                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
+                        cancellationToken);
+                    if (result.Succeeded)
+                    {
+                        cancelled++;
+                    }
+                }
+
+                dispatchIds.Add(dispatch.Id);
+                if (dispatch.ReleaseName is { Length: > 0 } releaseName)
+                {
+                    releaseNames.Add(releaseName);
+                }
+
+                await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title} is no longer monitored, and no other episode its season pack covers still is.", cancellationToken);
+                archived++;
+            }
+
+            pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+        }
+        while (pagination.PageToken is not null);
+
+        return (cancelled, new Grabs(dispatchIds, releaseNames, archived));
+    }
+
+    /// <summary>
     /// Everything the title ever fetched, which is the only way back to the work
     /// still going on about it: nothing a download leaves behind records which
     /// title it was for.
@@ -284,6 +424,19 @@ public sealed class TitleRemovalService(
     private sealed record Grabs(IReadOnlyCollection<string> DispatchIds, IReadOnlyCollection<string> ReleaseNames, int Archived)
     {
         public static readonly Grabs None = new([], [], 0);
+
+        /// <summary>Combines this and a season pack's own outcome (#947) into one report.</summary>
+        public Grabs Merge(Grabs other)
+        {
+            if (other.DispatchIds.Count == 0 && other.ReleaseNames.Count == 0 && other.Archived == 0)
+            {
+                return this;
+            }
+
+            var releaseNames = new HashSet<string>(ReleaseNames, StringComparer.Ordinal);
+            releaseNames.UnionWith(other.ReleaseNames);
+            return new Grabs([.. DispatchIds, .. other.DispatchIds], releaseNames, Archived + other.Archived);
+        }
     }
 
     /// <summary>
@@ -301,7 +454,12 @@ public sealed class TitleRemovalService(
     /// mostly archived — and a case raised about one of them is still open and
     /// still counted (#563).</para>
     /// </summary>
-    private async Task<Grabs> ArchiveGrabsAsync(string entityType, string entityId, string title, CancellationToken cancellationToken)
+    private async Task<Grabs> ArchiveGrabsAsync(
+        string entityType,
+        string entityId,
+        string title,
+        IReadOnlyList<string> relatedEpisodeIds,
+        CancellationToken cancellationToken)
     {
         if (dispatchesRepository is null)
         {
@@ -311,31 +469,40 @@ public sealed class TitleRemovalService(
         var dispatchIds = new List<string>();
         var releaseNames = new HashSet<string>(StringComparer.Ordinal);
         var archived = 0;
-        var pagination = new DispatchPaginationOptions { PageSize = 200 };
-        do
+
+        // #947: a series' episode-level dispatches (single-episode searches)
+        // are recorded under the episode's own id, not the series'.
+        var targets = new List<(string EntityType, string EntityId)> { (entityType, entityId) };
+        targets.AddRange(relatedEpisodeIds.Select(episodeId => ("episode", episodeId)));
+
+        foreach (var (targetType, targetId) in targets)
         {
-            var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
-                new DispatchQueryFilter { EntityType = entityType, EntityId = entityId, IncludeArchived = true },
-                pagination,
-                cancellationToken);
-            foreach (var dispatch in items)
+            var pagination = new DispatchPaginationOptions { PageSize = 200 };
+            do
             {
-                dispatchIds.Add(dispatch.Id);
-                if (dispatch.ReleaseName is { Length: > 0 } releaseName)
+                var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
+                    new DispatchQueryFilter { EntityType = targetType, EntityId = targetId, IncludeArchived = true },
+                    pagination,
+                    cancellationToken);
+                foreach (var dispatch in items)
                 {
-                    releaseNames.Add(releaseName);
+                    dispatchIds.Add(dispatch.Id);
+                    if (dispatch.ReleaseName is { Length: > 0 } releaseName)
+                    {
+                        releaseNames.Add(releaseName);
+                    }
+
+                    if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title} was removed from Deluno.", cancellationToken);
+                        archived++;
+                    }
                 }
 
-                if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
-                {
-                    await dispatchesRepository.ArchiveDispatchAsync(dispatch.Id, $"{title} was removed from Deluno.", cancellationToken);
-                    archived++;
-                }
+                pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
             }
-
-            pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+            while (pagination.PageToken is not null);
         }
-        while (pagination.PageToken is not null);
 
         return new Grabs(dispatchIds, releaseNames, archived);
     }
@@ -351,7 +518,11 @@ public sealed class TitleRemovalService(
     /// nothing left running; one already archived has already been settled by
     /// an earlier removal or by the client itself.</para>
     /// </summary>
-    private async Task<int> CancelActiveDownloadsAsync(string entityType, string entityId, CancellationToken cancellationToken)
+    private async Task<int> CancelActiveDownloadsAsync(
+        string entityType,
+        string entityId,
+        IReadOnlyList<string> relatedEpisodeIds,
+        CancellationToken cancellationToken)
     {
         if (dispatchesRepository is null || downloadClientTelemetry is null)
         {
@@ -359,36 +530,45 @@ public sealed class TitleRemovalService(
         }
 
         var cancelled = 0;
-        var pagination = new DispatchPaginationOptions { PageSize = 200 };
-        do
+
+        // #947: a series' episode-level dispatches (single-episode searches)
+        // are recorded under the episode's own id, not the series'.
+        var targets = new List<(string EntityType, string EntityId)> { (entityType, entityId) };
+        targets.AddRange(relatedEpisodeIds.Select(episodeId => ("episode", episodeId)));
+
+        foreach (var (targetType, targetId) in targets)
         {
-            var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
-                new DispatchQueryFilter { EntityType = entityType, EntityId = entityId },
-                pagination,
-                cancellationToken);
-            foreach (var dispatch in items)
+            var pagination = new DispatchPaginationOptions { PageSize = 200 };
+            do
             {
-                if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase) ||
-                    string.IsNullOrWhiteSpace(dispatch.DownloadClientId) ||
-                    string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
-                {
-                    continue;
-                }
-
-                var result = await downloadClientTelemetry.ExecuteActionAsync(
-                    dispatch.DownloadClientId,
-                    new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
+                var (items, next) = await dispatchesRepository.QueryDispatchesAsync(
+                    new DispatchQueryFilter { EntityType = targetType, EntityId = targetId },
+                    pagination,
                     cancellationToken);
-                if (result.Succeeded)
+                foreach (var dispatch in items)
                 {
-                    cancelled++;
-                }
-            }
+                    if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(dispatch.ImportStatus, "imported", StringComparison.OrdinalIgnoreCase) ||
+                        string.IsNullOrWhiteSpace(dispatch.DownloadClientId) ||
+                        string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+                    {
+                        continue;
+                    }
 
-            pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+                    var result = await downloadClientTelemetry.ExecuteActionAsync(
+                        dispatch.DownloadClientId,
+                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
+                        cancellationToken);
+                    if (result.Succeeded)
+                    {
+                        cancelled++;
+                    }
+                }
+
+                pagination = new DispatchPaginationOptions { PageSize = 200, PageToken = next };
+            }
+            while (pagination.PageToken is not null);
         }
-        while (pagination.PageToken is not null);
 
         return cancelled;
     }

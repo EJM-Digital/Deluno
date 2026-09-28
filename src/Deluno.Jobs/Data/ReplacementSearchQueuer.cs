@@ -129,8 +129,12 @@ public static class ReplacementSearchQueuer
     /// (SeasonSearchExecutor's <c>episodeIds</c> field). Absent or unparsable
     /// notes fall back to the series-wide retry rather than silently
     /// retrying nothing.
+    ///
+    /// <para>Public so <c>TitleRemovalService</c> (#947) can tell which
+    /// episodes a season-pack dispatch recorded under EntityType "series"
+    /// actually covers, without a second copy of this parsing.</para>
     /// </summary>
-    private static IReadOnlyList<string> ExtractSeasonEpisodeIds(string? notesJson)
+    public static IReadOnlyList<string> ExtractSeasonEpisodeIds(string? notesJson)
     {
         if (string.IsNullOrWhiteSpace(notesJson))
         {

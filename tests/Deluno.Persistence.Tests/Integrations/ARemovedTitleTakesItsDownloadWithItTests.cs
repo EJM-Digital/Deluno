@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.DownloadClients;
@@ -331,6 +332,101 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
         Assert.Equal(ProcessorHandoffStatuses.Dismissed, handoff!.Status);
     }
 
+    /// <summary>
+    /// #947: the most common TV grab is an automatic per-episode search, and
+    /// it dispatches under the episode's own id, not the series' - removing
+    /// or unmonitoring a series has to reach those dispatches too.
+    /// </summary>
+    [Fact]
+    public async Task A_series_removal_also_cancels_dispatches_recorded_under_its_episodes()
+    {
+        using var world = await World.CreateAsync();
+        var (severance, episodeIds) = await world.ImportSeriesWithEpisodesAsync("Severance", episodeCount: 2);
+        world.Dispatch(episodeIds[0], "Severance.S01E01.1080p.WEB-DL-GROUP", "client-1", "hash-s01e01", entityType: "episode");
+
+        var metadata = await world.RemoveSeriesAsync(severance, new TitleRemovalOptions(DeleteFiles: false, AddImportListExclusion: false));
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("hash-s01e01", call.QueueItemId);
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+
+        var dispatch = (await world.Dispatches.QueryDispatchesAsync(
+            new DispatchQueryFilter { EntityType = "episode", EntityId = episodeIds[0], IncludeArchived = true },
+            new DispatchPaginationOptions { PageSize = 10 },
+            CancellationToken.None)).Items.Single();
+        Assert.Equal("archived", dispatch.Status, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The unmonitor-a-series side of the same gap (#900's path, #947's fix).</summary>
+    [Fact]
+    public async Task Unmonitoring_a_series_also_cancels_dispatches_recorded_under_its_episodes()
+    {
+        using var world = await World.CreateAsync();
+        var (severance, episodeIds) = await world.ImportSeriesWithEpisodesAsync("Severance", episodeCount: 2);
+        world.Dispatch(episodeIds[1], "Severance.S01E02.1080p.WEB-DL-GROUP", "client-1", "hash-s01e02", entityType: "episode");
+
+        var metadata = await world.UnmonitorSeriesAsync(severance.Id, "Severance", episodeIds);
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("hash-s01e02", call.QueueItemId);
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+    }
+
+    /// <summary>
+    /// #947: unmonitoring the last still-monitored episode a season pack
+    /// covers also cancels, archives and dismisses the hand-off for the pack
+    /// itself.
+    /// </summary>
+    [Fact]
+    public async Task Unmonitoring_the_last_monitored_episode_a_season_pack_covers_cancels_the_pack_too()
+    {
+        using var world = await World.CreateAsync();
+        var (severance, episodeIds) = await world.ImportSeriesWithEpisodesAsync("Severance", episodeCount: 2);
+        world.DispatchSeasonPack(severance.Id, "Severance.S01.1080p.WEB-DL-GROUP", "client-1", "hash-s01-pack", episodeIds);
+        var handoffId = await world.HandOffToProcessorAsync("Severance.S01.1080p.WEB-DL-GROUP", ProcessorHandoffStatuses.Submitted);
+
+        var seasonPack = new TitleRemovalService.SeasonPackUnmonitorContext(severance.Id, (_, _) => Task.FromResult(true));
+        var metadata = await world.UnmonitorEpisodeAsync(episodeIds[0], "An episode of Severance", seasonPack);
+
+        var call = Assert.Single(world.Telemetry.Calls);
+        Assert.Equal("hash-s01-pack", call.QueueItemId);
+        Assert.Equal("1", metadata["cancelledClientDownloadCount"]);
+        Assert.Equal("1", metadata["archivedGrabCount"]);
+
+        var handoff = await world.Processors.GetProcessorHandoffAsync(handoffId, CancellationToken.None);
+        Assert.Equal(ProcessorHandoffStatuses.Dismissed, handoff!.Status);
+    }
+
+    /// <summary>
+    /// #947: unmonitoring one episode of a two-episode season pack, while the
+    /// other episode it covers is still monitored, leaves the pack running -
+    /// Activity says so rather than the person losing track of why.
+    /// </summary>
+    [Fact]
+    public async Task Unmonitoring_one_episode_a_season_pack_covers_leaves_it_running_while_another_stays_monitored()
+    {
+        using var world = await World.CreateAsync();
+        var (severance, episodeIds) = await world.ImportSeriesWithEpisodesAsync("Severance", episodeCount: 2);
+        world.DispatchSeasonPack(severance.Id, "Severance.S01.1080p.WEB-DL-GROUP", "client-1", "hash-s01-pack", episodeIds);
+
+        var seasonPack = new TitleRemovalService.SeasonPackUnmonitorContext(severance.Id, (_, _) => Task.FromResult(false));
+        var metadata = await world.UnmonitorEpisodeAsync(episodeIds[0], "An episode of Severance", seasonPack);
+
+        Assert.Empty(world.Telemetry.Calls);
+        Assert.Equal("0", metadata["cancelledClientDownloadCount"]);
+
+        var packDispatchId = (await world.Dispatches.QueryDispatchesAsync(
+            new DispatchQueryFilter { EntityType = "series", EntityId = severance.Id, IncludeArchived = true },
+            new DispatchPaginationOptions { PageSize = 10 },
+            CancellationToken.None)).Items.Single().Id;
+        var pack = await world.Dispatches.GetDispatchAsync(packDispatchId, CancellationToken.None);
+        Assert.NotEqual("archived", pack!.Status, StringComparer.OrdinalIgnoreCase);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "series.season-pack-kept-running");
+        Assert.Contains("still monitored", activity.Message);
+    }
+
     private sealed class FakeDownloadClientTelemetryService : IDownloadClientTelemetryService
     {
         public List<(string ClientId, string Action, string QueueItemId)> Calls { get; } = [];
@@ -591,9 +687,58 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
             return page.Items.Single(item => item.Title == title);
         }
 
+        /// <summary>
+        /// A show with real episode rows, so <c>SeriesRemoval.Target</c>'s
+        /// <c>RelatedEpisodeIds</c> (#947) has something to read back from
+        /// <c>GetInventoryDetailAsync</c>, and season-pack dispatches have
+        /// real episode ids to name in their notes.
+        /// </summary>
+        public async Task<(SeriesListItem Series, IReadOnlyList<string> EpisodeIds)> ImportSeriesWithEpisodesAsync(string title, int episodeCount)
+        {
+            var episodes = Enumerable.Range(1, episodeCount)
+                .Select(number => new ImportedEpisodeItem(SeasonNumber: 1, EpisodeNumber: number, HasFile: false))
+                .ToArray();
+
+            await series.ImportExistingBatchAsync(
+                Library.Id,
+                [
+                    new ExistingSeriesImportRequest(
+                        Title: title,
+                        StartYear: 2022,
+                        WantedStatus: WantedStatuses.Covered,
+                        WantedReason: "Imported from your existing library.",
+                        CurrentQuality: null,
+                        TargetQuality: null,
+                        QualityCutoffMet: false,
+                        FilePath: null,
+                        FileSizeBytes: null,
+                        Episodes: episodes)
+                ],
+                CancellationToken.None);
+
+            var page = await series.ListPageAsync(new CatalogueQuery(Search: title), CancellationToken.None);
+            var seriesItem = page.Items.Single(item => item.Title == title);
+            var inventory = await series.GetInventoryDetailAsync(seriesItem.Id, CancellationToken.None);
+            var episodeIds = inventory!.Episodes.OrderBy(episode => episode.EpisodeNumber).Select(episode => episode.EpisodeId).ToArray();
+            return (seriesItem, episodeIds);
+        }
+
         public string Dispatch(string entityId, string releaseName, string clientId, string torrentHashOrItemId, string entityType = "movie")
         {
             var dispatchId = DispatchRecord(entityId, releaseName, clientId, entityType);
+            Dispatches.RecordDetectionAsync(dispatchId, torrentHashOrItemId, downloadedBytes: 1024, completed: false, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            return dispatchId;
+        }
+
+        /// <summary>A season-pack dispatch, recorded under the series' own id with the
+        /// episode ids it covers in its notes, the same shape SeasonSearchExecutor writes.</summary>
+        public string DispatchSeasonPack(string seriesId, string releaseName, string clientId, string torrentHashOrItemId, IReadOnlyList<string> episodeIds)
+        {
+            var notesJson = JsonSerializer.Serialize(new { episodeIds });
+            var dispatchId = ((SqliteJobStore)Activity).RecordDownloadDispatchAsync(
+                Library.Id, "tv", "series", seriesId, releaseName, "TestIndexer", clientId, "Test Client", "sent", notesJson,
+                cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
             Dispatches.RecordDetectionAsync(dispatchId, torrentHashOrItemId, downloadedBytes: 1024, completed: false, CancellationToken.None)
                 .GetAwaiter().GetResult();
             return dispatchId;
@@ -627,6 +772,12 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<Dictionary<string, string?>> UnmonitorAsync(string entityType, string entityId, string title)
             => removal.CancelDownloadForUnmonitoredTitleAsync(entityType, entityId, title, CancellationToken.None);
+
+        public Task<Dictionary<string, string?>> UnmonitorSeriesAsync(string seriesId, string title, IReadOnlyList<string> relatedEpisodeIds)
+            => removal.CancelDownloadForUnmonitoredTitleAsync("series", seriesId, title, CancellationToken.None, relatedEpisodeIds: relatedEpisodeIds);
+
+        public Task<Dictionary<string, string?>> UnmonitorEpisodeAsync(string episodeId, string title, TitleRemovalService.SeasonPackUnmonitorContext seasonPack)
+            => removal.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, title, CancellationToken.None, seasonPack: seasonPack);
 
         public void Dispose() => storage.Dispose();
     }
