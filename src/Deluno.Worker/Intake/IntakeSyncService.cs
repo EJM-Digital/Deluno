@@ -522,7 +522,7 @@ public sealed class IntakeSyncService(
                     AutoSearchEnabled: targetLibrary.AutoSearchEnabled,
                     MissingSearchEnabled: targetLibrary.MissingSearchEnabled,
                     UpgradeSearchEnabled: targetLibrary.UpgradeSearchEnabled,
-                    SearchIntervalHours: targetLibrary.SearchIntervalHours,
+                    SearchIntervalMinutes: targetLibrary.SearchIntervalMinutes,
                     RetryDelayHours: targetLibrary.RetryDelayHours,
                     MaxItemsPerRun: targetLibrary.MaxItemsPerRun,
                     MaxMissingItemsPerRun: targetLibrary.MaxMissingItemsPerRun,

@@ -15,7 +15,7 @@ public sealed record CreateLibraryRequest(
     bool AutoSearchEnabled,
     bool MissingSearchEnabled,
     bool UpgradeSearchEnabled,
-    int? SearchIntervalHours,
+    int? SearchIntervalMinutes,
     int? RetryDelayHours,
     int? MaxItemsPerRun,
     string? CleanupMode = null,

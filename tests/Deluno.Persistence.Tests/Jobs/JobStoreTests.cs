@@ -24,7 +24,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 12,
+            SearchIntervalMinutes: 12,
             RetryDelayHours: 6,
             MaxItemsPerRun: 10,
             SearchWindowStartHour: null,
@@ -926,7 +926,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25,
             SearchWindowStartHour: null,
@@ -950,9 +950,9 @@ public sealed class JobStoreTests
         Assert.False(state.SearchRequested);
         Assert.Equal("idle", state.Status);
         Assert.NotNull(state.NextSearchUtc);
-        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextSearchUtc!.Value);
-        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextMissingSearchUtc);
-        Assert.Equal(timeProvider.GetUtcNow().AddHours(6), state.NextUpgradeSearchUtc);
+        Assert.Equal(timeProvider.GetUtcNow().AddMinutes(6), state.NextSearchUtc!.Value);
+        Assert.Equal(timeProvider.GetUtcNow().AddMinutes(6), state.NextMissingSearchUtc);
+        Assert.Equal(timeProvider.GetUtcNow().AddMinutes(6), state.NextUpgradeSearchUtc);
         Assert.Equal(
             [
                 ("AutomationState", "movies-main"),
@@ -982,7 +982,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25,
             SearchWindowStartHour: null,
@@ -1017,7 +1017,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 12,
+            SearchIntervalMinutes: 12,
             RetryDelayHours: 6,
             MaxItemsPerRun: 10,
             SearchWindowStartHour: null,
@@ -1058,7 +1058,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 12,
+            SearchIntervalMinutes: 12,
             RetryDelayHours: 6,
             MaxItemsPerRun: 10,
             SearchWindowStartHour: null,
@@ -1147,7 +1147,7 @@ public sealed class JobStoreTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25,
             SearchWindowStartHour: null,
@@ -1158,6 +1158,134 @@ public sealed class JobStoreTests
 
         Assert.Equal(1, moviesGate.CurrentCount);
         Assert.Equal(0, legacyGate.CurrentCount);
+    }
+
+    // #984: the search interval is minutes now, not whole hours, so Huntarr-style
+    // sub-hour cadences (every 15 minutes) are possible.
+    [Fact]
+    public async Task PlanLibrarySearchesAsync_advances_the_next_search_clock_by_minutes_not_hours()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-28T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalMinutes: 15,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+
+        var state = Assert.Single((await store.ListLibraryAutomationStatesAsync(CancellationToken.None)).Values);
+        Assert.Equal(timeProvider.GetUtcNow().AddMinutes(15), state.NextSearchUtc);
+        Assert.NotEqual(timeProvider.GetUtcNow().AddHours(15), state.NextSearchUtc);
+    }
+
+    // #984: a cycle must never start while that library's previous cycle is
+    // still running, whatever the interval is tuned to. A 5-minute interval
+    // makes the previous job still be "running" a very plausible state for
+    // the next due slot to land on, so this pins the existing dedupe
+    // protection (ux_job_queue_active_dedupe / FindDuplicateActiveJobAsync)
+    // at minute granularity rather than assuming it still applies untested.
+    [Fact]
+    public async Task PlanLibrarySearchesAsync_does_not_start_a_new_cycle_while_the_previous_one_is_still_running()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-28T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var library = new LibraryAutomationPlanItem(
+            LibraryId: "movies-main",
+            LibraryName: "Movies",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalMinutes: 5,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+        var firstJob = Assert.Single(await store.ListAsync(20, CancellationToken.None));
+
+        // The lane picks it up and it is still running when the next due
+        // slot (5 minutes later) arrives.
+        var leased = await store.LeaseNextAsync("worker-1", TimeSpan.FromMinutes(30), null, CancellationToken.None);
+        Assert.NotNull(leased);
+        Assert.Equal(firstJob.Id, leased!.Id);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(6));
+        await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
+
+        var jobs = await store.ListAsync(20, CancellationToken.None);
+        var job = Assert.Single(jobs);
+        Assert.Equal(firstJob.Id, job.Id);
+        Assert.Equal("running", job.Status);
+    }
+
+    // #984: one library's minute-granular schedule must not touch another
+    // library's — including one still on a much longer, hour-scale interval.
+    [Fact]
+    public async Task PlanLibrarySearchesAsync_does_not_affect_another_librarys_schedule()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-28T01:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var fastLibrary = new LibraryAutomationPlanItem(
+            LibraryId: "movies-fast",
+            LibraryName: "Movies (fast)",
+            MediaType: "movies",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalMinutes: 5,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+        var slowLibrary = new LibraryAutomationPlanItem(
+            LibraryId: "tv-slow",
+            LibraryName: "TV (slow)",
+            MediaType: "tv",
+            AutoSearchEnabled: true,
+            MissingSearchEnabled: true,
+            UpgradeSearchEnabled: true,
+            SearchIntervalMinutes: 360,
+            RetryDelayHours: 6,
+            MaxItemsPerRun: 10,
+            SearchWindowStartHour: null,
+            SearchWindowEndHour: null);
+
+        // Establish each library's own baseline next-search clock without a
+        // real cycle in flight (mirrors what a completed cycle leaves behind).
+        await store.SkipLibrarySearchCycleAsync(fastLibrary, CancellationToken.None);
+        await store.SkipLibrarySearchCycleAsync(slowLibrary, CancellationToken.None);
+        var statesAfterFirstPlan = await store.ListLibraryAutomationStatesAsync(CancellationToken.None);
+        var slowNextSearchAfterFirstPlan = statesAfterFirstPlan.Values.Single(state => state.LibraryId == "tv-slow").NextSearchUtc;
+
+        // Only the fast library's slot comes due; the slow one must be left
+        // exactly as it was.
+        timeProvider.Advance(TimeSpan.FromMinutes(6));
+        await store.PlanLibrarySearchesAsync([fastLibrary, slowLibrary], CancellationToken.None);
+
+        var jobs = await store.ListAsync(20, CancellationToken.None);
+        var job = Assert.Single(jobs);
+        Assert.Equal("movies-fast", job.RelatedEntityId);
+
+        var statesAfterSecondPlan = await store.ListLibraryAutomationStatesAsync(CancellationToken.None);
+        var slowNextSearchAfterSecondPlan = statesAfterSecondPlan.Values.Single(state => state.LibraryId == "tv-slow").NextSearchUtc;
+        Assert.Equal(slowNextSearchAfterFirstPlan, slowNextSearchAfterSecondPlan);
     }
 
     [Fact]

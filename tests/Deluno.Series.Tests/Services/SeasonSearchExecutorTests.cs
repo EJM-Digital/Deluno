@@ -184,7 +184,7 @@ public sealed class SeasonSearchExecutorTests
                 CutoffQuality: "WEB 1080p", UpgradeUntilCutoff: true, UpgradeUnknownItems: true,
                 ImportWorkflow: "direct", ProcessorName: null, ProcessorOutputPath: null, ProcessorTimeoutMinutes: 60,
                 ProcessorFailureMode: "hold", AutoSearchEnabled: true, MissingSearchEnabled: true, UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6, RetryDelayHours: 12, MaxItemsPerRun: 50, SearchWindowStartHour: null,
+                SearchIntervalMinutes: 6, RetryDelayHours: 12, MaxItemsPerRun: 50, SearchWindowStartHour: null,
                 SearchWindowEndHour: null, AutomationStatus: "active", SearchRequested: false, LastSearchedUtc: null,
                 NextSearchUtc: null, CreatedUtc: DateTimeOffset.UnixEpoch, UpdatedUtc: DateTimeOffset.UnixEpoch);
             Libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>()))

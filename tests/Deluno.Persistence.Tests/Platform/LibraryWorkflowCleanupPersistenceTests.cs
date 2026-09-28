@@ -36,7 +36,7 @@ public sealed class LibraryWorkflowCleanupPersistenceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: null,
+                SearchIntervalMinutes: null,
                 RetryDelayHours: null,
                 MaxItemsPerRun: null,
                 CleanupMode: "remove-source-after-import",

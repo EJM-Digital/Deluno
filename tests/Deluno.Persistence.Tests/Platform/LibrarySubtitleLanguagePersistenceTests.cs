@@ -41,7 +41,7 @@ public sealed class LibrarySubtitleLanguagePersistenceTests
         AutoSearchEnabled: true,
         MissingSearchEnabled: true,
         UpgradeSearchEnabled: true,
-        SearchIntervalHours: null,
+        SearchIntervalMinutes: null,
         RetryDelayHours: null,
         MaxItemsPerRun: null);
 

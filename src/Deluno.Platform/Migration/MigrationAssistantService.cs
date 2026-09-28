@@ -305,7 +305,7 @@ public sealed class MigrationAssistantService(
                             AutoSearchEnabled: true,
                             MissingSearchEnabled: true,
                             UpgradeSearchEnabled: true,
-                            SearchIntervalHours: 6,
+                            SearchIntervalMinutes: 360,
                             RetryDelayHours: 3,
                             MaxItemsPerRun: 10),
                         cancellationToken);

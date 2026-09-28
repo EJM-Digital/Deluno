@@ -675,7 +675,7 @@ test.describe("library editing", () => {
       data: {
         name, mediaType: "movies", purpose: "Main library", rootPath: seededRoot,
         autoSearchEnabled: false, missingSearchEnabled: true, upgradeSearchEnabled: true,
-        searchIntervalHours: 12, retryDelayHours: 6, maxItemsPerRun: 10
+        searchIntervalMinutes: 12, retryDelayHours: 6, maxItemsPerRun: 10
       }
     });
     expect(response.ok(), `POST /api/libraries failed: ${response.status()}`).toBe(true);

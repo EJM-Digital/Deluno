@@ -30,7 +30,7 @@ public sealed class SqliteLibrariesRepository(
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
-                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
+                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_minutes,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
                 l.cleanup_mode, l.remove_empty_source_folders,
@@ -399,7 +399,7 @@ public sealed class SqliteLibrariesRepository(
             AutoSearchEnabled: request.AutoSearchEnabled,
             MissingSearchEnabled: request.MissingSearchEnabled,
             UpgradeSearchEnabled: request.UpgradeSearchEnabled,
-            SearchIntervalHours: NormalizePositiveValue(request.SearchIntervalHours, 6),
+            SearchIntervalMinutes: NormalizePositiveValue(request.SearchIntervalMinutes, 360),
             RetryDelayHours: NormalizePositiveValue(request.RetryDelayHours, 24),
             MaxItemsPerRun: NormalizePositiveValue(request.MaxItemsPerRun, 25),
             SearchWindowStartHour: null,
@@ -437,7 +437,7 @@ public sealed class SqliteLibrariesRepository(
                 import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
                 cleanup_mode, remove_empty_source_folders,
                 auto_search_enabled,
-                missing_search_enabled, upgrade_search_enabled, search_interval_hours,
+                missing_search_enabled, upgrade_search_enabled, search_interval_minutes,
                 retry_delay_hours, max_items_per_run,
                 max_missing_items_per_run, max_upgrade_items_per_run, search_window_days,
                 search_window_start_hour, search_window_end_hour,
@@ -448,7 +448,7 @@ public sealed class SqliteLibrariesRepository(
                 @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
                 @cleanupMode, @removeEmptySourceFolders,
                 @autoSearchEnabled,
-                @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalHours,
+                @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalMinutes,
                 @retryDelayHours, @maxItemsPerRun,
                 @maxMissingItemsPerRun, @maxUpgradeItemsPerRun, @searchWindowDays,
                 @searchWindowStartHour, @searchWindowEndHour,
@@ -473,7 +473,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@autoSearchEnabled", item.AutoSearchEnabled ? 1 : 0);
         AddParameter(command, "@missingSearchEnabled", item.MissingSearchEnabled ? 1 : 0);
         AddParameter(command, "@upgradeSearchEnabled", item.UpgradeSearchEnabled ? 1 : 0);
-        AddParameter(command, "@searchIntervalHours", item.SearchIntervalHours);
+        AddParameter(command, "@searchIntervalMinutes", item.SearchIntervalMinutes);
         AddParameter(command, "@retryDelayHours", item.RetryDelayHours);
         AddParameter(command, "@maxItemsPerRun", item.MaxItemsPerRun);
         AddParameter(command, "@maxMissingItemsPerRun", item.MaxMissingItemsPerRun);
@@ -516,7 +516,7 @@ public sealed class SqliteLibrariesRepository(
                     auto_search_enabled = @autoSearchEnabled,
                     missing_search_enabled = @missingSearchEnabled,
                     upgrade_search_enabled = @upgradeSearchEnabled,
-                    search_interval_hours = @searchIntervalHours,
+                    search_interval_minutes = @searchIntervalMinutes,
                     retry_delay_hours = @retryDelayHours,
                     max_items_per_run = @maxItemsPerRun,
                     max_missing_items_per_run = @maxMissingItemsPerRun,
@@ -538,7 +538,7 @@ public sealed class SqliteLibrariesRepository(
             AddParameter(command, "@autoSearchEnabled", request.AutoSearchEnabled ? 1 : 0);
             AddParameter(command, "@missingSearchEnabled", request.MissingSearchEnabled ? 1 : 0);
             AddParameter(command, "@upgradeSearchEnabled", request.UpgradeSearchEnabled ? 1 : 0);
-            AddParameter(command, "@searchIntervalHours", NormalizePositiveValue(request.SearchIntervalHours, 6));
+            AddParameter(command, "@searchIntervalMinutes", NormalizePositiveValue(request.SearchIntervalMinutes, 360));
             AddParameter(command, "@retryDelayHours", NormalizePositiveValue(request.RetryDelayHours, 24));
             AddParameter(command, "@maxItemsPerRun", normalizedLegacyMax);
             AddParameter(command, "@maxMissingItemsPerRun", NormalizePositiveValue(request.MaxMissingItemsPerRun ?? request.MaxItemsPerRun, 25));
@@ -804,7 +804,7 @@ public sealed class SqliteLibrariesRepository(
                     WHEN @qualityProfileId IS NULL THEN quality_profile_id
                     ELSE @qualityProfileId
                 END,
-                search_interval_hours = COALESCE(@searchIntervalHours, search_interval_hours),
+                search_interval_minutes = COALESCE(@searchIntervalMinutes, search_interval_minutes),
                 retry_delay_hours = COALESCE(@retryDelayHours, retry_delay_hours),
                 updated_utc = @updatedUtc
             WHERE id = @id;
@@ -813,7 +813,11 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@id", id);
         AddParameter(command, "@policySetId", policySet?.Id);
         AddParameter(command, "@qualityProfileId", policySet?.QualityProfileId);
-        AddParameter(command, "@searchIntervalHours", policySet?.SearchIntervalOverrideHours);
+        // The Media Plan's override is still expressed in whole hours (out of
+        // scope for #984 — see MediaPlanScenarioVariant), so it is converted
+        // to minutes here, at the one place it crosses into the library's own
+        // minute-granular field.
+        AddParameter(command, "@searchIntervalMinutes", policySet?.SearchIntervalOverrideHours * 60);
         AddParameter(command, "@retryDelayHours", policySet?.RetryDelayOverrideHours);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -845,7 +849,7 @@ public sealed class SqliteLibrariesRepository(
                     WHEN @qualityProfileId IS NULL THEN quality_profile_id
                     ELSE @qualityProfileId
                 END,
-                search_interval_hours = COALESCE(@searchIntervalHours, search_interval_hours),
+                search_interval_minutes = COALESCE(@searchIntervalMinutes, search_interval_minutes),
                 retry_delay_hours = COALESCE(@retryDelayHours, retry_delay_hours),
                 updated_utc = @updatedUtc
             WHERE default_policy_set_id = @policySetId;
@@ -853,7 +857,7 @@ public sealed class SqliteLibrariesRepository(
 
         AddParameter(command, "@policySetId", policySet.Id);
         AddParameter(command, "@qualityProfileId", policySet.QualityProfileId);
-        AddParameter(command, "@searchIntervalHours", policySet.SearchIntervalOverrideHours);
+        AddParameter(command, "@searchIntervalMinutes", policySet.SearchIntervalOverrideHours * 60);
         AddParameter(command, "@retryDelayHours", policySet.RetryDelayOverrideHours);
         AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
         return await command.ExecuteNonQueryAsync(cancellationToken);
@@ -1068,7 +1072,7 @@ public sealed class SqliteLibrariesRepository(
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
                 l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
-                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_hours,
+                l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_minutes,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
                 l.cleanup_mode, l.remove_empty_source_folders,
@@ -1379,7 +1383,7 @@ public sealed class SqliteLibrariesRepository(
             AutoSearchEnabled: reader.GetInt64(16) == 1,
             MissingSearchEnabled: reader.GetInt64(17) == 1,
             UpgradeSearchEnabled: reader.GetInt64(18) == 1,
-            SearchIntervalHours: reader.GetInt32(19),
+            SearchIntervalMinutes: reader.GetInt32(19),
             RetryDelayHours: reader.GetInt32(20),
             MaxItemsPerRun: reader.GetInt32(21),
             SearchWindowStartHour: reader.IsDBNull(22) ? null : reader.GetInt32(22),

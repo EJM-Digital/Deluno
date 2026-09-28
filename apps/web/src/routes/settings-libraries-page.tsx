@@ -28,6 +28,7 @@ import { toast } from "../components/shell/toaster";
 import { librarySetupNavItems } from "../components/app/settings-shell";
 import { emptyPlatformSettingsSnapshot, fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type QualityProfileItem, type SubtitleLanguageOption, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { formatSearchInterval } from "../lib/search-interval-format";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -179,7 +180,7 @@ export function SettingsLibrariesPage() {
             autoSearchEnabled: false,
             missingSearchEnabled: false,
             upgradeSearchEnabled: false,
-            searchIntervalHours: 12,
+            searchIntervalMinutes: 360,
             retryDelayHours: 6,
             maxItemsPerRun: 10
           })
@@ -308,7 +309,7 @@ export function SettingsLibrariesPage() {
                     secondary={
                       hasSearchSelection ? (
                         <>
-                          {library.autoSearchEnabled ? `Every ${library.searchIntervalHours} h` : "Paused"} · <Link to={`/search-cycles?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Manage</Link>
+                          {library.autoSearchEnabled ? formatSearchInterval(library.searchIntervalMinutes) : "Paused"} · <Link to={`/search-cycles?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Manage</Link>
                         </>
                       ) : (
                         <Link to={`/search-cycles?libraryId=${encodeURIComponent(library.id)}`} onClick={(event) => event.stopPropagation()} className="text-info hover:underline">Configure searches</Link>
@@ -528,7 +529,7 @@ function automationPayload(library: LibraryItem, settings: Pick<LibraryItem, "au
     autoSearchEnabled: settings.autoSearchEnabled,
     missingSearchEnabled: settings.missingSearchEnabled,
     upgradeSearchEnabled: settings.upgradeSearchEnabled,
-    searchIntervalHours: library.searchIntervalHours,
+    searchIntervalMinutes: library.searchIntervalMinutes,
     retryDelayHours: library.retryDelayHours,
     maxItemsPerRun: library.maxItemsPerRun,
     searchWindowStartHour: library.searchWindowStartHour,

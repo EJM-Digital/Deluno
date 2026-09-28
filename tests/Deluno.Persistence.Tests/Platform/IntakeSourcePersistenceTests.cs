@@ -46,7 +46,7 @@ public sealed class IntakeSourcePersistenceTests
                 AutoSearchEnabled: true,
                 MissingSearchEnabled: true,
                 UpgradeSearchEnabled: true,
-                SearchIntervalHours: 6,
+                SearchIntervalMinutes: 6,
                 RetryDelayHours: 24,
                 MaxItemsPerRun: 25),
             CancellationToken.None);

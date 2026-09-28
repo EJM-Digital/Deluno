@@ -100,7 +100,7 @@ public sealed class SeasonPackLeftoversDeleteTests
             autoSearchEnabled = false,
             missingSearchEnabled = false,
             upgradeSearchEnabled = false,
-            searchIntervalHours = (int?)null,
+            searchIntervalMinutes = (int?)null,
             retryDelayHours = (int?)null,
             maxItemsPerRun = (int?)null
         });

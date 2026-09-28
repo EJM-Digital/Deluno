@@ -188,7 +188,7 @@ public sealed class LibraryMediaProbeJobHandlerTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 12,
             MaxItemsPerRun: 50,
             SearchWindowStartHour: null,

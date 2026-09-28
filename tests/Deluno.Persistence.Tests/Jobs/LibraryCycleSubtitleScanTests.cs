@@ -224,7 +224,7 @@ public sealed class LibraryCycleSubtitleScanTests
         var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-27T01:00:00Z"));
         var store = await CreateStoreAsync(storage, timeProvider);
         // Twelve hours between indexer visits, as the rig had it.
-        var library = Library(wantsSubtitles: true) with { AutoSearchEnabled = false, SearchIntervalHours = 12 };
+        var library = Library(wantsSubtitles: true) with { AutoSearchEnabled = false, SearchIntervalMinutes = 12 };
 
         await store.PlanLibrarySearchesAsync([library], CancellationToken.None);
         Assert.Single(await ScanJobsAsync(store));
@@ -318,7 +318,7 @@ public sealed class LibraryCycleSubtitleScanTests
             AutoSearchEnabled: true,
             MissingSearchEnabled: true,
             UpgradeSearchEnabled: true,
-            SearchIntervalHours: 6,
+            SearchIntervalMinutes: 6,
             RetryDelayHours: 24,
             MaxItemsPerRun: 25,
             SearchWindowStartHour: null,
