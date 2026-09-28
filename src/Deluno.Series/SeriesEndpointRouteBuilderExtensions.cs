@@ -955,6 +955,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IBlockedReleaseRepository blockedReleaseRepository,
             IPlatformSettingsRepository platformSettings,
+            IOutboundNotificationService outboundNotificationService,
+            INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1020,14 +1022,29 @@ public static class SeriesEndpointRouteBuilderExtensions
                 Summary = outcome.Length > 0 ? $"{result.Summary} {outcome}" : result.Summary
             };
 
+            var forceRedownloadMessage = $"Someone forced a re-download of {item.Title}. {answer.Summary}";
+            var forceRedownloadDetails = JsonSerializer.Serialize(new { answer.Cleared, answer.CouldNotClear, answer.SearchStarted });
             await activityFeed.RecordActivityAsync(
                 "acquisition.override",
-                $"Someone forced a re-download of {item.Title}. {answer.Summary}",
-                JsonSerializer.Serialize(new { answer.Cleared, answer.CouldNotClear, answer.SearchStarted }),
+                forceRedownloadMessage,
+                forceRedownloadDetails,
                 null,
                 "tv",
                 id,
                 cancellationToken);
+            // #966: forced import is one of the recovery/cleanup actions
+            // that already landed in Activity but never reached the
+            // outbound path. Gated by its own preference, off by default.
+            var forcedImportPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (forcedImportPreferences.ForcedImportEnabled)
+            {
+                await outboundNotificationService.DispatchAsync(
+                    "acquisition.override",
+                    $"Forced re-download: {item.Title}",
+                    forceRedownloadMessage,
+                    forceRedownloadDetails,
+                    cancellationToken);
+            }
 
             return Results.Ok(answer);
         });

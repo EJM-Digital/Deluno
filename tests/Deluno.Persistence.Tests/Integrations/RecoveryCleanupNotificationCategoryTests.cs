@@ -9,6 +9,7 @@ using Deluno.Libraries.Data;
 using Deluno.Notifications;
 using Deluno.Notifications.Contracts;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -104,6 +105,35 @@ public sealed class RecoveryCleanupNotificationCategoryTests
         Assert.DoesNotContain("download.orphan.removed", world.Outbound.DispatchedCategories);
     }
 
+    /// <summary>
+    /// #966: the stalled-download category (download.health.remediated,
+    /// StalledDownloadHandledEnabled) already dispatched, but had no
+    /// fires/suppressed test of its own.
+    /// </summary>
+    [Fact]
+    public async Task A_stalled_download_dispatches_download_health_remediated_when_the_toggle_is_on()
+    {
+        using var storage = TestStorage.Create();
+        var world = await World.CreateAsync(storage, queueItemRemovedEnabled: false, stalledDownloadHandledEnabled: true);
+
+        var report = await world.RemediateStalledDownloadAsync();
+
+        Assert.Equal(1, report.ReleasesRefused);
+        Assert.Contains("download.health.remediated", world.Outbound.DispatchedCategories);
+    }
+
+    [Fact]
+    public async Task A_stalled_download_stays_silent_when_the_toggle_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var world = await World.CreateAsync(storage, queueItemRemovedEnabled: false, stalledDownloadHandledEnabled: false);
+
+        var report = await world.RemediateStalledDownloadAsync();
+
+        Assert.Equal(1, report.ReleasesRefused);
+        Assert.DoesNotContain("download.health.remediated", world.Outbound.DispatchedCategories);
+    }
+
     private sealed class RecordingOutboundNotificationService : IOutboundNotificationService
     {
         public List<string> DispatchedCategories { get; } = [];
@@ -178,6 +208,10 @@ public sealed class RecoveryCleanupNotificationCategoryTests
 
         public required string ClientId { get; init; }
 
+        public required string ClientName { get; init; }
+
+        public required FixedTimeProvider Time { get; init; }
+
         public required ILibrariesRepository Libraries { get; init; }
 
         public required IPlatformSettingsRepository Settings { get; init; }
@@ -193,7 +227,8 @@ public sealed class RecoveryCleanupNotificationCategoryTests
         public static async Task<World> CreateAsync(
             TestStorage storage,
             bool queueItemRemovedEnabled = true,
-            bool orphanedDownloadRemovedEnabled = false)
+            bool orphanedDownloadRemovedEnabled = false,
+            bool stalledDownloadHandledEnabled = false)
         {
             var now = DateTimeOffset.Parse("2026-09-27T09:00:00Z");
             var time = new FixedTimeProvider(now);
@@ -223,6 +258,7 @@ public sealed class RecoveryCleanupNotificationCategoryTests
             var preferences = await notificationService.GetPreferencesAsync(CancellationToken.None);
             preferences.QueueItemRemovedEnabled = queueItemRemovedEnabled;
             preferences.OrphanedDownloadRemovedEnabled = orphanedDownloadRemovedEnabled;
+            preferences.StalledDownloadHandledEnabled = stalledDownloadHandledEnabled;
             await notificationService.UpdatePreferencesAsync(preferences, CancellationToken.None);
 
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
@@ -253,6 +289,8 @@ public sealed class RecoveryCleanupNotificationCategoryTests
                 Outbound = outbound,
                 Preferences = notificationService,
                 ClientId = client.Id,
+                ClientName = client.Name,
+                Time = time,
                 Libraries = libraries,
                 Settings = settings,
                 Jobs = jobs,
@@ -260,6 +298,26 @@ public sealed class RecoveryCleanupNotificationCategoryTests
                 Processors = processors,
                 Kept = kept
             };
+        }
+
+        /// <summary>
+        /// #966: mirrors the stalled-download scenario in
+        /// AStoppedDownloadIsRefusedOnTheBlocklistTests -- a download stalled
+        /// past the strike threshold, so remediation refuses the release and
+        /// (when the toggle is on) dispatches download.health.remediated.
+        /// </summary>
+        public Task<DownloadHealthRemediationReport> RemediateStalledDownloadAsync()
+        {
+            var finding = new DownloadHealthFinding("critical", DownloadHealthStrikes.ClientStalled, "Stopped", "Queue status: stalled.", "Review", false, false, StrikeCount: 3);
+            var item = new DownloadQueueItem(
+                QueueItemId, ClientId, ClientName, "qbittorrent", "movie", "Some Movie", Release, "movies",
+                DownloadQueueStatuses.Stalled, 15, 0, 0, 1024, 128, 0, Indexer, null, Time.GetUtcNow(), HealthFindings: [finding]);
+            var snapshot = new DownloadClientTelemetrySnapshot(
+                ClientId, ClientName, "qbittorrent", null, "healthy", null,
+                new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "none"),
+                new DownloadTelemetrySummary(0, 0, 0, 1, 0, 0, 0), [item], [], Time.GetUtcNow());
+            return Service.RunConfiguredHealthRemediationAsync(
+                new DownloadTelemetryOverview(snapshot.Summary, [snapshot], Time.GetUtcNow()), CancellationToken.None);
         }
     }
 }

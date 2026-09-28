@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
+using Deluno.Notifications;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Recovery.Services;
@@ -39,7 +40,9 @@ public sealed class UnmatchedImportGiveUpService(
     // blocklists releases as before -- only the search-for-another step
     // (#888) is skipped when either is missing.
     IJobScheduler? jobScheduler = null,
-    ILibrariesRepository? librariesRepository = null)
+    ILibrariesRepository? librariesRepository = null,
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationPreferences = null)
     : IUnmatchedImportGiveUpService
 {
     public async Task<int> RunAsync(CancellationToken cancellationToken)
@@ -166,18 +169,36 @@ public sealed class UnmatchedImportGiveUpService(
             searchStarted ? "started a new search" : null
         }.Where(part => part is not null));
 
+        var giveUpMessage = summary.Length > 0
+            ? searchStarted
+                ? $"Gave up waiting to match {title} by hand: {summary}."
+                : $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
+            : $"Gave up waiting to match {title} by hand, but nothing was left to clean up.";
+        var giveUpDetails = JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted });
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.unmatched-given-up",
-            summary.Length > 0
-                ? searchStarted
-                    ? $"Gave up waiting to match {title} by hand: {summary}."
-                    : $"Gave up waiting to match {title} by hand: {summary}. A new search will run on its usual schedule."
-                : $"Gave up waiting to match {title} by hand, but nothing was left to clean up.",
-            JsonSerializer.Serialize(new { CaseId = caseId, Title = title, DeletedFile = deletedFile, RemovedFromClient = removedFromClient, Blocklisted = blocklisted, SearchStarted = searchStarted }),
+            giveUpMessage,
+            giveUpDetails,
             null,
             entityKind,
             null,
             cancellationToken);
+        // #966: gated by its own preference, off by default (#936), the
+        // same shape as every other recovery/cleanup dispatch (#858).
+        if (outboundNotificationService is not null)
+        {
+            var enabled = notificationPreferences is null ||
+                (await notificationPreferences.GetPreferencesAsync(cancellationToken)).UnmatchedImportGivenUpEnabled;
+            if (enabled)
+            {
+                await outboundNotificationService.DispatchAsync(
+                    "filesystem.import.unmatched-given-up",
+                    $"Gave up waiting to match: {title}",
+                    giveUpMessage,
+                    giveUpDetails,
+                    cancellationToken);
+            }
+        }
 
         return true;
     }
