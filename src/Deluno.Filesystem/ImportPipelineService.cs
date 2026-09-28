@@ -55,6 +55,13 @@ public sealed partial class ImportPipelineService(
     // #662: queued, never awaited inline - a slow or down media server must
     // never hold up or fail an import that already landed.
     IJobScheduler? mediaServerJobScheduler = null,
+    // #954: the same job scheduler ReplacementSearchQueuer's other callers
+    // use, so a release blocklisted at import gets a targeted search queued
+    // for it immediately rather than waiting for the library's own next
+    // missing/upgrade cycle. A separate parameter from mediaServerJobScheduler
+    // only because that one's name and doc comment are about media-server
+    // refreshes specifically; both resolve to the same singleton in DI.
+    IJobScheduler? jobScheduler = null,
     // Only a test passes this, to say "do not wait" without waiting for it.
     TimeSpan? settleWindow = null,
     INotificationService? notificationService = null,
@@ -2422,6 +2429,20 @@ public sealed partial class ImportPipelineService(
                     proposing ? BlockedReleaseStates.Proposed : BlockedReleaseStates.Refused),
                 cancellationToken);
 
+            // #954: a release refused outright (never one only proposed --
+            // nothing has happened yet there, and nothing will until somebody
+            // answers) is a bad release Deluno already knows will fail the
+            // same way again, so the title it was for is searched again at
+            // once rather than left to the library's next scheduled pass.
+            var searchQueued = false;
+            if (!proposing && jobScheduler is not null && ReplacementSearchQueuer.Supports(dispatch.EntityType))
+            {
+                var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                    .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
+                await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
+                searchQueued = true;
+            }
+
             // Said out loud, because a refusal nobody is told about is the
             // behaviour this whole feature replaces. A proposal is said out
             // loud for the opposite reason: nothing has happened yet, and
@@ -2430,7 +2451,9 @@ public sealed partial class ImportPipelineService(
                 proposing ? "release.block.proposed" : "release.blocked",
                 proposing
                     ? $"{dispatch.ReleaseName} failed and you asked to be consulted. {summary} Nothing has changed — decide on the blocklist."
-                    : $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and you can undo this on the blocklist.",
+                    : searchQueued
+                        ? $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and a replacement search has started. You can undo the block on the blocklist."
+                        : $"Deluno will not use {dispatch.ReleaseName} again. {summary} Future searches skip it and say so, and you can undo this on the blocklist.",
                 null,
                 null,
                 dispatch.MediaType == "tv" ? "series" : "movie",
