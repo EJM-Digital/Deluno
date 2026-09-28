@@ -1637,6 +1637,13 @@ public sealed partial class ImportPipelineService(
                         failureReason: null,
                         cancellationToken);
                 }
+
+                // #950: a season pack never asked the client to let go of
+                // itself once its matched episodes imported, even with
+                // "Remove completed" on for that client. A pack gets the
+                // same removal a single file already gets, whether every
+                // episode matched or the pack left some behind.
+                await RemoveCompletedDownloadIfConfiguredAsync(request.DispatchId, cancellationToken);
             }
 
             // #892: a copy import's source is checked and cleaned up once the
