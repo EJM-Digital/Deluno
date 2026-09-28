@@ -88,6 +88,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, SystemTimeHealthCheck>();
         services.AddScoped<IHealthCheck, MediaServerRefreshHealthCheck>();
         services.AddScoped<IHealthCheck, DownloadHardlinkHealthCheck>();
+        services.AddScoped<IHealthCheck, ClientScriptFailureHealthCheck>();
         services.AddScoped<IHealthCheck, AllowedHostsHealthCheck>();
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.SystemTime, client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.Proxy, client => client.Timeout = TimeSpan.FromSeconds(15));
