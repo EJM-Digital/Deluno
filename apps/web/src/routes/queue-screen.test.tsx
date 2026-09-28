@@ -417,6 +417,50 @@ describe("Manual import: scan a folder", () => {
     expect(body.items).toHaveLength(1);
     expect(body.items[0].preview.sourcePath).toContain("Arrival");
   });
+
+  // #961: a row Deluno could not guess gets a title/year typed in by hand, then
+  // Re-check must send the correction and pick up the new match.
+  it("re-checks a single row after its title and year are corrected by hand", async () => {
+    authedFetch.mockImplementation((path: string) => {
+      if (path === "/api/filesystem/import/scan-folder") return jsonResponse(scanResponse());
+      if (path === "/api/filesystem/import/preview") {
+        return jsonResponse({
+          ...packPreview(true),
+          pack: null,
+          sourcePath: "D:/Downloads/Batch/unknown_file.mkv",
+          destinationPath: "C:/Movies/Arrival (2016)/Arrival (2016).mkv"
+        });
+      }
+      return jsonResponse({});
+    });
+
+    await openManualImportInFolderMode();
+
+    fireEvent.change(screen.getByPlaceholderText("D:/Downloads/Some.Release.2024"), { target: { value: "D:/Downloads/Batch" } });
+    fireEvent.click(screen.getByRole("button", { name: "Scan folder" }));
+    await waitFor(() => expect(screen.getByText("unknown_file.mkv")).toBeInTheDocument());
+    expect(screen.getByText(/Deluno could not guess a title/)).toBeInTheDocument();
+
+    const titleInputs = screen.getAllByLabelText("Title");
+    const yearInputs = screen.getAllByLabelText(/^Year/);
+    // The unmatched row (unknown_file.mkv) is the second one scanned.
+    fireEvent.change(titleInputs[1], { target: { value: "Arrival" } });
+    fireEvent.change(yearInputs[1], { target: { value: "2016" } });
+
+    const recheckButtons = screen.getAllByRole("button", { name: /Re-check/ });
+    fireEvent.click(recheckButtons[1]);
+
+    await waitFor(() => expect(screen.getByText("C:/Movies/Arrival (2016)/Arrival (2016).mkv")).toBeInTheDocument());
+    // The now-matched row no longer shows the "could not guess" warning.
+    expect(screen.queryByText(/Deluno could not guess a title/)).not.toBeInTheDocument();
+
+    const previewCall = authedFetch.mock.calls.find(([path]) => path === "/api/filesystem/import/preview");
+    expect(previewCall).toBeTruthy();
+    const body = JSON.parse((previewCall![1] as RequestInit).body as string);
+    expect(body.sourcePath).toBe("D:/Downloads/Batch/unknown_file.mkv");
+    expect(body.title).toBe("Arrival");
+    expect(body.year).toBe(2016);
+  });
 });
 
 /**
