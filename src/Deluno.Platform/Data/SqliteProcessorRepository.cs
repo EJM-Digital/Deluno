@@ -196,6 +196,109 @@ public sealed class SqliteProcessorRepository(
         return await GetProcessorConnectionAsync(connection, id, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ProcessorPathMappingItem>> ListProcessorPathMappingsAsync(
+        string processorConnectionId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var items = new List<ProcessorPathMappingItem>();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT id, processor_connection_id, deluno_path, processor_path, is_enabled, priority, created_utc, updated_utc
+            FROM processor_path_mappings
+            WHERE processor_connection_id = @processorConnectionId
+            ORDER BY priority ASC, LENGTH(processor_path) DESC, processor_path ASC;
+            """;
+        AddParameter(command, "@processorConnectionId", processorConnectionId.Trim());
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(new ProcessorPathMappingItem(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt64(4) == 1,
+                reader.GetInt32(5),
+                ParseTimestamp(reader.GetString(6)),
+                ParseTimestamp(reader.GetString(7))));
+        }
+
+        return items;
+    }
+
+    public async Task<ProcessorPathMappingItem?> CreateProcessorPathMappingAsync(
+        string processorConnectionId,
+        CreateProcessorPathMappingRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        var owner = await GetProcessorConnectionAsync(connection, processorConnectionId, cancellationToken);
+        if (owner is null)
+        {
+            return null;
+        }
+
+        var delunoPath = NormalizePath(request.DelunoPath);
+        var processorPath = NormalizePath(request.ProcessorPath);
+        if (string.IsNullOrWhiteSpace(delunoPath) || string.IsNullOrWhiteSpace(processorPath))
+        {
+            return null;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var item = new ProcessorPathMappingItem(
+            Guid.CreateVersion7().ToString("N"),
+            owner.Id,
+            delunoPath,
+            processorPath,
+            request.IsEnabled,
+            request.Priority is >= 1 ? request.Priority.Value : 10,
+            now,
+            now);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO processor_path_mappings (
+                id, processor_connection_id, deluno_path, processor_path, is_enabled, priority, created_utc, updated_utc)
+            VALUES (@id, @processorConnectionId, @delunoPath, @processorPath, @isEnabled, @priority, @createdUtc, @updatedUtc);
+            """;
+        AddParameter(command, "@id", item.Id);
+        AddParameter(command, "@processorConnectionId", item.ProcessorConnectionId);
+        AddParameter(command, "@delunoPath", item.DelunoPath);
+        AddParameter(command, "@processorPath", item.ProcessorPath);
+        AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
+        AddParameter(command, "@priority", item.Priority);
+        AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
+        AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return item;
+    }
+
+    public async Task<bool> DeleteProcessorPathMappingAsync(
+        string processorConnectionId,
+        string id,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "DELETE FROM processor_path_mappings WHERE id = @id AND processor_connection_id = @processorConnectionId;";
+        AddParameter(command, "@id", id.Trim());
+        AddParameter(command, "@processorConnectionId", processorConnectionId.Trim());
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task<ProcessorHandoffItem> EnsureProcessorHandoffAsync(
         CreateProcessorHandoffRequest request,
         CancellationToken cancellationToken)

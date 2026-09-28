@@ -3,6 +3,7 @@ using Deluno.Integrations.Processors;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
 
 namespace Deluno.Worker.HealthChecks.Checks;
 
@@ -70,9 +71,21 @@ public sealed class ProcessorHealthCheck(
             }
 
             var support = await processorConnections.GetStatusSupportAsync(connection, cancellationToken);
+
+            // The processor names its watched folder in its own filesystem
+            // namespace. Translate it back to Deluno's before comparing
+            // against the library's processed-output folder (#962), the same
+            // as a download client's reported save folder already is in
+            // FolderChainService -- otherwise a correctly mapped setup reads
+            // as a folder mismatch here.
+            var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+            var watchedPath = mappings.Count > 0
+                ? ProcessorPathMappingTranslator.ToDeluno(support.WatchedPath, mappings) ?? support.WatchedPath
+                : support.WatchedPath;
+
             foreach (var library in servedLibraries)
             {
-                outcomes.Add(BuildWatchedFolderOutcome(connection, library, support));
+                outcomes.Add(BuildWatchedFolderOutcome(connection, library, support with { WatchedPath = watchedPath }));
             }
         }
 

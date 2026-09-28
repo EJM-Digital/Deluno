@@ -12,6 +12,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
+using Deluno.Platform.Processing;
 using Deluno.Platform;
 using Deluno.Connections.Data;
 using Deluno.Recovery.Contracts;
@@ -1124,7 +1125,14 @@ public sealed class WorkPlanner(
                 var connection = await processorRepository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken);
                 if (connection is { IsEnabled: true } && handoff.Status == "waiting")
                 {
-                    submission = await processorConnectionService.SubmitAsync(connection, handoff, cancellationToken);
+                    // Deluno's own view of sourcePath, translated to the
+                    // processor's (#962). The stored hand-off keeps Deluno's
+                    // path; only what goes out over the wire changes.
+                    var pathMappings = await processorRepository.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+                    var outboundHandoff = pathMappings.Count > 0
+                        ? handoff with { SourcePath = ProcessorPathMappingTranslator.ToProcessor(handoff.SourcePath, pathMappings) ?? handoff.SourcePath }
+                        : handoff;
+                    submission = await processorConnectionService.SubmitAsync(connection, outboundHandoff, cancellationToken);
                     currentHandoff = await processorRepository.UpdateProcessorHandoffAsync(
                         handoff.Id,
                         submission.Status,

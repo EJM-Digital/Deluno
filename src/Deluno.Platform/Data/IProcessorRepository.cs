@@ -91,4 +91,19 @@ public interface IProcessorRepository
         string status,
         string? message,
         CancellationToken cancellationToken);
+
+    /// <summary>Every path pair configured for this processor connection (#962), highest priority first.</summary>
+    Task<IReadOnlyList<ProcessorPathMappingItem>> ListProcessorPathMappingsAsync(
+        string processorConnectionId,
+        CancellationToken cancellationToken);
+
+    Task<ProcessorPathMappingItem?> CreateProcessorPathMappingAsync(
+        string processorConnectionId,
+        CreateProcessorPathMappingRequest request,
+        CancellationToken cancellationToken);
+
+    Task<bool> DeleteProcessorPathMappingAsync(
+        string processorConnectionId,
+        string id,
+        CancellationToken cancellationToken);
 }
