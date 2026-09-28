@@ -8,6 +8,8 @@ vi.mock("../lib/api", async (importOriginal) => ({
 
 const {
   AUTOMATION_QUESTIONS,
+  SETUP_STAGE_LABELS,
+  STEPS,
   buildAutomationSettingsPayload,
   buildIndexerAutomationFields,
   buildLibraryAutomationFields,
@@ -15,10 +17,12 @@ const {
   hasAnsweredAllAutomationQuestions,
   resolveDraftFormatGoal,
   saveAllowedHosts,
-  saveDangerousFileCheck
+  saveDangerousFileCheck,
+  saveUpdatePreferences
 } = await import("./setup-guide-page");
 type AutomationChoices = Parameters<typeof buildAutomationSettingsPayload>[0];
 type SecurityForm = Parameters<typeof saveAllowedHosts>[0];
+type UpdatesForm = Parameters<typeof saveUpdatePreferences>[0];
 
 const UNANSWERED: AutomationChoices = {
   searchMissingTitles: null,
@@ -288,6 +292,63 @@ describe("setup guide dangerous-file check question (#944)", () => {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...loadedWithPatterns, enabled: true })
+    });
+  });
+});
+
+describe("setup guide two-stage journey (#1034)", () => {
+  it("walks Stage 1 (this computer and you) before Stage 2 (Deluno itself)", () => {
+    const stages = STEPS.map((step) => step.stage);
+    const firstStage2 = stages.indexOf(2);
+    expect(firstStage2).toBeGreaterThan(0);
+    expect(stages.slice(0, firstStage2).every((stage) => stage === 1)).toBe(true);
+    expect(stages.slice(firstStage2).every((stage) => stage === 2)).toBe(true);
+  });
+
+  it("asks every Stage 1 question #1034 lists, in order, before anything about media", () => {
+    const stage1Ids = STEPS.filter((step) => step.stage === 1).map((step) => step.id);
+    expect(stage1Ids).toEqual(["account", "timeRegion", "signIn", "addresses", "network", "updates"]);
+  });
+
+  it("asks Stage 2's media questions in the guide's existing order", () => {
+    const stage2Ids = STEPS.filter((step) => step.stage === 2).map((step) => step.id);
+    expect(stage2Ids).toEqual(["mode", "folders", "quality", "services", "automation", "finish"]);
+  });
+
+  it("names both stages for the progress rail", () => {
+    expect(SETUP_STAGE_LABELS[1]).toBe("This computer and you");
+    expect(SETUP_STAGE_LABELS[2]).toBe("Deluno itself");
+  });
+});
+
+describe("setup guide Updates step (#1034, #936)", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+  });
+
+  it("leaving the question unanswered saves nothing", async () => {
+    await saveUpdatePreferences({ updateAutomatically: null } as unknown as UpdatesForm, { mode: "notify-only", channel: "stable", autoCheck: true });
+
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("answering Yes turns automatic updates on and keeps checking, on the existing channel", async () => {
+    await saveUpdatePreferences({ updateAutomatically: true } as unknown as UpdatesForm, { mode: "notify-only", channel: "beta", autoCheck: false });
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/updates/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "download-apply-on-restart", channel: "beta", autoCheck: true })
+    });
+  });
+
+  it("answering No asks first instead of applying automatically, but still checks", async () => {
+    await saveUpdatePreferences({ updateAutomatically: false } as unknown as UpdatesForm, { mode: "download-apply-on-restart", channel: "stable", autoCheck: true });
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/updates/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "notify-only", channel: "stable", autoCheck: true })
     });
   });
 });

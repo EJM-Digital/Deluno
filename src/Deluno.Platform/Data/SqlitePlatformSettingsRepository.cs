@@ -50,9 +50,9 @@ public sealed class SqlitePlatformSettingsRepository(
         CancellationToken cancellationToken)
     {
         var updatedUtc = timeProvider.GetUtcNow();
-        // #939 added a Security step before Finish, so the setup guide now
-        // has 7 steps (indices 0-6) and the clamp moved from 5 to 6.
-        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 6);
+        // #1034 split the guide into two stages, so it now has 12 steps
+        // (indices 0-11) and the clamp moved from 6 to 11.
+        var lastCompletedStep = Math.Clamp(request.LastCompletedStep, 0, 11);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -721,9 +721,9 @@ public sealed class SqlitePlatformSettingsRepository(
 
     private static SetupProgressItem CreateSetupProgress(IReadOnlyDictionary<string, string> settings)
     {
-        // #939: kept in step with the write-side clamp in SaveSetupProgressAsync.
+        // #1034: kept in step with the write-side clamp in SaveSetupProgressAsync.
         var lastCompletedStep = int.TryParse(GetValue(settings, "setup.lastCompletedStep"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? Math.Clamp(parsed, 0, 6)
+            ? Math.Clamp(parsed, 0, 11)
             : 0;
         var isSkipped = string.Equals(GetValue(settings, "setup.isSkipped"), "true", StringComparison.OrdinalIgnoreCase);
         var isCompleted = string.Equals(GetValue(settings, "setup.isCompleted"), "true", StringComparison.OrdinalIgnoreCase);

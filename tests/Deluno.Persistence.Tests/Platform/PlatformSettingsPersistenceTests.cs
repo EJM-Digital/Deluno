@@ -742,9 +742,9 @@ public sealed class PlatformSettingsPersistenceTests
             CancellationToken.None);
         var loaded = await repository.GetSetupProgressAsync(CancellationToken.None);
 
-        // #939 added a Security step before Finish, so the setup guide now
-        // has 7 steps (indices 0-6) and the clamp moved from 5 to 6.
-        Assert.Equal(6, saved.LastCompletedStep);
+        // #1034 split the guide into two stages, so it now has 12 steps
+        // (indices 0-11) and the clamp moved from 6 to 11.
+        Assert.Equal(11, saved.LastCompletedStep);
         Assert.True(saved.IsCompleted);
         Assert.Equal(saved, loaded);
     }

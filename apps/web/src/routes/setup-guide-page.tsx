@@ -4,16 +4,21 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Clock,
   DownloadCloud,
   FolderTree,
+  Globe,
   Loader2,
+  MonitorSmartphone,
   Plus,
   RadioTower,
+  RefreshCw,
   Rocket,
   Search,
   Settings2,
   ShieldCheck,
   Sparkles,
+  UserCircle2,
   Wifi,
   X,
   type LucideIcon
@@ -39,25 +44,45 @@ import {
   type AllowedHostsOverview,
   type LocalNetworkAuthOverview,
   type ContentBlocklistSettings,
+  type UpdatePreferencesResponse,
   emptyContentBlocklistSettings,
   readErrorText } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
-import { authedFetch } from "../lib/use-auth";
+import { authedFetch, useAuth } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
-import { Field } from "../components/ui/field";
+import { Field, FieldRow } from "../components/ui/field";
 import { PathInput } from "../components/ui/path-input";
 import { Select } from "../components/ui/select";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
+import { LanAccessNotice } from "../components/app/lan-access-notice";
 
-type StepId = "mode" | "folders" | "quality" | "services" | "automation" | "security" | "finish";
+/**
+ * #1034: two stages. Stage 1 ("This computer and you") covers the computer
+ * and how it is reached, before anything about media. Stage 2 ("Deluno
+ * itself") is the library/media configuration the guide has always asked.
+ */
+type StepId =
+  | "account"
+  | "timeRegion"
+  | "signIn"
+  | "addresses"
+  | "network"
+  | "updates"
+  | "mode"
+  | "folders"
+  | "quality"
+  | "services"
+  | "automation"
+  | "finish";
 
 /** One Yes/No question on the Automation step. Nothing is pre-selected (#936). */
 type AutomationChoiceKey =
@@ -154,6 +179,7 @@ interface SetupGuideLoaderData {
   allowedHosts: AllowedHostsOverview;
   contentBlocklist: ContentBlocklistSettings;
   localNetworkAuth: LocalNetworkAuthOverview;
+  updatePreferences: UpdatePreferencesResponse;
 }
 
 interface GuideForm {
@@ -186,6 +212,15 @@ interface GuideForm {
   /** #993: "Skip sign-in for devices on your home network?" Unanswered by default (#936), same as Automation. */
   skipSignInLocalNetwork: boolean | null;
   localNetworkAllowList: string[];
+  /** #1034 Stage 1 "Time and region": detected from the browser/OS, confirm or change. Reuses the same platform-settings fields Settings -> Interface already edits. */
+  uiLanguage: string;
+  calendarFirstDayOfWeek: string;
+  shortDateFormat: string;
+  longDateFormat: string;
+  timeFormat: string;
+  timezone: string;
+  /** #1034 Stage 1 "Updates": unanswered by default (#936). Reuses /api/updates/preferences. */
+  updateAutomatically: boolean | null;
 }
 
 type ServiceTestState = {
@@ -274,14 +309,31 @@ function toSetupDraft(form: GuideForm) {
   };
 }
 
-const STEPS: { id: StepId; label: string; copy: string }[] = [
-  { id: "mode", label: "Your library", copy: "Choose what you want Deluno to manage." },
-  { id: "folders", label: "Folders", copy: "Tell Deluno where your media lives." },
-  { id: "quality", label: "Library Profiles", copy: "Choose the quality and release experience you want." },
-  { id: "services", label: "Find & Download", copy: "Connect search sources and downloads when you are ready." },
-  { id: "automation", label: "Automation", copy: "What should Deluno do by itself?" },
-  { id: "security", label: "Security", copy: "Choose which addresses Deluno should answer on." },
-  { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard." }
+export type SetupStage = 1 | 2;
+
+export const SETUP_STAGE_LABELS: Record<SetupStage, string> = {
+  1: "This computer and you",
+  2: "Deluno itself"
+};
+
+/**
+ * #1034: Stage 1 covers the computer and how it is reached, before anything
+ * about media. Stage 2 is the media/library configuration the guide has
+ * always asked. The progress rail groups these steps under both headings.
+ */
+export const STEPS: { id: StepId; label: string; copy: string; stage: SetupStage }[] = [
+  { id: "account", label: "Your account", copy: "The account you just created.", stage: 1 },
+  { id: "timeRegion", label: "Time and region", copy: "Confirm the timezone, date, time and language Deluno should use.", stage: 1 },
+  { id: "signIn", label: "How you sign in", copy: "Always sign in, or skip sign-in for devices on your home network.", stage: 1 },
+  { id: "addresses", label: "Addresses", copy: "Choose which addresses Deluno should answer on.", stage: 1 },
+  { id: "network", label: "Other devices", copy: "Whether other devices on your network may reach Deluno.", stage: 1 },
+  { id: "updates", label: "Updates", copy: "Update automatically, or ask you first.", stage: 1 },
+  { id: "mode", label: "Your library", copy: "Choose what you want Deluno to manage.", stage: 2 },
+  { id: "folders", label: "Folders", copy: "Tell Deluno where your media lives.", stage: 2 },
+  { id: "quality", label: "Library Profiles", copy: "Choose the quality and release experience you want.", stage: 2 },
+  { id: "services", label: "Find & Download", copy: "Connect search sources and downloads when you are ready.", stage: 2 },
+  { id: "automation", label: "Automation", copy: "What should Deluno do by itself?", stage: 2 },
+  { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard.", stage: 2 }
 ];
 
 const QUALITY_PRESETS = {
@@ -385,7 +437,7 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist, localNetworkAuth] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist, localNetworkAuth, updatePreferences] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
@@ -396,24 +448,28 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
     fetchJson<SetupProgressItem>("/api/setup/progress"),
     fetchJson<SetupDraftItem>("/api/setup/draft"),
     fetchTrashGuidePackage(),
-    // #939: the Security step shows these detected addresses rather than
+    // #939: the Addresses step shows these detected addresses rather than
     // asking anyone to type one in.
     fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts"),
     // #944: the setup guide asks about this rather than pre-selecting it
     // (#936), so the current saved value is needed to preserve every other
     // field (mode, patterns) when the answer is written back.
     fetchJson<ContentBlocklistSettings>("/api/download-health/content-blocklist").catch(() => emptyContentBlocklistSettings),
-    // #993: the Security step shows the current address and whether it
-    // would be trusted, the same way the Allowed Hosts card does.
-    fetchJson<LocalNetworkAuthOverview>("/api/security/local-network-auth")
+    // #993: the "How you sign in" step shows the current address and whether
+    // it would be trusted, the same way the Allowed Hosts card does.
+    fetchJson<LocalNetworkAuthOverview>("/api/security/local-network-auth"),
+    // #1034: the Updates step reuses System -> Updates' own preferences
+    // endpoint rather than a separate setting.
+    fetchJson<UpdatePreferencesResponse>("/api/updates/preferences")
   ]);
 
-  return { allowedHosts, clients, contentBlocklist, customFormats, draft, guide, indexers, libraries, localNetworkAuth, metadataStatus, progress, qualityProfiles, settings };
+  return { allowedHosts, clients, contentBlocklist, customFormats, draft, guide, indexers, libraries, localNetworkAuth, metadataStatus, progress, qualityProfiles, settings, updatePreferences };
 }
 
 export function SetupGuidePage() {
   const loaderData = useLoaderData() as SetupGuideLoaderData;
   const data = loaderData;
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnTo = params.get("return") || "/";
@@ -461,7 +517,20 @@ export function SetupGuidePage() {
     // #993: unanswered by default (#936) -- Start stays disabled until this
     // has an explicit Yes or No, same as every Automation question.
     skipSignInLocalNetwork: null,
-    localNetworkAllowList: data.localNetworkAuth.allowList
+    localNetworkAllowList: data.localNetworkAuth.allowList,
+    // #1034 Stage 1 "Time and region": the browser/OS already knows a
+    // sensible default (same fields Settings -> Interface edits) -- this is
+    // a confirm-or-change question, not an on/off automation switch, so it
+    // is pre-filled rather than left blank.
+    uiLanguage: data.settings.uiLanguage || "en-AU",
+    calendarFirstDayOfWeek: data.settings.calendarFirstDayOfWeek || "monday",
+    shortDateFormat: data.settings.shortDateFormat || "dmy",
+    longDateFormat: data.settings.longDateFormat || "full",
+    timeFormat: data.settings.timeFormat || "12",
+    timezone: data.settings.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    // #1034 Stage 1 "Updates": unanswered by default (#936) -- Start stays
+    // disabled until this has an explicit Yes or No.
+    updateAutomatically: null
   }));
 
   const current = STEPS[stepIndex];
@@ -488,7 +557,10 @@ export function SetupGuidePage() {
   // #993: same rule -- Start stays disabled until "Skip sign-in for devices
   // on your home network?" has an explicit Yes or No.
   const hasSkipSignInAnswer = form.skipSignInLocalNetwork !== null;
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer;
+  // #1034: same rule -- Start stays disabled until "Update automatically, or
+  // ask you first?" has an explicit Yes or No.
+  const hasUpdateAnswer = form.updateAutomatically !== null;
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer && hasUpdateAnswer;
   // A connection typed in but never proven is different from one never
   // attempted: warn about it rather than silently baking in something broken.
   const connectionsUnproven =
@@ -576,9 +648,12 @@ export function SetupGuidePage() {
       } else if (!hasAllAutomationAnswers) {
         setError("Answer every automation question before finishing setup.");
         setStepIndex(STEPS.findIndex((step) => step.id === "automation"));
-      } else {
+      } else if (!hasSkipSignInAnswer) {
         setError("Answer \"Skip sign-in for devices on your home network?\" before finishing setup.");
-        setStepIndex(STEPS.findIndex((step) => step.id === "security"));
+        setStepIndex(STEPS.findIndex((step) => step.id === "signIn"));
+      } else {
+        setError("Answer \"Update automatically, or ask you first?\" before finishing setup.");
+        setStepIndex(STEPS.findIndex((step) => step.id === "updates"));
       }
       return;
     }
@@ -594,6 +669,9 @@ export function SetupGuidePage() {
       // #993: unlike Allowed Hosts, an explicit No here always writes the
       // real (off) setting -- there is no lock-out risk to guard against.
       await saveLocalNetworkAuth(form).catch(() => undefined);
+      // #1034: same as Local Network Auth -- an explicit Yes or No here
+      // always writes the real setting.
+      await saveUpdatePreferences(form, data.updatePreferences).catch(() => undefined);
       // #944: an explicit Yes or No here always writes the real setting,
       // unlike Allowed Hosts (which only ever turns on) - an existing
       // install's migration may have already frozen this on, and a plain
@@ -754,32 +832,46 @@ export function SetupGuidePage() {
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="space-y-2">
-          {STEPS.map((step, index) => {
-            const active = index === stepIndex;
-            const done = index < stepIndex;
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => moveToStep(index)}
-                className={cn(
-                  "w-full rounded-2xl border p-4 text-left transition",
-                  active ? "border-primary/40 bg-primary/10" : "border-hairline bg-card hover:border-primary/25",
-                  done && "opacity-85"
-                )}
-              >
-                <span className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-hairline bg-background text-xs font-bold tabular-nums text-foreground">
-                    {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : index + 1}
-                  </span>
-                  <span>
-                    <span className="block font-semibold text-foreground">{step.label}</span>
-                    <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{step.copy}</span>
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+          {/*
+            #1034: the rail shows both stages, not a flat list -- Stage 1
+            ("This computer and you") finishes before anything about media,
+            Stage 2 ("Deluno itself") is the library configuration that
+            follows it.
+          */}
+          {([1, 2] as const).map((stage) => (
+            <div key={stage} className="space-y-2">
+              <p className="px-1 pt-1 text-[length:var(--type-caption)] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                Stage {stage} &middot; {SETUP_STAGE_LABELS[stage]}
+              </p>
+              {STEPS.map((step, index) => {
+                if (step.stage !== stage) return null;
+                const active = index === stepIndex;
+                const done = index < stepIndex;
+                return (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => moveToStep(index)}
+                    className={cn(
+                      "w-full rounded-2xl border p-4 text-left transition",
+                      active ? "border-primary/40 bg-primary/10" : "border-hairline bg-card hover:border-primary/25",
+                      done && "opacity-85"
+                    )}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-hairline bg-background text-xs font-bold tabular-nums text-foreground">
+                        {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : index + 1}
+                      </span>
+                      <span>
+                        <span className="block font-semibold text-foreground">{step.label}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{step.copy}</span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
 
           {/*
             A plain list, not a ListTable: the rail is 260px and a two-column
@@ -816,6 +908,21 @@ export function SetupGuidePage() {
           </div>
 
           <div className="min-h-[180px] p-[var(--tile-pad)]">
+            {current.id === "account" ? <AccountStep user={user} /> : null}
+            {current.id === "timeRegion" ? <TimeRegionStep form={form} patch={patch} /> : null}
+            {current.id === "signIn" ? (
+              <LocalNetworkAuthQuestion form={form} patch={patch} currentAddress={data.localNetworkAuth.currentAddress} />
+            ) : null}
+            {current.id === "addresses" ? (
+              <AddressesStep
+                form={form}
+                patch={patch}
+                candidates={data.allowedHosts.detectedHosts}
+                currentHost={data.allowedHosts.currentHost}
+              />
+            ) : null}
+            {current.id === "network" ? <NetworkStep /> : null}
+            {current.id === "updates" ? <UpdatesStep form={form} patch={patch} channel={data.updatePreferences.channel} /> : null}
             {current.id === "mode" ? <ModeStep form={form} patch={patch} onSkip={skipWizard} /> : null}
             {current.id === "folders" ? <FoldersStep form={form} patch={patch} /> : null}
             {current.id === "quality" ? <QualityStep form={form} guide={data.guide} patch={patch} /> : null}
@@ -829,15 +936,6 @@ export function SetupGuidePage() {
               />
             ) : null}
             {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
-            {current.id === "security" ? (
-              <SecurityStep
-                form={form}
-                patch={patch}
-                candidates={data.allowedHosts.detectedHosts}
-                currentHost={data.allowedHosts.currentHost}
-                currentAddress={data.localNetworkAuth.currentAddress}
-              />
-            ) : null}
             {current.id === "finish" ? (
           <FinishStep
             form={form}
@@ -1289,24 +1387,131 @@ function AutomationStep({
   );
 }
 
+/** The account created on the previous screen (setup-page.tsx). Nothing to answer here -- just a confirmation before Stage 1's other questions. */
+function AccountStep({ user }: { user: { displayName: string; username: string } | null }) {
+  return (
+    <FieldShell icon={UserCircle2} label="Your account" copy="You are signed in with the account you just created. Change your name or password later from Settings.">
+      <div className="rounded-xl border border-hairline bg-background/35 p-3">
+        <p className="text-sm font-semibold text-foreground">{user?.displayName ?? "Your account"}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{user ? `Signed in as ${user.username}` : "Signed in"}</p>
+      </div>
+    </FieldShell>
+  );
+}
+
+/**
+ * #1034 Stage 1 "Time and region": timezone, date/time formats, first day of
+ * week and language, detected from the browser/OS and confirmed or changed
+ * here. Reuses the same PlatformSettingsSnapshot fields Settings -> Interface
+ * already edits (see settings-ui-page.tsx), so nothing here introduces a new
+ * setting -- it only asks the question earlier, during first run.
+ */
+function TimeRegionStep({ form, patch }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void }) {
+  return (
+    <div className="space-y-[var(--grid-gap)]">
+      <FieldShell icon={Globe} label="Language" copy="Controls Deluno's labels and display formatting.">
+        <SegmentedControl<string>
+          aria-label="Interface language"
+          value={form.uiLanguage}
+          onValueChange={(value) => patch({ uiLanguage: value })}
+          options={[
+            { value: "en-AU", label: "English (Australia)" },
+            { value: "en-US", label: "English (United States)" }
+          ]}
+        />
+      </FieldShell>
+
+      <FieldShell icon={Clock} label="Timezone" copy="Converts episode air times to when they actually air for you.">
+        <div className="flex max-w-[28rem] items-center gap-2">
+          <Input
+            aria-label="Timezone"
+            placeholder="e.g. Australia/Sydney"
+            value={form.timezone}
+            onChange={(event) => patch({ timezone: event.target.value })}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => patch({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })}
+          >
+            Use this browser
+          </Button>
+        </div>
+      </FieldShell>
+
+      <FieldShell icon={Clock} label="Date, time and week" copy="Used everywhere Deluno shows a date or time.">
+        <div className="space-y-3">
+          <FieldRow>
+            <Field label="First day of week">
+              <SegmentedControl<string>
+                aria-label="First day of week"
+                value={form.calendarFirstDayOfWeek}
+                onValueChange={(value) => patch({ calendarFirstDayOfWeek: value })}
+                options={[
+                  { value: "monday", label: "Monday" },
+                  { value: "sunday", label: "Sunday" }
+                ]}
+              />
+            </Field>
+            <Field label="Time">
+              <SegmentedControl<string>
+                aria-label="Time format"
+                value={form.timeFormat}
+                onValueChange={(value) => patch({ timeFormat: value })}
+                options={[
+                  { value: "12", label: "12-hour" },
+                  { value: "24", label: "24-hour" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Short date">
+              <SegmentedControl<string>
+                aria-label="Short date format"
+                value={form.shortDateFormat}
+                onValueChange={(value) => patch({ shortDateFormat: value })}
+                options={[
+                  { value: "dmy", label: "25/03/2026" },
+                  { value: "mdy", label: "03/25/2026" },
+                  { value: "iso", label: "2026-03-25" }
+                ]}
+              />
+            </Field>
+            <Field label="Long date">
+              <SegmentedControl<string>
+                aria-label="Long date format"
+                value={form.longDateFormat}
+                onValueChange={(value) => patch({ longDateFormat: value })}
+                options={[
+                  { value: "full", label: "Wednesday, 25 March" },
+                  { value: "mdy", label: "Wednesday, March 25" }
+                ]}
+              />
+            </Field>
+          </FieldRow>
+        </div>
+      </FieldShell>
+    </div>
+  );
+}
+
 /**
  * #939, asked the same "nothing chosen yet" way #936 asks automation
  * questions. Every address offered is detected, never typed, and answering
  * No here (or leaving the guide before this step) leaves Deluno exactly as
  * it has always behaved -- it is only turned on if this is answered Yes.
  */
-function SecurityStep({
+function AddressesStep({
   form,
   patch,
   candidates,
-  currentHost,
-  currentAddress
+  currentHost
 }: {
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   candidates: { host: string; reason: string }[];
   currentHost: string;
-  currentAddress: string;
 }) {
   function toggleHost(host: string, checked: boolean) {
     patch({
@@ -1319,7 +1524,6 @@ function SecurityStep({
   const currentHostChecked = form.allowedHostsSelection.some((host) => host.toLowerCase() === currentHost.toLowerCase());
 
   return (
-    <div className="space-y-[var(--grid-gap)]">
     <FieldShell
       icon={ShieldCheck}
       label="Only answer on the addresses you use?"
@@ -1372,9 +1576,69 @@ function SecurityStep({
         </div>
       ) : null}
     </FieldShell>
+  );
+}
 
-    <LocalNetworkAuthQuestion form={form} patch={patch} currentAddress={currentAddress} />
-    </div>
+/**
+ * #1034 Stage 1 "Other devices on your network": the same Windows Firewall
+ * check and one-click allow the tray already runs on first run (#623),
+ * explained and offered here too. LanAccessNotice shows nothing when the
+ * firewall already lets other devices reach Deluno, or on a host with no
+ * firewall for Deluno to look after -- there is nothing to ask in that case.
+ */
+function NetworkStep() {
+  return (
+    <FieldShell
+      icon={MonitorSmartphone}
+      label="Other devices on your network"
+      copy="Phones, tablets and other computers on your network can only reach Deluno if this computer's firewall allows it. Deluno checks that now."
+    >
+      <LanAccessNotice />
+      <p className="mt-3 text-xs text-muted-foreground">
+        Nothing to do if you only ever use Deluno from this computer. Change this anytime from System.
+      </p>
+    </FieldShell>
+  );
+}
+
+/**
+ * #1034 Stage 1 "Updates": unanswered by default (#936), the same "nothing
+ * chosen yet" way every other setup question is asked. Reuses System ->
+ * Updates' own preferences (mode/autoCheck), so Settings keeps a single
+ * source of truth for this behaviour.
+ */
+function UpdatesStep({ form, patch, channel }: { form: GuideForm; patch: (patchValue: Partial<GuideForm>) => void; channel: string }) {
+  return (
+    <FieldShell
+      icon={RefreshCw}
+      label="Update Deluno automatically?"
+      copy={`Yes, Deluno downloads and applies updates on its own and restarts to use them. No, Deluno checks for updates and tells you first. Either way, you stay on the ${channel} channel; change that from System -> Updates.`}
+    >
+      <div className="flex gap-2" role="radiogroup" aria-label="Update Deluno automatically?">
+        <Button
+          type="button"
+          variant={form.updateAutomatically === true ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.updateAutomatically === true}
+          aria-label="Update Deluno automatically? Yes"
+          onClick={() => patch({ updateAutomatically: true })}
+        >
+          Yes
+        </Button>
+        <Button
+          type="button"
+          variant={form.updateAutomatically === false ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.updateAutomatically === false}
+          aria-label="Update Deluno automatically? No"
+          onClick={() => patch({ updateAutomatically: false })}
+        >
+          No
+        </Button>
+      </div>
+    </FieldShell>
   );
 }
 
@@ -1962,7 +2226,15 @@ async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm,
     metadataCertificationCountry: settings.metadataCertificationCountry || "US",
     metadataLanguage: settings.metadataLanguage || "en",
     metadataProviderMode: settings.metadataProviderMode || "direct",
-    metadataBrokerUrl: settings.metadataBrokerUrl || ""
+    metadataBrokerUrl: settings.metadataBrokerUrl || "",
+    // #1034 Stage 1 "Time and region": confirmed or changed on the guide's
+    // own step, the same fields Settings -> Interface edits.
+    uiLanguage: form.uiLanguage || settings.uiLanguage || "en-AU",
+    calendarFirstDayOfWeek: form.calendarFirstDayOfWeek || settings.calendarFirstDayOfWeek || "monday",
+    shortDateFormat: form.shortDateFormat || settings.shortDateFormat || "dmy",
+    longDateFormat: form.longDateFormat || settings.longDateFormat || "full",
+    timeFormat: form.timeFormat || settings.timeFormat || "12",
+    timezone: form.timezone || settings.timezone || ""
   };
 
   return await fetchJson<PlatformSettingsSnapshot>("/api/settings", {
@@ -1997,6 +2269,27 @@ export async function saveLocalNetworkAuth(form: GuideForm) {
       additionalLocalNetworks: [],
       allowList: form.localNetworkAllowList,
       trustedProxies: []
+    })
+  });
+}
+
+/**
+ * #1034: "Update automatically, or ask you first?" reuses System -> Updates'
+ * own preferences endpoint. Yes maps to "download and apply on next
+ * restart" (the closest existing mode to "just handle it"), No maps to
+ * "notify only" -- Deluno still checks either way (autoCheck stays on), it
+ * only changes whether an update is applied without asking. The channel the
+ * install already has is kept untouched.
+ */
+export async function saveUpdatePreferences(form: GuideForm, loaded: UpdatePreferencesResponse) {
+  if (form.updateAutomatically === null) return;
+  await fetchJson("/api/updates/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      mode: form.updateAutomatically ? "download-apply-on-restart" : "notify-only",
+      channel: loaded.channel,
+      autoCheck: true
     })
   });
 }
