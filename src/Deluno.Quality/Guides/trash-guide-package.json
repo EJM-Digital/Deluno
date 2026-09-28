@@ -149,8 +149,13 @@
       "originalScore": 500,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10",
+        "video.dynamic-range.hdr10-plus",
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.hlg"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -161,8 +166,13 @@
       "originalScore": 500,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10",
+        "video.dynamic-range.hdr10-plus",
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.hlg"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -221,8 +231,11 @@
       "originalScore": 1000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.dolby-vision-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -233,8 +246,11 @@
       "originalScore": 1000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.dolby-vision-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -245,8 +261,10 @@
       "originalScore": 100,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10-plus"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -257,8 +275,10 @@
       "originalScore": 100,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.hdr10-plus"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -269,8 +289,10 @@
       "originalScore": -10000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.no-hdr-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -281,8 +303,10 @@
       "originalScore": -10000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.no-hdr-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -1564,8 +1588,11 @@
       "originalScore": 101,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.dolby-vision-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -1576,8 +1603,11 @@
       "originalScore": 101,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.dolby-vision",
+        "video.dynamic-range.dolby-vision-fallback"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -1588,8 +1618,10 @@
       "originalScore": -10000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.sdr"
+      ],
       "sourceKind": "trash-guides"
     },
     {
@@ -1600,8 +1632,10 @@
       "originalScore": -10000,
       "patterns": [],
       "bundleOnly": false,
-      "mappingStatus": "advanced",
-      "mappedTraitIds": [],
+      "mappingStatus": "reviewed",
+      "mappedTraitIds": [
+        "video.dynamic-range.sdr"
+      ],
       "sourceKind": "trash-guides"
     },
     {
