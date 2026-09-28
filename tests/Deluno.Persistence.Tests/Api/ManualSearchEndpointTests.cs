@@ -184,6 +184,86 @@ public sealed class ManualSearchEndpointTests
         Assert.Equal(new[] { "movies", "tv" }, searchTypes);
     }
 
+    [Fact]
+    public async Task A_search_from_the_search_page_is_recorded_in_indexer_history_against_its_indexer()
+    {
+        // #978: a Search-page search was recorded nowhere, so it never
+        // appeared in the combined Indexer History feed -- even though every
+        // RSS sync and per-title search already does.
+        await using var server = await TorznabServerAsync();
+        await using var app = await ApplicationTestHost.StartAsync();
+        var indexer = await app.Services.GetRequiredService<IConnectionsRepository>().CreateIndexerAsync(
+            new CreateIndexerRequest("Fixture torznab", "torznab", "public", server.BaseUrl, "fixture-key", 10, "2000", "", "movies", true),
+            CancellationToken.None);
+
+        var response = await app.Client.PostAsJsonAsync("/api/search", new { query = "Example", searchType = "movie", indexerIds = new[] { indexer.Id } });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+
+        var history = await app.Client.GetAsync("/api/indexer-history");
+        Assert.True(history.IsSuccessStatusCode, await history.Content.ReadAsStringAsync());
+        var body = await history.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToArray();
+
+        var searchRow = items.SingleOrDefault(item => item.GetProperty("eventType").GetString() == "search"
+            && item.GetProperty("indexerId").GetString() == indexer.Id);
+        Assert.NotEqual(default, searchRow);
+        Assert.Equal("Fixture torznab", searchRow.GetProperty("indexerName").GetString());
+        Assert.Equal("matched", searchRow.GetProperty("outcome").GetString());
+    }
+
+    [Fact]
+    public async Task A_grab_from_the_search_page_is_recorded_in_indexer_history_against_its_indexer()
+    {
+        var grabService = new FakeGrabService();
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabService);
+        });
+
+        var libraryRoot = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var created = await app.Client.PostAsJsonAsync("/api/libraries", new
+        {
+            name = "Films",
+            mediaType = "movies",
+            rootPath = libraryRoot
+        });
+        Assert.True(created.IsSuccessStatusCode, await created.Content.ReadAsStringAsync());
+        var libraryId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Fake", "qbittorrent", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true),
+            CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
+
+        var response = await app.Client.PostAsJsonAsync("/api/search/grab", new
+        {
+            releaseName = "Example.Release.WEB.1080p",
+            indexerId = "fixture-indexer",
+            indexerName = "Fixture torznab",
+            downloadUrl = "https://fixture.invalid/x.torrent",
+            searchType = "movie"
+        });
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+
+        var history = await app.Client.GetAsync("/api/indexer-history");
+        Assert.True(history.IsSuccessStatusCode, await history.Content.ReadAsStringAsync());
+        var body = await history.Content.ReadFromJsonAsync<JsonElement>();
+        var items = body.GetProperty("items").EnumerateArray().ToArray();
+
+        var grabRow = items.SingleOrDefault(item => item.GetProperty("eventType").GetString() == "grab"
+            && item.GetProperty("indexerId").GetString() == "fixture-indexer");
+        Assert.NotEqual(default, grabRow);
+        Assert.Equal("Fixture torznab", grabRow.GetProperty("indexerName").GetString());
+        Assert.Equal("succeeded", grabRow.GetProperty("outcome").GetString());
+        Assert.Contains("Example.Release.WEB.1080p", grabRow.GetProperty("message").GetString());
+    }
+
     private sealed class FakeGrabService : IDownloadClientGrabService
     {
         public string? LastClientId { get; private set; }

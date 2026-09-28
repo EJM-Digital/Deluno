@@ -15,6 +15,24 @@ public interface IIndexerAuthFailureRecorder
 }
 
 /// <summary>
+/// Records a search or grab made from the title-less Search page (#753) to
+/// the combined Indexer History (#978), through the same sink
+/// <see cref="IIndexerAuthFailureRecorder"/> writes to. A per-movie/per-series
+/// search already lands in Indexer History through its own search-history
+/// table (#754); a Search-page action has no movie or series to carry it, so
+/// it is written here as its own row instead. The concrete writer (backed by
+/// <c>IIndexerHistoryEventStore</c>) lives in Deluno.Api, which
+/// Deluno.Integrations cannot reference directly, so this interface is the
+/// shared seam, the same shape <see cref="IIndexerAuthFailureRecorder"/> uses.
+/// </summary>
+public interface IIndexerHistoryRecorder
+{
+    Task RecordSearchAsync(string? indexerId, string indexerName, string outcome, string message, string? detailsJson, CancellationToken cancellationToken);
+
+    Task RecordGrabAsync(string? indexerId, string indexerName, string outcome, string message, string? detailsJson, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// The one place that decides whether a failure message looks like an expired
 /// key or a bad login (#754) -- an HTTP 401/403, or a tracker exception naming
 /// the credential itself. Never guessed from a status code Deluno cannot see
