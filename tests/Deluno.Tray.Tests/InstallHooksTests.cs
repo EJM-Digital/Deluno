@@ -6,18 +6,22 @@ using Xunit;
 namespace Deluno.Tray.Tests;
 
 /// <summary>
-/// Velopack kills the install/update hooks after 30 seconds. A cold,
-/// non-elevated first run (every ordinary install) once took 23+ seconds to
-/// log anything because it built a <see cref="WindowsFirewallLanAccess"/> --
-/// touching <c>DelunoServer</c>'s statics and <c>AppSettings.Load()</c> --
-/// before checking whether it even had the rights to use it (#968).
-/// <see cref="InstallHooks.OnAfterInstall"/> must now return on the
-/// non-elevated path before ever calling <see cref="InstallHooks.FirewallFactory"/>.
+/// Velopack kills the install/update hooks after 30 seconds. A clean-VM run
+/// under an elevated Administrator once blew that budget anyway: 18 seconds
+/// of cold start before the first log line, then the elevated firewall step
+/// (<c>netsh</c>) pushed it past the limit and Velopack killed the hook
+/// (#968). <see cref="InstallHooks.OnAfterInstall"/> -- wired to both the
+/// install and the update fast callback -- now never runs the firewall step,
+/// elevated or not: it logs one line and returns. The rule still gets added,
+/// just never from this hook: <see cref="InstallHooks.OnFirstRun"/> adds it
+/// after a fresh install, and the tray offers (and an update ends up with it
+/// through) the same step on the first normal start after an update, which
+/// has no first run of its own.
 /// </summary>
 public sealed class InstallHooksTests
 {
     [Fact]
-    public void OnAfterInstall_not_elevated_returns_without_building_the_firewall()
+    public void OnAfterInstall_not_elevated_never_touches_the_firewall_factory()
     {
         var firewallFactoryCalled = false;
         InstallHooks.IsElevatedCheck = () => false;
@@ -25,7 +29,7 @@ public sealed class InstallHooksTests
         {
             firewallFactoryCalled = true;
             throw new InvalidOperationException(
-                "The fast, non-elevated path must never touch DelunoServer/AppSettings.");
+                "The install/update fast callback must never touch DelunoServer/AppSettings.");
         };
 
         try
@@ -41,17 +45,15 @@ public sealed class InstallHooksTests
     }
 
     [Fact]
-    public void OnAfterInstall_elevated_runs_the_firewall_step()
+    public void OnAfterInstall_elevated_also_never_touches_the_firewall_factory()
     {
         var firewallFactoryCalled = false;
         InstallHooks.IsElevatedCheck = () => true;
         InstallHooks.FirewallFactory = () =>
         {
             firewallFactoryCalled = true;
-            // A real WindowsFirewallLanAccess talks to Windows Firewall and
-            // netsh; return one built against a fake so AllowAsync completes
-            // without touching the machine.
-            return new WindowsFirewallLanAccess(0, new FakeFirewall());
+            throw new InvalidOperationException(
+                "The install/update fast callback must never touch DelunoServer/AppSettings, even when elevated.");
         };
 
         try
@@ -63,13 +65,13 @@ public sealed class InstallHooksTests
             ResetSeams();
         }
 
-        Assert.True(firewallFactoryCalled);
+        Assert.False(firewallFactoryCalled);
     }
 
     [Fact]
-    public void OnAfterInstall_never_throws_when_the_firewall_step_fails()
+    public void OnAfterInstall_never_throws()
     {
-        InstallHooks.IsElevatedCheck = () => true;
+        InstallHooks.IsElevatedCheck = () => throw new InvalidOperationException("boom");
         InstallHooks.FirewallFactory = () => throw new InvalidOperationException("boom");
 
         try
@@ -95,15 +97,5 @@ public sealed class InstallHooksTests
         InstallHooks.FirewallFactory =
             (Func<WindowsFirewallLanAccess>)Delegate.CreateDelegate(
                 typeof(Func<WindowsFirewallLanAccess>), firewallMethod);
-    }
-
-    private sealed class FakeFirewall : IWindowsFirewall
-    {
-        public bool IsElevated => true;
-
-        public FirewallSnapshot? Read() => new(CurrentProfiles: 2, FirewallOffFor: 0, Rules: []);
-
-        public Task<FirewallCommandResult> RunNetshAsync(string netshArguments, bool elevate, CancellationToken cancellationToken)
-            => Task.FromResult(new FirewallCommandResult(0, string.Empty));
     }
 }
