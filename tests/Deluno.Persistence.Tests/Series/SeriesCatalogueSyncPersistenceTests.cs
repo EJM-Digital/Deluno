@@ -585,6 +585,83 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Equal(0L, Convert.ToInt64(monitoredCount));
     }
 
+    /// <summary>
+    /// #848: "Missing" is for episodes without a file. Every episode this
+    /// sync discovers is freshly inserted with no file yet, so it agrees with
+    /// "All" here -- the same fact <c>ListMonitorModeAllows</c>'s own comment
+    /// makes about this mode.
+    /// </summary>
+    [Fact]
+    public async Task SyncEpisodeCatalogueAsync_monitors_freshly_discovered_episodes_for_the_missing_list_monitor_mode()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:54:16Z");
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Severance", 2022, "tt11280740", Monitored: true, ListMonitorMode: "missing"),
+            CancellationToken.None);
+
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-30))],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT SUM(monitored) FROM episode_entries WHERE series_id = @seriesId;";
+        AddParam(command, "@seriesId", series.Id);
+        var monitoredCount = await command.ExecuteScalarAsync();
+        Assert.Equal(1L, Convert.ToInt64(monitoredCount));
+    }
+
+    /// <summary>
+    /// #848: "Recent" only monitors the most recent season a sync discovers --
+    /// an older season the list also carries stays unmonitored.
+    /// </summary>
+    [Fact]
+    public async Task SyncEpisodeCatalogueAsync_only_monitors_the_most_recent_season_for_the_recent_list_monitor_mode()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T04:54:16Z");
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Severance", 2022, "tt11280740", Monitored: true, ListMonitorMode: "recent"),
+            CancellationToken.None);
+
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "S1E1", null, now.AddDays(-400)),
+                new CatalogueEpisodeItem(2, 1, "S2E1", null, now.AddDays(-30)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT season_number, monitored FROM episode_entries WHERE series_id = @seriesId ORDER BY season_number;";
+        AddParam(command, "@seriesId", series.Id);
+        using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(0L, reader.GetInt64(1)); // season 1 (older) stays unmonitored
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(1L, reader.GetInt64(1)); // season 2 (most recent) is monitored
+    }
+
     /// <summary>The preset defaults to on, matching every series' behaviour before it existed.</summary>
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_monitors_new_episodes_by_default()

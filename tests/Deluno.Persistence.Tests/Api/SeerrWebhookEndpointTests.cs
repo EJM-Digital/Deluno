@@ -29,6 +29,7 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
     private readonly HttpClient _client;
     private readonly SqliteSeerrRepository _repository;
     private readonly FixedTimeProvider _timeProvider;
+    private readonly RecordingAcquisitionService _acquisitions = new();
 
     public SeerrWebhookEndpointTests()
     {
@@ -52,7 +53,7 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
                     services.AddSingleton<ISeerrClient>(new NoopSeerrClient());
                     services.AddSingleton<ISeerrAcquisitionsRepository>(
                         new SqliteSeerrAcquisitionsRepository(_storage.Factory, _timeProvider));
-                    services.AddSingleton<ISeerrAcquisitionService>(new RecordingAcquisitionService());
+                    services.AddSingleton<ISeerrAcquisitionService>(_acquisitions);
                 })
                 .Configure(app =>
                 {
@@ -133,6 +134,48 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    /// <summary>#851: an approval payload actually reaches the acquisition service, not just a 200.</summary>
+    [Fact]
+    public async Task An_approval_payload_reaches_acquireasync()
+    {
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var response = await _client.SendAsync(ApprovedPayload(connection.Id, secret));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var call = Assert.Single(_acquisitions.Calls);
+        Assert.Equal("movies", call.MediaType);
+        Assert.Equal("603", call.TmdbId);
+        Assert.Equal(1, call.SeerrMediaId);
+    }
+
+    /// <summary>#851: a notification that is not an approval is accepted (so Overseerr does not retry it) but never acted on.</summary>
+    [Theory]
+    [InlineData("MEDIA_PENDING")]
+    [InlineData("MEDIA_DECLINED")]
+    [InlineData("TEST_NOTIFICATION")]
+    public async Task A_non_approval_payload_is_ignored(string notificationType)
+    {
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/seerr-servers/{connection.Id}/webhook")
+        {
+            Content = JsonContent.Create(new
+            {
+                notification_type = notificationType,
+                media = new { media_type = "movie", tmdbId = "603", media_id = "1" }
+            })
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", secret);
+
+        var response = await _client.SendAsync(request);
+
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        Assert.Empty(_acquisitions.Calls);
+    }
+
     [Fact]
     public async Task Regenerating_the_secret_invalidates_the_old_one()
     {
@@ -168,9 +211,19 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
             => Task.FromResult<MediaServerAnswer<bool>>(new MediaServerAnswer<bool>.Unreachable("not used"));
     }
 
+    /// <summary>
+    /// #851: records every call it actually gets, so a test can prove an
+    /// approval reached <see cref="AcquireAsync"/> -- and, just as important,
+    /// that a non-approval payload never does.
+    /// </summary>
     private sealed class RecordingAcquisitionService : ISeerrAcquisitionService
     {
+        public List<(string MediaType, string? TmdbId, string? TvdbId, int SeerrMediaId)> Calls { get; } = [];
+
         public Task<SeerrAcquisitionOutcome> AcquireAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, int seerrMediaId, CancellationToken cancellationToken)
-            => Task.FromResult(new SeerrAcquisitionOutcome(true, "added"));
+        {
+            Calls.Add((mediaType, tmdbId, tvdbId, seerrMediaId));
+            return Task.FromResult(new SeerrAcquisitionOutcome(true, "added"));
+        }
     }
 }
