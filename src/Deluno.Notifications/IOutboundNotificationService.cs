@@ -6,8 +6,10 @@ public interface IOutboundNotificationService
     /// <paramref name="titleTags"/> is the tags of the title the event is
     /// about, when there is one (#990). A webhook carrying tags fires only
     /// for a title sharing one of them; an untagged webhook fires for any
-    /// title (or any event that names no title), unchanged from before tags
-    /// existed here.
+    /// title. Pass null for an event that is not about one title (health,
+    /// library paused/resumed, app update, digests): tags never limit those
+    /// (#1036), so every connection receives them. An empty list means a
+    /// title that has no tags.
     /// </summary>
     Task DispatchAsync(
         string eventCategory,

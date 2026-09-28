@@ -134,7 +134,7 @@ interface WebhookForm {
   isEnabled: boolean;
   provider: NotificationProvider;
   config: NotificationProviderConfig;
-  /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires only for a title sharing one of them. */
+  /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires for a title only when it shares one of them. Tags never limit notifications that are not about one title. */
   tags: string;
 }
 
@@ -577,7 +577,7 @@ export function SettingsNotificationsPage() {
           <Field label="Events" help="Which events trigger a send.">
             <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
           </Field>
-          <Field label="Tags" optional help="Leave blank to fire for any title. With tags set, Deluno fires this connection only when the title an event is about shares one of them — for example, keep an anime channel to anime titles.">
+          <Field label="Tags" optional help="Leave blank to fire for any title. With tags set, Deluno fires this connection for a title only when the title shares one of them — for example, keep an anime channel to anime titles. Tags only limit notifications about a title: health warnings, library pauses, app updates and other general notices always go to every connection.">
             <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="notification-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
             <datalist id="notification-tag-options">
               {tagOptions.map((tag) => <option key={tag} value={tag} />)}
