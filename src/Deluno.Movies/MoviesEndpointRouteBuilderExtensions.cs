@@ -2059,7 +2059,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                     $"Added: {movie.Title}",
                     $"{movie.Title} was added to the library.",
                     JsonSerializer.Serialize(new { movie.Id, movie.Title, mediaType = "movies" }),
-                    cancellationToken);
+                    cancellationToken,
+                    // #1036: a title about to be added has no tags yet (they are
+                    // assigned afterwards), so it is a title event with none.
+                    titleTags: []);
             }
 
             return Results.Created($"/api/movies/{movie.Id}", movie);

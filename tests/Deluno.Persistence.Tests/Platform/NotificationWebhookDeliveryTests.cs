@@ -127,6 +127,60 @@ public sealed class NotificationWebhookDeliveryTests
         Assert.Equal(0, otherTitleHandler.Attempts);
     }
 
+    /// <summary>
+    /// #1036: an episode event is about its show, so it carries the show's
+    /// tags. A show tagged "kids" is skipped by a connection tagged "adults"
+    /// and reaches one tagged "kids"; an unknown episode is title-less.
+    /// </summary>
+    [Fact]
+    public async Task An_episode_event_uses_its_shows_tags_so_a_non_matching_tagged_webhook_is_skipped()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T02:00:00Z"));
+        var migrator = new SqliteDatabaseMigrator(storage.Factory, timeProvider);
+        await new PlatformSchemaInitializer(storage.Factory, migrator, NullLogger<PlatformSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        await new Deluno.Series.Data.SeriesSchemaInitializer(storage.Factory, migrator, NullLogger<Deluno.Series.Data.SeriesSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+
+        var series = new Deluno.Series.Data.SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        await series.AddAsync(new Deluno.Series.Contracts.CreateSeriesRequest("Kids Show", 2022, null), CancellationToken.None);
+        var seriesId = (await series.ListPageAsync(new CatalogueQuery(), CancellationToken.None)).Items.Single().Id;
+        await using (var connection = await storage.Factory.OpenConnectionAsync(Deluno.Infrastructure.Storage.DelunoDatabaseNames.Series, CancellationToken.None))
+        {
+            using var insert = connection.CreateCommand();
+            insert.CommandText = $"""
+                INSERT INTO episode_entries (id, series_id, season_number, episode_number, title, monitored, has_file, quality_cutoff_met, created_utc, updated_utc)
+                VALUES ('ep-1', '{seriesId}', 1, 1, 'Pilot', 1, 0, 0, '2026-09-29T00:00:00Z', '2026-09-29T00:00:00Z');
+                """;
+            await insert.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var tagStore = new Deluno.Media.SqliteMediaTagStore(storage.Factory, timeProvider);
+        await tagStore.ReplaceAsync(MediaKind.Series, seriesId, [new MediaTagAssignment("tag-kids", "kids")], CancellationToken.None);
+
+        var episodeTags = await tagStore.ListTitleTagNamesAsync("episode", "ep-1", CancellationToken.None);
+        Assert.Equal(["kids"], episodeTags);
+        Assert.Null(await tagStore.ListTitleTagNamesAsync("episode", "no-such-episode", CancellationToken.None));
+
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Adults channel", "https://hooks.example.test/adults", "all", true, Tags: "adults"),
+            CancellationToken.None);
+
+        var handler = new SequencedHandler([]);
+        var service = new OutboundNotificationService(repository, new SingleClientFactory(handler), NullLogger<OutboundNotificationService>.Instance);
+        await service.DispatchAsync("grab", "Grabbed: Kids Show S01E01", "Message", null, CancellationToken.None, titleTags: episodeTags);
+        Assert.Equal(0, handler.Attempts);
+
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Kids channel", "https://hooks.example.test/kids", "all", true, Tags: "kids"),
+            CancellationToken.None);
+        await service.DispatchAsync("grab", "Grabbed: Kids Show S01E01", "Message", null, CancellationToken.None, titleTags: episodeTags);
+        Assert.Equal(1, handler.Attempts);
+    }
+
     [Fact]
     public async Task DispatchAsync_retries_failed_delivery_then_records_success()
     {

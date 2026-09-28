@@ -251,12 +251,7 @@ public sealed class RefusedDownloadCleanupService(
                 entityType,
                 release.EntityId,
                 cancellationToken);
-            var clearedTags = mediaTagStore is null || string.IsNullOrWhiteSpace(release.EntityId)
-                ? null
-                : (await mediaTagStore.ListAsync(
-                    string.Equals(entityType, "series", StringComparison.OrdinalIgnoreCase) ? MediaKind.Series : MediaKind.Movie,
-                    release.EntityId,
-                    cancellationToken)).Select(assignment => assignment.Name).ToArray();
+            var clearedTags = await mediaTagStore.ListTitleTagNamesAsync(entityType, release.EntityId, cancellationToken);
             await DispatchCleanupNotificationAsync(
                 "download.cleanup.cleared",
                 $"Cleanup cleared: {release.ReleaseName}",

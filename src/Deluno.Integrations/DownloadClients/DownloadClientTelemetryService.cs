@@ -82,31 +82,12 @@ public sealed class DownloadClientTelemetryService(
 
     /// <summary>
     /// #990: a dispatch's own tags, from its EntityType/EntityId when that
-    /// names a movie or series directly. An episode dispatch's EntityId is
-    /// the episode, not the show, and Deluno's tag store only holds
-    /// movie/series tags, so an episode-scoped cleanup event is treated the
-    /// same as one that names no title — a follow-up could resolve the
-    /// episode's show and use its tags instead.
+    /// names a movie, series or episode (an episode uses its show's tags,
+    /// #1036). Null only when the dispatch names no resolvable title.
     /// </summary>
     private async Task<IReadOnlyList<string>?> ResolveDispatchTitleTagsAsync(string? entityType, string? entityId, CancellationToken cancellationToken)
     {
-        if (mediaTagStore is null || string.IsNullOrWhiteSpace(entityId))
-        {
-            return null;
-        }
-
-        var kind = entityType?.ToLowerInvariant() switch
-        {
-            "movie" => MediaKind.Movie,
-            "series" => MediaKind.Series,
-            _ => (MediaKind?)null
-        };
-        if (kind is null)
-        {
-            return null;
-        }
-
-        return (await mediaTagStore.ListAsync(kind.Value, entityId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
+        return await mediaTagStore.ListTitleTagNamesAsync(entityType, entityId, cancellationToken);
     }
 
     // #824 is off by default, so most callers - including every existing
