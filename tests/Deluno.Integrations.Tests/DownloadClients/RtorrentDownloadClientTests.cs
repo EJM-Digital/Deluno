@@ -100,6 +100,27 @@ public sealed class RtorrentDownloadClientTests
         Assert.Contains("invalid torrent file", result.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #980: rTorrent's RPC almost always sits behind a webserver at a path
+    /// (ruTorrent's /RPC2, or a custom mount) -- Deluno's own client drawer
+    /// now exposes the URL base for rTorrent, not just Usenet clients, and
+    /// this is the adapter side of that: the saved URL base has to actually
+    /// land in the request rTorrent's RPC calls go out to, the same generic
+    /// path ResolveEndpoint already gives every other client.
+    /// </summary>
+    [Fact]
+    public async Task The_saved_URL_base_is_used_for_every_rtorrent_request()
+    {
+        var handler = new RtorrentHandler(downloadListBefore: "[]", downloadListAfter: "[]");
+        var client = Client() with { EndpointUrl = null, UrlBase = "/RPC2" };
+
+        await new RtorrentDownloadClient(new StubFactory(handler))
+            .GrabAsync(client, Request(), CancellationToken.None);
+
+        Assert.NotEmpty(handler.RequestUris);
+        Assert.All(handler.RequestUris, uri => Assert.Equal("/RPC2/", uri!.AbsolutePath));
+    }
+
     [Theory]
     [InlineData(DownloadClientActions.Pause, "d.pause")]
     [InlineData(DownloadClientActions.Resume, "d.resume")]
@@ -319,11 +340,14 @@ public sealed class RtorrentDownloadClientTests
 
         public List<System.Net.Http.Headers.AuthenticationHeaderValue?> AuthorizationHeaders { get; } = [];
 
+        public List<Uri?> RequestUris { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             Requests.Add(body);
             AuthorizationHeaders.Add(request.Headers.Authorization);
+            RequestUris.Add(request.RequestUri);
             var method = MethodNameOf(body);
 
             if (method.StartsWith("load.", StringComparison.Ordinal))
