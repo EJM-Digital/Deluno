@@ -82,6 +82,13 @@ public sealed record PlatformSettingsSnapshot(
     // The helper's own request timeout (#749), 1-180 seconds; the helper's
     // hard-coded 60-second SolveBudget before this was user-configurable.
     int CloudflareHelperTimeoutSeconds = 60,
+    // #1029: which helper is at CloudflareHelperUrl -- FlareSolverr, Byparr
+    // (which answers the same API but silently ignores sessions, POST
+    // bodies and a per-request proxy), or "auto" to have Deluno tell them
+    // apart itself. "auto" is every existing install's value, so nothing
+    // changes for an install that never opens this setting until Deluno's
+    // own probe would have detected Byparr anyway.
+    string CloudflareHelperKind = CloudflareHelperKinds.Auto,
     // Download health (#659): configurable in the same spirit as Cleanuparr's
     // thresholds. Defaults match what #659 originally hard-coded, so an
     // install that never opens the settings screen behaves the same as

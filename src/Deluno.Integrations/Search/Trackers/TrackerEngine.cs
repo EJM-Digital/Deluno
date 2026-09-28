@@ -69,7 +69,7 @@ public interface ITrackerEngine
 }
 
 /// <summary>The tracker said no, or could not be reached; the message says which, in plain words.</summary>
-public sealed class TrackerException(string message, Exception? inner = null) : Exception(message, inner);
+public class TrackerException(string message, Exception? inner = null) : Exception(message, inner);
 
 /// <summary>
 /// Searches a tracker from its definition (#606): signs in, builds each

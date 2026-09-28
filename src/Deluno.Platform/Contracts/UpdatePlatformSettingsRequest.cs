@@ -56,6 +56,7 @@ public sealed record UpdatePlatformSettingsRequest(
     int? LibraryFileCheckHours = null,
     string? CloudflareHelperUrl = null,
     int? CloudflareHelperTimeoutSeconds = null,
+    string? CloudflareHelperKind = null,
     bool? DownloadHealthNoProgressEnabled = null,
     int? DownloadHealthNoProgressMinutes = null,
     bool? DownloadHealthMinSpeedEnabled = null,

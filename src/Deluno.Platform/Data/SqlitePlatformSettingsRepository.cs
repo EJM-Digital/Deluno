@@ -203,6 +203,10 @@ public sealed class SqlitePlatformSettingsRepository(
         // seconds. Clamped the same way on save and on read, so a value that
         // survives being saved is a value the helper will actually use.
         await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperTimeoutSeconds", Math.Clamp(request.CloudflareHelperTimeoutSeconds ?? 60, 1, 180).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #1029: which helper answers at that address -- FlareSolverr, Byparr
+        // (which silently ignores sessions, POST bodies and a per-request
+        // proxy), or "auto" so Deluno tells them apart itself by probing it.
+        await UpsertSettingAsync(connection, transaction, "search.cloudflareHelperKind", CloudflareHelperKinds.Normalize(request.CloudflareHelperKind), updatedUtc, cancellationToken);
         // #766: matches Radarr/Sonarr's Permissions section. Off by default
         // (#936); the chmod/chown themselves only ever run on a non-Windows
         // host, in ImportPipelineService, and only when Deluno's own process
@@ -591,6 +595,7 @@ public sealed class SqlitePlatformSettingsRepository(
             LibraryFileCheckHours: int.TryParse(GetValue(settings, "library.fileCheckHours"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var fileCheckHours) && fileCheckHours > 0 ? Math.Clamp(fileCheckHours, 1, 168) : 6,
             CloudflareHelperUrl: string.IsNullOrWhiteSpace(GetValue(settings, "search.cloudflareHelperUrl")) ? null : GetValue(settings, "search.cloudflareHelperUrl"),
             CloudflareHelperTimeoutSeconds: int.TryParse(GetValue(settings, "search.cloudflareHelperTimeoutSeconds"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var helperTimeoutSeconds) && helperTimeoutSeconds > 0 ? Math.Clamp(helperTimeoutSeconds, 1, 180) : 60,
+            CloudflareHelperKind: CloudflareHelperKinds.Normalize(GetValue(settings, "search.cloudflareHelperKind")),
             UpdatedUtc: DateTimeOffset.UtcNow,
             MdbListApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "intake.mdblistApiKey")),
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
