@@ -3,7 +3,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useRevalidator } from "react-router-dom";
-import { describeTagUsage, tagUserDeleteEffect, tagUserKindLabel, unusedTags } from "../lib/tag-users";
+import { describeTagInUse, describeTagUsage, tagUserKindLabel, unusedTags } from "../lib/tag-users";
 import { Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -250,7 +250,13 @@ export function SettingsTagsPage() {
         ) : null}
         {editing ? (
           <DrawerSection>
-            <DrawerDanger title="Delete this tag" description={editingUsage && !editingUsage.isUnused ? "Deleting takes it off everything listed above." : "Nothing uses this tag."} action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+            {editingUsage && !editingUsage.isUnused ? (
+              <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+                In use by {describeTagInUse(editingUsage)} — remove it from those first, then it can be deleted.
+              </p>
+            ) : (
+              <DrawerDanger title="Delete this tag" description="Nothing uses this tag." action={<Button type="button" variant="destructive" size="sm" onClick={() => setConfirmRemove(true)} disabled={busy}>Delete</Button>} />
+            )}
           </DrawerSection>
         ) : null}
       </Drawer>
@@ -259,23 +265,12 @@ export function SettingsTagsPage() {
         open={confirmRemove}
         onOpenChange={setConfirmRemove}
         title={`Delete “${editing?.name ?? form.name}”?`}
-        description={editingUsage && !editingUsage.isUnused ? "Deleting removes this tag from everything that uses it. This cannot be undone." : "Nothing uses this tag."}
-        confirmLabel={editingUsage && !editingUsage.isUnused ? "Remove it from all of these and delete" : "Delete tag"}
+        description="Nothing uses this tag. This cannot be undone."
+        confirmLabel="Delete tag"
         busy={busy}
         onConfirm={() => void handleRemove()}
-        extraContent={editingUsage && !editingUsage.isUnused ? (
-          <div className="grid gap-2 text-[length:var(--type-body-sm)]">
-            {editingUsage.totalCount > 0 ? <p>{describeTagUsage({ ...editingUsage, users: [] })} will lose this label.</p> : null}
-            <ul className="grid gap-1.5" aria-label="What deleting this tag changes">
-              {editingUsage.users.map((user) => (
-                <li key={`${user.kind}-${user.id}`}>
-                  <span className="font-medium">{user.name}</span> <span className="text-muted-foreground">({tagUserKindLabel(user.kind)}). {tagUserDeleteEffect(user.kind)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       />
+
       <ConfirmDialog
         open={confirmRemoveUnused}
         onOpenChange={setConfirmRemoveUnused}

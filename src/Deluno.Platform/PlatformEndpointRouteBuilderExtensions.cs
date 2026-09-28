@@ -479,19 +479,23 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            // The tag comes off every connection and rule in the platform
-            // database in one transaction with its definition; titles follow.
+            // Like Sonarr and Radarr, a tag in use is not deleted (#1039): the
+            // owner removes it from its users first.
+            var inUse = await DescribeTagUseAsync(tag.Name, tagStore, tagReferences, cancellationToken);
+            if (inUse is not null)
+            {
+                return Results.Conflict(new { message = $"The tag \"{tag.Name}\" is still in use by {inUse}. Remove it from those first." });
+            }
+
             var removed = await tagReferences.DeleteAsync(id, tag.Name, cancellationToken);
             if (!removed)
             {
                 return Results.NotFound();
             }
 
-            await tagStore.RemoveAsync(MediaKind.Movie, tag.Id, tag.Name, cancellationToken);
-            await tagStore.RemoveAsync(MediaKind.Series, tag.Id, tag.Name, cancellationToken);
             await activityFeedRepository.RecordActivityAsync(
                 "tags.deleted",
-                $"Deleted the tag \"{tag.Name}\" and took it off everything that used it.",
+                $"Deleted the unused tag \"{tag.Name}\".",
                 null,
                 null,
                 "tag",
@@ -672,6 +676,56 @@ public static class PlatformEndpointRouteBuilderExtensions
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Plain-words list of what still uses a tag ("3 titles and 1 download
+    /// client"), or null when nothing does.
+    /// </summary>
+    private static async Task<string?> DescribeTagUseAsync(
+        string tagName,
+        IMediaTagStore tagStore,
+        ITagReferenceStore tagReferences,
+        CancellationToken cancellationToken)
+    {
+        var titles = 0;
+        foreach (var kind in new[] { MediaKind.Movie, MediaKind.Series })
+        {
+            titles += (await tagStore.ListUsageAsync(kind, cancellationToken))
+                .Where(item => string.Equals(item.Name.Trim(), tagName.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Sum(item => item.TitleCount);
+        }
+
+        var parts = new List<string>();
+        if (titles > 0)
+        {
+            parts.Add($"{titles} {(titles == 1 ? "title" : "titles")}");
+        }
+
+        var users = (await tagReferences.ListAllUsersAsync(cancellationToken))
+            .GetValueOrDefault(tagName.Trim().ToLowerInvariant()) ?? [];
+        foreach (var group in users.GroupBy(user => user.Kind))
+        {
+            var (one, many) = group.Key switch
+            {
+                "indexer" => ("indexer", "indexers"),
+                "downloadClient" => ("download client", "download clients"),
+                "notification" => ("notification", "notifications"),
+                "sharingRule" => ("seeding rule", "seeding rules"),
+                "librarySource" => ("library source rule", "library source rules"),
+                "acquisitionRule" => ("release rule", "release rules"),
+                "destinationRule" => ("destination rule", "destination rules"),
+                _ => ("setting", "settings")
+            };
+            var count = group.Count();
+            parts.Add($"{count} {(count == 1 ? one : many)}");
+        }
+
+        return parts.Count == 0
+            ? null
+            : parts.Count == 1
+                ? parts[0]
+                : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
     }
 
     private static Dictionary<string, string[]> ValidateTag(string? name)

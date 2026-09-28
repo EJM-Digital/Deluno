@@ -53,25 +53,56 @@ public sealed class RenamingATagUpdatesEverythingThatUsesItTests
         Assert.Equal("Family", Assert.Single(titleTags).Name);
     }
 
+
     [Fact]
-    public async Task Deleting_a_tag_takes_it_off_every_store_and_leaves_nothing_dangling()
+    public async Task A_tag_in_use_cannot_be_deleted_until_nothing_uses_it()
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var (tagId, ids) = await SeedAsync(app, "kids");
 
-        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/tags/{tagId}")).StatusCode);
+        var refused = await app.Client.DeleteAsync($"/api/tags/{tagId}");
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        var message = (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("message").GetString()!;
+        Assert.Contains("1 title", message);
+        Assert.Contains("1 indexer", message);
+        Assert.Contains("1 download client", message);
+        Assert.Contains("1 notification", message);
+        Assert.Contains("1 seeding rule", message);
+        Assert.Contains("1 library source rule", message);
+        Assert.Contains("1 release rule", message);
+        Assert.Contains("1 destination rule", message);
 
-        Assert.Equal("teens", await ReadAsync(app, "indexer_sources", "tags", ids["indexer_sources"]));
-        Assert.Equal(string.Empty, await ReadAsync(app, "download_clients", "tags", ids["download_clients"]));
-        Assert.Equal(string.Empty, await ReadAsync(app, "notification_webhooks", "tags", ids["notification_webhooks"]));
-        // A seeding rule with nothing else to match would apply to every download, so it is switched off.
-        Assert.Null(await ReadAsync(app, "sharing_rules", "tags_csv", ids["sharing_rules"]));
-        Assert.Equal("0", await ReadAsync(app, "sharing_rules", "is_enabled", ids["sharing_rules"]));
-        Assert.Equal(string.Empty, await ReadAsync(app, "library_source_links", "required_tags", ids["library_source_links"]));
-        Assert.Equal(string.Empty, await ReadAsync(app, "library_source_links", "excluded_tags", ids["library_source_links"]));
-        Assert.Null(await ReadAsync(app, "release_profiles", "tag_name", ids["release_profiles"]));
-        Assert.Null(await ReadAsync(app, "destination_rules", "match_value", ids["destination_rules"]));
-        Assert.Empty(await app.Services.GetRequiredService<IMediaTagStore>().ListAsync(MediaKind.Movie, ids["movie"], CancellationToken.None));
+        // Clear one kind of user at a time: it stays refused until the last is gone.
+        var steps = new[]
+        {
+            "UPDATE indexer_sources SET tags = ''",
+            "UPDATE download_clients SET tags = ''",
+            "UPDATE notification_webhooks SET tags = ''",
+            "UPDATE sharing_rules SET tags_csv = NULL",
+            "UPDATE library_source_links SET required_tags = '', excluded_tags = ''",
+            "DELETE FROM release_profiles",
+            "DELETE FROM destination_rules"
+        };
+        foreach (var sql in steps)
+        {
+            Assert.Equal(HttpStatusCode.Conflict, (await app.Client.DeleteAsync($"/api/tags/{tagId}")).StatusCode);
+            await ExecuteAsync(app, sql);
+        }
+
+        // Only the title is left.
+        Assert.Equal(HttpStatusCode.Conflict, (await app.Client.DeleteAsync($"/api/tags/{tagId}")).StatusCode);
+        await app.Services.GetRequiredService<IMediaTagStore>().ReplaceAsync(MediaKind.Movie, ids["movie"], [], CancellationToken.None);
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client.DeleteAsync($"/api/tags/{tagId}")).StatusCode);
+        Assert.DoesNotContain(tagId, await ApiPayload.ListIdsAsync(app.Client, "/api/tags/"));
+    }
+
+    private static async Task ExecuteAsync(ApplicationTestHost app, string sql)
+    {
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        await using var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = sql + ";";
+        await command.ExecuteNonQueryAsync();
     }
 
     [Fact]

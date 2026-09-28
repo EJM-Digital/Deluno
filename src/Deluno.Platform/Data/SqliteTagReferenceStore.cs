@@ -22,7 +22,7 @@ public interface ITagReferenceStore
     /// <summary>Renames the tag definition and every stored use of it in one transaction.</summary>
     Task RenameAsync(string tagId, string previousName, string nextName, CancellationToken cancellationToken);
 
-    /// <summary>Removes the tag from every stored use and deletes its definition in one transaction.</summary>
+    /// <summary>Deletes the definition of a tag that nothing uses; the caller checks first (#1039).</summary>
     Task<bool> DeleteAsync(string tagId, string name, CancellationToken cancellationToken);
 }
 
@@ -80,37 +80,6 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var target = name.Trim();
-
-        foreach (var row in await ReadRowsAsync(connection, transaction, cancellationToken))
-        {
-            if (!row.Tags.Contains(target, StringComparer.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var remaining = row.Tags.Where(tag => !string.Equals(tag, target, StringComparison.OrdinalIgnoreCase)).ToArray();
-            switch (row.Table)
-            {
-                case "release_profiles":
-                    // A tag-keyed rule with no tag would become the global one,
-                    // so the rule goes with its tag.
-                    await Exec(connection, transaction, "DELETE FROM release_profiles WHERE id = @id;", cancellationToken, ("@id", row.Id));
-                    break;
-                case "destination_rules":
-                    await Exec(connection, transaction, "DELETE FROM destination_rules WHERE id = @id;", cancellationToken, ("@id", row.Id));
-                    break;
-                case "sharing_rules" when remaining.Length == 0 && !row.HasOtherSharingMatch:
-                    // With no tag left it would match every download; switch it off instead.
-                    await WriteAsync(connection, transaction, row, string.Empty, cancellationToken);
-                    await Exec(connection, transaction, "UPDATE sharing_rules SET is_enabled = 0 WHERE id = @id;", cancellationToken, ("@id", row.Id));
-                    break;
-                default:
-                    await WriteAsync(connection, transaction, row, string.Join(",", remaining), cancellationToken);
-                    break;
-            }
-        }
-
         var removed = await Exec(connection, transaction, "DELETE FROM tags WHERE id = @id;", cancellationToken, ("@id", tagId)) > 0;
         await transaction.CommitAsync(cancellationToken);
         return removed;
