@@ -175,6 +175,17 @@ public static class DownloadHealthStrikes
     /// <summary>A magnet stuck fetching its own metadata, past the dedicated rule's timer (#951, off by default). qBittorrent only.</summary>
     public const string MagnetMetadata = "magnet-metadata";
 
+    /// <summary>
+    /// The client's own availability reading is below 1 (#811, #970): no
+    /// single peer holds a complete copy of this release right now, so it
+    /// may never finish no matter how many peers are connected. A read on
+    /// the swarm's composition, not this machine's behaviour — excluded from
+    /// <see cref="Counts"/> the same way <see cref="ClientScriptFailed"/> is,
+    /// so it is shown and can inform a replacement search without acting on
+    /// its own.
+    /// </summary>
+    public const string LowAvailability = "low-availability";
+
     public static bool Counts(string kind)
         => string.Equals(kind, ClientStalled, StringComparison.OrdinalIgnoreCase) ||
            string.Equals(kind, NoThroughput, StringComparison.OrdinalIgnoreCase) ||

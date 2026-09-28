@@ -1208,6 +1208,12 @@ export interface DownloadQueueItem {
   failure?: IntegrationFailure | null;
   /** #815: the torrent's own reported tracker privacy. Null when the client did not say (an older client, or Usenet, which has no tracker). */
   isPrivate?: boolean | null;
+  /** #811/#970: how much of this download's data is available across its peers right now (0-1, can exceed 1.0 when more than one full copy is available). Null where the client does not report it. */
+  availability?: number | null;
+  /** #811/#970: when the client last saw any activity on this item. Null where the client does not report it. */
+  lastActivityUtc?: string | null;
+  /** #811: when the client finished this item. Null while still in progress, or where the client does not report it. */
+  completionUtc?: string | null;
 }
 
 /**

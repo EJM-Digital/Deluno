@@ -298,6 +298,15 @@ internal static class DownloadClientHelpers
 
     internal static DateTimeOffset FromUnix(long? value) => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : DateTimeOffset.UtcNow;
 
+    /// <summary>
+    /// #811/#973: a "not yet" reading (qBittorrent's -1/0 for no activity or
+    /// completion, Transmission's 0 for a doneDate/activityDate that has
+    /// never been set) is null, not the Unix epoch - shared by every client
+    /// adapter that reads one of these optional timestamps.
+    /// </summary>
+    internal static DateTimeOffset? FromUnixOrNull(long? value)
+        => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : null;
+
     internal static int ParseId(string value) => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
 
     /// <summary>

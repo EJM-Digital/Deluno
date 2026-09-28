@@ -96,7 +96,13 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // ReconcileTorrentStatus's own no-metadata-no-peers stall window
             // reads Peers as "is there anyone to talk to at all" — switching
             // it to sending-only would stall that magnet on the first poll.
-            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate", "trackerStats" }
+            // activityDate/doneDate: #973 — activityDate is Transmission's own
+            // "last saw any activity" clock (an announce, a piece received or
+            // sent); doneDate is when the download itself finished and stays
+            // 0 until then. Read together so LastActivityUtc below reflects
+            // whichever is more recent, the same "most recent evidence of
+            // life" a person actually wants from "last activity".
+            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "activityDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate", "trackerStats" }
         }), cancellationToken);
         var queue = (response.Arguments?.Torrents ?? []).Select(item => new DownloadQueueItem(
             item.Id?.ToString(CultureInfo.InvariantCulture) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
@@ -119,7 +125,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // finding.
             IsSetupProblem: item.Error == TrLocalError,
             IsPrivate: item.IsPrivate,
-            TrackerStatus: TrackerStatus(item)))
+            TrackerStatus: TrackerStatus(item),
+            // #973: whichever of activityDate/doneDate is more recent is the
+            // real "last saw any activity" answer - doneDate stays fixed once
+            // a download finishes, while activityDate keeps moving through
+            // seeding, so taking the max never loses ground to a stale field.
+            LastActivityUtc: DownloadClientHelpers.FromUnixOrNull(Math.Max(item.ActivityDate ?? 0, item.DoneDate ?? 0))))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(client, baseUri, cancellationToken);
@@ -279,7 +290,23 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
         try
         {
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
+            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir", "rpc-version" } }), cancellationToken);
+
+            // #973: labels arrived in Transmission's RPC 16 (Transmission
+            // 2.40). Deluno routes every grab by category through a label
+            // (#606), so a daemon too old to have one silently drops every
+            // download into the same folder - the same shape as Deluge's own
+            // Label-plugin-off message, so this reads the same way.
+            var rpcVersion = session.Arguments?.RpcVersion;
+            if (rpcVersion is null or < MinimumLabelRpcVersion)
+            {
+                return new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Unsupported,
+                    rpcVersion is null
+                        ? "Deluno could not read Transmission's RPC version, so it cannot tell whether labels are supported. Labels need Transmission 2.40 (RPC 16) or later."
+                        : $"This Transmission speaks RPC {rpcVersion}, older than the RPC {MinimumLabelRpcVersion} (Transmission 2.40) that added labels, so every download goes to the same folder whatever its category. Upgrade Transmission to route by category.",
+                    Supported: false, Found: false);
+            }
+
             var folder = CategoryFolder(session.Arguments?.DownloadDir, name);
             return folder is null
                 ? new(client.Id, client.Name, name, DownloadClientCategoryStatuses.Configuration,
@@ -302,6 +329,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     /// anything the tracker said about the release.
     /// </summary>
     internal const int TrLocalError = 3;
+
+    /// <summary>#973: the RPC version Transmission 2.40 introduced, the first to support labels.</summary>
+    internal const int MinimumLabelRpcVersion = 16;
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {
@@ -375,9 +405,10 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("torrent-added")] TransmissionAdded? Added = null,
         [property: JsonPropertyName("torrent-duplicate")] TransmissionAdded? Duplicate = null,
         [property: JsonPropertyName("download-dir")] string? DownloadDir = null,
-        [property: JsonPropertyName("size-bytes")] long? SizeBytes = null);
+        [property: JsonPropertyName("size-bytes")] long? SizeBytes = null,
+        [property: JsonPropertyName("rpc-version")] int? RpcVersion = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null);
 
     /// <summary>One tracker's own last-announce result, from Transmission's <c>trackerStats</c> (#878).</summary>
     private sealed record TransmissionTrackerStat(

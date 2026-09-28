@@ -353,8 +353,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 : DownloadTrackerStatuses.Unknown,
             // #811: availability/last_activity/completion_on, where qBittorrent reports them.
             Availability: item.Availability,
-            LastActivityUtc: FromUnixOrNull(item.LastActivity),
-            CompletionUtc: FromUnixOrNull(item.CompletionOn),
+            LastActivityUtc: DownloadClientHelpers.FromUnixOrNull(item.LastActivity),
+            CompletionUtc: DownloadClientHelpers.FromUnixOrNull(item.CompletionOn),
             // #951: qBittorrent's own metaDL state - a magnet that has not
             // resolved its own metadata (name, file list, size) yet. NormalizeStatus
             // maps metaDL to Downloading (it has no "fetching metadata" status of
@@ -616,10 +616,6 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
     internal static int EtaSeconds(long? eta)
         => eta is null or <= 0 or >= NoEstimateSeconds ? 0 : (int)Math.Min(eta.Value, int.MaxValue);
-
-    /// <summary>#811: qBittorrent sends -1/0 for "not yet" (no activity, not completed), which is null, not epoch.</summary>
-    private static DateTimeOffset? FromUnixOrNull(long? value)
-        => value is > 0 ? DateTimeOffset.FromUnixTimeSeconds(value.Value) : null;
 
     public override string NormalizeStatus(string? nativeStatus, double? progress, int? errorCode = null, string? errorMessage = null)
     {

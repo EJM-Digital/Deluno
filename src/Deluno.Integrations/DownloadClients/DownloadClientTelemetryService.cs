@@ -872,7 +872,8 @@ public sealed class DownloadClientTelemetryService(
                         files,
                         item.SizeBytes,
                         snapshot.AlternateSpeedLimitEnabled == true,
-                        item.IsFetchingMetadata),
+                        item.IsFetchingMetadata,
+                        item.Availability),
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);

@@ -1361,6 +1361,15 @@ export function QueuePage() {
                 <Fact label="Speed" value={openQueueItem.speedMbps > 0 ? `${openQueueItem.speedMbps.toFixed(1)} MB/s` : "Not moving"} />
                 <Fact label="Time left" value={openQueueItem.etaSeconds > 0 ? formatEta(openQueueItem.etaSeconds) : "Unknown"} />
                 <Fact label="Peers" value={String(openQueueItem.peers)} />
+                {openQueueItem.availability != null ? (
+                  <Fact label="Availability" value={`${openQueueItem.availability.toFixed(2)} (1.0 is one full copy across all peers)`} />
+                ) : null}
+                {openQueueItem.lastActivityUtc ? (
+                  <Fact label="Last activity" value={formatAgo(openQueueItem.lastActivityUtc, preferences)} />
+                ) : null}
+                {openQueueItem.completionUtc ? (
+                  <Fact label="Completed" value={formatAgo(openQueueItem.completionUtc, preferences)} />
+                ) : null}
                 <Fact label="From" value={openQueueItem.indexerName || "Unknown source"} />
                 <Fact label="Tracker privacy" value={privacyLabel(openQueueItem.isPrivate)} />
                 <Fact label="Release" value={openQueueItem.releaseName} mono />

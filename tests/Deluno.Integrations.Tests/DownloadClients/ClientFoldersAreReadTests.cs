@@ -81,11 +81,37 @@ public sealed class ClientFoldersAreReadTests
     public async Task Transmission_saves_a_category_inside_its_download_folder()
     {
         var result = await new TransmissionDownloadClient(Factory(Json("""
-            {"result":"success","arguments":{"download-dir":"C:\\Downloads\\Completed"}}
+            {"result":"success","arguments":{"download-dir":"C:\\Downloads\\Completed","rpc-version":16}}
             """))).CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
 
         Assert.Equal(DownloadClientCategoryStatuses.Ready, result.Status);
         Assert.Equal(@"C:\Downloads\Completed\TV", result.SavePath);
+    }
+
+    /// <summary>#973: labels need Transmission's RPC 16 (2.40); an older daemon gets the same kind of explicit message Deluge gives for its Label plugin being off.</summary>
+    [Fact]
+    public async Task A_Transmission_too_old_for_labels_says_so_by_name_and_version()
+    {
+        var result = await new TransmissionDownloadClient(Factory(Json("""
+            {"result":"success","arguments":{"download-dir":"C:\\Downloads\\Completed","rpc-version":15}}
+            """))).CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
+
+        Assert.Equal(DownloadClientCategoryStatuses.Unsupported, result.Status);
+        Assert.False(result.Supported);
+        Assert.Contains("RPC 15", result.Message);
+        Assert.Contains("RPC 16", result.Message);
+    }
+
+    /// <summary>A daemon so old it does not even answer rpc-version reads the same as too-old, not as ready.</summary>
+    [Fact]
+    public async Task A_Transmission_with_no_rpc_version_at_all_is_not_assumed_to_support_labels()
+    {
+        var result = await new TransmissionDownloadClient(Factory(Json("""
+            {"result":"success","arguments":{"download-dir":"C:\\Downloads\\Completed"}}
+            """))).CheckCategoryAsync(Client("transmission"), "TV", CancellationToken.None);
+
+        Assert.Equal(DownloadClientCategoryStatuses.Unsupported, result.Status);
+        Assert.False(result.Supported);
     }
 
     [Fact]

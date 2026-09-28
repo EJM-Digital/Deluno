@@ -125,6 +125,37 @@ public sealed class TransmissionSharingAndStallTests
         Assert.Equal(expected, item.IsSetupProblem);
     }
 
+    /// <summary>#973: activityDate/doneDate feed LastActivityUtc — whichever is more recent wins.</summary>
+    [Fact]
+    public async Task Last_activity_is_read_from_activity_date_when_it_is_the_most_recent()
+    {
+        var activity = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
+            activityDate: activity.ToUnixTimeSeconds(), doneDate: 0);
+
+        Assert.Equal(activity.ToUnixTimeSeconds(), item.LastActivityUtc!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task Last_activity_falls_back_to_done_date_when_it_is_the_most_recent()
+    {
+        var done = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var stale = DateTimeOffset.UtcNow.AddHours(-3);
+        var item = await Snapshot(status: 6, percentDone: 1, uploadRatio: 1, secondsSeeding: 60, peersSendingToUs: 0, isStalled: false,
+            activityDate: stale.ToUnixTimeSeconds(), doneDate: done.ToUnixTimeSeconds());
+
+        Assert.Equal(done.ToUnixTimeSeconds(), item.LastActivityUtc!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task Last_activity_is_null_when_transmission_reports_neither_field()
+    {
+        var item = await Snapshot(status: 4, percentDone: 0.4, uploadRatio: null, secondsSeeding: null, peersSendingToUs: 1, isStalled: false,
+            activityDate: 0, doneDate: 0);
+
+        Assert.Null(item.LastActivityUtc);
+    }
+
     private static async Task<DownloadQueueItem> Snapshot(
         int status,
         double percentDone,
@@ -134,12 +165,14 @@ public sealed class TransmissionSharingAndStallTests
         bool isStalled,
         int peersConnected = 0,
         int error = 0,
-        string? errorString = null)
+        string? errorString = null,
+        long activityDate = 0,
+        long doneDate = 0)
     {
         var torrentGet = "{\"result\":\"success\",\"arguments\":{\"torrents\":[{\"id\":7,\"name\":\"Sherlock.Jr.1924.1080p.BluRay\","
             + $"\"status\":{status},\"percentDone\":{percentDone.ToString(CultureInfo.InvariantCulture)},"
             + $"\"totalSize\":5000000000,\"downloadedEver\":2000000000,\"peersConnected\":{peersConnected},\"peersSendingToUs\":{peersSendingToUs},"
-            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
+            + $"\"addedDate\":{DateTimeOffset.UtcNow.AddMinutes(-10).ToUnixTimeSeconds()},\"activityDate\":{activityDate},\"doneDate\":{doneDate},\"rateDownload\":0,\"rateUpload\":0,\"eta\":0,"
             + $"\"isStalled\":{(isStalled ? "true" : "false")},\"error\":{error}"
             + (errorString is null ? string.Empty : $",\"errorString\":\"{errorString}\"")
             + (uploadRatio is null ? string.Empty : $",\"uploadRatio\":{uploadRatio.Value.ToString(CultureInfo.InvariantCulture)}")

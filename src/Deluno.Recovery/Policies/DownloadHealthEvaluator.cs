@@ -285,6 +285,25 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 CanSafelyRemove: false));
         }
 
+        // #811/#970: qBittorrent's own availability reading - below 1 means
+        // no single peer holds a complete copy of this torrent right now, so
+        // it may stall regardless of how many peers are connected. Only
+        // meaningful while still downloading (a finished torrent's
+        // availability says nothing about whether it finished), and only
+        // when the client actually reports it - Usenet and clients that do
+        // not read this field stay null, which never trips it.
+        if (item.Status == "downloading" && item.Availability is { } availability && availability < 1)
+        {
+            findings.Add(new(
+                Severity: "warning",
+                Kind: DownloadHealthStrikes.LowAvailability,
+                Summary: "No peer has a complete copy of this release yet.",
+                Evidence: $"{availability:0.00} availability (1.0 is one full copy across all connected peers).",
+                RecommendedAction: "A replacement search may find a release with fuller availability.",
+                CanSafelyRetry: false,
+                CanSafelyRemove: false));
+        }
+
         // #816: check the files actually inside the download against the
         // configured content blocklist, rather than only the release's own
         // name. When no file listing was fetched (the client does not expose
