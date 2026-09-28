@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CatalogueFacets } from "../../lib/api";
 import type { LibraryControlSet } from "../../lib/library-controls";
@@ -194,5 +194,63 @@ describe("ControlRail Missing chip (#1032, merges the old Wanted shortcut)", () 
     );
 
     expect(screen.queryByRole("button", { name: /^Wanted/ })).toBeNull();
+  });
+
+  /**
+   * #1032 follow-up: leaving Missing for a different status chip used to leave
+   * the Monitored filter switched on behind the scenes, so the next chip's
+   * printed count (the server's facet for "any" monitoring) no longer matched
+   * the rows it actually showed (which were still filtered to monitored-only)
+   * — the exact #934 "matches its own count" failure a person would hit by
+   * clicking Missing and then, say, Upcoming. `monitoringForcedByMissing`
+   * (declared beside `openPanel` above) tracks whether Missing is what set
+   * `monitored`, and only a different status chip clears it back to "any";
+   * a choice the person made directly on the monitoring axis is a separate
+   * thing and is asserted to survive that same click in the test below it.
+   */
+  it("resets the Monitored filter Missing turned on when a different chip is picked next", () => {
+    const setQuickFilter = vi.fn();
+    const setMonitoring = vi.fn();
+    render(
+      <ControlRail
+        label="Movies"
+        variant="movies"
+        facets={facets()}
+        controls={controls({ setQuickFilter, setMonitoring })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Missing/ }));
+    expect(setMonitoring).toHaveBeenLastCalledWith("monitored");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Upgradable/ }));
+
+    expect(setQuickFilter).toHaveBeenLastCalledWith("upgrades");
+    expect(setMonitoring).toHaveBeenLastCalledWith("any");
+  });
+
+  it("leaves an explicit Unmonitored choice made after Missing alone when a different chip is picked next", () => {
+    const setQuickFilter = vi.fn();
+    const setMonitoring = vi.fn();
+    render(
+      <ControlRail
+        label="Movies"
+        variant="movies"
+        facets={facets()}
+        controls={controls({ setQuickFilter, setMonitoring })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^Missing/ }));
+    // A deliberate choice on the monitoring axis itself, made through the
+    // toggle rather than inherited from Missing — this is the kind of choice
+    // that is supposed to stick.
+    fireEvent.click(screen.getByRole("button", { name: /Unmonitored/ }));
+    setMonitoring.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Upgradable/ }));
+
+    expect(setQuickFilter).toHaveBeenLastCalledWith("upgrades");
+    expect(setMonitoring).not.toHaveBeenCalled();
   });
 });

@@ -225,7 +225,12 @@ test.describe("large library status chips at scale (#934)", () => {
       // Wanted shortcut), so its facet — and the rows the assertions below
       // find — only ever cover the monitored half of the seeded bucket. Every
       // other chip leaves monitoring at "any" and still counts the whole
-      // bucket.
+      // bucket — including whichever chip runs right after Missing in this
+      // loop: leaving Missing for a different status resets the Monitored
+      // filter Missing turned on (library-control-rail.tsx's
+      // `monitoringForcedByMissing`), so the very next iteration below is
+      // proof that reset actually happens rather than something this test
+      // has to do by hand.
       const floor = bucket === "missing" ? seed.perBucketMonitored[bucket] : seed.perBucket[bucket];
       expect(facetTotal).toBeGreaterThanOrEqual(floor);
 
@@ -244,21 +249,6 @@ test.describe("large library status chips at scale (#934)", () => {
           return STATUS_BUCKETS.includes(seenBucket as (typeof STATUS_BUCKETS)[number]) && seenBucket !== bucket;
         });
         expect(foreign, `Titles from another filter appeared while "${chipKey}" was selected: ${foreign.join(", ")}`).toHaveLength(0);
-      }
-
-      // Missing is the one chip that turns the Monitored filter on as a
-      // side effect (#1032) — and nothing else on the rail turns it back off,
-      // because Monitored/Unmonitored is its own axis that a status chip
-      // isn't meant to touch (see the comment above). Left alone, every chip
-      // tested after Missing would silently inherit that monitored-only
-      // narrowing and undercount, exactly like Missing itself does on
-      // purpose. Clear it back to "any" here so the next chip in this loop
-      // is judged against the same baseline Missing was: every seeded title,
-      // not just the monitored half.
-      if (bucket === "missing") {
-        const unmonitoredToggle = page.getByRole("button", { name: /Unmonitored/ });
-        await unmonitoredToggle.click(); // monitored -> unmonitored
-        await unmonitoredToggle.click(); // unmonitored -> any
       }
     }
 
