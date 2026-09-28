@@ -237,6 +237,29 @@ public sealed class SeerrAcquisitionServiceTests
             "seerr-1", "Lab Seerr", "movies", "movie-matrix", movie.Title, 45, "added", null, null, It.IsAny<CancellationToken>(), null, null), Times.Once);
     }
 
+    /// <summary>#1035: a 4K request no rule places is refused even with a fallback library set.</summary>
+    [Fact]
+    public async Task An_unmatched_4k_request_is_refused_even_when_a_fallback_library_is_set()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MovieLibrary("library-movies")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        fixture.Metadata.Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetadataProviderRecordLookup(MetadataProviderRecordStatus.Found, "tmdb", "603", Movie()));
+
+        var service = fixture.BuildService();
+        var outcome = await service.AcquireAsync(
+            Connection(movieLibraryId: "library-movies", movieQualityProfileId: "profile-1"), "movies", tmdbId: "603", tvdbId: null, seerrMediaId: 48, is4k: true, requestedBy: "James", CancellationToken.None);
+
+        Assert.False(outcome.Ok);
+        Assert.Contains("no routing rule placed it", outcome.Message);
+        Assert.Contains("requested in 4K", outcome.Message);
+        fixture.JobQueue.Verify(repo => repo.RequestLibrarySearchAsync(It.IsAny<LibraryAutomationPlanItem>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Activity.Verify(repo => repo.RecordActivityAsync("seerr.acquire-failed", It.Is<string>(m => m.Contains("requested in 4K")), null, null, "seerr-server", "seerr-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     /// <summary>No rule matches and no fallback library is set: Deluno refuses in plain words rather than guessing.</summary>
     [Fact]
     public async Task No_rule_matches_and_no_fallback_is_set_so_the_request_is_refused()
