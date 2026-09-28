@@ -7,6 +7,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Libraries.Routing;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Quality;
@@ -18,16 +19,24 @@ namespace Deluno.Worker.Seerr;
 
 /// <summary>
 /// Implements <see cref="ISeerrAcquisitionService"/> (#851): adds the movie
-/// or series a Seerr approval named, honouring the connection's own
-/// library/quality-profile mapping (falling back to "the first library of
-/// that media type", same as an import list with no library chosen), then
-/// requests a search exactly the way adding it manually would. Lives in
-/// Deluno.Worker because that is the layer that can already reach both the
-/// movie and series engines — the inbound webhook route itself lives in
-/// Deluno.Integrations, which cannot.
+/// or series a Seerr approval named, then requests a search exactly the way
+/// adding it manually would. Lives in Deluno.Worker because that is the
+/// layer that can already reach both the movie and series engines — the
+/// inbound webhook route itself lives in Deluno.Integrations, which cannot.
+///
+/// <para>#1033: which library it lands in is decided by
+/// <see cref="ILibraryRoutingResolver"/> — the same destination rules a
+/// manual add's folder placement already reads, evaluated here against the
+/// title's own metadata (genre, anime, original language, "requested in
+/// 4K") — with the connection's own library as the last-resort fallback,
+/// same as before #1033. A #985 4K mapping became a "requested in 4K" rule
+/// when the install upgraded (see
+/// <c>V0121SeerrRequestsUseLibraryRoutingRules</c>), so an existing 4K
+/// mapping still lands exactly where it always did.</para>
 /// </summary>
 public sealed class SeerrAcquisitionService(
     ILibrariesRepository librariesRepository,
+    ILibraryRoutingResolver libraryRoutingResolver,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IMetadataProvider metadataProvider,
@@ -52,23 +61,6 @@ public sealed class SeerrAcquisitionService(
     {
         try
         {
-            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-            var resolved = ResolveLibrary(connection, mediaType, is4k, libraries);
-            if (resolved.Library is null)
-            {
-                if (resolved.NoFourKMappingSet)
-                {
-                    return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No 4K library mapped",
-                        $"{connection.Name} sent a 4K request, but no 4K {(mediaType == "tv" ? "TV" : "movie")} library is mapped for it, and falling back to the normal library is turned off. Add a 4K library mapping on {connection.Name}'s card, or turn on the fallback.",
-                        cancellationToken);
-                }
-
-                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No matching library", $"Deluno has no {(mediaType == "tv" ? "TV" : "movie")} library to add this to.", cancellationToken);
-            }
-
-            var library = resolved.Library;
-            var qualityProfileId = resolved.QualityProfileId;
-
             var idSource = !string.IsNullOrWhiteSpace(tmdbId) ? "tmdb" : !string.IsNullOrWhiteSpace(tvdbId) ? "tvdb" : null;
             var providerId = idSource == "tmdb" ? tmdbId : tvdbId;
             if (idSource is null || string.IsNullOrWhiteSpace(providerId))
@@ -85,6 +77,44 @@ public sealed class SeerrAcquisitionService(
             }
 
             var metadata = lookup.Result;
+
+            // #1033: placed by the same routing rules a manual add's folder
+            // placement already reads, evaluated on the title's metadata —
+            // not a fixed per-connection mapping. The connection's own
+            // library (still called "fallback" below) is only tried when no
+            // rule matches.
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
+            var fallbackLibraryId = mediaType == "tv" ? connection.SeriesLibraryId : connection.MovieLibraryId;
+            var routing = libraryRoutingResolver.Resolve(
+                mediaType,
+                new LibraryRoutingMetadata(metadata.Genres, metadata.OriginalLanguage, metadata.Certification, metadata.Studio, is4k),
+                libraries,
+                rules,
+                fallbackLibraryId);
+
+            if (!routing.Matched)
+            {
+                var hasLibraryOfType = libraries.Any(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase));
+                if (!hasLibraryOfType)
+                {
+                    return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No matching library", $"Deluno has no {(mediaType == "tv" ? "TV" : "movie")} library to add this to.", cancellationToken);
+                }
+
+                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No destination rule matched",
+                    $"No destination rule matched \"{metadata.Title}\", and {connection.Name} has no fallback {(mediaType == "tv" ? "TV" : "movie")} library set. Add a routing rule on the Destination Rules page, or set a fallback library on {connection.Name}'s card.",
+                    cancellationToken);
+            }
+
+            var library = routing.Library!;
+            var rule = routing.Rule;
+            // A matched rule routes by library, so that library's own
+            // default quality profile applies; the fallback library pairs
+            // with the connection's own fallback quality profile, same as
+            // before #1033.
+            var qualityProfileId = rule is null
+                ? (mediaType == "tv" ? connection.SeriesQualityProfileId : connection.MovieQualityProfileId)
+                : null;
 
             string entityId;
             bool isNewlyAdded;
@@ -155,14 +185,17 @@ public sealed class SeerrAcquisitionService(
                     SearchWindowEndHour: library.SearchWindowEndHour),
                 cancellationToken);
 
-            await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId, metadata.Title, seerrMediaId, "added", null, requestedBy, cancellationToken);
+            await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId, metadata.Title, seerrMediaId, "added", null, requestedBy, cancellationToken, rule?.Id, rule?.Name);
 
             var titleWithQuality = is4k ? $"\"{metadata.Title}\" (4K)" : $"\"{metadata.Title}\"";
             var who = string.IsNullOrWhiteSpace(requestedBy) ? string.Empty : $" — requested by {requestedBy}";
+            // #1033: says which rule placed it (or that the fallback library did), so
+            // the automatic choice is visible in Activity, not silent.
+            var placedBy = rule is not null ? $"placed by the “{rule.Name}” rule" : $"using {connection.Name}'s fallback library";
             var message = isNewlyAdded
-                ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}"
-                : $"{connection.Name} approved {titleWithQuality} — already in {library.Name}; {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}";
-            await activityFeedRepository.RecordActivityAsync("seerr.acquired", message, JsonSerializer.Serialize(new { connection.Id, connection.Name, mediaType, entityId, seerrMediaId, is4k, requestedBy }, JsonOptions), null, "seerr-server", connection.Id, cancellationToken);
+                ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} ({placedBy}) and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}"
+                : $"{connection.Name} approved {titleWithQuality} — already in {library.Name} ({placedBy}); {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}";
+            await activityFeedRepository.RecordActivityAsync("seerr.acquired", message, JsonSerializer.Serialize(new { connection.Id, connection.Name, mediaType, entityId, seerrMediaId, is4k, requestedBy, ruleId = rule?.Id, ruleName = rule?.Name }, JsonOptions), null, "seerr-server", connection.Id, cancellationToken);
 
             return new SeerrAcquisitionOutcome(true, message);
         }
@@ -178,52 +211,6 @@ public sealed class SeerrAcquisitionService(
         await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId: string.Empty, title, seerrMediaId, "failed", message, requestedBy, cancellationToken);
         await activityFeedRepository.RecordActivityAsync("seerr.acquire-failed", $"{connection.Name}: {message}", null, null, "seerr-server", connection.Id, cancellationToken);
         return new SeerrAcquisitionOutcome(false, message);
-    }
-
-    /// <summary>What library and quality profile a request (4K or not) resolves to (#985).</summary>
-    private sealed record ResolvedLibrary(LibraryItem? Library, string? QualityProfileId, bool NoFourKMappingSet);
-
-    private static ResolvedLibrary ResolveLibrary(SeerrConnection connection, string mediaType, bool is4k, IReadOnlyList<LibraryItem> libraries)
-    {
-        var candidates = libraries.Where(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (candidates.Length == 0)
-        {
-            return new ResolvedLibrary(null, null, false);
-        }
-
-        if (is4k)
-        {
-            var fourKLibraryId = mediaType == "tv" ? connection.Series4kLibraryId : connection.Movie4kLibraryId;
-            var fourKQualityProfileId = mediaType == "tv" ? connection.Series4kQualityProfileId : connection.Movie4kQualityProfileId;
-            if (!string.IsNullOrWhiteSpace(fourKLibraryId))
-            {
-                var exact = candidates.FirstOrDefault(item => string.Equals(item.Id, fourKLibraryId, StringComparison.OrdinalIgnoreCase));
-                if (exact is not null)
-                {
-                    return new ResolvedLibrary(exact, fourKQualityProfileId, false);
-                }
-            }
-
-            if (!connection.Fallback4kToNormalLibrary)
-            {
-                return new ResolvedLibrary(null, null, true);
-            }
-
-            // Falls back to the normal library/profile below.
-        }
-
-        var preferredId = mediaType == "tv" ? connection.SeriesLibraryId : connection.MovieLibraryId;
-        var preferredQualityProfileId = mediaType == "tv" ? connection.SeriesQualityProfileId : connection.MovieQualityProfileId;
-        if (!string.IsNullOrWhiteSpace(preferredId))
-        {
-            var exact = candidates.FirstOrDefault(item => string.Equals(item.Id, preferredId, StringComparison.OrdinalIgnoreCase));
-            if (exact is not null)
-            {
-                return new ResolvedLibrary(exact, preferredQualityProfileId, false);
-            }
-        }
-
-        return new ResolvedLibrary(candidates[0], preferredQualityProfileId, false);
     }
 
     private static CreateSeriesRequest BuildSeriesRequest(MetadataSearchResult metadata)

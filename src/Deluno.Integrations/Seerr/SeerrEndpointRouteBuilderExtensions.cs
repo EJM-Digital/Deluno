@@ -235,12 +235,11 @@ public static class SeerrEndpointRouteBuilderExtensions
             stored?.Version,
             stored?.CreatedUtc ?? now,
             now,
-            WebhookSecret: stored?.WebhookSecret,
-            Movie4kLibraryId: request.Movie4kLibraryId ?? stored?.Movie4kLibraryId,
-            Movie4kQualityProfileId: request.Movie4kQualityProfileId ?? stored?.Movie4kQualityProfileId,
-            Series4kLibraryId: request.Series4kLibraryId ?? stored?.Series4kLibraryId,
-            Series4kQualityProfileId: request.Series4kQualityProfileId ?? stored?.Series4kQualityProfileId,
-            Fallback4kToNormalLibrary: request.Fallback4kToNormalLibrary);
+            MovieLibraryId: request.MovieLibraryId ?? stored?.MovieLibraryId,
+            MovieQualityProfileId: request.MovieQualityProfileId ?? stored?.MovieQualityProfileId,
+            SeriesLibraryId: request.SeriesLibraryId ?? stored?.SeriesLibraryId,
+            SeriesQualityProfileId: request.SeriesQualityProfileId ?? stored?.SeriesQualityProfileId,
+            WebhookSecret: stored?.WebhookSecret);
     }
 
     private static Dictionary<string, string[]> Validate(SaveSeerrRequest request, SeerrConnection? stored)

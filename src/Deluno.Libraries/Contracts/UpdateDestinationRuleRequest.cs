@@ -8,4 +8,6 @@ public sealed record UpdateDestinationRuleRequest(
     string RootPath,
     string? FolderTemplate,
     int Priority,
-    bool IsEnabled);
+    bool IsEnabled,
+    /// <summary>The library this rule routes a title to (#1033). Null keeps it a folder-only rule.</summary>
+    string? LibraryId = null);

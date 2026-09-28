@@ -12,6 +12,10 @@ namespace Deluno.Connections.Data;
 /// </summary>
 public interface ISeerrAcquisitionsRepository
 {
+    /// <param name="ruleId">
+    /// The destination rule that placed this request (#1033), or null when
+    /// the connection's fallback library was used instead, or on a failure.
+    /// </param>
     Task<SeerrAcquisitionItem> RecordAsync(
         string connectionId,
         string connectionName,
@@ -22,7 +26,9 @@ public interface ISeerrAcquisitionsRepository
         string status,
         string? message,
         string? requestedBy,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? ruleId = null,
+        string? ruleName = null);
 
     /// <summary>The last few acquisitions for one Seerr server, newest first, for its settings card.</summary>
     Task<IReadOnlyList<SeerrAcquisitionItem>> ListRecentAsync(string connectionId, int take, CancellationToken cancellationToken);
@@ -43,7 +49,7 @@ public sealed class SqliteSeerrAcquisitionsRepository(
     : ISeerrAcquisitionsRepository
 {
     private const string Columns =
-        "id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by";
+        "id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by, rule_id, rule_name";
 
     public async Task<SeerrAcquisitionItem> RecordAsync(
         string connectionId,
@@ -55,7 +61,9 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         string status,
         string? message,
         string? requestedBy,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ruleId = null,
+        string? ruleName = null)
     {
         var now = timeProvider.GetUtcNow();
         var id = Guid.CreateVersion7().ToString("N");
@@ -64,9 +72,9 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         command.CommandText =
             """
             INSERT INTO seerr_acquisitions (
-                id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by
+                id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by, rule_id, rule_name
             ) VALUES (
-                @id, @connectionId, @connectionName, @mediaType, @entityId, @title, @seerrMediaId, @status, @message, @now, @now, @requestedBy
+                @id, @connectionId, @connectionName, @mediaType, @entityId, @title, @seerrMediaId, @status, @message, @now, @now, @requestedBy, @ruleId, @ruleName
             );
             """;
         AddParameter(command, "@id", id);
@@ -80,9 +88,15 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         AddParameter(command, "@message", message);
         AddParameter(command, "@now", now.ToString("O"));
         AddParameter(command, "@requestedBy", string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy.Trim());
+        AddParameter(command, "@ruleId", string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim());
+        AddParameter(command, "@ruleName", string.IsNullOrWhiteSpace(ruleName) ? null : ruleName.Trim());
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return new SeerrAcquisitionItem(id, connectionId, connectionName, mediaType, entityId, title, seerrMediaId, status, message, now, now, string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy.Trim());
+        return new SeerrAcquisitionItem(
+            id, connectionId, connectionName, mediaType, entityId, title, seerrMediaId, status, message, now, now,
+            string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy.Trim(),
+            string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim(),
+            string.IsNullOrWhiteSpace(ruleName) ? null : ruleName.Trim());
     }
 
     public async Task<IReadOnlyList<SeerrAcquisitionItem>> ListRecentAsync(string connectionId, int take, CancellationToken cancellationToken)
@@ -144,5 +158,7 @@ public sealed class SqliteSeerrAcquisitionsRepository(
             Message: reader.IsDBNull(8) ? null : reader.GetString(8),
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(9)),
             UpdatedUtc: DateTimeOffset.Parse(reader.GetString(10)),
-            RequestedBy: reader.IsDBNull(11) ? null : reader.GetString(11));
+            RequestedBy: reader.IsDBNull(11) ? null : reader.GetString(11),
+            RuleId: reader.IsDBNull(12) ? null : reader.GetString(12),
+            RuleName: reader.IsDBNull(13) ? null : reader.GetString(13));
 }

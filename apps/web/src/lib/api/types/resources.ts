@@ -404,6 +404,8 @@ export interface DestinationRuleItem {
   isEnabled: boolean;
   createdUtc: string;
   updatedUtc: string;
+  /** #1033: the library this rule routes a title to, when it is used for library routing (e.g. by Seerr) rather than only folder placement. */
+  libraryId: string | null;
 }
 
 export interface ImportPreviewRequest {

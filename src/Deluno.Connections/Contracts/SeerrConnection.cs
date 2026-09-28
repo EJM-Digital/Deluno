@@ -26,9 +26,14 @@ public sealed record SeerrConnection(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     /// <summary>
-    /// Where an approved movie/series request lands (#851), the same
-    /// library+quality-profile pair a manual add already takes. Null follows
-    /// the ordinary fallback: the first library of that media type.
+    /// Where an approved request lands when no destination rule matches it
+    /// (#1033) - the fallback library and quality profile per media type,
+    /// the last resort before Deluno refuses rather than guessing. Before
+    /// #1033 this was the only mapping a connection had, and #985 added a
+    /// second, 4K-only pair beside it; both ideas are now one rule-based
+    /// resolver (see <c>ILibraryRoutingResolver</c>), so ordinary rules —
+    /// including a "requested in 4K" one — are tried first and this is what
+    /// is left over when none of them match.
     /// </summary>
     string? MovieLibraryId = null,
     string? MovieQualityProfileId = null,
@@ -40,23 +45,7 @@ public sealed record SeerrConnection(
     /// only the dedicated reveal/regenerate endpoints return the plaintext,
     /// the same way the API key is never handed back once saved.
     /// </summary>
-    [property: JsonIgnore] string? WebhookSecret = null,
-    /// <summary>
-    /// Where a 4K approval lands (#985): Deluno is built for multiple
-    /// libraries, so a request Seerr marked 4K gets its own library and
-    /// quality profile rather than sharing the normal one. Null means no 4K
-    /// library is mapped yet.
-    /// </summary>
-    string? Movie4kLibraryId = null,
-    string? Movie4kQualityProfileId = null,
-    string? Series4kLibraryId = null,
-    string? Series4kQualityProfileId = null,
-    /// <summary>
-    /// What a 4K request does when no 4K library is mapped (#985). False (the
-    /// default) refuses the request and writes why to Activity in plain
-    /// words; true falls back to the normal library and profile instead.
-    /// </summary>
-    bool Fallback4kToNormalLibrary = false)
+    [property: JsonIgnore] string? WebhookSecret = null)
 {
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
 
@@ -72,12 +61,7 @@ public sealed record SaveSeerrRequest(
     string? MovieLibraryId = null,
     string? MovieQualityProfileId = null,
     string? SeriesLibraryId = null,
-    string? SeriesQualityProfileId = null,
-    string? Movie4kLibraryId = null,
-    string? Movie4kQualityProfileId = null,
-    string? Series4kLibraryId = null,
-    string? Series4kQualityProfileId = null,
-    bool Fallback4kToNormalLibrary = false);
+    string? SeriesQualityProfileId = null);
 
 /// <summary>What a Seerr test found out, in the words the screen prints.</summary>
 public sealed record SeerrTestResult(
@@ -108,4 +92,12 @@ public sealed record SeerrAcquisitionItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     /// <summary>Who asked for it in Seerr (#985), the way Seerr showed them; null when the webhook sent none.</summary>
-    string? RequestedBy = null);
+    string? RequestedBy = null,
+    /// <summary>
+    /// The destination rule that placed this request (#1033), in plain words
+    /// on Activity and the Seerr card's recent acquisitions. Null when the
+    /// connection's fallback library was used instead — no rule matched — or
+    /// on a row recorded before #1033.
+    /// </summary>
+    string? RuleId = null,
+    string? RuleName = null);
