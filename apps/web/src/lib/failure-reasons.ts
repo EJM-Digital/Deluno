@@ -41,12 +41,47 @@ const REASON_WORDS: Record<string, string> = {
   conflict: "Something else is already using that name",
   replacementOwnershipMismatch: "That file belongs to a different title",
   processorRejected: "The processor could not use it and removed it",
-  downloadStalled: "It stopped downloading and never recovered"
+  downloadStalled: "It stopped downloading and never recovered",
+  clientReportedFailure: "Your download client said the download failed",
+  deadOrBrokenLink: "The download client could not open the link",
+  insufficientFreeSpace: "Not enough free space on the drive",
+  downloadIntegrityFailed: "Deluno opened the file and it was wrong"
 };
 
 export function reasonWords(reasonCode: string): string {
   return REASON_WORDS[reasonCode] ?? reasonCode;
 }
+
+/**
+ * Every reason `Deluno.Contracts.ImportFailurePolicy` can store, mirrored here
+ * so a test can fail the moment a new one arrives with no words (#967). Keep
+ * in step with `ImportFailurePolicy.KnownReasons` by hand — there is no
+ * automated cross-language check, same as the rest of this file.
+ */
+export const KNOWN_IMPORT_FAILURE_REASONS = [
+  "noVideoStream",
+  "likelySample",
+  "unsupportedFile",
+  "mediaProbeRejected",
+  "mediaProbeUnreadable",
+  "unmatched",
+  "importFailed",
+  "replacementRejected",
+  "missingLibraryRoot",
+  "missingSource",
+  "permission",
+  "io",
+  "hardlinkUnavailable",
+  "hardlinkFailed",
+  "samePath",
+  "conflict",
+  "replacementOwnershipMismatch",
+  "processedFileIsLess",
+  "clientReportedFailure",
+  "deadOrBrokenLink",
+  "insufficientFreeSpace",
+  "downloadIntegrityFailed"
+] as const;
 
 /**
  * The headings, and why each group is answered the way it is.
