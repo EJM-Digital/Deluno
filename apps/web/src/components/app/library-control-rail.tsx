@@ -227,23 +227,22 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
   const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "view" | null>(null);
 
   /**
-   * True only while `monitoring === "monitored"` is Missing's own doing
-   * (#1032), not something the person chose themselves via the Unmonitored
-   * toggle or the filter panel's monitoring select. Missing sets `monitoring`
-   * as a side effect of a click that was about the *status* axis — picking a
-   * different status chip next should not keep that side effect narrowing the
-   * new chip's own shelf, or its printed count stops matching what the shelf
-   * shows, which is exactly the #934 guarantee this row exists to keep. A
-   * choice the person made on the monitoring axis directly (either control
-   * below) is a different thing entirely and stays in effect across chips,
-   * same as it always has.
+   * One title is in exactly one pill (#1048). The status pills and Unmonitored
+   * are one group: a status pill speaks for monitored titles only (the server
+   * applies that in the pill's own filter and count), and Unmonitored is the
+   * pill an unmonitored title lives under. So choosing one of them leaves the
+   * other group member, and nothing else — a pill click never sets a hidden
+   * Monitored filter (Missing used to, which emptied the list while its count
+   * said 1, and made All change on click).
    */
-  const [monitoringForcedByMissing, setMonitoringForcedByMissing] = useState(false);
-
   function setMonitoringExplicitly(next: MonitoringFilter) {
-    setMonitoringForcedByMissing(false);
     setMonitoring(next);
+    if (next === "unmonitored" && quickFilter !== "all") {
+      setQuickFilter("all");
+    }
   }
+
+  const unmonitoredActive = monitoring === "unmonitored";
 
   const counts: Partial<Record<QuickFilter, number>> = {
     all: facets?.all ?? 0,
@@ -260,7 +259,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
   // simply resizing all move a chip without a click ever happening (#934).
   const chips = quickFiltersFor(variant);
   const pillSignal = chips.map((chip) => `${chip.key}:${chip.label}:${counts[chip.key] ?? 0}`).join("|");
-  const { pill, trackRef: pillTrackRef, registerElement: registerChipButton } = useSlidingPill(quickFilter, pillSignal);
+  const { pill, trackRef: pillTrackRef, registerElement: registerChipButton } = useSlidingPill<QuickFilter | "unmonitored">(
+    unmonitoredActive ? "unmonitored" : quickFilter,
+    `${pillSignal}|unmonitored:${facets?.unmonitored ?? 0}`
+  );
 
   const fieldsById = new Map(controlSet.filterFields.map((field) => [field.id, field]));
   const toggle = (panel: "sort" | "filter" | "view") =>
@@ -495,13 +497,11 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               ) : null}
 
               {chips.map((chip) => {
-                const active = quickFilter === chip.key;
-                // #1032: Missing and Wanted (#790) were the same question asked
-                // twice — "what am I actually missing" always meant "and I have
-                // told Deluno to watch for it". `missing` and `monitored` are
-                // still two separate, stackable axes (see the Unmonitored
-                // toggle below), so this chip sets both at once rather than
-                // asking for two clicks to reach what "Missing" now means.
+                const active = quickFilter === chip.key && !unmonitoredActive;
+                // #1032 / #1048: Missing means monitored titles with no
+                // acceptable file. The "monitored" part is in the pill's own
+                // filter and count on the server, so clicking Missing sets
+                // nothing but Missing.
                 const isMissing = chip.key === "missing";
                 return (
                   <button
@@ -510,21 +510,16 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     type="button"
                     onClick={() => {
                       setQuickFilter(chip.key);
-                      if (isMissing) {
-                        setMonitoring("monitored");
-                        setMonitoringForcedByMissing(true);
-                      } else if (monitoringForcedByMissing) {
-                        // Leaving Missing for a different status: undo the
-                        // side effect Missing left behind rather than let it
-                        // keep narrowing a chip nobody asked to combine with
-                        // monitoring (see the state's own comment above).
+                      // The pills are one group: leaving Unmonitored for a
+                      // status pill drops Unmonitored, which is the pill that
+                      // was showing, not a hidden filter.
+                      if (unmonitoredActive) {
                         setMonitoring("any");
-                        setMonitoringForcedByMissing(false);
                       }
                     }}
-                    aria-pressed={isMissing ? active && monitoring === "monitored" : undefined}
+                    aria-pressed={active}
                     title={isMissing
-                      ? "Monitored titles with no acceptable file. Sets the Missing chip and the Monitored filter together."
+                      ? "Monitored titles with no acceptable file. Unmonitored titles are counted under Unmonitored."
                       : undefined}
                     className={cn(
                       "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
@@ -551,7 +546,10 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     {/* The count wears the colour: the number is the part you read. */}
                     <span
                       className={cn(
-                        "tabular rounded-md px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight",
+                        // A reserved width: the pill must not resize when a
+                        // count goes from 9 to 10 or a click changes which pill
+                        // is selected (#1048).
+                        "tabular min-w-[3ch] rounded-md px-1.5 py-px text-center text-[length:var(--library-badge-size)] font-bold leading-tight",
                         chip.mark
                           ? cn(TITLE_MARK_PRESENTATION[chip.mark].tint, TITLE_MARK_PRESENTATION[chip.mark].text)
                           : active
@@ -580,12 +578,12 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 set `quickFilter` would make *"missing, and I have told Deluno to
                 leave it alone"* unaskable again.
 
-                That objection is about which axis the chip writes to, not about
-                whether it can be a chip. This one sets `monitoring`, the axis
-                that already exists for it — so it looks and behaves like every
-                other chip and **stacks** with them instead of replacing them.
-                Missing + Unmonitored is now one click each, which is the
-                question the old shared value could not ask at all.
+                #1048 settles the objection the other way: a title is in exactly
+                one pill. Status pills count monitored titles only, and this pill
+                is where an unmonitored title lives, whatever its file state. It
+                is one group with them (picking one leaves the other), so
+                "Missing 1" and "Unmonitored 1" can never be the same title, and
+                All is the sum of the pills whichever is selected.
 
                 It also has a colour now, which is the other reason it was
                 excluded: grey is what an unmonitored card's bars are painted.
@@ -594,13 +592,14 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               */}
               <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
               <button
+                  ref={(element) => registerChipButton("unmonitored", element)}
                   type="button"
-                  onClick={() => setMonitoringExplicitly(monitoring === "unmonitored" ? "any" : "unmonitored")}
-                  aria-pressed={monitoring === "unmonitored"}
-                  title="Titles Deluno is not watching. Stacks with the state chips rather than replacing them."
+                  onClick={() => setMonitoringExplicitly(unmonitoredActive ? "any" : "unmonitored")}
+                  aria-pressed={unmonitoredActive}
+                  title="Titles Deluno is not watching, whatever state their file is in. They are counted here and in no other pill."
                   className={cn(
                     "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
-                    monitoring === "unmonitored"
+                    unmonitoredActive
                       ? "font-semibold text-foreground"
                       : "font-medium text-muted-foreground hover:text-foreground"
                   )}
@@ -611,7 +610,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     style={{ background: "hsl(var(--mark-unmonitored))" }}
                   />
                   <span>Unmonitored</span>
-                  <span className="tabular rounded-md bg-foreground/[0.06] px-1.5 py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
+                  <span className="tabular min-w-[3ch] rounded-md bg-foreground/[0.06] px-1.5 text-center py-px text-[length:var(--library-badge-size)] font-bold leading-tight text-muted-foreground dark:bg-white/[0.07]">
                     {facets?.unmonitored ?? 0}
                   </span>
               </button>
@@ -850,7 +849,9 @@ function ToolbarMenuButton({
           narrow screen rather than wrapped, because a wrapped value is what made
           this two lines tall in the first place. */}
       <span className={cn(
-        "hidden max-w-32 truncate font-medium md:block",
+        // A fixed width, not max: "none" becoming "1 narrowing" when a pill is
+        // clicked used to resize this button and, with it, the search bar (#1048).
+        "hidden w-[7.5rem] truncate font-medium md:block",
         active ? "text-primary/70" : "text-muted-foreground"
       )}>
         {meta}

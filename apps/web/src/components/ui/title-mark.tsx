@@ -935,7 +935,7 @@ export function TitleMarkBarLegend({ className, type }: { className?: string; ty
             up. DESIGN-002 says the bar *is* a miniature of that ladder; it now
             borrows its words as well as its colours.
           */}
-          <span>{TITLE_MARK_PRESENTATION[segment.mark].label}</span>
+          <span title={segment.hint}>{segment.label}</span>
         </span>
       ))}
     </div>

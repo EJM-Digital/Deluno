@@ -231,7 +231,11 @@ test.describe("large library status chips at scale (#934)", () => {
       // `monitoringForcedByMissing`), so the very next iteration below is
       // proof that reset actually happens rather than something this test
       // has to do by hand.
-      const floor = bucket === "missing" ? seed.perBucketMonitored[bucket] : seed.perBucket[bucket];
+      //
+      // #1048: every status pill now counts monitored titles only (an
+      // unmonitored title is under Unmonitored and nowhere else), so the floor
+      // is the monitored half of the bucket for every chip, not just Missing.
+      const floor = seed.perBucketMonitored[bucket];
       expect(facetTotal).toBeGreaterThanOrEqual(floor);
 
       // Sample top, middle and bottom rather than walking every row (see the

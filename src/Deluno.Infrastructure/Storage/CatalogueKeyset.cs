@@ -201,25 +201,19 @@ public static class CatalogueKeyset
         string? upcomingExpression = null,
         string? downloadingExpression = null,
         string? airingExpression = null)
-        => CatalogueStatusFilters.Normalize(status) switch
+    {
+        var rung = CatalogueStatusFilters.Normalize(status) switch
         {
             CatalogueStatusFilters.Downloaded => hasFileExpression,
-            // Missing is a *state*, not the absence of a file: a title that is
-            // not out yet has no file either, and calling it missing counted it
-            // against the library from the day it was added.
-            //
-            // **A title being downloaded has no file either**, and it was
-            // counted twice — once under Downloading and once under Missing — so
-            // the chips above the shelf summed to twelve across eleven titles.
-            // Invisible until the lab library had anything downloading in it.
-            // Same argument as Upcoming, one state along.
-            CatalogueStatusFilters.Missing
-                when !string.IsNullOrWhiteSpace(upcomingExpression)
-                  && !string.IsNullOrWhiteSpace(downloadingExpression)
-                => $"NOT {hasFileExpression} AND NOT {upcomingExpression} AND NOT {downloadingExpression}",
-            CatalogueStatusFilters.Missing when !string.IsNullOrWhiteSpace(upcomingExpression)
-                => $"NOT {hasFileExpression} AND NOT {upcomingExpression}",
-            CatalogueStatusFilters.Missing => $"NOT {hasFileExpression}",
+            // Missing is what is left when every other rung has claimed its
+            // titles, so a title is on exactly one pill: not out yet is
+            // Upcoming, being fetched is Downloading, airing is Airing, and
+            // none of those count against the library as Missing. A title
+            // Deluno holds no wanted row for has none of them and reads as
+            // Missing, which is what its card draws.
+            CatalogueStatusFilters.Missing => MissingRung(
+                hasFileExpression, upgradeExpression, coveredExpression,
+                upcomingExpression, downloadingExpression, airingExpression),
             CatalogueStatusFilters.Upgrades when !string.IsNullOrWhiteSpace(upgradeExpression) => upgradeExpression,
             CatalogueStatusFilters.Covered when !string.IsNullOrWhiteSpace(coveredExpression) => coveredExpression,
             CatalogueStatusFilters.Upcoming when !string.IsNullOrWhiteSpace(upcomingExpression) => upcomingExpression,
@@ -227,6 +221,67 @@ public static class CatalogueKeyset
             CatalogueStatusFilters.Airing when !string.IsNullOrWhiteSpace(airingExpression) => airingExpression,
             _ => string.Empty
         };
+
+        return string.IsNullOrEmpty(rung) ? string.Empty : $"({alias}.monitored = 1 AND ({rung}))";
+    }
+
+    private static string MissingRung(
+        string hasFileExpression,
+        string? upgradeExpression,
+        string? coveredExpression,
+        string? upcomingExpression,
+        string? downloadingExpression,
+        string? airingExpression)
+    {
+        var claimed = new List<string> { hasFileExpression };
+        foreach (var expression in new[] { upgradeExpression, coveredExpression, upcomingExpression, downloadingExpression, airingExpression })
+        {
+            if (!string.IsNullOrWhiteSpace(expression))
+            {
+                claimed.Add(expression);
+            }
+        }
+
+        return $"NOT ({string.Join(" OR ", claimed)})";
+    }
+
+    /// <summary>
+    /// The ten counts above the shelf, from one pass, written once for both
+    /// catalogues (#1048). Every column is independent of the status pill and
+    /// of the monitoring filter currently chosen, so clicking a pill can never
+    /// move another number: All is every title, Unmonitored is every
+    /// unmonitored title, and each status pill is the monitored titles on that
+    /// rung, so All equals the sum of the pills. Column order: all, monitored,
+    /// unmonitored, downloaded, missing, upgrades, covered, upcoming,
+    /// downloading, airing.
+    /// </summary>
+    public static string FacetSelectList(
+        string alias,
+        string hasFileExpression,
+        string upgradeExpression,
+        string coveredExpression,
+        string upcomingExpression,
+        string downloadingExpression,
+        string airingExpression)
+    {
+        static string Count(string predicate) => $"SUM(CASE WHEN {predicate} THEN 1 ELSE 0 END)";
+        var monitored = $"{alias}.monitored = 1";
+        var missing = $"{monitored} AND {MissingRung(hasFileExpression, upgradeExpression, coveredExpression, upcomingExpression, downloadingExpression, airingExpression)}";
+
+        return string.Join("," + Environment.NewLine + "    ", new[]
+        {
+            "COUNT(*)",
+            Count(monitored),
+            Count($"{alias}.monitored = 0"),
+            Count($"{monitored} AND {hasFileExpression}"),
+            Count(missing),
+            Count($"{monitored} AND {upgradeExpression}"),
+            Count($"{monitored} AND {coveredExpression}"),
+            Count($"{monitored} AND {upcomingExpression}"),
+            Count($"{monitored} AND {downloadingExpression}"),
+            Count($"{monitored} AND {airingExpression}")
+        });
+    }
 
     /// <summary>
     /// Whether Deluno acts on the title — a separate axis from

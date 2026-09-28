@@ -120,7 +120,8 @@ public sealed class CataloguePagingTests
         Assert.NotNull(page.Facets);
         Assert.Equal(40, page.Facets.All);
         Assert.Equal(40, page.Facets.Monitored + page.Facets.Unmonitored);
-        Assert.Equal(40, page.Facets.Downloaded + page.Facets.Missing);
+        // Status pills count monitored titles only; Unmonitored is its own pill (#1048).
+        Assert.Equal(40, page.Facets.Downloaded + page.Facets.Missing + page.Facets.Unmonitored);
 
         // Continuation pages do not recount: the caller already has the numbers,
         // and counting is the one part of this request that scans.
@@ -159,12 +160,9 @@ public sealed class CataloguePagingTests
         Assert.Equal(quiet.Id, Assert.Single(unmonitored.Items).Id);
         Assert.Equal(1, unmonitored.TotalCount);
 
-        // The state facets are counted inside the monitoring scope, so `All`
-        // is the one unmonitored title rather than all three.
-        Assert.Equal(1, unmonitored.Facets!.All);
-        // The monitoring counts are taken inside the *status* scope, so the
-        // monitoring control can say how many fall each side of the state you
-        // are looking at. No status here, so it is the whole searched set.
+        // Clicking Unmonitored moves no number (#1048): All is still all
+        // three, and the badge still says one.
+        Assert.Equal(3, unmonitored.Facets!.All);
         Assert.Equal(2, unmonitored.Facets.Monitored);
         Assert.Equal(1, unmonitored.Facets.Unmonitored);
     }
@@ -195,19 +193,25 @@ public sealed class CataloguePagingTests
         Assert.Equal(hunted.Id, Assert.Single(huntedNow.Items).Id);
         Assert.Equal(1, huntedNow.TotalCount);
 
+        // A status pill speaks for monitored titles only (#1048): the ignored
+        // film is under Unmonitored, never under Missing, so asking for both
+        // at once is honestly empty.
         var missingAndIgnored = await movies.ListPageAsync(
             new CatalogueQuery(Status: CatalogueStatusFilters.Missing, Monitored: false),
             CancellationToken.None);
-        Assert.Equal(ignored.Id, Assert.Single(missingAndIgnored.Items).Id);
+        Assert.Empty(missingAndIgnored.Items);
 
-        // And "either" is still the default: both missing titles come back.
-        var eitherWay = await movies.ListPageAsync(
+        var unmonitoredOnly = await movies.ListPageAsync(new CatalogueQuery(Monitored: false), CancellationToken.None);
+        Assert.Equal(ignored.Id, Assert.Single(unmonitoredOnly.Items).Id);
+
+        // Missing without a monitoring filter already excludes it.
+        var missing = await movies.ListPageAsync(
             new CatalogueQuery(Status: CatalogueStatusFilters.Missing),
             CancellationToken.None);
-        Assert.Equal(2, eitherWay.TotalCount);
-        // Within Missing, one of each — which is what the monitoring control shows.
-        Assert.Equal(1, eitherWay.Facets!.Monitored);
-        Assert.Equal(1, eitherWay.Facets.Unmonitored);
+        Assert.Equal(1, missing.TotalCount);
+        Assert.Equal(1, missing.Facets!.Missing);
+        Assert.Equal(1, missing.Facets.Unmonitored);
+        Assert.Equal(3, missing.Facets.All);
     }
 
     /// <summary>
@@ -294,13 +298,15 @@ public sealed class CataloguePagingTests
             // (`Items.Count`), not `TotalCount` — which is `facets.TotalFor`
             // read straight back and so cannot expose a WHERE clause that
             // silently disagrees with what the facet counted.
-            var underStatusAndUnmonitored = await movies.ListPageAsync(
-                new CatalogueQuery(Status: status, Monitored: false, PageSize: 100),
+            // The Unmonitored pill is its own pill (#1048): its badge is the same
+            // under every status and turning it on returns exactly that many.
+            var unmonitoredOnly = await movies.ListPageAsync(
+                new CatalogueQuery(Monitored: false, PageSize: 100),
                 CancellationToken.None);
 
             Assert.True(
-                unmonitoredFacet == underStatusAndUnmonitored.Items.Count,
-                $"Under '{status}', the Unmonitored badge said {unmonitoredFacet} but turning it on returned {underStatusAndUnmonitored.Items.Count} rows.");
+                unmonitoredFacet == unmonitoredOnly.Items.Count,
+                $"Under '{status}', the Unmonitored badge said {unmonitoredFacet} but turning it on returned {unmonitoredOnly.Items.Count} rows.");
         }
     }
 
