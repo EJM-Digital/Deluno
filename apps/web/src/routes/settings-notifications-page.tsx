@@ -64,6 +64,29 @@ const SUBTITLE_PREFERENCE_ROWS: Array<{
 ];
 
 /**
+ * Search, download and import (#965): these nine already fire and are
+ * already gated in the backend (NotificationEventPublisher,
+ * ImportPipelineService) but had no row on any screen, so they could only
+ * ever be changed through the API. On by default, matching what every
+ * install has always done.
+ */
+const SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS: Array<{
+  key: keyof NotificationPreferences;
+  name: string;
+  description: string;
+}> = [
+  { key: "searchCompletionEnabled", name: "Search completed", description: "A search for a title finished and returned its results." },
+  { key: "downloadStartedEnabled", name: "Download started", description: "A release began downloading at a client." },
+  { key: "downloadProgressEnabled", name: "Download progress", description: "A download crossed a quarter of its progress." },
+  { key: "downloadCompletedEnabled", name: "Download completed", description: "A download finished at the client." },
+  { key: "importStartedEnabled", name: "Import started", description: "Deluno began importing a finished download into the library." },
+  { key: "importCompletedEnabled", name: "Import completed", description: "A file was added to the library." },
+  { key: "importFailedEnabled", name: "Import failed", description: "An import could not finish." },
+  { key: "automationErrorEnabled", name: "Automation error", description: "A scheduled or automatic job hit an error." },
+  { key: "systemWarningsEnabled", name: "System warning", description: "Deluno itself has something to flag." }
+];
+
+/**
  * Every lifecycle trigger beyond import-failed (#856). None of these had a
  * screen before this — including the four (Upgrade, Rename, File delete,
  * Manual interaction) already implemented and gated in the backend. Each
@@ -97,7 +120,11 @@ const RECOVERY_CLEANUP_PREFERENCE_ROWS: Array<{
 }> = [
   { key: "stalledDownloadHandledEnabled", name: "Stalled/slow download handled", description: "A download that stopped progressing had a health rule's action applied to it." },
   { key: "queueItemRemovedEnabled", name: "Queue item removed", description: "A download was removed from a client's queue, from the Queue screen." },
-  { key: "orphanedDownloadRemovedEnabled", name: "Orphaned download removed", description: "A completed download folder nothing claimed was removed." }
+  { key: "orphanedDownloadRemovedEnabled", name: "Orphaned download removed", description: "A completed download folder nothing claimed was removed." },
+  { key: "forcedImportEnabled", name: "Forced re-download", description: "Someone forced a re-download of a title from its page." },
+  { key: "strikesPurgedEnabled", name: "Download-health strikes purged", description: "Every recorded download-health strike was cleared in one go." },
+  { key: "cleanupClearedEnabled", name: "Cleanup cleared", description: "A refused download was removed from its client and its files deleted." },
+  { key: "unmatchedImportGivenUpEnabled", name: "Unmatched import given up", description: "Deluno gave up waiting for an unmatched import to be resolved by hand." }
 ];
 
 interface WebhookForm {
@@ -396,6 +423,26 @@ export function SettingsNotificationsPage() {
               <Switch size="sm" aria-label="Send notifications" checked={settings.enableNotifications} disabled={busy === "global"} onCheckedChange={(checked) => void toggleGlobal(checked)} />
             </ListCell>
           </ListRow>
+        </ListTable>
+      </ListCard>
+
+      <ListCard title="Search, download & import" count="Independently toggleable · on by default, matching what every install has always done">
+        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
+          {SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS.map((row) => (
+            <ListRow key={row.key}>
+              <ListNameCell name={row.name} />
+              <ListCell primary={row.description} />
+              <ListCell mobile>
+                <Switch
+                  size="sm"
+                  aria-label={row.name}
+                  checked={Boolean(preferences[row.key])}
+                  disabled={busyPreference === row.key}
+                  onCheckedChange={(checked) => void togglePreference(row.key, checked)}
+                />
+              </ListCell>
+            </ListRow>
+          ))}
         </ListTable>
       </ListCard>
 

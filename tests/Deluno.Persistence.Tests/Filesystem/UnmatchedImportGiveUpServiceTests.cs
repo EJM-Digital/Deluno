@@ -6,6 +6,7 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Movies.Data;
+using Deluno.Notifications;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
@@ -184,6 +185,105 @@ public sealed class UnmatchedImportGiveUpServiceTests
             job.PayloadJson.Contains("\"targetEntityId\":\"series-search-again\"", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// #966: filesystem.import.unmatched-given-up already landed in
+    /// Activity but never reached the outbound path. Gated by its own
+    /// preference, off by default (#936).
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_dispatches_unmatched_given_up_when_the_toggle_is_on()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: 3);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+
+        var sourcePath = Path.Combine(storage.DataRoot, "downloads", "toggle-on.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllTextAsync(sourcePath, "unmatched content");
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", "series-toggle-on", "Toggle.On.2026", "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest(
+                "Toggle On", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.",
+                $$"""{"DispatchId":"{{dispatchId}}","SourcePath":"{{sourcePath.Replace("\\", "\\\\")}}"}"""),
+            CancellationToken.None);
+
+        timeProvider.Advance(TimeSpan.FromDays(4));
+        var outbound = new RecordingOutboundNotificationService();
+        var preferences = new InMemoryNotificationService();
+        var current = await preferences.GetPreferencesAsync(CancellationToken.None);
+        current.UnmatchedImportGivenUpEnabled = true;
+        await preferences.UpdatePreferencesAsync(current, CancellationToken.None);
+        var service = CreateGiveUpService(
+            storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RecordingGateway(),
+            outboundNotificationService: outbound, notificationPreferences: preferences);
+
+        var handled = await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, handled);
+        Assert.Contains("filesystem.import.unmatched-given-up", outbound.DispatchedCategories);
+    }
+
+    [Fact]
+    public async Task RunAsync_stays_silent_when_the_toggle_is_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var (platform, libraries, series, movies) = await SetUpAsync(storage, timeProvider, UnmatchedImportPolicies.GiveUpAfterDays, giveUpDays: 3);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+
+        var sourcePath = Path.Combine(storage.DataRoot, "downloads", "toggle-off.mkv");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllTextAsync(sourcePath, "unmatched content");
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", "series-toggle-off", "Toggle.Off.2026", "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await series.AddImportRecoveryCaseAsync(
+            new CreateSeriesImportRecoveryCaseRequest(
+                "Toggle Off", ImportFailurePolicy.Unmatched, "Could not match.", "Import by hand.",
+                $$"""{"DispatchId":"{{dispatchId}}","SourcePath":"{{sourcePath.Replace("\\", "\\\\")}}"}"""),
+            CancellationToken.None);
+
+        timeProvider.Advance(TimeSpan.FromDays(4));
+        var outbound = new RecordingOutboundNotificationService();
+        var preferences = new InMemoryNotificationService();
+        var service = CreateGiveUpService(
+            storage, timeProvider, platform, movies, series, dispatches, blockedReleases, new RecordingGateway(),
+            outboundNotificationService: outbound, notificationPreferences: preferences);
+
+        var handled = await service.RunAsync(CancellationToken.None);
+
+        Assert.Equal(1, handled);
+        Assert.DoesNotContain("filesystem.import.unmatched-given-up", outbound.DispatchedCategories);
+    }
+
+    private sealed class RecordingOutboundNotificationService : IOutboundNotificationService
+    {
+        public List<string> DispatchedCategories { get; } = [];
+
+        public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+        {
+            DispatchedCategories.Add(eventCategory);
+            return Task.CompletedTask;
+        }
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> DispatchToWebhookAsync(string webhookId, string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> ReplayAsync(string deliveryId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
     private static async Task<(SqlitePlatformSettingsRepository Platform, SqliteLibrariesRepository Libraries, SqliteSeriesCatalogRepository Series, SqliteMovieCatalogRepository Movies)> SetUpAsync(
         TestStorage storage,
         TimeProvider timeProvider,
@@ -231,7 +331,9 @@ public sealed class UnmatchedImportGiveUpServiceTests
         SqliteBlockedReleaseRepository blockedReleases,
         IDownloadClientActionGateway gateway,
         SqliteJobStore? jobStore = null,
-        SqliteLibrariesRepository? libraries = null)
+        SqliteLibrariesRepository? libraries = null,
+        IOutboundNotificationService? outboundNotificationService = null,
+        INotificationService? notificationPreferences = null)
         => new(
             platform,
             movies,
@@ -243,7 +345,9 @@ public sealed class UnmatchedImportGiveUpServiceTests
             timeProvider,
             NullLogger<UnmatchedImportGiveUpService>.Instance,
             jobScheduler: jobStore,
-            librariesRepository: libraries);
+            librariesRepository: libraries,
+            outboundNotificationService: outboundNotificationService,
+            notificationPreferences: notificationPreferences);
 
     private sealed class RecordingGateway : IDownloadClientActionGateway
     {

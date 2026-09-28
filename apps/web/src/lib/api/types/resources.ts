@@ -1061,6 +1061,10 @@ export interface NotificationPreferences {
   stalledDownloadHandledEnabled: boolean;
   queueItemRemovedEnabled: boolean;
   orphanedDownloadRemovedEnabled: boolean;
+  forcedImportEnabled: boolean;
+  strikesPurgedEnabled: boolean;
+  cleanupClearedEnabled: boolean;
+  unmatchedImportGivenUpEnabled: boolean;
   inAppNotificationsEnabled: boolean;
   emailNotificationsEnabled: boolean;
   webhookNotificationsEnabled: boolean;

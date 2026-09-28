@@ -44,6 +44,15 @@ public class NotificationPreferences
     public bool QueueItemRemovedEnabled { get; set; } = false;
     public bool OrphanedDownloadRemovedEnabled { get; set; } = false;
 
+    // #966: the same recovery/cleanup shape, for the actions #858 missed --
+    // each already lands in Activity ("acquisition.override",
+    // "download.health.strikes-purged", "download.cleanup.cleared",
+    // "filesystem.import.unmatched-given-up"). Off by default (#936).
+    public bool ForcedImportEnabled { get; set; } = false;
+    public bool StrikesPurgedEnabled { get; set; } = false;
+    public bool CleanupClearedEnabled { get; set; } = false;
+    public bool UnmatchedImportGivenUpEnabled { get; set; } = false;
+
     // Delivery methods
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool EmailNotificationsEnabled { get; set; } = false;

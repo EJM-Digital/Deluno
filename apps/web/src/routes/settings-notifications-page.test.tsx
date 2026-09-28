@@ -42,6 +42,10 @@ const preferences: NotificationPreferences = {
   stalledDownloadHandledEnabled: false,
   queueItemRemovedEnabled: false,
   orphanedDownloadRemovedEnabled: true,
+  forcedImportEnabled: false,
+  strikesPurgedEnabled: false,
+  cleanupClearedEnabled: false,
+  unmatchedImportGivenUpEnabled: false,
   inAppNotificationsEnabled: true,
   emailNotificationsEnabled: false,
   webhookNotificationsEnabled: false,
@@ -100,6 +104,46 @@ describe("subtitle notification preferences (#839)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.subtitleFailedEnabled).toBe(true);
     expect(body.subtitleDownloadedEnabled).toBe(true);
+  });
+});
+
+describe("search, download and import notification preferences (#965)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows every search/download/import row with its saved on/off state", () => {
+    renderPage();
+
+    expect(screen.getByText("Search completed")).toBeTruthy();
+    expect(screen.getByText("Download started")).toBeTruthy();
+    expect(screen.getByText("Download progress")).toBeTruthy();
+    expect(screen.getByText("Download completed")).toBeTruthy();
+    expect(screen.getByText("Import started")).toBeTruthy();
+    expect(screen.getByText("Import completed")).toBeTruthy();
+    expect(screen.getByText("Import failed")).toBeTruthy();
+    expect(screen.getByText("Automation error")).toBeTruthy();
+    expect(screen.getByText("System warning")).toBeTruthy();
+
+    expect(screen.getByRole("switch", { name: "Search completed" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("switch", { name: "Import failed" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("PUTs the full preferences object when Import completed is toggled off", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 200 }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Import completed" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/notification-preferences",
+      expect.objectContaining({ method: "PUT" })
+    ));
+
+    const [, init] = vi.mocked(authedFetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.importCompletedEnabled).toBe(false);
+    expect(body.importFailedEnabled).toBe(true);
   });
 });
 
@@ -168,5 +212,36 @@ describe("recovery and cleanup notification preferences (#858)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.queueItemRemovedEnabled).toBe(true);
     expect(body.stalledDownloadHandledEnabled).toBe(false);
+  });
+
+  it("lists forced re-download, strikes purged, cleanup cleared and unmatched-import given up, off by default (#966)", () => {
+    renderPage();
+
+    expect(screen.getByText("Forced re-download")).toBeTruthy();
+    expect(screen.getByText("Download-health strikes purged")).toBeTruthy();
+    expect(screen.getByText("Cleanup cleared")).toBeTruthy();
+    expect(screen.getByText("Unmatched import given up")).toBeTruthy();
+
+    expect(screen.getByRole("switch", { name: "Forced re-download" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Download-health strikes purged" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Cleanup cleared" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "Unmatched import given up" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("PUTs the full preferences object when Cleanup cleared is toggled on (#966)", async () => {
+    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 200 }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Cleanup cleared" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/notification-preferences",
+      expect.objectContaining({ method: "PUT" })
+    ));
+
+    const [, init] = vi.mocked(authedFetch).mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.cleanupClearedEnabled).toBe(true);
+    expect(body.forcedImportEnabled).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Notifications;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging;
 
@@ -84,7 +85,9 @@ public sealed class RefusedDownloadCleanupService(
     IDownloadSharingRepository sharingRepository,
     Deluno.Platform.Data.IPlatformSettingsRepository platformRepository,
     IActivityFeedRepository activityFeedRepository,
-    ILogger<RefusedDownloadCleanupService> logger) : IRefusedDownloadCleanupService
+    ILogger<RefusedDownloadCleanupService> logger,
+    IOutboundNotificationService? outboundNotificationService = null,
+    INotificationService? notificationPreferences = null) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
     {
@@ -236,13 +239,19 @@ public sealed class RefusedDownloadCleanupService(
             // visible — a logger line settles nothing for a person looking at
             // the screen, wondering whether the bad copy is actually gone.
             var entityType = string.Equals(release.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie";
+            var cleanupMessage = $"Deluno removed {release.ReleaseName} from {release.DownloadClientName ?? "its download client"} and deleted its files: {release.Reason}";
             await activityFeedRepository.RecordActivityAsync(
                 "download.cleanup.cleared",
-                $"Deluno removed {release.ReleaseName} from {release.DownloadClientName ?? "its download client"} and deleted its files: {release.Reason}",
+                cleanupMessage,
                 null,
                 null,
                 entityType,
                 release.EntityId,
+                cancellationToken);
+            await DispatchCleanupNotificationAsync(
+                "download.cleanup.cleared",
+                $"Cleanup cleared: {release.ReleaseName}",
+                cleanupMessage,
                 cancellationToken);
 
             return RefusedDownloadCleanupOutcomes.Cleared;
@@ -254,5 +263,33 @@ public sealed class RefusedDownloadCleanupService(
             logger.LogWarning(exception, "Could not clear the blocked release {ReleaseName}.", release.ReleaseName);
             return RefusedDownloadCleanupOutcomes.ClientUnavailable;
         }
+    }
+
+    /// <summary>
+    /// #966: cleanup-cleared already lands in Activity; this also sends it
+    /// outbound, gated by its own preference and off by default (#936), the
+    /// same shape as every other recovery/cleanup dispatch (#858).
+    /// </summary>
+    private async Task DispatchCleanupNotificationAsync(
+        string eventCategory,
+        string title,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        if (outboundNotificationService is null)
+        {
+            return;
+        }
+
+        if (notificationPreferences is not null)
+        {
+            var preferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (!preferences.CleanupClearedEnabled)
+            {
+                return;
+            }
+        }
+
+        await outboundNotificationService.DispatchAsync(eventCategory, title, message, null, cancellationToken);
     }
 }

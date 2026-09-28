@@ -1,6 +1,7 @@
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
+using Deluno.Notifications;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -263,6 +264,58 @@ public sealed class ClearingRefusedDownloadsTests
         clients.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// #966: cleanup-cleared already landed in Activity but never reached the
+    /// outbound path. Gated by its own preference, off by default (#936).
+    /// </summary>
+    [Fact]
+    public async Task Clearing_a_release_dispatches_cleanup_cleared_when_the_toggle_is_on()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = Clients();
+        var outbound = new RecordingOutboundNotificationService();
+        var preferences = new InMemoryNotificationService();
+        var current = await preferences.GetPreferencesAsync(CancellationToken.None);
+        current.CleanupClearedEnabled = true;
+        await preferences.UpdatePreferencesAsync(current, CancellationToken.None);
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), outboundNotificationService: outbound, notificationPreferences: preferences)
+            .CleanUpEverythingAsync(CancellationToken.None);
+
+        Assert.Contains("download.cleanup.cleared", outbound.DispatchedCategories);
+    }
+
+    [Fact]
+    public async Task Clearing_a_release_stays_silent_when_the_toggle_is_off()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = Clients();
+        var outbound = new RecordingOutboundNotificationService();
+        var preferences = new InMemoryNotificationService();
+
+        await Cleanup(blocklist.Object, clients.Object, Sharing(), outboundNotificationService: outbound, notificationPreferences: preferences)
+            .CleanUpEverythingAsync(CancellationToken.None);
+
+        Assert.DoesNotContain("download.cleanup.cleared", outbound.DispatchedCategories);
+    }
+
+    private sealed class RecordingOutboundNotificationService : IOutboundNotificationService
+    {
+        public List<string> DispatchedCategories { get; } = [];
+
+        public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+        {
+            DispatchedCategories.Add(eventCategory);
+            return Task.CompletedTask;
+        }
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> DispatchToWebhookAsync(string webhookId, string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Notifications.Contracts.NotificationWebhookDeliveryResult?> ReplayAsync(string deliveryId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static RefusedDownloadCleanupService Cleanup(
@@ -271,14 +324,18 @@ public sealed class ClearingRefusedDownloadsTests
         IDownloadSharingRepository sharing,
         bool clientReportedFailureCleanupOn = false,
         bool removeAndDeletePackedArchivesFromClient = false,
-        IActivityFeedRepository? activityFeedRepository = null)
+        IActivityFeedRepository? activityFeedRepository = null,
+        IOutboundNotificationService? outboundNotificationService = null,
+        INotificationService? notificationPreferences = null)
         => new(
             blocklist,
             clients,
             sharing,
             PlatformSettings(clientReportedFailureCleanupOn, removeAndDeletePackedArchivesFromClient),
             activityFeedRepository ?? Mock.Of<IActivityFeedRepository>(),
-            NullLogger<RefusedDownloadCleanupService>.Instance);
+            NullLogger<RefusedDownloadCleanupService>.Instance,
+            outboundNotificationService,
+            notificationPreferences);
 
     private static Mock<IBlockedReleaseRepository> Blocklist(params BlockedRelease[] pending)
     {

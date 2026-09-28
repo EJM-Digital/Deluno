@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Connections.Data;
+using Deluno.Notifications;
 using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -156,6 +157,8 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IDownloadHealthRepository platformRepository,
             IActivityFeedRepository activityFeedRepository,
+            IOutboundNotificationService outboundNotificationService,
+            INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -165,16 +168,28 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             // #826: irreversible, so it is said in plain words the same way
             // every other destructive action Deluno takes on its own already
             // is - here, one this installation's one person asked for directly.
+            var purgeMessage = purged > 0
+                ? $"All recorded download-health strikes were cleared: {purged} download{(purged == 1 ? "" : "s")} reset to zero."
+                : "All recorded download-health strikes were cleared. There was nothing to clear.";
             await activityFeedRepository.RecordActivityAsync(
                 "download.health.strikes-purged",
-                purged > 0
-                    ? $"All recorded download-health strikes were cleared: {purged} download{(purged == 1 ? "" : "s")} reset to zero."
-                    : "All recorded download-health strikes were cleared. There was nothing to clear.",
+                purgeMessage,
                 null,
                 null,
                 null,
                 null,
                 cancellationToken);
+            // #966: gated by its own preference, off by default (#936).
+            var strikesPurgedPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
+            if (strikesPurgedPreferences.StrikesPurgedEnabled)
+            {
+                await outboundNotificationService.DispatchAsync(
+                    "download.health.strikes-purged",
+                    "Download-health strikes purged",
+                    purgeMessage,
+                    null,
+                    cancellationToken);
+            }
             return Results.Ok(new PurgeDownloadHealthStrikesResult(purged));
         });
 
