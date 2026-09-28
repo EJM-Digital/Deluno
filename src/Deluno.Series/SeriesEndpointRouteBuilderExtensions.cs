@@ -954,6 +954,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IBlockedReleaseRepository blockedReleaseRepository,
+            IPlatformSettingsRepository platformSettings,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1000,6 +1001,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                     timeProvider,
                     tagStore,
                     releasePreferencePlanRepository,
+                    platformSettings,
                     cancellationToken);
 
                 searchStarted = !search.NotFound;
@@ -1046,6 +1048,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IPlatformSettingsRepository platformSettings,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1069,6 +1072,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                 timeProvider,
                 tagStore,
                 releasePreferencePlanRepository,
+                platformSettings,
                 cancellationToken);
 
             if (result.NotFound)
@@ -3492,6 +3496,7 @@ public static class SeriesEndpointRouteBuilderExtensions
         TimeProvider timeProvider,
         IMediaTagStore tagStore,
         IReleasePreferencePlanRepository releasePreferencePlanRepository,
+        IPlatformSettingsRepository platformSettings,
         CancellationToken cancellationToken)
         => MediaSearchHandler.ExecuteAsync(
             MediaKind.Series,
@@ -3522,7 +3527,8 @@ public static class SeriesEndpointRouteBuilderExtensions
             cancellationToken,
             tagStore,
             releasePreferencePlanRepository,
-            libraryId);
+            libraryId,
+            platformSettings);
 
     private static string? NormalizeOverride(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

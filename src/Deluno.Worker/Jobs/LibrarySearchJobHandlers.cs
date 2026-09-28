@@ -7,6 +7,7 @@ using Deluno.Movies.Data;
 using Deluno.Quality.Data;
 using Deluno.Series.Data;
 using Deluno.Media;
+using Deluno.Platform.Data;
 
 namespace Deluno.Worker.Jobs;
 
@@ -38,7 +39,8 @@ public sealed class MoviesLibrarySearchJobHandler(
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IJobScheduler? jobScheduler = null) : LibrarySearchJobHandler(
+    IJobScheduler? jobScheduler = null,
+    IPlatformSettingsRepository? platformSettingsRepository = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -52,7 +54,8 @@ public sealed class MoviesLibrarySearchJobHandler(
         mediaStateRepository,
         releasePreferencePlanRepository,
         blockedReleases,
-        jobScheduler)
+        jobScheduler,
+        platformSettingsRepository)
 {
     public override string JobType => LibrarySearchJobTypes.Movies;
 }
@@ -72,7 +75,8 @@ public sealed class TvLibrarySearchJobHandler(
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IJobScheduler? jobScheduler = null) : LibrarySearchJobHandler(
+    IJobScheduler? jobScheduler = null,
+    IPlatformSettingsRepository? platformSettingsRepository = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -86,7 +90,8 @@ public sealed class TvLibrarySearchJobHandler(
         mediaStateRepository,
         releasePreferencePlanRepository,
         blockedReleases,
-        jobScheduler)
+        jobScheduler,
+        platformSettingsRepository)
 {
     public override string JobType => LibrarySearchJobTypes.Tv;
 }

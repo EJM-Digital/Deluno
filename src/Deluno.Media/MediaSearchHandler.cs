@@ -51,7 +51,8 @@ public static class MediaSearchHandler
         CancellationToken cancellationToken,
         IMediaTagStore? mediaTagStore = null,
         IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
-        string? libraryId = null)
+        string? libraryId = null,
+        IPlatformSettingsRepository? platformSettingsRepository = null)
     {
         var item = await mediaStateRepository.GetByIdAsync(kind, id, cancellationToken);
         if (item is null)
@@ -91,12 +92,20 @@ public static class MediaSearchHandler
             qualityRepository,
             library.QualityProfileId,
             cancellationToken);
+        // #974: "Do not upgrade automatically" is honoured by this path too —
+        // "Search now" builds its plan and picks the best candidate the same
+        // way an automatic search does, so a Proper of an installed file must
+        // pass over it here too.
+        var properRepackAcquisitionMode = platformSettingsRepository is null
+            ? null
+            : await SearchPlanPreferences.ResolveProperRepackAcquisitionModeAsync(platformSettingsRepository, cancellationToken);
         var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
             qualityRepository,
             releasePreferencePlanRepository,
             library.QualityProfileId,
             cancellationToken,
-            customFormats);
+            customFormats,
+            properRepackAcquisitionMode);
         var currentPreferenceEvaluation = wantedItem.HasFile
             ? await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
                 kind,
