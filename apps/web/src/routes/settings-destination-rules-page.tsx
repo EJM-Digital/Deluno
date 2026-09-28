@@ -50,6 +50,8 @@ interface RuleForm {
   folderTemplate: string;
   priority: string;
   isEnabled: boolean;
+  /** #1033: which library this rule routes a title to (e.g. for Seerr requests). Blank keeps it a folder-only rule. */
+  libraryId: string;
 }
 
 interface TestForm {
@@ -73,7 +75,8 @@ const MATCH_KIND_LABELS: Record<string, string> = {
   quality: "Quality",
   anime: "Anime",
   certification: "Certification",
-  library: "Library"
+  library: "Library",
+  requested4k: "Requested in 4K"
 };
 
 const MATCH_VALUE_OPTIONS: Record<string, { label: string; value: string }[]> = {
@@ -101,6 +104,10 @@ const MATCH_VALUE_OPTIONS: Record<string, { label: string; value: string }[]> = 
   library: [
     { label: "Movies", value: "movies" },
     { label: "TV", value: "tv" }
+  ],
+  requested4k: [
+    { label: "Requested in 4K", value: "true" },
+    { label: "Not requested in 4K", value: "false" }
   ]
 };
 
@@ -194,7 +201,7 @@ export function SettingsDestinationRulesPage() {
     setBusy(true);
     setSaveState("saving");
     try {
-      const payload = { name: form.name.trim(), mediaType: form.mediaType, matchKind: form.matchKind, matchValue: form.matchValue.trim(), rootPath: form.rootPath.trim(), folderTemplate: form.folderTemplate.trim() || null, priority: Number(form.priority || 100), isEnabled: form.isEnabled };
+      const payload = { name: form.name.trim(), mediaType: form.mediaType, matchKind: form.matchKind, matchValue: form.matchValue.trim(), rootPath: form.rootPath.trim(), folderTemplate: form.folderTemplate.trim() || null, priority: Number(form.priority || 100), isEnabled: form.isEnabled, libraryId: form.libraryId || null };
       const response = await authedFetch(mode.kind === "edit" ? `/api/destination-rules/${mode.id}` : "/api/destination-rules", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(mode.kind === "edit" ? "Destination rule could not be saved." : "Destination rule could not be created.");
       if (mode.kind === "create") {
@@ -204,7 +211,7 @@ export function SettingsDestinationRulesPage() {
       } else {
         setSaveMessage("Saved just now");
       }
-      const settled = { ...form, name: payload.name, matchValue: payload.matchValue, rootPath: payload.rootPath, priority: String(payload.priority) };
+      const settled = { ...form, name: payload.name, matchValue: payload.matchValue, rootPath: payload.rootPath, priority: String(payload.priority), libraryId: payload.libraryId ?? "" };
       setForm(settled);
       setInitialForm(settled);
       setSaveState("saved");
@@ -382,6 +389,14 @@ export function SettingsDestinationRulesPage() {
                   <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom order" customPlaceholder="1–1000" />
                 </Field>
               </FieldRow>
+              <Field label="Routes to library" optional help="When set, a Seerr request matching this rule is added straight to this library — this is what makes an anime, 4K, or genre exception also a placement rule, not just a folder.">
+                <Select
+                  value={form.libraryId}
+                  onChange={(event) => setForm((current) => ({ ...current, libraryId: event.target.value }))}
+                  placeholder="Folder only — does not route a request"
+                  options={libraries.filter((library) => library.mediaType === form.mediaType).map((library) => ({ value: library.id, label: library.name }))}
+                />
+              </Field>
             </DrawerSection>
             <DrawerSection title="Rule status">
               <SwitchRow label="Use this rule" description="When enabled, matching titles use this destination before the library folder." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
@@ -491,10 +506,10 @@ function defaultRoot(mediaType: "movies" | "tv", settings: PlatformSettingsSnaps
   return (mediaType === "movies" ? settings.movieRootPath : settings.seriesRootPath) ?? "";
 }
 function emptyForm(settings: PlatformSettingsSnapshot): RuleForm {
-  return { name: "", mediaType: "movies", matchKind: "genre", matchValue: "", rootPath: defaultRoot("movies", settings), folderTemplate: "", priority: "100", isEnabled: true };
+  return { name: "", mediaType: "movies", matchKind: "genre", matchValue: "", rootPath: defaultRoot("movies", settings), folderTemplate: "", priority: "100", isEnabled: true, libraryId: "" };
 }
 function formFrom(rule: DestinationRuleItem): RuleForm {
-  return { name: rule.name, mediaType: rule.mediaType === "tv" ? "tv" : "movies", matchKind: rule.matchKind, matchValue: rule.matchValue, rootPath: rule.rootPath, folderTemplate: rule.folderTemplate ?? "", priority: String(rule.priority), isEnabled: rule.isEnabled };
+  return { name: rule.name, mediaType: rule.mediaType === "tv" ? "tv" : "movies", matchKind: rule.matchKind, matchValue: rule.matchValue, rootPath: rule.rootPath, folderTemplate: rule.folderTemplate ?? "", priority: String(rule.priority), isEnabled: rule.isEnabled, libraryId: rule.libraryId ?? "" };
 }
 function sameForm(a: RuleForm, b: RuleForm) {
   return (Object.keys(a) as (keyof RuleForm)[]).every((key) => a[key] === b[key]);

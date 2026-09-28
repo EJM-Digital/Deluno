@@ -94,38 +94,6 @@ public sealed class SeerrPersistenceTests
         Assert.Equal("library-movies", reloaded!.MovieLibraryId);
     }
 
-    /// <summary>#985: the optional 4K library/quality-profile mapping and its fallback switch round-trip, and default to unset/off.</summary>
-    [Fact]
-    public async Task A_servers_4k_mapping_round_trips_and_defaults_to_unset_and_off()
-    {
-        using var storage = TestStorage.Create();
-        var repository = await RepositoryAsync(storage);
-
-        var created = await repository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
-        Assert.Null(created!.Movie4kLibraryId);
-        Assert.Null(created.Series4kLibraryId);
-        Assert.False(created.Fallback4kToNormalLibrary);
-
-        var mapped = await repository.SaveAsync(
-            created.Id,
-            new SaveSeerrRequest(
-                "Lab Seerr", "http://127.0.0.1:5055", "",
-                IsEnabled: true,
-                Movie4kLibraryId: "library-movies-4k",
-                Movie4kQualityProfileId: "profile-movies-4k",
-                Series4kLibraryId: "library-tv-4k",
-                Series4kQualityProfileId: "profile-tv-4k",
-                Fallback4kToNormalLibrary: true),
-            CancellationToken.None);
-
-        Assert.Equal(("library-movies-4k", "profile-movies-4k", "library-tv-4k", "profile-tv-4k", true),
-            (mapped!.Movie4kLibraryId, mapped.Movie4kQualityProfileId, mapped.Series4kLibraryId, mapped.Series4kQualityProfileId, mapped.Fallback4kToNormalLibrary));
-
-        var reloaded = await repository.GetAsync(created.Id, CancellationToken.None);
-        Assert.Equal("library-movies-4k", reloaded!.Movie4kLibraryId);
-        Assert.True(reloaded.Fallback4kToNormalLibrary);
-    }
-
     /// <summary>#851/#852: the acquisitions log records an add, is listed newest-first per server, and #852's own lookup finds the latest "added" row by Deluno's entity id.</summary>
     [Fact]
     public async Task Acquisitions_are_recorded_listed_and_found_by_entity()
@@ -138,7 +106,7 @@ public sealed class SeerrPersistenceTests
             NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
         var repository = new SqliteSeerrAcquisitionsRepository(storage.Factory, clock);
 
-        await repository.RecordAsync("conn-1", "Lab Seerr", "movies", "movie-1", "Arrival", 501, "added", null, "James", CancellationToken.None);
+        await repository.RecordAsync("conn-1", "Lab Seerr", "movies", "movie-1", "Arrival", 501, "added", null, "James", CancellationToken.None, ruleId: "rule-1", ruleName: "Anime");
         clock.Advance(TimeSpan.FromMinutes(1));
         await repository.RecordAsync("conn-1", "Lab Seerr", "movies", "movie-2", "Sicario", 502, "failed", "No provider id", null, CancellationToken.None);
 
@@ -151,6 +119,7 @@ public sealed class SeerrPersistenceTests
         Assert.Equal(501, found!.SeerrMediaId);
         Assert.Equal("added", found.Status);
         Assert.Equal("James", found.RequestedBy); // #985: who asked is recorded on the acquisition
+        Assert.Equal(("rule-1", "Anime"), (found.RuleId, found.RuleName)); // #1033: which rule placed it
 
         Assert.Null(await repository.FindLatestAddedAsync("movies", "movie-2", CancellationToken.None)); // only "failed", never "added"
 

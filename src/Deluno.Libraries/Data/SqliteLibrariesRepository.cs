@@ -71,7 +71,7 @@ public sealed class SqliteLibrariesRepository(
             """
             SELECT
                 id, name, media_type, match_kind, match_value, root_path, folder_template,
-                priority, is_enabled, created_utc, updated_utc
+                priority, is_enabled, created_utc, updated_utc, library_id
             FROM destination_rules
             ORDER BY media_type ASC, priority ASC, name COLLATE NOCASE ASC;
             """;
@@ -166,7 +166,8 @@ public sealed class SqliteLibrariesRepository(
             Priority: NormalizePriorityValue(request.Priority),
             IsEnabled: request.IsEnabled,
             CreatedUtc: now,
-            UpdatedUtc: now);
+            UpdatedUtc: now,
+            LibraryId: NormalizeOptionalId(request.LibraryId));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -177,11 +178,11 @@ public sealed class SqliteLibrariesRepository(
             """
             INSERT INTO destination_rules (
                 id, name, media_type, match_kind, match_value, root_path, folder_template,
-                priority, is_enabled, created_utc, updated_utc
+                priority, is_enabled, created_utc, updated_utc, library_id
             )
             VALUES (
                 @id, @name, @mediaType, @matchKind, @matchValue, @rootPath, @folderTemplate,
-                @priority, @isEnabled, @createdUtc, @updatedUtc
+                @priority, @isEnabled, @createdUtc, @updatedUtc, @libraryId
             );
             """;
 
@@ -196,6 +197,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@isEnabled", item.IsEnabled ? 1 : 0);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@libraryId", item.LibraryId);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -294,7 +296,8 @@ public sealed class SqliteLibrariesRepository(
                 folder_template = @folderTemplate,
                 priority = @priority,
                 is_enabled = @isEnabled,
-                updated_utc = @updatedUtc
+                updated_utc = @updatedUtc,
+                library_id = @libraryId
             WHERE id = @id;
             """;
 
@@ -308,6 +311,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@priority", NormalizePriorityValue(request.Priority));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
+        AddParameter(command, "@libraryId", NormalizeOptionalId(request.LibraryId));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetDestinationRuleAsync(connection, id, cancellationToken);
@@ -1171,7 +1175,7 @@ public sealed class SqliteLibrariesRepository(
             """
             SELECT
                 id, name, media_type, match_kind, match_value, root_path, folder_template,
-                priority, is_enabled, created_utc, updated_utc
+                priority, is_enabled, created_utc, updated_utc, library_id
             FROM destination_rules
             WHERE id = @id
             LIMIT 1;
@@ -1218,6 +1222,9 @@ public sealed class SqliteLibrariesRepository(
             "anime" => "anime",
             "certification" => "certification",
             "library" => "library",
+            // #1033: whether Seerr marked the request 4K, so #985's per-connection
+            // 4K mapping becomes an ordinary routing rule condition.
+            "requested4k" => "requested4k",
             _ => "genre"
         };
     }
@@ -1451,7 +1458,8 @@ public sealed class SqliteLibrariesRepository(
             Priority: reader.GetInt32(7),
             IsEnabled: reader.GetInt64(8) == 1,
             CreatedUtc: ParseTimestamp(reader.GetString(9)),
-            UpdatedUtc: ParseTimestamp(reader.GetString(10)));
+            UpdatedUtc: ParseTimestamp(reader.GetString(10)),
+            LibraryId: reader.IsDBNull(11) ? null : reader.GetString(11));
     }
 
 
