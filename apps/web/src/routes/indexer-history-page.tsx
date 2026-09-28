@@ -24,6 +24,7 @@ import { PageToolbar } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
+import { indexerHistoryOutcomeWords } from "../lib/indexer-history-outcomes";
 import { fetchPage } from "../lib/api/client";
 import type { ApiPage } from "../lib/api/types/catalogue";
 import type { Tone } from "../lib/status-tones";
@@ -193,7 +194,7 @@ export function IndexerHistoryPage() {
                 <ListNameCell name={EVENT_TYPE_LABELS[item.eventType] ?? item.eventType} sub={item.message} />
                 <ListCell primary={item.indexerName} />
                 <ListCell mobile>
-                  <Chip tone={eventTone(item)}>{item.outcome}</Chip>
+                  <Chip tone={eventTone(item)}>{indexerHistoryOutcomeWords(item.outcome)}</Chip>
                 </ListCell>
                 <ListCell numeric primary={formatDateTime(item.createdUtc, preferences)} />
               </ListRow>
@@ -221,7 +222,7 @@ export function IndexerHistoryPage() {
           <DrawerFacts
             items={[
               { label: "Indexer", value: selected.indexerName },
-              { label: "Outcome", value: selected.outcome },
+              { label: "Outcome", value: indexerHistoryOutcomeWords(selected.outcome) },
               { label: "When", value: formatDateTime(selected.createdUtc, preferences) },
               ...(selected.relatedEntityType
                 ? [{ label: "Related to", value: `${selected.relatedEntityType} ${selected.relatedEntityId ?? ""}` }]

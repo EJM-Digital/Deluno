@@ -194,6 +194,18 @@ export interface PlatformSettingsSnapshot {
    * download automatically until this is turned on too.
    */
   downloadHealthDangerousFileEnabled: boolean;
+  /**
+   * #888/#949: what Deluno does with a file it downloaded but could not
+   * match to a title or episode -- "hold" (default, kept on Transfers for
+   * manual import), "give-up-after-days" (after unmatchedImportGiveUpDays,
+   * Deluno removes the download, deletes the file, blocklists the release
+   * and searches again), or "retry-once-then-bad" (retry the match once,
+   * then treat it like any other bad release). Also governs a processed file
+   * that no longer matches (cleanup sheet row G4).
+   */
+  unmatchedImportPolicy: "hold" | "give-up-after-days" | "retry-once-then-bad" | string;
+  /** #888/#949: how many days "give-up-after-days" waits before giving up. Only consulted under that policy. */
+  unmatchedImportGiveUpDays: number;
   updatedUtc: string;
 }
 
@@ -414,5 +426,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   removeAndDeletePackedArchivesFromClient: false,
   // #936: off by default, matching PlatformSettingsSnapshot's server-side default.
   downloadHealthDangerousFileEnabled: false,
+  // #888/#949: matches PlatformSettingsSnapshot's server-side defaults.
+  unmatchedImportPolicy: "hold",
+  unmatchedImportGiveUpDays: 7,
   updatedUtc: new Date(0).toISOString()
 };

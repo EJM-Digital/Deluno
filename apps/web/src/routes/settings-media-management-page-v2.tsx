@@ -422,7 +422,9 @@ function ImportPolicyPage() {
         folderChmod: form.folderChmod,
         chownGroup: form.chownGroup,
         leftoverDownloadCleanupEnabled: form.leftoverDownloadCleanupEnabled,
-        leftoverDownloadCleanupAgeHours: form.leftoverDownloadCleanupAgeHours
+        leftoverDownloadCleanupAgeHours: form.leftoverDownloadCleanupAgeHours,
+        unmatchedImportPolicy: form.unmatchedImportPolicy,
+        unmatchedImportGiveUpDays: form.unmatchedImportGiveUpDays
       });
       setSaved(nextSettings);
       setForm(nextSettings);
@@ -463,6 +465,9 @@ function libraryFreeSpaceThresholdError(form: PlatformSettingsSnapshot): string 
   }
   if (form.minimumFreeSpaceMb < 0) {
     return "Choose a minimum free space of 0 MB or more.";
+  }
+  if (form.unmatchedImportPolicy === "give-up-after-days" && (form.unmatchedImportGiveUpDays < 1 || form.unmatchedImportGiveUpDays > 365)) {
+    return "Choose a give-up time between 1 and 365 days.";
   }
   return null;
 }
@@ -543,6 +548,43 @@ function ImportPolicyFields({
             <div className="flex items-center gap-2">
               <Input type="number" min={1} max={8760} value={form.leftoverDownloadCleanupAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupAgeHours: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
               <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+            </div>
+          </Field>
+        ) : null}
+      </div>
+      <div className="border-t border-hairline p-[var(--card-pad-x)]">
+        <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
+          <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Unmatched imports</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">What Deluno does with a file it downloaded but could not match to a title or episode — the same choice applies when a processor hands back a file that no longer matches.</p>
+        </div>
+        <Field label="When a download cannot be matched" help="Hold keeps it on Transfers for you to match by hand, for as long as it takes. The other two act on their own.">
+          <SegmentedControl<"hold" | "give-up-after-days" | "retry-once-then-bad">
+            value={form.unmatchedImportPolicy as "hold" | "give-up-after-days" | "retry-once-then-bad"}
+            onValueChange={(unmatchedImportPolicy) => onFormChange((current) => ({ ...current, unmatchedImportPolicy }))}
+            options={[
+              { value: "hold", label: "Hold for manual import" },
+              { value: "give-up-after-days", label: "Give up after N days" },
+              { value: "retry-once-then-bad", label: "Retry once, then treat as bad" }
+            ]}
+            aria-label="When a download cannot be matched"
+          />
+        </Field>
+        {form.unmatchedImportPolicy === "give-up-after-days" ? (
+          <Field
+            label="Give up after"
+            error={thresholdError && (form.unmatchedImportGiveUpDays < 1 || form.unmatchedImportGiveUpDays > 365) ? thresholdError : undefined}
+            help={thresholdError && (form.unmatchedImportGiveUpDays < 1 || form.unmatchedImportGiveUpDays > 365) ? undefined : "How many days an unmatched download waits before Deluno removes it, deletes the file, blocklists the release and searches again."}
+          >
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={365}
+                value={form.unmatchedImportGiveUpDays}
+                onChange={(event) => onFormChange((current) => ({ ...current, unmatchedImportGiveUpDays: Number(event.target.value || 0) }))}
+                className="max-w-[7rem]"
+              />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">days</span>
             </div>
           </Field>
         ) : null}
