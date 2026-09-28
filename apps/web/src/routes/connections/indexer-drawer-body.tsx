@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import type { IndexerItem, OutboundThrottleHostState, PlatformSettingsSnapshot, ProxyItem } from "../../lib/api";
+import { fetchJson, type IndexerItem, type OutboundThrottleHostState, type PlatformSettingsSnapshot, type ProxyItem, type TagItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -63,6 +63,18 @@ export function IndexerDrawerBody({
   // folded away and are described in words; only an indexer with non-standard
   // numbers needs them opened.
   const [categoriesOpen, setCategoriesOpen] = useState(false);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchJson<TagItem[]>("/api/tags")
+      .then((items) => {
+        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => {
+        // Tags are optional suggestions; the free-form field still works without them.
+      });
+    return () => { cancelled = true; };
+  }, []);
   const standardCategories = sameCategories(form.categories, preset.defaultCategories(form.scope));
   const scopeWords = form.scope === "movies" ? "Movies" : form.scope === "tv" ? "TV" : "Movies and TV";
   const categoryCount = form.categories.split(",").map((item) => item.trim()).filter(Boolean).length;
@@ -121,6 +133,12 @@ export function IndexerDrawerBody({
             <PresetField inputType="number" value={form.priority} onChange={(value) => setForm((current) => ({ ...current, priority: value }))} options={PRIORITY_OPTIONS} customLabel="Custom priority" customPlaceholder="1–50" />
           </Field>
         </FieldRow>
+        <Field label="Tags" optional help="Leave blank to search this indexer for any title. With tags set, Deluno searches it only for a title that shares one of them — for example, keep an anime indexer to anime titles.">
+          <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="indexer-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
+          <datalist id="indexer-tag-options">
+            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+          </datalist>
+        </Field>
         <SwitchRow label="Enabled" description="Included in automatic and interactive searches." checked={form.isEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, isEnabled: checked }))} />
       </DrawerSection>
 

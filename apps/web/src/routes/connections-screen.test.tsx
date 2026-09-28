@@ -4,22 +4,20 @@ import { clientFormFrom, clientsForPathMapping, emptyClientForm, emptyIndexerFor
 import type { DownloadClientItem, DownloadClientPathMappingItem } from "../lib/api";
 
 /**
- * #730 — tags: "" was hard-coded into every indexer save, so an indexer that
- * had tags set through the API lost them the next time it was saved in the
- * UI. Nothing in Deluno routes searches or selects indexers by tag today, so
- * there is no tags control to round-trip; the payload just has to leave the
- * saved value alone instead of wiping it.
+ * #990 — tags now decide which titles an indexer is searched for, so the
+ * field the drawer edits (form.tags) has to be what the save payload sends,
+ * for both a new indexer and an edit of one that already carries tags.
  */
-describe("indexer save payload (#730)", () => {
-  it("carries a saved indexer's existing tags through an edit instead of wiping them", () => {
-    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, true, "anime,4k");
-    expect(payload.tags).toBe("anime,4k");
+describe("indexer save payload (#990)", () => {
+  it("sends the typed tags", () => {
+    const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", tags: "anime, 4k" };
+    const payload = buildIndexerSavePayload(form, form, true);
+    expect(payload.tags).toBe("anime, 4k");
   });
 
-  it("does not invent tags for a brand-new indexer", () => {
+  it("sends no tags for an untagged indexer", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, false, "");
+    const payload = buildIndexerSavePayload(form, form, false);
     expect(payload.tags).toBe("");
   });
 });
@@ -29,21 +27,21 @@ describe("indexer save payload (#730)", () => {
 describe("indexer save payload API path (#740)", () => {
   it("sends a typed API path", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", apiPath: "/api/v2" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.apiPath).toBe("/api/v2");
     expect(payload.clearApiPath).toBe(false);
   });
 
   it("clears the API path on an edit when the field is emptied", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", apiPath: "" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.apiPath).toBeNull();
     expect(payload.clearApiPath).toBe(true);
   });
 
   it("does not ask to clear the API path when creating a new indexer", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, false, "");
+    const payload = buildIndexerSavePayload(form, form, false);
     expect(payload.clearApiPath).toBe(false);
   });
 });
@@ -54,21 +52,21 @@ describe("indexer save payload API path (#740)", () => {
 describe("indexer save payload minimum seeders (#738)", () => {
   it("sends a typed minimum-seeders floor", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", minimumSeeders: "5" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.minimumSeeders).toBe(5);
     expect(payload.clearMinimumSeeders).toBe(false);
   });
 
   it("clears the minimum-seeders floor on an edit when the field is emptied", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", minimumSeeders: "" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.minimumSeeders).toBeNull();
     expect(payload.clearMinimumSeeders).toBe(true);
   });
 
   it("does not ask to clear minimum seeders when creating a new indexer", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, false, "");
+    const payload = buildIndexerSavePayload(form, form, false);
     expect(payload.clearMinimumSeeders).toBe(false);
   });
 });
@@ -78,7 +76,7 @@ describe("indexer save payload minimum seeders (#738)", () => {
 describe("indexer save payload required/ignored words (#744)", () => {
   it("sends typed required and ignored words", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", requiredWords: "remux", ignoredWords: "cam, korsub" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.requiredWords).toBe("remux");
     expect(payload.ignoredWords).toBe("cam, korsub");
     expect(payload.clearRequiredWords).toBe(false);
@@ -87,7 +85,7 @@ describe("indexer save payload required/ignored words (#744)", () => {
 
   it("clears required and ignored words on an edit when emptied", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.requiredWords).toBeNull();
     expect(payload.ignoredWords).toBeNull();
     expect(payload.clearRequiredWords).toBe(true);
@@ -100,14 +98,14 @@ describe("indexer save payload required/ignored words (#744)", () => {
 describe("indexer save payload multi languages (#746)", () => {
   it("sends a typed multi-languages meaning", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info", multiLanguages: "Original, French" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.multiLanguages).toBe("Original, French");
     expect(payload.clearMultiLanguages).toBe(false);
   });
 
   it("clears the multi-languages meaning on an edit when emptied", () => {
     const form = { ...emptyIndexerForm(), name: "NZBGeek", baseUrl: "https://api.nzbgeek.info" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.multiLanguages).toBeNull();
     expect(payload.clearMultiLanguages).toBe(true);
   });
@@ -119,14 +117,14 @@ describe("indexer save payload multi languages (#746)", () => {
 describe("indexer save payload VIP expiry (#747)", () => {
   it("sends a typed VIP expiry date as an ISO timestamp", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", vipExpiresUtc: "2026-12-01" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.vipExpiresUtc).toBe(new Date("2026-12-01T00:00:00.000Z").toISOString());
     expect(payload.clearVipExpiry).toBe(false);
   });
 
   it("clears the VIP expiry date on an edit when emptied", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.vipExpiresUtc).toBeNull();
     expect(payload.clearVipExpiry).toBe(true);
   });
@@ -137,7 +135,7 @@ describe("indexer save payload VIP expiry (#747)", () => {
 describe("indexer save payload query/grab limits (#750)", () => {
   it("sends typed query/grab limits and the chosen unit", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", queryLimit: "100", grabLimit: "20", limitsUnit: "hour" as const };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.queryLimit).toBe(100);
     expect(payload.grabLimit).toBe(20);
     expect(payload.limitsUnit).toBe("hour");
@@ -147,7 +145,7 @@ describe("indexer save payload query/grab limits (#750)", () => {
 
   it("clears query/grab limits on an edit when emptied", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
-    const payload = buildIndexerSavePayload(form, form, true, "");
+    const payload = buildIndexerSavePayload(form, form, true);
     expect(payload.queryLimit).toBeNull();
     expect(payload.grabLimit).toBeNull();
     expect(payload.clearQueryLimit).toBe(true);
@@ -160,12 +158,12 @@ describe("indexer save payload query/grab limits (#750)", () => {
 describe("indexer save payload prefer magnet (#752)", () => {
   it("sends the chosen prefer-magnet-links value", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateTracker", baseUrl: "https://tracker.example.test", protocol: "torznab" as const, preferMagnetUrl: true };
-    expect(buildIndexerSavePayload(form, form, true, "").preferMagnetUrl).toBe(true);
+    expect(buildIndexerSavePayload(form, form, true).preferMagnetUrl).toBe(true);
   });
 
   it("defaults to off for a new indexer", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateTracker", baseUrl: "https://tracker.example.test" };
-    expect(buildIndexerSavePayload(form, form, false, "").preferMagnetUrl).toBe(false);
+    expect(buildIndexerSavePayload(form, form, false).preferMagnetUrl).toBe(false);
   });
 });
 
@@ -174,12 +172,12 @@ describe("indexer save payload prefer magnet (#752)", () => {
 describe("indexer save payload season-pack search mode (#743)", () => {
   it("sends the chosen season-pack search mode", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test", seasonPackSearchMode: "episodes-only" as const };
-    expect(buildIndexerSavePayload(form, form, true, "").seasonPackSearchMode).toBe("episodes-only");
+    expect(buildIndexerSavePayload(form, form, true).seasonPackSearchMode).toBe("episodes-only");
   });
 
   it("defaults to both for a new indexer", () => {
     const form = { ...emptyIndexerForm(), name: "PrivateHD", baseUrl: "https://tracker.example.test" };
-    expect(buildIndexerSavePayload(form, form, false, "").seasonPackSearchMode).toBe("both");
+    expect(buildIndexerSavePayload(form, form, false).seasonPackSearchMode).toBe("both");
   });
 });
 

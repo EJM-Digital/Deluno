@@ -24,7 +24,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
+import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot, type TagItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -134,6 +134,8 @@ interface WebhookForm {
   isEnabled: boolean;
   provider: NotificationProvider;
   config: NotificationProviderConfig;
+  /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires only for a title sharing one of them. */
+  tags: string;
 }
 
 const PROVIDER_OPTIONS: Array<{ value: NotificationProvider; label: string }> = [
@@ -219,8 +221,23 @@ export function SettingsNotificationsPage() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   const isOpen = mode.kind !== "closed";
+  // Fetched only once the drawer is actually open (not on every page load,
+  // which would race the preference-toggle PUTs elsewhere on this page).
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void fetchJson<TagItem[]>("/api/tags")
+      .then((items) => {
+        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+      })
+      .catch(() => {
+        // Tags are optional suggestions; the free-form field still works without them.
+      });
+    return () => { cancelled = true; };
+  }, [isOpen]);
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
   const dirty = isOpen && (
     form.name !== initialForm.name ||
@@ -228,6 +245,7 @@ export function SettingsNotificationsPage() {
     form.eventFilters !== initialForm.eventFilters ||
     form.isEnabled !== initialForm.isEnabled ||
     form.provider !== initialForm.provider ||
+    form.tags !== initialForm.tags ||
     JSON.stringify(form.config) !== JSON.stringify(initialForm.config)
   );
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
@@ -244,7 +262,8 @@ export function SettingsNotificationsPage() {
           eventFilters: webhook.eventFilters || "all",
           isEnabled: webhook.isEnabled,
           provider: webhook.provider ?? "generic",
-          config: parseConfig(webhook.configJson)
+          config: parseConfig(webhook.configJson),
+          tags: webhook.tags ?? ""
         }
       : emptyForm();
     setMode(webhook ? { kind: "edit", id: webhook.id } : { kind: "create" });
@@ -278,7 +297,8 @@ export function SettingsNotificationsPage() {
         eventFilters: form.eventFilters,
         isEnabled: form.isEnabled,
         provider: form.provider,
-        config: form.config
+        config: form.config,
+        tags: form.tags.trim()
       };
       const requestBody = { ...nextForm, configJson: serializeConfig(form.config) };
       const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
@@ -557,6 +577,12 @@ export function SettingsNotificationsPage() {
           <Field label="Events" help="Which events trigger a send.">
             <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
           </Field>
+          <Field label="Tags" optional help="Leave blank to fire for any title. With tags set, Deluno fires this connection only when the title an event is about shares one of them — for example, keep an anime channel to anime titles.">
+            <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="notification-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
+            <datalist id="notification-tag-options">
+              {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+            </datalist>
+          </Field>
           {providerNeedsUrl(form.provider) ? (
             <Field label={providerUrlLabel(form.provider)} error={urlError} help={form.provider === "generic" ? "Deluno sends a JSON body; no authentication headers are added." : undefined}>
               <Input value={form.url} onChange={(event) => { setUrlError(null); setForm((current) => ({ ...current, url: event.target.value })); }} placeholder={providerUrlPlaceholder(form.provider)} className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
@@ -636,7 +662,7 @@ export function SettingsNotificationsPage() {
 /* --------------------------------------------------------------- utils */
 
 function emptyForm(): WebhookForm {
-  return { name: "", url: "", eventFilters: "all", isEnabled: true, provider: "generic", config: {} };
+  return { name: "", url: "", eventFilters: "all", isEnabled: true, provider: "generic", config: {}, tags: "" };
 }
 function parseConfig(configJson: string | null): NotificationProviderConfig {
   if (!configJson) return {};

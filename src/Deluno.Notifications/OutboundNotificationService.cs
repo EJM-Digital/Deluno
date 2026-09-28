@@ -21,7 +21,8 @@ public sealed class OutboundNotificationService(
         string title,
         string message,
         string? detailsJson,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? titleTags = null)
     {
         IReadOnlyList<NotificationWebhookItem> webhooks;
         try
@@ -44,7 +45,9 @@ public sealed class OutboundNotificationService(
 
         foreach (var webhook in webhooks)
         {
-            if (!webhook.IsEnabled || !IsMatchingEvent(webhook.EventFilters, eventCategory))
+            if (!webhook.IsEnabled
+                || !IsMatchingEvent(webhook.EventFilters, eventCategory)
+                || !Deluno.Contracts.TagRoutingMatch.IsEligible(webhook.Tags, titleTags))
             {
                 continue;
             }

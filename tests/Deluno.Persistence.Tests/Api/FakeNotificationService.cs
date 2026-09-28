@@ -44,7 +44,7 @@ internal sealed class FakeOutboundNotificationService : IOutboundNotificationSer
 {
     public List<string> DispatchedCategories { get; } = [];
 
-    public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken)
+    public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken, IReadOnlyList<string>? titleTags = null)
     {
         DispatchedCategories.Add(eventCategory);
         return Task.CompletedTask;

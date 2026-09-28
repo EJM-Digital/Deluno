@@ -147,14 +147,12 @@ async function send(url: string, method: string, body?: unknown, failure = "Requ
 /**
  * The body of PUT/POST /api/indexers — shared by Save and Test (#626).
  *
- * Tags are not exposed as a form field: nothing in Deluno routes searches or
- * selects indexers by tag today (#730), so there is nothing here for a
- * person to usefully edit. What there is stays untouched rather than
- * getting wiped: `existingTags` is the saved indexer's current value
- * (empty for a new one), and it is echoed straight back so an indexer that
- * had tags set through the API keeps them across a UI save.
+ * Tags decide which titles this indexer is searched for (#990): blank
+ * searches it for any title, and a tagged indexer is searched only for a
+ * title sharing one of its tags — the same rule already applied to download
+ * clients (#808).
  */
-export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm, editing: boolean, existingTags: string) {
+export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm, editing: boolean) {
   return {
     name: form.name.trim(),
     protocol: form.protocol,
@@ -216,7 +214,7 @@ export function buildIndexerSavePayload(form: IndexerForm, initial: IndexerForm,
         }
       : {}),
     categories: form.categories,
-    tags: existingTags,
+    tags: form.tags.trim(),
     mediaScope: form.scope,
     isEnabled: form.isEnabled,
     // Only written when the user actually answered the question
@@ -580,7 +578,7 @@ export function IndexersPage() {
 
   // What Save sends is what Test tries (#626).
   function indexerPayload() {
-    return buildIndexerSavePayload(indexerForm, indexerInitial, drawer.kind === "indexer" && Boolean(drawer.id), editingIndexer?.tags ?? "");
+    return buildIndexerSavePayload(indexerForm, indexerInitial, drawer.kind === "indexer" && Boolean(drawer.id));
   }
 
   function clientPayload() {

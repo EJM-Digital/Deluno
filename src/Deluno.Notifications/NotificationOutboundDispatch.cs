@@ -27,7 +27,9 @@ public static class NotificationOutboundDispatch
         Func<NotificationPreferences, bool> isEnabled,
         string outcomeLabel,
         ILogger logger,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        // The tags of the title this event is about, when there is one (#990). Null when the event names no title.
+        IReadOnlyList<string>? titleTags = null)
     {
         if (outboundNotificationService is null)
         {
@@ -45,7 +47,7 @@ public static class NotificationOutboundDispatch
                 }
             }
 
-            await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken);
+            await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken, titleTags);
         }
         catch (Exception ex)
         {

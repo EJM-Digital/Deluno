@@ -11,7 +11,9 @@ public sealed record NotificationWebhookItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     string Provider = NotificationProviders.Generic,
-    string? ConfigJson = null);
+    string? ConfigJson = null,
+    /// <summary>Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires only for a title sharing one of them.</summary>
+    string Tags = "");
 
 public sealed record CreateNotificationWebhookRequest(
     string? Name,
@@ -19,7 +21,8 @@ public sealed record CreateNotificationWebhookRequest(
     string? EventFilters,
     bool IsEnabled,
     string? Provider = null,
-    string? ConfigJson = null);
+    string? ConfigJson = null,
+    string? Tags = null);
 
 public sealed record UpdateNotificationWebhookRequest(
     string? Name,
@@ -27,4 +30,5 @@ public sealed record UpdateNotificationWebhookRequest(
     string? EventFilters,
     bool IsEnabled,
     string? Provider = null,
-    string? ConfigJson = null);
+    string? ConfigJson = null,
+    string? Tags = null);
