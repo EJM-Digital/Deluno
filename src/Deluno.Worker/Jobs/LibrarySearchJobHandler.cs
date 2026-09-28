@@ -14,6 +14,7 @@ using Deluno.Series.Services;
 using Deluno.Quality;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using Deluno.Media;
 
 namespace Deluno.Worker.Jobs;
@@ -32,7 +33,8 @@ public abstract class LibrarySearchJobHandler(
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IJobScheduler? jobScheduler = null) : IJobHandler
+    IJobScheduler? jobScheduler = null,
+    IPlatformSettingsRepository? platformSettingsRepository = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -75,12 +77,19 @@ public abstract class LibrarySearchJobHandler(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
+        // #974: an automatic library search must honour "Do not upgrade
+        // automatically" the same as a manual grab, or it keeps taking a
+        // Proper/Repack of a file already installed.
+        var properRepackAcquisitionMode = platformSettingsRepository is null
+            ? null
+            : await SearchPlanPreferences.ResolveProperRepackAcquisitionModeAsync(platformSettingsRepository, cancellationToken);
         var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
             qualityRepository,
             releasePreferencePlanRepository,
             library?.QualityProfileId,
             cancellationToken,
-            customFormats);
+            customFormats,
+            properRepackAcquisitionMode);
 
         if (payload.MediaType == "movies")
         {

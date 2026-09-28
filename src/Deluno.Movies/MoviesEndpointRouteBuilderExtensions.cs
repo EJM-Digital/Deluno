@@ -939,6 +939,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
             IBlockedReleaseRepository blockedReleaseRepository,
+            IPlatformSettingsRepository platformSettings,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -985,6 +986,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     timeProvider,
                     tagStore,
                     releasePreferencePlanRepository,
+                    platformSettings,
                     cancellationToken);
 
                 searchStarted = !search.NotFound;
@@ -1031,6 +1033,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             TimeProvider timeProvider,
             IMediaTagStore tagStore,
             IReleasePreferencePlanRepository releasePreferencePlanRepository,
+            IPlatformSettingsRepository platformSettings,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1054,6 +1057,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                 timeProvider,
                 tagStore,
                 releasePreferencePlanRepository,
+                platformSettings,
                 cancellationToken);
 
             if (result.NotFound)
@@ -3144,6 +3148,7 @@ public static class MoviesEndpointRouteBuilderExtensions
         TimeProvider timeProvider,
         IMediaTagStore tagStore,
         IReleasePreferencePlanRepository releasePreferencePlanRepository,
+        IPlatformSettingsRepository platformSettings,
         CancellationToken cancellationToken)
         => MediaSearchHandler.ExecuteAsync(
             MediaKind.Movie,
@@ -3173,7 +3178,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             cancellationToken,
             tagStore,
             releasePreferencePlanRepository,
-            libraryId);
+            libraryId,
+            platformSettings);
 
     private static async Task SyncReleaseDatesAsync(
         IMovieCatalogRepository repository,

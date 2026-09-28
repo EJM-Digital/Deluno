@@ -11,6 +11,7 @@ using Deluno.Quality;
 using Deluno.Media;
 using Deluno.Quality.ReleasePreferences;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 
 namespace Deluno.Worker.Jobs;
 
@@ -27,7 +28,8 @@ public sealed class EpisodeSearchJobHandler(
     IMediaStateRepository? mediaStateRepository = null,
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
-    IJobScheduler? jobScheduler = null) : IJobHandler
+    IJobScheduler? jobScheduler = null,
+    IPlatformSettingsRepository? platformSettingsRepository = null) : IJobHandler
 {
     public string JobType => "episode.search";
 
@@ -121,12 +123,19 @@ public sealed class EpisodeSearchJobHandler(
             qualityRepository,
             library?.QualityProfileId,
             cancellationToken);
+        // #974: same as the library-level automatic search — honour "Do not
+        // upgrade automatically" here too, so an episode search does not
+        // grab a Proper/Repack of an episode already installed.
+        var properRepackAcquisitionMode = platformSettingsRepository is null
+            ? null
+            : await SearchPlanPreferences.ResolveProperRepackAcquisitionModeAsync(platformSettingsRepository, cancellationToken);
         var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
             qualityRepository,
             releasePreferencePlanRepository,
             library?.QualityProfileId,
             cancellationToken,
-            customFormats);
+            customFormats,
+            properRepackAcquisitionMode);
 
         var episodeTitleTags = mediaTagStore is null
             ? []

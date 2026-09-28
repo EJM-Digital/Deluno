@@ -1,3 +1,4 @@
+using Deluno.Integrations.Search;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Guides;
@@ -93,5 +94,72 @@ public sealed class ProperRepackAcquisitionModeTests
     {
         Assert.Equal(ProperRepackAcquisitionModes.PreferAndUpgrade, ProperRepackAcquisitionModes.Normalize("not-a-real-mode"));
         Assert.Equal(ProperRepackAcquisitionModes.PreferAndUpgrade, ProperRepackAcquisitionModes.Normalize(null));
+    }
+
+    // #974: every automatic search path (LibrarySearchJobHandler,
+    // EpisodeSearchJobHandler, SeasonSearchExecutor, MediaSearchHandler) feeds
+    // its plan through ReleaseDecisionEngine.Decide the same way. This is the
+    // decision an automatic search actually makes once a Proper of an
+    // installed file turns up as a candidate.
+
+    [Fact]
+    public void An_automatic_search_passes_over_a_proper_of_an_installed_file_when_upgrades_are_off()
+    {
+        var plan = BuildPlan(ProperRepackAcquisitionModes.DoNotUpgradeAutomatically);
+        var decision = DecideAgainstInstalledFile(plan, "Movie.2026.1080p.WEB-DL.PROPER-GRP");
+
+        // Matched but not upgrade-driving: the installed non-Proper file and
+        // the Proper candidate are equivalent, so nothing is grabbed.
+        Assert.Equal("equivalent", decision.Status);
+        Assert.Equal(PreferenceCandidateStatus.Equivalent, decision.PreferenceComparison?.Status);
+    }
+
+    [Fact]
+    public void An_automatic_search_takes_a_proper_of_an_installed_file_when_upgrades_are_allowed()
+    {
+        var plan = BuildPlan(ProperRepackAcquisitionModes.PreferAndUpgrade);
+        var decision = DecideAgainstInstalledFile(plan, "Movie.2026.1080p.WEB-DL.PROPER-GRP");
+
+        Assert.Equal("preferred", decision.Status);
+        Assert.Equal(PreferenceCandidateStatus.Upgrade, decision.PreferenceComparison?.Status);
+    }
+
+    /// <summary>
+    /// Builds the same decision an automatic search makes: an installed file
+    /// without the Repack/Proper trait, evaluated against a candidate that
+    /// carries it, under the given plan.
+    /// </summary>
+    private static ReleaseDecision DecideAgainstInstalledFile(ReleasePreferencePlan plan, string candidateReleaseName)
+    {
+        const string installedReleaseName = "Movie.2026.1080p.WEB-DL-GRP";
+        var installedFacts = ReleasePreferenceFactFactory.FromReleaseName(plan, installedReleaseName);
+        var snapshot = new PreferenceEvaluationSnapshot(
+            MediaId: "movie-1",
+            LibraryId: "library-1",
+            FileIdentity: "preference-file/v1:movie-1",
+            FilePath: $"/library/{installedReleaseName}.mkv",
+            FileSizeBytes: 8_000_000_000L,
+            PlanId: plan.Id,
+            PlanVersion: plan.Version,
+            PlanHash: plan.PlanHash,
+            Facts: installedFacts,
+            Evaluation: ReleasePreferenceEvaluator.Evaluate(plan, installedFacts),
+            MatchedRuleIds: [],
+            EvaluatedUtc: DateTimeOffset.UnixEpoch,
+            Source: "test");
+
+        return ReleaseDecisionEngine.Decide(new ReleaseDecisionInput(
+            ReleaseName: candidateReleaseName,
+            Quality: "WEB 1080p",
+            CurrentQuality: "WEB 1080p",
+            TargetQuality: "WEB 1080p",
+            SizeBytes: 8_000_000_000L,
+            Seeders: 20,
+            DownloadUrl: "https://example.test/release",
+            SourcePriorityScore: 100,
+            CustomFormatScore: 0,
+            PreferencePlan: plan,
+            CurrentPreferenceEvaluation: snapshot,
+            CurrentFilePresent: true));
     }
 }

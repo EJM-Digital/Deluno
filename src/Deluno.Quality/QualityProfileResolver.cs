@@ -75,7 +75,22 @@ public static class QualityProfileResolver
                 $"Quality profile '{profile.Name}' has a release-preference plan reference whose hash does not match the immutable stored plan.");
         }
 
-        return stored.Plan;
+        // #974: the stored reference is pinned to whatever Proper/Repack mode
+        // was active the moment the profile was last compiled (the mode is
+        // baked into the plan's own version string by
+        // ReleasePreferencePlanFactory.CreateQualityPlan). A profile saved
+        // under "Prefer and upgrade" and never re-saved kept grabbing Propers
+        // automatically forever after the platform setting was switched to
+        // "Do not upgrade automatically", because this branch always handed
+        // back the old stored plan without ever looking at the mode passed
+        // in. Recompiling and comparing versions costs one extra pass over
+        // the same inputs the no-reference branch below already runs every
+        // time; it is not skipped just because a reference happens to exist.
+        customFormats ??= await repository.ListCustomFormatsAsync(cancellationToken);
+        var recompiled = ReleasePreferencePlanFactory.CreateQualityPlan(profile, customFormats, properRepackAcquisitionMode: properRepackAcquisitionMode);
+        return string.Equals(recompiled.Version, stored.Plan.Version, StringComparison.Ordinal)
+            ? stored.Plan
+            : recompiled;
     }
 
     /// <summary>

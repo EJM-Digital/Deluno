@@ -7,6 +7,7 @@ using Deluno.Jobs.Decisions;
 using Deluno.Libraries.Data;
 using Deluno.Media;
 using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using Deluno.Quality;
 using Deluno.Quality.Contracts;
 using Deluno.Quality.Data;
@@ -50,7 +51,8 @@ public sealed class SeasonSearchExecutor(
     IDownloadClientGrabService downloadClientGrabService,
     IActivityFeedRepository activityFeedRepository,
     TimeProvider timeProvider,
-    IMediaTagStore tagStore) : ISeasonSearchExecutor
+    IMediaTagStore tagStore,
+    IPlatformSettingsRepository? platformSettingsRepository = null) : ISeasonSearchExecutor
 {
     public async Task<SeasonSearchOutcome> ExecuteAsync(
         string seriesId,
@@ -110,12 +112,19 @@ public sealed class SeasonSearchExecutor(
             library.QualityProfileId,
             cancellationToken);
         var profileRules = await QualityProfileResolver.ResolveSearchRulesAsync(qualityRepository, library.QualityProfileId, cancellationToken);
+        // #974: a season pack search is still an automatic search — "Do not
+        // upgrade automatically" must stop it grabbing a Proper/Repack of a
+        // season already installed, the same as every other search path.
+        var properRepackAcquisitionMode = platformSettingsRepository is null
+            ? null
+            : await SearchPlanPreferences.ResolveProperRepackAcquisitionModeAsync(platformSettingsRepository, cancellationToken);
         var preferencePlan = await QualityProfileResolver.ResolveReleasePreferencePlanAsync(
             qualityRepository,
             releasePreferencePlanRepository,
             library.QualityProfileId,
             cancellationToken,
-            customFormats);
+            customFormats,
+            properRepackAcquisitionMode);
         var tagNames = (await tagStore.ListAsync(MediaKind.Series, seriesItem.Id, cancellationToken))
             .Select(tag => tag.Name)
             .ToArray();
