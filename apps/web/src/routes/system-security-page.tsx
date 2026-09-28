@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { KeyRound, LockKeyhole, Plus, ShieldAlert } from "lucide-react";
+import { KeyRound, LockKeyhole, Plus, ShieldAlert, Wifi, X } from "lucide-react";
 import { Link } from "react-router-dom";
-import { fetchJson, type AllowedHostsOverview } from "../lib/api";
+import { fetchJson, type AllowedHostsOverview, type LocalNetworkAuthOverview } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { CheckboxRow } from "../components/ui/checkbox";
@@ -15,20 +15,25 @@ import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save
 
 interface SystemSecurityLoaderData {
   allowedHosts: AllowedHostsOverview;
+  localNetworkAuth: LocalNetworkAuthOverview;
 }
 
 export async function systemSecurityLoader(): Promise<SystemSecurityLoaderData> {
-  const allowedHosts = await fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts");
-  return { allowedHosts };
+  const [allowedHosts, localNetworkAuth] = await Promise.all([
+    fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts"),
+    fetchJson<LocalNetworkAuthOverview>("/api/security/local-network-auth")
+  ]);
+  return { allowedHosts, localNetworkAuth };
 }
 
 export function SystemSecurityPage() {
-  const { allowedHosts } = useLoaderData() as SystemSecurityLoaderData;
+  const { allowedHosts, localNetworkAuth } = useLoaderData() as SystemSecurityLoaderData;
   const revalidator = useRevalidator();
 
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
       <AllowedHostsCard overview={allowedHosts} onSaved={() => revalidator.revalidate()} />
+      <LocalNetworkAuthCard overview={localNetworkAuth} onSaved={() => revalidator.revalidate()} />
       <SignInCard />
       <ApiKeysCard />
     </div>
@@ -185,6 +190,178 @@ function AllowedHostsCard({ overview, onSaved }: { overview: AllowedHostsOvervie
       />
     </>
   );
+}
+
+/**
+ * "Skip sign-in for devices on your home network" (#993). Off by default
+ * (#936). The allow list, when it has entries, narrows the trusted set
+ * further -- only listed addresses skip sign-in, still only if they are
+ * also local; empty means every local address does, as designed.
+ */
+function LocalNetworkAuthCard({ overview, onSaved }: { overview: LocalNetworkAuthOverview; onSaved: () => void }) {
+  const [enabled, setEnabled] = useState(overview.enabled);
+  const [allowList, setAllowList] = useState<string[]>(overview.allowList);
+  const [newEntry, setNewEntry] = useState("");
+  const [entryError, setEntryError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const dirty = enabled !== overview.enabled || JSON.stringify([...allowList].sort()) !== JSON.stringify([...overview.allowList].sort());
+
+  function addEntry() {
+    const trimmed = newEntry.trim();
+    if (!trimmed) return;
+    if (!isValidAddressOrSubnet(trimmed)) {
+      setEntryError(`"${trimmed}" is not a valid address or subnet. Use an IP address (192.168.1.20) or a CIDR range (192.168.1.0/28).`);
+      return;
+    }
+    setEntryError(null);
+    if (!allowList.some((item) => item.toLowerCase() === trimmed.toLowerCase())) {
+      setAllowList((current) => [...current, trimmed]);
+    }
+    setNewEntry("");
+  }
+
+  function removeEntry(entry: string) {
+    setAllowList((current) => current.filter((item) => item.toLowerCase() !== entry.toLowerCase()));
+  }
+
+  async function save() {
+    if (saveState === "saving") return;
+    setSaveState("saving");
+    setMessage(null);
+    try {
+      await fetchJson("/api/security/local-network-auth", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled,
+          additionalLocalNetworks: overview.additionalLocalNetworks,
+          allowList,
+          trustedProxies: overview.trustedProxies
+        })
+      });
+      setSaveState("saved");
+      setMessage(enabled ? "Devices on your local network now skip sign-in." : "Every device signs in again, including ones on your local network.");
+      onSaved();
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "This could not be saved.");
+    }
+  }
+
+  const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
+
+  useEffect(() => {
+    if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
+  }, [dirty, saveState]);
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wifi className="h-4 w-4 text-primary" />
+            Skip sign-in for devices on your home network
+          </CardTitle>
+          <CardDescription>
+            Off, every device signs in, exactly as Deluno has always done. On, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) is already signed in -- no password needed on your own network.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-[var(--page-gap)]">
+          <SwitchRow
+            label="Skip sign-in on the local network"
+            description="Counts as local: private network addresses (10.x, 172.16-31.x, 192.168.x), this machine (loopback), link-local addresses, and IPv6 private (ULA) addresses."
+            checked={enabled}
+            onCheckedChange={setEnabled}
+          />
+
+          <p className="text-xs text-muted-foreground">
+            You are connecting from <span className="font-medium text-foreground">{overview.currentAddress}</span>, which
+            {overview.currentAddressIsLocal ? " is a local address" : " is not a local address"}
+            {enabled && overview.currentAddressIsLocal ? (overview.currentAddressTrusted ? " and would skip sign-in." : " but is not on your allow list below, so it would still sign in.") : "."}
+          </p>
+
+          {enabled && !overview.allowedHostsEnabled ? (
+            <p className="rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+              Allowed Hosts (above) is off. Deluno currently answers on any address, so any device that can reach a local address here skips sign-in too. Turn on Allowed Hosts as well for this to only apply on your own network.
+            </p>
+          ) : null}
+
+          {enabled ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-foreground">Narrow this to specific addresses (optional)</p>
+              <p className="text-xs text-muted-foreground">
+                Leave empty and every local device skips sign-in. Add addresses here and only those skip sign-in -- still only if they are also local.
+              </p>
+              <div className="space-y-1">
+                {allowList.map((entry) => (
+                  <div key={entry} className="flex items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-1 px-3 py-2">
+                    <span className="text-sm text-foreground">{entry}</span>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeEntry(entry)} aria-label={`Remove ${entry} from the allow list`}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Add an address or subnet" help="192.168.1.20 or 192.168.1.0/28" className="min-w-[16rem] flex-1">
+                  <Input
+                    value={newEntry}
+                    onChange={(event) => {
+                      setNewEntry(event.target.value);
+                      setEntryError(null);
+                    }}
+                    placeholder="192.168.1.0/28"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addEntry();
+                      }
+                    }}
+                  />
+                </Field>
+                <Button type="button" variant="outline" onClick={addEntry} disabled={!newEntry.trim()} aria-label="Add address to the allow list">
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+              </div>
+              {entryError ? <p className="text-xs text-destructive">{entryError}</p> : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <PageFooter
+        state={footerState}
+        message={message}
+        saveLabel="Save"
+        saveType="button"
+        disabled={!dirty || saveState === "saving"}
+        onSave={() => void save()}
+      />
+    </>
+  );
+}
+
+/** Same IP/CIDR shape the backend accepts (LocalNetworkMatcher.TryParseCidr) -- kept simple so an obviously wrong entry is refused before it ever reaches the server. */
+function isValidAddressOrSubnet(value: string): boolean {
+  const [address, prefix] = value.split("/");
+  if (prefix !== undefined && !/^\d+$/.test(prefix)) return false;
+  const isIPv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(address);
+  if (isIPv4) {
+    const octets = address.split(".").map(Number);
+    if (octets.some((octet) => octet < 0 || octet > 255)) return false;
+    if (prefix !== undefined && Number(prefix) > 32) return false;
+    return true;
+  }
+  // IPv6: a permissive shape check -- the server is the source of truth for full validation.
+  const isIPv6 = /^[0-9a-fA-F:]+$/.test(address) && address.includes(":");
+  if (isIPv6) {
+    if (prefix !== undefined && Number(prefix) > 128) return false;
+    return true;
+  }
+  return false;
 }
 
 function SignInCard() {

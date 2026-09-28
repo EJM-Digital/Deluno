@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   Wifi,
+  X,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -36,6 +37,7 @@ import {
   type GuideFormatBundle,
   type GuidePackage,
   type AllowedHostsOverview,
+  type LocalNetworkAuthOverview,
   type ContentBlocklistSettings,
   emptyContentBlocklistSettings,
   readErrorText } from "../lib/api";
@@ -151,6 +153,7 @@ interface SetupGuideLoaderData {
   guide: GuidePackage;
   allowedHosts: AllowedHostsOverview;
   contentBlocklist: ContentBlocklistSettings;
+  localNetworkAuth: LocalNetworkAuthOverview;
 }
 
 interface GuideForm {
@@ -180,6 +183,9 @@ interface GuideForm {
   /** #939: "Only answer on the addresses you use?" Off leaves today's behaviour (#936). */
   restrictAllowedHosts: boolean;
   allowedHostsSelection: string[];
+  /** #993: "Skip sign-in for devices on your home network?" Unanswered by default (#936), same as Automation. */
+  skipSignInLocalNetwork: boolean | null;
+  localNetworkAllowList: string[];
 }
 
 type ServiceTestState = {
@@ -379,7 +385,7 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist, localNetworkAuth] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
@@ -396,10 +402,13 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
     // #944: the setup guide asks about this rather than pre-selecting it
     // (#936), so the current saved value is needed to preserve every other
     // field (mode, patterns) when the answer is written back.
-    fetchJson<ContentBlocklistSettings>("/api/download-health/content-blocklist").catch(() => emptyContentBlocklistSettings)
+    fetchJson<ContentBlocklistSettings>("/api/download-health/content-blocklist").catch(() => emptyContentBlocklistSettings),
+    // #993: the Security step shows the current address and whether it
+    // would be trusted, the same way the Allowed Hosts card does.
+    fetchJson<LocalNetworkAuthOverview>("/api/security/local-network-auth")
   ]);
 
-  return { allowedHosts, clients, contentBlocklist, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
+  return { allowedHosts, clients, contentBlocklist, customFormats, draft, guide, indexers, libraries, localNetworkAuth, metadataStatus, progress, qualityProfiles, settings };
 }
 
 export function SetupGuidePage() {
@@ -448,7 +457,11 @@ export function SetupGuidePage() {
     restrictAllowedHosts: data.allowedHosts.enabled,
     allowedHostsSelection: data.allowedHosts.allowedHosts.length
       ? data.allowedHosts.allowedHosts
-      : [data.allowedHosts.currentHost]
+      : [data.allowedHosts.currentHost],
+    // #993: unanswered by default (#936) -- Start stays disabled until this
+    // has an explicit Yes or No, same as every Automation question.
+    skipSignInLocalNetwork: null,
+    localNetworkAllowList: data.localNetworkAuth.allowList
   }));
 
   const current = STEPS[stepIndex];
@@ -472,7 +485,10 @@ export function SetupGuidePage() {
   // Nothing automatic is pre-selected (#936): Start stays disabled until every
   // Automation question has an explicit Yes or No answer.
   const hasAllAutomationAnswers = hasAnsweredAllAutomationQuestions(form.automation);
-  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers;
+  // #993: same rule -- Start stays disabled until "Skip sign-in for devices
+  // on your home network?" has an explicit Yes or No.
+  const hasSkipSignInAnswer = form.skipSignInLocalNetwork !== null;
+  const canFinish = (canCreateMovies || canCreateTv) && hasQualityChoice && hasReleaseRuleChoice && hasAllAutomationAnswers && hasSkipSignInAnswer;
   // A connection typed in but never proven is different from one never
   // attempted: warn about it rather than silently baking in something broken.
   const connectionsUnproven =
@@ -557,9 +573,12 @@ export function SetupGuidePage() {
       } else if (!hasQualityChoice || !hasReleaseRuleChoice) {
         setError("Choose a picture quality and release preference before finishing simple setup.");
         setStepIndex(2);
-      } else {
+      } else if (!hasAllAutomationAnswers) {
         setError("Answer every automation question before finishing setup.");
         setStepIndex(STEPS.findIndex((step) => step.id === "automation"));
+      } else {
+        setError("Answer \"Skip sign-in for devices on your home network?\" before finishing setup.");
+        setStepIndex(STEPS.findIndex((step) => step.id === "security"));
       }
       return;
     }
@@ -572,6 +591,9 @@ export function SetupGuidePage() {
       // server-side (so left off) if the address answering this very
       // request was not ticked -- setup can never lock itself out.
       await saveAllowedHosts(form).catch(() => undefined);
+      // #993: unlike Allowed Hosts, an explicit No here always writes the
+      // real (off) setting -- there is no lock-out risk to guard against.
+      await saveLocalNetworkAuth(form).catch(() => undefined);
       // #944: an explicit Yes or No here always writes the real setting,
       // unlike Allowed Hosts (which only ever turns on) - an existing
       // install's migration may have already frozen this on, and a plain
@@ -807,7 +829,15 @@ export function SetupGuidePage() {
               />
             ) : null}
             {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
-            {current.id === "security" ? <SecurityStep form={form} patch={patch} candidates={data.allowedHosts.detectedHosts} currentHost={data.allowedHosts.currentHost} /> : null}
+            {current.id === "security" ? (
+              <SecurityStep
+                form={form}
+                patch={patch}
+                candidates={data.allowedHosts.detectedHosts}
+                currentHost={data.allowedHosts.currentHost}
+                currentAddress={data.localNetworkAuth.currentAddress}
+              />
+            ) : null}
             {current.id === "finish" ? (
           <FinishStep
             form={form}
@@ -1269,12 +1299,14 @@ function SecurityStep({
   form,
   patch,
   candidates,
-  currentHost
+  currentHost,
+  currentAddress
 }: {
   form: GuideForm;
   patch: (patchValue: Partial<GuideForm>) => void;
   candidates: { host: string; reason: string }[];
   currentHost: string;
+  currentAddress: string;
 }) {
   function toggleHost(host: string, checked: boolean) {
     patch({
@@ -1287,6 +1319,7 @@ function SecurityStep({
   const currentHostChecked = form.allowedHostsSelection.some((host) => host.toLowerCase() === currentHost.toLowerCase());
 
   return (
+    <div className="space-y-[var(--grid-gap)]">
     <FieldShell
       icon={ShieldCheck}
       label="Only answer on the addresses you use?"
@@ -1339,7 +1372,142 @@ function SecurityStep({
         </div>
       ) : null}
     </FieldShell>
+
+    <LocalNetworkAuthQuestion form={form} patch={patch} currentAddress={currentAddress} />
+    </div>
   );
+}
+
+/**
+ * #993, asked the same "nothing chosen yet" way #936 asks every setup
+ * question, unlike Allowed Hosts an explicit No here still writes the real
+ * (off) setting when setup finishes -- there is no lock-out risk to guard
+ * against, so there is nothing to leave unwritten.
+ */
+function LocalNetworkAuthQuestion({
+  form,
+  patch,
+  currentAddress
+}: {
+  form: GuideForm;
+  patch: (patchValue: Partial<GuideForm>) => void;
+  currentAddress: string;
+}) {
+  const [newEntry, setNewEntry] = useState("");
+  const [entryError, setEntryError] = useState<string | null>(null);
+
+  function addEntry() {
+    const trimmed = newEntry.trim();
+    if (!trimmed) return;
+    if (!isValidAddressOrSubnet(trimmed)) {
+      setEntryError(`"${trimmed}" is not a valid address or subnet. Use an IP address (192.168.1.20) or a CIDR range (192.168.1.0/28).`);
+      return;
+    }
+    setEntryError(null);
+    if (!form.localNetworkAllowList.some((item) => item.toLowerCase() === trimmed.toLowerCase())) {
+      patch({ localNetworkAllowList: [...form.localNetworkAllowList, trimmed] });
+    }
+    setNewEntry("");
+  }
+
+  function removeEntry(entry: string) {
+    patch({ localNetworkAllowList: form.localNetworkAllowList.filter((item) => item.toLowerCase() !== entry.toLowerCase()) });
+  }
+
+  return (
+    <FieldShell
+      icon={Wifi}
+      label="Skip sign-in for devices on your home network?"
+      copy={`Off, every device signs in, exactly as Deluno has always done. Yes, a device Deluno can prove is on your local network (not one behind a reverse proxy from outside) skips sign-in. You are connecting from ${currentAddress}.`}
+    >
+      <div className="mb-4 flex gap-2" role="radiogroup" aria-label="Skip sign-in for devices on your home network?">
+        <Button
+          type="button"
+          variant={form.skipSignInLocalNetwork === true ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.skipSignInLocalNetwork === true}
+          aria-label="Skip sign-in for devices on your home network? Yes"
+          onClick={() => patch({ skipSignInLocalNetwork: true })}
+        >
+          Yes
+        </Button>
+        <Button
+          type="button"
+          variant={form.skipSignInLocalNetwork === false ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-checked={form.skipSignInLocalNetwork === false}
+          aria-label="Skip sign-in for devices on your home network? No"
+          onClick={() => patch({ skipSignInLocalNetwork: false })}
+        >
+          No
+        </Button>
+      </div>
+
+      {form.skipSignInLocalNetwork ? (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold text-foreground">Narrow this to specific addresses (optional)</p>
+          <p className="text-xs text-muted-foreground">
+            Leave empty and every local device skips sign-in. Add addresses here and only those skip sign-in -- still only if they are also local.
+          </p>
+          <div className="space-y-1">
+            {form.localNetworkAllowList.map((entry) => (
+              <div key={entry} className="flex items-center justify-between gap-2 rounded-lg border border-hairline bg-surface-1 px-3 py-2">
+                <span className="text-sm text-foreground">{entry}</span>
+                <Button type="button" variant="ghost" size="sm" onClick={() => removeEntry(entry)} aria-label={`Remove ${entry} from the allow list`}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="Add an address or subnet" help="192.168.1.20 or 192.168.1.0/28" className="min-w-[16rem] flex-1">
+              <Input
+                value={newEntry}
+                onChange={(event) => {
+                  setNewEntry(event.target.value);
+                  setEntryError(null);
+                }}
+                placeholder="192.168.1.0/28"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addEntry();
+                  }
+                }}
+              />
+            </Field>
+            <Button type="button" variant="outline" onClick={addEntry} disabled={!newEntry.trim()} aria-label="Add address to the allow list">
+              <Plus className="h-4 w-4" />
+              Add
+            </Button>
+          </div>
+          {entryError ? <p className="text-xs text-destructive">{entryError}</p> : null}
+        </div>
+      ) : null}
+    </FieldShell>
+  );
+}
+
+/** Same IP/CIDR shape the backend accepts (LocalNetworkMatcher.TryParseCidr). */
+function isValidAddressOrSubnet(value: string): boolean {
+  const [address, prefix] = value.split("/");
+  if (prefix !== undefined && !/^\d+$/.test(prefix)) return false;
+  const isIPv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(address);
+  if (isIPv4) {
+    const octets = address.split(".").map(Number);
+    if (octets.some((octet) => octet < 0 || octet > 255)) return false;
+    if (prefix !== undefined && Number(prefix) > 32) return false;
+    return true;
+  }
+  // IPv6: a permissive shape check -- the server is the source of truth for full validation.
+  const isIPv6 = /^[0-9a-fA-F:]+$/.test(address) && address.includes(":");
+  if (isIPv6) {
+    if (prefix !== undefined && Number(prefix) > 128) return false;
+    return true;
+  }
+  return false;
 }
 
 function FinishStep({
@@ -1810,6 +1978,26 @@ export async function saveAllowedHosts(form: GuideForm) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: true, allowedHosts: form.allowedHostsSelection })
+  });
+}
+
+/**
+ * #993: "Skip sign-in for devices on your home network?" always writes the
+ * real answer, Yes or No -- an existing install's setting cannot already be
+ * frozen on the way #936's automation defaults can, so there is no
+ * "only ever turns on" rule to preserve here.
+ */
+export async function saveLocalNetworkAuth(form: GuideForm) {
+  if (form.skipSignInLocalNetwork === null) return;
+  await fetchJson("/api/security/local-network-auth", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      enabled: form.skipSignInLocalNetwork,
+      additionalLocalNetworks: [],
+      allowList: form.localNetworkAllowList,
+      trustedProxies: []
+    })
   });
 }
 

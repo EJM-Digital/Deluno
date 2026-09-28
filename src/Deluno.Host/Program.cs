@@ -236,6 +236,13 @@ app.Use(async (context, next) =>
     await next();
 });
 
+// #993: captures the real socket peer before UseForwardedHeaders rewrites
+// Connection.RemoteIpAddress from X-Forwarded-For -- Deluno's own
+// KnownProxies/KnownNetworks are cleared below, so that middleware trusts
+// the header unconditionally. "Skip sign-in for local devices" needs the
+// original address to judge X-Forwarded-For against its own, separately
+// configured, trusted-proxies list instead.
+app.UseDelunoCaptureOriginalRemoteAddress();
 app.UseForwardedHeaders();
 
 // Allowed Hosts (#939): refuses a request addressed to a host Deluno was not

@@ -316,6 +316,25 @@ export interface UpdateAllowedHostsRequest {
   allowedHosts: string[];
 }
 
+/** System -> Security -> Skip sign-in for local devices (#993): what's saved, and the address answering this request. */
+export interface LocalNetworkAuthOverview {
+  enabled: boolean;
+  additionalLocalNetworks: string[];
+  allowList: string[];
+  trustedProxies: string[];
+  currentAddress: string;
+  currentAddressIsLocal: boolean;
+  currentAddressTrusted: boolean;
+  allowedHostsEnabled: boolean;
+}
+
+export interface UpdateLocalNetworkAuthRequest {
+  enabled: boolean;
+  additionalLocalNetworks: string[];
+  allowList: string[];
+  trustedProxies: string[];
+}
+
 export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   appInstanceName: "Deluno",
   movieRootPath: null,

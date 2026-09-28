@@ -122,6 +122,37 @@ public sealed class SqliteSecurityRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(5)));
     }
 
+    public async Task<UserItem?> GetSoleUserAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, username, display_name, avatar_initials, security_stamp, created_utc
+            FROM users
+            ORDER BY created_utc ASC
+            LIMIT 1;
+            """;
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new UserItem(
+            Id: reader.GetString(0),
+            Username: reader.GetString(1),
+            DisplayName: reader.GetString(2),
+            AvatarInitials: reader.GetString(3),
+            SecurityStamp: ReadSecurityStamp(reader, 4),
+            CreatedUtc: ParseTimestamp(reader.GetString(5)));
+    }
+
     public async Task<IReadOnlyList<ApiKeyItem>> ListApiKeysAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
