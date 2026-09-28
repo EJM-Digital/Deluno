@@ -54,9 +54,18 @@ export function LibraryActions({
       </Button>
       {showSeasonPassLink ? (
         <Button asChild size="sm" variant="outline" className="gap-2">
-          <Link to="/tv/season-pass" title="Bulk-monitor seasons across every show">
+          {/*
+            The label hides below 1800px and the icon carries it alone with
+            the tooltip, same as the refresh button beside it. TV is the only
+            shelf with this extra action, so at 1669px it was the one thing
+            standing between the row fitting on the search line (like Movies)
+            and wrapping onto a fourth line of its own (#959) — the aria-label
+            keeps the accessible name "Season Pass" whether or not the text is
+            painted.
+          */}
+          <Link to="/tv/season-pass" title="Bulk-monitor seasons across every show" aria-label="Season Pass">
             <CalendarRange className="h-4 w-4" />
-            Season Pass
+            <span className="hidden min-[1800px]:inline">Season Pass</span>
           </Link>
         </Button>
       ) : null}
