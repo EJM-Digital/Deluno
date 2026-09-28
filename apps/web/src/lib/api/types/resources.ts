@@ -305,6 +305,17 @@ export interface TagUsageItem {
   movieCount: number;
   seriesCount: number;
   totalCount: number;
+  /** Connections and rules that name this tag (#1039). */
+  users: TagUserItem[];
+  isUnused: boolean;
+}
+
+export interface TagUserItem {
+  kind: string;
+  id: string;
+  name: string;
+  /** The page where this is set. */
+  link: string;
 }
 
 export interface IntakeSourceItem {
