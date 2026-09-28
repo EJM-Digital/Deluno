@@ -25,17 +25,52 @@ internal static class InstallHooks
     /// <summary>Uninstall's limit is 15 seconds; leave room to exit cleanly.</summary>
     private static readonly TimeSpan UninstallBudget = TimeSpan.FromSeconds(12);
 
-    /// <summary>After install or update: adds the rule only when this process may already do so.</summary>
+    /// <summary>
+    /// Test seam only: replaces the elevation check so a test can force the
+    /// non-elevated, fast-return path without depending on how the test
+    /// runner itself happens to be running. Defaults to the real check.
+    /// </summary>
+    internal static Func<bool> IsElevatedCheck { get; set; } = () => new WindowsFirewall().IsElevated;
+
+    /// <summary>
+    /// Test seam only: lets a test detect (or forbid) a call into
+    /// <see cref="Firewall"/> -- which touches <c>DelunoServer</c>'s statics
+    /// and <c>AppSettings.Load()</c> -- without it actually running. Defaults
+    /// to the real factory.
+    /// </summary>
+    internal static Func<WindowsFirewallLanAccess> FirewallFactory { get; set; } = Firewall;
+
+    /// <summary>
+    /// After install or update: adds the rule only when this process may
+    /// already do so. Velopack kills this callback after 30 seconds, so the
+    /// very first thing it does is log, and the common case -- not elevated,
+    /// which is every ordinary install -- returns before touching
+    /// <see cref="Firewall"/> (and so <c>DelunoServer</c>'s statics and
+    /// <c>AppSettings.Load()</c>) at all. A cold, non-elevated run once took
+    /// 23+ seconds to reach its first log line for exactly that reason and
+    /// blew the budget (#968).
+    /// </summary>
     public static void OnAfterInstall()
     {
-        var firewall = Firewall();
-        if (!new WindowsFirewall().IsElevated)
+        try
         {
-            LogHook($"'{firewall.RuleName}': not elevated here; the first run asks Windows for permission.");
-            return;
-        }
+            LogHook("after install: starting.");
 
-        Run(() => firewall.AllowAsync(CancellationToken.None), "after install");
+            if (!IsElevatedCheck())
+            {
+                LogHook("not elevated here; the first run asks Windows for permission.");
+                return;
+            }
+
+            var firewall = FirewallFactory();
+            Run(() => firewall.AllowAsync(CancellationToken.None), "after install");
+        }
+        catch (Exception ex)
+        {
+            // An install must never fail over this hook; the tray and System
+            // still offer the firewall step on first run.
+            LogHook($"after install: failed: {ex.Message}");
+        }
     }
 
     /// <summary>
