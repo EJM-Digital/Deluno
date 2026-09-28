@@ -73,14 +73,20 @@ describe("Tags page (#1039)", () => {
     expect(within(list).getByText("Release rule")).toBeInTheDocument();
   });
 
-  it("names what deleting will change and removes the tag from all of them on confirm", async () => {
+  it("offers no Delete for a tag in use and says what still uses it", async () => {
     renderPage();
     await userEvent.click(screen.getByText("Kids"));
+    await screen.findByRole("list", { name: "Settings that use this tag" });
+    expect(screen.getByText(/In use by 3 titles, 1 indexer, 1 download client and 1 release rule — remove it from those first/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("still lets an unused tag be deleted", async () => {
+    renderPage();
+    await userEvent.click(screen.getByText("Spare"));
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
-    const changes = await screen.findByRole("list", { name: "What deleting this tag changes" });
-    expect(within(changes).getByText(/This rule is deleted/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Remove it from all of these and delete" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/tags/t1", { method: "DELETE" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete tag" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/tags/t2", { method: "DELETE" }));
   });
 
   it("deletes unused tags only when asked", async () => {
