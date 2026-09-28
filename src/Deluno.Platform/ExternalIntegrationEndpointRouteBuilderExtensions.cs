@@ -728,31 +728,40 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
-            // #874: the blocklist key is the release's hash/id and its name,
-            // on every indexer -- the same key every other give-up path uses.
-            await blockedReleases.BlockAsync(
-                new BlockedRelease(
-                    Guid.NewGuid().ToString("n"),
-                    BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
-                    dispatch.ReleaseName,
-                    dispatch.IndexerName,
-                    dispatch.MediaType,
-                    dispatch.EntityId,
-                    handoff.ReleaseName,
-                    ImportFailurePolicy.ProcessorRejected,
-                    $"Gave up on {handoff.ProcessorName ?? "the processor"} and searched for another release.",
-                    dispatch.TorrentHashOrItemId ?? handoff.QueueItemId,
-                    dispatch.DownloadClientId,
-                    dispatch.DownloadClientName,
-                    DateTimeOffset.MinValue,
-                    Origin: BlockedReleaseOrigins.Manual),
-                cancellationToken);
+            // #956: a processor that never received the file has a hand-off
+            // problem, not a bad release (the same rule as #880 and #919) --
+            // so a Lost hand-off ends and searches again without blocklisting
+            // anything. Every other give-up ending still blocklists using the
+            // #874 key: the release's hash/id and its name, on every indexer.
+            var isLost = string.Equals(handoff.Status, ProcessorHandoffStatuses.Lost, StringComparison.OrdinalIgnoreCase);
+            if (!isLost)
+            {
+                await blockedReleases.BlockAsync(
+                    new BlockedRelease(
+                        Guid.NewGuid().ToString("n"),
+                        BlockedReleaseKeys.For(dispatch.ReleaseName, dispatch.IndexerName),
+                        dispatch.ReleaseName,
+                        dispatch.IndexerName,
+                        dispatch.MediaType,
+                        dispatch.EntityId,
+                        handoff.ReleaseName,
+                        ImportFailurePolicy.ProcessorRejected,
+                        $"Gave up on {handoff.ProcessorName ?? "the processor"} and searched for another release.",
+                        dispatch.TorrentHashOrItemId ?? handoff.QueueItemId,
+                        dispatch.DownloadClientId,
+                        dispatch.DownloadClientName,
+                        DateTimeOffset.MinValue,
+                        Origin: BlockedReleaseOrigins.Manual),
+                    cancellationToken);
+            }
 
             var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
                 .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
             await ReplacementSearchQueuer.EnqueueAsync(jobScheduler, dispatch, library?.Name ?? dispatch.LibraryId, cancellationToken);
 
-            var message = $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.";
+            var message = isLost
+                ? $"{handoff.ProcessorName ?? "The processor"} never received {handoff.ReleaseName}, so Deluno did not blocklist it. Ended the hand-off and started a new search."
+                : $"You gave up on {handoff.ReleaseName}: blocklisted the release and started a new search.";
             var ended = await repository.UpdateProcessorHandoffAsync(
                 handoff.Id,
                 ProcessorHandoffStatuses.Dismissed,
