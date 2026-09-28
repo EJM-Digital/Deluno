@@ -52,6 +52,25 @@ public sealed class IndexerProxyHttpClientFactoryTests
         Assert.False(handler.UseProxy);
     }
 
+    /// <summary>
+    /// #1027/#976: an indexer with no proxy assigned must connect directly --
+    /// never an ambient HTTP_PROXY/HTTPS_PROXY environment variable or a
+    /// WinINET/WinHTTP system proxy left over on the host, the same leftover
+    /// that could silently reroute a tracker request to a dead address.
+    /// UseProxy is only ever true when this factory was given an indexer's
+    /// own assigned HTTP/SOCKS proxy.
+    /// </summary>
+    [Fact]
+    public void No_proxy_assigned_never_uses_an_ambient_system_or_environment_proxy()
+    {
+        var factory = new IndexerProxyHttpClientFactory();
+
+        var handler = Assert.IsType<SocketsHttpHandler>(factory.GetHandler(null));
+
+        Assert.False(handler.UseProxy);
+        Assert.Null(handler.Proxy);
+    }
+
     [Fact]
     public void A_flaresolverr_proxy_is_a_cloudflare_helper_not_a_forward_proxy_so_it_builds_the_direct_handler()
     {
