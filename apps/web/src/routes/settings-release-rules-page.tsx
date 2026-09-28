@@ -7,6 +7,7 @@
  * can reach a download client.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -271,7 +272,7 @@ export function SettingsReleaseRulesPage() {
               <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Global release timing" autoComplete="off" />
             </Field>
             <Field label="Title tag" optional error={errors.tagName} help="Leave blank to apply globally. Otherwise this must match a tag on the title.">
-              <Input value={form.tagName} onChange={(event) => setForm((current) => ({ ...current, tagName: event.target.value }))} placeholder="Kids" autoComplete="off" />
+              <TagPicker single label="Title tag" value={form.tagName} onChange={(tagName) => setForm((current) => ({ ...current, tagName }))} />
             </Field>
           </FieldRow>
           <Field label="Preferred protocol" help="A matching protocol gets a ranking lift; the rule does not exclude the other protocol unless its delay or terms hold it.">

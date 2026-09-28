@@ -86,6 +86,12 @@ interface LoaderData {
 }
 
 type RouteCategories = Record<string, string>;
+/** Per indexer, the tags a title must carry (required) or must not carry (excluded) for this library to search it. */
+type RouteSourceTags = Record<string, { required: string; excluded: string }>;
+
+function sameRouteSourceTags(left: RouteSourceTags, right: RouteSourceTags, ids: string[]) {
+  return ids.every((id) => (left[id]?.required ?? "") === (right[id]?.required ?? "") && (left[id]?.excluded ?? "") === (right[id]?.excluded ?? ""));
+}
 
 function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
@@ -420,10 +426,11 @@ export function IndexersPage() {
   const [proxyForm, setProxyForm] = useState<ProxyForm>(emptyProxyForm);
   const [proxyInitial, setProxyInitial] = useState<ProxyForm>(emptyProxyForm);
   const [routeSources, setRouteSources] = useState<string[]>([]);
+  const [routeSourceTags, setRouteSourceTags] = useState<RouteSourceTags>({});
   const [routeClients, setRouteClients] = useState<string[]>([]);
   const [routeCategories, setRouteCategories] = useState<RouteCategories>({});
   const [categoryChecks, setCategoryChecks] = useState<Record<string, DownloadClientCategoryCheckResult>>({});
-  const [routeInitial, setRouteInitial] = useState<{ sources: string[]; clients: string[]; categories: RouteCategories }>({ sources: [], clients: [], categories: {} });
+  const [routeInitial, setRouteInitial] = useState<{ sources: string[]; clients: string[]; categories: RouteCategories; sourceTags: RouteSourceTags }>({ sources: [], clients: [], categories: {}, sourceTags: {} });
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestOutcome | null>(null);
@@ -472,7 +479,7 @@ export function IndexersPage() {
     if (drawer.kind === "indexer") return !sameIndexer(indexerForm, indexerInitial);
     if (drawer.kind === "client") return !sameClient(clientForm, clientInitial);
     if (drawer.kind === "proxy") return !sameProxy(proxyForm, proxyInitial);
-    if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories);
+    if (drawer.kind === "routing") return !sameSet(routeSources, routeInitial.sources) || !sameSet(routeClients, routeInitial.clients) || !sameRouteCategories(routeCategories, routeInitial.categories) || !sameRouteSourceTags(routeSourceTags, routeInitial.sourceTags, routeSources);
     return false;
   }, [drawer.kind, indexerForm, indexerInitial, clientForm, clientInitial, proxyForm, proxyInitial, routeSources, routeClients, routeCategories, routeInitial]);
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
@@ -552,9 +559,11 @@ export function IndexersPage() {
     setDrawer({ kind: "routing", libraryId: library.id });
     setRouteSources(sources);
     setRouteClients(clientIds);
+    const sourceTags: RouteSourceTags = Object.fromEntries(snapshot?.sources.map((source) => [source.indexerId, { required: source.requiredTags ?? "", excluded: source.excludedTags ?? "" }]) ?? []);
     setRouteCategories(categories);
+    setRouteSourceTags(sourceTags);
     setCategoryChecks({});
-    setRouteInitial({ sources, clients: clientIds, categories });
+    setRouteInitial({ sources, clients: clientIds, categories, sourceTags });
     resetDrawerChrome();
   }, [resetDrawerChrome, routing]);
 
@@ -695,14 +704,14 @@ export function IndexersPage() {
           `/api/libraries/${drawer.libraryId}/routing`,
           "PUT",
           {
-            sources: routeSources.map((indexerId, index) => ({ indexerId, priority: index + 1, requiredTags: "", excludedTags: "" })),
+            sources: routeSources.map((indexerId, index) => ({ indexerId, priority: index + 1, requiredTags: routeSourceTags[indexerId]?.required.trim() ?? "", excludedTags: routeSourceTags[indexerId]?.excluded.trim() ?? "" })),
             downloadClients: routeClients.map((downloadClientId, index) => ({ downloadClientId, priority: index + 1, category: routeCategories[downloadClientId]?.trim() || null }))
           },
           "Routing could not be saved."
         );
         const categories = Object.fromEntries(routeClients.map((id) => [id, routeCategories[id]?.trim() ?? ""]));
         setRouteCategories(categories);
-        setRouteInitial({ sources: routeSources, clients: routeClients, categories });
+        setRouteInitial({ sources: routeSources, clients: routeClients, categories, sourceTags: routeSourceTags });
         setSaveMessage("Routing saved");
       }
       setSaveState("saved");
@@ -1294,6 +1303,8 @@ export function IndexersPage() {
             sources={routeSources}
             targets={routeClients}
             categories={routeCategories}
+            sourceTags={routeSourceTags}
+            onSourceTagsChange={(id, patch) => setRouteSourceTags((current) => ({ ...current, [id]: { required: current[id]?.required ?? "", excluded: current[id]?.excluded ?? "", ...patch } }))}
             onToggleSource={(id, on) => setRouteSources((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)))}
             onToggleClient={(id, on) => {
               setRouteClients((current) => (on ? [...new Set([...current, id])] : current.filter((item) => item !== id)));
