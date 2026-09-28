@@ -25,6 +25,10 @@
       <_Parameter1>DelunoUpdateChannel</_Parameter1>
       <_Parameter2>$(DelunoUpdateChannel)</_Parameter2>
     </AssemblyAttribute>
+    <!-- Lets Deluno.Tray.Tests reach the internal test seams on InstallHooks (#968). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Deluno.Tray.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
