@@ -117,4 +117,6 @@ public sealed record PatchPlatformSettingsRequest(
     /// <summary>#888: hold for manual import (default), give up after N days, or retry once then treat it as bad.</summary>
     string? UnmatchedImportPolicy = null,
     int? UnmatchedImportGiveUpDays = null,
-    bool? DownloadHealthDangerousFileEnabled = null);
+    bool? DownloadHealthDangerousFileEnabled = null,
+    bool? TagTitlesOffEveryList = null,
+    string? OffListTag = null);

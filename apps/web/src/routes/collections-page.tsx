@@ -1,6 +1,7 @@
 import { Check, Film, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
+import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
@@ -46,6 +47,7 @@ export function CollectionsPage() {
   const [monitored, setMonitored] = useState(true);
   const [monitorMovies, setMonitorMovies] = useState(true);
   const [searchOnAdd, setSearchOnAdd] = useState(true);
+  const [tags, setTags] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
 
@@ -61,10 +63,11 @@ export function CollectionsPage() {
       const response = await authedFetch("/api/movie-collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId: providerId.trim(), libraryId, monitored, monitorMovies, searchOnAdd })
+        body: JSON.stringify({ providerId: providerId.trim(), libraryId, monitored, monitorMovies, searchOnAdd, tags: tags.trim() })
       });
       if (!response.ok) throw new Error(await response.text() || "Collection could not be added.");
       setProviderId("");
+      setTags("");
       setAddOpen(false);
       toast.success("Collection added");
       revalidator.revalidate();
@@ -158,6 +161,11 @@ export function CollectionsPage() {
               <Select value={libraryId} onChange={(event) => setLibraryId(event.target.value)} options={movieLibraries.map((library) => ({ value: library.id, label: library.name }))} placeholder="Choose a movie library" />
             </label>
           </div>
+          <div className="mt-5 space-y-1.5">
+            <span className="block text-sm font-medium text-foreground">Tags for every movie it adds (optional)</span>
+            <TagPicker label="Tags for every movie the collection adds" value={tags} onChange={setTags} warnUnused={false} />
+            <span className="block text-xs font-normal text-muted-foreground">Each movie this collection adds gets these tags straight away, so a destination rule, a download client or a notification can act on them.</span>
+          </div>
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <SwitchRow label="Monitor collection" description="Discover new franchise members." checked={monitored} onCheckedChange={setMonitored} />
             <SwitchRow label="Monitor movies" description="Add missing members as wanted movies." checked={monitorMovies} onCheckedChange={setMonitorMovies} />
@@ -236,6 +244,13 @@ export function CollectionsPage() {
                   </div>
                 </div>
 
+                <CollectionTagsRow
+                  key={`${collection.id}:${collection.tags}`}
+                  collection={collection}
+                  disabled={isBusy || isRefreshing}
+                  onSave={(value) => updateCollection(collection, { tags: value })}
+                />
+
                 <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-hairline px-4 py-3">
                   <div className="flex items-center gap-[var(--grid-gap)] text-xs text-muted-foreground">
                     <SwitchRow label="Monitor" checked={collection.monitored} onCheckedChange={(value) => updateCollection(collection, { monitored: value })} disabled={isBusy || isRefreshing} />
@@ -251,6 +266,27 @@ export function CollectionsPage() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/** #1046: the tags a collection gives to every movie it adds. Blank gives none. */
+export function CollectionTagsRow({ collection, disabled, onSave }: { collection: MovieCollectionItem; disabled: boolean; onSave: (tags: string) => void }) {
+  const [value, setValue] = useState(collection.tags ?? "");
+  const changed = value.trim() !== (collection.tags ?? "").trim();
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-4 py-3">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tags for new movies</span>
+        <div className="min-w-0 flex-1">
+          <TagPicker label={`Tags ${collection.name} gives to movies it adds`} value={value} onChange={setValue} disabled={disabled} warnUnused={false} />
+        </div>
+      </div>
+      {changed ? (
+        <Button size="sm" variant="outline" onClick={() => onSave(value.trim())} disabled={disabled}>
+          Save tags for {collection.name}
+        </Button>
+      ) : null}
     </div>
   );
 }

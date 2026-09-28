@@ -45,7 +45,11 @@ public sealed record SeerrConnection(
     /// only the dedicated reveal/regenerate endpoints return the plaintext,
     /// the same way the API key is never handed back once saved.
     /// </summary>
-    [property: JsonIgnore] string? WebhookSecret = null)
+    [property: JsonIgnore] string? WebhookSecret = null,
+    /// <summary>Comma-separated tag names given to every title this connection adds (#1046). Empty gives none.</summary>
+    string Tags = "",
+    /// <summary>Extra tag names given only when the request was for 4K (#1046), on top of <see cref="Tags"/>.</summary>
+    string Tags4k = "")
 {
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
 
@@ -61,7 +65,11 @@ public sealed record SaveSeerrRequest(
     string? MovieLibraryId = null,
     string? MovieQualityProfileId = null,
     string? SeriesLibraryId = null,
-    string? SeriesQualityProfileId = null);
+    string? SeriesQualityProfileId = null,
+    /// <summary>Tags given to every title this connection adds (#1046). Null keeps what is stored.</summary>
+    string? Tags = null,
+    /// <summary>Extra tags for a 4K request (#1046). Null keeps what is stored.</summary>
+    string? Tags4k = null);
 
 /// <summary>What a Seerr test found out, in the words the screen prints.</summary>
 public sealed record SeerrTestResult(

@@ -19,7 +19,9 @@ public sealed class MovieCollectionService(
     IQualityRepository qualityRepository,
     IMediaDecisionService mediaDecisionService,
     IJobQueueRepository jobQueueRepository,
-    TimeProvider timeProvider) : IMovieCollectionService
+    TimeProvider timeProvider,
+    ITitleTagService? titleTagService = null,
+    IActivityFeedRepository? activityFeedRepository = null) : IMovieCollectionService
 {
     private static readonly TimeSpan SyncInterval = TimeSpan.FromHours(24);
     private static readonly TimeSpan RetryInterval = TimeSpan.FromHours(6);
@@ -112,6 +114,7 @@ public sealed class MovieCollectionService(
             var quality = await ResolveQualityAsync(collection, library, cancellationToken);
 
             var added = 0;
+            var taggedCount = 0;
             var linked = 0;
             var excluded = 0;
             foreach (var member in members)
@@ -160,6 +163,14 @@ public sealed class MovieCollectionService(
                         cancellationToken);
                     movieId = localMovie.Id;
                     added++;
+
+                    // #1046: the collection's tags go on the movie the moment it exists,
+                    // before its wanted state, its search or anything that reads its tags.
+                    if (titleTagService is not null && TagNameList.Split(collection.Tags).Count > 0)
+                    {
+                        await titleTagService.GiveAsync(MediaKind.Movie, movieId, TagNameList.Split(collection.Tags), cancellationToken);
+                        taggedCount++;
+                    }
 
                     if (!string.Equals(collection.MinimumAvailability, MovieAvailability.Released, StringComparison.OrdinalIgnoreCase))
                     {
@@ -220,6 +231,18 @@ public sealed class MovieCollectionService(
             {
                 searchRequested = await jobQueueRepository.RequestLibrarySearchAsync(
                     ToAutomationPlan(library),
+                    cancellationToken);
+            }
+
+            if (taggedCount > 0 && activityFeedRepository is not null)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "collection.tagged",
+                    $"{collection.Name} added {added} movie{(added == 1 ? "" : "s")} and gave {(added == 1 ? "it" : "them")} the tag{(TagNameList.Split(collection.Tags).Count == 1 ? "" : "s")} {string.Join(", ", TagNameList.Split(collection.Tags))}.",
+                    null,
+                    null,
+                    "movie-collection",
+                    collection.Id,
                     cancellationToken);
             }
 

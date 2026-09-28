@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Eye, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
+import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -131,7 +132,7 @@ export async function settingsListsLoader(): Promise<LoaderData> {
 }
 
 export function SettingsListsPage() {
-  const { intakeSources, libraries, exclusions, traktStatus } = useLoaderData() as LoaderData;
+  const { intakeSources, libraries, exclusions, traktStatus, settings } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
   const { preferences } = useDisplayPreferences();
 
@@ -565,6 +566,13 @@ export function SettingsListsPage() {
           </ListTable>
         )}
       </ListCard>
+
+      <OffListTagCard
+        key={`${settings.tagTitlesOffEveryList}:${settings.offListTag}`}
+        enabled={settings.tagTitlesOffEveryList ?? false}
+        tag={settings.offListTag ?? ""}
+        onSaved={() => revalidator.revalidate()}
+      />
 
       <ListCard
         title="Never add decisions"
@@ -1090,6 +1098,60 @@ function buildTmdbPersonAddress(feedUrl: string, creditTypes: TmdbPersonCreditTy
   const selected = creditTypes.length ? creditTypes : ["cast"] as TmdbPersonCreditType[];
   if (!parsed.personId) return feedUrl.trim();
   return `https://www.themoviedb.org/person/${parsed.personId}?credits=${selected.join(",")}`;
+}
+
+/**
+ * #1046: Sonarr's "keep and tag" for list sync. Off unless someone turns it on,
+ * existing installs included; when on, a title that has left every import list
+ * it came from is given the tag chosen here and Activity says so.
+ */
+export function OffListTagCard({ enabled, tag, onSaved }: { enabled: boolean; tag: string; onSaved: () => void }) {
+  const [on, setOn] = useState(enabled);
+  const [name, setName] = useState(tag);
+  const [busy, setBusy] = useState(false);
+  const changed = on !== enabled || name.trim() !== tag.trim();
+  const missingTag = on && !name.trim();
+
+  async function save() {
+    if (missingTag || busy) return;
+    setBusy(true);
+    try {
+      const response = await authedFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagTitlesOffEveryList: on, offListTag: name.trim() })
+      });
+      if (!response.ok) throw new Error("This setting could not be saved.");
+      toast.success("Saved");
+      onSaved();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "This setting could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ListCard title="Titles that leave every list" count={enabled ? "On" : "Off"}>
+      <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          Deluno never removes a title because it dropped off a list. Turn this on to tag it instead, so you can find it later or let a tag rule decide what happens to it. A title still on another list is left alone.
+        </p>
+        <SwitchRow label="Tag titles that are no longer on any list" description="Off by default. Checked after each successful list sync." checked={on} onCheckedChange={setOn} />
+        <Field label="Tag to give them" optional={!on} help={missingTag ? "Choose a tag before turning this on." : "Created for you if it does not exist yet."}>
+          <TagPicker label="Tag for titles that left every list" value={name} onChange={setName} single warnUnused={false} placeholder="For example: off-list" />
+        </Field>
+        {changed ? (
+          <div>
+            <Button type="button" size="sm" onClick={() => void save()} disabled={busy || missingTag}>
+              {busy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+              Save list tag settings
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </ListCard>
+  );
 }
 
 async function readIntakeSourceError(response: Response, fallback: string) {

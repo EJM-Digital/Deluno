@@ -253,7 +253,12 @@ public sealed record PlatformSettingsSnapshot(
     // default (#936): #816's content-blocklist check can surface a finding
     // on its own once turned on, but nothing strikes, removes, deletes or
     // blocklists on its own until this is explicitly turned on too.
-    bool DownloadHealthDangerousFileEnabled = false);
+    bool DownloadHealthDangerousFileEnabled = false,
+    // #1046: off by default and for every existing install (#936). When on, a
+    // title that has left every import list it came from is given OffListTag
+    // (Sonarr's ListSyncTag). The tag is the user's own choice, blank until chosen.
+    bool TagTitlesOffEveryList = false,
+    string OffListTag = "");
 
 /// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
 public static class UnmatchedImportPolicies

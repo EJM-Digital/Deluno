@@ -1,5 +1,6 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -30,7 +31,9 @@ public sealed class SeerrAcquisitionServiceTests
         string? movieLibraryId = null,
         string? movieQualityProfileId = null,
         string? seriesLibraryId = null,
-        string? seriesQualityProfileId = null)
+        string? seriesQualityProfileId = null,
+        string tags = "",
+        string tags4k = "")
         => new(
             Id: "seerr-1",
             Name: "Lab Seerr",
@@ -48,7 +51,9 @@ public sealed class SeerrAcquisitionServiceTests
             MovieLibraryId: movieLibraryId,
             MovieQualityProfileId: movieQualityProfileId,
             SeriesLibraryId: seriesLibraryId,
-            SeriesQualityProfileId: seriesQualityProfileId);
+            SeriesQualityProfileId: seriesQualityProfileId,
+            Tags: tags,
+            Tags4k: tags4k);
 
     private static LibraryItem MovieLibrary(string id = "library-movies")
         => new(
@@ -115,7 +120,7 @@ public sealed class SeerrAcquisitionServiceTests
         public Mock<IActivityFeedRepository> Activity { get; } = new();
         public Mock<ISeerrAcquisitionsRepository> Acquisitions { get; } = new();
 
-        public SeerrAcquisitionService BuildService()
+        public SeerrAcquisitionService BuildService(ITitleTagService? titleTags = null)
             => new(
                 Libraries.Object,
                 new LibraryRoutingResolver(),
@@ -126,7 +131,8 @@ public sealed class SeerrAcquisitionServiceTests
                 JobQueue.Object,
                 Activity.Object,
                 Acquisitions.Object,
-                NullLogger<SeerrAcquisitionService>.Instance);
+                NullLogger<SeerrAcquisitionService>.Instance,
+                titleTags);
 
         public void SetupHappyMoviePath(MetadataSearchResult movie, string libraryId)
         {
@@ -212,6 +218,87 @@ public sealed class SeerrAcquisitionServiceTests
         fixture.Movies.Verify(repo => repo.UpdateQualityProfileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         fixture.Acquisitions.Verify(repo => repo.RecordAsync(
             "seerr-1", "Lab Seerr", "movies", "movie-matrix", movie.Title, 44, "added", null, "Ben", It.IsAny<CancellationToken>(), "rule-4k", "requested4k:true"), Times.Once);
+    }
+
+    /// <summary>
+    /// #1046: the connection's tags are given to the title the moment it exists - before
+    /// the search is requested and before the Activity line - and the tags routing sees
+    /// include them, so a tag destination rule places the title.
+    /// </summary>
+    [Fact]
+    public async Task A_seerr_added_title_is_tagged_before_anything_else_and_a_tag_rule_places_it()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MovieLibrary("library-movies"), MovieLibrary("library-kids")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Rule("rule-kids", "tag", "kids", "library-kids")]);
+        var movie = Movie();
+        fixture.SetupHappyMoviePath(movie, "library-kids");
+
+        var order = new List<string>();
+        var tags = new Mock<ITitleTagService>();
+        tags.Setup(service => service.GiveAsync(MediaKind.Movie, "movie-matrix", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("tagged"))
+            .ReturnsAsync(["kids", "requested-by-seerr"]);
+        fixture.JobQueue.Setup(repo => repo.RequestLibrarySearchAsync(It.IsAny<LibraryAutomationPlanItem>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("search"))
+            .ReturnsAsync(true);
+        fixture.Activity.Setup(repo => repo.RecordActivityAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => order.Add("activity"))
+            .ReturnsAsync((ActivityEventItem)null!);
+
+        var outcome = await fixture.BuildService(tags.Object).AcquireAsync(
+            Connection(movieLibraryId: "library-movies", tags: "kids, requested-by-seerr"), "movies", tmdbId: "603", tvdbId: null, seerrMediaId: 50, is4k: false, requestedBy: "Ben", CancellationToken.None);
+
+        Assert.True(outcome.Ok);
+        Assert.Contains("Tagged kids, requested-by-seerr", outcome.Message);
+        fixture.JobQueue.Verify(repo => repo.RequestLibrarySearchAsync(It.Is<LibraryAutomationPlanItem>(item => item.LibraryId == "library-kids"), It.IsAny<CancellationToken>()), Times.Once);
+        tags.Verify(service => service.GiveAsync(MediaKind.Movie, "movie-matrix",
+            It.Is<IEnumerable<string>>(names => names.SequenceEqual(new[] { "kids", "requested-by-seerr" })), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(["tagged", "search", "activity"], order);
+    }
+
+    [Fact]
+    public async Task A_4k_request_also_gets_the_connections_extra_4k_tags_and_a_normal_one_does_not()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MovieLibrary("library-movies"), MovieLibrary("library-movies-4k")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Rule("rule-4k", "requested4k", "true", "library-movies-4k")]);
+        fixture.SetupHappyMoviePath(Movie(), "library-movies-4k");
+        var tags = new Mock<ITitleTagService>();
+        tags.Setup(service => service.GiveAsync(It.IsAny<MediaKind>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var connection = Connection(movieLibraryId: "library-movies", tags: "seerr", tags4k: "4k");
+
+        await fixture.BuildService(tags.Object).AcquireAsync(connection, "movies", "603", null, 51, is4k: true, requestedBy: null, CancellationToken.None);
+        tags.Verify(service => service.GiveAsync(MediaKind.Movie, "movie-matrix",
+            It.Is<IEnumerable<string>>(names => names.SequenceEqual(new[] { "seerr", "4k" })), It.IsAny<CancellationToken>()), Times.Once);
+
+        tags.Invocations.Clear();
+        await fixture.BuildService(tags.Object).AcquireAsync(connection, "movies", "603", null, 52, is4k: false, requestedBy: null, CancellationToken.None);
+        tags.Verify(service => service.GiveAsync(MediaKind.Movie, "movie-matrix",
+            It.Is<IEnumerable<string>>(names => names.SequenceEqual(new[] { "seerr" })), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_connection_with_no_tags_gives_none()
+    {
+        var fixture = new Fixture();
+        fixture.Libraries.Setup(repo => repo.ListLibrariesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MovieLibrary("library-movies")]);
+        fixture.Libraries.Setup(repo => repo.ListDestinationRulesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        fixture.SetupHappyMoviePath(Movie(), "library-movies");
+        var tags = new Mock<ITitleTagService>();
+
+        var outcome = await fixture.BuildService(tags.Object).AcquireAsync(
+            Connection(movieLibraryId: "library-movies"), "movies", "603", null, 53, is4k: false, requestedBy: null, CancellationToken.None);
+
+        Assert.True(outcome.Ok);
+        Assert.DoesNotContain("Tagged", outcome.Message);
+        tags.Verify(service => service.GiveAsync(It.IsAny<MediaKind>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

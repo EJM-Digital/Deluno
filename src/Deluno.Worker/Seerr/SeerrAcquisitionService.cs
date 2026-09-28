@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Seerr;
@@ -44,7 +45,8 @@ public sealed class SeerrAcquisitionService(
     IJobQueueRepository jobQueueRepository,
     IActivityFeedRepository activityFeedRepository,
     ISeerrAcquisitionsRepository acquisitions,
-    ILogger<SeerrAcquisitionService> logger)
+    ILogger<SeerrAcquisitionService> logger,
+    ITitleTagService? titleTagService = null)
     : ISeerrAcquisitionService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -86,9 +88,25 @@ public sealed class SeerrAcquisitionService(
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
             var rules = await librariesRepository.ListDestinationRulesAsync(cancellationToken);
             var fallbackLibraryId = mediaType == "tv" ? connection.SeriesLibraryId : connection.MovieLibraryId;
+
+            // #1046: the connection's own tags (and its extra 4K ones) go on the title
+            // before anything reads them, so routing, the search and notifications see
+            // them. The title may not exist yet, so routing is handed the tags it is
+            // about to carry: what it already has plus what this connection gives.
+            var tagKind = mediaType == "tv" ? MediaKind.Series : MediaKind.Movie;
+            var givenTags = TagNameList.Split(is4k ? $"{connection.Tags},{connection.Tags4k}" : connection.Tags);
+            string? existingEntityId = mediaType == "tv"
+                ? await seriesCatalogRepository.FindExistingIdAsync(metadata.Title, metadata.Year, metadata.ImdbId, metadata.Provider, metadata.ProviderId, cancellationToken)
+                : await movieCatalogRepository.FindExistingIdAsync(metadata.Title, metadata.Year, metadata.ImdbId, metadata.Provider, metadata.ProviderId, cancellationToken);
+            var routingTags = givenTags.ToList();
+            if (existingEntityId is not null && titleTagService is not null)
+            {
+                routingTags.AddRange(await titleTagService.ListNamesAsync(tagKind, existingEntityId, cancellationToken));
+            }
+
             var routing = libraryRoutingResolver.Resolve(
                 mediaType,
-                new LibraryRoutingMetadata(metadata.Genres, metadata.OriginalLanguage, metadata.Certification, metadata.Studio, is4k),
+                new LibraryRoutingMetadata(metadata.Genres, metadata.OriginalLanguage, metadata.Certification, metadata.Studio, is4k, routingTags),
                 libraries,
                 rules,
                 // #1035: a 4K request never falls back to the normal library.
@@ -128,7 +146,7 @@ public sealed class SeerrAcquisitionService(
             bool isNewlyAdded;
             if (mediaType == "tv")
             {
-                var existingId = await seriesCatalogRepository.FindExistingIdAsync(metadata.Title, metadata.Year, metadata.ImdbId, metadata.Provider, metadata.ProviderId, cancellationToken);
+                var existingId = existingEntityId;
                 if (existingId is null)
                 {
                     var created = await seriesCatalogRepository.AddAsync(BuildSeriesRequest(metadata), cancellationToken);
@@ -152,7 +170,7 @@ public sealed class SeerrAcquisitionService(
             }
             else
             {
-                var existingId = await movieCatalogRepository.FindExistingIdAsync(metadata.Title, metadata.Year, metadata.ImdbId, metadata.Provider, metadata.ProviderId, cancellationToken);
+                var existingId = existingEntityId;
                 if (existingId is null)
                 {
                     var created = await movieCatalogRepository.AddAsync(BuildMovieRequest(metadata), cancellationToken);
@@ -173,6 +191,14 @@ public sealed class SeerrAcquisitionService(
                 {
                     await movieCatalogRepository.UpdateQualityProfileAsync(entityId, qualityProfileId!, cancellationToken);
                 }
+            }
+
+            // Tags are written straight after the title exists, before its search is
+            // requested and before the acquisition and Activity lines are recorded.
+            IReadOnlyList<string> newlyTagged = [];
+            if (titleTagService is not null && givenTags.Count > 0)
+            {
+                newlyTagged = await titleTagService.GiveAsync(tagKind, entityId, givenTags, cancellationToken);
             }
 
             var searchRequested = await jobQueueRepository.RequestLibrarySearchAsync(
@@ -201,9 +227,10 @@ public sealed class SeerrAcquisitionService(
             // the automatic choice is visible in Activity, not silent.
             var placedBy = rule is not null
                 ? (routing.MatchedTag is { Length: > 0 } matchedTag ? $"placed by the tag “{matchedTag}” (the “{rule.Name}” rule)" : $"placed by the “{rule.Name}” rule") : $"using {connection.Name}'s fallback library";
+            var tagged = newlyTagged.Count > 0 ? $" Tagged {string.Join(", ", newlyTagged)}." : string.Empty;
             var message = isNewlyAdded
-                ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} ({placedBy}) and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}"
-                : $"{connection.Name} approved {titleWithQuality} — already in {library.Name} ({placedBy}); {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}";
+                ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} ({placedBy}) and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{tagged}{who}"
+                : $"{connection.Name} approved {titleWithQuality} — already in {library.Name} ({placedBy}); {(searchRequested ? "queued a search" : "search already covered by schedule")}.{tagged}{who}";
             await activityFeedRepository.RecordActivityAsync("seerr.acquired", message, JsonSerializer.Serialize(new { connection.Id, connection.Name, mediaType, entityId, seerrMediaId, is4k, requestedBy, ruleId = rule?.Id, ruleName = rule?.Name }, JsonOptions), null, "seerr-server", connection.Id, cancellationToken);
 
             return new SeerrAcquisitionOutcome(true, message);

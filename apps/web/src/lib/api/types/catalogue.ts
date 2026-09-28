@@ -193,6 +193,8 @@ export interface MovieCollectionItem {
   lastSyncError: string | null;
   createdUtc: string;
   updatedUtc: string;
+  /** #1046: comma-separated tag names given to every movie this collection adds. */
+  tags: string;
 }
 
 export interface MovieCollectionMemberItem {

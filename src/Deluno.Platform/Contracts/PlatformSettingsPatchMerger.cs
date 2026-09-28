@@ -111,5 +111,7 @@ public static class PlatformSettingsPatchMerger
             RemoveAndDeletePackedArchivesFromClient: patch.RemoveAndDeletePackedArchivesFromClient ?? current.RemoveAndDeletePackedArchivesFromClient,
             UnmatchedImportPolicy: patch.UnmatchedImportPolicy ?? current.UnmatchedImportPolicy,
             UnmatchedImportGiveUpDays: patch.UnmatchedImportGiveUpDays ?? current.UnmatchedImportGiveUpDays,
-            DownloadHealthDangerousFileEnabled: patch.DownloadHealthDangerousFileEnabled ?? current.DownloadHealthDangerousFileEnabled);
+            DownloadHealthDangerousFileEnabled: patch.DownloadHealthDangerousFileEnabled ?? current.DownloadHealthDangerousFileEnabled,
+            TagTitlesOffEveryList: patch.TagTitlesOffEveryList ?? current.TagTitlesOffEveryList,
+            OffListTag: patch.OffListTag?.Trim() ?? current.OffListTag);
 }

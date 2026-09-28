@@ -127,7 +127,8 @@ public static class PlatformDatabaseMigrations
         new V0119Seerr4kMapping(),
         new V0120DropMetadataArtworkEnabled(),
         new V0121SeerrRequestsUseLibraryRoutingRules(),
-        new V0122NotificationWebhookTags()
+        new V0122NotificationWebhookTags(),
+        new V0123SeerrTagsAndListDrops()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

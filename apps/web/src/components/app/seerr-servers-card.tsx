@@ -6,6 +6,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../../lib/drawer-save-state";
 import { useUnsavedChanges } from "../../hooks/use-unsaved-changes";
 import { healthChip, relative } from "../../routes/connections/format";
+import { TagPicker } from "./tag-picker";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -42,6 +43,10 @@ export interface SeerrServer {
   seriesQualityProfileId: string | null;
   /** #851: whether a webhook secret has been generated for this connection yet. */
   hasWebhookSecret: boolean;
+  /** #1046: comma-separated tag names given to every title this connection adds. */
+  tags: string;
+  /** #1046: extra tag names given only when the request was for 4K. */
+  tags4k: string;
 }
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrAcquisitionItem` (#851/#852). */
@@ -88,6 +93,8 @@ interface SeerrForm {
   movieQualityProfileId: string;
   seriesLibraryId: string;
   seriesQualityProfileId: string;
+  tags: string;
+  tags4k: string;
 }
 
 function formFrom(server: SeerrServer | null): SeerrForm {
@@ -100,7 +107,9 @@ function formFrom(server: SeerrServer | null): SeerrForm {
         movieLibraryId: server.movieLibraryId ?? "",
         movieQualityProfileId: server.movieQualityProfileId ?? "",
         seriesLibraryId: server.seriesLibraryId ?? "",
-        seriesQualityProfileId: server.seriesQualityProfileId ?? ""
+        seriesQualityProfileId: server.seriesQualityProfileId ?? "",
+        tags: server.tags ?? "",
+        tags4k: server.tags4k ?? ""
       }
     : {
         name: "Seerr",
@@ -110,7 +119,9 @@ function formFrom(server: SeerrServer | null): SeerrForm {
         movieLibraryId: "",
         movieQualityProfileId: "",
         seriesLibraryId: "",
-        seriesQualityProfileId: ""
+        seriesQualityProfileId: "",
+        tags: "",
+        tags4k: ""
       };
 }
 
@@ -448,6 +459,14 @@ export function SeerrServersCard({
                 placeholder="Library default"
                 options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
               />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="Tags for every title it adds" optional help="Leave blank to give none. Every title this server adds gets these tags before anything else happens, so a destination rule, a download client or a notification can act on them, for example “requested by Seerr”.">
+              <TagPicker label="Seerr tags for every title" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} warnUnused={false} />
+            </Field>
+            <Field label="Extra tags for a 4K request" optional help="Given on top of the tags on the left, only when the request was for 4K.">
+              <TagPicker label="Extra Seerr tags for a 4K request" value={form.tags4k} onChange={(tags4k) => setForm((current) => ({ ...current, tags4k }))} warnUnused={false} />
             </Field>
           </FieldRow>
         </DrawerSection>

@@ -64,6 +64,32 @@ public interface IMediaTagStore
 }
 
 /// <summary>
+/// Gives tags to a title that a source (a Seerr connection, a collection, the
+/// "no longer on any list" setting) just added or found (#1046). A tag name
+/// nobody has defined yet is defined on the spot, so a source never fails
+/// because of a tag; a title keeps the tags it already had.
+/// </summary>
+public interface ITitleTagService
+{
+    /// <summary>The tag names the title carries now (empty when it has none or does not exist).</summary>
+    Task<IReadOnlyList<string>> ListNamesAsync(MediaKind kind, string mediaId, CancellationToken cancellationToken);
+
+    /// <summary>Adds the tags to the title and returns the names it did not already carry.</summary>
+    Task<IReadOnlyList<string>> GiveAsync(MediaKind kind, string mediaId, IEnumerable<string> tagNames, CancellationToken cancellationToken);
+}
+
+public static class TagNameList
+{
+    /// <summary>Splits a comma-separated tag list into distinct trimmed names, keeping the first spelling.</summary>
+    public static IReadOnlyList<string> Split(string? csv) =>
+        string.IsNullOrWhiteSpace(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+}
+
+/// <summary>
 /// One place that turns "the title this event is about" into tag names for
 /// notification dispatch (#1036). Null means the entity is not a title Deluno
 /// can resolve (so the event is treated as title-less); an empty list means a

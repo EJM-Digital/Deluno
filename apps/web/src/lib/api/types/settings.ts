@@ -206,6 +206,10 @@ export interface PlatformSettingsSnapshot {
   unmatchedImportPolicy: "hold" | "give-up-after-days" | "retry-once-then-bad" | string;
   /** #888/#949: how many days "give-up-after-days" waits before giving up. Only consulted under that policy. */
   unmatchedImportGiveUpDays: number;
+  /** #1046: off by default, existing installs included. Tags a title that has left every import list it came from with offListTag. */
+  tagTitlesOffEveryList: boolean;
+  /** #1046: the tag a title that left every list is given; blank until chosen. */
+  offListTag: string;
   updatedUtc: string;
 }
 
@@ -447,5 +451,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   // #888/#949: matches PlatformSettingsSnapshot's server-side defaults.
   unmatchedImportPolicy: "hold",
   unmatchedImportGiveUpDays: 7,
+  tagTitlesOffEveryList: false,
+  offListTag: "",
   updatedUtc: new Date(0).toISOString()
 };

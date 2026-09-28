@@ -134,4 +134,7 @@ export interface PlatformSettingsPatch {
   unmatchedImportPolicy?: string;
   /** #888/#949: only consulted when unmatchedImportPolicy is "give-up-after-days". */
   unmatchedImportGiveUpDays?: number;
+  /** #1046: off by default. Tags a title that has left every import list with offListTag. */
+  tagTitlesOffEveryList?: boolean;
+  offListTag?: string;
 }
