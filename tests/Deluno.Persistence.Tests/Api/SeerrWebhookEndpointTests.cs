@@ -148,6 +148,39 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
         Assert.Equal("movies", call.MediaType);
         Assert.Equal("603", call.TmdbId);
         Assert.Equal(1, call.SeerrMediaId);
+        Assert.False(call.Is4k);
+    }
+
+    /// <summary>
+    /// #985: Jellyseerr/Overseerr's webhook JSON has no "is4k" field of its
+    /// own — MediaRequest.sendNotification prefixes the "event" string "4K "
+    /// whenever the request's own is4k column is true, and that is the only
+    /// place the flag shows through the default payload template.
+    /// </summary>
+    [Fact]
+    public async Task A_4k_approval_is_recognised_from_the_event_text()
+    {
+        var connection = await CreateConnectionAsync();
+        var secret = await _repository.RegenerateWebhookSecretAsync(connection.Id, CancellationToken.None);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/seerr-servers/{connection.Id}/webhook")
+        {
+            Content = JsonContent.Create(new
+            {
+                notification_type = "MEDIA_APPROVED",
+                @event = "4K Movie Request Approved",
+                media = new { media_type = "movie", tmdbId = "603", media_id = "1" },
+                request = new { requestedBy_username = "James" }
+            })
+        };
+        request.Headers.TryAddWithoutValidation("Authorization", secret);
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var call = Assert.Single(_acquisitions.Calls);
+        Assert.True(call.Is4k);
+        Assert.Equal("James", call.RequestedBy);
     }
 
     /// <summary>#851: a notification that is not an approval is accepted (so Overseerr does not retry it) but never acted on.</summary>
@@ -218,11 +251,11 @@ public sealed class SeerrWebhookEndpointTests : IAsyncDisposable
     /// </summary>
     private sealed class RecordingAcquisitionService : ISeerrAcquisitionService
     {
-        public List<(string MediaType, string? TmdbId, string? TvdbId, int SeerrMediaId)> Calls { get; } = [];
+        public List<(string MediaType, string? TmdbId, string? TvdbId, int SeerrMediaId, bool Is4k, string? RequestedBy)> Calls { get; } = [];
 
-        public Task<SeerrAcquisitionOutcome> AcquireAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, int seerrMediaId, CancellationToken cancellationToken)
+        public Task<SeerrAcquisitionOutcome> AcquireAsync(SeerrConnection connection, string mediaType, string? tmdbId, string? tvdbId, int seerrMediaId, bool is4k, string? requestedBy, CancellationToken cancellationToken)
         {
-            Calls.Add((mediaType, tmdbId, tvdbId, seerrMediaId));
+            Calls.Add((mediaType, tmdbId, tvdbId, seerrMediaId, is4k, requestedBy));
             return Task.FromResult(new SeerrAcquisitionOutcome(true, "added"));
         }
     }

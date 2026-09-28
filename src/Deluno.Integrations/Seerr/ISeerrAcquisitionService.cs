@@ -13,12 +13,16 @@ namespace Deluno.Integrations.Seerr;
 /// </summary>
 public interface ISeerrAcquisitionService
 {
+    /// <param name="is4k">Whether Seerr marked this a 4K request (#985), so it can be routed to the connection's 4K library instead of the normal one.</param>
+    /// <param name="requestedBy">Who asked for it in Seerr (#985), the way Seerr showed them; null when the webhook sent none.</param>
     Task<SeerrAcquisitionOutcome> AcquireAsync(
         SeerrConnection connection,
         string mediaType,
         string? tmdbId,
         string? tvdbId,
         int seerrMediaId,
+        bool is4k,
+        string? requestedBy,
         CancellationToken cancellationToken);
 }
 

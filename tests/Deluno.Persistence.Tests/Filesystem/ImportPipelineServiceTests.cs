@@ -152,7 +152,7 @@ public sealed class ImportPipelineServiceTests
         var seerrRepository = new SqliteSeerrRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var seerrConnection = await seerrRepository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
         var seerrAcquisitions = new SqliteSeerrAcquisitionsRepository(storage.Factory, timeProvider);
-        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, CancellationToken.None);
+        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, null, CancellationToken.None);
 
         var seerrClient = new RecordingSeerrClient();
         var service = CreateService(storage, timeProvider, platform, libraries, movies, seerrAcquisitions: seerrAcquisitions, seerrRepository: seerrRepository, seerrClient: seerrClient);
@@ -216,7 +216,7 @@ public sealed class ImportPipelineServiceTests
         var seerrRepository = new SqliteSeerrRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
         var seerrConnection = await seerrRepository.SaveAsync(null, new SaveSeerrRequest("Lab Seerr", "http://127.0.0.1:5055", "key-1", true), CancellationToken.None);
         var seerrAcquisitions = new SqliteSeerrAcquisitionsRepository(storage.Factory, timeProvider);
-        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, CancellationToken.None);
+        await seerrAcquisitions.RecordAsync(seerrConnection!.Id, seerrConnection.Name, "movies", existing.Id, "Arrival", seerrMediaId: 99, "added", null, null, CancellationToken.None);
 
         var seerrClient = new UnreachableSeerrClient();
         var service = CreateService(storage, timeProvider, platform, libraries, movies, seerrAcquisitions: seerrAcquisitions, seerrRepository: seerrRepository, seerrClient: seerrClient);

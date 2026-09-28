@@ -157,7 +157,29 @@ public static class SeerrEndpointRouteBuilderExtensions
                 return Results.Ok();
             }
 
-            var outcome = await acquisitionService.AcquireAsync(connection, mediaType, tmdbId, tvdbId, seerrMediaId, cancellationToken);
+            // Jellyseerr/Overseerr's webhook JSON payload template has no
+            // "is4k" field of its own (the request entity's own `is4k` column
+            // never reaches the generic webhook template — only the KeyMap
+            // placeholders in server/lib/notifications/agents/webhook.ts do).
+            // The one place it shows through is the `event` string itself:
+            // MediaRequest.sendNotification prefixes it "4K " whenever
+            // entity.is4k is true (e.g. "4K Movie Request Approved" versus
+            // "Movie Request Approved") — the same source both projects
+            // share. A custom payload can also send an explicit boolean
+            // "is4k"/"is_4k" field, which takes priority when present.
+            var explicitIs4k = BoolOf(root, "is4k") ?? BoolOf(root, "is_4k");
+            var eventText = TextOf(root, "event");
+            var is4k = explicitIs4k ?? (eventText is not null && eventText.TrimStart().StartsWith("4K", StringComparison.OrdinalIgnoreCase));
+
+            string? requestedBy = null;
+            if (root.TryGetProperty("request", out var requestElement))
+            {
+                requestedBy = TextOf(requestElement, "requestedBy_username")
+                    ?? TextOf(requestElement, "requestedBy_email")
+                    ?? TextOf(requestElement, "requestedBy_displayName");
+            }
+
+            var outcome = await acquisitionService.AcquireAsync(connection, mediaType, tmdbId, tvdbId, seerrMediaId, is4k, requestedBy, cancellationToken);
             return Results.Ok(new { outcome.Ok, outcome.Message });
         })
             .AllowAnonymous()
@@ -185,6 +207,17 @@ public static class SeerrEndpointRouteBuilderExtensions
             ? value.ValueKind == JsonValueKind.String ? value.GetString() : value.GetRawText()
             : null;
 
+    private static bool? BoolOf(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value)
+            ? value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.String => bool.TryParse(value.GetString(), out var parsed) ? parsed : null,
+                _ => null
+            }
+            : null;
+
     private static SeerrConnection Draft(SaveSeerrRequest request, SeerrConnection? stored)
     {
         var now = DateTimeOffset.UtcNow;
@@ -201,7 +234,13 @@ public static class SeerrEndpointRouteBuilderExtensions
             stored?.ServerName,
             stored?.Version,
             stored?.CreatedUtc ?? now,
-            now);
+            now,
+            WebhookSecret: stored?.WebhookSecret,
+            Movie4kLibraryId: request.Movie4kLibraryId ?? stored?.Movie4kLibraryId,
+            Movie4kQualityProfileId: request.Movie4kQualityProfileId ?? stored?.Movie4kQualityProfileId,
+            Series4kLibraryId: request.Series4kLibraryId ?? stored?.Series4kLibraryId,
+            Series4kQualityProfileId: request.Series4kQualityProfileId ?? stored?.Series4kQualityProfileId,
+            Fallback4kToNormalLibrary: request.Fallback4kToNormalLibrary);
     }
 
     private static Dictionary<string, string[]> Validate(SaveSeerrRequest request, SeerrConnection? stored)
