@@ -6501,6 +6501,134 @@ public sealed class ImportPipelineServiceTests
         Assert.Contains("Corrupt container", entry.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// #954: a broken file blocklisted at import (ImportFailurePolicy.
+    /// MediaProbeRejected => Immediately) is a bad release Deluno already
+    /// knows will fail the same way again, so the movie it was for is
+    /// searched again at once rather than waiting for the library's next
+    /// scheduled missing/upgrade pass. Activity says so in plain words.
+    /// </summary>
+    [Fact]
+    public async Task A_broken_file_blocklisted_at_import_queues_a_replacement_search_at_once()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, new byte[4096]);
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var probe = new RejectingProbeService("Corrupt container; no readable video or audio.");
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        const string releaseName = "Arrival.2016.WEB.1080p-DELUNO";
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-arrival", releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies, mediaProbeService: probe,
+            downloadDispatchesRepository: dispatches, blockedReleases: blockedReleases, jobScheduler: jobStore);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+
+        var blockedKeys = await blockedReleases.ListKeysAsync(CancellationToken.None);
+        Assert.Contains(BlockedReleaseKeys.For(releaseName, "TestIndexer"), blockedKeys);
+
+        var jobs = await jobStore.ListAsync(200, CancellationToken.None);
+        Assert.Contains(jobs, job =>
+            job.JobType == LibrarySearchJobTypes.For("movies") &&
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains("\"targetEntityId\":\"movie-arrival\"", StringComparison.OrdinalIgnoreCase));
+
+        var activity = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var recorded = await activity.ListActivityAsync(10, null, null, CancellationToken.None);
+        var entry = Assert.Single(recorded, item => item.Category == "release.blocked");
+        Assert.Contains("replacement search", entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// #954: a setup problem, not a fact about the release, never blocklists
+    /// and never queues a search — a fresh copy of the same file would fail
+    /// the same way until the setup problem is fixed, so searching again
+    /// would only waste an indexer query on the same outcome.
+    /// </summary>
+    [Fact]
+    public async Task A_setup_problem_failure_does_not_queue_a_replacement_search()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Arrival.2016.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        // #765: below the configured minimum free space -- an environment
+        // problem, not a fact about the release (ImportFailurePolicy.
+        // InsufficientFreeSpace => BlockDecision.Never).
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, minimumFreeSpaceMb: 500);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var blockedReleases = new SqliteBlockedReleaseRepository(storage.Factory, timeProvider);
+        const string releaseName = "Arrival.2016.WEB.1080p-DELUNO";
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "movie-arrival-setup", releaseName, "TestIndexer", "client-1", "TestClient", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        // 100MB free, below the 500MB floor configured above.
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies, freeSpaceBytesProbe: _ => 100L * 1024 * 1024,
+            downloadDispatchesRepository: dispatches, blockedReleases: blockedReleases, jobScheduler: jobStore);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                Preview: new ImportPreviewRequest(
+                    SourcePath: sourcePath, FileName: null, MediaType: "movies",
+                    Title: "Arrival", Year: 2016, Genres: null, Tags: null,
+                    Studio: null, OriginalLanguage: null),
+                TransferMode: "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Empty(await blockedReleases.ListKeysAsync(CancellationToken.None));
+
+        var jobs = await jobStore.ListAsync(200, CancellationToken.None);
+        Assert.DoesNotContain(jobs, job =>
+            job.PayloadJson != null &&
+            job.PayloadJson.Contains("\"targetEntityId\":\"movie-arrival-setup\"", StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed class RejectingProbeService(string message) : IMediaProbeService
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
@@ -6677,6 +6805,7 @@ public sealed class ImportPipelineServiceTests
         IQualityRepository? qualityRepository = null,
         IDownloadDispatchesRepository? downloadDispatchesRepository = null,
         IJobScheduler? mediaServerJobScheduler = null,
+        IJobScheduler? jobScheduler = null,
         TimeSpan? settleWindow = null,
         IOutboundNotificationService? outboundNotificationService = null,
         INotificationService? notificationService = null,
@@ -6707,6 +6836,7 @@ public sealed class ImportPipelineServiceTests
             blockedReleases: blockedReleases,
             failureRules: failureRules,
             mediaServerJobScheduler: mediaServerJobScheduler,
+            jobScheduler: jobScheduler,
             settleWindow: settleWindow ?? TimeSpan.Zero,
             notificationService: notificationService,
             downloadClientActions: downloadClientActions,
