@@ -227,6 +227,38 @@ public sealed class DownloadHealthEvaluatorTests
         Assert.Equal(flagged, findings.Any(finding => finding.Kind == "excessive-eta"));
     }
 
+    /// <summary>#811/#970: availability below 1 while downloading is a warning finding that never strikes.</summary>
+    [Fact]
+    public void Availability_below_one_while_downloading_is_a_low_availability_finding()
+    {
+        var findings = Evaluate(CreateItem(status: DownloadQueueStatuses.Downloading, availability: 0.4));
+
+        var finding = Assert.Single(findings, f => f.Kind == DownloadHealthStrikes.LowAvailability);
+        Assert.Equal("warning", finding.Severity);
+        Assert.Contains("0.40", finding.Evidence);
+        Assert.False(DownloadHealthStrikes.Counts(finding.Kind));
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.5)]
+    [InlineData(null)]
+    public void Availability_at_or_above_one_or_unknown_never_raises_the_finding(double? availability)
+    {
+        var findings = Evaluate(CreateItem(status: DownloadQueueStatuses.Downloading, availability: availability));
+
+        Assert.DoesNotContain(findings, f => f.Kind == DownloadHealthStrikes.LowAvailability);
+    }
+
+    /// <summary>Low availability on a completed download says nothing about whether it finished, so it is not a finding.</summary>
+    [Fact]
+    public void Availability_below_one_on_a_completed_download_is_not_a_finding()
+    {
+        var findings = Evaluate(CreateItem(status: DownloadQueueStatuses.Completed, availability: 0.2));
+
+        Assert.DoesNotContain(findings, f => f.Kind == DownloadHealthStrikes.LowAvailability);
+    }
+
     private static DownloadQueueItem CreateItem(
         string status = DownloadQueueStatuses.Downloading,
         string releaseName = "Example.Movie.2026.1080p.mkv",
@@ -235,7 +267,8 @@ public sealed class DownloadHealthEvaluatorTests
         double speedMbps = 1.2,
         int etaSeconds = 600,
         string? sourcePath = "D:\\downloads\\example.mkv",
-        bool isSetupProblem = false)
+        bool isSetupProblem = false,
+        double? availability = null)
         => new(
             Id: "queue-1",
             ClientId: "client-1",
@@ -256,7 +289,8 @@ public sealed class DownloadHealthEvaluatorTests
             ErrorMessage: errorMessage,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
             SourcePath: sourcePath,
-            IsSetupProblem: isSetupProblem);
+            IsSetupProblem: isSetupProblem,
+            Availability: availability);
 
     private static IReadOnlyList<DownloadHealthFinding> Evaluate(
         DownloadQueueItem item,
@@ -275,7 +309,8 @@ public sealed class DownloadHealthEvaluatorTests
                 item.Peers,
                 item.IsSetupProblem,
                 item.Progress,
-                Files: files),
+                Files: files,
+                Availability: item.Availability),
             CapturedUtc,
             rules ?? DownloadHealthRules.Defaults,
             contentBlocklist)

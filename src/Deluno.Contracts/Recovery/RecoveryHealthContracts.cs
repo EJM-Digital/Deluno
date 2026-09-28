@@ -82,7 +82,14 @@ public sealed record RecoveryQueueSnapshot(
     /// qBittorrent's adapter reports this; every other client always reports
     /// false here, so the magnet-metadata rule never trips for them.
     /// </summary>
-    bool IsFetchingMetadata = false);
+    bool IsFetchingMetadata = false,
+    /// <summary>
+    /// #970: how much of this download's data is available across its peers
+    /// right now (qBittorrent's own <c>availability</c>, 0-1, can exceed 1.0
+    /// when more than one full copy is available). Null where the protocol
+    /// has no such reading, which never trips the availability check below.
+    /// </summary>
+    double? Availability = null);
 
 public sealed record RecoveryHealthFinding(
     string Severity,

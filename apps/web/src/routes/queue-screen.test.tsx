@@ -17,7 +17,7 @@ const queueLoaderData = {
       activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0,
       processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
     },
-    clients: [],
+    clients: [] as DownloadClientTelemetrySnapshot[],
     capturedUtc: new Date().toISOString()
   },
   dispatches: [],
@@ -650,5 +650,98 @@ describe("queueRowExtras (#796)", () => {
 
     expect(queueRowExtras(item, null, true).timeleft).toBe("2m left");
     expect(queueRowExtras(item, null, false).timeleft).toBe("—");
+  });
+});
+
+/** #811/#970: qBittorrent's availability, last-activity and completion telemetry, shown in the download drawer. */
+describe("download drawer: availability, last activity and completion (#970)", () => {
+  afterEach(() => {
+    queueLoaderData.telemetry = {
+      ...queueLoaderData.telemetry,
+      clients: [] as DownloadClientTelemetrySnapshot[]
+    };
+  });
+
+  function queueItem(overrides: Partial<DownloadQueueItem> = {}): DownloadQueueItem {
+    return {
+      id: "qbit-1",
+      clientId: "qbit-client",
+      clientName: "qBittorrent",
+      protocol: "qbittorrent",
+      mediaType: "movies",
+      title: "Example Movie",
+      releaseName: "Example.Movie.2026.1080p.WEB-DL-GROUP",
+      category: "movies",
+      status: "downloading",
+      progress: 40,
+      speedMbps: 1.5,
+      etaSeconds: 600,
+      sizeBytes: 4_294_967_296,
+      downloadedBytes: 1_073_741_824,
+      peers: 6,
+      indexerName: "Fixture indexer",
+      errorMessage: null,
+      addedUtc: new Date(Date.now() - 600_000).toISOString(),
+      sourcePath: null,
+      libraryId: null,
+      healthFindings: null,
+      ...overrides
+    };
+  }
+
+  function openDrawerWith(item: DownloadQueueItem) {
+    const client: DownloadClientTelemetrySnapshot = {
+      clientId: "qbit-client",
+      clientName: "qBittorrent",
+      protocol: "qbittorrent",
+      endpointUrl: null,
+      healthStatus: "healthy",
+      lastHealthMessage: null,
+      capabilities: {
+        supportsQueue: true, supportsHistory: true, supportsPauseResume: true, supportsRemove: true,
+        supportsRecheck: true, supportsImportPath: true, authMode: "form"
+      },
+      summary: {
+        activeCount: 1, queuedCount: 0, completedCount: 0, stalledCount: 0,
+        processingCount: 0, importReadyCount: 0, totalSpeedMbps: 1.5, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0
+      },
+      queue: [item],
+      history: [],
+      capturedUtc: new Date().toISOString(),
+      historyTruncated: false
+    };
+    queueLoaderData.telemetry = {
+      ...queueLoaderData.telemetry,
+      clients: [client]
+    };
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByText(item.releaseName));
+  }
+
+  it("shows availability, last activity and completion in the drawer when the client reports them", () => {
+    openDrawerWith(queueItem({
+      availability: 1.5,
+      lastActivityUtc: new Date(Date.now() - 120_000).toISOString(),
+      completionUtc: null
+    }));
+
+    expect(screen.getByText("Availability")).toBeInTheDocument();
+    expect(screen.getByText(/1\.50 \(1\.0 is one full copy/)).toBeInTheDocument();
+    expect(screen.getByText("Last activity")).toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+
+  it("hides availability, last activity and completion facts entirely when the client never reported them", () => {
+    openDrawerWith(queueItem({ availability: null, lastActivityUtc: null, completionUtc: null }));
+
+    expect(screen.queryByText("Availability")).not.toBeInTheDocument();
+    expect(screen.queryByText("Last activity")).not.toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });
 });
