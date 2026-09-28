@@ -12,7 +12,8 @@ const revalidateMock = vi.fn();
 const loaderData = {
   rules: [],
   ignoreEntries: [],
-  settings: emptyPlatformSettingsSnapshot
+  settings: emptyPlatformSettingsSnapshot,
+  connectivityCheckSkips: []
 };
 
 vi.mock("react-router-dom", async (importOriginal) => ({
