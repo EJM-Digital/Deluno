@@ -776,6 +776,15 @@ export interface IntegrationFailure {
   nextAction: string;
 }
 
+/** The state of an indexer's query or grab cap at read time (#977). Mirrors IndexerCallLimiter.Peek. */
+export interface IndexerCallLimitStatus {
+  allowed: boolean;
+  limit: number | null;
+  count: number;
+  resetsAtUtc: string | null;
+  unit: string | null;
+}
+
 export interface IndexerItem {
   id: string;
   name: string;
@@ -854,6 +863,10 @@ export interface IndexerItem {
   grabLimit?: number | null;
   /** "day" (default) or "hour" — the window queryLimit and grabLimit count against (#750). */
   limitsUnit?: string | null;
+  /** The current state of queryLimit, computed at read time so Health can show usage and reset time (#977). Null when no query cap is set. */
+  queryLimitStatus?: IndexerCallLimitStatus | null;
+  /** The current state of grabLimit (#977). Null when no grab cap is set. */
+  grabLimitStatus?: IndexerCallLimitStatus | null;
   /** For a torrent indexer, prefer a magnet URL over a .torrent file link when a grab has both (#752). Ignored for usenet. */
   preferMagnetUrl?: boolean;
   /** Restricts TV searches against this indexer to season packs only, episodes only, or both (default) (#743). */

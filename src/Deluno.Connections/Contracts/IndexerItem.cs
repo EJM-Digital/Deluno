@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Deluno.Connections;
 using Deluno.Contracts;
 
 namespace Deluno.Connections.Contracts;
@@ -146,6 +147,17 @@ public sealed record IndexerItem(
 
     /// <summary>"day" (default) or "hour" — the window <see cref="QueryLimit"/> and <see cref="GrabLimit"/> count against (#750).</summary>
     public string? LimitsUnit { get; init; }
+
+    /// <summary>
+    /// The current state of <see cref="QueryLimit"/>, computed at read time
+    /// from <c>IIndexerCallLimiter.Peek</c> so the Health section can say how
+    /// many searches have been used and when the cap resets (#977). Null
+    /// when no query cap is configured.
+    /// </summary>
+    public IndexerCallLimitResult? QueryLimitStatus { get; init; }
+
+    /// <summary>The current state of <see cref="GrabLimit"/> (#977). Null when no grab cap is configured.</summary>
+    public IndexerCallLimitResult? GrabLimitStatus { get; init; }
 
     /// <summary>
     /// For a torrent indexer, whether Deluno should pass a magnet URL to the

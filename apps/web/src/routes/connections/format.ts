@@ -64,6 +64,18 @@ export function protocolLabel(protocol: string) { return CLIENT_PRESETS.find((pr
 export function indexerHost(baseUrl: string) { try { return new URL(baseUrl).hostname.toLowerCase(); } catch { return null; } }
 export function formatSeconds(seconds: number) { return seconds < 1 ? "less than a second" : `${Math.ceil(seconds)} second${seconds >= 1.01 ? "s" : ""}`; }
 
+/**
+ * Plain words for an indexer's query or grab cap once it has been reached
+ * (#977), e.g. "Search limit reached (100 per day). Resets at 10:00." Null
+ * when there is no cap, or the cap has not been reached.
+ */
+export function describeCallLimitStatus(label: "Search" | "Grab", status: { allowed: boolean; limit: number | null; count: number; resetsAtUtc: string | null; unit: string | null } | null | undefined): string | null {
+  if (!status || status.limit == null || status.allowed || !status.resetsAtUtc) return null;
+  const unit = status.unit === "hour" ? "hour" : "day";
+  const time = new Date(status.resetsAtUtc).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${label} limit reached (${status.limit} per ${unit}). Resets at ${time}.`;
+}
+
 /** The comma-separated flags in a "preferred indexer flags" field, trimmed and emptied of blanks. */
 export function splitIndexerFlags(preferIndexerFlags: string): string[] {
   return preferIndexerFlags.split(",").map((flag) => flag.trim()).filter(Boolean);
