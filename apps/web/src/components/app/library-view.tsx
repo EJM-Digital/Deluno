@@ -18,8 +18,9 @@ import {
   type UpdateLibraryViewRequest
 } from "../../lib/api";
 import { adaptMovieItems, adaptSeriesItems } from "../../lib/ui-adapters";
-import { isMonitoringFilter, monitoringParam, type MonitoringFilter } from "../../lib/library-filters";
+import { isMonitoringFilter, monitoringParam, QUICK_FILTER_MARK, type MonitoringFilter, type QuickFilter } from "../../lib/library-filters";
 import { applyConditions, isCompleteCondition, parseConditions } from "../../lib/library-controls";
+import { titleMark } from "../../lib/status-tones";
 import { LibraryCreateDialog } from "./library-create-dialog";
 import { LibraryResults } from "./library-results";
 import { LibrarySelectionCommandBar } from "./library-selection-command-bar";
@@ -86,6 +87,28 @@ function rememberCatalogue(key: string, entry: { items: MediaItem[]; totalCount:
 
 function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchResult) {
   return left.provider === right.provider && left.providerId === right.providerId;
+}
+
+/**
+ * Whether a title already on screen is known to still belong once a chip,
+ * monitoring or library switch lands, judged only from what a `MediaItem`
+ * already carries (#960).
+ *
+ * The quick filter narrows on the mark `titleMark` derives from
+ * `wantedStatus` — the same field the poster's own badge reads, so this never
+ * disagrees with what a reader can already see. Monitoring and library are
+ * plain fields on the item. A custom condition is not: the field-registry
+ * filter engine was deliberately removed from the browser (#302), so callers
+ * only trust this when no condition is active — otherwise nothing on screen
+ * can honestly be called "known to match" and the shelf clears outright.
+ */
+export function knownStructuralMatch(item: MediaItem, quickFilter: QuickFilter, monitoring: MonitoringFilter, libraryId: string | null): boolean {
+  const targetMark = QUICK_FILTER_MARK[quickFilter];
+  if (targetMark !== null && titleMark(item) !== targetMark) return false;
+  const targetMonitored = monitoringParam(monitoring);
+  if (targetMonitored !== undefined && item.monitored !== targetMonitored) return false;
+  if (libraryId && item.libraryId !== libraryId) return false;
+  return true;
 }
 
 interface BulkRemovalResponse {
@@ -268,10 +291,23 @@ export function LibraryView({
       setTotalCount(remembered.totalCount);
       setFacets(remembered.facets);
       setIsCatalogueLoading(false);
-    } else if (isStructuralChange || isFirstRun) {
-      // Nothing cached for a chip/monitoring/library/sort/conditions change:
-      // clear to the skeleton immediately rather than let the previous
-      // filter's titles sit on screen while the new page loads.
+    } else if (isStructuralChange) {
+      // Nothing cached for a chip/monitoring/library/sort/conditions change.
+      // A chip, monitoring or library switch narrows on fields already known
+      // for every title on screen; keep whichever of them the new query
+      // still wants and drop the rest at once, rather than blank the whole
+      // shelf while the real page loads (#960). A sort change reorders
+      // rather than narrows, so it always keeps everything. An active custom
+      // condition cannot be judged from what the browser already holds, so
+      // that still clears to the skeleton, same as before #960.
+      const hasActiveCondition = conditions.some(isCompleteCondition);
+      setLibraryItems((current) => (
+        hasActiveCondition ? [] : current.filter((item) => knownStructuralMatch(item, quickFilter, monitoring, libraryId))
+      ));
+      setTotalCount(0);
+      setFacets(null);
+      setIsCatalogueLoading(true);
+    } else if (isFirstRun) {
       setLibraryItems([]);
       setTotalCount(0);
       setFacets(null);
@@ -367,7 +403,7 @@ export function LibraryView({
       }
     }, delay);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [buildCatalogueParams, fetchCataloguePage, isRequestStale, nextRequest, refreshVersion, setSelectedIds, variant]);
+  }, [buildCatalogueParams, conditions, fetchCataloguePage, isRequestStale, libraryId, monitoring, nextRequest, quickFilter, refreshVersion, setSelectedIds, variant]);
 
   /**
    * The shelf reaching its end while titles are still outstanding.
@@ -1099,6 +1135,7 @@ export function LibraryView({
             totalCount={totalCount}
             loadedCount={libraryItems.length}
             isLoadingMore={isLoadingMore}
+            isQueryLoading={isCatalogueLoading}
             filteredCount={filtered.length}
             selectedCount={selectedCount}
             allVisibleSelected={filtered.length > 0 && filtered.every((item) => selectedIds.includes(item.id))}

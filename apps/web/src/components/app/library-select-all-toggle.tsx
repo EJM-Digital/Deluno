@@ -5,6 +5,13 @@ type LibrarySelectAllToggleProps = {
   loadedCount: number;
   /** The shelf is still filling behind the reader, so the number below it is not final yet. */
   isLoadingMore: boolean;
+  /**
+   * A fetch for the current chip/monitoring/library/sort/conditions is in
+   * flight and what is shown right now is only the titles from before the
+   * switch that are known to still match (#960). `totalCount` is not this
+   * query's yet, so it is not compared against `loadedCount` here.
+   */
+  isQueryLoading: boolean;
   filteredCount: number;
   selectedCount: number;
   allVisibleSelected: boolean;
@@ -16,6 +23,7 @@ export function LibrarySelectAllToggle({
   totalCount,
   loadedCount,
   isLoadingMore,
+  isQueryLoading,
   filteredCount,
   selectedCount,
   allVisibleSelected,
@@ -33,7 +41,9 @@ export function LibrarySelectAllToggle({
         was true and told a reader nothing they could act on.
       */}
       <p className="text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground">
-        {isLoadingMore && totalCount > loadedCount ? (
+        {isQueryLoading ? (
+          <><span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> {filteredCount === 1 ? "title" : "titles"} shown <span className="animate-pulse">— updating</span></>
+        ) : isLoadingMore && totalCount > loadedCount ? (
           <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()} <span className="animate-pulse">— still loading</span></>
         ) : totalCount > loadedCount ? (
           <>Showing <span className="font-bold tabular text-foreground">{filteredCount.toLocaleString()}</span> of {totalCount.toLocaleString()}</>
