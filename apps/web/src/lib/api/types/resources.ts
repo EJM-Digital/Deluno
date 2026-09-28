@@ -954,6 +954,7 @@ export interface ReleaseProfileItem {
   updatedUtc: string;
   enabled: boolean;
   indexerIds: string[];
+  bypassIfHighestQuality: boolean;
 }
 
 export interface IndexerScoreboardRow {

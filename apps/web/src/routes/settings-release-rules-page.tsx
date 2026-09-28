@@ -54,6 +54,7 @@ interface ProfileForm {
   preferredTerms: string;
   enabled: boolean;
   indexerIds: string[];
+  bypassIfHighestQuality: boolean;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -172,7 +173,8 @@ export function SettingsReleaseRulesPage() {
         mustNotContain: form.mustNotContain.trim(),
         preferredTerms: parsePreferredTerms(form.preferredTerms),
         enabled: form.enabled,
-        indexerIds: form.indexerIds
+        indexerIds: form.indexerIds,
+        bypassIfHighestQuality: form.bypassIfHighestQuality
       });
       const response = await authedFetch(
         mode.kind === "edit" ? `/api/release-profiles/${mode.id}` : "/api/release-profiles",
@@ -320,6 +322,12 @@ export function SettingsReleaseRulesPage() {
             </Field>
           </FieldRow>
           <p className="text-[length:var(--type-caption)] text-muted-foreground">The largest applicable delay wins. A held result stays visible with the reason and becomes eligible when the timing window clears.</p>
+          <SwitchRow
+            label="Skip the delay for the best quality"
+            description="Off by default. On: a release that is already the best quality its title's quality profile allows is grabbed right away over the preferred protocol, instead of waiting out the delay above."
+            checked={form.bypassIfHighestQuality}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, bypassIfHighestQuality: checked }))}
+          />
         </DrawerSection>
 
         <DrawerSection title="Release terms">
@@ -375,7 +383,7 @@ export function SettingsReleaseRulesPage() {
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", tagName: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "", enabled: true, indexerIds: [] };
+  return { name: "", tagName: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "", enabled: true, indexerIds: [], bypassIfHighestQuality: false };
 }
 
 function formFrom(profile: ReleaseProfileItem): ProfileForm {
@@ -389,12 +397,13 @@ function formFrom(profile: ReleaseProfileItem): ProfileForm {
     mustNotContain: profile.mustNotContain,
     preferredTerms: profile.preferredTerms.map((term) => `${term.term} = ${term.score}`).join("\n"),
     enabled: profile.enabled,
-    indexerIds: profile.indexerIds
+    indexerIds: profile.indexerIds,
+    bypassIfHighestQuality: profile.bypassIfHighestQuality
   };
 }
 
 function sameForm(left: ProfileForm, right: ProfileForm) {
-  return left.name === right.name && left.tagName === right.tagName && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms && left.enabled === right.enabled && sameIds(left.indexerIds, right.indexerIds);
+  return left.name === right.name && left.tagName === right.tagName && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms && left.enabled === right.enabled && left.bypassIfHighestQuality === right.bypassIfHighestQuality && sameIds(left.indexerIds, right.indexerIds);
 }
 
 function sameIds(left: string[], right: string[]) {
@@ -449,7 +458,8 @@ function formatTiming(profile: ReleaseProfileItem) {
 }
 
 function formatAvailability(profile: ReleaseProfileItem) {
-  return profile.preferredProtocol === "any" ? "Both protocols considered" : `${protocolLabel(profile.preferredProtocol)} receives the preference`;
+  const protocol = profile.preferredProtocol === "any" ? "Both protocols considered" : `${protocolLabel(profile.preferredProtocol)} receives the preference`;
+  return profile.bypassIfHighestQuality ? `${protocol} · best quality skips the delay` : protocol;
 }
 
 function termSummary(profile: ReleaseProfileItem) {

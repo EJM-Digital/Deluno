@@ -833,6 +833,64 @@ public sealed class ReleaseDecisionEngineTests
         Assert.Contains(decision.RiskFlags, risk => risk.Contains("acquisition delay is active", StringComparison.OrdinalIgnoreCase));
     }
 
+    // ── Bypass the acquisition delay for the profile's best quality (#992) ──
+
+    [Fact]
+    public void Decide_grabs_a_top_quality_release_at_once_despite_a_delay()
+    {
+        // Radarr's delay profile "Bypass if Highest Quality" (checked in
+        // Radarr's own source) skips the wait once a release is already the
+        // best quality the profile allows, over the preferred protocol.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.DDP5.1-GRP",
+            quality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            allowedQualities: ["WEB 720p", "WEB 1080p"],
+            indexerProtocol: "newznab",
+            releaseAgeHours: 0.1,
+            releaseProfiles: [Profile(preferredProtocol: "usenet", usenetDelayMinutes: 60, bypassIfHighestQuality: true)]));
+
+        Assert.NotEqual("delayed", decision.Status);
+        Assert.Contains(decision.Reasons, reason => reason.Contains("Acquisition delay skipped", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(decision.RiskFlags, risk => risk.Contains("acquisition delay is active", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_still_waits_for_a_lower_quality_release_even_with_bypass_enabled()
+    {
+        // The bypass only applies once the release is the profile's own top
+        // allowed tier; anything below it keeps waiting out the delay.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.720p.WEB-DL-GRP",
+            quality: "WEB 720p",
+            targetQuality: "WEB 1080p",
+            sizeBytes: 4_000_000_000,
+            allowedQualities: ["WEB 720p", "WEB 1080p"],
+            indexerProtocol: "newznab",
+            releaseAgeHours: 0.1,
+            releaseProfiles: [Profile(preferredProtocol: "usenet", usenetDelayMinutes: 60, bypassIfHighestQuality: true)]));
+
+        Assert.Equal("delayed", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("acquisition delay is active", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_does_not_bypass_the_delay_when_the_profile_has_not_opted_in()
+    {
+        // Default off (#936): a top-quality release still waits when no
+        // applicable profile has turned the bypass on.
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.DDP5.1-GRP",
+            quality: "WEB 1080p",
+            targetQuality: "WEB 1080p",
+            allowedQualities: ["WEB 720p", "WEB 1080p"],
+            indexerProtocol: "newznab",
+            releaseAgeHours: 0.1,
+            releaseProfiles: [Profile(preferredProtocol: "usenet", usenetDelayMinutes: 60)]));
+
+        Assert.Equal("delayed", decision.Status);
+    }
+
     [Fact]
     public void Decide_scores_matching_profile_terms_and_protocol()
     {
@@ -1132,7 +1190,8 @@ public sealed class ReleaseDecisionEngineTests
         string mustNotContain = "",
         IReadOnlyList<ReleaseTermScore>? preferredTerms = null,
         bool enabled = true,
-        IReadOnlyList<string>? indexerIds = null)
+        IReadOnlyList<string>? indexerIds = null,
+        bool bypassIfHighestQuality = false)
         => new(
             Id: Guid.NewGuid().ToString("N"),
             Name: "Test profile",
@@ -1146,5 +1205,6 @@ public sealed class ReleaseDecisionEngineTests
             CreatedUtc: DateTimeOffset.UnixEpoch,
             UpdatedUtc: DateTimeOffset.UnixEpoch,
             Enabled: enabled,
-            IndexerIds: indexerIds ?? []);
+            IndexerIds: indexerIds ?? [],
+            BypassIfHighestQuality: bypassIfHighestQuality);
 }

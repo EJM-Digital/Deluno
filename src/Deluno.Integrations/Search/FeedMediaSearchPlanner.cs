@@ -1387,7 +1387,8 @@ public sealed class FeedMediaSearchPlanner(
             // library uses this profile: it cannot be disabled or scoped to a
             // subset of indexers the way a user-authored release profile can.
             Enabled: true,
-            IndexerIds: []);
+            IndexerIds: [],
+            BypassIfHighestQuality: rules.BypassIfHighestQuality);
 
     private static bool SearchKindEnabled(IndexerItem indexer, string searchKind)
     {

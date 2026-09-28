@@ -117,7 +117,35 @@ public static partial class ReleaseDecisionEngine
         var effectiveMinimumAgeMinutes = Math.Max(input.MinimumAgeMinutes ?? 0, profileRules.DelayMinutes);
         if (effectiveMinimumAgeMinutes > 0)
         {
-            if (input.ReleaseAgeHours is null)
+            // #992: Radarr's delay profile ('Bypass if Highest Quality')
+            // skips its wait when the release is already the top quality the
+            // profile allows, over the protocol the profile prefers. Checked
+            // in Radarr's own source (DelaySpecification): the custom-format
+            // score plays no part in that check - it only feeds a second,
+            // independent 'Bypass if Above Custom Format Score' toggle, which
+            // is not what the owner asked for here, so it is not implemented.
+            // Every applicable profile must opt in (the same conservative,
+            // all-must-agree rule as the delay itself); a new profile and
+            // every profile that existed before this toggle defaults to off,
+            // so an existing install keeps waiting out its delay exactly as
+            // it does today (#936).
+            var topAllowedQualityRank = input.AllowedQualities is { Count: > 0 } allowedForBypass
+                ? allowedForBypass.Select(QualityRank).DefaultIfEmpty(0).Max()
+                : 0;
+            var bypassesDelay = profileRules.BypassIfHighestQuality
+                && topAllowedQualityRank > 0
+                && candidateRank >= topAllowedQualityRank
+                && (profileRules.PreferredProtocol == "any"
+                    || string.Equals(
+                        profileRules.PreferredProtocol,
+                        DownloadProtocols.SourceKind(input.IndexerProtocol),
+                        StringComparison.OrdinalIgnoreCase));
+
+            if (bypassesDelay)
+            {
+                reasons.Add($"Acquisition delay skipped: {normalizedCandidate} is already the best quality this profile allows, so Deluno grabbed it right away.");
+            }
+            else if (input.ReleaseAgeHours is null)
             {
                 delayed = true;
                 risks.Add($"Release age is unavailable, so the {effectiveMinimumAgeMinutes}-minute acquisition delay cannot be verified.");
