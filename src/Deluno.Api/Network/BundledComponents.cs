@@ -38,7 +38,13 @@ public interface IBundledComponentDetection
 /// carries the same five protocol keys) and Weir. Ports match the defaults
 /// already shown in the connections screen presets
 /// (apps/web/src/routes/connections/presets.ts CLIENT_PRESETS) and Weir's own
-/// documented default (README "Weir asks which port to use... Keep 9347").
+/// documented default (README "Weir asks which port to use... Keep 9347"),
+/// except qBittorrent: a Deluno-installed qBittorrent is started on 8081
+/// (installer/bundled-components.json's own configFileContent seeds this),
+/// since SABnzbd's own default is also 8080 and only one of the two can bind
+/// it (#968). The connections screen preset for a manually-added qBittorrent
+/// stays 8080 -- that is still the vendor's own default for one the person
+/// installed themselves.
 /// </summary>
 public static class BundledComponentCatalog
 {
@@ -54,7 +60,7 @@ public static class BundledComponentCatalog
 
     public static readonly IReadOnlyList<Spec> All = new[]
     {
-        new Spec("qbittorrent", "qBittorrent", DownloadClientCategory, 8080, new[] { "qBittorrent" }),
+        new Spec("qbittorrent", "qBittorrent", DownloadClientCategory, 8081, new[] { "qBittorrent" }),
         new Spec("transmission", "Transmission", DownloadClientCategory, 9091, new[] { "Transmission" }),
         new Spec("deluge", "Deluge", DownloadClientCategory, 8112, new[] { "Deluge" }),
         new Spec("sabnzbd", "SABnzbd", DownloadClientCategory, 8080, new[] { "SABnzbd" }),

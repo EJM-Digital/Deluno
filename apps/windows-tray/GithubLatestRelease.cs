@@ -23,7 +23,8 @@ public static class GithubLatestRelease
 {
     public static async Task<ResolvedGithubAsset?> ResolveAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(spec.GithubRepo) || string.IsNullOrWhiteSpace(spec.GithubAsset))
+        var hasPattern = !string.IsNullOrWhiteSpace(spec.GithubAssetPattern);
+        if (string.IsNullOrWhiteSpace(spec.GithubRepo) || (string.IsNullOrWhiteSpace(spec.GithubAsset) && !hasPattern))
         {
             return null;
         }
@@ -41,8 +42,13 @@ public static class GithubLatestRelease
                 return null;
             }
 
-            var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubAsset, StringComparison.OrdinalIgnoreCase));
-            if (asset?.BrowserDownloadUrl is null)
+            // A pattern (for a vendor whose asset name embeds the version, e.g.
+            // NZBGet's nzbget-21.1-bin-windows-setup.exe) wins over an exact
+            // name so an upgrade never silently stops matching.
+            var asset = hasPattern
+                ? release.Assets.FirstOrDefault(a => a.Name is not null && System.Text.RegularExpressions.Regex.IsMatch(a.Name, spec.GithubAssetPattern!))
+                : release.Assets.FirstOrDefault(a => string.Equals(a.Name, spec.GithubAsset, StringComparison.OrdinalIgnoreCase));
+            if (asset?.BrowserDownloadUrl is null || asset.Name is null)
             {
                 return null;
             }
@@ -54,7 +60,7 @@ public static class GithubLatestRelease
                 if (checksumAsset?.BrowserDownloadUrl is not null)
                 {
                     var sums = await http.GetStringAsync(checksumAsset.BrowserDownloadUrl, cancellationToken);
-                    sha256 = ParseChecksum(sums, spec.GithubAsset!);
+                    sha256 = ParseChecksum(sums, asset.Name);
                 }
             }
 

@@ -72,8 +72,23 @@ public interface IProcessStarter
 /// <summary>Polls a component's own readiness endpoint rather than waiting on its process tree, for a component (like Weir) that keeps running once it is ready.</summary>
 public interface IReadinessChecker
 {
-    /// <summary>One check of <paramref name="url"/>: true when its JSON body has <paramref name="field"/> equal to <paramref name="expectedValue"/>.</summary>
+    /// <summary>
+    /// One check of <paramref name="url"/>. With a non-empty <paramref name="field"/>,
+    /// true when the JSON body has that field equal to <paramref name="expectedValue"/>
+    /// (Weir's own <c>/ready</c>). With an empty <paramref name="field"/>, true as soon
+    /// as the URL answers with any HTTP response at all -- a download client's Web
+    /// UI/API commonly answers a bare GET with 401/403/409 (auth required, or a CSRF
+    /// token missing) rather than 200, and that response is itself the proof the
+    /// server is up and listening, which is all "ready" needs to mean here.
+    /// </summary>
     Task<bool> CheckAsync(string url, string field, string expectedValue, CancellationToken cancellationToken);
+}
+
+/// <summary>Writes a component's own config file ahead of its first start, e.g. to enable a Web UI/API and pick its port before Deluno ever has to guess or probe for it.</summary>
+public interface IConfigFileWriter
+{
+    /// <summary>Writes <paramref name="content"/> to <paramref name="path"/>, creating its directory if needed. Never overwrites a file that already exists -- an existing config belongs to whatever put it there, including a previous run.</summary>
+    Task<bool> WriteIfAbsentAsync(string path, string content, CancellationToken cancellationToken);
 }
 
 public sealed class ComponentInstallService(
@@ -83,7 +98,8 @@ public sealed class ComponentInstallService(
     IAuthenticodeVerifier? signatures = null,
     IProcessRunner? processes = null,
     IProcessStarter? processStarter = null,
-    IReadinessChecker? readiness = null)
+    IReadinessChecker? readiness = null,
+    IConfigFileWriter? configWriter = null)
 {
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
 
@@ -94,6 +110,7 @@ public sealed class ComponentInstallService(
     private readonly IProcessRunner _processes = processes ?? new RealProcessRunner();
     private readonly IProcessStarter _processStarter = processStarter ?? new RealProcessStarter();
     private readonly IReadinessChecker _readiness = readiness ?? new HttpReadinessChecker();
+    private readonly IConfigFileWriter _configWriter = configWriter ?? new RealConfigFileWriter();
 
     /// <summary>Whether <paramref name="spec"/> is already on this machine, by uninstall entry.</summary>
     public bool IsAlreadyInstalled(BundledComponentSpec spec)
@@ -120,6 +137,17 @@ public sealed class ComponentInstallService(
             url = resolved.AssetUrl;
             expectedSha256 = resolved.Sha256;
         }
+        else if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(spec.DirectoryListingUrl))
+        {
+            var resolved = await DirectoryListingLatestRelease.ResolveAsync(spec, cancellationToken);
+            if (resolved is null)
+            {
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.DownloadFailed,
+                    $"Could not find {spec.DisplayName}'s latest Windows installer.");
+            }
+            url = resolved.AssetUrl;
+            expectedSha256 = resolved.Sha256;
+        }
 
         if (string.IsNullOrWhiteSpace(url))
         {
@@ -141,7 +169,8 @@ public sealed class ComponentInstallService(
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed, verification);
         }
 
-        var exitCode = await _processes.RunAsync(path, spec.SilentArgs, TimeSpan.FromMinutes(5), cancellationToken);
+        var (runPath, runArguments) = BuildInstallCommand(path, spec.SilentArgs);
+        var exitCode = await _processes.RunAsync(runPath, runArguments, TimeSpan.FromMinutes(5), cancellationToken);
         TryDelete(path);
 
         if (exitCode is null or not 0)
@@ -150,12 +179,40 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName}'s installer did not finish cleanly (exit code {exitCode?.ToString() ?? "none"}).");
         }
 
+        if (!string.IsNullOrWhiteSpace(spec.ConfigFilePath) && !string.IsNullOrWhiteSpace(spec.ConfigFileContent))
+        {
+            var configPath = Environment.ExpandEnvironmentVariables(spec.ConfigFilePath);
+            await _configWriter.WriteIfAbsentAsync(configPath, spec.ConfigFileContent, cancellationToken);
+        }
+
         if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
         }
 
         return await StartAndWaitForReadyAsync(spec, cancellationToken);
+    }
+
+    /// <summary>
+    /// A per-machine .msi cannot reliably be double-clicked (ShellExecute's
+    /// file-type association) in an unattended install: Windows Installer's
+    /// own service needs the request to arrive through msiexec.exe itself,
+    /// with an explicit install context, or it can fail with a bare exit code
+    /// 1603 that names nothing wrong. Running msiexec.exe directly -- rather
+    /// than the .msi path -- with ALLUSERS=1 (forces a per-machine install
+    /// context instead of leaving it ambiguous) and a verbose log fixes the
+    /// unattended case Transmission's installer hit on a clean VM.
+    /// </summary>
+    private static (string Path, string? Arguments) BuildInstallCommand(string installerPath, string? silentArgs)
+    {
+        if (!installerPath.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+        {
+            return (installerPath, silentArgs);
+        }
+
+        var logPath = installerPath + ".log";
+        var arguments = $"/i \"{installerPath}\" ALLUSERS=1 {silentArgs} /l*v \"{logPath}\"";
+        return ("msiexec.exe", arguments);
     }
 
     /// <summary>
@@ -168,6 +225,18 @@ public sealed class ComponentInstallService(
     /// </summary>
     private async Task<ComponentInstallResult> StartAndWaitForReadyAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(spec.PreStartCommand))
+        {
+            // Fire-and-forget: a second, untracked process (Deluge's own
+            // deluged, which deluge-web talks to) started ahead of the main
+            // one. Its exit state is never polled -- only the main
+            // PostInstallCommand process is tracked for readiness -- so a
+            // failure here does not fail the whole install; it degrades to
+            // "the Web UI came up but has no host configured yet", which is
+            // still an improvement over not starting at all.
+            _processStarter.Start(Environment.ExpandEnvironmentVariables(spec.PreStartCommand), spec.PreStartArgs);
+        }
+
         var command = Environment.ExpandEnvironmentVariables(spec.PostInstallCommand!);
         var started = _processStarter.Start(command, spec.PostInstallArgs);
         if (started is null)
@@ -253,6 +322,34 @@ public sealed class ComponentInstallService(
     private static void TryDelete(string path)
     {
         try { File.Delete(path); } catch { /* best effort cleanup */ }
+    }
+}
+
+/// <summary>Writes to the real filesystem, expanding nothing itself -- the caller already expanded the path.</summary>
+public sealed class RealConfigFileWriter : IConfigFileWriter
+{
+    public Task<bool> WriteIfAbsentAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                return Task.FromResult(false);
+            }
+
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(path, content);
+            return Task.FromResult(true);
+        }
+        catch
+        {
+            return Task.FromResult(false);
+        }
     }
 }
 
@@ -395,15 +492,22 @@ public sealed class HttpReadinessChecker : IReadinessChecker
 {
     public async Task<bool> CheckAsync(string url, string field, string expectedValue, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(field))
-        {
-            return false;
-        }
-
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
             using var response = await http.GetAsync(url, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(field))
+            {
+                // No field to check: a download client's Web UI/API commonly
+                // answers a bare unauthenticated GET with 401/403/409 rather
+                // than 200 (Transmission's RPC wants its CSRF header first),
+                // and that response is itself the proof the port is up and
+                // its server is listening -- which is what "ready" means for
+                // a component with no single JSON readiness body of its own.
+                return true;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 return false;

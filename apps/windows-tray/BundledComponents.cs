@@ -34,7 +34,21 @@ public sealed record BundledComponentSpec(
     [property: JsonPropertyName("readinessUrl")] string? ReadinessUrl = null,
     [property: JsonPropertyName("readinessField")] string? ReadinessField = null,
     [property: JsonPropertyName("readinessValue")] string? ReadinessValue = null,
-    [property: JsonPropertyName("readinessTimeoutSeconds")] int? ReadinessTimeoutSeconds = null)
+    [property: JsonPropertyName("readinessTimeoutSeconds")] int? ReadinessTimeoutSeconds = null,
+    /// <summary>A regex matched against each GitHub release asset's own file name, for a vendor (like NZBGet) whose asset name embeds the version so no single fixed name survives an upgrade. Takes precedence over <see cref="GithubAsset"/> when set.</summary>
+    [property: JsonPropertyName("githubAssetPattern")] string? GithubAssetPattern = null,
+    /// <summary>A directory-listing page to resolve "latest" from, for a vendor (like Deluge) that does not publish GitHub Releases at all.</summary>
+    [property: JsonPropertyName("directoryListingUrl")] string? DirectoryListingUrl = null,
+    /// <summary>A regex matched against each link's file name in <see cref="DirectoryListingUrl"/>; the highest version number among matches wins.</summary>
+    [property: JsonPropertyName("assetPattern")] string? AssetPattern = null,
+    /// <summary>Appended to the resolved asset's file name to fetch a per-file checksum (e.g. ".sha256"), read the same "hash  filename" way as a GitHub SHA256SUMS.txt line.</summary>
+    [property: JsonPropertyName("checksumSuffix")] string? ChecksumSuffix = null,
+    /// <summary>A path to write <see cref="ConfigFileContent"/> to before the first start, e.g. to enable a client's Web UI/API and pick its port ahead of time so Deluno's own detection never has to guess. Environment variables in the path are expanded.</summary>
+    [property: JsonPropertyName("configFilePath")] string? ConfigFilePath = null,
+    [property: JsonPropertyName("configFileContent")] string? ConfigFileContent = null,
+    /// <summary>A second, untracked process started (fire-and-forget) before <see cref="PostInstallCommand"/> -- for a component (like Deluge) whose Web UI/API is a separate process from the daemon it talks to.</summary>
+    [property: JsonPropertyName("preStartCommand")] string? PreStartCommand = null,
+    [property: JsonPropertyName("preStartArgs")] string? PreStartArgs = null)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]

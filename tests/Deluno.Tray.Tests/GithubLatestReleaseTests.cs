@@ -48,3 +48,31 @@ public sealed class GithubLatestReleaseTests
         Assert.Equal("d34db33f", hash);
     }
 }
+
+public sealed class DirectoryListingLatestReleaseTests
+{
+    [Fact]
+    public void Picks_the_highest_version_among_matching_links_regardless_of_listing_order()
+    {
+        var html = "<a href=\"deluge-2.1.1-win64-lt2.0-setup.exe\">deluge-2.1.1-win64-lt2.0-setup.exe</a>\n" +
+                    "<a href=\"deluge-2.2.0-win64-setup.exe\">deluge-2.2.0-win64-setup.exe</a>\n" +
+                    "<a href=\"deluge-2.1.0-win64-setup.exe\">deluge-2.1.0-win64-setup.exe</a>\n" +
+                    "<a href=\"deluge-2.2.0-win32-setup.exe\">deluge-2.2.0-win32-setup.exe</a>\n";
+
+        var picked = DirectoryListingLatestRelease.PickLatest(html, @"^deluge-[0-9][0-9.]*-win64-setup\.exe$");
+
+        // Not the win32 build (wrong pattern), not the lt2.0 compatibility
+        // build (excluded by the pattern), and not 2.1.0 (older version).
+        Assert.Equal("deluge-2.2.0-win64-setup.exe", picked);
+    }
+
+    [Fact]
+    public void Answers_null_when_nothing_in_the_listing_matches()
+    {
+        var html = "<a href=\"deluge-2.2.0-win32-setup.exe\">deluge-2.2.0-win32-setup.exe</a>\n";
+
+        var picked = DirectoryListingLatestRelease.PickLatest(html, @"^deluge-[0-9][0-9.]*-win64-setup\.exe$");
+
+        Assert.Null(picked);
+    }
+}
