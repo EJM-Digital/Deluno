@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 namespace Deluno.Persistence.Tests.Platform;
 
 /// <summary>
-/// #984: <see cref="V0115LibrarySearchIntervalMinutes"/> gives the library
+/// #984: <see cref="V0116LibrarySearchIntervalMinutes"/> gives the library
 /// search interval minute granularity. Every existing library must keep
 /// exactly the cadence it already had -- an hours value of 6 has to read as
 /// 360 minutes after the migration runs, not some other number.
@@ -64,7 +64,7 @@ public sealed class LibrarySearchIntervalMinutesMigrationTests
     private static async Task MigrateAsync(SqliteConnection connection)
     {
         await using var transaction = await connection.BeginTransactionAsync();
-        await new V0115LibrarySearchIntervalMinutes().UpAsync(connection, transaction, CancellationToken.None);
+        await new V0116LibrarySearchIntervalMinutes().UpAsync(connection, transaction, CancellationToken.None);
         await transaction.CommitAsync();
     }
 

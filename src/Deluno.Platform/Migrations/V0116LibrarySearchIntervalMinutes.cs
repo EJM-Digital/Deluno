@@ -17,9 +17,9 @@ namespace Deluno.Platform.Migrations;
 /// dropping a column a running install has already written is not worth the
 /// risk for a column nothing reads any more.</para>
 /// </summary>
-public sealed class V0115LibrarySearchIntervalMinutes : SqliteSqlMigration
+public sealed class V0116LibrarySearchIntervalMinutes : SqliteSqlMigration
 {
-    public override int Version => 115;
+    public override int Version => 116;
 
     public override string Name => "library_search_interval_minutes";
 
