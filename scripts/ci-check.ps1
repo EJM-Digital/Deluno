@@ -280,6 +280,17 @@ if ($backlogSweep.ExitCode -eq 0) {
     Write-Fail "BACKLOG-SWEEP.md agrees with itself"
 }
 
+# The container build sees only what the Dockerfile copies, and the local gate
+# never builds it: a src project reaching for a repository-root file broke six
+# Docker runs in a row before anyone looked (#1037).
+$dockerCopies = Invoke-LoggedCommand -FilePath $powerShellPath -Arguments @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/check-dockerfile-copies.ps1")
+if ($dockerCopies.ExitCode -eq 0) {
+    Write-Ok "Dockerfile copies every root file the build needs"
+} else {
+    if ($dockerCopies.Output) { Write-Host $dockerCopies.Output }
+    Write-Fail "Dockerfile copies every root file the build needs"
+}
+
 # RELEASE_NOTES.md ships inside the build so an install can show what
 # changed without reading GitHub (#870, the repo stays private). This is a
 # warning, not a failure: it is easy to forget the notes section while
