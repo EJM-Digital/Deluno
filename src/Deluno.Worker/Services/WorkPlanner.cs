@@ -1072,6 +1072,22 @@ public sealed class WorkPlanner(
             {
                 existing = await processorRepository.FindProcessorHandoffAsync(library.Id, null, item.SourcePath, cancellationToken);
                 released = existing?.Status == ProcessorHandoffStatuses.Released;
+
+                if (released)
+                {
+                    // #953: whoever released this -- the auto give-up path
+                    // above, or a person clicking "Import the original" on a
+                    // recovery case -- the processor still had a working
+                    // folder for it. That folder's scraps and now-empty
+                    // subfolders belong to this abandoned hand-off, not to
+                    // the fresh import about to run below, and are cleaned
+                    // up here once, keeping any complete file #921's Health
+                    // row still offers.
+                    ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
+                        ExpectedOutputDirectoryNames(existing!.SourcePath),
+                        library.ProcessorOutputPath,
+                        ProcessorOutputReadiness.IsReady);
+                }
             }
 
             // A processor is given what it can hold, not everything at once.
@@ -1842,7 +1858,7 @@ public sealed class WorkPlanner(
         }
     }
 
-    private static IReadOnlyList<string> FindCorrelatedProcessorOutputs(string outputRoot, string sourcePath)
+    internal static IReadOnlyList<string> FindCorrelatedProcessorOutputs(string outputRoot, string sourcePath)
     {
         if (string.IsNullOrWhiteSpace(outputRoot) || string.IsNullOrWhiteSpace(sourcePath))
         {
@@ -1884,7 +1900,7 @@ public sealed class WorkPlanner(
     }
 
     internal static bool IsImportableVideoFile(string path)
-        => Path.GetExtension(path).ToLowerInvariant() is ".mkv" or ".mp4" or ".avi" or ".mov" or ".m4v";
+        => SupportedVideoExtensions.Contains(path);
 
     /// <summary>
     /// The one or two top-level directory names a processor's output for this
