@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Deluno.Tray;
 using Velopack;
 
@@ -23,6 +24,18 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Diagnostic only (#968): how long the OS took to create the process
+        // and the CLR took to JIT and reach this line, before Velopack's hook
+        // budget (30s install/update, 15s uninstall) even starts ticking on
+        // its side. A clean-VM run once showed velopack.log logging "found
+        // fast exit hook" and then nothing at all from Deluno.exe within 30s
+        // -- this line, and the one line it writes, is what tells us whether
+        // that gap was cold-start-before-Main or something inside the hook
+        // body itself. Process.GetCurrentProcess().StartTime and a single
+        // AppendAllText are the only cost paid here; neither touches
+        // WinForms, ASP.NET, EF or any Deluno.* assembly.
+        LogColdStart();
+
         // Setup.exe and Update.exe run these per user, without administrator
         // rights, and kill them after 30 seconds (15 on uninstall). So the
         // firewall rule (#623) is only added here when the rights are already
@@ -141,6 +154,33 @@ internal static class Program
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Writes one line to the same install-hook.log the hooks use, so a
+    /// cold-start gap and a hook-body gap show up on the same timeline
+    /// (#968). Best-effort: a failure here must never stop startup, and
+    /// nothing before this point may depend on it running.
+    /// </summary>
+    private static void LogColdStart()
+    {
+        try
+        {
+            var elapsed = DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
+            var logDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Deluno",
+                "logs");
+            Directory.CreateDirectory(logDir);
+            var logPath = Path.Combine(logDir, "install-hook.log");
+            File.AppendAllText(
+                logPath,
+                $"{DateTimeOffset.Now:O} Main entered {elapsed.TotalMilliseconds:F0}ms after process start.{Environment.NewLine}");
+        }
+        catch
+        {
+            // Best-effort diagnostics only.
+        }
     }
 
     private static void TryLogStartupFailure(Exception ex)

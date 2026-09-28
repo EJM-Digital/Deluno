@@ -125,11 +125,17 @@ try {
     $solution = Join-Path $root "Deluno.slnx"
     Invoke-Native { dotnet clean $solution -c Release --verbosity quiet } "cleaning before the tray payload build"
     Invoke-Native {
+        # -p:PublishReadyToRun precompiles to native code so the Velopack
+        # --veloapp-install hook (and every other cold start) does not have
+        # to JIT its way through the ~800-file self-contained payload before
+        # it can even reach VelopackApp.Build().Run(), which is what blew
+        # Velopack's 30s hook budget on a clean VM (#968).
         dotnet publish (Join-Path $root "apps\windows-tray\Deluno.Tray.csproj") `
             -c Release `
             -r $RuntimeIdentifier `
             --self-contained true `
             -p:PublishSingleFile=false `
+            -p:PublishReadyToRun=true `
             -p:Version=$Version `
             -p:DelunoUpdateChannel=$Channel `
             -o $payload
