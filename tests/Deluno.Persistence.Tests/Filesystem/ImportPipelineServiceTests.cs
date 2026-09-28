@@ -5382,6 +5382,105 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal(2, (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes.Count(episode => episode.HasFile));
     }
 
+    /// <summary>
+    /// #945: a single-file upgrade already recycles the sidecar subtitles
+    /// beside the video it replaces (#893). A season-pack replacement went
+    /// through a different path - <c>RecycleReplacedFilesAsync</c> was never
+    /// called for it - and left every replaced episode's subtitles behind.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_replacement_also_removes_the_replaced_episodes_subtitles()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Subtitle Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var service = CreateService(storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider));
+
+        var oldDirectory = Path.Combine(downloadsPath, "old", "Subtitle.Pack.S01");
+        Directory.CreateDirectory(oldDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(oldDirectory, $"Subtitle.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x20 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var oldRequest = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                oldDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+        Assert.True((await service.ExecuteAsync(oldRequest, CancellationToken.None)).Succeeded);
+
+        var installed = (await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None))!.Episodes
+            .OrderBy(episode => episode.EpisodeNumber)
+            .ToArray();
+        var targets = new List<DispatchReplacementTarget>();
+        foreach (var episode in installed)
+        {
+            targets.Add(new DispatchReplacementTarget(
+                episode.EpisodeId,
+                (await repository.GetEpisodeFilePathAsync(episode.EpisodeId, CancellationToken.None))!));
+        }
+
+        // Subtitles left beside each installed episode - the same shape
+        // Bazarr (or a person) leaves beside a single movie file.
+        var subtitlePaths = new List<string>();
+        foreach (var target in targets)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(target.ExpectedPath);
+            var directory = Path.GetDirectoryName(target.ExpectedPath)!;
+            var subtitlePath = Path.Combine(directory, $"{baseName}.en.srt");
+            await File.WriteAllTextAsync(subtitlePath, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+            subtitlePaths.Add(subtitlePath);
+        }
+        Assert.All(subtitlePaths, path => Assert.True(File.Exists(path)));
+
+        var newDirectory = Path.Combine(downloadsPath, "new", "Subtitle.Pack.S01");
+        Directory.CreateDirectory(newDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(newDirectory, $"Subtitle.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x70 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var replacementRequest = oldRequest with
+        {
+            Preview = oldRequest.Preview with { SourcePath = newDirectory },
+            Overwrite = true,
+            ForceReplacement = true,
+            DispatchId = "season-dispatch-subtitles",
+            ReplacementTargets = targets
+        };
+
+        var replaced = await service.ExecuteAsync(replacementRequest, CancellationToken.None);
+        Assert.True(replaced.Succeeded, replaced.Message);
+
+        Assert.All(subtitlePaths, path => Assert.False(
+            File.Exists(path),
+            $"the replaced episode's subtitle {path} should have been recycled with its video"));
+        Assert.Contains("subtitle", replaced.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task Tv_pack_replacement_catalogue_failure_restores_every_owned_file_and_source()
     {
