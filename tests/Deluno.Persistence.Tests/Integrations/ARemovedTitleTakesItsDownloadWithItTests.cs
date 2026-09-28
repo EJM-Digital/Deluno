@@ -345,6 +345,9 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<DownloadCleanupPreview?> PreviewCleanupAsync(string clientId, string queueItemId, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<DownloadHealthRemediationReport> RunConfiguredHealthRemediationAsync(DownloadTelemetryOverview overview, CancellationToken cancellationToken) => throw new NotSupportedException();

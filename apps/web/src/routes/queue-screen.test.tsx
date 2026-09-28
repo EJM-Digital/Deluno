@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
-import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo } from "../lib/api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DownloadClientTelemetrySnapshot, DownloadDispatchItem, DownloadHealthFinding, DownloadQueueItem, ImportPreviewResponse, LibraryItem, MediaProbeInfo, OrphanedDownloadItem } from "../lib/api";
 import { emptyPlatformSettingsSnapshot } from "../lib/api";
 import { RemovalReasonDialog, type RemovalReason } from "../components/ui/removal-reason-dialog";
 import { buildImportRequest, findDispatchForQueueItem, healthFindingRuleSummary, ImportPreviewFacts, QueuePage, queueRowExtras, reorderControlsFor, visibleFindings } from "./queue-screen";
@@ -31,7 +31,7 @@ const queueLoaderData = {
   processorConnections: [],
   processorHandoffs: [],
   activityEvents: [],
-  orphans: []
+  orphans: [] as OrphanedDownloadItem[]
 };
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -416,6 +416,68 @@ describe("Manual import: scan a folder", () => {
     const body = JSON.parse((batchCall![1] as RequestInit).body as string);
     expect(body.items).toHaveLength(1);
     expect(body.items[0].preview.sourcePath).toContain("Arrival");
+  });
+});
+
+/**
+ * #932/#958: the leftovers list's own batch action. Only what Deluno can
+ * prove it downloaded is ever selectable or removable -- a leftover Deluno
+ * did not grab has no checkbox at all.
+ */
+describe("leftover downloads: select all", () => {
+  afterEach(() => {
+    queueLoaderData.orphans = [];
+  });
+
+  function orphan(overrides: Partial<OrphanedDownloadItem>): OrphanedDownloadItem {
+    return {
+      path: "C:\\Downloads\\Complete\\Example.S01E01",
+      name: "Example.S01E01",
+      libraryId: "library-1",
+      libraryName: "TV",
+      sizeBytes: 1_073_741_824,
+      lastWrittenUtc: new Date().toISOString(),
+      delunoGrabbedIt: true,
+      ...overrides
+    };
+  }
+
+  it("shows the select-all button and selects every leftover Deluno can prove it downloaded", () => {
+    queueLoaderData.orphans = [
+      orphan({ path: "C:\\Downloads\\Complete\\First.S01E01", name: "First.S01E01" }),
+      orphan({ path: "C:\\Downloads\\Complete\\Second.S01E02", name: "Second.S01E02" }),
+      // Not Deluno's own grab: never selectable, so select-all must skip it.
+      orphan({ path: "C:\\Downloads\\Complete\\Not.Deluno.S01E03", name: "Not.Deluno.S01E03", delunoGrabbedIt: false })
+    ];
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    const selectAll = screen.getByRole("button", { name: "Select all leftovers" });
+    expect(selectAll).toBeVisible();
+    // The item Deluno cannot prove it downloaded gets no checkbox at all.
+    expect(screen.queryByRole("switch", { name: "Select Not.Deluno.S01E03" })).not.toBeInTheDocument();
+
+    fireEvent.click(selectAll);
+
+    expect(screen.getByRole("switch", { name: "Select First.S01E01" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Select Second.S01E02" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Remove 2 selected" })).toBeVisible();
+  });
+
+  it("offers no select-all button when there is nothing Deluno can remove", () => {
+    queueLoaderData.orphans = [orphan({ delunoGrabbedIt: false })];
+
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("button", { name: "Select all leftovers" })).not.toBeInTheDocument();
   });
 });
 

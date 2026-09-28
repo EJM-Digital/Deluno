@@ -468,7 +468,7 @@ function jobTypeLabel(jobType: string) {
  * runs the same service the schedule runs — there is one implementation, so
  * the answer cannot depend on which one started it.</p>
  */
-const RUN_NOW: Record<string, { path: string; label: string; said: (result: LibraryFileCheckResult) => string }> = {
+const RUN_NOW: Record<string, { path: string; label: string; said: (result: LibraryFileCheckResult | LeftoverCleanupRunResult) => string }> = {
   "library.file.check": {
     path: "/api/filesystem/file-check",
     // Not "Check now": the metadata maintenance card on this same screen
@@ -476,8 +476,9 @@ const RUN_NOW: Record<string, { path: string; label: string; said: (result: Libr
     // one name on one screen is a coin toss for the reader, and Playwright
     // found it before a person did.
     label: "Check files now",
-    said: (result) =>
-      result.markedMissing === 0 && result.unreachableRoots === 0
+    said: (raw) => {
+      const result = raw as LibraryFileCheckResult;
+      return result.markedMissing === 0 && result.unreachableRoots === 0
         ? "Every file Deluno is holding is still on disk."
         : [
             result.markedMissing === 1
@@ -490,13 +491,43 @@ const RUN_NOW: Record<string, { path: string; label: string; said: (result: Libr
               : null
           ]
             .filter(Boolean)
-            .join(" ")
+            .join(" ");
+    }
+  },
+  // #958: the same service the "Clean up leftover downloads" schedule runs
+  // (POST /api/download-clients/leftovers/cleanup), so a person never has to
+  // wait for the timer to prove a leftover is really gone.
+  "download.leftover.cleanup": {
+    path: "/api/download-clients/leftovers/cleanup",
+    label: "Run now",
+    said: (raw) => {
+      const result = raw as LeftoverCleanupRunResult;
+      if (result.removed === 0 && result.held === 0) {
+        return "No leftovers to clean up right now.";
+      }
+      return [
+        result.removed > 0
+          ? `${result.removed} leftover${result.removed === 1 ? "" : "s"} removed.`
+          : null,
+        result.held > 0
+          ? `${result.held} held back — still in use, too young, or unproven.`
+          : null
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
   }
 };
 
 interface LibraryFileCheckResult {
   markedMissing: number;
   unreachableRoots: number;
+}
+
+/** POST /api/download-clients/leftovers/cleanup response (#932, #958). */
+interface LeftoverCleanupRunResult {
+  removed: number;
+  held: number;
 }
 
 function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
@@ -512,7 +543,7 @@ function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
     setRunning(task.key);
     setSaid(null);
     try {
-      const result = await fetchJson<LibraryFileCheckResult>(trigger.path, { method: "POST" });
+      const result = await fetchJson<LibraryFileCheckResult | LeftoverCleanupRunResult>(trigger.path, { method: "POST" });
       setSaid({ key: task.key, message: trigger.said(result) });
       revalidator.revalidate();
     } catch {
