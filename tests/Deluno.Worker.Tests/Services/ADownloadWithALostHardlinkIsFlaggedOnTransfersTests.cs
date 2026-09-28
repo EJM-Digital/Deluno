@@ -225,7 +225,6 @@ public sealed class ADownloadWithALostHardlinkIsFlaggedOnTransfersTests
         UiTheme: "dark",
         DefaultMovieView: "poster",
         DefaultShowView: "poster",
-        MetadataNfoEnabled: true,
         MetadataArtworkEnabled: true,
         MetadataCertificationCountry: "US",
         MetadataLanguage: "en",
