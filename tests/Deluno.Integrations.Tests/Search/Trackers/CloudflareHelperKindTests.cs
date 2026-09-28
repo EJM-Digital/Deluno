@@ -120,7 +120,6 @@ public sealed class CloudflareHelperKindTests
                 UiTheme: "system",
                 DefaultMovieView: "grid",
                 DefaultShowView: "grid",
-                MetadataArtworkEnabled: true,
                 MetadataCertificationCountry: "US",
                 MetadataLanguage: "en",
                 MetadataProviderMode: "direct",

@@ -190,7 +190,6 @@ public sealed class FlareSolverrCloudflareHelperTests
                 UiTheme: "system",
                 DefaultMovieView: "grid",
                 DefaultShowView: "grid",
-                MetadataArtworkEnabled: true,
                 MetadataCertificationCountry: "US",
                 MetadataLanguage: "en",
                 MetadataProviderMode: "direct",

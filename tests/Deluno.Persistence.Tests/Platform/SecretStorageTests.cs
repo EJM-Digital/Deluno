@@ -42,7 +42,6 @@ public sealed class SecretStorageTests
                 UiTheme: "system",
                 DefaultMovieView: "grid",
                 DefaultShowView: "grid",
-                MetadataArtworkEnabled: false,
                 MetadataCertificationCountry: "US",
                 MetadataLanguage: "en",
                 MetadataProviderMode: "broker",
