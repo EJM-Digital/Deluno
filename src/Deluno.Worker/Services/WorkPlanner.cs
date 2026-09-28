@@ -1920,7 +1920,16 @@ public sealed class WorkPlanner(
     /// </summary>
     internal static IReadOnlyList<string> ExpectedOutputDirectoryNames(string sourcePath)
     {
-        var sourceLeaf = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourcePath));
+        // Path.GetFileName only recognises this OS's own separator, but a
+        // source path can be reported by a download client running on a
+        // different OS than Deluno itself (the same reason NormalizeSourceKey
+        // below treats '\' and '/' the same regardless of platform). On Linux,
+        // Path.GetFileName would return a Windows-style path unchanged instead
+        // of its leaf name, so nothing here ever matched (reproduced on Linux
+        // CI for #953: both temporary-file-name tests failed on Linux while
+        // passing on Windows for exactly this reason).
+        var trimmed = sourcePath.Replace('\\', '/').TrimEnd('/');
+        var sourceLeaf = trimmed[(trimmed.LastIndexOf('/') + 1)..];
         if (string.IsNullOrWhiteSpace(sourceLeaf) || sourceLeaf is "." or "..")
         {
             return [];
