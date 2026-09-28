@@ -18,6 +18,7 @@
  */
 import { useEffect, useState } from "react";
 import { ArrowUpDown, Loader2, Search as SearchIcon } from "lucide-react";
+import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Button } from "../components/ui/button";
 import { CheckboxRow } from "../components/ui/checkbox";
 import { Chip } from "../components/ui/chip";
@@ -289,6 +290,11 @@ export function SearchPage() {
                   <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
                   <div role="cell" className="flex items-center justify-end gap-2">
                     <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
+                    <BlockReleaseAction
+                      releaseName={candidate.releaseName}
+                      indexerName={candidate.indexerName}
+                      mediaType={(candidate.searchType ?? searchType) === "tv" ? "tv" : "movie"}
+                    />
                     <Button type="button" size="sm" variant="outline" disabled={!candidate.downloadUrl} onClick={() => openGrab(candidate)}>
                       Grab
                     </Button>
