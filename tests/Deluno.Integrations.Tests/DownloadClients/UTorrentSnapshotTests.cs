@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.DownloadClients.Clients;
 
@@ -67,6 +68,37 @@ public sealed class UTorrentSnapshotTests
         var item = await Snapshot(statusBits: Started, progress: 50, speed: 1_000_000, statusMessage: string.Empty);
 
         Assert.False(item.IsSetupProblem);
+    }
+
+    /// <summary>
+    /// #943 (Phase 4 re-check of cleanup sheet C5): a tracker's own rejection
+    /// is a release-side finding, never a problem on this machine, on every
+    /// client including uTorrent — the same wording qBittorrent, Transmission,
+    /// Deluge and rTorrent already read with LooksUnregistered.
+    /// </summary>
+    [Fact]
+    public async Task Unregistered_tracker_message_is_not_a_setup_problem()
+    {
+        var item = await Snapshot(statusBits: Error, progress: 0, speed: 0, statusMessage: "Torrent not registered with this tracker.");
+
+        Assert.False(item.IsSetupProblem);
+    }
+
+    [Fact]
+    public async Task Unregistered_tracker_message_reports_as_a_tracker_rejection()
+    {
+        var item = await Snapshot(statusBits: Error, progress: 0, speed: 0, statusMessage: "Torrent not registered with this tracker.");
+
+        Assert.Equal(DownloadTrackerStatuses.Unregistered, item.TrackerStatus);
+    }
+
+    [Fact]
+    public async Task Non_tracker_error_still_reads_as_a_setup_problem()
+    {
+        var item = await Snapshot(statusBits: Error, progress: 0, speed: 0, statusMessage: "Access is denied.");
+
+        Assert.True(item.IsSetupProblem);
+        Assert.Equal(DownloadTrackerStatuses.Unknown, item.TrackerStatus);
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 
 namespace Deluno.Integrations.DownloadClients.Clients;
 
@@ -135,6 +136,14 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
 
             var status = NormalizeStatus(statusBits.ToString(CultureInfo.InvariantCulture), progress);
             var errored = (statusBits & UTorrentStatus.Error) != 0;
+            // #943 (Phase 4 re-check of C5): uTorrent's status bitfield gives no
+            // tracker-vs-local distinction of its own, but the status message
+            // that comes with an errored torrent is the tracker's own text when
+            // it rejected the torrent outright — the same wording qBittorrent,
+            // Transmission, Deluge and rTorrent already read with
+            // LooksUnregistered. That case is a release-side finding, not a
+            // problem on this machine.
+            var looksUnregistered = errored && DownloadClientHelpers.LooksUnregistered(statusMessage);
 
             var queueItem = new DownloadQueueItem(hash, client.Id, client.Name, client.Protocol, DownloadClientHelpers.InferMediaType(client, category), DownloadClientHelpers.CleanReleaseTitle(name), name,
                 category, status,
@@ -150,8 +159,11 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
                 // distinction the way Transmission's error code does — the Error
                 // bit is the only signal, same as qBittorrent's bare "error"
                 // state, so it is read the same way: a problem on this machine
-                // (disk, permissions), not the release.
-                IsSetupProblem: errored);
+                // (disk, permissions), not the release — unless the tracker's own
+                // message says the release itself is gone (#943), which is never
+                // a setup problem.
+                IsSetupProblem: errored && !looksUnregistered,
+                TrackerStatus: looksUnregistered ? DownloadTrackerStatuses.Unregistered : DownloadTrackerStatuses.Unknown);
 
             // The one rule every torrent adapter applies (#650). uTorrent's own
             // status is decoded above rather than guessed from progress/speed,
