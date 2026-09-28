@@ -106,6 +106,59 @@ public sealed class SqliteMediaTagStore(
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<MediaTitleTags>> ListAllTitleTagsAsync(
+        MediaKind kind,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT e.id, e.title, e.monitored, t.tag_name
+            FROM {map.EntryTable} e
+            LEFT JOIN {map.TagTable} t ON t.{map.TagMediaIdColumn} = e.id AND trim(t.tag_name) <> ''
+            ORDER BY e.title COLLATE NOCASE ASC, e.id ASC;
+            """;
+
+        var items = new List<MediaTitleTags>();
+        string? currentId = null;
+        var currentTitle = "";
+        var currentMonitored = false;
+        var currentTags = new List<string>();
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var id = reader.GetString(0);
+            if (id != currentId)
+            {
+                if (currentId is not null)
+                {
+                    items.Add(new MediaTitleTags(currentId, currentTitle, currentMonitored, currentTags));
+                }
+
+                currentId = id;
+                currentTitle = reader.GetString(1);
+                currentMonitored = reader.GetInt64(2) != 0;
+                currentTags = [];
+            }
+
+            if (!reader.IsDBNull(3))
+            {
+                currentTags.Add(reader.GetString(3).Trim());
+            }
+        }
+
+        if (currentId is not null)
+        {
+            items.Add(new MediaTitleTags(currentId, currentTitle, currentMonitored, currentTags));
+        }
+
+        return items;
+    }
+
     public async Task<IReadOnlyList<MediaTagUsage>> ListUsageAsync(
         MediaKind kind,
         CancellationToken cancellationToken)

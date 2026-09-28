@@ -55,6 +55,29 @@ public sealed class RenamingATagUpdatesEverythingThatUsesItTests
 
 
     [Fact]
+    public async Task Every_title_is_listed_with_its_tags_and_monitored_flag_untagged_ones_included()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var store = app.Services.GetRequiredService<IMediaTagStore>();
+        var tagged = await InsertAsync(app, "movie_entries", new() { ["title"] = "Frozen", ["monitored"] = "1" }, DelunoDatabaseNames.Movies);
+        var plain = await InsertAsync(app, "movie_entries", new() { ["title"] = "Sintel", ["monitored"] = "0" }, DelunoDatabaseNames.Movies);
+        await store.ReplaceAsync(
+            MediaKind.Movie,
+            tagged,
+            [new MediaTagAssignment("t1", "kidz"), new MediaTagAssignment("t2", "family")],
+            CancellationToken.None);
+
+        var titles = await store.ListAllTitleTagsAsync(MediaKind.Movie, CancellationToken.None);
+
+        var frozen = Assert.Single(titles, item => item.Id == tagged);
+        Assert.True(frozen.IsMonitored);
+        Assert.Equal(["family", "kidz"], frozen.Tags.Order().ToArray());
+        var sintel = Assert.Single(titles, item => item.Id == plain);
+        Assert.False(sintel.IsMonitored);
+        Assert.Empty(sintel.Tags);
+    }
+
+    [Fact]
     public async Task A_tag_in_use_cannot_be_deleted_until_nothing_uses_it()
     {
         await using var app = await ApplicationTestHost.StartAsync();

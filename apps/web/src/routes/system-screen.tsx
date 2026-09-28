@@ -1540,6 +1540,17 @@ function processorOutputDetails(check: HealthCheckResultItem): ProcessorOutputIt
   }
 }
 
+/** Where a tag warning (#1043) points: the connection's page, or the titles it strands. */
+function tagCheckLink(check: HealthCheckResultItem): string | null {
+  if (!check.id.startsWith("tags:") || !check.detailsJson) return null;
+  try {
+    const link = (JSON.parse(check.detailsJson) as { link?: unknown }).link;
+    return typeof link === "string" && link.startsWith("/") ? link : null;
+  } catch {
+    return null;
+  }
+}
+
 function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem[]; onChanged: () => void }) {
   const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1623,6 +1634,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
             // snoozed, because snoozing only hides a problem that stays true;
             // this one is meant to be dealt with and then gone.
             const outputDetails = processorOutputDetails(check);
+            const tagLink = tagCheckLink(check);
             return (
               <ListRow key={check.id}>
                 <ListNameCell name={check.name} sub={categoryLabel(check.category)} />
@@ -1689,18 +1701,34 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         </Button>
                       </div>
                     ) : check.status !== "ok" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[length:var(--type-caption)]"
-                        disabled={busyId === check.id}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void (isSnoozed ? unsnooze(check) : snooze(check));
-                        }}
-                      >
-                        {isSnoozed ? "Unsnooze" : "Snooze 24h"}
-                      </Button>
+                      <div className="flex gap-1.5">
+                        {tagLink ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[length:var(--type-caption)]"
+                            aria-label={`Show: ${check.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigate(tagLink);
+                            }}
+                          >
+                            Show
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void (isSnoozed ? unsnooze(check) : snooze(check));
+                          }}
+                        >
+                          {isSnoozed ? "Unsnooze" : "Snooze 24h"}
+                        </Button>
+                      </div>
                     ) : null}
                   </div>
                 </ListCell>
