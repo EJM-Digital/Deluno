@@ -105,6 +105,9 @@ function sameMetadataResult(left: MetadataSearchResult, right: MetadataSearchRes
 export function knownStructuralMatch(item: MediaItem, quickFilter: QuickFilter, monitoring: MonitoringFilter, libraryId: string | null): boolean {
   const targetMark = QUICK_FILTER_MARK[quickFilter];
   if (targetMark !== null && titleMark(item) !== targetMark) return false;
+  // A status pill speaks for monitored titles only (#1048); an unmonitored title
+  // lives under Unmonitored.
+  if (targetMark !== null && !item.monitored) return false;
   const targetMonitored = monitoringParam(monitoring);
   if (targetMonitored !== undefined && item.monitored !== targetMonitored) return false;
   if (libraryId && item.libraryId !== libraryId) return false;

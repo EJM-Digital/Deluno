@@ -384,6 +384,20 @@ public sealed record CatalogueFacets(
     /// afterwards — <c>Covered</c> and <c>Upcoming</c> had already fallen in
     /// before <c>Downloading</c> did.</para>
     /// </summary>
+    public int TotalFor(string status, bool? monitored)
+    {
+        var all = CatalogueStatusFilters.Normalize(status) == CatalogueStatusFilters.All;
+        return monitored switch
+        {
+            // Every status pill speaks for monitored titles only (#1048), so an
+            // unmonitored title is under a status pill never: asking for both
+            // is honestly empty, and Unmonitored alone is its own pill.
+            false => all ? Unmonitored : 0,
+            true => all ? Monitored : TotalFor(status),
+            null => TotalFor(status)
+        };
+    }
+
     public int TotalFor(string status)
         => CatalogueStatusFilters.Normalize(status) switch
         {

@@ -79,10 +79,10 @@ public static class MoviesLargeLibrarySeedEndpoints
             var now = timeProvider.GetUtcNow();
 
             var perBucket = Buckets.ToDictionary(bucket => bucket, _ => 0);
-            // #1032: Missing now sets the Monitored filter alongside the chip
-            // (library-control-rail.tsx), so the Missing chip's own facet only
-            // ever counts the monitored half of the bucket. The smoke spec needs
-            // that split to assert the chip's count correctly rather than
+            // #1048: every status pill counts monitored titles only (an
+            // unmonitored title is under Unmonitored and nowhere else), so each
+            // chip's own facet is the monitored half of its bucket. The smoke
+            // specs need that split to assert the count correctly rather than
             // re-deriving the alternation pattern below by hand.
             var perBucketMonitored = Buckets.ToDictionary(bucket => bucket, _ => 0);
             var monitoredCount = 0;

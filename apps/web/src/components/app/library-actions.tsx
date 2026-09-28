@@ -69,24 +69,26 @@ export function LibraryActions({
           </Link>
         </Button>
       ) : null}
-      {shownCount > 0 ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="gap-2"
-          onClick={onSearchShown}
-          disabled={isSearchingShown || !onSearchShown}
-          title={
-            shownCount === 1
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        className="min-w-[10.5rem] gap-2"
+        onClick={onSearchShown}
+        disabled={shownCount === 0 || isSearchingShown || !onSearchShown}
+        title={
+          shownCount === 0
+            ? `No ${label} on screen to search for`
+            : shownCount === 1
               ? `Search now for the ${singular.toLowerCase()} on screen`
               : `Search now for all ${shownCount} ${label} on screen. Narrow the shelf first to search fewer.`
-          }
-        >
-          <Search className={cn("h-4 w-4", isSearchingShown && "animate-pulse")} />
-          {isSearchingShown ? "Searching…" : `Search these ${shownCount}`}
-        </Button>
-      ) : null}
+        }
+      >
+        <Search className={cn("h-4 w-4", isSearchingShown && "animate-pulse")} />
+        {isSearchingShown
+          ? "Searching…"
+          : <span className="tabular-nums">{`Search these ${shownCount}`}</span>}
+      </Button>
       <Button
         type="button"
         variant="outline"

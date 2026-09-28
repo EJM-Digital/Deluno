@@ -576,17 +576,22 @@ export interface TitleBar {
  * arrives with them."*). A legend listing a colour no bar can be is the same
  * defect as a filter chip that can never match.
  */
-export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; hint: string }[] = [
+export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint: string }[] = [
   {
     // Gold, and it arrived with the cutoff. DESIGN-002: "Two colours are enough
     // until upgrades exist; gold arrives with them." They exist — a subtitle is
     // at the cutoff when it was made for the file it sits beside, so the timing
     // is right and there is nothing better to find.
     mark: "covered",
+    // Subtitle words, not status words (#1048): the legend used to repeat the
+    // status pills (Quality met / Upgradable / Missing) in the same colours, so
+    // it read as a second row of the same filters. It reads as subtitles now.
+    label: "complete",
     hint: "Made for this file, so the timing is right. Deluno has stopped looking."
   },
   {
     mark: "upgrade",
+    label: "partial",
     // **Ready**, and it took two goes to get here. "Held" first — the word the
     // store uses for itself, leaked onto the screen. Then "Have", which is the
     // app's own voice but reads oddly as a label: a verb sitting next to an
@@ -600,6 +605,7 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; hint: string }[] = 
   },
   {
     mark: "missing",
+    label: "none",
     hint: "A language you asked for is not here yet. Deluno looks for it on the library's own cycle."
   }
 ] as const;

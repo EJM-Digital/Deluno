@@ -725,6 +725,12 @@
 }
 
 @layer base {
+  /* A page scrollbar appearing or disappearing as a list grows or shrinks must
+     not resize the toolbar (#1048): reserve its width whether or not it shows. */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   * {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;

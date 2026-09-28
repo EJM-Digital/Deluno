@@ -149,66 +149,64 @@ describe("ControlRail narrow-width control cluster", () => {
   });
 });
 
+
 /**
- * #1032: the separate "Wanted" shortcut (#790) and the plain Missing chip were
- * the same question asked twice, so they are now one "Missing" chip meaning
- * monitored titles with no acceptable file — what Wanted meant. `missing` and
- * `monitored` stay two separate, stackable axes (see the Unmonitored toggle
- * above); this chip just sets both at once.
+ * #1048 (after #1032): the pills are one group. A status pill counts monitored
+ * titles only and Unmonitored is its own pill, so clicking a pill sets that
+ * pill and nothing else. Missing used to force a hidden Monitored filter, which
+ * emptied the list while its count said 1 and made All change on click.
  */
-describe("ControlRail Missing chip (#1032, merges the old Wanted shortcut)", () => {
-  it("sets the Missing chip and the Monitored filter together", () => {
+describe("ControlRail pills (#1048)", () => {
+  it("clicking Missing sets only the Missing pill", () => {
     const setQuickFilter = vi.fn();
     const setMonitoring = vi.fn();
     render(
       <ControlRail
         label="Movies"
         variant="movies"
-        facets={facets()}
+        facets={facets({ all: 20, missing: 1 })}
         controls={controls({ setQuickFilter, setMonitoring })}
       />
     );
 
-    screen.getByRole("button", { name: /^Missing/ }).click();
+    fireEvent.click(screen.getByRole("button", { name: /^Missing/ }));
 
     expect(setQuickFilter).toHaveBeenCalledWith("missing");
-    expect(setMonitoring).toHaveBeenCalledWith("monitored");
+    expect(setMonitoring).not.toHaveBeenCalled();
   });
 
-  it("reads as pressed only when both axes already match", () => {
+  it("reads the Missing pill as pressed from the pill alone", () => {
     render(
       <ControlRail
         label="Movies"
         variant="movies"
         facets={facets()}
-        controls={controls({ quickFilter: "missing", monitoring: "monitored" })}
+        controls={controls({ quickFilter: "missing" })}
       />
     );
 
     expect(screen.getByRole("button", { name: /^Missing/ })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("no longer offers a separate Wanted control", () => {
+  it("clicking Unmonitored sets monitoring and returns the status pill to All", () => {
+    const setQuickFilter = vi.fn();
+    const setMonitoring = vi.fn();
     render(
-      <ControlRail label="Movies" variant="movies" facets={facets()} controls={controls()} />
+      <ControlRail
+        label="Movies"
+        variant="movies"
+        facets={facets({ all: 20, unmonitored: 1 })}
+        controls={controls({ quickFilter: "missing", setQuickFilter, setMonitoring })}
+      />
     );
 
-    expect(screen.queryByRole("button", { name: /^Wanted/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Unmonitored/ }));
+
+    expect(setMonitoring).toHaveBeenCalledWith("unmonitored");
+    expect(setQuickFilter).toHaveBeenCalledWith("all");
   });
 
-  /**
-   * #1032 follow-up: leaving Missing for a different status chip used to leave
-   * the Monitored filter switched on behind the scenes, so the next chip's
-   * printed count (the server's facet for "any" monitoring) no longer matched
-   * the rows it actually showed (which were still filtered to monitored-only)
-   * — the exact #934 "matches its own count" failure a person would hit by
-   * clicking Missing and then, say, Upcoming. `monitoringForcedByMissing`
-   * (declared beside `openPanel` above) tracks whether Missing is what set
-   * `monitored`, and only a different status chip clears it back to "any";
-   * a choice the person made directly on the monitoring axis is a separate
-   * thing and is asserted to survive that same click in the test below it.
-   */
-  it("resets the Monitored filter Missing turned on when a different chip is picked next", () => {
+  it("clicking a status pill while Unmonitored is showing leaves Unmonitored", () => {
     const setQuickFilter = vi.fn();
     const setMonitoring = vi.fn();
     render(
@@ -216,12 +214,9 @@ describe("ControlRail Missing chip (#1032, merges the old Wanted shortcut)", () 
         label="Movies"
         variant="movies"
         facets={facets()}
-        controls={controls({ setQuickFilter, setMonitoring })}
+        controls={controls({ monitoring: "unmonitored", setQuickFilter, setMonitoring })}
       />
     );
-
-    fireEvent.click(screen.getByRole("button", { name: /^Missing/ }));
-    expect(setMonitoring).toHaveBeenLastCalledWith("monitored");
 
     fireEvent.click(screen.getByRole("button", { name: /^Upgradable/ }));
 
@@ -229,28 +224,27 @@ describe("ControlRail Missing chip (#1032, merges the old Wanted shortcut)", () 
     expect(setMonitoring).toHaveBeenLastCalledWith("any");
   });
 
-  it("leaves an explicit Unmonitored choice made after Missing alone when a different chip is picked next", () => {
-    const setQuickFilter = vi.fn();
-    const setMonitoring = vi.fn();
+  it("presses one pill at a time: Unmonitored, not All, while Unmonitored shows", () => {
     render(
       <ControlRail
         label="Movies"
         variant="movies"
         facets={facets()}
-        controls={controls({ setQuickFilter, setMonitoring })}
+        controls={controls({ monitoring: "unmonitored" })}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /^Missing/ }));
-    // A deliberate choice on the monitoring axis itself, made through the
-    // toggle rather than inherited from Missing — this is the kind of choice
-    // that is supposed to stick.
-    fireEvent.click(screen.getByRole("button", { name: /Unmonitored/ }));
-    setMonitoring.mockClear();
+    expect(screen.getByRole("button", { name: /Unmonitored/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "false");
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /^Upgradable/ }));
+  it("gives every count a reserved, tabular width so pills do not resize", () => {
+    render(
+      <ControlRail label="Movies" variant="movies" facets={facets({ all: 9 })} controls={controls()} />
+    );
 
-    expect(setQuickFilter).toHaveBeenLastCalledWith("upgrades");
-    expect(setMonitoring).not.toHaveBeenCalled();
+    const count = screen.getByRole("button", { name: /^All/ }).querySelector("span.tabular");
+    expect(count).not.toBeNull();
+    expect(count?.className).toContain("min-w-[3ch]");
   });
 });

@@ -1216,10 +1216,6 @@ public sealed class SqliteSeriesCatalogRepository(
             : null;
     }
 
-    /// <summary>
-    private static string CatalogueStateScope(string? libraryId)
-        => string.IsNullOrWhiteSpace(libraryId) ? string.Empty : " AND w.library_id = @libraryId";
-
     private static string CatalogueLibraryFilter(string? libraryId)
         => string.IsNullOrWhiteSpace(libraryId)
             ? string.Empty
@@ -1235,16 +1231,15 @@ public sealed class SqliteSeriesCatalogRepository(
     /// <c>quality_cutoff_met</c> was the ladder written a third time, and it is
     /// why the chips summed to seven for six shows.</para>
     /// </summary>
-    private static string CatalogueHasFileFor(string? libraryId)
-        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.wanted_status IN ('{WantedStatuses.Covered}', '{WantedStatuses.Upgrade}'))";
+    private static string CatalogueHasFileFor()
+        => $"COALESCE(ws.wanted_status, '') IN ('{WantedStatuses.Covered}', '{WantedStatuses.Upgrade}')";
 
     /// <summary>
-    /// "This entry is in one particular wanted state." The counts the toolbar
-    /// prints need Quality met and Upcoming, which are states rather than
-    /// file-presence facts and so cannot be derived from <c>has_file</c>.
+    /// "This entry is on one particular rung", read from the one picked
+    /// wanted-state row the page shows (<see cref="CatalogueWantedState.Join"/>),
+    /// so a show held in two libraries is on one rung, not two (#1048).
     /// </summary>
-    private static string CatalogueWantedIs(string? libraryId, string wantedStatus)
-        => $"EXISTS(SELECT 1 FROM series_wanted_state w WHERE w.series_id = s.id{CatalogueStateScope(libraryId)} AND w.wanted_status = '{wantedStatus}')";
+    private static string CatalogueWantedIs(string wantedStatus) => CatalogueWantedState.Is(wantedStatus);
 
     /// <summary>
     /// "Deluno has all of this show and some of it could be better." Also from
@@ -1252,8 +1247,8 @@ public sealed class SqliteSeriesCatalogRepository(
     /// was true of a show holding one below-cutoff episode out of eighty-seven,
     /// so a barely-started show counted as Upgradable <i>and</i> as Missing.
     /// </summary>
-    private static string CatalogueUpgradeFor(string? libraryId)
-        => CatalogueWantedIs(libraryId, WantedStatuses.Upgrade);
+    private static string CatalogueUpgradeFor()
+        => CatalogueWantedIs(WantedStatuses.Upgrade);
 
     /// <summary>
     /// Where <see cref="CatalogueWantedState.PageColumns"/> begins in the page
@@ -1501,17 +1496,17 @@ public sealed class SqliteSeriesCatalogRepository(
             CatalogueKeyset.StatusFilter(
                 status,
                 "s",
-                CatalogueHasFileFor(libraryId),
-                CatalogueUpgradeFor(libraryId),
-                CatalogueWantedIs(libraryId, WantedStatuses.Covered),
-                CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading),
+                CatalogueHasFileFor(),
+                CatalogueUpgradeFor(),
+                CatalogueWantedIs(WantedStatuses.Covered),
+                CatalogueWantedIs(WantedStatuses.Upcoming),
+                CatalogueWantedIs(WantedStatuses.Downloading),
                 // Without this the Airing chip filtered nothing: the switch
                 // fell through to "no predicate", which reads as "everything",
                 // so picking Continuing showed the whole shelf while the facet
                 // beside it — computed a few lines down with this same
                 // expression already present — correctly counted zero (#934).
-                CatalogueWantedIs(libraryId, WantedStatuses.Airing)),
+                CatalogueWantedIs(WantedStatuses.Airing)),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
@@ -1626,7 +1621,7 @@ public sealed class SqliteSeriesCatalogRepository(
             withSubtitles,
             nextPageToken,
             hasMore,
-            facets.TotalFor(status),
+            facets.TotalFor(status, query.Monitored),
             facets);
     }
 
@@ -1825,48 +1820,31 @@ public sealed class SqliteSeriesCatalogRepository(
         // Asked precisely, not "are there any filters at all": narrowing by
         // year or genre reads the entries table and needs no join, so it still
         // costs the counts nothing.
-        var wantedJoin = filters?.NeedsWantedState(MediaKind.Series) == true
-            ? CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null)
-            : string.Empty;
+        // Always joined: every pill count reads the same picked row the page
+        // shows, so a show is counted under exactly one rung (#1048).
+        var wantedJoin = CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null);
 
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
             CatalogueLibraryFilter(libraryId),
             CatalogueKeyset.CustomFilters(filters, MediaKind.Series, "s", "start_year"));
 
-        // The two axes cross here.
-        //
-        // Every *state* count is taken within the monitoring scope you have
-        // chosen, so "Missing 3" under Unmonitored means three unmonitored
-        // titles are missing. The two *monitoring* counts are taken within the
-        // status scope, so the monitoring control can say how many of the
-        // Missing titles fall each side. One pass either way — the base WHERE
-        // is the search and the library, and each axis is a CASE arm.
-        var monitoredArm = CatalogueKeyset.Always(CatalogueKeyset.MonitoredFilter(monitored, "s"));
-        var statusArm = CatalogueKeyset.Always(CatalogueKeyset.StatusFilter(
-            status,
+        // Independent of the status pill and the monitoring filter (#1048), so
+        // clicking a pill never moves another number.
+        var selectList = CatalogueKeyset.FacetSelectList(
             "s",
-            CatalogueHasFileFor(libraryId),
-            CatalogueUpgradeFor(libraryId),
-            CatalogueWantedIs(libraryId, WantedStatuses.Covered),
-            CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading),
-                CatalogueWantedIs(libraryId, WantedStatuses.Airing)));
+            CatalogueHasFileFor(),
+            CatalogueUpgradeFor(),
+            CatalogueWantedIs(WantedStatuses.Covered),
+            CatalogueWantedIs(WantedStatuses.Upcoming),
+            CatalogueWantedIs(WantedStatuses.Downloading),
+            CatalogueWantedIs(WantedStatuses.Airing));
 
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
             SELECT
-                SUM(CASE WHEN {monitoredArm} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {statusArm} AND s.monitored = 1 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {statusArm} AND s.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFileFor(libraryId), null, null, CatalogueWantedIs(libraryId, WantedStatuses.Upcoming), CatalogueWantedIs(libraryId, WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Airing)} THEN 1 ELSE 0 END)
+                {selectList}
             FROM series_entries s
             {wantedJoin}
             WHERE {where};

@@ -78,3 +78,11 @@ describe("knownStructuralMatch (#960)", () => {
     expect(knownStructuralMatch(item, "covered", "monitored", "lib-b")).toBe(false);
   });
 });
+
+describe("knownStructuralMatch, one title one pill (#1048)", () => {
+  it("never keeps an unmonitored title under a status pill", () => {
+    const ignored = makeItem("ignored", { monitored: false, wantedStatus: "missing", hasFile: false });
+    expect(knownStructuralMatch(ignored, "missing", "any", null)).toBe(false);
+    expect(knownStructuralMatch(ignored, "all", "unmonitored", null)).toBe(true);
+  });
+});

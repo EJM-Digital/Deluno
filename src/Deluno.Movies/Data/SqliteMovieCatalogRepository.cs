@@ -1091,7 +1091,7 @@ public sealed class SqliteMovieCatalogRepository(
             withSubtitles,
             nextPageToken,
             hasMore,
-            facets.TotalFor(status),
+            facets.TotalFor(status, query.Monitored),
             facets);
     }
 
@@ -1166,39 +1166,22 @@ public sealed class SqliteMovieCatalogRepository(
             CatalogueLibraryFilter(libraryId),
             CatalogueKeyset.CustomFilters(filters, MediaKind.Movie, "m", "release_year"));
 
-        // The two axes cross here.
-        //
-        // Every *state* count is taken within the monitoring scope you have
-        // chosen, so "Missing 3" under Unmonitored means three unmonitored
-        // titles are missing. The two *monitoring* counts are taken within the
-        // status scope, so the monitoring control can say how many of the
-        // Missing titles fall each side. One pass either way — the base WHERE
-        // is the search and the library, and each axis is a CASE arm.
-        var monitoredArm = CatalogueKeyset.Always(CatalogueKeyset.MonitoredFilter(monitored, "m"));
-        var statusArm = CatalogueKeyset.Always(CatalogueKeyset.StatusFilter(
-            status,
+        // Independent of the status pill and the monitoring filter (#1048), so
+        // clicking a pill never moves another number.
+        var selectList = CatalogueKeyset.FacetSelectList(
             "m",
             CatalogueHasFile(),
             CatalogueUpgrade(),
             CatalogueWantedIs(WantedStatuses.Covered),
             CatalogueWantedIs(WantedStatuses.Upcoming),
-                CatalogueWantedIs(WantedStatuses.Downloading),
-                CatalogueWantedIs(WantedStatuses.Airing)));
+            CatalogueWantedIs(WantedStatuses.Downloading),
+            CatalogueWantedIs(WantedStatuses.Airing));
 
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
             SELECT
-                SUM(CASE WHEN {monitoredArm} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {statusArm} AND m.monitored = 1 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {statusArm} AND m.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFile()} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFile(), null, null, CatalogueWantedIs(WantedStatuses.Upcoming), CatalogueWantedIs(WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgrade()} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Covered)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Downloading)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Airing)} THEN 1 ELSE 0 END)
+                {selectList}
             FROM movie_entries m
             {wantedJoin}
             WHERE {where};
