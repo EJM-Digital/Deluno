@@ -23,6 +23,23 @@ public sealed class BundledComponentsTests
         Assert.Equal(BundledComponentSpec.ProcessorCategory, weir.Category);
         Assert.Equal("AGPL-3.0", weir.Licence);
         Assert.Equal(9347, weir.DefaultPort);
+
+        // Weir's Setup only installs -- it must never be asked to start Weir
+        // itself (that hangs forever; see #968). Starting Weir and confirming
+        // it is ready are separate, explicit steps.
+        Assert.Equal("--silent", weir.SilentArgs);
+        Assert.Equal("%LocalAppData%\\Weir\\current\\Weir.exe", weir.PostInstallCommand);
+        Assert.Equal("--port 9347 --silent", weir.PostInstallArgs);
+        Assert.Equal("http://127.0.0.1:9347/ready", weir.ReadinessUrl);
+        Assert.Equal("ready", weir.ReadinessField);
+        Assert.Equal("true", weir.ReadinessValue);
+        Assert.Equal(60, weir.ReadinessTimeoutSeconds);
+
+        foreach (var client in specs.Where(s => s.Category == BundledComponentSpec.DownloadClientCategory))
+        {
+            Assert.Null(client.PostInstallCommand);
+            Assert.Null(client.ReadinessUrl);
+        }
     }
 
     [Fact]

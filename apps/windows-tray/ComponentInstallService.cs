@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using Deluno.Api.Network;
 
 namespace Deluno.Tray;
@@ -28,7 +29,9 @@ public enum ComponentInstallOutcome
     Installed,
     DownloadFailed,
     VerificationFailed,
-    InstallerFailed
+    InstallerFailed,
+    StartFailed,
+    ReadinessTimedOut
 }
 
 public sealed record ComponentInstallResult(string Kind, ComponentInstallOutcome Outcome, string Message);
@@ -51,18 +54,46 @@ public interface IProcessRunner
     Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken);
 }
 
+/// <summary>A process started without waiting for it to exit -- for a component whose post-install step is a long-running tray app, not an installer.</summary>
+public interface IStartedProcess
+{
+    bool HasExited { get; }
+
+    /// <summary>Valid only once <see cref="HasExited"/> is true.</summary>
+    int ExitCode { get; }
+}
+
+public interface IProcessStarter
+{
+    /// <summary>Starts <paramref name="path"/> with <paramref name="arguments"/> and returns immediately without waiting for it to exit, or null if it could not start.</summary>
+    IStartedProcess? Start(string path, string? arguments);
+}
+
+/// <summary>Polls a component's own readiness endpoint rather than waiting on its process tree, for a component (like Weir) that keeps running once it is ready.</summary>
+public interface IReadinessChecker
+{
+    /// <summary>One check of <paramref name="url"/>: true when its JSON body has <paramref name="field"/> equal to <paramref name="expectedValue"/>.</summary>
+    Task<bool> CheckAsync(string url, string field, string expectedValue, CancellationToken cancellationToken);
+}
+
 public sealed class ComponentInstallService(
     IInstalledProgramsReader? programs = null,
     IPortProbe? portProbe = null,
     IComponentDownloader? downloader = null,
     IAuthenticodeVerifier? signatures = null,
-    IProcessRunner? processes = null)
+    IProcessRunner? processes = null,
+    IProcessStarter? processStarter = null,
+    IReadinessChecker? readiness = null)
 {
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
+
     private readonly IInstalledProgramsReader _programs = programs ?? new RegistryInstalledProgramsReader();
     private readonly IPortProbe _portProbe = portProbe ?? new LoopbackPortProbe();
     private readonly IComponentDownloader _downloader = downloader ?? new HttpComponentDownloader();
     private readonly IAuthenticodeVerifier _signatures = signatures ?? new WindowsAuthenticodeVerifier();
     private readonly IProcessRunner _processes = processes ?? new RealProcessRunner();
+    private readonly IProcessStarter _processStarter = processStarter ?? new RealProcessStarter();
+    private readonly IReadinessChecker _readiness = readiness ?? new HttpReadinessChecker();
 
     /// <summary>Whether <paramref name="spec"/> is already on this machine, by uninstall entry.</summary>
     public bool IsAlreadyInstalled(BundledComponentSpec spec)
@@ -119,7 +150,65 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName}'s installer did not finish cleanly (exit code {exitCode?.ToString() ?? "none"}).");
         }
 
-        return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
+        if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
+        }
+
+        return await StartAndWaitForReadyAsync(spec, cancellationToken);
+    }
+
+    /// <summary>
+    /// For a component whose installer only installs -- Weir's Setup runs and
+    /// exits, it never starts Weir (#968) -- this starts the component's own
+    /// executable and confirms it is ready by polling its readiness endpoint,
+    /// rather than waiting on the process tree: the started process is a
+    /// long-running tray app that is still running once it is ready, not an
+    /// installer that exits when it finishes.
+    /// </summary>
+    private async Task<ComponentInstallResult> StartAndWaitForReadyAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        var command = Environment.ExpandEnvironmentVariables(spec.PostInstallCommand!);
+        var started = _processStarter.Start(command, spec.PostInstallArgs);
+        if (started is null)
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.StartFailed,
+                $"{spec.DisplayName} installed, but Deluno could not start it.");
+        }
+
+        if (string.IsNullOrWhiteSpace(spec.ReadinessUrl))
+        {
+            // No readiness endpoint configured: the best this can do is
+            // confirm the process did not exit immediately.
+            return started.HasExited
+                ? new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.StartFailed,
+                    $"{spec.DisplayName} installed, but exited immediately after starting (exit code {started.ExitCode}).")
+                : new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed and started.");
+        }
+
+        var timeout = TimeSpan.FromSeconds(spec.ReadinessTimeoutSeconds ?? 60);
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            if (started.HasExited)
+            {
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.StartFailed,
+                    $"{spec.DisplayName} exited before it finished starting (exit code {started.ExitCode}). Check its own log for why.");
+            }
+
+            if (await _readiness.CheckAsync(spec.ReadinessUrl, spec.ReadinessField ?? string.Empty, spec.ReadinessValue ?? string.Empty, cancellationToken))
+            {
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed and is ready.");
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.ReadinessTimedOut,
+                    $"{spec.DisplayName} started but did not report ready in time.");
+            }
+
+            await Task.Delay(ReadinessPollInterval, cancellationToken);
+        }
     }
 
     /// <summary>
@@ -266,6 +355,79 @@ public sealed class RealProcessRunner : IProcessRunner
         catch
         {
             // Already exited, or Windows refused the kill; nothing more this can do.
+        }
+    }
+}
+
+/// <summary>
+/// Starts a long-running component (Weir's own tray app) without waiting for
+/// it to exit -- it is not an installer, so there is nothing to wait for.
+/// Runs it directly (no shell) since it is a real executable path, not a
+/// document needing a file-type association.
+/// </summary>
+public sealed class RealProcessStarter : IProcessStarter
+{
+    public IStartedProcess? Start(string path, string? arguments)
+    {
+        try
+        {
+            var process = Process.Start(new ProcessStartInfo(path, arguments ?? string.Empty)
+            {
+                UseShellExecute = false
+            });
+            return process is null ? null : new RealStartedProcess(process);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed class RealStartedProcess(Process process) : IStartedProcess
+    {
+        public bool HasExited => process.HasExited;
+        public int ExitCode => process.HasExited ? process.ExitCode : -1;
+    }
+}
+
+/// <summary>Polls a readiness URL once per call; <see cref="ComponentInstallService"/> owns the retry loop and timeout.</summary>
+public sealed class HttpReadinessChecker : IReadinessChecker
+{
+    public async Task<bool> CheckAsync(string url, string field, string expectedValue, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var response = await http.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            if (!document.RootElement.TryGetProperty(field, out var value))
+            {
+                return false;
+            }
+
+            var actual = value.ValueKind switch
+            {
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.String => value.GetString() ?? string.Empty,
+                _ => value.GetRawText()
+            };
+            return string.Equals(actual, expectedValue, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 }

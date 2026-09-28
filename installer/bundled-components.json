@@ -126,9 +126,15 @@
     "sha256": null,
     "minimumBytes": 50000000,
     "mustBeSigned": false,
-    "silentArgs": "-- --port 9347",
+    "silentArgs": "--silent",
     "defaultPort": 9347,
     "uninstallDisplayNameHint": "Weir",
-    "note": "Weir is Deluno's own sibling product, not a third-party download client. Its Windows installer publishes SHA256SUMS.txt with every GitHub release, so its own release is checked against its own published hash rather than one pinned here."
+    "postInstallCommand": "%LocalAppData%\\Weir\\current\\Weir.exe",
+    "postInstallArgs": "--port 9347 --silent",
+    "readinessUrl": "http://127.0.0.1:9347/ready",
+    "readinessField": "ready",
+    "readinessValue": "true",
+    "readinessTimeoutSeconds": 60,
+    "note": "Weir is Deluno's own sibling product, not a third-party download client. Its Windows installer publishes SHA256SUMS.txt with every GitHub release, so its own release is checked against its own published hash rather than one pinned here. Per Weir's own docs/release.md ('Installing Weir from another program'): the Setup's --silent installs and exits (it does not start Weir); Weir.exe is then started separately as the installing user's tray app, not a service; and readiness is polled at /ready rather than waited on via the process tree, because Weir.exe keeps running after it is ready."
   }
 }
