@@ -808,22 +808,11 @@ export function SearchCyclesPage() {
         </div>
       </ListCard> : null}
 
-      {view === "failed" ? <ListCard title="Failed downloads" count={`After ${cleanup.strikeThreshold || 3} strikes on the same release`}>
+      {view === "failed" ? <ListCard title="Failed downloads">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <Field label="Act after this many strikes" help="A strike is each half hour a download stays stalled or has nothing arriving. It starts again once the download moves." className="max-w-[16rem]">
-            <PresetField
-              inputType="number"
-              value={cleanup.strikeThreshold}
-              onChange={(value) => setCleanup((current) => ({ ...current, strikeThreshold: value }))}
-              options={[
-                { value: "2", label: "2 strikes" },
-                { value: "3", label: "3 strikes" },
-                { value: "5", label: "5 strikes" }
-              ]}
-              customLabel="Custom"
-              customPlaceholder="1–20"
-            />
-          </Field>
+          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+            Strikes, timers and per-kind conditions now live on their own rules in Settings -&gt; Download health. What happens once a rule's strikes run out, for anything still using this platform-wide default, is set below.
+          </p>
           <div className="grid gap-[var(--grid-gap)] sm:grid-cols-2">
             <SwitchRow label="Block this release" description="Refuse it on the blocklist, so searches pick another release. It can be lifted there." checked={cleanup.blockRelease} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, blockRelease: checked }))} />
             <SwitchRow label="Search for a replacement" description="Queue one bounded replacement search using the normal budget." checked={cleanup.queueReplacement} onCheckedChange={(checked) => setCleanup((current) => ({ ...current, queueReplacement: checked }))} className="sm:border-l sm:border-hairline sm:pl-[var(--grid-gap)]" />

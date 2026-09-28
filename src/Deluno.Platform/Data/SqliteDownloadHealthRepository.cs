@@ -258,7 +258,9 @@ public sealed class SqliteDownloadHealthRepository(
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
         string clientId,
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowReset = true,
+        long minimumGainBytes = 0)
     {
         var result = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(clientId) || observations.Count == 0)
@@ -292,9 +294,17 @@ public sealed class SqliteDownloadHealthRepository(
             // stalled the instant it is seen. Otherwise only an actual gain in
             // bytes moves the clock; equal or fewer bytes (a paused torrent, a
             // recheck) leaves it exactly where it was.
-            var lastIncreaseUtc = existing is null || downloadedBytes > existing.DownloadedBytes
-                ? now
-                : existing.LastIncreaseUtc;
+            //
+            // #951: once a prior record exists, a rule with "reset strikes on
+            // progress" turned off (allowReset false) never lets a further
+            // gain move the clock again - the spell keeps accruing strikes
+            // through a trickle instead of restarting every time a byte
+            // arrives. A rule with a configured minimum (minimumGainBytes)
+            // requires a gain at least that large to count; a smaller trickle
+            // is not "real" progress for that rule's purposes.
+            var gain = existing is null ? long.MaxValue : downloadedBytes - existing.DownloadedBytes;
+            var isRealProgress = existing is null || (allowReset && gain >= Math.Max(1, minimumGainBytes));
+            var lastIncreaseUtc = isRealProgress ? now : existing!.LastIncreaseUtc;
             var updated = new DownloadProgressRecord(clientId.Trim(), trimmedId, downloadedBytes, lastIncreaseUtc, now);
             if (index >= 0) records[index] = updated; else records.Add(updated);
             result[trimmedId] = lastIncreaseUtc;

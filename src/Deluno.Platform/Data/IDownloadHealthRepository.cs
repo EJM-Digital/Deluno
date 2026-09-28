@@ -66,10 +66,23 @@ public interface IDownloadHealthRepository
     /// slow (any gain, however small) never reaches the stall window, and one
     /// that has genuinely stopped keeps the clock it had before a restart.
     /// </summary>
+    /// <summary>
+    /// <paramref name="allowReset"/> is the no-progress rule's own
+    /// <see cref="DownloadHealthRule.ResetStrikesOnProgress"/> (#951): false
+    /// means a gain never moves the clock at all, once one has been
+    /// recorded, so the spell keeps accruing strikes even through a small
+    /// trickle. <paramref name="minimumGainBytes"/> is that same rule's
+    /// <see cref="DownloadHealthRule.ResetStrikesMinimumProgressBytes"/> - a
+    /// gain smaller than this does not count as "real" progress either. Both
+    /// default to the original behaviour (any gain always resets) for a
+    /// caller that predates #951.
+    /// </summary>
     Task<IReadOnlyDictionary<string, DateTimeOffset>> RecordDownloadProgressAsync(
         string clientId,
         IReadOnlyList<(string QueueItemId, long DownloadedBytes)> observations,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool allowReset = true,
+        long minimumGainBytes = 0);
 
     /// <summary>
     /// The configured download-health rules (#905). The first call on an

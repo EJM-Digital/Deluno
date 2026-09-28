@@ -12,12 +12,19 @@
  * "Dangerous or junk file" (#816/#879) is offered here too, once a client
  * adapter can list what is actually inside a download - it checks that
  * listing against the content blocklist configured on Search & Cycles ->
- * Failed downloads, rather than reading a threshold of its own. "Magnet
- * stuck fetching metadata", from the same #905 wishlist, is still not
- * offered: no client adapter reports that telemetry yet (see
- * Deluno.Contracts.DownloadHealthRuleKinds). Also on this page: the ignore
- * list (#817) and purge-all-strikes (#826), both part of the same engine
- * rather than separate screens.
+ * Failed downloads, rather than reading a threshold of its own.
+ *
+ * #951 adds the last two of #905's original wishlist: "Client-reported
+ * failure" gives the always-on "client-stalled" finding its own strikes,
+ * timer and action, and "Magnet stuck fetching metadata" watches
+ * qBittorrent's own metaDL state - the only client adapter that reports it
+ * today, so this rule never trips for a download on another client. #951
+ * also adds three options to "Too slow" (a maximum total time regardless of
+ * speed, a size above which the rule never applies, and skipping while the
+ * client's alternate speed limit is on) and a minimum-gain option to "Reset
+ * strikes on progress". Also on this page: the ignore list (#817) and
+ * purge-all-strikes (#826), both part of the same engine rather than
+ * separate screens.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -68,6 +75,14 @@ const RULE_KIND_COPY: Record<string, { label: string; description: string; thres
   "dangerous-file": {
     label: "Dangerous or junk file",
     description: "A file inside the download matches the content blocklist (Search & Cycles -> Failed downloads -> Content blocklist). One confirmed match is enough - always a single instant strike, regardless of the strikes and timer below."
+  },
+  "client-failure": {
+    label: "Client-reported failure",
+    description: "The download client itself reported this item stalled or errored. Deluno already shows this on every download, whatever rules are configured; turning this rule on gives that same signal its own strikes, timer and action instead of the platform-wide default on Search & Cycles -> Failed downloads."
+  },
+  "magnet-metadata": {
+    label: "Magnet stuck fetching metadata",
+    description: "A magnet link that has not resolved its own name, file list or size yet. Only qBittorrent reports this today - this rule never trips for a download on another client."
   }
 };
 
@@ -386,6 +401,14 @@ interface RuleForm {
   actionPreset: string;
   threshold: string;
   privacyScope: string;
+  /** "Too slow" only (#951, G157). Empty string means "no ceiling". */
+  tooSlowMaxTotalMinutes: string;
+  /** "Too slow" only (#951, G157), in MB for the field - converted to bytes on save. Empty string means "no ceiling". */
+  ignoreAboveSizeMb: string;
+  /** "Too slow" only (#951). */
+  skipWhileAlternateSpeedLimitOn: boolean;
+  /** #951, in MB for the field - converted to bytes on save. Empty string means "any amount". */
+  resetStrikesMinimumProgressMb: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -402,7 +425,11 @@ function emptyForm(kind: string): RuleForm {
     resetStrikesOnProgress: true,
     actionPreset: "just-tell-me",
     threshold: "0",
-    privacyScope: "both"
+    privacyScope: "both",
+    tooSlowMaxTotalMinutes: "",
+    ignoreAboveSizeMb: "",
+    skipWhileAlternateSpeedLimitOn: false,
+    resetStrikesMinimumProgressMb: ""
   };
 }
 
@@ -418,7 +445,11 @@ function formFrom(rule: DownloadHealthRule): RuleForm {
     resetStrikesOnProgress: rule.resetStrikesOnProgress,
     actionPreset: rule.actionPreset,
     threshold: String(rule.threshold),
-    privacyScope: rule.privacyScope
+    privacyScope: rule.privacyScope,
+    tooSlowMaxTotalMinutes: rule.tooSlowMaxTotalMinutes ? String(rule.tooSlowMaxTotalMinutes) : "",
+    ignoreAboveSizeMb: rule.ignoreAboveSizeBytes ? String(Math.round(rule.ignoreAboveSizeBytes / 1_000_000)) : "",
+    skipWhileAlternateSpeedLimitOn: rule.skipWhileAlternateSpeedLimitOn,
+    resetStrikesMinimumProgressMb: rule.resetStrikesMinimumProgressBytes ? String(Math.round(rule.resetStrikesMinimumProgressBytes / 1_000_000)) : ""
   };
 }
 
@@ -502,7 +533,11 @@ export function SettingsDownloadHealthPage() {
         resetStrikesOnProgress: form.resetStrikesOnProgress,
         actionPreset: form.actionPreset,
         threshold: Number(form.threshold || 0),
-        privacyScope: form.privacyScope
+        privacyScope: form.privacyScope,
+        tooSlowMaxTotalMinutes: form.tooSlowMaxTotalMinutes.trim() ? Number(form.tooSlowMaxTotalMinutes) : null,
+        ignoreAboveSizeBytes: form.ignoreAboveSizeMb.trim() ? Math.round(Number(form.ignoreAboveSizeMb) * 1_000_000) : null,
+        skipWhileAlternateSpeedLimitOn: form.skipWhileAlternateSpeedLimitOn,
+        resetStrikesMinimumProgressBytes: form.resetStrikesMinimumProgressMb.trim() ? Math.round(Number(form.resetStrikesMinimumProgressMb) * 1_000_000) : null
       });
       const response = await authedFetch(
         `/api/download-health/rules/${mode.kind === "edit" ? mode.id : "new"}`,
@@ -720,6 +755,28 @@ export function SettingsDownloadHealthPage() {
               </div>
             </Field>
           ) : null}
+          {form.kind === "too-slow" ? (
+            <>
+              <Field label="Maximum total time" error={errors.tooSlowMaxTotalMinutes} help="Optional. Once a download has spent this many minutes in the queue in total, this rule trips whatever its current speed - leave blank for no ceiling.">
+                <div className="flex items-center gap-2">
+                  <Input type="number" min="1" step="1" placeholder="No ceiling" value={form.tooSlowMaxTotalMinutes} onChange={(event) => setForm((current) => ({ ...current, tooSlowMaxTotalMinutes: event.target.value }))} />
+                  <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">min</span>
+                </div>
+              </Field>
+              <Field label="Ignore above this size" error={errors.ignoreAboveSizeMb} help="Optional. A download larger than this never trips this rule - a large release is expected to take longer. Leave blank for no ceiling.">
+                <div className="flex items-center gap-2">
+                  <Input type="number" min="0" step="1" placeholder="No ceiling" value={form.ignoreAboveSizeMb} onChange={(event) => setForm((current) => ({ ...current, ignoreAboveSizeMb: event.target.value }))} />
+                  <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+                </div>
+              </Field>
+              <SwitchRow
+                label="Skip while the client's alternate speed limit is on"
+                description="A download you deliberately throttled is not unhealthy. Only qBittorrent reports whether this is on; this switch has no effect on any other client."
+                checked={form.skipWhileAlternateSpeedLimitOn}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, skipWhileAlternateSpeedLimitOn: checked }))}
+              />
+            </>
+          ) : null}
         </DrawerSection>
 
         <DrawerSection title="Strikes & timer">
@@ -740,6 +797,14 @@ export function SettingsDownloadHealthPage() {
             checked={form.resetStrikesOnProgress}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, resetStrikesOnProgress: checked }))}
           />
+          {form.resetStrikesOnProgress ? (
+            <Field label="Minimum progress to reset" error={errors.resetStrikesMinimumProgressMb} help="Optional. A gain smaller than this does not reset the spell - leave blank to let any amount of progress reset it, as above.">
+              <div className="flex items-center gap-2">
+                <Input type="number" min="0" step="1" placeholder="Any amount" value={form.resetStrikesMinimumProgressMb} onChange={(event) => setForm((current) => ({ ...current, resetStrikesMinimumProgressMb: event.target.value }))} />
+                <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
+              </div>
+            </Field>
+          ) : null}
         </DrawerSection>
 
         <DrawerSection title="Scope">
@@ -828,7 +893,11 @@ function sameForm(left: RuleForm, right: RuleForm) {
     left.resetStrikesOnProgress === right.resetStrikesOnProgress &&
     left.actionPreset === right.actionPreset &&
     left.threshold === right.threshold &&
-    left.privacyScope === right.privacyScope;
+    left.privacyScope === right.privacyScope &&
+    left.tooSlowMaxTotalMinutes === right.tooSlowMaxTotalMinutes &&
+    left.ignoreAboveSizeMb === right.ignoreAboveSizeMb &&
+    left.skipWhileAlternateSpeedLimitOn === right.skipWhileAlternateSpeedLimitOn &&
+    left.resetStrikesMinimumProgressMb === right.resetStrikesMinimumProgressMb;
 }
 
 function validate(form: RuleForm): Record<string, string> {
@@ -845,6 +914,18 @@ function validate(form: RuleForm): Record<string, string> {
   if (form.kind === "too-slow" && Number(form.threshold) <= 0) errors.threshold = "Set a speed floor above zero.";
   if (form.kind === "low-peers" && Number(form.threshold) < 1) errors.threshold = "Set a peer floor of at least 1.";
   if (form.kind === "dead-torrent" && (Number(form.threshold) < 0 || Number(form.threshold) > 1440)) errors.threshold = "The grace period must be between 0 minutes and 24 hours.";
+  if (form.kind === "too-slow" && form.tooSlowMaxTotalMinutes.trim()) {
+    const maxTotalMinutes = Number(form.tooSlowMaxTotalMinutes);
+    if (!Number.isFinite(maxTotalMinutes) || maxTotalMinutes < 1 || maxTotalMinutes > 43_200) {
+      errors.tooSlowMaxTotalMinutes = "The maximum total time must be between 1 minute and 30 days.";
+    }
+  }
+  if (form.kind === "too-slow" && form.ignoreAboveSizeMb.trim() && Number(form.ignoreAboveSizeMb) < 0) {
+    errors.ignoreAboveSizeMb = "The ignore-above size cannot be negative.";
+  }
+  if (form.resetStrikesMinimumProgressMb.trim() && Number(form.resetStrikesMinimumProgressMb) < 0) {
+    errors.resetStrikesMinimumProgressMb = "The minimum progress amount cannot be negative.";
+  }
   return errors;
 }
 

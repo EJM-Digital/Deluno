@@ -327,6 +327,18 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.JustTellMe,
         CreatedUtc: DateTimeOffset.MinValue, UpdatedUtc: DateTimeOffset.MinValue, Threshold: kbps);
 
+    private static DownloadHealthRule ClientFailureRule() => new(
+        Id: "test-client-failure", Kind: DownloadHealthRuleKinds.ClientFailure, Enabled: true, StrikeLimit: 3,
+        TimerMinutes: 30, AppliesTo: DownloadHealthAppliesTo.Both, MinCompletionPercent: 0, MaxCompletionPercent: 100,
+        ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.Replace,
+        CreatedUtc: DateTimeOffset.MinValue, UpdatedUtc: DateTimeOffset.MinValue);
+
+    private static DownloadHealthRule MagnetMetadataRule(int timerMinutes) => new(
+        Id: "test-magnet-metadata", Kind: DownloadHealthRuleKinds.MagnetMetadata, Enabled: true, StrikeLimit: 3,
+        TimerMinutes: timerMinutes, AppliesTo: DownloadHealthAppliesTo.Both, MinCompletionPercent: 0, MaxCompletionPercent: 100,
+        ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.JustTellMe,
+        CreatedUtc: DateTimeOffset.MinValue, UpdatedUtc: DateTimeOffset.MinValue);
+
     private static DownloadHealthRule LowPeersRule(int minPeers, int timerMinutes) => new(
         Id: "test-low-peers", Kind: DownloadHealthRuleKinds.LowPeers, Enabled: true, StrikeLimit: 3,
         TimerMinutes: timerMinutes, AppliesTo: DownloadHealthAppliesTo.Both, MinCompletionPercent: 0, MaxCompletionPercent: 100,
@@ -339,7 +351,11 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         ResetStrikesOnProgress: true, ActionPreset: DownloadHealthActionPresets.JustTellMe,
         CreatedUtc: DateTimeOffset.MinValue, UpdatedUtc: DateTimeOffset.MinValue, Threshold: graceMinutes);
 
-    private static IReadOnlyList<RecoveryHealthFinding> Evaluate(DownloadQueueItem item, IReadOnlyList<DownloadHealthRule> rules)
+    private static IReadOnlyList<RecoveryHealthFinding> Evaluate(
+        DownloadQueueItem item,
+        IReadOnlyList<DownloadHealthRule> rules,
+        bool alternateSpeedLimitOn = false,
+        bool isFetchingMetadata = false)
         => Evaluator.Evaluate(
             new RecoveryQueueSnapshot(
                 item.Status,
@@ -350,10 +366,14 @@ public sealed class DownloadHealthRulesAreConfigurableTests
                 item.EtaSeconds,
                 item.ReleaseName,
                 item.Peers,
+                IsSetupProblem: item.IsSetupProblem,
                 ProgressPercent: item.Progress,
                 IsUsenetProtocol: string.Equals(item.Protocol, "sabnzbd", StringComparison.OrdinalIgnoreCase),
                 IsPrivate: item.IsPrivate,
-                TrackerStatus: item.TrackerStatus),
+                TrackerStatus: item.TrackerStatus,
+                SizeBytes: item.SizeBytes,
+                AlternateSpeedLimitOn: alternateSpeedLimitOn,
+                IsFetchingMetadata: isFetchingMetadata),
             CapturedUtc,
             rules);
 
@@ -364,7 +384,10 @@ public sealed class DownloadHealthRulesAreConfigurableTests
         double progressPercent = 50,
         bool isUsenet = false,
         bool? isPrivate = null,
-        string trackerStatus = DownloadTrackerStatuses.Unknown)
+        string trackerStatus = DownloadTrackerStatuses.Unknown,
+        string status = DownloadQueueStatuses.Downloading,
+        string? errorMessage = null,
+        long sizeBytes = 1_000_000_000)
         => new(
             Id: "queue-1",
             ClientId: "client-1",
@@ -374,17 +397,181 @@ public sealed class DownloadHealthRulesAreConfigurableTests
             Title: "Example Movie",
             ReleaseName: "Example.Movie.2026.1080p.mkv",
             Category: "movies",
-            Status: DownloadQueueStatuses.Downloading,
+            Status: status,
             Progress: progressPercent,
             SpeedMbps: speedMbps,
             EtaSeconds: 600,
-            SizeBytes: 1_000_000_000,
+            SizeBytes: sizeBytes,
             DownloadedBytes: 500_000_000,
             Peers: peers,
             IndexerName: "Test indexer",
-            ErrorMessage: null,
+            ErrorMessage: errorMessage,
             AddedUtc: addedUtc ?? CapturedUtc.AddMinutes(-10),
             SourcePath: "D:\\downloads\\example.mkv",
             IsPrivate: isPrivate,
             TrackerStatus: trackerStatus);
+
+    // #951: client-failure rule.
+    [Fact]
+    public void Client_failure_rule_is_off_by_default()
+    {
+        var findings = Evaluate(CreateItem(status: DownloadQueueStatuses.Stalled, errorMessage: "Tracker timed out."), DownloadHealthRules.Defaults);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.ClientFailure);
+        // The unconditional, non-rule finding still shows regardless (existing behaviour, unchanged).
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
+    }
+
+    [Fact]
+    public void Client_failure_rule_enabled_gives_the_same_signal_its_own_strikes_and_action()
+    {
+        var rules = new[] { ClientFailureRule() };
+        var findings = Evaluate(CreateItem(status: DownloadQueueStatuses.Stalled, errorMessage: "Tracker timed out."), rules);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.ClientFailure);
+        Assert.Equal("test-client-failure", finding.RuleId);
+        Assert.Equal(DownloadHealthActionPresets.Replace, finding.RuleActionPreset);
+        Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
+        // Still also has the unconditional finding, so the new rule never replaces the old signal.
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.ClientStalled);
+    }
+
+    [Fact]
+    public void Client_failure_rule_never_fires_for_a_setup_problem()
+    {
+        var rules = new[] { ClientFailureRule() };
+        var item = CreateItem(status: DownloadQueueStatuses.Stalled, errorMessage: "Disk full.") with { IsSetupProblem = true };
+        var findings = Evaluate(item, rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.ClientFailure);
+    }
+
+    // #951: magnet-stuck-fetching-metadata rule.
+    [Fact]
+    public void Magnet_metadata_rule_is_off_by_default()
+    {
+        var findings = Evaluate(CreateItem(addedUtc: CapturedUtc.AddMinutes(-60)), DownloadHealthRules.Defaults, isFetchingMetadata: true);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.MagnetMetadata);
+    }
+
+    [Fact]
+    public void Magnet_metadata_rule_flags_a_magnet_still_fetching_metadata_past_its_timer()
+    {
+        var rules = new[] { MagnetMetadataRule(timerMinutes: 30) };
+        var findings = Evaluate(CreateItem(addedUtc: CapturedUtc.AddMinutes(-31)), rules, isFetchingMetadata: true);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == DownloadHealthStrikes.MagnetMetadata);
+        Assert.True(DownloadHealthStrikes.Counts(finding.Kind));
+    }
+
+    [Fact]
+    public void Magnet_metadata_rule_leaves_an_ordinary_download_alone()
+    {
+        var rules = new[] { MagnetMetadataRule(timerMinutes: 30) };
+        var findings = Evaluate(CreateItem(addedUtc: CapturedUtc.AddMinutes(-31)), rules, isFetchingMetadata: false);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.MagnetMetadata);
+    }
+
+    [Fact]
+    public void Magnet_metadata_rule_never_applies_to_usenet()
+    {
+        var rules = new[] { MagnetMetadataRule(timerMinutes: 1) };
+        var findings = Evaluate(CreateItem(addedUtc: CapturedUtc.AddMinutes(-31), isUsenet: true), rules, isFetchingMetadata: true);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.MagnetMetadata);
+    }
+
+    // #951: "too slow" options.
+    [Fact]
+    public void Too_slow_max_total_time_trips_even_when_the_speed_floor_is_not_breached()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1, timerMinutes: 30) with { TooSlowMaxTotalMinutes = 60 } };
+        // Comfortably above the 1 KB/s floor, so only the total-time ceiling can trip this.
+        var findings = Evaluate(CreateItem(speedMbps: 5, addedUtc: CapturedUtc.AddMinutes(-61)), rules);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Too_slow_max_total_time_leaves_a_download_alone_before_the_ceiling()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1, timerMinutes: 30) with { TooSlowMaxTotalMinutes = 60 } };
+        var findings = Evaluate(CreateItem(speedMbps: 5, addedUtc: CapturedUtc.AddMinutes(-30)), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Too_slow_ignore_above_size_exempts_a_large_download()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1_000_000, timerMinutes: 30) with { IgnoreAboveSizeBytes = 2_000_000_000 } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), sizeBytes: 5_000_000_000), rules);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Too_slow_ignore_above_size_still_matches_a_download_at_or_under_the_ceiling()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1_000_000, timerMinutes: 30) with { IgnoreAboveSizeBytes = 2_000_000_000 } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60), sizeBytes: 1_000_000_000), rules);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Too_slow_skips_entirely_while_the_clients_alternate_speed_limit_is_on()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1_000_000, timerMinutes: 30) with { SkipWhileAlternateSpeedLimitOn = true } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60)), rules, alternateSpeedLimitOn: true);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    [Fact]
+    public void Too_slow_still_applies_when_the_alternate_speed_limit_is_off()
+    {
+        var rules = new[] { TooSlowRule(kbps: 1_000_000, timerMinutes: 30) with { SkipWhileAlternateSpeedLimitOn = true } };
+        var findings = Evaluate(CreateItem(speedMbps: 0.001, addedUtc: CapturedUtc.AddMinutes(-60)), rules, alternateSpeedLimitOn: false);
+
+        Assert.Contains(findings, finding => finding.Kind == DownloadHealthStrikes.LowSpeed);
+    }
+
+    // #951: a 0% download says why.
+    [Fact]
+    public void Zero_percent_download_says_no_bytes_have_arrived()
+    {
+        var findings = Evaluate(CreateItem(speedMbps: 0, progressPercent: 0, addedUtc: CapturedUtc.AddMinutes(-31)), []);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == "zero-percent-download");
+        Assert.Contains("No bytes have arrived", finding.Evidence);
+    }
+
+    [Fact]
+    public void Zero_percent_download_says_it_is_still_fetching_metadata_when_that_is_the_reason()
+    {
+        var findings = Evaluate(CreateItem(speedMbps: 0, progressPercent: 0, addedUtc: CapturedUtc.AddMinutes(-31)), [], isFetchingMetadata: true);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == "zero-percent-download");
+        Assert.Contains("fetching the torrent's own metadata", finding.Evidence);
+    }
+
+    [Fact]
+    public void Zero_percent_download_says_no_peers_are_connected_when_that_is_the_reason()
+    {
+        var findings = Evaluate(CreateItem(speedMbps: 0, progressPercent: 0, peers: 0, addedUtc: CapturedUtc.AddMinutes(-31)), []);
+
+        var finding = Assert.Single(findings, finding => finding.Kind == "zero-percent-download");
+        Assert.Contains("No peers connected", finding.Evidence);
+    }
+
+    [Fact]
+    public void A_download_making_any_progress_never_raises_the_zero_percent_finding()
+    {
+        var findings = Evaluate(CreateItem(speedMbps: 1, progressPercent: 1, addedUtc: CapturedUtc.AddMinutes(-31)), []);
+
+        Assert.DoesNotContain(findings, finding => finding.Kind == "zero-percent-download");
+    }
 }

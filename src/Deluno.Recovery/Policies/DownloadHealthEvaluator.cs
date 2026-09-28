@@ -50,6 +50,26 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 RecommendedAction: "Inspect the client error, then use Recheck or Resume if the client supports it.",
                 CanSafelyRetry: true,
                 CanSafelyRemove: false));
+
+            // #951 (off by default, #936): the same client-reported failure as
+            // the unconditional finding just above, but only struck through
+            // the rule engine once a person configures this rule's own
+            // strikes, timer, scope and action. The unconditional finding
+            // above is untouched - it still shows, and still falls back to
+            // the platform-wide strike threshold on Search & Cycles - so
+            // nothing about an existing install's behaviour changes merely
+            // because this kind now exists.
+            var clientFailure = MatchRule(rules, DownloadHealthRuleKinds.ClientFailure, item);
+            if (clientFailure is not null)
+            {
+                findings.Add(RuleFinding(
+                    clientFailure,
+                    "critical",
+                    DownloadHealthStrikes.ClientFailure,
+                    "Download client reported this item as stalled or errored.",
+                    string.IsNullOrWhiteSpace(item.ErrorMessage) ? $"Queue status: {item.Status}." : item.ErrorMessage,
+                    "Deluno can act on this rule's own schedule - check its configured action before relying on it."));
+            }
         }
 
         if (item.Status == "importFailed")
@@ -106,19 +126,57 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         // Off by default (#659): a person opts into a sharper floor than "zero
         // throughput" once they know their own swarms - a download crawling
         // under a few KB/s for an hour is, for them, as good as stalled.
+        //
+        // #951 adds three options, all opt-in and all null/false by default
+        // so an existing "too slow" rule keeps behaving exactly as before:
+        // a hard ceiling on total time in queue regardless of speed
+        // (TooSlowMaxTotalMinutes), a size above which this rule never
+        // applies at all (IgnoreAboveSizeBytes, parity sheet G157), and
+        // skipping entirely while the client's own alternate/scheduled speed
+        // limit is on (SkipWhileAlternateSpeedLimitOn - a deliberately
+        // throttled download is not unhealthy).
         var tooSlow = MatchRule(rules, DownloadHealthRuleKinds.TooSlow, item);
         if (tooSlow is not null &&
             item.Status == "downloading" &&
-            item.SpeedMbps * 1000 < tooSlow.Threshold &&
-            capturedUtc - item.AddedUtc >= tooSlow.Timer)
+            !(tooSlow.SkipWhileAlternateSpeedLimitOn && item.AlternateSpeedLimitOn) &&
+            !(tooSlow.IgnoreAboveSizeBytes is { } ignoreAboveSize && ignoreAboveSize > 0 && item.SizeBytes > ignoreAboveSize))
+        {
+            var elapsed = capturedUtc - item.AddedUtc;
+            var underFloorTooLong = item.SpeedMbps * 1000 < tooSlow.Threshold && elapsed >= tooSlow.Timer;
+            var overMaxTotalTime = tooSlow.TooSlowMaxTotalMinutes is { } maxTotalMinutes &&
+                maxTotalMinutes > 0 &&
+                elapsed >= TimeSpan.FromMinutes(maxTotalMinutes);
+
+            if (underFloorTooLong || overMaxTotalTime)
+            {
+                findings.Add(RuleFinding(
+                    tooSlow,
+                    "warning",
+                    DownloadHealthStrikes.LowSpeed,
+                    "This download is slower than the configured floor.",
+                    underFloorTooLong
+                        ? $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, for at least {tooSlow.Timer.TotalMinutes:0} minutes."
+                        : $"Still downloading after {elapsed.TotalMinutes:0} minutes, past its {tooSlow.TooSlowMaxTotalMinutes:0}-minute maximum total time, whatever its current speed.",
+                    "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
+            }
+        }
+
+        // #951, qBittorrent only (its own metaDL state): a magnet that has
+        // not resolved its own name, file list or size yet. Off by default
+        // (#936); never applies to Usenet, which has no magnets.
+        var magnetMetadata = MatchRule(rules, DownloadHealthRuleKinds.MagnetMetadata, item);
+        if (magnetMetadata is not null &&
+            !item.IsUsenetProtocol &&
+            item.IsFetchingMetadata &&
+            capturedUtc - item.AddedUtc >= magnetMetadata.Timer)
         {
             findings.Add(RuleFinding(
-                tooSlow,
+                magnetMetadata,
                 "warning",
-                DownloadHealthStrikes.LowSpeed,
-                "This download is slower than the configured floor.",
-                $"{item.SpeedMbps * 1000:0.#} KB/s, under {tooSlow.Threshold:0} KB/s, for at least {tooSlow.Timer.TotalMinutes:0} minutes.",
-                "Check the indexer's health and the client's connection, then Resume or Recheck if appropriate."));
+                DownloadHealthStrikes.MagnetMetadata,
+                "This magnet has not finished fetching its metadata.",
+                $"Still fetching metadata after at least {magnetMetadata.Timer.TotalMinutes:0} minutes.",
+                "The magnet's DHT/peer exchange may be unreachable; a replacement search may find a direct torrent instead."));
         }
 
         // Off by default (#659): the same idea for peer/seeder count - a
@@ -192,6 +250,26 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
                 RuleTimerMinutes: 1));
         }
 
+        // #951: a download sitting at 0% always says why, whatever rules are
+        // configured - the same always-on treatment as "client-stalled"
+        // above and "excessive-eta" below, never gated behind a switch,
+        // because a person should never have to guess why nothing has
+        // arrived. DefaultWindow (30 minutes) is the same grace a freshly
+        // added download already gets elsewhere before anything is said.
+        if (item.Status == "downloading" &&
+            item.ProgressPercent <= 0 &&
+            capturedUtc - item.AddedUtc >= DownloadHealthStrikes.DefaultWindow)
+        {
+            findings.Add(new(
+                Severity: "warning",
+                Kind: "zero-percent-download",
+                Summary: "This download is still at 0%.",
+                Evidence: ZeroPercentEvidence(item, capturedUtc),
+                RecommendedAction: "Check the indexer/client connection, then Resume or Recheck if appropriate; a replacement search may do better.",
+                CanSafelyRetry: true,
+                CanSafelyRemove: false));
+        }
+
         // Only a download still downloading has a completion time. qBittorrent
         // reports 8640000 seconds, its "never", for one that is finished and
         // seeding, and every finished torrent was flagged (#523).
@@ -249,6 +327,23 @@ public sealed class DownloadHealthEvaluator : IRecoveryHealthEvaluator
         }
 
         return findings;
+    }
+
+    /// <summary>#951: the plain-English reason behind a 0% download, from whichever signal Deluno actually has for it.</summary>
+    private static string ZeroPercentEvidence(RecoveryQueueSnapshot item, DateTimeOffset capturedUtc)
+    {
+        var minutes = (capturedUtc - item.AddedUtc).TotalMinutes;
+        if (item.IsFetchingMetadata)
+        {
+            return $"Still fetching the torrent's own metadata after {minutes:0} minutes; no data can arrive until that finishes.";
+        }
+
+        if (!item.IsUsenetProtocol && item.Peers <= 0)
+        {
+            return $"No peers connected after {minutes:0} minutes.";
+        }
+
+        return $"No bytes have arrived after {minutes:0} minutes.";
     }
 
     /// <summary>

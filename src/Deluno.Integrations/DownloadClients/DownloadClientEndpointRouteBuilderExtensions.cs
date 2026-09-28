@@ -80,7 +80,11 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 CreatedUtc: now,
                 UpdatedUtc: now,
                 Threshold: request.Threshold,
-                PrivacyScope: request.PrivacyScope ?? DownloadHealthPrivacyScopes.Both);
+                PrivacyScope: request.PrivacyScope ?? DownloadHealthPrivacyScopes.Both,
+                TooSlowMaxTotalMinutes: request.TooSlowMaxTotalMinutes,
+                IgnoreAboveSizeBytes: request.IgnoreAboveSizeBytes,
+                SkipWhileAlternateSpeedLimitOn: request.SkipWhileAlternateSpeedLimitOn,
+                ResetStrikesMinimumProgressBytes: request.ResetStrikesMinimumProgressBytes);
 
             var legacy = await settingsRepository.GetAsync(cancellationToken);
             var (rules, error) = await platformRepository.SaveDownloadHealthRuleAsync(candidate, legacy, cancellationToken);
@@ -505,7 +509,11 @@ public sealed record SaveDownloadHealthRuleRequest(
     bool ResetStrikesOnProgress,
     string? ActionPreset,
     double Threshold,
-    string? PrivacyScope = null);
+    string? PrivacyScope = null,
+    int? TooSlowMaxTotalMinutes = null,
+    long? IgnoreAboveSizeBytes = null,
+    bool SkipWhileAlternateSpeedLimitOn = false,
+    long? ResetStrikesMinimumProgressBytes = null);
 
 public sealed record AddDownloadHealthIgnoreEntryRequest(
     string? Hash,

@@ -354,34 +354,40 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             // #811: availability/last_activity/completion_on, where qBittorrent reports them.
             Availability: item.Availability,
             LastActivityUtc: FromUnixOrNull(item.LastActivity),
-            CompletionUtc: FromUnixOrNull(item.CompletionOn)))
+            CompletionUtc: FromUnixOrNull(item.CompletionOn),
+            // #951: qBittorrent's own metaDL state - a magnet that has not
+            // resolved its own metadata (name, file list, size) yet. NormalizeStatus
+            // maps metaDL to Downloading (it has no "fetching metadata" status of
+            // its own), so this is read from the raw state string directly.
+            IsFetchingMetadata: string.Equals(item.State, "metaDL", StringComparison.OrdinalIgnoreCase)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, cancellationToken);
+        var (freeSpaceBytes, alternateSpeedLimitEnabled) = await GetServerStateAsync(http, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
     }
 
     /// <summary>
-    /// <c>server_state.free_space_on_disk</c> from qBittorrent's sync call
-    /// (#909) -- a second, cheap request rather than folding this into
-    /// <c>torrents/info</c>, which has no such field. A client that will not
-    /// answer this at all (an old version, or a momentary hiccup) reports
-    /// nothing rather than a false low-space warning.
+    /// <c>server_state.free_space_on_disk</c> and <c>server_state.use_alt_speed_limits</c>
+    /// from qBittorrent's sync call (#909, #951) -- a second, cheap request
+    /// rather than folding this into <c>torrents/info</c>, which has neither
+    /// field. A client that will not answer this at all (an old version, or
+    /// a momentary hiccup) reports nothing rather than a false low-space
+    /// warning or a false "not throttled" reading.
     /// </summary>
-    private static async Task<long?> GetFreeSpaceBytesAsync(HttpClient http, CancellationToken cancellationToken)
+    private static async Task<(long? FreeSpaceBytes, bool? AlternateSpeedLimitEnabled)> GetServerStateAsync(HttpClient http, CancellationToken cancellationToken)
     {
         try
         {
             var mainData = await http.GetFromJsonAsync<QbitMainData>("api/v2/sync/maindata", cancellationToken);
-            return mainData?.ServerState?.FreeSpaceOnDisk;
+            return (mainData?.ServerState?.FreeSpaceOnDisk, mainData?.ServerState?.UseAltSpeedLimits);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
         {
-            return null;
+            return (null, null);
         }
     }
 
@@ -793,7 +799,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
     private sealed record QbitTorrentFile([property: JsonPropertyName("name")] string? Name);
 
-    private sealed record QbitServerState([property: JsonPropertyName("free_space_on_disk")] long? FreeSpaceOnDisk);
+    private sealed record QbitServerState(
+        [property: JsonPropertyName("free_space_on_disk")] long? FreeSpaceOnDisk,
+        [property: JsonPropertyName("use_alt_speed_limits")] bool? UseAltSpeedLimits);
 
     /// <summary>qBittorrent's per-tracker status: 4 is "Not working", and only then does <c>msg</c> carry the tracker's own reason.</summary>
     private sealed record QbitTrackerItem(

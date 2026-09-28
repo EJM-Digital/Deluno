@@ -1309,6 +1309,14 @@ export interface DownloadHealthRule {
   threshold: number;
   /** #815: which tracker-privacy downloads this rule watches. */
   privacyScope: "public" | "private" | "both" | string;
+  /** "Too slow" only (#951, G157): a hard ceiling on total minutes in queue, whatever the current speed. Null means no ceiling. */
+  tooSlowMaxTotalMinutes: number | null;
+  /** "Too slow" only (#951, G157): a download above this many bytes never trips this rule. Null/0 means no ceiling. */
+  ignoreAboveSizeBytes: number | null;
+  /** "Too slow" only (#951): never trips while the client's own alternate/scheduled speed limit is on. Only qBittorrent reports this. */
+  skipWhileAlternateSpeedLimitOn: boolean;
+  /** #951: minimum byte gain, at least, for a gain to reset this rule's strikes. Null/0 means any gain resets, as before this option existed. */
+  resetStrikesMinimumProgressBytes: number | null;
 }
 
 /** One entry exempting a download from every health rule (#817). */

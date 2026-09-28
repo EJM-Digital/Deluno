@@ -77,7 +77,8 @@ public abstract class DownloadClientBase : IDownloadClient
         long? freeSpaceBytes = null,
         bool? clientPaused = null,
         string? clientVersion = null,
-        IReadOnlyList<string>? clientWarnings = null)
+        IReadOnlyList<string>? clientWarnings = null,
+        bool? alternateSpeedLimitEnabled = null)
     {
         var normalizedQueue = (queue ?? [])
             .Select(DownloadClientHelpers.NormalizeQueueFailure)
@@ -103,7 +104,8 @@ public abstract class DownloadClientBase : IDownloadClient
             FreeSpaceBytes = freeSpaceBytes,
             ClientPaused = clientPaused,
             ClientVersion = clientVersion,
-            ClientWarnings = clientWarnings
+            ClientWarnings = clientWarnings,
+            AlternateSpeedLimitEnabled = alternateSpeedLimitEnabled
         };
     }
 

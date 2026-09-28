@@ -735,19 +735,25 @@ public sealed class DownloadClientTelemetryService(
             return snapshot;
         }
 
-        // Bytes are still watched even with the rule off (#659): switching it
-        // on later should read "no gain since the window opened", not "no
-        // gain since the setting changed" - the memory has to already be
-        // there.
-        var lastIncreaseByQueueItemId = await healthRepository.RecordDownloadProgressAsync(
-            snapshot.ClientId,
-            snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
-            cancellationToken);
-
         // Status text uses whichever no-progress rule is enabled, regardless
         // of its completion-range/protocol scope - it is a display hint, not
         // itself a finding (the evaluator below re-checks scope precisely).
         var noProgressRule = rules.FirstOrDefault(rule => rule.Enabled && rule.Kind == DownloadHealthRuleKinds.NoProgress);
+
+        // Bytes are still watched even with the rule off (#659): switching it
+        // on later should read "no gain since the window opened", not "no
+        // gain since the setting changed" - the memory has to already be
+        // there. #951: once a rule is configured, its own "reset strikes on
+        // progress" switch and minimum-gain option decide whether a gain
+        // moves the clock; with no enabled rule, every gain still resets it,
+        // exactly as before this option existed.
+        var lastIncreaseByQueueItemId = await healthRepository.RecordDownloadProgressAsync(
+            snapshot.ClientId,
+            snapshot.Queue.Select(item => (item.Id, item.DownloadedBytes)).ToArray(),
+            cancellationToken,
+            allowReset: noProgressRule?.ResetStrikesOnProgress ?? true,
+            minimumGainBytes: noProgressRule?.ResetStrikesMinimumProgressBytes ?? 0);
+
         if (noProgressRule is null)
         {
             return snapshot;
@@ -863,7 +869,10 @@ public sealed class DownloadClientTelemetryService(
                         DownloadClientHelpers.IsUsenetProtocol(item.Protocol),
                         item.IsPrivate,
                         item.TrackerStatus,
-                        files),
+                        files,
+                        item.SizeBytes,
+                        snapshot.AlternateSpeedLimitEnabled == true,
+                        item.IsFetchingMetadata),
                     snapshot.CapturedUtc,
                     rules,
                     contentBlocklist);

@@ -53,6 +53,33 @@ public sealed class QbittorrentMetadataStallTests
         Assert.NotEqual(DownloadQueueStatuses.ImportReady, item.Status);
     }
 
+    /// <summary>
+    /// #951: the magnet-metadata rule needs its own signal, distinct from the
+    /// generic "stalled" status the reconciler above already gives metaDL
+    /// once it has run past the no-metadata-and-no-peers window - a magnet
+    /// with connected peers but still no resolved size is otherwise
+    /// invisible to any rule.
+    /// </summary>
+    [Fact]
+    public async Task MetaDL_sets_the_fetching_metadata_signal_even_before_the_stall_window()
+    {
+        var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var item = await Snapshot("metaDL", size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+
+        Assert.True(item.IsFetchingMetadata);
+    }
+
+    [Theory]
+    [InlineData("downloading")]
+    [InlineData("stalledDL")]
+    public async Task Every_other_state_leaves_the_fetching_metadata_signal_false(string state)
+    {
+        var addedUtc = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var item = await Snapshot(state, size: 0, progress: 0, addedUtc, capturedUtc: addedUtc.AddMinutes(1));
+
+        Assert.False(item.IsFetchingMetadata);
+    }
+
     private static async Task<DownloadQueueItem> Snapshot(
         string state,
         long size,

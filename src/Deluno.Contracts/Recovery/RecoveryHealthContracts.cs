@@ -65,7 +65,24 @@ public sealed record RecoveryQueueSnapshot(
     /// expose a file listing, or the listing has not been fetched yet; a
     /// content-blocklist match then falls back to the release name alone.
     /// </summary>
-    IReadOnlyList<string>? Files = null);
+    IReadOnlyList<string>? Files = null,
+    /// <summary>Total size of the download, in bytes, as the client reports it (#951, parity sheet G157's ignore-above-size). 0 when unknown - never matches an ignore-above-size ceiling, so an unread size never falsely exempts a download.</summary>
+    long SizeBytes = 0,
+    /// <summary>
+    /// #951: whether the download client's own alternate/scheduled speed
+    /// limit is turned on right now. Only qBittorrent's adapter reads this;
+    /// every other client always reports false here, which the "too slow"
+    /// rule's own skip-while-throttled option is documented to mean "has no
+    /// effect on this client" rather than treating it as "not throttled".
+    /// </summary>
+    bool AlternateSpeedLimitOn = false,
+    /// <summary>
+    /// #951: a torrent added as a magnet link that has not yet resolved its
+    /// own metadata - qBittorrent's own <c>metaDL</c> state. Only
+    /// qBittorrent's adapter reports this; every other client always reports
+    /// false here, so the magnet-metadata rule never trips for them.
+    /// </summary>
+    bool IsFetchingMetadata = false);
 
 public sealed record RecoveryHealthFinding(
     string Severity,
