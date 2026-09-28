@@ -116,6 +116,8 @@ jobs:
           # The baseline predates the supported SDK workspace. Its production
           # host/web sources are otherwise built through the same Dockerfile.
           sed -i '/^COPY sdk\/typescript\/package\.json /d' "$baseline_context/Dockerfile"
+          # It also predates embedding the release notes (#1037).
+          sed -i '/^COPY RELEASE_NOTES\.md /d' "$baseline_context/Dockerfile"
           baseline_image="deluno-schema-baseline:${GITHUB_RUN_ID}"
           docker build --tag "$baseline_image" "$baseline_context"
           echo "DOCKER_BASELINE_IMAGE=$baseline_image" >> "$GITHUB_ENV"
