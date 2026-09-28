@@ -42,7 +42,30 @@ public sealed class DelugeGrabDuplicateTests
         var result = await new DelugeDownloadClient(new StubFactory(handler)).GrabAsync(Client(), request, CancellationToken.None);
 
         Assert.False(result.Succeeded);
+        Assert.NotEqual(DownloadQueueStatuses.DeadRelease, result.Status);
         Assert.Contains("did not add the release", result.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #874/#942, cleanup sheet B2: an explicit RPC error object is Deluge
+    /// looking at the exact link or file it was handed and refusing it
+    /// outright, in the same request — distinct from the ambiguous null
+    /// result with no error above, which is just as likely an already-held
+    /// duplicate Deluno could not verify. Read as a dead release the way
+    /// qBittorrent's "Fails." and NZBGet's RPC error already are.
+    /// </summary>
+    [Fact]
+    public async Task An_explicit_add_error_is_read_as_a_dead_release()
+    {
+        var handler = new DelugeHandler(addResult: "null", sessionHashes: [], addErrorMessage: "invalid torrent file");
+        var request = new DownloadClientGrabRequest(
+            "Example.Movie.2024.1080p", "http://indexer.test/download/1.torrent", "movies", "movies", "Fixture indexer");
+
+        var result = await new DelugeDownloadClient(new StubFactory(handler)).GrabAsync(Client(), request, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("invalid torrent file", result.Message, StringComparison.Ordinal);
     }
 
     private static DownloadClientItem Client()
@@ -55,13 +78,14 @@ public sealed class DelugeGrabDuplicateTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    private sealed class DelugeHandler(string addResult, IReadOnlyList<string> sessionHashes) : HttpMessageHandler
+    private sealed class DelugeHandler(string addResult, IReadOnlyList<string> sessionHashes, string? addErrorMessage = null) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            var error = addErrorMessage is null ? "null" : $$"""{"message":"{{addErrorMessage}}"}""";
             var answer = body.Contains("core.add_torrent_", StringComparison.Ordinal)
-                ? $$"""{"result":{{addResult}},"error":null,"id":2}"""
+                ? $$"""{"result":{{addResult}},"error":{{error}},"id":2}"""
                 : body.Contains("core.get_session_state", StringComparison.Ordinal)
                     ? $$"""{"result":[{{string.Join(",", sessionHashes.Select(hash => $"\"{hash}\""))}}],"error":null,"id":9}"""
                     : """{"result":true,"error":null,"id":1}""";

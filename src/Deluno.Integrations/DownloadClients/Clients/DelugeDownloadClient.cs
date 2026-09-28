@@ -54,7 +54,19 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 }
             }
 
-            return DownloadClientHelpers.GrabFailure(client, request, $"Deluge did not add the release: {added?.Error?.Message ?? "it may already hold it"}.");
+            // #874/#942, cleanup sheet B2: an explicit RPC error object is
+            // Deluge looking at the exact link or file it was handed and
+            // refusing it outright, in the same request — a dead link or a
+            // torrent it could not parse — distinct from the ambiguous null
+            // result above, which is just as likely an already-held
+            // duplicate Deluno could not verify. Read as a dead release only
+            // when Deluge actually said why.
+            if (added?.Error?.Message is { Length: > 0 } errorMessage)
+            {
+                return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"Deluge refused the release: {errorMessage}.");
+            }
+
+            return DownloadClientHelpers.GrabFailure(client, request, "Deluge did not add the release: it may already hold it.");
         }
 
         await TryLabelAsync(http, baseUri, added.Result, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);

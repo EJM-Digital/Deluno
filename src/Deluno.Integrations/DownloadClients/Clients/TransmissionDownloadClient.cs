@@ -48,10 +48,17 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-add", arguments), cancellationToken);
         // The legacy protocol answers "success" or a reason in words; only a
         // reason is a refusal.
+        //
+        // #874/#942, cleanup sheet B2: that reason is Transmission looking at
+        // the exact link or file it was handed and refusing it outright, in
+        // the same request — "invalid or corrupt torrent file" for a file it
+        // could not parse, or a fetch failure for a URL that led nowhere —
+        // the same shape qBittorrent's "Fails." and NZBGet's RPC error
+        // already read as a dead release rather than a setup problem.
         if (response.Result is { ValueKind: System.Text.Json.JsonValueKind.String } result
             && !string.Equals(result.GetString(), "success", StringComparison.OrdinalIgnoreCase))
         {
-            return DownloadClientHelpers.GrabFailure(client, request, $"Transmission did not add the release: {result.GetString()}.");
+            return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"Transmission refused the release: {result.GetString()}.");
         }
 
         // Its id, as the queue reports it, so the import can find this grab by
