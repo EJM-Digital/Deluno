@@ -20,9 +20,12 @@ import {
   fetchJson, fetchPageItems,
   type ActivityEventItem,
   type DecisionExplanationItem,
+  type DownloadClientItem,
   type DownloadDispatchItem,
+  type IndexerItem,
   type IntegrationFailure,
   type LibraryItem,
+  type LibraryRoutingSnapshot,
   type IntakeTitleOriginItem,
   type SeriesEpisodeInventoryItem,
   type SeriesImportRecoverySummary,
@@ -35,6 +38,7 @@ import {
   type MediaSubtitleAttemptHistoryEntry,
   type SubtitleLanguageOption
 } from "../lib/api";
+import { describeTitleRouting } from "../lib/title-routing";
 import { subtitleTypeLabel, subtitleSourceLabel, timingStatusLabel } from "../lib/subtitle-display";
 import { SubtitleTimingActions } from "../components/app/subtitle-timing-actions";
 import { SubtitleOverrideCard } from "../components/app/subtitle-override-card";
@@ -114,6 +118,16 @@ interface ShowDetailLoaderData {
   series: SeriesListItem;
   metadataIssue: MetadataProviderIssue | null;
   subtitleLanguageOptions: SubtitleLanguageOption[];
+  /** #990: which indexers/clients this title's library routes it to, and why — null when the title has no linked library yet. */
+  titleRouting: TitleRoutingSnapshot | null;
+}
+
+/** #990: everything the "Will use" section needs to say which indexers/clients this title uses, and why. */
+interface TitleRoutingSnapshot {
+  routing: LibraryRoutingSnapshot;
+  indexers: IndexerItem[];
+  downloadClients: DownloadClientItem[];
+  titleTags: string[];
 }
 
 type DetailSection = "episodes" | "destination" | "history";
@@ -171,12 +185,43 @@ export async function showDetailLoader({
       fetchJson<SubtitleLanguageOption[]>("/api/subtitle-languages").catch(() => [] as SubtitleLanguageOption[])
     ]);
 
-  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches, subtitleLanguageOptions };
+  // #990: which indexers/clients this title uses, and why — needs the
+  // library only known once `series` itself is back, so it is fetched after
+  // the batch above rather than inside it.
+  const titleRouting = await loadTitleRoutingAsync(series.libraryId, id);
+
+  return { acquisitionBlockers, activity, decisions, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, dispatches, subtitleLanguageOptions, titleRouting };
+}
+
+/**
+ * #990: the title page says which indexers/download clients a title will
+ * use, and why — the same tag-routing rule the search itself follows
+ * (#808), reused from `describeTitleRouting` rather than judged twice.
+ * Null when the title has no linked library, since there is nothing routed
+ * yet to explain.
+ */
+async function loadTitleRoutingAsync(libraryId: string | null | undefined, titleId: string): Promise<TitleRoutingSnapshot | null> {
+  if (!libraryId) {
+    return null;
+  }
+
+  const [routing, indexers, downloadClients, titleTagAssignments] = await Promise.all([
+    fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${libraryId}/routing`).catch(() => null),
+    fetchJson<IndexerItem[]>("/api/indexers").catch(() => [] as IndexerItem[]),
+    fetchJson<DownloadClientItem[]>("/api/download-clients").catch(() => [] as DownloadClientItem[]),
+    fetchJson<Array<{ tagId: string; name: string }>>(`/api/series/${titleId}/tags`).catch(() => [] as Array<{ tagId: string; name: string }>)
+  ]);
+
+  if (!routing) {
+    return null;
+  }
+
+  return { routing, indexers, downloadClients, titleTags: titleTagAssignments.map((assignment) => assignment.name) };
 }
 
 export function ShowDetailPage() {
   const loaderData = useLoaderData() as ShowDetailLoaderData;
-  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, subtitleLanguageOptions } = loaderData;
+  const { acquisitionBlockers, activity, decisions, dispatches, importRecovery, inventory, libraries, memberships, metadataIssue, origins, removalPreview, searchHistory, series, subtitleLanguageOptions, titleRouting } = loaderData;
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences, certificationCountry } = useDisplayPreferences();
@@ -243,6 +288,33 @@ export function ShowDetailPage() {
     : memberships.find((item) => item.libraryId === wantedItem?.libraryId)?.libraryId ?? memberships[0]?.libraryId ?? wantedItem?.libraryId ?? null;
   const libraryQuery = memberships.length > 1 && actingLibraryId ? `libraryId=${encodeURIComponent(actingLibraryId)}` : "";
   const library = actingLibraryId ? libraries.find((item) => item.id === actingLibraryId) ?? null : null;
+  // #990: which of this title's library's indexers/download clients Deluno
+  // will actually use for it, and why — the tag rule already applied to
+  // search and grab (#808), read here instead of judged again.
+  const usedIndexers = useMemo(() => {
+    if (!titleRouting) return [];
+    const indexerTags = new Map(titleRouting.indexers.map((item) => [item.id, item.tags]));
+    return describeTitleRouting(
+      titleRouting.routing.sources.map((source) => ({
+        id: source.indexerId,
+        name: source.indexerName,
+        tags: indexerTags.get(source.indexerId)
+      })),
+      titleRouting.titleTags
+    );
+  }, [titleRouting]);
+  const usedDownloadClients = useMemo(() => {
+    if (!titleRouting) return [];
+    const clientTags = new Map(titleRouting.downloadClients.map((item) => [item.id, item.tags]));
+    return describeTitleRouting(
+      titleRouting.routing.downloadClients.map((client) => ({
+        id: client.downloadClientId,
+        name: client.downloadClientName,
+        tags: clientTags.get(client.downloadClientId)
+      })),
+      titleRouting.titleTags
+    );
+  }, [titleRouting]);
   const seriesSearches = searchHistory.filter((item) => item.seriesId === series.id);
   // The History tab's own episode filter (#795): narrows the same list down
   // to one episode's searches, rather than asking the server a new question.
@@ -1544,6 +1616,25 @@ export function ShowDetailPage() {
               ))}
             </ListTable>
           </ListCard>
+
+          {usedIndexers.length > 0 || usedDownloadClients.length > 0 ? (
+            <ListCard
+              title="Indexers and download clients"
+              count={`${[...usedIndexers, ...usedDownloadClients].filter((entry) => entry.used).length} of ${usedIndexers.length + usedDownloadClients.length} used`}
+            >
+              <ListTable chevron={false} columns={[{ label: "Connection" }, { label: "Why", width: "minmax(0,2fr)", mobile: true }]}>
+                {[...usedIndexers, ...usedDownloadClients].map((entry) => (
+                  <ListRow key={entry.id}>
+                    <ListNameCell name={entry.name} />
+                    <ListCell mobile>
+                      <Chip tone={entry.used ? "ok" : "idle"}>{entry.used ? "Used" : "Not used"}</Chip>
+                      <span className="mt-1 block text-[length:var(--type-caption)] text-muted-foreground">{entry.reason}</span>
+                    </ListCell>
+                  </ListRow>
+                ))}
+              </ListTable>
+            </ListCard>
+          ) : null}
 
           <SubtitleOverrideCard
             basePath={`/api/series/${series.id}`}
