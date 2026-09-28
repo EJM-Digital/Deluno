@@ -112,10 +112,9 @@ public static class MoviesLargeLibrarySeedEndpoints
                 // Covered and Upgrade are the two rungs a title with a file can
                 // be on (library-filters.ts's own comment on QuickFilter); the
                 // rest have none. Quality met only for Covered — the catalogue
-                // reads Upgrades from `has_file = 1 AND quality_cutoff_met = 0`
-                // directly (SqliteMovieCatalogRepository.CatalogueUpgradeFor),
-                // independent of the wanted_status column, so both flags have
-                // to agree with the bucket for the chip to count it right.
+                // counts every chip from the stored wanted_status rung (#1047),
+                // and V0045's triggers reject a row whose flags disagree with
+                // it, so the flags are written to agree with the bucket.
                 var hasFile = bucket is WantedStatuses.Covered or WantedStatuses.Upgrade;
                 var qualityCutoffMet = bucket == WantedStatuses.Covered;
 

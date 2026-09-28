@@ -47,6 +47,23 @@ public static class CatalogueWantedState
     /// </summary>
     public const string HasFileColumn = "COALESCE(ws.has_file, 0) AS has_file";
 
+    /// <summary>"The picked row holds a file", as a predicate over the joined row.</summary>
+    public const string HasFile = "COALESCE(ws.has_file, 0) = 1";
+
+    /// <summary>
+    /// "The picked row is on this rung", as a predicate over the joined row.
+    ///
+    /// <para>The filter chips and their counts read this rather than an
+    /// <c>EXISTS</c> over every library's row. An <c>EXISTS</c> asks "is any
+    /// row of this title on the rung", so a title covered in one library and
+    /// upgradable in another was counted under both and the chips summed to
+    /// more than All. The page shows the picked row, so the filters speak for
+    /// the same row: one title, one rung, one chip.</para>
+    ///
+    /// The query must include <see cref="Join"/>.
+    /// </summary>
+    public static string Is(string wantedStatus) => $"COALESCE(ws.wanted_status, '') = '{wantedStatus}'";
+
     /// <summary>
     /// The search state the grid needs on every card and used to fetch from
     /// <c>/wanted</c>, whose <c>recentItems</c> is capped at 25 — so beyond the

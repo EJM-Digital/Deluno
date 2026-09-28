@@ -759,27 +759,23 @@ public sealed class SqliteMovieCatalogRepository(
     }
 
     /// <summary>
-    private static string CatalogueStateScope(string? libraryId)
-        => string.IsNullOrWhiteSpace(libraryId) ? string.Empty : " AND w.library_id = @libraryId";
-
     private static string CatalogueLibraryFilter(string? libraryId)
         => string.IsNullOrWhiteSpace(libraryId)
             ? string.Empty
             : "EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id AND w.library_id = @libraryId)";
 
-    private static string CatalogueHasFileFor(string? libraryId)
-        => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.has_file = 1)";
-
     /// <summary>
-    /// "This entry is in one particular wanted state." The counts the toolbar
-    /// prints need Quality met and Upcoming, which are states rather than
-    /// file-presence facts and so cannot be derived from <c>has_file</c>.
+    /// The chips and their counts read the one wanted-state row the page shows
+    /// (<see cref="CatalogueWantedState.Join"/>), by its stored rung, exactly as
+    /// the page's mark does. Rebuilding Upgradable from <c>has_file</c> and
+    /// <c>quality_cutoff_met</c> while Quality met read <c>wanted_status</c>
+    /// counted a below-target movie under both (#1047).
     /// </summary>
-    private static string CatalogueWantedIs(string? libraryId, string wantedStatus)
-        => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.wanted_status = '{wantedStatus}')";
+    private static string CatalogueHasFile() => CatalogueWantedState.HasFile;
 
-    private static string CatalogueUpgradeFor(string? libraryId)
-        => $"EXISTS(SELECT 1 FROM movie_wanted_state w WHERE w.movie_id = m.id{CatalogueStateScope(libraryId)} AND w.has_file = 1 AND w.quality_cutoff_met = 0)";
+    private static string CatalogueWantedIs(string wantedStatus) => CatalogueWantedState.Is(wantedStatus);
+
+    private static string CatalogueUpgrade() => CatalogueWantedState.Is(WantedStatuses.Upgrade);
 
     /// <summary>
     /// Where <see cref="CatalogueWantedState.PageColumns"/> begins in the page
@@ -984,11 +980,11 @@ public sealed class SqliteMovieCatalogRepository(
             CatalogueKeyset.StatusFilter(
                 status,
                 "m",
-                CatalogueHasFileFor(libraryId),
-                CatalogueUpgradeFor(libraryId),
-                CatalogueWantedIs(libraryId, WantedStatuses.Covered),
-                CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading)),
+                CatalogueHasFile(),
+                CatalogueUpgrade(),
+                CatalogueWantedIs(WantedStatuses.Covered),
+                CatalogueWantedIs(WantedStatuses.Upcoming),
+                CatalogueWantedIs(WantedStatuses.Downloading)),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them. A title held
             // in two libraries has two files, and matching on either while
@@ -1161,15 +1157,9 @@ public sealed class SqliteMovieCatalogRepository(
         // shows, so the custom filters apply here too — and quality and size
         // need the same picked wanted-state row the page reads them from.
         //
-        // The join is added **only when a custom filter is asking for it**. An
-        // unfiltered page runs exactly the query it ran before this existed,
-        // which is the rule that keeps a feature nobody is using free.
-        // Asked precisely, not "are there any filters at all": narrowing by
-        // year or genre reads the entries table and needs no join, so it still
-        // costs the counts nothing.
-        var wantedJoin = filters?.NeedsWantedState(MediaKind.Movie) == true
-            ? CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null)
-            : string.Empty;
+        // Always joined: every chip count reads the same picked row the page
+        // shows, so a title is counted under exactly one rung (#1047).
+        var wantedJoin = CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null);
 
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
@@ -1188,12 +1178,12 @@ public sealed class SqliteMovieCatalogRepository(
         var statusArm = CatalogueKeyset.Always(CatalogueKeyset.StatusFilter(
             status,
             "m",
-            CatalogueHasFileFor(libraryId),
-            CatalogueUpgradeFor(libraryId),
-            CatalogueWantedIs(libraryId, WantedStatuses.Covered),
-            CatalogueWantedIs(libraryId, WantedStatuses.Upcoming),
-                CatalogueWantedIs(libraryId, WantedStatuses.Downloading),
-                CatalogueWantedIs(libraryId, WantedStatuses.Airing)));
+            CatalogueHasFile(),
+            CatalogueUpgrade(),
+            CatalogueWantedIs(WantedStatuses.Covered),
+            CatalogueWantedIs(WantedStatuses.Upcoming),
+                CatalogueWantedIs(WantedStatuses.Downloading),
+                CatalogueWantedIs(WantedStatuses.Airing)));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1202,13 +1192,13 @@ public sealed class SqliteMovieCatalogRepository(
                 SUM(CASE WHEN {monitoredArm} THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND m.monitored = 1 THEN 1 ELSE 0 END),
                 SUM(CASE WHEN {statusArm} AND m.monitored = 0 THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFileFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFileFor(libraryId), null, null, CatalogueWantedIs(libraryId, WantedStatuses.Upcoming), CatalogueWantedIs(libraryId, WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgradeFor(libraryId)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Covered)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Downloading)} THEN 1 ELSE 0 END),
-                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(libraryId, WantedStatuses.Airing)} THEN 1 ELSE 0 END)
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueHasFile()} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueKeyset.StatusFilter(CatalogueStatusFilters.Missing, "m", CatalogueHasFile(), null, null, CatalogueWantedIs(WantedStatuses.Upcoming), CatalogueWantedIs(WantedStatuses.Downloading))} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueUpgrade()} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Covered)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Upcoming)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Downloading)} THEN 1 ELSE 0 END),
+                SUM(CASE WHEN {monitoredArm} AND {CatalogueWantedIs(WantedStatuses.Airing)} THEN 1 ELSE 0 END)
             FROM movie_entries m
             {wantedJoin}
             WHERE {where};
