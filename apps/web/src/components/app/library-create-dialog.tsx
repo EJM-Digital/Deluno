@@ -2,7 +2,7 @@ import type { Dispatch, FormEventHandler, MutableRefObject, SetStateAction } fro
 import { ArrowUpRight, LoaderCircle, Plus, Search, X } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import type { MetadataProviderStatus, MetadataSearchResult } from "../../lib/api";
-import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
+import { SHOW_MONITOR_PRESETS, type CreateFormDraft, type LibraryVariant, type ShowMonitorPreset } from "../../hooks/use-library-create";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Select } from "../ui/select";
@@ -140,6 +140,22 @@ export function LibraryCreateDialog({
 
                 {selectedMetadataCount > 0 ? <span className="inline-flex items-center gap-2 text-xs font-semibold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{selectedMetadataCount} {selectedMetadataCount === 1 ? singular : label} selected</span> : null}
               </div>
+              {/* Which episodes to start monitoring (#991) - shows only; a movie has no episodes to pick among. */}
+              {variant === "shows" && createForm.monitored ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground" htmlFor={`add-${variant}-monitor-preset`}>Monitor</label>
+                  <Select
+                    id={`add-${variant}-monitor-preset`}
+                    aria-label="Which episodes to monitor"
+                    value={createForm.monitorPreset}
+                    onChange={(event) => {
+                      const monitorPreset = event.target.value as ShowMonitorPreset;
+                      setCreateForm((current) => ({ ...current, monitorPreset }));
+                    }}
+                    options={SHOW_MONITOR_PRESETS.map((preset) => ({ value: preset.value, label: preset.label }))}
+                  />
+                </div>
+              ) : null}
               <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForMissingNow} onCheckedChange={(searchForMissingNow) => setCreateForm((current) => ({ ...current, searchForMissingNow }))} />Search for missing now</label>
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.searchForCutoffUnmetNow} onCheckedChange={(searchForCutoffUnmetNow) => setCreateForm((current) => ({ ...current, searchForCutoffUnmetNow }))} />Search for cutoff unmet now</label>

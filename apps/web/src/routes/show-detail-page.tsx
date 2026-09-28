@@ -97,6 +97,7 @@ import { wantedStatusPresentation } from "../lib/status-tones";
 import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
+import { seasonMonitorState } from "./season-pass-page";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -458,6 +459,31 @@ export function ShowDetailPage() {
       revalidator.revalidate();
     } catch {
       toast.error("This show's monitoring could not be changed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  /**
+   * A whole season's monitor switch, right on the show page (#991). This
+   * calls the exact same Season Pass endpoint the dedicated bulk screen uses
+   * (`PUT /api/series/season-pass/monitoring`), so unmonitoring a season here
+   * cancels its in-flight downloads through the same path Season Pass does
+   * (#1028) — there is only one place that logic lives.
+   */
+  async function handleSeasonMonitoring(seasonNumber: number, monitored: boolean) {
+    setBusyAction(`season-monitor-${seasonNumber}`);
+
+    try {
+      const response = await authedFetch("/api/series/season-pass/monitoring", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scopes: [{ seriesId: series.id, seasonNumber }], monitored })
+      });
+      if (!response.ok) throw new Error("season-monitoring-failed");
+      revalidator.revalidate();
+    } catch {
+      toast.error(`${formatSeasonLabel(seasonNumber)} could not be updated.`);
     } finally {
       setBusyAction(null);
     }
@@ -1392,6 +1418,16 @@ export function ShowDetailPage() {
                       detail={`${season.episodes.length} episodes · ${season.importedCount} on disk · ${season.missingCount} missing${season.upcomingCount ? ` · ${season.upcomingCount} upcoming` : ""}`}
                       actions={
                         <>
+                        <label className="inline-flex select-none items-center gap-2 text-xs text-muted-foreground">
+                          Monitor season
+                          <Switch
+                            aria-label={`Monitor ${formatSeasonLabel(season.seasonNumber)}`}
+                            checked={seasonMonitorState(season.episodes.length, season.monitoredCount) === "all"}
+                            disabled={busyAction !== null}
+                            onCheckedChange={(checked) => void handleSeasonMonitoring(season.seasonNumber, checked)}
+                          />
+                          {busyAction === `season-monitor-${season.seasonNumber}` ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+                        </label>
                         <Button
                           type="button"
                           size="sm"
