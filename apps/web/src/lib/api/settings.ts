@@ -130,4 +130,8 @@ export interface PlatformSettingsPatch {
   removeAndDeletePackedArchivesFromClient?: boolean;
   /** #879: the "dangerous or junk file" download-health rule. Off by default. */
   downloadHealthDangerousFileEnabled?: boolean;
+  /** #888/#949: one of "hold" (default) | "give-up-after-days" | "retry-once-then-bad". */
+  unmatchedImportPolicy?: string;
+  /** #888/#949: only consulted when unmatchedImportPolicy is "give-up-after-days". */
+  unmatchedImportGiveUpDays?: number;
 }
