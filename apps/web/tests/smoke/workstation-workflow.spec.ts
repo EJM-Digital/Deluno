@@ -544,7 +544,11 @@ test.describe("dashboard workflow", () => {
     const sections = page.getByRole("navigation", { name: "Sections" });
     await sections.getByRole("link", { name: "Failed Downloads", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Failed downloads" })).toBeVisible();
-    await expect(page.getByLabel("Act after this many strikes")).toHaveValue("3");
+    // Strikes/timer/action moved to their own per-rule controls on the
+    // Download health page (#951); this platform-wide default only decides
+    // what happens once a rule's strikes run out.
+    await expect(page.getByText(/Strikes, timers and per-kind conditions now live on their own rules/)).toBeVisible();
+    await expect(page.getByLabel("Act after this many strikes")).toHaveCount(0);
     await expect(page.getByText("Block this release", { exact: true })).toBeVisible();
     await expect(page.getByText("Search for a replacement", { exact: true })).toBeVisible();
     await expect(page.getByText("Remove the client entry", { exact: true })).toBeVisible();

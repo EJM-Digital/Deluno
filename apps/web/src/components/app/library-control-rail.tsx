@@ -365,7 +365,18 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 the list: it is a switch with two states, it is read at a glance,
                 and one click is the whole interaction.
               */}
-              <div className="flex h-[var(--library-toolbar-height)] items-stretch gap-px overflow-hidden rounded-xl bg-foreground/[0.04] ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
+              {/*
+                `shrink-0`, deliberately: this group clips its own corners with
+                `overflow-hidden`, which per the flexbox spec makes its
+                automatic min size 0 — without `shrink-0` the row above shrank
+                this whole Sort+direction control to nothing rather than
+                letting the row overflow and scroll, so on a phone Sort simply
+                vanished instead of being reachable by the sideways scroll
+                #959 added (proven by a Playwright click that measured a
+                zero-width ancestor and landed on the View button drawn where
+                Sort's layout box happened to be).
+              */}
+              <div className="flex h-[var(--library-toolbar-height)] shrink-0 items-stretch gap-px overflow-hidden rounded-xl bg-foreground/[0.04] ring-1 ring-inset ring-hairline/60 dark:bg-white/[0.05] dark:ring-white/[0.06]">
                 <MenuSelect
                   label="Sort"
                   value={sortField}
