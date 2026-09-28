@@ -36,4 +36,8 @@ public sealed record MediaSearchCandidate(
     // (a "rejected" status carries its own reason in DecisionReasons above).
     string? IndexerProtocol = null,
     double? ReleaseAgeHours = null,
-    int? Leechers = null);
+    int? Leechers = null,
+    // #969: how many times this release has already been grabbed. Blank
+    // (null) when the indexer never reports it -- Torznab/Newznab's own
+    // "grabs" attr, which the native tracker engine also writes.
+    int? Grabs = null);

@@ -67,6 +67,8 @@ public sealed class ManualSearchEndpointTests
         Assert.Equal("torznab", candidate.GetProperty("indexerProtocol").GetString());
         Assert.Equal(12, candidate.GetProperty("seeders").GetInt32());
         Assert.Equal(3, candidate.GetProperty("leechers").GetInt32());
+        // #969: the grab-count column.
+        Assert.Equal(47, candidate.GetProperty("grabs").GetInt32());
     }
 
     [Fact]
@@ -218,6 +220,7 @@ public sealed class ManualSearchEndpointTests
                       <link>https://fixture.invalid/x.torrent</link>
                       <torznab:attr name="seeders" value="12" />
                       <torznab:attr name="peers" value="3" />
+                      <torznab:attr name="grabs" value="47" />
                     </item>
                   </channel>
                 </rss>

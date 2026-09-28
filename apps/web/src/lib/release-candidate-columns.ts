@@ -14,9 +14,10 @@ export interface CandidateColumnsInput {
   seeders?: number | null;
   leechers?: number | null;
   sizeBytes?: number | null;
+  grabs?: number | null;
 }
 
-export type CandidateSortKey = "protocol" | "age" | "seeders" | "leechers" | "size";
+export type CandidateSortKey = "protocol" | "age" | "seeders" | "leechers" | "size" | "grabs";
 export type SortDirection = "asc" | "desc";
 
 /** Newest-first and most-seeded-first read naturally as "desc" defaults; protocol reads naturally as "asc" (alphabetical). */
@@ -37,6 +38,8 @@ function sortValue(candidate: CandidateColumnsInput, key: CandidateSortKey): num
       return candidate.leechers ?? -1;
     case "size":
       return candidate.sizeBytes ?? -1;
+    case "grabs":
+      return candidate.grabs ?? -1;
   }
 }
 
@@ -89,6 +92,11 @@ export function formatSeedersAndLeechers(seeders?: number | null, leechers?: num
   const seedersLabel = seeders ?? "—";
   const leechersLabel = leechers ?? "—";
   return `${seedersLabel} / ${leechersLabel}`;
+}
+
+/** The grab count, or "—" for an indexer that does not report it (#969). */
+export function formatGrabs(grabs?: number | null): string {
+  return grabs === null || grabs === undefined ? "—" : String(grabs);
 }
 
 /** A short, plain-English label for an indexer's protocol code. */

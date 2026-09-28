@@ -30,7 +30,8 @@ public class MediaSearchCandidateViewTests
             PreferenceEvaluation: evaluation,
             IndexerProtocol: "torznab",
             ReleaseAgeHours: 5.5,
-            Leechers: 3);
+            Leechers: 3,
+            Grabs: 47);
 
     [Fact]
     public void A_candidate_carries_what_it_matched_when_there_is_no_typed_evaluation()
@@ -69,6 +70,26 @@ public class MediaSearchCandidateViewTests
         Assert.Equal("torznab", json.GetProperty("IndexerProtocol").GetString());
         Assert.Equal(5.5, json.GetProperty("ReleaseAgeHours").GetDouble());
         Assert.Equal(3, json.GetProperty("Leechers").GetInt32());
+    }
+
+    /// <summary>
+    /// #969: the grab-count column, blank when the indexer never reports one.
+    /// </summary>
+    [Fact]
+    public void A_candidate_carries_its_grab_count_when_the_indexer_reports_one()
+    {
+        var json = JsonSerializer.SerializeToElement(MediaSearchCandidateView.For(Candidate()));
+
+        Assert.Equal(47, json.GetProperty("Grabs").GetInt32());
+    }
+
+    [Fact]
+    public void A_candidate_leaves_grabs_blank_when_the_indexer_never_reports_it()
+    {
+        var candidate = Candidate() with { Grabs = null };
+        var json = JsonSerializer.SerializeToElement(MediaSearchCandidateView.For(candidate));
+
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("Grabs").ValueKind);
     }
 
     /// <summary>

@@ -1024,6 +1024,12 @@ public sealed class FeedMediaSearchPlanner(
             // #753: shown alongside seeders in the enriched results columns.
             // Never used in scoring -- only seeders drives any decision.
             var leechers = ReadIntAttr(attrs, "peers");
+            // #969: how many times this release has already been grabbed,
+            // when the indexer reports it (Torznab/Newznab "grabs" attr, and
+            // the native tracker engine writes the same attr -- see
+            // TorznabFeed.Write). Never used in scoring, shown alongside
+            // seeders/leechers.
+            var grabs = ReadIntAttr(attrs, "grabs");
             var torrentHashOrItemId = ReadHashOrItemId(attrs, item, indexer.Protocol, downloadUrl);
             var releaseAgeHours = ReadReleaseAgeHours(item);
             var indexerFlags = string.Join(", ", attrs
@@ -1133,7 +1139,8 @@ public sealed class FeedMediaSearchPlanner(
                 TorrentHashOrItemId: torrentHashOrItemId,
                 IndexerProtocol: indexer.Protocol,
                 ReleaseAgeHours: releaseAgeHours,
-                Leechers: leechers));
+                Leechers: leechers,
+                Grabs: grabs));
         }
 
         return new ParsedCandidates(results, feedItems.Length == requestedLimit);

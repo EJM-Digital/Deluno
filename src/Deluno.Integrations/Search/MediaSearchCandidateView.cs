@@ -38,6 +38,8 @@ public static class MediaSearchCandidateView
             // Seeders and DecisionStatus/DecisionReasons (a rejection's own
             // reason) above.
             candidate.Leechers,
+            // #969: the search grids' grab-count column.
+            candidate.Grabs,
             candidate.IndexerProtocol,
             candidate.ReleaseAgeHours,
             candidate.DecisionStatus,
