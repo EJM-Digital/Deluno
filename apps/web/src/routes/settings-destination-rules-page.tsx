@@ -8,6 +8,7 @@
  * Contracts: GET/POST /api/destination-rules, PUT/DELETE /api/destination-rules/{id},
  * POST /api/filesystem/import/preview.
  */
+import { TagPicker } from "../components/app/tag-picker";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { FlaskConical, Plus } from "lucide-react";
@@ -376,7 +377,11 @@ export function SettingsDestinationRulesPage() {
                   <Select value={form.matchKind} onChange={(event) => setForm((current) => ({ ...current, matchKind: event.target.value, matchValue: "" }))} options={Object.entries(MATCH_KIND_LABELS).filter(([value]) => !NEVER_FIRES_KINDS.has(value) || value === form.matchKind).map(([value, label]) => ({ value, label: NEVER_FIRES_KINDS.has(value) ? `${label} (cannot place a title)` : label }))} />
                 </Field>
                 <Field label="Value" error={errors.matchValue}>
-                  <PresetField value={form.matchValue} onChange={(value) => { setErrors((current) => ({ ...current, matchValue: "" })); setForm((current) => ({ ...current, matchValue: value })); }} options={matchOptions} allowCustom={form.matchKind !== "tag" || tagOptions.length === 0} customLabel="Custom value" customPlaceholder={form.matchKind === "genre" ? "Genre name" : "Match value"} />
+                  {form.matchKind === "tag" ? (
+                    <TagPicker single label="Tag" value={form.matchValue} onChange={(value) => { setErrors((current) => ({ ...current, matchValue: "" })); setForm((current) => ({ ...current, matchValue: value })); }} />
+                  ) : (
+                    <PresetField value={form.matchValue} onChange={(value) => { setErrors((current) => ({ ...current, matchValue: "" })); setForm((current) => ({ ...current, matchValue: value })); }} options={matchOptions} allowCustom={form.matchKind !== "tag" || tagOptions.length === 0} customLabel="Custom value" customPlaceholder={form.matchKind === "genre" ? "Genre name" : "Match value"} />
+                  )}
                 </Field>
               </FieldRow>
             </DrawerSection>

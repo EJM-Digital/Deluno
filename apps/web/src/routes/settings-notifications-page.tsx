@@ -10,6 +10,7 @@
  * GET /api/notification-webhooks/deliveries, POST …/replay, PATCH /api/settings.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, RotateCcw, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -24,7 +25,7 @@ import { systemSettingsNavItems } from "../components/app/settings-shell";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot, type TagItem } from "../lib/api";
+import { fetchJson, type NotificationPreferences, type NotificationProvider, type NotificationProviderConfig, type NotificationWebhookDeliveryItem, type NotificationWebhookItem, type PlatformSettingsSnapshot } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -221,23 +222,8 @@ export function SettingsNotificationsPage() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
 
   const isOpen = mode.kind !== "closed";
-  // Fetched only once the drawer is actually open (not on every page load,
-  // which would race the preference-toggle PUTs elsewhere on this page).
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    void fetchJson<TagItem[]>("/api/tags")
-      .then((items) => {
-        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
-      })
-      .catch(() => {
-        // Tags are optional suggestions; the free-form field still works without them.
-      });
-    return () => { cancelled = true; };
-  }, [isOpen]);
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
   const dirty = isOpen && (
     form.name !== initialForm.name ||
@@ -578,10 +564,7 @@ export function SettingsNotificationsPage() {
             <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
           </Field>
           <Field label="Tags" optional help="Leave blank to fire for any title. With tags set, Deluno fires this connection for a title only when the title shares one of them — for example, keep an anime channel to anime titles. Tags only limit notifications about a title: health warnings, library pauses, app updates and other general notices always go to every connection.">
-            <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="notification-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
-            <datalist id="notification-tag-options">
-              {tagOptions.map((tag) => <option key={tag} value={tag} />)}
-            </datalist>
+            <TagPicker label="Notification tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
           </Field>
           {providerNeedsUrl(form.provider) ? (
             <Field label={providerUrlLabel(form.provider)} error={urlError} help={form.provider === "generic" ? "Deluno sends a JSON body; no authentication headers are added." : undefined}>

@@ -1,4 +1,5 @@
 import type { BulkRenamePreviewItem, BulkTagMode, BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
+import { TagPicker } from "../../components/app/tag-picker";
 import type { LibraryVariant } from "../../hooks/use-library-create";
 import { Button } from "../ui/button";
 import { CheckboxRow } from "../ui/checkbox";
@@ -84,9 +85,9 @@ export function LibraryBulkToolsDialog({
             <CheckboxRow label="Move the files to the new root" checked={moveFiles} onCheckedChange={onMoveFilesChange} />
           </Field>
         </> : null}
-        {operation === "tags" ? <Field label="Tags" help="Comma-separated tags. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">
+        {operation === "tags" ? <Field label="Tags" help="Pick existing tags or create a new one. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">
           <div className="flex items-center gap-2">
-            <Input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="e.g. favourites, weekend, 4k" />
+            <div className="min-w-0 flex-1"><TagPicker label="Tags to apply" value={tags} onChange={onTagsChange} warnUnused={false} /></div>
             <div className="w-32 shrink-0">
               <Select value={tagsMode} onChange={(event) => onTagsModeChange(event.target.value as BulkTagMode)}>
                 <option value="add">Add</option>

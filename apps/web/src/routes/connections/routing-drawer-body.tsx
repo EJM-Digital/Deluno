@@ -2,6 +2,7 @@ import type { DownloadClientItem, IndexerItem, LibraryItem } from "../../lib/api
 import { Chip } from "../../components/ui/chip";
 import { Button } from "../../components/ui/button";
 import { DrawerSection } from "../../components/ui/drawer";
+import { TagPicker } from "../../components/app/tag-picker";
 import { Input } from "../../components/ui/input";
 import { Switch } from "../../components/ui/switch";
 import type { DownloadClientCategoryCheckResult } from "../../lib/api";
@@ -14,6 +15,8 @@ export function RoutingDrawerBody({
   sources,
   targets,
   categories,
+  sourceTags,
+  onSourceTagsChange,
   categoryChecks,
   onToggleSource,
   onToggleClient,
@@ -28,6 +31,8 @@ export function RoutingDrawerBody({
   sources: string[];
   targets: string[];
   categories: Record<string, string>;
+  sourceTags: Record<string, { required: string; excluded: string }>;
+  onSourceTagsChange: (id: string, patch: { required?: string; excluded?: string }) => void;
   categoryChecks: Record<string, DownloadClientCategoryCheckResult>;
   onToggleSource: (id: string, on: boolean) => void;
   onToggleClient: (id: string, on: boolean) => void;
@@ -53,7 +58,7 @@ export function RoutingDrawerBody({
             {relevantIndexers.map((item) => {
               const chip = healthChip(item);
               return (
-                <div key={item.id} className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)] rounded-[10px] border border-hairline px-[var(--field-pad-x)]">
+                <div key={item.id} className="rounded-[10px] border border-hairline px-[var(--field-pad-x)]"><div className="flex min-h-10 items-center justify-between gap-[var(--grid-gap)]">
                   <label htmlFor={`route-src-${item.id}`} className="min-w-0 cursor-pointer">
                     <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.name}</span>
                     <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{protocolLabel(item.protocol)} · priority {item.priority}</span>
@@ -62,6 +67,19 @@ export function RoutingDrawerBody({
                     <Chip tone={chip.tone}>{chip.label}</Chip>
                     <Switch id={`route-src-${item.id}`} size="sm" checked={sources.includes(item.id)} onCheckedChange={(on) => onToggleSource(item.id, on)} />
                   </span>
+                </div>
+                {sources.includes(item.id) ? (
+                  <div className="grid gap-3 border-t border-hairline py-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <span className="text-[length:var(--type-caption)] font-medium text-foreground">Only for titles tagged (optional)</span>
+                      <TagPicker label={`Required tags for ${item.name}`} value={sourceTags[item.id]?.required ?? ""} onChange={(required) => onSourceTagsChange(item.id, { required })} />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <span className="text-[length:var(--type-caption)] font-medium text-foreground">Never for titles tagged (optional)</span>
+                      <TagPicker label={`Excluded tags for ${item.name}`} value={sourceTags[item.id]?.excluded ?? ""} onChange={(excluded) => onSourceTagsChange(item.id, { excluded })} />
+                    </div>
+                  </div>
+                ) : null}
                 </div>
               );
             })}

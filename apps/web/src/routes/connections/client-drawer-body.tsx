@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { TagPicker } from "../../components/app/tag-picker";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type QbittorrentBlocklistSyncState, type SharingRuleItem, type TagItem } from "../../lib/api";
+import { fetchJson, type DownloadClientItem, type DownloadClientPathMappingItem, type QbittorrentBlocklistSyncState, type SharingRuleItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Chip } from "../../components/ui/chip";
 import { Disclosure } from "../../components/ui/disclosure";
@@ -48,19 +49,6 @@ export function ClientDrawerBody({
 }) {
   const [pathMappingOpen, setPathMappingOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchJson<TagItem[]>("/api/tags")
-      .then((items) => {
-        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
-      })
-      .catch(() => {
-        // Tags are optional suggestions; the free-form field still works without them.
-      });
-    return () => { cancelled = true; };
-  }, []);
   const preset = CLIENT_PRESETS.find((item) => item.protocol === form.protocol);
   /**
    * A client saved by an older Deluno can carry a protocol nothing can dispatch
@@ -221,10 +209,7 @@ export function ClientDrawerBody({
           <Input type="number" min={1} max={50} value={form.priority} onChange={(event) => { clearError("priority"); setForm((current) => ({ ...current, priority: event.target.value })); }} />
         </Field>
         <Field label="Tags" optional help="Leave blank to use this client for any title. With tags set, Deluno sends a release here only when its title shares one of them — for example, keep an anime library on its own client.">
-          <Input value={form.tags} onChange={(event) => setForm((current) => ({ ...current, tags: event.target.value }))} list="client-tag-options" placeholder="Add tags, comma-separated" autoComplete="off" />
-          <datalist id="client-tag-options">
-            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
-          </datalist>
+          <TagPicker label="Download client tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
         </Field>
         {preset?.kind === "Usenet" ? (
           <Field label="URL base" help={`For example "sabnzbd" if this client is reached at a path like https://host/sabnzbd/ through a reverse proxy.`}>
@@ -280,7 +265,7 @@ export function ClientDrawerBody({
         </Disclosure>
       ) : null}
 
-      {editing ? <SharingRulesEditor tagOptions={tagOptions} /> : null}
+      {editing ? <SharingRulesEditor /> : null}
 
       {editing && chip ? (
         <DrawerSection title="Health">
@@ -318,7 +303,7 @@ export function ClientDrawerBody({
  * the sharing rule itself, a rule here is not about which client a download
  * landed in, so it is one list rather than one per client.
  */
-function SharingRulesEditor({ tagOptions }: { tagOptions: string[] }) {
+function SharingRulesEditor() {
   const [open, setOpen] = useState(false);
   const [rules, setRules] = useState<SharingRuleItem[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -428,10 +413,7 @@ function SharingRulesEditor({ tagOptions }: { tagOptions: string[] }) {
       </FieldRow>
       <FieldRow>
         <Field label="Tags" optional>
-          <Input value={draft.tags} onChange={(event) => setDraft((current) => ({ ...current, tags: event.target.value }))} list="sharing-rule-tag-options" placeholder="Comma-separated" autoComplete="off" />
-          <datalist id="sharing-rule-tag-options">
-            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
-          </datalist>
+          <TagPicker label="Seeding rule tags" value={draft.tags} onChange={(tags) => setDraft((current) => ({ ...current, tags }))} />
         </Field>
       </FieldRow>
       <FieldRow>

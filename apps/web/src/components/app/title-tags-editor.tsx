@@ -1,11 +1,10 @@
 import { LoaderCircle, Pencil, Plus, Save, Tag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "../../lib/api";
-import type { TagItem } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { TagPicker } from "./tag-picker";
 
 type TitleTagsMediaType = "movies" | "series";
 
@@ -28,7 +27,6 @@ export function TitleTagsEditor({
   const tagsFromMetadata = useMemo(() => readTags(metadataJson), [metadataJson]);
   const [tags, setTags] = useState(tagsFromMetadata);
   const [draft, setDraft] = useState(tagsFromMetadata.join(", "));
-  const [tagOptions, setTagOptions] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,15 +40,6 @@ export function TitleTagsEditor({
   useEffect(() => {
     let cancelled = false;
     const segment = mediaType === "movies" ? "movies" : "series";
-    void fetchJson<TagItem[]>("/api/tags")
-      .then((items) => {
-        if (!cancelled) setTagOptions(items.map((item) => item.name).filter(Boolean).sort((a, b) => a.localeCompare(b)));
-      })
-      .catch(() => {
-        // Tags are optional suggestions. The free-form editor still works when
-        // the platform catalogue is temporarily unavailable.
-      });
-
     // Tags are catalogue relationships, not provider metadata. Keep the
     // metadata read as a compatibility fallback for an older server, but let
     // the canonical endpoint win whenever it is available.
@@ -110,18 +99,7 @@ export function TitleTagsEditor({
       </span>
       {editing ? (
         <>
-          <Input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            list={`title-tags-${id}`}
-            aria-label="Tags"
-            placeholder="Add tags, comma-separated"
-            className="h-8 min-w-[14rem] flex-1 bg-background/60 text-sm"
-            autoFocus
-          />
-          <datalist id={`title-tags-${id}`}>
-            {tagOptions.map((tag) => <option key={tag} value={tag} />)}
-          </datalist>
+          <div className="min-w-[14rem] flex-1"><TagPicker label="Title tags" value={draft} onChange={setDraft} warnUnused={false} /></div>
           <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
             Save
