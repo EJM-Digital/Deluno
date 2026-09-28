@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Deluno.Contracts;
+using Deluno.Filesystem;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Movies.Contracts;
@@ -263,7 +264,7 @@ public sealed class ProcessorHandoffWatcher(
                 // #890: the processor just told Deluno the file is done for -
                 // one of the two moments this is allowed to act on a partial
                 // output (the other is GiveUpAsync below). Never on time alone.
-                reason += await DeleteCrashedPartialOutputAsync(handoff, cancellationToken);
+                reason += await DeleteCrashedPartialOutputAsync(handoff, library, cancellationToken);
                 await EndAsync(handoff, ProcessorHandoffStatuses.Failed, reason, cancellationToken);
                 await RaiseRecoveryCaseAsync(
                     handoff,
@@ -454,7 +455,7 @@ public sealed class ProcessorHandoffWatcher(
         // processor reporting failure outright, above) a partial output is
         // allowed to be treated as abandoned - never by time alone, only
         // because the hand-off itself is ending right here.
-        summary += await DeleteCrashedPartialOutputAsync(handoff, cancellationToken);
+        summary += await DeleteCrashedPartialOutputAsync(handoff, library, cancellationToken);
 
         if (string.Equals(library.ProcessorFailureMode, "import-original", StringComparison.OrdinalIgnoreCase))
         {
@@ -479,42 +480,61 @@ public sealed class ProcessorHandoffWatcher(
     }
 
     /// <summary>
-    /// #890 (cleanup sheet F7): deletes a processor's crashed, partial output
-    /// once the hand-off it belongs to is actually over - never on time
+    /// #890/#953 (cleanup sheet F7): deletes a processor's crashed, partial
+    /// output, and everything else it left scattered around that hand-off's
+    /// own output folder, once the hand-off is actually over - never on time
     /// alone. Called from exactly the two places a hand-off is allowed to
     /// end that way: the processor reporting failure outright, and
     /// <see cref="GiveUpAsync"/>. A complete file sitting unclaimed is a
-    /// different problem (#891/#929/#921) and is left alone here.
+    /// different problem (#891/#929/#921) and is left alone here, together
+    /// with whatever folder holds it.
     /// </summary>
     /// <returns>
     /// A sentence to fold into the same timeout/failure entry, or empty when
     /// there was nothing to delete.
     /// </returns>
-    private async Task<string> DeleteCrashedPartialOutputAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    private async Task<string> DeleteCrashedPartialOutputAsync(ProcessorHandoffItem handoff, LibraryItem library, CancellationToken cancellationToken)
     {
+        var summary = string.Empty;
         var path = handoff.OutputPath;
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
         {
-            return string.Empty;
+            if (ProcessorOutputReadiness.IsReady(path))
+            {
+                // A complete file is not what crashed - leave it for the loose-
+                // output safety net to name instead of deleting it here.
+            }
+            else
+            {
+                try
+                {
+                    File.Delete(path);
+                    summary += " Deleted the processor's partial output so a re-run starts clean.";
+                }
+                catch (Exception exception)
+                {
+                    summary += $" Its partial output could not be deleted: {exception.Message}";
+                }
+            }
         }
 
-        if (ProcessorOutputReadiness.IsReady(path))
+        // The single output path above only ever names one file. A
+        // folder-shaped hand-off (#915's documented shape) can leave other
+        // scraps and now-empty subfolders alongside it, under this hand-off's
+        // own working folder -- clean those up too, but never a complete file
+        // #921's Health row still offers.
+        var scrapsRemoved = ProcessorHandoffOutputCleanup.CleanupAbandonedHandoffOutput(
+            WorkPlanner.ExpectedOutputDirectoryNames(handoff.SourcePath),
+            library.ProcessorOutputPath,
+            ProcessorOutputReadiness.IsReady);
+        if (scrapsRemoved > 0)
         {
-            // A complete file is not what crashed - leave it for the loose-
-            // output safety net to name instead of deleting it here.
-            return string.Empty;
+            summary += scrapsRemoved == 1
+                ? " Cleared 1 other leftover item the processor left behind."
+                : $" Cleared {scrapsRemoved} other leftover items the processor left behind.";
         }
 
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception exception)
-        {
-            return $" Its partial output could not be deleted: {exception.Message}";
-        }
-
-        return " Deleted the processor's partial output so a re-run starts clean.";
+        return summary;
     }
 
     private async Task EndAsync(ProcessorHandoffItem handoff, string status, string message, CancellationToken cancellationToken)

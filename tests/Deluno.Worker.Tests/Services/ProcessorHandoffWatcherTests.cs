@@ -451,6 +451,53 @@ public sealed class ProcessorHandoffWatcherTests
         }
     }
 
+    /// <summary>
+    /// #953: giving up on a hand-off must clean up more than the single
+    /// tracked output path - the processor's own working folder for it can
+    /// hold other scraps and, once those are gone, an empty folder. Both are
+    /// this hand-off's own, so both go; a sibling hand-off's folder is left
+    /// alone (keeping a complete file is covered directly on
+    /// <c>ProcessorHandoffOutputCleanup</c>, which this delegates to).
+    /// </summary>
+    [Fact]
+    public async Task Giving_up_cleans_scraps_and_the_now_empty_handoff_folder()
+    {
+        var processorOutputPath = Path.Combine(Path.GetTempPath(), $"deluno-output-{Guid.NewGuid():n}");
+        var handoffFolder = Directory.CreateDirectory(Path.Combine(processorOutputPath, "Sintel.2010.1080p")).FullName;
+        var scrap = Path.Combine(handoffFolder, "Sintel.2010.1080p.mkv.partial");
+        File.WriteAllText(scrap, "still writing");
+        var siblingFolder = Directory.CreateDirectory(Path.Combine(processorOutputPath, "Arrival.2016.1080p")).FullName;
+        var siblingFile = Path.Combine(siblingFolder, "Arrival.2016.1080p.mkv.partial");
+        File.WriteAllText(siblingFile, "unrelated hand-off");
+        try
+        {
+            GivenHandoff(
+                updated: Now.AddMinutes(-5),
+                previous: Answering(since: Now.AddMinutes(-5)),
+                mode: "block",
+                created: Now.AddDays(-9));
+            Answers(ProcessorHandoffStates.Queued, lastChanged: Now.AddMinutes(-5), queuePosition: 2);
+
+            await Watcher().WatchAsync(
+                [Library(_mode, _stallMinutes) with { ProcessorOutputPath = processorOutputPath }],
+                Now,
+                CancellationToken.None);
+
+            var (status, _) = Assert.Single(_updates);
+            Assert.Equal(ProcessorHandoffStatuses.TimedOut, status);
+            Assert.False(File.Exists(scrap), "the not-yet-renamed leftover should be cleared");
+            Assert.False(Directory.Exists(handoffFolder), "the folder should go once its only files are cleared");
+            Assert.True(File.Exists(siblingFile), "a sibling hand-off's own folder must never be touched");
+        }
+        finally
+        {
+            if (Directory.Exists(processorOutputPath))
+            {
+                Directory.Delete(processorOutputPath, recursive: true);
+            }
+        }
+    }
+
     [Fact]
     public async Task A_processor_that_cannot_be_asked_is_judged_from_the_hand_off_last_change()
     {
