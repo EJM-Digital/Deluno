@@ -478,6 +478,7 @@ POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
 POST /api/tags/
+POST /api/tags/delete-unused
 POST /api/trackers/cloudflare-helper/test
 POST /api/trackers/definitions/update-check/run
 POST /api/trakt/connect
