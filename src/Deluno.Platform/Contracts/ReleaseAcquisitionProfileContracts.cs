@@ -31,7 +31,15 @@ public sealed record ReleaseProfileItem(
     /// Indexer ids this profile is scoped to. Empty means every indexer,
     /// matching every profile's behaviour before scoping existed.
     /// </summary>
-    IReadOnlyList<string> IndexerIds);
+    IReadOnlyList<string> IndexerIds,
+    /// <summary>
+    /// #992: skip this profile's own acquisition delay once a release is
+    /// already the best quality its title's quality profile allows, over
+    /// the protocol preferred here. Defaults off, matching Radarr's delay
+    /// profile before either of its bypass toggles is turned on, and every
+    /// profile that existed before this column did.
+    /// </summary>
+    bool BypassIfHighestQuality = false);
 
 public sealed record CreateReleaseProfileRequest(
     string? Name,
@@ -43,7 +51,8 @@ public sealed record CreateReleaseProfileRequest(
     string? MustNotContain,
     IReadOnlyList<ReleaseTermScore>? PreferredTerms,
     bool? Enabled = null,
-    IReadOnlyList<string>? IndexerIds = null);
+    IReadOnlyList<string>? IndexerIds = null,
+    bool? BypassIfHighestQuality = null);
 
 /// <summary>
 /// PUT is a full edit of the profile. Empty strings and an empty term list
@@ -60,7 +69,8 @@ public sealed record UpdateReleaseProfileRequest(
     string? MustNotContain,
     IReadOnlyList<ReleaseTermScore>? PreferredTerms,
     bool? Enabled = null,
-    IReadOnlyList<string>? IndexerIds = null);
+    IReadOnlyList<string>? IndexerIds = null,
+    bool? BypassIfHighestQuality = null);
 
 public static class AcquisitionSearchKinds
 {

@@ -86,7 +86,8 @@ public sealed class SqliteReleaseProfileRepository(
             now,
             now,
             request.Enabled ?? true,
-            request.IndexerIds);
+            request.IndexerIds,
+            request.BypassIfHighestQuality ?? false);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -98,13 +99,13 @@ public sealed class SqliteReleaseProfileRepository(
                 id, name, tag_name, preferred_protocol, usenet_delay_minutes,
                 torrent_delay_minutes, must_contain, must_not_contain,
                 preferred_terms_json, created_utc, updated_utc,
-                enabled, indexer_ids_json
+                enabled, indexer_ids_json, bypass_if_highest_quality
             )
             VALUES (
                 @id, @name, @tagName, @preferredProtocol, @usenetDelay,
                 @torrentDelay, @mustContain, @mustNotContain,
                 @preferredTerms, @createdUtc, @updatedUtc,
-                @enabled, @indexerIds
+                @enabled, @indexerIds, @bypassIfHighestQuality
             );
             """;
         Bind(command, item);
@@ -137,7 +138,8 @@ public sealed class SqliteReleaseProfileRepository(
             existing.CreatedUtc,
             now,
             request.Enabled ?? existing.Enabled,
-            request.IndexerIds ?? existing.IndexerIds);
+            request.IndexerIds ?? existing.IndexerIds,
+            request.BypassIfHighestQuality ?? existing.BypassIfHighestQuality);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -156,7 +158,8 @@ public sealed class SqliteReleaseProfileRepository(
                 preferred_terms_json = @preferredTerms,
                 updated_utc = @updatedUtc,
                 enabled = @enabled,
-                indexer_ids_json = @indexerIds
+                indexer_ids_json = @indexerIds,
+                bypass_if_highest_quality = @bypassIfHighestQuality
             WHERE id = @id;
             """;
         Bind(command, item);
@@ -177,7 +180,7 @@ public sealed class SqliteReleaseProfileRepository(
     private static readonly string SelectSql =
         "SELECT id, name, tag_name, preferred_protocol, usenet_delay_minutes, torrent_delay_minutes, "
         + "must_contain, must_not_contain, preferred_terms_json, created_utc, updated_utc, "
-        + "enabled, indexer_ids_json "
+        + "enabled, indexer_ids_json, bypass_if_highest_quality "
         + "FROM release_profiles";
 
     private static async Task<IReadOnlyList<ReleaseProfileItem>> ReadManyAsync(
@@ -227,7 +230,8 @@ public sealed class SqliteReleaseProfileRepository(
                 ParseTimestamp(reader.GetString(9)),
                 ParseTimestamp(reader.GetString(10)),
                 reader.GetInt32(11) != 0,
-                indexerIds));
+                indexerIds,
+                reader.GetInt32(13) != 0));
         }
 
         return items;
@@ -246,7 +250,8 @@ public sealed class SqliteReleaseProfileRepository(
         DateTimeOffset createdUtc,
         DateTimeOffset updatedUtc,
         bool enabled,
-        IReadOnlyList<string>? indexerIds)
+        IReadOnlyList<string>? indexerIds,
+        bool bypassIfHighestQuality)
         => new(
             id,
             string.IsNullOrWhiteSpace(name) ? "Release profile" : name.Trim(),
@@ -260,7 +265,8 @@ public sealed class SqliteReleaseProfileRepository(
             createdUtc,
             updatedUtc,
             enabled,
-            NormalizeIndexerIds(indexerIds));
+            NormalizeIndexerIds(indexerIds),
+            bypassIfHighestQuality);
 
     private static IReadOnlyList<string> NormalizeIndexerIds(IReadOnlyList<string>? indexerIds)
         => (indexerIds ?? [])
@@ -314,5 +320,6 @@ public sealed class SqliteReleaseProfileRepository(
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
         AddParameter(command, "@enabled", item.Enabled ? 1 : 0);
         AddParameter(command, "@indexerIds", JsonSerializer.Serialize(item.IndexerIds, JsonOptions));
+        AddParameter(command, "@bypassIfHighestQuality", item.BypassIfHighestQuality ? 1 : 0);
     }
 }

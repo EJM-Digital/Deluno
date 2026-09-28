@@ -14,7 +14,14 @@ public sealed record EffectiveReleaseProfileRules(
     IReadOnlyList<string> MustContain,
     IReadOnlyList<string> MustNotContain,
     IReadOnlyList<ReleaseTermScore> PreferredTerms,
-    int PreferredProtocolScore)
+    int PreferredProtocolScore,
+    /// <summary>
+    /// #992: skip the acquisition delay once a release is already the best
+    /// quality the governing profile allows. Combined the same conservative
+    /// way as the delay itself: every applicable profile must opt in, so one
+    /// profile leaving it off (the default) keeps the wait in force.
+    /// </summary>
+    bool BypassIfHighestQuality = false)
 {
     public static EffectiveReleaseProfileRules Empty { get; } = new(
         PreferredProtocol: "any",
@@ -22,7 +29,8 @@ public sealed record EffectiveReleaseProfileRules(
         MustContain: [],
         MustNotContain: [],
         PreferredTerms: [],
-        PreferredProtocolScore: 0);
+        PreferredProtocolScore: 0,
+        BypassIfHighestQuality: false);
 }
 
 public static class ReleaseProfileRuleEvaluator
@@ -93,7 +101,8 @@ public static class ReleaseProfileRuleEvaluator
             MustContain: profiles.SelectMany(profile => SplitTerms(profile.MustContain)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             MustNotContain: profiles.SelectMany(profile => SplitTerms(profile.MustNotContain)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             PreferredTerms: terms,
-            PreferredProtocolScore: protocolScore);
+            PreferredProtocolScore: protocolScore,
+            BypassIfHighestQuality: profiles.All(profile => profile.BypassIfHighestQuality));
     }
 
     public static IReadOnlyList<string> SplitTerms(string? value)

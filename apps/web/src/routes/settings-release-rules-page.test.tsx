@@ -31,7 +31,8 @@ const scopedProfile: ReleaseProfileItem = {
   createdUtc: new Date(0).toISOString(),
   updatedUtc: new Date(0).toISOString(),
   enabled: false,
-  indexerIds: ["idx-1"]
+  indexerIds: ["idx-1"],
+  bypassIfHighestQuality: false
 };
 
 const loaderData = { profiles: [scopedProfile], indexers, settings: emptyPlatformSettingsSnapshot };

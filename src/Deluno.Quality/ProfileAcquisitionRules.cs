@@ -30,14 +30,25 @@ public sealed record ProfileAcquisitionRules(
     /// <summary>Comma-separated words a release name must carry.</summary>
     string MustContain = "",
     /// <summary>Comma-separated words a release name must not carry.</summary>
-    string MustNotContain = "")
+    string MustNotContain = "",
+    /// <summary>
+    /// #992: skip this profile's own acquisition delay once a release is
+    /// already the best quality the profile allows, over the preferred
+    /// protocol - matching Radarr's delay profile "Bypass if Highest
+    /// Quality" (checked in Radarr's own source, not its wiki). Custom
+    /// format score plays no part in that check, so it plays none here
+    /// either. Defaults off, so every profile that existed before this
+    /// toggle keeps waiting out its delay exactly as it did before (#936).
+    /// </summary>
+    bool BypassIfHighestQuality = false)
 {
     public bool IsEmpty
         => Normalized(PreferredProtocol) == "any"
             && UsenetDelayMinutes <= 0
             && TorrentDelayMinutes <= 0
             && string.IsNullOrWhiteSpace(MustContain)
-            && string.IsNullOrWhiteSpace(MustNotContain);
+            && string.IsNullOrWhiteSpace(MustNotContain)
+            && !BypassIfHighestQuality;
 
     private static string Normalized(string? protocol)
     {
