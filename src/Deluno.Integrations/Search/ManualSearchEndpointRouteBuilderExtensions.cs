@@ -1,5 +1,6 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search.Trackers;
 using Deluno.Libraries.Contracts;
@@ -68,6 +69,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             IConnectionsRepository connections,
             IMediaSearchPlanner searchPlanner,
             TimeProvider timeProvider,
+            IIndexerHistoryRecorder indexerHistoryRecorder,
             CancellationToken cancellationToken) =>
         {
             var query = request.Query?.Trim() ?? string.Empty;
@@ -116,6 +118,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                 .ToArray();
 
             var candidates = new List<object>();
+            var matchedIndexerIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var mediaType in mediaTypes)
             {
                 var family = mediaType == "tv" ? 5 : 2;
@@ -159,7 +162,27 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                         candidate.DownloadUrl,
                         SearchType = mediaType
                     });
+                    if (!string.IsNullOrWhiteSpace(candidate.IndexerId))
+                    {
+                        matchedIndexerIds.Add(candidate.IndexerId);
+                    }
                 }
+            }
+
+            // #978: every indexer this Search-page query reached shows up in
+            // Indexer History against its own name, the same way an
+            // interactive per-title search already does -- even one that came
+            // back with nothing, since a search was still made against it.
+            foreach (var indexer in indexers)
+            {
+                var found = matchedIndexerIds.Contains(indexer.Id);
+                await indexerHistoryRecorder.RecordSearchAsync(
+                    indexer.Id,
+                    indexer.Name,
+                    found ? "matched" : "no_results",
+                    found ? $"Search page: \"{query}\" matched a release" : $"Search page: \"{query}\" found nothing",
+                    detailsJson: null,
+                    cancellationToken);
             }
 
             return Results.Ok(new
@@ -174,6 +197,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             ILibrariesRepository libraries,
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
+            IIndexerHistoryRecorder indexerHistoryRecorder,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.ReleaseName) || string.IsNullOrWhiteSpace(request.DownloadUrl))
@@ -274,6 +298,18 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                     category,
                     IndexerName: request.IndexerName,
                     IndexerId: request.IndexerId),
+                cancellationToken);
+
+            // #978: a grab made from the Search page shows in Indexer
+            // History against its indexer, the same as a per-title grab.
+            await indexerHistoryRecorder.RecordGrabAsync(
+                request.IndexerId,
+                request.IndexerName ?? "Unknown indexer",
+                grabResult.Succeeded ? "succeeded" : "failed",
+                grabResult.Succeeded
+                    ? $"Search page grab: {request.ReleaseName}"
+                    : $"Search page grab: {request.ReleaseName} ({grabResult.Message ?? grabResult.Status})",
+                detailsJson: null,
                 cancellationToken);
 
             return Results.Ok(new
