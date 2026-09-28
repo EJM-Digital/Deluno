@@ -140,6 +140,15 @@ public sealed class TrackerIndexers(
         }
         catch (TrackerException exception)
         {
+            // A Cloudflare check turning every mirror away is not the same
+            // as Deluno's own request never reaching one (#971, #1027): it
+            // needs a Cloudflare helper set up, not a network fix, and must
+            // never be counted like an outage or a bad release.
+            if (exception.InnerException is TrackerBlockedException)
+            {
+                return ("degraded", exception.Message, "blocked");
+            }
+
             return exception.Message.Contains("sign-in", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("cookie", StringComparison.OrdinalIgnoreCase)
                 ? ("degraded", exception.Message, "auth")
                 : ("unreachable", exception.Message, "connectivity");

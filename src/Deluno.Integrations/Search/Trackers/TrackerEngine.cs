@@ -107,7 +107,16 @@ public sealed partial class TrackerEngine : ITrackerEngine
         MaxAutomaticRedirections = 8,
         AutomaticDecompression = DecompressionMethods.All,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-        ConnectTimeout = TimeSpan.FromSeconds(10)
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        // A tracker's proxy is Deluno's own, explicit choice (#748/#749): the
+        // indexer's assigned proxy, resolved into HelperProxy, never an
+        // ambient HTTP_PROXY/HTTPS_PROXY environment variable or WinINET/
+        // WinHTTP system setting left over on the host. Honouring one of
+        // those meant a tracker request could be silently rerouted through
+        // an address nothing listens on any more, and refused there instead
+        // of ever reaching the tracker (#1027) - a leftover a person checking
+        // the OS proxy settings alone would never find.
+        UseProxy = false
     };
 
     public async Task<TrackerSearchResult> SearchAsync(TrackerConnection connection, TrackerQuery query, CancellationToken cancellationToken)
@@ -118,6 +127,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         var problems = new List<string>();
         var skipped = 0;
         Exception? lastFailure = null;
+        string? lastFailureLink = null;
         var answered = 0;
         var tried = 0;
 
@@ -156,6 +166,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
             {
                 // This mirror is down or blocked; the next may not be.
                 lastFailure = exception;
+                lastFailureLink = siteLink;
                 session.SignedIn = false;
                 logger.LogInformation("Tracker {Tracker} did not answer at {Link}: {Reason}", definition.Name, siteLink, exception.Message);
             }
@@ -163,8 +174,9 @@ public sealed partial class TrackerEngine : ITrackerEngine
 
         if (answered == 0 && lastFailure is not null)
         {
+            var described = Describe(lastFailure, lastFailureLink);
             throw new TrackerException(
-                tried > 1 ? $"None of the {tried} addresses for {definition.Name} answered. The last: {Describe(lastFailure)}" : Describe(lastFailure),
+                tried > 1 ? $"None of the {tried} addresses for {definition.Name} answered. The last: {described}" : described,
                 lastFailure);
         }
 
@@ -663,12 +675,27 @@ public sealed partial class TrackerEngine : ITrackerEngine
     private static bool IsMirrorFailure(Exception exception)
         => exception is HttpRequestException or TrackerBlockedException or TaskCanceledException;
 
-    private static string Describe(Exception exception) => exception switch
+    /// <summary>
+    /// What went wrong reaching one mirror, in words that name the address
+    /// that actually refused it rather than always blaming "the tracker"
+    /// (#1027) — the two are not the same thing: a socket refusal is
+    /// Deluno's own request failing to reach <paramref name="address"/> at
+    /// all, before the tracker (or a Cloudflare check in front of it) ever
+    /// saw it.
+    /// </summary>
+    private static string Describe(Exception exception, string? address)
     {
-        TaskCanceledException => "The tracker did not answer in time.",
-        HttpRequestException http when http.InnerException is System.Net.Sockets.SocketException socket => $"The tracker could not be reached: {socket.Message}",
-        _ => exception.Message
-    };
+        var host = address is not null && Uri.TryCreate(address, UriKind.Absolute, out var uri) ? uri.Host : address;
+        return exception switch
+        {
+            TaskCanceledException => host is null ? "The tracker did not answer in time." : $"{host} did not answer in time.",
+            HttpRequestException http when http.InnerException is System.Net.Sockets.SocketException socket =>
+                host is null
+                    ? $"The tracker could not be reached: {socket.Message}"
+                    : $"{host} could not be reached: {socket.Message}",
+            _ => exception.Message
+        };
+    }
 
     // ---- helpers -----------------------------------------------------------
 

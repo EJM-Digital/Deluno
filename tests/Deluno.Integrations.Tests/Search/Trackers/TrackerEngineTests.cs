@@ -1,5 +1,8 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using Deluno.Integrations.Search.Trackers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -176,6 +179,45 @@ public sealed class TrackerEngineTests
         var failure = await Assert.ThrowsAsync<TrackerException>(() => engine.SearchAsync(connection, new TrackerQuery("x"), CancellationToken.None));
 
         Assert.Contains("None of the 2 addresses for Public Test answered", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #1027: the rig's own request was refused where it connected, and the
+    /// message blamed "the tracker" in general rather than saying which of
+    /// its two mirrors actually refused it. Describe() now names that host.
+    /// </summary>
+    [Fact]
+    public async Task Names_the_mirror_that_actively_refused_the_connection()
+    {
+        var (engine, connection) = Connect(
+            _ => throw new HttpRequestException("Connection refused", new SocketException((int)SocketError.ConnectionRefused)),
+            PublicTracker(),
+            []);
+
+        var failure = await Assert.ThrowsAsync<TrackerException>(() => engine.SearchAsync(connection, new TrackerQuery("x"), CancellationToken.None));
+
+        Assert.Contains("None of the 2 addresses for Public Test answered", failure.Message, StringComparison.Ordinal);
+        // "second.example" is the last mirror tried, so it is the one named.
+        Assert.Contains("second.example could not be reached", failure.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("The tracker could not be reached", failure.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #1027: a leftover HTTP_PROXY/HTTPS_PROXY (or a WinINET/WinHTTP system
+    /// proxy) could silently reroute a tracker request to an address nothing
+    /// listens on any more, and get refused there instead of ever reaching
+    /// the tracker - a cause checking only the OS proxy settings would miss.
+    /// The engine's own default handler must never honour one.
+    /// </summary>
+    [Fact]
+    public void The_default_handler_never_uses_an_ambient_system_or_environment_proxy()
+    {
+        var defaultHandler = typeof(TrackerEngine).GetMethod("DefaultHandler", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(defaultHandler);
+
+        using var handler = (SocketsHttpHandler)defaultHandler!.Invoke(null, [new CookieContainer()])!;
+
+        Assert.False(handler.UseProxy);
     }
 
     [Fact]
