@@ -186,7 +186,6 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "ui.relativeDates", request.ShowRelativeDates is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.defaultMovieView", NormalizeUiView(request.DefaultMovieView), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.defaultShowView", NormalizeUiView(request.DefaultShowView), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "metadata.nfoEnabled", request.MetadataNfoEnabled ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.artworkEnabled", request.MetadataArtworkEnabled ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.certificationCountry", NormalizeName(request.MetadataCertificationCountry) ?? "US", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "metadata.language", NormalizeName(request.MetadataLanguage) ?? "en", updatedUtc, cancellationToken);
@@ -578,7 +577,6 @@ public sealed class SqlitePlatformSettingsRepository(
             UiTheme: NormalizeUiTheme(GetValue(settings, "ui.theme")),
             DefaultMovieView: NormalizeUiView(GetValue(settings, "ui.defaultMovieView")),
             DefaultShowView: NormalizeUiView(GetValue(settings, "ui.defaultShowView")),
-            MetadataNfoEnabled: string.Equals(GetValue(settings, "metadata.nfoEnabled"), "true", StringComparison.OrdinalIgnoreCase),
             MetadataArtworkEnabled: !string.Equals(GetValue(settings, "metadata.artworkEnabled"), "false", StringComparison.OrdinalIgnoreCase),
             MetadataCertificationCountry: NormalizeName(GetValue(settings, "metadata.certificationCountry")) ?? "US",
             MetadataLanguage: NormalizeName(GetValue(settings, "metadata.language")) ?? "en",

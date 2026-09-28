@@ -27,7 +27,6 @@ public sealed record PatchPlatformSettingsRequest(
     string? UiTheme = null,
     string? DefaultMovieView = null,
     string? DefaultShowView = null,
-    bool? MetadataNfoEnabled = null,
     bool? MetadataArtworkEnabled = null,
     string? MetadataCertificationCountry = null,
     string? MetadataLanguage = null,

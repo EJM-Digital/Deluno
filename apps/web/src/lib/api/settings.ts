@@ -38,7 +38,6 @@ export interface PlatformSettingsPatch {
   timezone?: string;
   defaultMovieView?: string;
   defaultShowView?: string;
-  metadataNfoEnabled?: boolean;
   metadataArtworkEnabled?: boolean;
   metadataCertificationCountry?: string;
   metadataLanguage?: string;

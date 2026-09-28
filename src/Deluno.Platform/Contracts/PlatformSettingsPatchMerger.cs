@@ -27,7 +27,6 @@ public static class PlatformSettingsPatchMerger
             UiTheme: patch.UiTheme ?? current.UiTheme,
             DefaultMovieView: patch.DefaultMovieView ?? current.DefaultMovieView,
             DefaultShowView: patch.DefaultShowView ?? current.DefaultShowView,
-            MetadataNfoEnabled: patch.MetadataNfoEnabled ?? current.MetadataNfoEnabled,
             MetadataArtworkEnabled: patch.MetadataArtworkEnabled ?? current.MetadataArtworkEnabled,
             MetadataCertificationCountry: patch.MetadataCertificationCountry ?? current.MetadataCertificationCountry,
             MetadataLanguage: patch.MetadataLanguage ?? current.MetadataLanguage,

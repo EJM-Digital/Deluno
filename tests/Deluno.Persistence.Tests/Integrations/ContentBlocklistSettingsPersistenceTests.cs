@@ -101,7 +101,7 @@ public sealed class ContentBlocklistSettingsPersistenceTests
             UseHardlinks: false, CleanupEmptyFolders: false, MovieFolderFormat: "",
             SeriesFolderFormat: "", MovieFileFormat: "", EpisodeFileFormat: "", HostBindAddress: "", HostPort: 0,
             UrlBase: "", RequireAuthentication: false, UiTheme: "", DefaultMovieView: "", DefaultShowView: "",
-            MetadataNfoEnabled: false, MetadataArtworkEnabled: false, MetadataCertificationCountry: "",
+            MetadataArtworkEnabled: false, MetadataCertificationCountry: "",
             MetadataLanguage: "", MetadataProviderMode: "", MetadataBrokerUrl: "", MetadataBrokerConfigured: false,
             MetadataTmdbApiKeyConfigured: false, MetadataOmdbApiKeyConfigured: false, ReleaseNeverGrabPatterns: "",
             SearchScoringMode: "", ImportRecoveryRetentionDays: 30, UpdatedUtc: Now,
@@ -126,7 +126,7 @@ public sealed class ContentBlocklistSettingsPersistenceTests
             UseHardlinks: false, CleanupEmptyFolders: false, MovieFolderFormat: "",
             SeriesFolderFormat: "", MovieFileFormat: "", EpisodeFileFormat: "", HostBindAddress: "", HostPort: 0,
             UrlBase: "", RequireAuthentication: false, UiTheme: "", DefaultMovieView: "", DefaultShowView: "",
-            MetadataNfoEnabled: false, MetadataArtworkEnabled: false, MetadataCertificationCountry: "",
+            MetadataArtworkEnabled: false, MetadataCertificationCountry: "",
             MetadataLanguage: "", MetadataProviderMode: "", MetadataBrokerUrl: "", MetadataBrokerConfigured: false,
             MetadataTmdbApiKeyConfigured: false, MetadataOmdbApiKeyConfigured: false, ReleaseNeverGrabPatterns: "",
             SearchScoringMode: "", ImportRecoveryRetentionDays: 30, UpdatedUtc: Now);

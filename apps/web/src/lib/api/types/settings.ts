@@ -60,7 +60,6 @@ export interface PlatformSettingsSnapshot {
   timezone: string;
   defaultMovieView: string;
   defaultShowView: string;
-  metadataNfoEnabled: boolean;
   metadataArtworkEnabled: boolean;
   metadataCertificationCountry: string;
   metadataLanguage: string;
@@ -355,7 +354,6 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   timezone: "",
   defaultMovieView: "grid",
   defaultShowView: "grid",
-  metadataNfoEnabled: false,
   metadataArtworkEnabled: true,
   metadataCertificationCountry: "US",
   metadataLanguage: "en",
