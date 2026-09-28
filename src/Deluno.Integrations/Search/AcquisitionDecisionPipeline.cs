@@ -44,6 +44,17 @@ public interface IAcquisitionDecisionPipeline
         string downloadClientId,
         IReadOnlyList<string>? titleTags,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The plain-English reason a title's tags let (or would let) an indexer
+    /// be searched for it (#990) — null when the indexer is untagged, since
+    /// an untagged indexer is searched for every title and there is nothing
+    /// about tags to explain.
+    /// </summary>
+    Task<string?> ExplainIndexerRoutingAsync(
+        string indexerId,
+        IReadOnlyList<string>? titleTags,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
@@ -220,6 +231,21 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, downloadClientId, StringComparison.OrdinalIgnoreCase));
         return client is null ? null : DownloadClientTagMatch.Explain(client.Tags, titleTags, client.Name);
+    }
+
+    public async Task<string?> ExplainIndexerRoutingAsync(
+        string indexerId,
+        IReadOnlyList<string>? titleTags,
+        CancellationToken cancellationToken = default)
+    {
+        if (connectionsRepository is null)
+        {
+            return null;
+        }
+
+        var indexer = (await connectionsRepository.ListIndexersAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, indexerId, StringComparison.OrdinalIgnoreCase));
+        return indexer is null ? null : DownloadClientTagMatch.Explain(indexer.Tags, titleTags, indexer.Name);
     }
 
     public AcquisitionSelectedReleaseDecision EvaluateSelectedRelease(AcquisitionSelectedReleaseRequest request)
@@ -638,9 +664,21 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             item => DownloadProtocols.SourceKind(item.Protocol),
             StringComparer.OrdinalIgnoreCase);
 
+        // An indexer carrying tags is searched only for a title sharing one of
+        // them; an untagged indexer is searched for any title (#990), the same
+        // rule already applied to download clients (#808).
+        var indexerTags = indexers.ToDictionary(
+            item => item.Id,
+            item => item.Tags,
+            StringComparer.OrdinalIgnoreCase);
+
         // A source whose releases no ready client can take is not searched. Its
         // best release would otherwise win the search and have nowhere to go.
-        var readySources = request.Sources.Where(source => readyIndexerIds.Contains(source.IndexerId)).ToArray();
+        var readySources = request.Sources
+            .Where(source => readyIndexerIds.Contains(source.IndexerId))
+            .Where(source => !indexerTags.TryGetValue(source.IndexerId, out var tags)
+                || DownloadClientTagMatch.IsEligible(tags, request.TagNames))
+            .ToArray();
         var usableSources = readySources
             .Where(source => readyClients.Length == 0
                 || !sourceKinds.TryGetValue(source.IndexerId, out var kind)
@@ -709,28 +747,20 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 }
 
 /// <summary>
-/// Radarr/Sonarr's own tag-routing rule (#808): a client carrying tags is
-/// used only for a title sharing one of them, and an untagged client takes
-/// any title regardless of its tags.
+/// Radarr/Sonarr's own tag-routing rule (#808, extended to indexers and
+/// notification connections by #990): a connection carrying tags is used
+/// only for a title sharing one of them, and an untagged connection is used
+/// for any title regardless of its tags.
+///
+/// <para>The actual rule lives in <see cref="Deluno.Contracts.TagRoutingMatch"/>
+/// so Deluno.Notifications can share it without a project reference cycle
+/// (Deluno.Integrations already depends on Deluno.Notifications). This class
+/// stays as a thin forwarder so existing callers and tests keep working.</para>
 /// </summary>
 public static class DownloadClientTagMatch
 {
     public static bool IsEligible(string? clientTags, IReadOnlyList<string>? titleTags)
-    {
-        var required = Split(clientTags);
-        if (required.Count == 0)
-        {
-            return true;
-        }
-
-        if (titleTags is null || titleTags.Count == 0)
-        {
-            return false;
-        }
-
-        var held = titleTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return required.Any(held.Contains);
-    }
+        => Deluno.Contracts.TagRoutingMatch.IsEligible(clientTags, titleTags);
 
     /// <summary>
     /// Why a grab went to this client, in words (#808) — null for an untagged
@@ -738,25 +768,7 @@ public static class DownloadClientTagMatch
     /// choice needs explaining.
     /// </summary>
     public static string? Explain(string? clientTags, IReadOnlyList<string>? titleTags, string clientName)
-    {
-        var required = Split(clientTags);
-        if (required.Count == 0)
-        {
-            return null;
-        }
-
-        var held = titleTags?.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var matchedTag = required.FirstOrDefault(held.Contains);
-        return matchedTag is null
-            ? null
-            : $"{clientName} only takes titles tagged \"{matchedTag}\", and this one is.";
-    }
-
-    private static IReadOnlyList<string> Split(string? csv) =>
-        string.IsNullOrWhiteSpace(csv)
-            ? []
-            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        => Deluno.Contracts.TagRoutingMatch.Explain(clientTags, titleTags, clientName);
 }
 
 public sealed record AcquisitionDecisionRequest(

@@ -270,6 +270,78 @@ public sealed class AcquisitionDecisionPipelineTests
         Assert.Contains("Test a client successfully", clientBlocked.SearchResult, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #990: an indexer carrying tags is searched only for a title sharing
+    /// one of them, and an untagged indexer is searched for any title — the
+    /// same rule already applied to download clients (#808).
+    /// </summary>
+    [Fact]
+    public async Task PlanAsync_searches_a_tagged_indexer_only_for_a_matching_title_and_an_untagged_indexer_for_any_title()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+
+        var general = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+            "General indexer", "torznab", "public", "https://general.invalid/api", null, 1, "2000", null, "movies", true), CancellationToken.None);
+        await repository.UpdateIndexerHealthAsync(general.Id, "healthy", "Fixture source verified.", null, 1, CancellationToken.None);
+
+        var anime = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+            "Anime indexer", "torznab", "public", "https://anime.invalid/api", null, 1, "2000", "anime", "movies", true), CancellationToken.None);
+        await repository.UpdateIndexerHealthAsync(anime.Id, "healthy", "Fixture source verified.", null, 1, CancellationToken.None);
+
+        var client = await repository.CreateDownloadClientAsync(new CreateDownloadClientRequest(
+            "External client", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true), CancellationToken.None);
+        await repository.UpdateDownloadClientHealthAsync(client.Id, "healthy", "Fixture client verified.", null, null, CancellationToken.None);
+
+        var candidate = Candidate(status: "preferred", meetsCutoff: true, qualityDelta: 1);
+        var pipeline = new AcquisitionDecisionPipeline(
+            new StubPlanner(new MediaSearchPlan(candidate, [candidate], "best candidate")),
+            connectionsRepository: repository);
+
+        IReadOnlyList<LibrarySourceLinkItem> sources =
+        [
+            new LibrarySourceLinkItem("general-link", "library", general.Id, general.Name, 1, "", "", time.GetUtcNow(), time.GetUtcNow()),
+            new LibrarySourceLinkItem("anime-link", "library", anime.Id, anime.Name, 2, "", "", time.GetUtcNow(), time.GetUtcNow())
+        ];
+        IReadOnlyList<LibraryDownloadClientLinkItem> clients =
+            [new LibraryDownloadClientLinkItem("client-link", "library", client.Id, client.Name, 1, time.GetUtcNow(), time.GetUtcNow())];
+
+        var untaggedTitle = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, clients));
+        Assert.Equal(1, untaggedTitle.SourceCount);
+
+        var animeTitle = await pipeline.PlanAsync(new AcquisitionDecisionRequest(
+            "Dune Part Two", 2024, "movies", null, "WEB 1080p", sources, clients, TagNames: ["anime"]));
+        Assert.Equal(2, animeTitle.SourceCount);
+    }
+
+    [Fact]
+    public async Task ExplainIndexerRoutingAsync_only_explains_a_tagged_indexer_a_title_actually_matched()
+    {
+        using var storage = TestStorage.Create();
+        var time = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, time),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteConnectionsRepository(storage.Factory, time, TestSecretProtection.Create(storage));
+        var anime = await repository.CreateIndexerAsync(new CreateIndexerRequest(
+            "Anime indexer", "torznab", "public", "https://anime.invalid/api", null, 1, "2000", "anime", "movies", true), CancellationToken.None);
+        var pipeline = new AcquisitionDecisionPipeline(new ThrowingPlanner(), connectionsRepository: repository);
+
+        var matched = await pipeline.ExplainIndexerRoutingAsync(anime.Id, ["kids", "anime"], CancellationToken.None);
+        Assert.NotNull(matched);
+        Assert.Contains("Anime indexer", matched);
+
+        var unmatched = await pipeline.ExplainIndexerRoutingAsync(anime.Id, ["kids"], CancellationToken.None);
+        Assert.Null(unmatched);
+    }
+
     private static MediaSearchCandidate Candidate(string status, bool meetsCutoff, int qualityDelta)
         => new(
             ReleaseName: "Dune.Part.Two.2024.1080p.WEB-DL-GRP",

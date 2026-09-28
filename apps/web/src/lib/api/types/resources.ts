@@ -1040,6 +1040,8 @@ export interface NotificationWebhookItem {
   updatedUtc: string;
   provider: NotificationProvider;
   configJson: string | null;
+  /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires only for a title sharing one of them. */
+  tags: string;
 }
 
 export interface NotificationWebhookDeliveryItem {

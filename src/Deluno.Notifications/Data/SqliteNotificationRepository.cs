@@ -39,7 +39,7 @@ public sealed class SqliteNotificationRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json, tags
             FROM notification_webhooks
             ORDER BY name ASC;
             """;
@@ -68,10 +68,10 @@ public sealed class SqliteNotificationRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO notification_webhooks (id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json)
-            VALUES (@id, @name, @url, @eventFilters, @isEnabled, NULL, NULL, @createdUtc, @updatedUtc, @provider, @configJson);
+            INSERT INTO notification_webhooks (id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json, tags)
+            VALUES (@id, @name, @url, @eventFilters, @isEnabled, NULL, NULL, @createdUtc, @updatedUtc, @provider, @configJson, @tags);
 
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json, tags
             FROM notification_webhooks WHERE id = @id;
             """;
 
@@ -84,6 +84,7 @@ public sealed class SqliteNotificationRepository(
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@provider", NotificationProviders.Normalize(request.Provider));
         AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
+        AddParameter(command, "@tags", NormalizeCsv(request.Tags));
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
@@ -106,10 +107,11 @@ public sealed class SqliteNotificationRepository(
             """
             UPDATE notification_webhooks
             SET name = @name, url = @url, event_filters = @eventFilters, is_enabled = @isEnabled, updated_utc = @updatedUtc,
-                provider = COALESCE(@provider, provider), config_json = COALESCE(@configJson, config_json)
+                provider = COALESCE(@provider, provider), config_json = COALESCE(@configJson, config_json),
+                tags = COALESCE(@tags, tags)
             WHERE id = @id;
 
-            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json
+            SELECT id, name, url, event_filters, is_enabled, last_fired_utc, last_error, created_utc, updated_utc, provider, config_json, tags
             FROM notification_webhooks WHERE id = @id;
             """;
 
@@ -121,6 +123,7 @@ public sealed class SqliteNotificationRepository(
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@provider", request.Provider is null ? null : NotificationProviders.Normalize(request.Provider));
         AddParameter(command, "@configJson", string.IsNullOrWhiteSpace(request.ConfigJson) ? null : request.ConfigJson);
+        AddParameter(command, "@tags", request.Tags is null ? null : NormalizeCsv(request.Tags));
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadNotificationWebhook(reader) : null;
@@ -351,7 +354,8 @@ public sealed class SqliteNotificationRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(7)),
             UpdatedUtc: ParseTimestamp(reader.GetString(8)),
             Provider: reader.IsDBNull(9) ? NotificationProviders.Generic : reader.GetString(9),
-            ConfigJson: reader.IsDBNull(10) ? null : reader.GetString(10));
+            ConfigJson: reader.IsDBNull(10) ? null : reader.GetString(10),
+            Tags: reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetString(11) : "");
     }
 
 }

@@ -60,6 +60,42 @@ public sealed class NotificationWebhookDeliveryTests
         Assert.Equal(delivered ? 1 : 0, handler.Attempts);
     }
 
+    /// <summary>
+    /// #990: a notification connection carrying tags fires only for a title
+    /// sharing one of them; an untagged connection fires for any title (or
+    /// an event that names no title, since <c>titleTags</c> is then null) —
+    /// the same rule already applied to download clients and indexers.
+    /// </summary>
+    [Fact]
+    public async Task A_tagged_webhook_fires_only_for_a_matching_title_and_an_untagged_webhook_fires_for_any_title()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-28T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Anime channel", "https://hooks.example.test/anime", "all", true, Tags: "anime"),
+            CancellationToken.None);
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Everything channel", "https://hooks.example.test/all", "all", true),
+            CancellationToken.None);
+        // A title with no anime tag: only the untagged channel fires.
+        var untaggedTitleHandler = new SequencedHandler([]);
+        var untaggedTitleService = new OutboundNotificationService(repository, new SingleClientFactory(untaggedTitleHandler), NullLogger<OutboundNotificationService>.Instance);
+        await untaggedTitleService.DispatchAsync("import.completed", "Some Movie", "Message", null, CancellationToken.None, titleTags: ["kids"]);
+        Assert.Equal(1, untaggedTitleHandler.Attempts);
+
+        // A title tagged anime: both channels fire.
+        var animeTitleHandler = new SequencedHandler([]);
+        var animeTitleService = new OutboundNotificationService(repository, new SingleClientFactory(animeTitleHandler), NullLogger<OutboundNotificationService>.Instance);
+        await animeTitleService.DispatchAsync("import.completed", "Some Anime", "Message", null, CancellationToken.None, titleTags: ["anime"]);
+        Assert.Equal(2, animeTitleHandler.Attempts);
+    }
+
     [Fact]
     public async Task DispatchAsync_retries_failed_delivery_then_records_success()
     {
