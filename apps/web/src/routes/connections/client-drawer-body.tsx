@@ -93,7 +93,12 @@ export function ClientDrawerBody({
       port: String(next.defaultPort),
       moviesCategory: next.defaultMoviesCategory,
       tvCategory: next.defaultTvCategory,
-      name: current.name.trim() && !CLIENT_PRESETS.some((item) => item.label === current.name) ? current.name : next.label
+      name: current.name.trim() && !CLIENT_PRESETS.some((item) => item.label === current.name) ? current.name : next.label,
+      // #980: switching to a preset that has a URL base of its own (rTorrent's
+      // /RPC2) pre-fills it, the way the port and categories already do. Only
+      // when the field is still blank, so picking a preset never overwrites a
+      // URL base the person already typed.
+      urlBase: current.urlBase.trim() ? current.urlBase : next.defaultUrlBase
     }));
   }
 
@@ -224,6 +229,10 @@ export function ClientDrawerBody({
         {preset?.kind === "Usenet" ? (
           <Field label="URL base" help={`For example "sabnzbd" if this client is reached at a path like https://host/sabnzbd/ through a reverse proxy.`}>
             <Input value={form.urlBase} onChange={(event) => setForm((current) => ({ ...current, urlBase: event.target.value }))} placeholder="sabnzbd" autoComplete="off" />
+          </Field>
+        ) : form.protocol === "rtorrent" ? (
+          <Field label="URL base" help={`The path the webserver in front of rTorrent exposes its XML-RPC at, almost always "/RPC2".`}>
+            <Input value={form.urlBase} onChange={(event) => setForm((current) => ({ ...current, urlBase: event.target.value }))} placeholder="/RPC2" autoComplete="off" />
           </Field>
         ) : null}
       </Disclosure>
