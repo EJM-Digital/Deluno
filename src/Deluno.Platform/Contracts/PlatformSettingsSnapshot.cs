@@ -24,7 +24,6 @@ public sealed record PlatformSettingsSnapshot(
     string UiTheme,
     string DefaultMovieView,
     string DefaultShowView,
-    bool MetadataArtworkEnabled,
     string MetadataCertificationCountry,
     string MetadataLanguage,
     string MetadataProviderMode,

@@ -54,7 +54,6 @@ public sealed class PlatformSettingsPersistenceTests
                 UiTheme: "dark",
                 DefaultMovieView: "grid",
                 DefaultShowView: "list",
-                MetadataArtworkEnabled: true,
                 MetadataCertificationCountry: "AU",
                 MetadataLanguage: "en-AU",
                 MetadataProviderMode: "broker",
@@ -295,7 +294,7 @@ public sealed class PlatformSettingsPersistenceTests
             UseHardlinks: false, CleanupEmptyFolders: false,
             MovieFolderFormat: null, SeriesFolderFormat: null, MovieFileFormat: null, EpisodeFileFormat: null,
             HostBindAddress: null, HostPort: 0, UrlBase: null, RequireAuthentication: false, UiTheme: null,
-            DefaultMovieView: null, DefaultShowView: null, MetadataArtworkEnabled: false,
+            DefaultMovieView: null, DefaultShowView: null,
             MetadataCertificationCountry: null, MetadataLanguage: null, MetadataProviderMode: null,
             MetadataBrokerUrl: null, MetadataTmdbApiKey: null, MetadataOmdbApiKey: null, ReleaseNeverGrabPatterns: null,
             HistoryRetentionDays: historyRetentionDays);

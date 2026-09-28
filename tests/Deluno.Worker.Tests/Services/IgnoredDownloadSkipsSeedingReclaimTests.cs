@@ -203,7 +203,6 @@ public sealed class IgnoredDownloadSkipsSeedingReclaimTests
         UiTheme: "dark",
         DefaultMovieView: "poster",
         DefaultShowView: "poster",
-        MetadataArtworkEnabled: true,
         MetadataCertificationCountry: "US",
         MetadataLanguage: "en",
         MetadataProviderMode: "auto",

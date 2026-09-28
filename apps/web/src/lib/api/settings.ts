@@ -40,7 +40,6 @@ export interface PlatformSettingsPatch {
   timezone?: string;
   defaultMovieView?: string;
   defaultShowView?: string;
-  metadataArtworkEnabled?: boolean;
   metadataCertificationCountry?: string;
   metadataLanguage?: string;
   metadataProviderMode?: string;

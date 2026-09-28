@@ -1285,7 +1285,6 @@ public sealed class FeedMediaSearchPlannerReasonTests
             UiTheme: "system",
             DefaultMovieView: "poster",
             DefaultShowView: "poster",
-            MetadataArtworkEnabled: true,
             MetadataCertificationCountry: "AU",
             MetadataLanguage: "en",
             MetadataProviderMode: "tmdb",
