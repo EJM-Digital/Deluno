@@ -28,7 +28,13 @@ public sealed record BundledComponentSpec(
     [property: JsonPropertyName("uninstallDisplayNameHint")] string UninstallDisplayNameHint,
     [property: JsonPropertyName("githubRepo")] string? GithubRepo,
     [property: JsonPropertyName("githubAsset")] string? GithubAsset,
-    [property: JsonPropertyName("githubChecksumAsset")] string? GithubChecksumAsset)
+    [property: JsonPropertyName("githubChecksumAsset")] string? GithubChecksumAsset,
+    [property: JsonPropertyName("postInstallCommand")] string? PostInstallCommand = null,
+    [property: JsonPropertyName("postInstallArgs")] string? PostInstallArgs = null,
+    [property: JsonPropertyName("readinessUrl")] string? ReadinessUrl = null,
+    [property: JsonPropertyName("readinessField")] string? ReadinessField = null,
+    [property: JsonPropertyName("readinessValue")] string? ReadinessValue = null,
+    [property: JsonPropertyName("readinessTimeoutSeconds")] int? ReadinessTimeoutSeconds = null)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]

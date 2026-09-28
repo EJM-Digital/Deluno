@@ -154,6 +154,109 @@ public sealed class ComponentInstallServiceTests
         Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
     }
 
+    private static readonly BundledComponentSpec WeirLikeSpec = Spec with
+    {
+        DisplayName = "Test Processor",
+        Kind = "test-processor",
+        UninstallDisplayNameHint = "Test Processor",
+        MustBeSigned = true,
+        PostInstallCommand = "%TEST_PROCESSOR_HOME%\\Test.exe",
+        PostInstallArgs = "--port 9999 --silent",
+        ReadinessUrl = "http://127.0.0.1:9999/ready",
+        ReadinessField = "ready",
+        ReadinessValue = "true",
+        ReadinessTimeoutSeconds = 1
+    };
+
+    [Fact]
+    public async Task Installer_success_then_start_then_ready_is_reported_installed()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: false));
+        var readiness = new FakeReadinessChecker(readyOnCall: 1);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            starter,
+            readiness);
+
+        var result = await service.InstallAsync(WeirLikeSpec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        // The service expands the manifest's env-var placeholder before starting it.
+        Assert.Equal(Environment.ExpandEnvironmentVariables("%TEST_PROCESSOR_HOME%\\Test.exe"), starter.LastPath);
+        Assert.Equal("--port 9999 --silent", starter.LastArguments);
+    }
+
+    [Fact]
+    public async Task Installer_non_zero_never_starts_the_component()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 1);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: false));
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            starter,
+            new FakeReadinessChecker(readyOnCall: 1));
+
+        var result = await service.InstallAsync(WeirLikeSpec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
+        Assert.False(starter.WasCalled);
+    }
+
+    [Fact]
+    public async Task Component_exiting_before_ready_is_reported_as_a_failed_start()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: true, exitCode: 3));
+        var readiness = new FakeReadinessChecker(readyOnCall: 1);
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            starter,
+            readiness);
+
+        var result = await service.InstallAsync(WeirLikeSpec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.StartFailed, result.Outcome);
+        Assert.False(readiness.WasCalled);
+    }
+
+    [Fact]
+    public async Task Readiness_that_never_reports_ready_times_out()
+    {
+        var downloadedPath = WriteTempFile(new byte[20]);
+        var processes = new RecordingProcesses(exitCode: 0);
+        var starter = new RecordingProcessStarter(new FakeStartedProcess(hasExited: false));
+        var readiness = new FakeReadinessChecker(readyOnCall: null); // never ready
+        var service = new ComponentInstallService(
+            new FakePrograms(),
+            new FakePorts(),
+            new RecordingDownloader(downloadedPath),
+            new FakeSignatures(signed: true),
+            processes,
+            starter,
+            readiness);
+
+        var result = await service.InstallAsync(WeirLikeSpec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.ReadinessTimedOut, result.Outcome);
+        Assert.True(readiness.CallCount > 0);
+    }
+
     private static string WriteTempFile(byte[] content)
     {
         var path = Path.Combine(Path.GetTempPath(), "deluno-tray-tests-" + Guid.NewGuid().ToString("N") + ".bin");
@@ -197,6 +300,40 @@ public sealed class ComponentInstallServiceTests
             WasCalled = true;
             LastArguments = arguments;
             return Task.FromResult(exitCode);
+        }
+    }
+
+    private sealed class RecordingProcessStarter(IStartedProcess? toReturn) : IProcessStarter
+    {
+        public bool WasCalled { get; private set; }
+        public string? LastPath { get; private set; }
+        public string? LastArguments { get; private set; }
+
+        public IStartedProcess? Start(string path, string? arguments)
+        {
+            WasCalled = true;
+            LastPath = path;
+            LastArguments = arguments;
+            return toReturn;
+        }
+    }
+
+    private sealed class FakeStartedProcess(bool hasExited, int exitCode = 0) : IStartedProcess
+    {
+        public bool HasExited => hasExited;
+        public int ExitCode => exitCode;
+    }
+
+    /// <summary>Reports ready on the given 1-based call number, or never (null).</summary>
+    private sealed class FakeReadinessChecker(int? readyOnCall) : IReadinessChecker
+    {
+        public bool WasCalled => CallCount > 0;
+        public int CallCount { get; private set; }
+
+        public Task<bool> CheckAsync(string url, string field, string expectedValue, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult(readyOnCall is not null && CallCount >= readyOnCall);
         }
     }
 }
