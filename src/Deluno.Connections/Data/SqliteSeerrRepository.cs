@@ -44,7 +44,7 @@ public sealed class SqliteSeerrRepository(
     private const string WebhookSecretPurpose = "seerr:webhook-secret";
 
     private const string Columns =
-        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc, movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id, webhook_secret";
+        "id, name, base_url, api_key, is_enabled, health_status, last_health_message, last_health_latency_ms, last_health_test_utc, server_name, version, created_utc, updated_utc, movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id, webhook_secret, movie_4k_library_id, movie_4k_quality_profile_id, series_4k_library_id, series_4k_quality_profile_id, fallback_4k_to_normal_library";
 
     public async Task<IReadOnlyList<SeerrConnection>> ListAsync(CancellationToken cancellationToken)
     {
@@ -91,11 +91,15 @@ public sealed class SqliteSeerrRepository(
             ? """
               INSERT INTO seerr_servers (
                   id, name, base_url, api_key, is_enabled, health_status, created_utc, updated_utc,
-                  movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id
+                  movie_library_id, movie_quality_profile_id, series_library_id, series_quality_profile_id,
+                  movie_4k_library_id, movie_4k_quality_profile_id, series_4k_library_id, series_4k_quality_profile_id,
+                  fallback_4k_to_normal_library
               )
               VALUES (
                   @id, @name, @baseUrl, @apiKey, @isEnabled, 'untested', @now, @now,
-                  @movieLibraryId, @movieQualityProfileId, @seriesLibraryId, @seriesQualityProfileId
+                  @movieLibraryId, @movieQualityProfileId, @seriesLibraryId, @seriesQualityProfileId,
+                  @movie4kLibraryId, @movie4kQualityProfileId, @series4kLibraryId, @series4kQualityProfileId,
+                  @fallback4kToNormalLibrary
               );
               """
             : """
@@ -111,6 +115,11 @@ public sealed class SqliteSeerrRepository(
                   movie_quality_profile_id = @movieQualityProfileId,
                   series_library_id = @seriesLibraryId,
                   series_quality_profile_id = @seriesQualityProfileId,
+                  movie_4k_library_id = @movie4kLibraryId,
+                  movie_4k_quality_profile_id = @movie4kQualityProfileId,
+                  series_4k_library_id = @series4kLibraryId,
+                  series_4k_quality_profile_id = @series4kQualityProfileId,
+                  fallback_4k_to_normal_library = @fallback4kToNormalLibrary,
                   updated_utc = @now
               WHERE id = @id;
               """;
@@ -125,6 +134,11 @@ public sealed class SqliteSeerrRepository(
         AddParameter(command, "@movieQualityProfileId", string.IsNullOrWhiteSpace(request.MovieQualityProfileId) ? null : request.MovieQualityProfileId.Trim());
         AddParameter(command, "@seriesLibraryId", string.IsNullOrWhiteSpace(request.SeriesLibraryId) ? null : request.SeriesLibraryId.Trim());
         AddParameter(command, "@seriesQualityProfileId", string.IsNullOrWhiteSpace(request.SeriesQualityProfileId) ? null : request.SeriesQualityProfileId.Trim());
+        AddParameter(command, "@movie4kLibraryId", string.IsNullOrWhiteSpace(request.Movie4kLibraryId) ? null : request.Movie4kLibraryId.Trim());
+        AddParameter(command, "@movie4kQualityProfileId", string.IsNullOrWhiteSpace(request.Movie4kQualityProfileId) ? null : request.Movie4kQualityProfileId.Trim());
+        AddParameter(command, "@series4kLibraryId", string.IsNullOrWhiteSpace(request.Series4kLibraryId) ? null : request.Series4kLibraryId.Trim());
+        AddParameter(command, "@series4kQualityProfileId", string.IsNullOrWhiteSpace(request.Series4kQualityProfileId) ? null : request.Series4kQualityProfileId.Trim());
+        AddParameter(command, "@fallback4kToNormalLibrary", request.Fallback4kToNormalLibrary ? 1 : 0);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return await GetAsync(rowId, cancellationToken);
     }
@@ -210,5 +224,10 @@ public sealed class SqliteSeerrRepository(
             MovieQualityProfileId: reader.IsDBNull(14) ? null : reader.GetString(14),
             SeriesLibraryId: reader.IsDBNull(15) ? null : reader.GetString(15),
             SeriesQualityProfileId: reader.IsDBNull(16) ? null : reader.GetString(16),
-            WebhookSecret: reader.IsDBNull(17) ? null : secretProtector.Unprotect(WebhookSecretPurpose, reader.GetString(17)));
+            WebhookSecret: reader.IsDBNull(17) ? null : secretProtector.Unprotect(WebhookSecretPurpose, reader.GetString(17)),
+            Movie4kLibraryId: reader.IsDBNull(18) ? null : reader.GetString(18),
+            Movie4kQualityProfileId: reader.IsDBNull(19) ? null : reader.GetString(19),
+            Series4kLibraryId: reader.IsDBNull(20) ? null : reader.GetString(20),
+            Series4kQualityProfileId: reader.IsDBNull(21) ? null : reader.GetString(21),
+            Fallback4kToNormalLibrary: reader.GetInt32(22) == 1);
 }

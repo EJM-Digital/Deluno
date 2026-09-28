@@ -40,7 +40,23 @@ public sealed record SeerrConnection(
     /// only the dedicated reveal/regenerate endpoints return the plaintext,
     /// the same way the API key is never handed back once saved.
     /// </summary>
-    [property: JsonIgnore] string? WebhookSecret = null)
+    [property: JsonIgnore] string? WebhookSecret = null,
+    /// <summary>
+    /// Where a 4K approval lands (#985): Deluno is built for multiple
+    /// libraries, so a request Seerr marked 4K gets its own library and
+    /// quality profile rather than sharing the normal one. Null means no 4K
+    /// library is mapped yet.
+    /// </summary>
+    string? Movie4kLibraryId = null,
+    string? Movie4kQualityProfileId = null,
+    string? Series4kLibraryId = null,
+    string? Series4kQualityProfileId = null,
+    /// <summary>
+    /// What a 4K request does when no 4K library is mapped (#985). False (the
+    /// default) refuses the request and writes why to Activity in plain
+    /// words; true falls back to the normal library and profile instead.
+    /// </summary>
+    bool Fallback4kToNormalLibrary = false)
 {
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
 
@@ -56,7 +72,12 @@ public sealed record SaveSeerrRequest(
     string? MovieLibraryId = null,
     string? MovieQualityProfileId = null,
     string? SeriesLibraryId = null,
-    string? SeriesQualityProfileId = null);
+    string? SeriesQualityProfileId = null,
+    string? Movie4kLibraryId = null,
+    string? Movie4kQualityProfileId = null,
+    string? Series4kLibraryId = null,
+    string? Series4kQualityProfileId = null,
+    bool Fallback4kToNormalLibrary = false);
 
 /// <summary>What a Seerr test found out, in the words the screen prints.</summary>
 public sealed record SeerrTestResult(
@@ -85,4 +106,6 @@ public sealed record SeerrAcquisitionItem(
     string Status,
     string? Message,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>Who asked for it in Seerr (#985), the way Seerr showed them; null when the webhook sent none.</summary>
+    string? RequestedBy = null);

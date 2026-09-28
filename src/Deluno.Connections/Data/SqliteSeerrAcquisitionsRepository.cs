@@ -21,6 +21,7 @@ public interface ISeerrAcquisitionsRepository
         int seerrMediaId,
         string status,
         string? message,
+        string? requestedBy,
         CancellationToken cancellationToken);
 
     /// <summary>The last few acquisitions for one Seerr server, newest first, for its settings card.</summary>
@@ -42,7 +43,7 @@ public sealed class SqliteSeerrAcquisitionsRepository(
     : ISeerrAcquisitionsRepository
 {
     private const string Columns =
-        "id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc";
+        "id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by";
 
     public async Task<SeerrAcquisitionItem> RecordAsync(
         string connectionId,
@@ -53,6 +54,7 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         int seerrMediaId,
         string status,
         string? message,
+        string? requestedBy,
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -62,9 +64,9 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         command.CommandText =
             """
             INSERT INTO seerr_acquisitions (
-                id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc
+                id, connection_id, connection_name, media_type, entity_id, title, seerr_media_id, status, message, created_utc, updated_utc, requested_by
             ) VALUES (
-                @id, @connectionId, @connectionName, @mediaType, @entityId, @title, @seerrMediaId, @status, @message, @now, @now
+                @id, @connectionId, @connectionName, @mediaType, @entityId, @title, @seerrMediaId, @status, @message, @now, @now, @requestedBy
             );
             """;
         AddParameter(command, "@id", id);
@@ -77,9 +79,10 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         AddParameter(command, "@status", status);
         AddParameter(command, "@message", message);
         AddParameter(command, "@now", now.ToString("O"));
+        AddParameter(command, "@requestedBy", string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy.Trim());
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        return new SeerrAcquisitionItem(id, connectionId, connectionName, mediaType, entityId, title, seerrMediaId, status, message, now, now);
+        return new SeerrAcquisitionItem(id, connectionId, connectionName, mediaType, entityId, title, seerrMediaId, status, message, now, now, string.IsNullOrWhiteSpace(requestedBy) ? null : requestedBy.Trim());
     }
 
     public async Task<IReadOnlyList<SeerrAcquisitionItem>> ListRecentAsync(string connectionId, int take, CancellationToken cancellationToken)
@@ -140,5 +143,6 @@ public sealed class SqliteSeerrAcquisitionsRepository(
             Status: reader.GetString(7),
             Message: reader.IsDBNull(8) ? null : reader.GetString(8),
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(9)),
-            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(10)));
+            UpdatedUtc: DateTimeOffset.Parse(reader.GetString(10)),
+            RequestedBy: reader.IsDBNull(11) ? null : reader.GetString(11));
 }

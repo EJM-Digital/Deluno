@@ -123,7 +123,8 @@ public static class PlatformDatabaseMigrations
         new V0115RemoveDeadNfoSetting(),
         new V0116LibrarySearchIntervalMinutes(),
         new V0117LibrarySubtitlePictureBasedCounts(),
-        new V0118ReleaseProfileBypassIfHighestQuality()
+        new V0118ReleaseProfileBypassIfHighestQuality(),
+        new V0119Seerr4kMapping()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -46,22 +46,34 @@ public sealed class SeerrAcquisitionService(
         string? tmdbId,
         string? tvdbId,
         int seerrMediaId,
+        bool is4k,
+        string? requestedBy,
         CancellationToken cancellationToken)
     {
         try
         {
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-            var library = ResolveLibrary(connection, mediaType, libraries);
-            if (library is null)
+            var resolved = ResolveLibrary(connection, mediaType, is4k, libraries);
+            if (resolved.Library is null)
             {
-                return await FailAsync(connection, mediaType, seerrMediaId, "No matching library", $"Deluno has no {(mediaType == "tv" ? "TV" : "movie")} library to add this to.", cancellationToken);
+                if (resolved.NoFourKMappingSet)
+                {
+                    return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No 4K library mapped",
+                        $"{connection.Name} sent a 4K request, but no 4K {(mediaType == "tv" ? "TV" : "movie")} library is mapped for it, and falling back to the normal library is turned off. Add a 4K library mapping on {connection.Name}'s card, or turn on the fallback.",
+                        cancellationToken);
+                }
+
+                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No matching library", $"Deluno has no {(mediaType == "tv" ? "TV" : "movie")} library to add this to.", cancellationToken);
             }
+
+            var library = resolved.Library;
+            var qualityProfileId = resolved.QualityProfileId;
 
             var idSource = !string.IsNullOrWhiteSpace(tmdbId) ? "tmdb" : !string.IsNullOrWhiteSpace(tvdbId) ? "tvdb" : null;
             var providerId = idSource == "tmdb" ? tmdbId : tvdbId;
             if (idSource is null || string.IsNullOrWhiteSpace(providerId))
             {
-                return await FailAsync(connection, mediaType, seerrMediaId, "No provider id", $"{connection.Name} sent no TMDb or TVDb id for this request.", cancellationToken);
+                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No provider id", $"{connection.Name} sent no TMDb or TVDb id for this request.", cancellationToken);
             }
 
             var lookup = await metadataProvider.ResolveProviderRecordAsync(
@@ -69,11 +81,10 @@ public sealed class SeerrAcquisitionService(
                 cancellationToken);
             if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
             {
-                return await FailAsync(connection, mediaType, seerrMediaId, "Metadata unavailable", $"Deluno's metadata service could not identify this title from {connection.Name}'s {idSource} id.", cancellationToken);
+                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "Metadata unavailable", $"Deluno's metadata service could not identify this title from {connection.Name}'s {idSource} id.", cancellationToken);
             }
 
             var metadata = lookup.Result;
-            var qualityProfileId = mediaType == "tv" ? connection.SeriesQualityProfileId : connection.MovieQualityProfileId;
 
             string entityId;
             bool isNewlyAdded;
@@ -144,48 +155,75 @@ public sealed class SeerrAcquisitionService(
                     SearchWindowEndHour: library.SearchWindowEndHour),
                 cancellationToken);
 
-            await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId, metadata.Title, seerrMediaId, "added", null, cancellationToken);
+            await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId, metadata.Title, seerrMediaId, "added", null, requestedBy, cancellationToken);
 
+            var titleWithQuality = is4k ? $"\"{metadata.Title}\" (4K)" : $"\"{metadata.Title}\"";
+            var who = string.IsNullOrWhiteSpace(requestedBy) ? string.Empty : $" — requested by {requestedBy}";
             var message = isNewlyAdded
-                ? $"{connection.Name} approved \"{metadata.Title}\" — added to {library.Name} and {(searchRequested ? "queued a search" : "search already covered by schedule")}."
-                : $"{connection.Name} approved \"{metadata.Title}\" — already in {library.Name}; {(searchRequested ? "queued a search" : "search already covered by schedule")}.";
-            await activityFeedRepository.RecordActivityAsync("seerr.acquired", message, JsonSerializer.Serialize(new { connection.Id, connection.Name, mediaType, entityId, seerrMediaId }, JsonOptions), null, "seerr-server", connection.Id, cancellationToken);
+                ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}"
+                : $"{connection.Name} approved {titleWithQuality} — already in {library.Name}; {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}";
+            await activityFeedRepository.RecordActivityAsync("seerr.acquired", message, JsonSerializer.Serialize(new { connection.Id, connection.Name, mediaType, entityId, seerrMediaId, is4k, requestedBy }, JsonOptions), null, "seerr-server", connection.Id, cancellationToken);
 
             return new SeerrAcquisitionOutcome(true, message);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Seerr connection {ConnectionId} failed turning an approval into an acquisition.", connection.Id);
-            return await FailAsync(connection, mediaType, seerrMediaId, "Unexpected error", ex.Message, cancellationToken);
+            return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "Unexpected error", ex.Message, cancellationToken);
         }
     }
 
-    private async Task<SeerrAcquisitionOutcome> FailAsync(SeerrConnection connection, string mediaType, int seerrMediaId, string title, string message, CancellationToken cancellationToken)
+    private async Task<SeerrAcquisitionOutcome> FailAsync(SeerrConnection connection, string mediaType, int seerrMediaId, string? requestedBy, string title, string message, CancellationToken cancellationToken)
     {
-        await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId: string.Empty, title, seerrMediaId, "failed", message, cancellationToken);
+        await acquisitions.RecordAsync(connection.Id, connection.Name, mediaType, entityId: string.Empty, title, seerrMediaId, "failed", message, requestedBy, cancellationToken);
         await activityFeedRepository.RecordActivityAsync("seerr.acquire-failed", $"{connection.Name}: {message}", null, null, "seerr-server", connection.Id, cancellationToken);
         return new SeerrAcquisitionOutcome(false, message);
     }
 
-    private static LibraryItem? ResolveLibrary(SeerrConnection connection, string mediaType, IReadOnlyList<LibraryItem> libraries)
+    /// <summary>What library and quality profile a request (4K or not) resolves to (#985).</summary>
+    private sealed record ResolvedLibrary(LibraryItem? Library, string? QualityProfileId, bool NoFourKMappingSet);
+
+    private static ResolvedLibrary ResolveLibrary(SeerrConnection connection, string mediaType, bool is4k, IReadOnlyList<LibraryItem> libraries)
     {
         var candidates = libraries.Where(item => string.Equals(item.MediaType, mediaType, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (candidates.Length == 0)
         {
-            return null;
+            return new ResolvedLibrary(null, null, false);
+        }
+
+        if (is4k)
+        {
+            var fourKLibraryId = mediaType == "tv" ? connection.Series4kLibraryId : connection.Movie4kLibraryId;
+            var fourKQualityProfileId = mediaType == "tv" ? connection.Series4kQualityProfileId : connection.Movie4kQualityProfileId;
+            if (!string.IsNullOrWhiteSpace(fourKLibraryId))
+            {
+                var exact = candidates.FirstOrDefault(item => string.Equals(item.Id, fourKLibraryId, StringComparison.OrdinalIgnoreCase));
+                if (exact is not null)
+                {
+                    return new ResolvedLibrary(exact, fourKQualityProfileId, false);
+                }
+            }
+
+            if (!connection.Fallback4kToNormalLibrary)
+            {
+                return new ResolvedLibrary(null, null, true);
+            }
+
+            // Falls back to the normal library/profile below.
         }
 
         var preferredId = mediaType == "tv" ? connection.SeriesLibraryId : connection.MovieLibraryId;
+        var preferredQualityProfileId = mediaType == "tv" ? connection.SeriesQualityProfileId : connection.MovieQualityProfileId;
         if (!string.IsNullOrWhiteSpace(preferredId))
         {
             var exact = candidates.FirstOrDefault(item => string.Equals(item.Id, preferredId, StringComparison.OrdinalIgnoreCase));
             if (exact is not null)
             {
-                return exact;
+                return new ResolvedLibrary(exact, preferredQualityProfileId, false);
             }
         }
 
-        return candidates[0];
+        return new ResolvedLibrary(candidates[0], preferredQualityProfileId, false);
     }
 
     private static CreateSeriesRequest BuildSeriesRequest(MetadataSearchResult metadata)

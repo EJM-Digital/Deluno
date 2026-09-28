@@ -36,6 +36,13 @@ export interface SeerrServer {
   seriesQualityProfileId: string | null;
   /** #851: whether a webhook secret has been generated for this connection yet. */
   hasWebhookSecret: boolean;
+  /** #985: where a 4K-marked request lands. Null means no 4K library is mapped yet. */
+  movie4kLibraryId: string | null;
+  movie4kQualityProfileId: string | null;
+  series4kLibraryId: string | null;
+  series4kQualityProfileId: string | null;
+  /** #985: false (the default) refuses a 4K request with no 4K mapping; true falls back to the normal library instead. */
+  fallback4kToNormalLibrary: boolean;
 }
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrAcquisitionItem` (#851/#852). */
@@ -51,6 +58,8 @@ export interface SeerrAcquisition {
   message: string | null;
   createdUtc: string;
   updatedUtc: string;
+  /** #985: who asked for it in Seerr, the way Seerr showed them; null when the webhook sent none. */
+  requestedBy: string | null;
 }
 
 /** Mirrors `Deluno.Retention.RetentionSeerrCleanup`. */
@@ -77,6 +86,11 @@ interface SeerrForm {
   movieQualityProfileId: string;
   seriesLibraryId: string;
   seriesQualityProfileId: string;
+  movie4kLibraryId: string;
+  movie4kQualityProfileId: string;
+  series4kLibraryId: string;
+  series4kQualityProfileId: string;
+  fallback4kToNormalLibrary: boolean;
 }
 
 function formFrom(server: SeerrServer | null): SeerrForm {
@@ -89,9 +103,28 @@ function formFrom(server: SeerrServer | null): SeerrForm {
         movieLibraryId: server.movieLibraryId ?? "",
         movieQualityProfileId: server.movieQualityProfileId ?? "",
         seriesLibraryId: server.seriesLibraryId ?? "",
-        seriesQualityProfileId: server.seriesQualityProfileId ?? ""
+        seriesQualityProfileId: server.seriesQualityProfileId ?? "",
+        movie4kLibraryId: server.movie4kLibraryId ?? "",
+        movie4kQualityProfileId: server.movie4kQualityProfileId ?? "",
+        series4kLibraryId: server.series4kLibraryId ?? "",
+        series4kQualityProfileId: server.series4kQualityProfileId ?? "",
+        fallback4kToNormalLibrary: server.fallback4kToNormalLibrary
       }
-    : { name: "Seerr", baseUrl: "", apiKey: "", isEnabled: true, movieLibraryId: "", movieQualityProfileId: "", seriesLibraryId: "", seriesQualityProfileId: "" };
+    : {
+        name: "Seerr",
+        baseUrl: "",
+        apiKey: "",
+        isEnabled: true,
+        movieLibraryId: "",
+        movieQualityProfileId: "",
+        seriesLibraryId: "",
+        seriesQualityProfileId: "",
+        movie4kLibraryId: "",
+        movie4kQualityProfileId: "",
+        series4kLibraryId: "",
+        series4kQualityProfileId: "",
+        fallback4kToNormalLibrary: false
+      };
 }
 
 function same(left: SeerrForm, right: SeerrForm) {
@@ -252,7 +285,12 @@ export function SeerrServersCard({
           movieLibraryId: server.movieLibraryId,
           movieQualityProfileId: server.movieQualityProfileId,
           seriesLibraryId: server.seriesLibraryId,
-          seriesQualityProfileId: server.seriesQualityProfileId
+          seriesQualityProfileId: server.seriesQualityProfileId,
+          movie4kLibraryId: server.movie4kLibraryId,
+          movie4kQualityProfileId: server.movie4kQualityProfileId,
+          series4kLibraryId: server.series4kLibraryId,
+          series4kQualityProfileId: server.series4kQualityProfileId,
+          fallback4kToNormalLibrary: server.fallback4kToNormalLibrary
         })
       });
       onChanged();
@@ -432,6 +470,54 @@ export function SeerrServersCard({
           </FieldRow>
         </DrawerSection>
 
+        <DrawerSection title="4K requests" aside="#985">
+          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
+            Deluno is built for multiple libraries. When Seerr marks a request 4K, it lands here instead of the library above.
+          </p>
+          <FieldRow>
+            <Field label="4K movie library" optional help="Blank means no 4K movie library is mapped.">
+              <Select
+                value={form.movie4kLibraryId}
+                onChange={(event) => setForm((current) => ({ ...current, movie4kLibraryId: event.target.value }))}
+                placeholder="Not mapped"
+                options={libraries.filter((library) => library.mediaType === "movies").map((library) => ({ value: library.id, label: library.name }))}
+              />
+            </Field>
+            <Field label="4K movie quality profile" optional help="Blank keeps the library's own default.">
+              <Select
+                value={form.movie4kQualityProfileId}
+                onChange={(event) => setForm((current) => ({ ...current, movie4kQualityProfileId: event.target.value }))}
+                placeholder="Library default"
+                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              />
+            </Field>
+          </FieldRow>
+          <FieldRow>
+            <Field label="4K TV library" optional help="Blank means no 4K TV library is mapped.">
+              <Select
+                value={form.series4kLibraryId}
+                onChange={(event) => setForm((current) => ({ ...current, series4kLibraryId: event.target.value }))}
+                placeholder="Not mapped"
+                options={libraries.filter((library) => library.mediaType === "tv").map((library) => ({ value: library.id, label: library.name }))}
+              />
+            </Field>
+            <Field label="4K TV quality profile" optional help="Blank keeps the library's own default.">
+              <Select
+                value={form.series4kQualityProfileId}
+                onChange={(event) => setForm((current) => ({ ...current, series4kQualityProfileId: event.target.value }))}
+                placeholder="Library default"
+                options={qualityProfiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              />
+            </Field>
+          </FieldRow>
+          <SwitchRow
+            label="Fall back to the normal library"
+            description="When a 4K request arrives with no 4K library mapped above: off (default) refuses it and says so in Activity; on adds it to the normal library instead."
+            checked={form.fallback4kToNormalLibrary}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, fallback4kToNormalLibrary: checked }))}
+          />
+        </DrawerSection>
+
         {editing ? <RecentAcquisitionsSection connectionId={editing.id} /> : null}
 
         <DrawerSection title="Health">
@@ -554,7 +640,11 @@ function RecentAcquisitionsSection({ connectionId }: { connectionId: string }) {
               <div key={item.id} className="contents">
                 <dt className="text-foreground">
                   {item.title}
-                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">{relative(item.createdUtc)}{item.message ? ` · ${item.message}` : ""}</span>
+                  <span className="block text-[length:var(--type-caption)] text-muted-foreground">
+                    {relative(item.createdUtc)}
+                    {item.requestedBy ? ` · requested by ${item.requestedBy}` : ""}
+                    {item.message ? ` · ${item.message}` : ""}
+                  </span>
                 </dt>
                 <dd>
                   <Chip tone={status.tone}>{status.label}</Chip>
