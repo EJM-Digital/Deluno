@@ -1397,15 +1397,22 @@ export function QueuePage() {
                   <div key={index} className="grid gap-0.5 border-b border-hairline py-2 last:border-b-0">
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-[length:var(--type-body-sm)] text-foreground">{finding.summary}</span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => void dismissHealthFinding(openQueueItem, finding.kind)}
-                        disabled={busyKey !== null}
-                      >
-                        Dismiss
-                      </Button>
+                      {/* #981: unlinked-from-library is a live fact mirrored
+                          from the sharing pass, not a per-item strike record -
+                          there is nothing here to ignore for a week. Its own
+                          recommended action already points at the Dashboard's
+                          sharing list, where reclaiming it is a real action. */}
+                      {finding.kind === "hardlink-lost" ? null : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void dismissHealthFinding(openQueueItem, finding.kind)}
+                          disabled={busyKey !== null}
+                        >
+                          Dismiss
+                        </Button>
+                      )}
                     </div>
                     {/* #905: which rule is tripping, its strikes so far, and
                         when the next strike or action is due - a finding

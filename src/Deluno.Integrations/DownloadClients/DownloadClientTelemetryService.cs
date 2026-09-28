@@ -41,7 +41,8 @@ public sealed class DownloadClientTelemetryService(
     IDispatchAlertRepository? dispatchAlertRepository = null,
     IDispatchRecoveryHandler? recoveryHandler = null,
     IOutboundNotificationService? outboundNotificationService = null,
-    INotificationService? notificationPreferences = null)
+    INotificationService? notificationPreferences = null,
+    IDownloadSharingRepository? sharingRepository = null)
     : IDownloadClientTelemetryService
 {
     /// <summary>
@@ -991,6 +992,42 @@ public sealed class DownloadClientTelemetryService(
                     ]
                 }
                 : item).ToArray();
+        }
+
+        // #981: the sharing pass (WorkPlanner) already checked the real files
+        // and knows which of this client's items lost their hardlink into the
+        // library - upgraded or deleted out from under a still-seeding
+        // download. Folded onto the Transfers row the same way the SABnzbd
+        // warning is above, using the same DownloadHealthFinding shape, so it
+        // needs no bespoke presentation and no re-derivation of what the
+        // sharing pass already decided. Kept a distinct Kind from any
+        // library-reconciliation finding: this download is still on disk and
+        // safe to reclaim, a missing library file has nothing to reclaim from.
+        if (sharingRepository is not null && queue.Length > 0)
+        {
+            var sharingSnapshot = await sharingRepository.GetSnapshotAsync(cancellationToken);
+            var lostHardlinksByQueueItemId = sharingSnapshot.Holds
+                .Where(hold => hold.LostHardlink && string.Equals(hold.ClientId, snapshot.ClientId, StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(hold => hold.QueueItemId, StringComparer.OrdinalIgnoreCase);
+            if (lostHardlinksByQueueItemId.Count > 0)
+            {
+                queue = queue.Select(item => lostHardlinksByQueueItemId.TryGetValue(item.Id, out var hold)
+                    ? item with
+                    {
+                        HealthFindings = [
+                            .. item.HealthFindings ?? [],
+                            new DownloadHealthFinding(
+                                Severity: "warning",
+                                Kind: "hardlink-lost",
+                                Summary: "Unlinked from your library",
+                                Evidence: hold.Detail,
+                                RecommendedAction: "It's safe to reclaim: stop seeding and delete it from the sharing list on the Dashboard.",
+                                CanSafelyRetry: false,
+                                CanSafelyRemove: true)
+                        ]
+                    }
+                    : item).ToArray();
+            }
         }
 
         return snapshot with { Queue = queue };
