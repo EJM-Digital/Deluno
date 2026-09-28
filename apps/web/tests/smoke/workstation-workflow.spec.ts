@@ -312,7 +312,9 @@ test.describe("dashboard workflow", () => {
           // A title with no file is Missing, and Missing is red — red is freed
           // for it because nothing on a poster is ever a failure or a machine's
           // health. Amber would be claiming a person has to act.
-          const markName = monitored ? "Missing" : "Missing · unmonitored";
+          // the owner, #1048: an unmonitored title with no file reads "Unmonitored" (the
+          // Unmonitored pill's own word), never Missing.
+          const markName = monitored ? "Missing" : "Unmonitored";
 
           // Open, choose, close. The drawer is modal, so the shelf behind it is
           // inert until it is shut — which is the price of it not moving the
@@ -324,7 +326,8 @@ test.describe("dashboard workflow", () => {
           await expect(mediumMark).toBeVisible();
           await expect(mediumMark).not.toHaveClass(/bg-warning/);
           await expect(mediumMark).not.toHaveClass(/bg-success/);
-          await expect(titleCard.getByText(monitoringLabel, { exact: true })).toBeVisible();
+          // The meta line, not the strip: an unmonitored title now says Unmonitored on both.
+          await expect(titleCard.locator("span.truncate").getByText(monitoringLabel, { exact: true })).toBeVisible();
 
           // The same mark at every size — it was a chip at medium and a bare dot
           // at small, so the two sizes could disagree about a title.
@@ -336,7 +339,7 @@ test.describe("dashboard workflow", () => {
           await expect(smallMark).not.toHaveClass(/bg-success/);
 
           // **The mark's NAME carries the monitoring state, and that is what is
-          // asserted.** `markName` above is "Missing" or "Missing · unmonitored",
+          // asserted.** `markName` above is "Missing" or "Unmonitored",
           // so every assertion in this loop is already medium- and
           // monitoring-specific.
           //
@@ -387,8 +390,8 @@ test.describe("dashboard workflow", () => {
           await expect(rowMark).toBeVisible();
           // One mark per row. The row used to state monitoring three times over
           // — a halved dot beside the title, the word in the meta line under it,
-          // and the status cell — for one fact. The mark keeps its own
-          // "· unmonitored"; what had to go is the meta line's copy of it, so
+          // and the status cell — for one fact. The mark says it once
+          // ("Unmonitored"); what had to go is the meta line's copy of it, so
           // this pins that line to the two things only it can say.
           await expect(row.getByText(/^(Movie|TV) · \d{4}$/)).toBeVisible();
 
