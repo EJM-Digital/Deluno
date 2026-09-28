@@ -4932,6 +4932,14 @@ public sealed class SqliteSeriesCatalogRepository(
         // never turns a switched-off series or preset back on.
         var listMonitorMode = await GetListMonitorModeAsync(connection, transaction, seriesId, cancellationToken);
         var mostRecentSeason = episodes.Max(item => item.SeasonNumber);
+        // #991: the season this sync knows about with the lowest number that
+        // is not Specials (season 0) — falling back to season 0 itself when
+        // that is genuinely all a show has.
+        var firstSeasonNumber = episodes
+            .Select(item => item.SeasonNumber)
+            .Where(season => season > 0)
+            .DefaultIfEmpty(episodes.Min(item => item.SeasonNumber))
+            .Min();
 
         foreach (var seasonNumber in episodes.Select(item => item.SeasonNumber).Distinct().OrderBy(item => item))
         {
@@ -4989,7 +4997,7 @@ public sealed class SqliteSeriesCatalogRepository(
                 // episodes are never wanted until the series itself is
                 // monitored again (#653). Only the default differs — the
                 // per-episode switch still governs from here on.
-                var listModeAllows = ListMonitorModeAllows(listMonitorMode, episode, mostRecentSeason, now);
+                var listModeAllows = ListMonitorModeAllows(listMonitorMode, episode, mostRecentSeason, firstSeasonNumber, now);
                 AddParameter(upsert, "@monitored", episode.SeasonNumber == 0 || !seriesMonitored || !monitorNewEpisodes || !listModeAllows ? 0 : 1);
                 AddParameter(upsert, "@title", NormalizeText(episode.Title));
                 AddParameter(upsert, "@overview", NormalizeText(episode.Overview));
@@ -5390,6 +5398,7 @@ public sealed class SqliteSeriesCatalogRepository(
         string? listMonitorMode,
         CatalogueEpisodeItem episode,
         int mostRecentSeason,
+        int firstSeasonNumber,
         DateTimeOffset now)
         => listMonitorMode switch
         {
@@ -5397,6 +5406,15 @@ public sealed class SqliteSeriesCatalogRepository(
             IntakeMonitorModes.Future => episode.AirDateUtc is null || episode.AirDateUtc > now,
             IntakeMonitorModes.Existing => false,
             IntakeMonitorModes.Recent => episode.SeasonNumber == mostRecentSeason,
+            // #991: "First season" (Sonarr's firstSeason preset) - every
+            // episode of the lowest-numbered non-Specials season.
+            IntakeMonitorModes.FirstSeason => episode.SeasonNumber == firstSeasonNumber,
+            // #991: "Pilot" (Sonarr's pilot preset) - only the very first
+            // episode of that first season.
+            IntakeMonitorModes.Pilot => episode.SeasonNumber == firstSeasonNumber && episode.EpisodeNumber == 1,
+            // #991: "None" (Sonarr's none preset) - the series is added, but
+            // nothing is chased for it until a person monitors something.
+            IntakeMonitorModes.None => false,
             _ => true
         };
 

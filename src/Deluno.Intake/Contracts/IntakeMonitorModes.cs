@@ -20,11 +20,16 @@ public static class IntakeMonitorModes
     public const string Missing = "missing";
     public const string Existing = "existing";
     public const string Recent = "recent";
+    /// <summary>Only the first season (the lowest-numbered season that is not Specials) (#991).</summary>
+    public const string FirstSeason = "firstseason";
+    /// <summary>Only the very first episode of the first season (#991).</summary>
+    public const string Pilot = "pilot";
     public const string Movie = "movie";
     public const string None = "none";
 
     private static readonly IReadOnlySet<string> TvModes =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { All, Future, Missing, Existing, Recent };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { All, Future, Missing, Existing, Recent, FirstSeason, Pilot, None };
 
     private static readonly IReadOnlySet<string> MovieModes =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Movie, None };

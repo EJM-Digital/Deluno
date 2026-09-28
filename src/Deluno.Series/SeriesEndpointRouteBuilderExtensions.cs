@@ -3438,6 +3438,20 @@ public static class SeriesEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = ["Choose one of your TV libraries."] });
             }
 
+            // #991: a person picking a monitor preset in the add-show dialog
+            // sends it exactly as typed; normalize the same way an intake
+            // list's own choice is normalized, so a stray case or an unknown
+            // value falls back to "All" (today's fully-monitored behaviour)
+            // instead of silently monitoring nothing.
+            if (!string.IsNullOrWhiteSpace(request.ListMonitorMode))
+            {
+                var normalizedMonitorMode = IntakeMonitorModes.Normalize("tv", request.ListMonitorMode);
+                request = request with
+                {
+                    ListMonitorMode = normalizedMonitorMode == IntakeMonitorModes.All ? null : normalizedMonitorMode
+                };
+            }
+
             var requestStartedUtc = DateTimeOffset.UtcNow;
             var item = await repository.AddAsync(request, cancellationToken);
             // Only the library the person chose, or the one it is already in (#530).

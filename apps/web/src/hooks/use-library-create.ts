@@ -3,11 +3,31 @@ import type { MetadataSearchResult } from "../lib/api";
 
 export type LibraryVariant = "movies" | "shows";
 
+/**
+ * Which episodes a newly added show starts out monitoring (#991), mirroring
+ * Sonarr's own Add Series presets. Only meaningful for shows — movies have no
+ * episodes, so this is ignored for the "movies" variant. "all" is the same
+ * request as sending nothing at all (today's fully-monitored behaviour).
+ */
+export type ShowMonitorPreset = "all" | "future" | "missing" | "firstSeason" | "recent" | "pilot" | "none";
+
+export const SHOW_MONITOR_PRESETS: { value: ShowMonitorPreset; label: string; help: string }[] = [
+  { value: "all", label: "All episodes", help: "Every season and episode, including ones already out." },
+  { value: "future", label: "Future episodes only", help: "Nothing that has already aired." },
+  { value: "missing", label: "Missing episodes only", help: "Only episodes Deluno doesn't already hold a file for." },
+  { value: "firstSeason", label: "First season only", help: "Only the earliest season, everything after stays unmonitored." },
+  { value: "recent", label: "Latest season only", help: "Only the newest season Deluno knows about." },
+  { value: "pilot", label: "Pilot only", help: "Only the very first episode." },
+  { value: "none", label: "None", help: "Add the show, but don't monitor or search for anything yet." }
+];
+
 export type CreateFormDraft = {
   title: string;
   year: string;
   imdbId: string;
   monitored: boolean;
+  /** Which episodes to start monitoring for a new show (#991). Ignored for movies. */
+  monitorPreset: ShowMonitorPreset;
   /** Search for this title's missing content right away, once it is added (#793). Off by default. */
   searchForMissingNow: boolean;
   /** Search for this title's cutoff-unmet content right away, once it is added (#793). Off by default. */
@@ -21,6 +41,7 @@ export function createInitialLibraryForm(): CreateFormDraft {
     year: "",
     imdbId: "",
     monitored: true,
+    monitorPreset: "all",
     searchForMissingNow: false,
     searchForCutoffUnmetNow: false,
     metadata: null

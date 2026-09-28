@@ -773,6 +773,7 @@ export function LibraryView({
       year: createForm.year,
       imdbId: createForm.imdbId,
       monitored: createForm.monitored,
+      monitorPreset: createForm.monitorPreset,
       searchForMissingNow: createForm.searchForMissingNow,
       searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
       metadata: createForm.metadata
@@ -785,6 +786,7 @@ export function LibraryView({
       year: result.year ? String(result.year) : "",
       imdbId: result.imdbId ?? "",
       monitored: createForm.monitored,
+      monitorPreset: createForm.monitorPreset,
       searchForMissingNow: createForm.searchForMissingNow,
       searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
       metadata: result
@@ -813,6 +815,9 @@ export function LibraryView({
               startYear: draft.year ? Number(draft.year) : null,
               imdbId: draft.imdbId || null,
               monitored: draft.monitored,
+              // #991: "all" is the same as not sending a preset at all
+              // (today's fully-monitored behaviour), so it is left out.
+              listMonitorMode: draft.monitored && draft.monitorPreset !== "all" ? draft.monitorPreset : null,
               searchForMissingNow: draft.searchForMissingNow,
               searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
               libraryId: addIntoLibraryId,

@@ -42,7 +42,8 @@ function result(overrides: Partial<MetadataSearchResult> = {}): MetadataSearchRe
 
 function renderDialog(
   metadataResults: MetadataSearchResult[],
-  variant: LibraryVariant = "movies"
+  variant: LibraryVariant = "movies",
+  createFormOverrides: Partial<CreateFormDraft> = {}
 ) {
   const onSelectResult = vi.fn();
   const onOpenHeldResult = vi.fn();
@@ -62,9 +63,11 @@ function renderDialog(
         year: "",
         imdbId: "",
         monitored: true,
+        monitorPreset: "all",
         searchForMissingNow: false,
         searchForCutoffUnmetNow: false,
-        metadata: null
+        metadata: null,
+        ...createFormOverrides
       }}
       setCreateForm={setCreateForm}
       metadataResults={metadataResults}
@@ -82,6 +85,58 @@ function renderDialog(
 
   return { onSelectResult, onOpenHeldResult, setCreateForm };
 }
+
+/**
+ * Monitor presets (#991): only shows have episodes to pick among, and the
+ * choice only matters while the show is actually going to be monitored.
+ */
+describe("the add-show monitor preset", () => {
+  it("is offered for shows", () => {
+    renderDialog([], "shows");
+    expect(screen.getByLabelText("Which episodes to monitor")).toBeInTheDocument();
+  });
+
+  it("is not offered for movies, which have no episodes to pick among", () => {
+    renderDialog([], "movies");
+    expect(screen.queryByLabelText("Which episodes to monitor")).not.toBeInTheDocument();
+  });
+
+  it("is hidden once the show is set to not monitor at all", () => {
+    renderDialog([], "shows", { monitored: false });
+    expect(screen.queryByLabelText("Which episodes to monitor")).not.toBeInTheDocument();
+  });
+
+  it("offers every named preset from the owner's decision (#991)", () => {
+    renderDialog([], "shows");
+    const select = screen.getByLabelText("Which episodes to monitor") as HTMLSelectElement;
+    const labels = [...select.options].map((option) => option.textContent);
+    expect(labels).toEqual([
+      "All episodes",
+      "Future episodes only",
+      "Missing episodes only",
+      "First season only",
+      "Latest season only",
+      "Pilot only",
+      "None"
+    ]);
+  });
+
+  it("changing the preset updates only that field", async () => {
+    const user = userEvent.setup();
+    const { setCreateForm } = renderDialog([], "shows");
+
+    await user.selectOptions(screen.getByLabelText("Which episodes to monitor"), "pilot");
+
+    expect(setCreateForm).toHaveBeenCalledTimes(1);
+    const updater = setCreateForm.mock.calls[0][0] as (
+      current: { monitorPreset: string; monitored: boolean }
+    ) => unknown;
+    expect(updater({ monitorPreset: "all", monitored: true })).toMatchObject({
+      monitorPreset: "pilot",
+      monitored: true
+    });
+  });
+});
 
 describe.each([
   { variant: "movies" as const, mediaType: "movies", held: "Arrival", other: "Sicario" },
