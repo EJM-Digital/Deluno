@@ -4808,6 +4808,167 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #950: the only post-import client removal used to run from the
+    /// single-file branch only, so a season pack was never removed from its
+    /// client even with "Remove completed" on. Here every file in the pack
+    /// matches a canonical episode - a full match - and the pack still gets
+    /// the same removal a single file already gets.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_removes_the_completed_download_when_every_episode_matches_and_Remove_completed_is_on()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Full Match Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Full.Match.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Full.Match.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x80 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+
+        var connections = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var client = await connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(
+                "qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true,
+                RemoveCompleted: true),
+            CancellationToken.None);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", series.Id, "Full.Match.Pack.S01.WEB-DL", "TestIndexer", client.Id, client.Name, "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "full-match-pack-hash", 8192, completed: true, CancellationToken.None);
+
+        var gateway = new FakeDownloadClientActionGateway();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository,
+            downloadDispatchesRepository: dispatches,
+            connectionsRepository: connections,
+            downloadClientActions: gateway);
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true, DispatchId: dispatchId);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, result.Response!.PackFiles!.Count);
+        Assert.Empty(result.Response.SkippedFiles!);
+        Assert.Equal(client.Id, gateway.LastClientId);
+        Assert.Equal("full-match-pack-hash", gateway.LastQueueItemId);
+    }
+
+    /// <summary>
+    /// #950: a partial match - one file in the pack does not resolve to a
+    /// canonical episode and is skipped - still imports every episode that
+    /// does match, and the pack is still removed from its client under the
+    /// same "Remove completed" setting a single file already used.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_removes_the_completed_download_when_some_files_are_skipped_and_Remove_completed_is_on()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Partial Match Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var packDirectory = Path.Combine(downloadsPath, "Partial.Match.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        foreach (var episode in new[] { 1, 2 })
+        {
+            var source = Path.Combine(packDirectory, $"Partial.Match.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x90 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+        }
+        var extraPath = Path.Combine(packDirectory, "Partial.Match.Pack.S01E00.Making.Of.mkv");
+        await File.WriteAllBytesAsync(extraPath, Enumerable.Repeat((byte)0xAA, 4096).ToArray());
+        File.SetLastWriteTimeUtc(extraPath, DateTime.UtcNow.AddMinutes(-1));
+
+        var connections = new SqliteConnectionsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+        var client = await connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(
+                "qBittorrent", "qbittorrent", "localhost", 8080, null, null, null, "movies", "tv", null, 1, true,
+                RemoveCompleted: true),
+            CancellationToken.None);
+
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), dispatches);
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "tv", "series", series.Id, "Partial.Match.Pack.S01.WEB-DL", "TestIndexer", client.Id, client.Name, "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+        await dispatches.RecordDetectionAsync(dispatchId, "partial-match-pack-hash", 12288, completed: true, CancellationToken.None);
+
+        var gateway = new FakeDownloadClientActionGateway();
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository,
+            downloadDispatchesRepository: dispatches,
+            connectionsRepository: connections,
+            downloadClientActions: gateway);
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true, DispatchId: dispatchId);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, result.Response!.PackFiles!.Count);
+        var skipped = Assert.Single(result.Response.SkippedFiles!);
+        Assert.Equal(extraPath, skipped.SourcePath);
+        Assert.Equal(client.Id, gateway.LastClientId);
+        Assert.Equal("partial-match-pack-hash", gateway.LastQueueItemId);
+    }
+
+    /// <summary>
     /// #889: a whole-pack problem - here, nobody chose which show the pack
     /// belongs to, a setup gap rather than anything wrong with a release -
     /// still blocks every file (unlike a single file's own problem), but it
