@@ -17,7 +17,22 @@ public static class SeriesRemoval
             series.ImdbId,
             (libraryId, cancellationToken) => FilesOf(series.Id, libraryId, repository, cancellationToken),
             cancellationToken => repository.DeleteAsync(series.Id, cancellationToken),
-            (scope, reason, cancellationToken) => repository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken));
+            (scope, reason, cancellationToken) => repository.SettleImportRecoveryCasesAsync(scope, reason, cancellationToken),
+            // #947: the most common TV grab (an automatic per-episode search)
+            // is recorded under its episode's own id, not the series' - so
+            // removing a series has to reach those dispatches too.
+            cancellationToken => RelatedEpisodeIdsOf(series.Id, repository, cancellationToken));
+
+    private static async Task<IReadOnlyList<string>> RelatedEpisodeIdsOf(
+        string seriesId,
+        ISeriesCatalogRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
+        return inventory is null
+            ? []
+            : inventory.Episodes.Select(episode => episode.EpisodeId).ToArray();
+    }
 
     private static async IAsyncEnumerable<string> FilesOf(
         string seriesId,

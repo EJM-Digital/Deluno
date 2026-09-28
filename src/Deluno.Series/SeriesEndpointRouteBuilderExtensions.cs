@@ -674,7 +674,18 @@ public static class SeriesEndpointRouteBuilderExtensions
                     var seriesItem = await repository.GetByIdAsync(seriesId, cancellationToken);
                     if (seriesItem is not null)
                     {
-                        await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("series", seriesId, seriesItem.Title, cancellationToken);
+                        // #947: an automatic per-episode search's dispatch is
+                        // recorded under the episode's own id, not the
+                        // series' - unmonitoring the series has to reach
+                        // those too, not just its own season-pack dispatches.
+                        var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
+                        var episodeIds = inventory?.Episodes.Select(episode => episode.EpisodeId).ToArray() ?? [];
+                        await titleRemoval.CancelDownloadForUnmonitoredTitleAsync(
+                            "series",
+                            seriesId,
+                            seriesItem.Title,
+                            cancellationToken,
+                            relatedEpisodeIds: episodeIds);
                     }
                 }
             }
@@ -757,9 +768,22 @@ public static class SeriesEndpointRouteBuilderExtensions
 
             var episodeIds = request.EpisodeIds.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
+            var updated = await repository.UpdateEpisodeMonitoredAsync(
+                episodeIds,
+                request.Monitored,
+                cancellationToken);
+
             // #900: unmonitoring is "I don't want this any more", not just "stop
             // searching later" - an in-flight download for it is cancelled right
             // now, with its data, rather than left to finish and import anyway.
+            //
+            // #947: an episode's own dispatch is not the only one that can be
+            // running for it - a season-pack dispatch recorded under the
+            // series also covers it. That pack is only cancelled once every
+            // episode it covers is unmonitored, which is why monitored state
+            // is updated above first: the check below reads it fresh rather
+            // than guessing at episodes still being unmonitored in this same
+            // request.
             if (!request.Monitored)
             {
                 foreach (var episodeId in episodeIds)
@@ -767,14 +791,25 @@ public static class SeriesEndpointRouteBuilderExtensions
                     var seriesId = await repository.GetEpisodeSeriesIdAsync(episodeId, cancellationToken);
                     var seriesTitle = seriesId is null ? null : (await repository.GetByIdAsync(seriesId, cancellationToken))?.Title;
                     var label = seriesTitle is { Length: > 0 } ? $"An episode of {seriesTitle}" : "This episode";
-                    await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, label, cancellationToken);
+                    var seasonPack = seriesId is null
+                        ? null
+                        : new TitleRemovalService.SeasonPackUnmonitorContext(
+                            seriesId,
+                            async (coveredEpisodeIds, ct) =>
+                            {
+                                var inventory = await repository.GetInventoryDetailAsync(seriesId, ct);
+                                if (inventory is null)
+                                {
+                                    return false;
+                                }
+
+                                var monitoredById = inventory.Episodes.ToDictionary(episode => episode.EpisodeId, episode => episode.Monitored, StringComparer.OrdinalIgnoreCase);
+                                return coveredEpisodeIds.All(coveredEpisodeId =>
+                                    !monitoredById.TryGetValue(coveredEpisodeId, out var monitored) || !monitored);
+                            });
+                    await titleRemoval.CancelDownloadForUnmonitoredTitleAsync("episode", episodeId, label, cancellationToken, seasonPack: seasonPack);
                 }
             }
-
-            var updated = await repository.UpdateEpisodeMonitoredAsync(
-                episodeIds,
-                request.Monitored,
-                cancellationToken);
 
             if (updated > 0)
             {
