@@ -90,6 +90,42 @@ public sealed class LibrarySubtitleSearchNotificationTests
         Assert.Empty(await notificationService.GetNotificationsAsync(50, 0, CancellationToken.None));
     }
 
+    /// <summary>#983: subtitle_upgraded had a fires test above but no suppressed one -- this is the other half.</summary>
+    [Fact]
+    public async Task Disabling_the_preference_suppresses_subtitle_upgraded()
+    {
+        var (handler, movies, subtitles, notificationService, library) = await CreateAsync(
+            new SingleOutcomeFetchService(Found("en", SubtitleMatch.AnyRelease)));
+        var movieId = await ImportAsync(movies, library.Id, "Dune");
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie, movieId, Row("en", SubtitleMatch.AnyRelease), CancellationToken.None);
+
+        var preferences = await notificationService.GetPreferencesAsync(CancellationToken.None);
+        preferences.SubtitleUpgradedEnabled = false;
+        await notificationService.UpdatePreferencesAsync(preferences, CancellationToken.None);
+
+        await handler.HandleAsync(JobFor(library.Id), CancellationToken.None);
+
+        Assert.Empty(await notificationService.GetNotificationsAsync(50, 0, CancellationToken.None));
+    }
+
+    /// <summary>#983: subtitle_failed had a fires test above but no suppressed one -- this is the other half.</summary>
+    [Fact]
+    public async Task Disabling_the_preference_suppresses_subtitle_failed()
+    {
+        var (handler, movies, subtitles, notificationService, library) = await CreateAsync(
+            new SingleOutcomeFetchService(NotFound("en", "Nothing matched closely enough.")));
+        await ImportAsync(movies, library.Id, "Dune");
+
+        var preferences = await notificationService.GetPreferencesAsync(CancellationToken.None);
+        preferences.SubtitleFailedEnabled = false;
+        await notificationService.UpdatePreferencesAsync(preferences, CancellationToken.None);
+
+        await handler.HandleAsync(JobFor(library.Id), CancellationToken.None);
+
+        Assert.Empty(await notificationService.GetNotificationsAsync(50, 0, CancellationToken.None));
+    }
+
     private static SubtitleFetchOutcome Found(string language, SubtitleMatch match = SubtitleCutoff.Rung)
         => new(language, Found: true, ProviderKey: "gestdown", WrittenPath: $"x.{language}.srt", HearingImpaired: false, Reason: "Matched.", Match: match);
 
