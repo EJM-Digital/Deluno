@@ -287,9 +287,11 @@ public static class PlatformEndpointRouteBuilderExtensions
         tags.MapGet("/usage", async (
             IPlatformSettingsRepository repository,
             IMediaTagStore tagStore,
+            ITagReferenceStore tagReferences,
             CancellationToken cancellationToken) =>
         {
             var definitions = await repository.ListTagsAsync(cancellationToken);
+            var users = await tagReferences.ListAllUsersAsync(cancellationToken);
             var usage = new Dictionary<string, (int Movies, int Series)>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in await tagStore.ListUsageAsync(MediaKind.Movie, cancellationToken))
@@ -309,8 +311,67 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(definitions.Select(tag =>
             {
                 usage.TryGetValue(tag.Name, out var counts);
-                return new TagUsageItem(tag.Id, tag.Name, counts.Movies, counts.Series);
+                users.TryGetValue(tag.Name.Trim().ToLowerInvariant(), out var tagUsers);
+                return new TagUsageItem(tag.Id, tag.Name, counts.Movies, counts.Series, tagUsers ?? []);
             }));
+        });
+
+        // Unused tags are removed only when the user asks, in one go (#1039).
+        tags.MapPost("/delete-unused", async (
+            HttpContext httpContext,
+            IPlatformSettingsRepository repository,
+            IMediaTagStore tagStore,
+            ITagReferenceStore tagReferences,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var definitions = await repository.ListTagsAsync(cancellationToken);
+            var users = await tagReferences.ListAllUsersAsync(cancellationToken);
+            var titleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kind in new[] { MediaKind.Movie, MediaKind.Series })
+            {
+                foreach (var item in await tagStore.ListUsageAsync(kind, cancellationToken))
+                {
+                    if (item.TitleCount > 0)
+                    {
+                        titleNames.Add(item.Name.Trim());
+                    }
+                }
+            }
+
+            var removed = new List<string>();
+            foreach (var tag in definitions)
+            {
+                if (titleNames.Contains(tag.Name.Trim()) || users.ContainsKey(tag.Name.Trim().ToLowerInvariant()))
+                {
+                    continue;
+                }
+
+                if (await tagReferences.DeleteAsync(tag.Id, tag.Name, cancellationToken))
+                {
+                    removed.Add(tag.Name);
+                }
+            }
+
+            if (removed.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "tags.unused.deleted",
+                    $"Deleted {removed.Count} unused tag{(removed.Count == 1 ? string.Empty : "s")}: {string.Join(", ", removed)}.",
+                    null,
+                    null,
+                    "tag",
+                    null,
+                    cancellationToken);
+            }
+
+            return Results.Ok(new { removed = removed.Count, names = removed });
         });
 
         tags.MapPost(string.Empty, async (
@@ -341,6 +402,8 @@ public static class PlatformEndpointRouteBuilderExtensions
             [FromBody] UpdateTagRequest request,
             IPlatformSettingsRepository repository,
             IMediaTagStore tagStore,
+            ITagReferenceStore tagReferences,
+            IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -355,21 +418,43 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
-            var previous = (await repository.ListTagsAsync(cancellationToken))
-                .FirstOrDefault(tag => string.Equals(tag.Id, id, StringComparison.Ordinal));
-            var item = await repository.UpdateTagAsync(id, request, cancellationToken);
-            if (item is null)
+            var all = await repository.ListTagsAsync(cancellationToken);
+            var previous = all.FirstOrDefault(tag => string.Equals(tag.Id, id, StringComparison.Ordinal));
+            if (previous is null)
             {
                 return Results.NotFound();
             }
 
-            if (previous is not null && !string.Equals(previous.Name, item.Name, StringComparison.Ordinal))
+            var nextName = request.Name?.Trim();
+            if (!string.IsNullOrEmpty(nextName)
+                && !string.Equals(previous.Name, nextName, StringComparison.Ordinal))
             {
-                await tagStore.RenameAsync(MediaKind.Movie, item.Id, previous.Name, item.Name, cancellationToken);
-                await tagStore.RenameAsync(MediaKind.Series, item.Id, previous.Name, item.Name, cancellationToken);
+                if (all.Any(tag => tag.Id != id && string.Equals(tag.Name.Trim(), nextName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["name"] = ["Another tag already has that name."]
+                    });
+                }
+
+                // Platform-database uses and the definition change together in one
+                // transaction; the movie and series catalogues follow straight after
+                // (they live in other databases).
+                await tagReferences.RenameAsync(id, previous.Name, nextName, cancellationToken);
+                await tagStore.RenameAsync(MediaKind.Movie, id, previous.Name, nextName, cancellationToken);
+                await tagStore.RenameAsync(MediaKind.Series, id, previous.Name, nextName, cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "tags.renamed",
+                    $"Renamed the tag \"{previous.Name}\" to \"{nextName}\" everywhere it was used.",
+                    null,
+                    null,
+                    "tag",
+                    id,
+                    cancellationToken);
             }
 
-            return Results.Ok(item);
+            var item = await repository.UpdateTagAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
         tags.MapDelete("{id}", async (
@@ -377,6 +462,8 @@ public static class PlatformEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IPlatformSettingsRepository repository,
             IMediaTagStore tagStore,
+            ITagReferenceStore tagReferences,
+            IActivityFeedRepository activityFeedRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -392,7 +479,9 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var removed = await repository.DeleteTagAsync(id, cancellationToken);
+            // The tag comes off every connection and rule in the platform
+            // database in one transaction with its definition; titles follow.
+            var removed = await tagReferences.DeleteAsync(id, tag.Name, cancellationToken);
             if (!removed)
             {
                 return Results.NotFound();
@@ -400,6 +489,14 @@ public static class PlatformEndpointRouteBuilderExtensions
 
             await tagStore.RemoveAsync(MediaKind.Movie, tag.Id, tag.Name, cancellationToken);
             await tagStore.RemoveAsync(MediaKind.Series, tag.Id, tag.Name, cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "tags.deleted",
+                $"Deleted the tag \"{tag.Name}\" and took it off everything that used it.",
+                null,
+                null,
+                "tag",
+                id,
+                cancellationToken);
             return Results.NoContent();
         });
 

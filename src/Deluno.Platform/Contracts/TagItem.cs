@@ -17,7 +17,11 @@ public sealed record TagUsageItem(
     string Id,
     string Name,
     int MovieCount,
-    int SeriesCount)
+    int SeriesCount,
+    IReadOnlyList<TagUserItem> Users)
 {
     public int TotalCount => MovieCount + SeriesCount;
+
+    /// <summary>True when no title, connection or rule uses the tag (#1039).</summary>
+    public bool IsUnused => TotalCount == 0 && Users.Count == 0;
 }

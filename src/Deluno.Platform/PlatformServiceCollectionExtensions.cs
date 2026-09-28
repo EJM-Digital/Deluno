@@ -38,6 +38,7 @@ public static class PlatformServiceCollectionExtensions
         services.AddSingleton<SqliteSharingRulesRepository>();
         services.AddSingleton<ISharingRulesRepository>(sp => sp.GetRequiredService<SqliteSharingRulesRepository>());
         services.AddSingleton<ISharingActivityTracker>(sp => sp.GetRequiredService<SqliteSharingRulesRepository>());
+        services.AddSingleton<ITagReferenceStore, SqliteTagReferenceStore>();
         services.AddHostedService<PlatformSchemaInitializer>();
         return services;
     }
