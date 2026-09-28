@@ -118,7 +118,8 @@ public static class PlatformDatabaseMigrations
         new V0110SeerrWebhookSecret(),
         new V0111TrackerDefinitionUpdateState(),
         new V0112IndexerHistoryEvents(),
-        new V0113ContentBlocklistDefaultsOnForExistingInstalls()
+        new V0113ContentBlocklistDefaultsOnForExistingInstalls(),
+        new V0114ProcessorPathMappings()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

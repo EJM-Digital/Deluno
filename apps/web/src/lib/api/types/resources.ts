@@ -1402,6 +1402,18 @@ export interface ProcessorConnectionItem {
   updatedUtc: string;
 }
 
+/** A processor connection's optional path pair (#962): DelunoPath is the folder as Deluno sees it, ProcessorPath the same folder as the processor sees it. */
+export interface ProcessorPathMappingItem {
+  id: string;
+  processorConnectionId: string;
+  delunoPath: string;
+  processorPath: string;
+  isEnabled: boolean;
+  priority: number;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
 export interface ProcessorConnectionTestResult {
   connectionId: string;
   isReachable: boolean;

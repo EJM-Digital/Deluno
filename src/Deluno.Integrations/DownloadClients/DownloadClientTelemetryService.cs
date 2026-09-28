@@ -2563,31 +2563,22 @@ public sealed class DownloadClientTelemetryService(
     /// Deluno queues a processor handoff or an import, translate that namespace
     /// to the one visible to this host. The longest matching remote root wins so
     /// a specific mapping may safely sit beside a broader one.
+    ///
+    /// <para>The match-and-combine algorithm itself lives in
+    /// <see cref="Deluno.Contracts.PathMappingTranslator"/>, shared with the
+    /// processor connection path mapping added for #962 rather than
+    /// duplicated.</para>
     /// </summary>
     internal static string? TranslateRemotePath(
         string? reportedPath,
         IEnumerable<DownloadClientPathMappingItem> mappings)
-    {
-        if (string.IsNullOrWhiteSpace(reportedPath)) return reportedPath;
-
-        var normalizedReported = NormalizeSourceKey(reportedPath);
-        var match = mappings
-            .Where(item => item.IsEnabled)
-            .Select(item => new { Mapping = item, Remote = NormalizeSourceKey(item.RemotePath) })
-            .Where(item => normalizedReported.Equals(item.Remote, StringComparison.OrdinalIgnoreCase) ||
-                           normalizedReported.StartsWith(item.Remote + "/", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.Remote.Length)
-            .ThenBy(item => item.Mapping.Priority)
-            .FirstOrDefault();
-
-        if (match is null) return reportedPath;
-
-        var relative = normalizedReported[match.Remote.Length..].TrimStart('/');
-        if (relative.Length == 0) return match.Mapping.LocalPath;
-
-        var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return segments.Aggregate(match.Mapping.LocalPath, Path.Combine);
-    }
+        => Deluno.Contracts.PathMappingTranslator.Translate(
+            reportedPath,
+            mappings,
+            item => item.IsEnabled,
+            item => item.RemotePath,
+            item => item.LocalPath,
+            item => item.Priority);
 
     /// <summary>
     /// A mapping applies to any client whose host matches, not only the

@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
-import { Loader2, Wifi } from "lucide-react";
+import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -29,7 +29,7 @@ import { librarySetupNavItems } from "../components/app/settings-shell";
 import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { toast } from "../components/shell/toaster";
 import { settingsOverviewLoader } from "./settings-overview-page";
-import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type QualityProfileItem } from "../lib/api";
+import { fetchJson, type LibraryItem, type PlatformSettingsSnapshot, type ProcessorConnectionItem, type ProcessorConnectionTestResult, type ProcessorPathMappingItem, type QualityProfileItem } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
@@ -692,6 +692,13 @@ function ProcessingWorkflowPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<ProcessorConnectionItem | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Optional path pairs for one processor connection (#962): "Deluno sees" /
+  // "processor sees", the same shape download clients already offer. Loaded
+  // per connection rather than for every one up front, since most setups
+  // have zero or one processor connected.
+  const [mappingConnectionId, setMappingConnectionId] = useState<string | null>(null);
+  const [mappings, setMappings] = useState<ProcessorPathMappingItem[]>([]);
+  const [newProcessorMapping, setNewProcessorMapping] = useState({ delunoPath: "", processorPath: "" });
 
   const editingLibrary = drawer.kind === "library" ? libraries.find((library) => library.id === drawer.id) ?? null : null;
   const isRefined = workflow.importWorkflow === "refine-before-import";
@@ -826,6 +833,45 @@ function ProcessingWorkflowPage() {
     setConfirmRemove(null);
   }
 
+  async function loadMappings(connectionId: string) {
+    try {
+      setMappings(await fetchJson<ProcessorPathMappingItem[]>(`/api/integrations/processors/connections/${connectionId}/path-mappings`));
+    } catch {
+      toast.error("Could not load path mappings.");
+    }
+  }
+  function toggleMappings(connection: ProcessorConnectionItem) {
+    if (mappingConnectionId === connection.id) {
+      setMappingConnectionId(null);
+      return;
+    }
+    setMappingConnectionId(connection.id);
+    setNewProcessorMapping({ delunoPath: "", processorPath: "" });
+    void loadMappings(connection.id);
+  }
+  async function addProcessorMapping() {
+    if (!mappingConnectionId || !newProcessorMapping.delunoPath.trim() || !newProcessorMapping.processorPath.trim()) return;
+    await run("mapping:add", async () => {
+      const response = await authedFetch(`/api/integrations/processors/connections/${mappingConnectionId}/path-mappings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delunoPath: newProcessorMapping.delunoPath.trim(), processorPath: newProcessorMapping.processorPath.trim(), isEnabled: true, priority: 10 })
+      });
+      if (!response.ok) throw new Error("Path mapping could not be saved.");
+      await loadMappings(mappingConnectionId);
+      setNewProcessorMapping({ delunoPath: "", processorPath: "" });
+    }, "Path mapping saved");
+  }
+  async function removeProcessorMapping(mappingId: string) {
+    if (!mappingConnectionId) return;
+    const connectionId = mappingConnectionId;
+    await run(`mapping:remove:${mappingId}`, async () => {
+      const response = await authedFetch(`/api/integrations/processors/connections/${connectionId}/path-mappings/${mappingId}`, { method: "DELETE" });
+      if (!response.ok && response.status !== 204) throw new Error("Path mapping could not be removed.");
+      await loadMappings(connectionId);
+    }, "Path mapping removed");
+  }
+
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar tabs={librarySetupNavItems} actions={<PageToolbarAction variant="outline" onClick={openCallback}>Connect processor</PageToolbarAction>} />
@@ -884,6 +930,9 @@ function ProcessingWorkflowPage() {
                       {busy === `test:${connection.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
                       Test
                     </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 px-2" aria-expanded={mappingConnectionId === connection.id} disabled={busy !== null} onClick={() => toggleMappings(connection)}>
+                      Path mappings
+                    </Button>
                     <Button type="button" variant="destructive" size="sm" className="h-7 px-2" disabled={busy !== null} onClick={() => setConfirmRemove(connection)}>
                       Remove
                     </Button>
@@ -893,6 +942,39 @@ function ProcessingWorkflowPage() {
             ))}
           </ListTable>
         )}
+        {mappingConnectionId ? (
+          <div className="mt-3 grid gap-2 rounded-[10px] border border-hairline bg-surface-1/40 px-3 py-3">
+            <p className="text-[length:var(--type-caption)] text-muted-foreground">
+              Only needed when {processorConnections.find((connection) => connection.id === mappingConnectionId)?.name ?? "this processor"} runs in a container or on another machine and reports a path Deluno cannot use directly — for example the processor reports <code className="font-mono">/data/refined</code> while Deluno reads <code className="font-mono">D:\Refined</code>. With no pairs set here, paths are sent and read back exactly as they are today.
+            </p>
+            {mappings.length ? (
+              <div className="grid gap-2">
+                {mappings.map((mapping) => (
+                  <div key={mapping.id} className="flex min-h-10 items-center gap-2 rounded-[10px] border border-hairline px-[var(--field-pad-x)] font-mono text-[length:var(--type-caption)]">
+                    <span className="min-w-0 flex-1 truncate text-foreground" title={mapping.delunoPath}>{mapping.delunoPath}</span>
+                    <span aria-hidden className="text-primary">↔</span>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground" title={mapping.processorPath}>{mapping.processorPath}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`Remove ${mapping.delunoPath} link`} onClick={() => void removeProcessorMapping(mapping.id)} disabled={busy !== null}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <FieldRow>
+              <Field label="Path as Deluno sees it">
+                <Input value={newProcessorMapping.delunoPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, delunoPath: event.target.value }))} placeholder="D:\Refined" className="font-mono text-[length:var(--type-caption)]" />
+              </Field>
+              <Field label="Same path as the processor sees it">
+                <Input value={newProcessorMapping.processorPath} onChange={(event) => setNewProcessorMapping((current) => ({ ...current, processorPath: event.target.value }))} placeholder="/data/refined" className="font-mono text-[length:var(--type-caption)]" />
+              </Field>
+            </FieldRow>
+            <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void addProcessorMapping()} disabled={busy !== null || !newProcessorMapping.delunoPath.trim() || !newProcessorMapping.processorPath.trim()}>
+              {busy === "mapping:add" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Link paths
+            </Button>
+          </div>
+        ) : null}
       </ListCard>
 
       <Drawer

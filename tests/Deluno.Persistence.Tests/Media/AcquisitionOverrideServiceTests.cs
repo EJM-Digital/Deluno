@@ -422,6 +422,12 @@ public sealed class AcquisitionOverrideServiceTests
             => throw new NotSupportedException();
         public Task<ProcessorConnectionItem?> RecordProcessorConnectionHealthAsync(string id, string status, string? message, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+        public Task<IReadOnlyList<ProcessorPathMappingItem>> ListProcessorPathMappingsAsync(string processorConnectionId, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<ProcessorPathMappingItem>>([]);
+        public Task<ProcessorPathMappingItem?> CreateProcessorPathMappingAsync(string processorConnectionId, CreateProcessorPathMappingRequest request, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+        public Task<bool> DeleteProcessorPathMappingAsync(string processorConnectionId, string id, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
         public Task<ProcessorOutcomeRecord?> GetProcessorOutcomeAsync(string handoffId, CancellationToken cancellationToken)
             => throw new NotSupportedException();
         public Task SaveProcessorOutcomeAsync(ProcessorOutcomeRecord record, CancellationToken cancellationToken)

@@ -886,6 +886,54 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
+        // Optional path pairs for one processor connection (#962), the same
+        // "Deluno sees" / "processor sees" shape download clients already
+        // offer at /api/connections/download-clients/{id}/path-mappings.
+        integrations.MapGet("/processors/connections/{id}/path-mappings", async (
+            string id,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            return Results.Ok(await repository.ListProcessorPathMappingsAsync(id, cancellationToken));
+        });
+
+        integrations.MapPost("/processors/connections/{id}/path-mappings", async (
+            string id,
+            HttpContext httpContext,
+            [FromBody] CreateProcessorPathMappingRequest request,
+            IProcessorRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            if (string.IsNullOrWhiteSpace(request.DelunoPath) || string.IsNullOrWhiteSpace(request.ProcessorPath))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["pathMapping"] = ["Both the Deluno path and the processor path are required."]
+                });
+            }
+
+            var item = await repository.CreateProcessorPathMappingAsync(id, request, cancellationToken);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        });
+
+        integrations.MapDelete("/processors/connections/{id}/path-mappings/{mappingId}", async (
+            string id,
+            string mappingId,
+            HttpContext httpContext,
+            IProcessorRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var removed = await repository.DeleteProcessorPathMappingAsync(id, mappingId, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound();
+        });
+
         // The only way anything in a processor output folder is ever removed
         // by Deluno itself (#921): a safety-net item a person chose to delete
         // from System -> Health, never automatic. Scoped to one direct child
@@ -1013,6 +1061,30 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 {
                     message = $"{library.Name} is configured for standard import, so Deluno will not accept a processor completion event for it."
                 });
+            }
+
+            // The processor reports every path in its own filesystem namespace.
+            // Translate its sourcePath, outputPath and outputFiles back to the
+            // namespace Deluno already recorded the hand-off in (#962) before
+            // anything below compares or imports them. With no mapping pairs
+            // configured for this connection, every path passes through
+            // unchanged.
+            var mappingConnection = !string.IsNullOrWhiteSpace(library.ProcessorName)
+                ? await repository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken)
+                : null;
+            IReadOnlyList<ProcessorPathMappingItem> pathMappings = mappingConnection is not null
+                ? await repository.ListProcessorPathMappingsAsync(mappingConnection.Id, cancellationToken)
+                : [];
+            if (pathMappings.Count > 0)
+            {
+                request = request with
+                {
+                    SourcePath = ProcessorPathMappingTranslator.ToDeluno(request.SourcePath, pathMappings),
+                    OutputPath = ProcessorPathMappingTranslator.ToDeluno(request.OutputPath, pathMappings),
+                    OutputFiles = request.OutputFiles?
+                        .Select(file => ProcessorPathMappingTranslator.ToDeluno(file, pathMappings) ?? file)
+                        .ToArray()
+                };
             }
 
             var processorName = library.ProcessorName ?? (string.IsNullOrWhiteSpace(request.ProcessorName)
