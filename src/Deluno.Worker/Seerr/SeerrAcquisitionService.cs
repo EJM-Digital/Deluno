@@ -199,7 +199,8 @@ public sealed class SeerrAcquisitionService(
             var who = string.IsNullOrWhiteSpace(requestedBy) ? string.Empty : $" — requested by {requestedBy}";
             // #1033: says which rule placed it (or that the fallback library did), so
             // the automatic choice is visible in Activity, not silent.
-            var placedBy = rule is not null ? $"placed by the “{rule.Name}” rule" : $"using {connection.Name}'s fallback library";
+            var placedBy = rule is not null
+                ? (routing.MatchedTag is { Length: > 0 } matchedTag ? $"placed by the tag “{matchedTag}” (the “{rule.Name}” rule)" : $"placed by the “{rule.Name}” rule") : $"using {connection.Name}'s fallback library";
             var message = isNewlyAdded
                 ? $"{connection.Name} approved {titleWithQuality} — added to {library.Name} ({placedBy}) and {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}"
                 : $"{connection.Name} approved {titleWithQuality} — already in {library.Name} ({placedBy}); {(searchRequested ? "queued a search" : "search already covered by schedule")}.{who}";

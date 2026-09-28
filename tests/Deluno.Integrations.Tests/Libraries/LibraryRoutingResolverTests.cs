@@ -155,6 +155,54 @@ public sealed class LibraryRoutingResolverTests
     }
 
     [Fact]
+    public void A_tag_rule_places_a_tagged_title_and_names_the_tag()
+    {
+        var libraries = new[] { Library("movies"), Library("kids") };
+        var rules = new[] { Rule("tag", "kids", "kids") };
+        var metadata = new LibraryRoutingMetadata(["Family"], "en", null, null, Tags: ["Kids", "watched"]);
+
+        var result = Resolver.Resolve("movies", metadata, libraries, rules, fallbackLibraryId: "movies");
+
+        Assert.Equal("kids", result.Library!.Id);
+        Assert.Equal("kids", result.MatchedTag);
+        Assert.Contains("tag \"kids\"", result.Explanation);
+    }
+
+    [Fact]
+    public void A_tag_rule_never_places_an_untagged_title()
+    {
+        var libraries = new[] { Library("movies"), Library("kids") };
+        var rules = new[] { Rule("tag", "kids", "kids") };
+
+        foreach (var tags in new IReadOnlyList<string>?[] { null, [], ["other"] })
+        {
+            var metadata = new LibraryRoutingMetadata(["Family"], "en", null, null, Tags: tags);
+            var result = Resolver.Resolve("movies", metadata, libraries, rules, fallbackLibraryId: "movies");
+
+            Assert.Equal("movies", result.Library!.Id);
+            Assert.Null(result.Rule);
+            Assert.Null(result.MatchedTag);
+        }
+    }
+
+    [Fact]
+    public void A_tag_rule_follows_the_usual_priority_order()
+    {
+        var libraries = new[] { Library("movies"), Library("kids"), Library("docs") };
+        var rules = new[]
+        {
+            Rule("genre", "Documentary", "docs", priority: 5),
+            Rule("tag", "kids", "kids", priority: 10)
+        };
+        var metadata = new LibraryRoutingMetadata(["Documentary"], "en", null, null, Tags: ["kids"]);
+
+        var result = Resolver.Resolve("movies", metadata, libraries, rules, fallbackLibraryId: "movies");
+
+        Assert.Equal("docs", result.Library!.Id);
+        Assert.Null(result.MatchedTag);
+    }
+
+    [Fact]
     public void No_library_of_the_requested_media_type_never_matches()
     {
         var libraries = new[] { Library("movies", "movies") };

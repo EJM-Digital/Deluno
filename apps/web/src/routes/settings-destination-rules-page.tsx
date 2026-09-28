@@ -79,6 +79,9 @@ const MATCH_KIND_LABELS: Record<string, string> = {
   requested4k: "Requested in 4K"
 };
 
+/** #1040: kinds Deluno has no fact for when it places a title, so a rule of this kind never fires. Not offered for new rules; an old one says so. */
+const NEVER_FIRES_KINDS = new Set(["quality", "library"]);
+
 const MATCH_VALUE_OPTIONS: Record<string, { label: string; value: string }[]> = {
   genre: ["Action", "Animation", "Anime", "Comedy", "Documentary", "Drama", "Family", "Horror", "Sci-Fi"].map((value) => ({ label: value, value })),
   language: [
@@ -369,8 +372,8 @@ export function SettingsDestinationRulesPage() {
                 </Field>
               </FieldRow>
               <FieldRow>
-                <Field label="Match">
-                  <Select value={form.matchKind} onChange={(event) => setForm((current) => ({ ...current, matchKind: event.target.value, matchValue: "" }))} options={Object.entries(MATCH_KIND_LABELS).map(([value, label]) => ({ value, label }))} />
+                <Field label="Match" help={NEVER_FIRES_KINDS.has(form.matchKind) ? "This kind of rule cannot place anything: when Deluno decides where a new title goes it does not yet know the title's quality or library, so this rule would never be used. Pick another kind, or delete this rule." : form.matchKind === "tag" ? "Places any title carrying this tag. Titles with no tags are never affected." : undefined}>
+                  <Select value={form.matchKind} onChange={(event) => setForm((current) => ({ ...current, matchKind: event.target.value, matchValue: "" }))} options={Object.entries(MATCH_KIND_LABELS).filter(([value]) => !NEVER_FIRES_KINDS.has(value) || value === form.matchKind).map(([value, label]) => ({ value, label: NEVER_FIRES_KINDS.has(value) ? `${label} (cannot place a title)` : label }))} />
                 </Field>
                 <Field label="Value" error={errors.matchValue}>
                   <PresetField value={form.matchValue} onChange={(value) => { setErrors((current) => ({ ...current, matchValue: "" })); setForm((current) => ({ ...current, matchValue: value })); }} options={matchOptions} allowCustom={form.matchKind !== "tag" || tagOptions.length === 0} customLabel="Custom value" customPlaceholder={form.matchKind === "genre" ? "Genre name" : "Match value"} />

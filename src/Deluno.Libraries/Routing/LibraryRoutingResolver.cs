@@ -18,8 +18,16 @@ public sealed record LibraryRoutingMetadata(
     string? OriginalLanguage,
     string? Certification,
     string? Studio,
-    bool RequestedIn4k = false)
+    bool RequestedIn4k = false,
+    IReadOnlyList<string>? Tags = null)
 {
+    /// <summary>
+    /// The tag names the title carries at routing time (#1040): what the add
+    /// flow, a list or Seerr already attached. Empty for someone who never
+    /// uses tags - a tag rule then simply does not apply.
+    /// </summary>
+    public IReadOnlyList<string> TagNames => Tags ?? [];
+
     /// <summary>
     /// TMDb's own convention (also what Sonarr/Radarr-adjacent tools use):
     /// animation whose original language is Japanese. Deluno has no
@@ -36,6 +44,18 @@ public sealed record LibraryRoutingResult(
     LibraryItem? Library,
     DestinationRuleItem? Rule)
 {
+    /// <summary>The tag that placed the title, when a tag rule did (#1040); the rule tester and the title's routing panel name it.</summary>
+    public string? MatchedTag => Rule is not null && string.Equals(Rule.MatchKind?.Trim(), "tag", StringComparison.OrdinalIgnoreCase)
+        ? Rule.MatchValue.Trim()
+        : null;
+
+    /// <summary>One plain-words sentence saying what placed the title.</summary>
+    public string Explanation => Rule is null
+        ? "No destination rule matched, so the fallback library was used."
+        : MatchedTag is { Length: > 0 } tag
+            ? $"Placed in {Library?.Name} by the tag \"{tag}\" (rule \"{Rule.Name}\")."
+            : $"Placed in {Library?.Name} by rule \"{Rule.Name}\".";
+
     /// <summary>No rule matched and no fallback library resolved either - Deluno refuses rather than guessing.</summary>
     public bool Matched => Library is not null;
 
@@ -130,9 +150,15 @@ public sealed class LibraryRoutingResolver : ILibraryRoutingResolver
             "certification" => string.Equals(metadata.Certification, expected, StringComparison.OrdinalIgnoreCase),
             "anime" => isAnime == IsTrue(expected),
             "requested4k" => metadata.RequestedIn4k == IsTrue(expected),
-            // "tag"/"quality"/"library" describe a release or an import-time
-            // fact Deluno does not have yet when a title is only being
-            // routed by its metadata, so they never match here.
+            // Same loose, case-insensitive comparison the import-time folder
+            // placement uses, so a tag rule places a title the way the rule
+            // tester says it will (#1040).
+            "tag" => !string.IsNullOrWhiteSpace(expected)
+                && metadata.TagNames.Any(tag => tag.Contains(expected, StringComparison.OrdinalIgnoreCase)),
+            // "quality"/"library" describe a release or an import-time fact
+            // Deluno does not have yet when a title is only being routed by
+            // its metadata, so they never match here (the Destination Rules
+            // page says so in plain words).
             _ => false
         };
     }
