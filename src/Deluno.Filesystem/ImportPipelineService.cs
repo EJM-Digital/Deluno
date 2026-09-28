@@ -1384,16 +1384,43 @@ public sealed partial class ImportPipelineService(
             {
                 var fileName = Path.GetFileName(backup.ExistingPath);
                 var library = ResolveLibraryForImport(backup.ExistingPath, "tv", libraries);
-                if (library is null || recycleBinService is null)
+
+                // #945: the same sidecar subtitles the single-file upgrade
+                // path recycles alongside the video it replaced (#893) -
+                // still sitting beside the episode's original path, since
+                // only the video itself was moved aside into the backup.
+                var oldSubtitlePaths = SubtitleInventoryService.FindSidecarSubtitlePaths(backup.ExistingPath);
+
+                if (library is null)
                 {
                     TryDelete(backup.BackupPath);
-                    if (library is null)
+                    foreach (var subtitlePath in oldSubtitlePaths)
                     {
-                        logger.LogWarning(
-                            "The replaced file was left at {BackupPath} because no library matched {ExistingPath}.",
-                            backup.BackupPath,
-                            backup.ExistingPath);
+                        TryDelete(subtitlePath);
                     }
+                    logger.LogWarning(
+                        "The replaced file was left at {BackupPath} because no library matched {ExistingPath}.",
+                        backup.BackupPath,
+                        backup.ExistingPath);
+                    continue;
+                }
+
+                if (recycleBinService is null)
+                {
+                    // Keep hand-constructed test/utility instances backwards
+                    // compatible; the host always supplies the recoverable
+                    // service through DI. Mirrors the single-file path's
+                    // no-recycle-bin fallback (#893).
+                    TryDelete(backup.BackupPath);
+                    var deletedSubtitles = 0;
+                    foreach (var subtitlePath in oldSubtitlePaths)
+                    {
+                        TryDelete(subtitlePath);
+                        deletedSubtitles++;
+                    }
+                    replacementMessages.Add(deletedSubtitles > 0
+                        ? $"Removed the previous {fileName} file it replaced, and its subtitles."
+                        : $"Removed the previous {fileName} file it replaced.");
                     continue;
                 }
 
@@ -1409,7 +1436,28 @@ public sealed partial class ImportPipelineService(
                     continue;
                 }
 
-                replacementMessages.Add($"Moved the previous {fileName} file to the recycle bin.");
+                var subtitlesRecycled = 0;
+                foreach (var subtitlePath in oldSubtitlePaths)
+                {
+                    if (!File.Exists(subtitlePath))
+                    {
+                        continue;
+                    }
+
+                    var subtitleRecycled = await recycleBinService.StoreReplacementAsync(
+                        library,
+                        subtitlePath,
+                        subtitlePath,
+                        cancellationToken);
+                    if (subtitleRecycled is not null)
+                    {
+                        subtitlesRecycled++;
+                    }
+                }
+
+                replacementMessages.Add(subtitlesRecycled > 0
+                    ? $"Moved the previous {fileName} file and its {subtitlesRecycled} subtitle file(s) to the recycle bin."
+                    : $"Moved the previous {fileName} file to the recycle bin.");
             }
 
             // #662: one refresh call per distinct destination folder for the
