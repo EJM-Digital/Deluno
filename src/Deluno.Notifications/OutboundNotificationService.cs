@@ -43,6 +43,10 @@ public sealed class OutboundNotificationService(
             return;
         }
 
+        // The title's tag names travel in the event details so every channel
+        // and a replay carry the same thing (#1045). No title, no tags key.
+        detailsJson = WithTags(detailsJson, titleTags);
+
         foreach (var webhook in webhooks)
         {
             if (!webhook.IsEnabled
@@ -412,6 +416,17 @@ public sealed class OutboundNotificationService(
                 ? NotificationProviders.Discord
                 : provider;
 
+        // Chat channels have no structured fields, so the tags ride as a line.
+        // The generic webhook carries them as a top-level "tags" array instead.
+        if (effectiveProvider != NotificationProviders.Generic)
+        {
+            var tags = ReadTags(detailsJson);
+            if (tags.Count > 0)
+            {
+                message = $"{message}\nTags: {string.Join(", ", tags)}";
+            }
+        }
+
         using var request = effectiveProvider switch
         {
             NotificationProviders.Discord => BuildDiscordRequest(url, eventCategory, title, message),
@@ -470,6 +485,7 @@ public sealed class OutboundNotificationService(
             eventCategory,
             title,
             message,
+            tags = ReadTagsOrNull(detailsJson),
             details,
             firedAt = DateTimeOffset.UtcNow
         };
@@ -577,6 +593,68 @@ public sealed class OutboundNotificationService(
     {
         var payload = new { title, message, type = "info" };
         return new HttpRequestMessage(HttpMethod.Post, url) { Content = SizedJson.Create(payload) };
+    }
+
+    private static string? WithTags(string? detailsJson, IReadOnlyList<string>? titleTags)
+    {
+        if (titleTags is null)
+        {
+            return detailsJson;
+        }
+
+        var names = titleTags.Select(tag => tag.Trim()).Where(tag => tag.Length > 0).ToArray();
+        try
+        {
+            var node = string.IsNullOrWhiteSpace(detailsJson)
+                ? new System.Text.Json.Nodes.JsonObject()
+                : System.Text.Json.Nodes.JsonNode.Parse(detailsJson);
+            if (node is not System.Text.Json.Nodes.JsonObject obj)
+            {
+                return detailsJson;
+            }
+
+            var array = new System.Text.Json.Nodes.JsonArray();
+            foreach (var name in names)
+            {
+                array.Add(name);
+            }
+
+            obj["tags"] = array;
+            return obj.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return detailsJson;
+        }
+    }
+
+    private static IReadOnlyList<string> ReadTags(string? detailsJson) => ReadTagsOrNull(detailsJson) ?? [];
+
+    private static string[]? ReadTagsOrNull(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("tags", out var tags)
+                && tags.ValueKind == JsonValueKind.Array)
+            {
+                return tags.EnumerateArray()
+                    .Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString()!)
+                    .ToArray();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return null;
     }
 
     private static bool IsMatchingEvent(string eventFilters, string eventCategory)

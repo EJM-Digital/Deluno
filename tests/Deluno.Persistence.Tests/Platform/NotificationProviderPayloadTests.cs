@@ -136,6 +136,42 @@ public sealed class NotificationProviderPayloadTests
     }
 
     [Fact]
+    public async Task Generic_payload_carries_the_titles_tag_names_and_a_title_less_event_has_none()
+    {
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Generic, "https://example.test/hook", null);
+
+        await service.DispatchAsync("import.completed", "Imported", "Akira", null, CancellationToken.None, titleTags: ["anime", "4k"]);
+        using (var doc = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!))
+        {
+            Assert.Equal(["anime", "4k"], doc.RootElement.GetProperty("tags").EnumerateArray().Select(t => t.GetString()!).ToArray());
+        }
+
+        await service.DispatchAsync("import.completed", "Imported", "Plain", null, CancellationToken.None, titleTags: []);
+        using (var doc = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!))
+        {
+            Assert.Equal(0, doc.RootElement.GetProperty("tags").GetArrayLength());
+        }
+
+        await service.DispatchAsync("health.warning", "Indexer down", "x", null, CancellationToken.None, titleTags: null);
+        using (var doc = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!))
+        {
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, doc.RootElement.GetProperty("tags").ValueKind);
+        }
+    }
+
+    [Fact]
+    public async Task Chat_providers_append_the_titles_tags_to_the_message()
+    {
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Ntfy, "https://ntfy.sh/t", null);
+
+        await service.DispatchAsync("import.completed", "Imported", "Akira", null, CancellationToken.None, titleTags: ["anime", "4k"]);
+
+        Assert.Equal("Akira\nTags: anime, 4k", handler.LastRequestBody);
+    }
+
+    [Fact]
     public async Task Generic_provider_keeps_sending_the_original_event_envelope()
     {
         using var storage = TestStorage.Create();
