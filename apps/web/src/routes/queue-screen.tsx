@@ -57,7 +57,7 @@ import { resolveImportSourcePath } from "../lib/import-source";
 import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
 import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
-import { downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
+import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
 import { canTryAgain, handoffNeedsPerson, isDispatchFailure, isProcessorFailure, isProcessorFault, isVanished, isWithProcessor, needsAction } from "../lib/needs-action";
 import { processorOutcomeSummary } from "../lib/processor-outcome";
@@ -2544,7 +2544,7 @@ function buildActivity({
         detail: item.errorMessage
           ?? (item.failure
             ? integrationFailureActivityDetail(item.failure)
-            : `Client reported ${item.outcome}`),
+            : `Client reported: ${clientHistoryOutcomeLabel(item.outcome)}`),
         extra: [
           historySourceLabel(item.historySource),
           item.failure ? integrationFailureShortLabel(item.failure) : undefined,
@@ -2552,7 +2552,7 @@ function buildActivity({
           item.sizeBytes ? formatBytes(item.sizeBytes) : undefined
         ].filter(Boolean).join(" · ") || undefined,
         tone: item.errorMessage || item.failure ? "bad" : "ok",
-        status: item.outcome,
+        status: clientHistoryOutcomeLabel(item.outcome),
         whenUtc: item.completedUtc
       });
     }

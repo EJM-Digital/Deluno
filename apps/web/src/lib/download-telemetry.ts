@@ -56,6 +56,48 @@ export function queueStatusLabel(status: string) {
   )[status] ?? status;
 }
 
+/**
+ * Every value `DownloadClientHistoryItem.Outcome` can carry, in plain words.
+ *
+ * <p>Mirrors `Deluno.Integrations.DownloadClients.DownloadClientHistoryOutcomes`
+ * (the client's own reports: duplicate, needsAttention, scriptFailed,
+ * scriptWarning) plus the generic values `DownloadClientTelemetryService`
+ * derives from a client's queue or Deluno's own dispatch record (failed,
+ * completed, imported, importReady, sent, unknown). Anything outside that set
+ * falls back to the code itself, same as {@link queueStatusLabel} and
+ * `reasonWords` — a code you can search for beats a word that tells you
+ * nothing (#948).</p>
+ */
+export const CLIENT_HISTORY_OUTCOMES = [
+  "duplicate",
+  "needsAttention",
+  "scriptFailed",
+  "scriptWarning",
+  "failed",
+  "completed",
+  "imported",
+  "importReady",
+  "sent",
+  "unknown"
+] as const;
+
+const CLIENT_HISTORY_OUTCOME_WORDS: Record<string, string> = {
+  duplicate: "Already had it",
+  needsAttention: "Needs your attention",
+  scriptFailed: "The client's own script failed",
+  scriptWarning: "The client's own script warned",
+  failed: "Failed",
+  completed: "Finished downloading",
+  imported: "Imported",
+  importReady: "Ready to import",
+  sent: "Sent to the client",
+  unknown: "Unknown"
+};
+
+export function clientHistoryOutcomeLabel(outcome: string): string {
+  return CLIENT_HISTORY_OUTCOME_WORDS[outcome] ?? outcome;
+}
+
 export function telemetryCapabilityChips(client: DownloadClientTelemetrySnapshot) {
   const caps = client.capabilities;
   return [
