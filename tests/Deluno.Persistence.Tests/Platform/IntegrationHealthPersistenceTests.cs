@@ -232,6 +232,160 @@ public sealed class IntegrationHealthPersistenceTests
         Assert.Null(stored.DisabledReason);
     }
 
+    /// <summary>
+    /// #946: a used-up quota classifies as
+    /// <see cref="IntegrationFailureKind.QuotaExceeded"/>, not
+    /// <see cref="IntegrationFailureKind.Authentication"/> — both pause the
+    /// provider with a reason, but only the quota one carries a reset time.
+    /// </summary>
+    [Fact]
+    public async Task A_quota_failure_pauses_the_provider_with_a_reset_time()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "fine", ApiKey: "key", Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var resetUtc = DateTimeOffset.Parse("2026-04-30T00:00:00Z");
+        var failure = IntegrationFailureFactory.QuotaExceeded(
+            "subtitle", "opensubtitles", "OpenSubtitles", "download", resetUtc,
+            "OpenSubtitles's daily quota is used up.");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "degraded", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: resetUtc, CancellationToken.None, failure);
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.False(stored.IsEnabled);
+        Assert.Equal(failure.Message, stored.DisabledReason);
+        Assert.Equal(resetUtc, stored.RateLimitedUntilUtc);
+        Assert.False(stored.IsAskable(timeProvider.GetUtcNow()));
+    }
+
+    /// <summary>
+    /// The other half of #946: once the reset time passes, the provider is
+    /// asked again on its own — nobody has to open Subtitle providers and
+    /// flip the switch back on.
+    /// </summary>
+    [Fact]
+    public async Task A_quota_paused_provider_reactivates_on_its_own_once_the_reset_time_passes()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "fine", ApiKey: "key", Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var resetUtc = timeProvider.GetUtcNow().AddHours(1);
+        var failure = IntegrationFailureFactory.QuotaExceeded(
+            "subtitle", "opensubtitles", "OpenSubtitles", "download", resetUtc, "Quota used up.");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "degraded", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: resetUtc, CancellationToken.None, failure);
+
+        Assert.False(Assert.Single(await repository.ListAsync(CancellationToken.None)).IsEnabled);
+
+        timeProvider.Advance(TimeSpan.FromHours(1).Add(TimeSpan.FromMinutes(1)));
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.True(stored.IsEnabled);
+        Assert.Null(stored.DisabledReason);
+        Assert.Null(stored.RateLimitedUntilUtc);
+        Assert.True(stored.IsAskable(timeProvider.GetUtcNow()));
+    }
+
+    /// <summary>
+    /// A wrong login (#896) never sets a reset time, so it never reactivates
+    /// on its own — the opposite of #946's quota pause. It stays off until a
+    /// person fixes the credential and saves the provider again.
+    /// </summary>
+    [Fact]
+    public async Task An_authentication_pause_never_reactivates_on_its_own()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "wrong", ApiKey: null, Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var failure = IntegrationFailureFactory.FromLegacy(
+            "subtitle", "opensubtitles", "OpenSubtitles", "search", "authentication",
+            "OpenSubtitles rejected the request (401).");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "failed", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: null, CancellationToken.None, failure);
+
+        timeProvider.Advance(TimeSpan.FromDays(30));
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.False(stored.IsEnabled);
+        Assert.Equal(failure.Message, stored.DisabledReason);
+    }
+
+    /// <summary>
+    /// A person turning a provider off by hand is a fresh, deliberate choice.
+    /// A reset time left over from an earlier quota pause must not later flip
+    /// it back on behind them.
+    /// </summary>
+    [Fact]
+    public async Task Manually_disabling_a_provider_clears_a_leftover_quota_reset_time()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T09:00:00Z"));
+        await InitializePlatformAsync(storage, timeProvider);
+        var repository = new SqliteSubtitleProviderRepository(
+            storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: "fine", ApiKey: "key", Priority: 1, IsEnabled: true),
+            CancellationToken.None);
+
+        var resetUtc = timeProvider.GetUtcNow().AddMinutes(5);
+        var failure = IntegrationFailureFactory.QuotaExceeded(
+            "subtitle", "opensubtitles", "OpenSubtitles", "download", resetUtc, "Quota used up.");
+        await repository.RecordHealthAsync(
+            "opensubtitles", "degraded", failure.Message, latencyMs: null, success: false,
+            rateLimitedUntilUtc: resetUtc, CancellationToken.None, failure);
+
+        // A person disables it themselves before the quota would have reset.
+        await repository.SaveAsync(
+            "opensubtitles",
+            "OpenSubtitles",
+            new SaveSubtitleProviderRequest(
+                ProviderKey: "opensubtitles", Username: "someone", Secret: null, ApiKey: null, Priority: 1, IsEnabled: false),
+            CancellationToken.None);
+
+        timeProvider.Advance(TimeSpan.FromHours(1));
+
+        var stored = Assert.Single(await repository.ListAsync(CancellationToken.None));
+        Assert.False(stored.IsEnabled);
+        Assert.Null(stored.RateLimitedUntilUtc);
+    }
+
     private static async Task InitializePlatformAsync(TestStorage storage, TimeProvider timeProvider)
     {
         await new PlatformSchemaInitializer(

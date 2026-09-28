@@ -44,6 +44,8 @@ public sealed class SqliteSubtitleProviderRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        await ReactivateDueProvidersAsync(connection, cancellationToken);
+
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
@@ -61,6 +63,36 @@ public sealed class SqliteSubtitleProviderRepository(
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Turns a paused provider back on once the reason it was paused for has
+    /// passed on its own (#946).
+    ///
+    /// <para>Only a timed pause qualifies: <c>rate_limited_until_utc</c> set
+    /// and in the past. A wrong-login pause (#896) never sets that column —
+    /// <see cref="RecordHealthAsync"/> clears it for that kind on purpose —
+    /// so it stays off until a person fixes the credential and turns it back
+    /// on themselves. Run before every list, so a used-up quota provider is
+    /// asked again the moment its allowance would have reset, not only after
+    /// somebody happens to open the settings screen.</para>
+    /// </summary>
+    private async Task ReactivateDueProvidersAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE subtitle_providers
+            SET is_enabled = 1,
+                disabled_reason = NULL,
+                rate_limited_until_utc = NULL
+            WHERE is_enabled = 0
+              AND rate_limited_until_utc IS NOT NULL
+              AND rate_limited_until_utc <= @now;
+            """;
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>
@@ -114,6 +146,12 @@ public sealed class SqliteSubtitleProviderRepository(
                 api_key = excluded.api_key,
                 priority = excluded.priority,
                 is_enabled = excluded.is_enabled,
+                -- A person switching a provider off by hand is a deliberate,
+                -- fresh choice; any reset time left over from an earlier
+                -- quota pause must not later flip it back on behind them
+                -- (ReactivateDueProvidersAsync only ever acts on that
+                -- column, so this is the one place it needs clearing).
+                rate_limited_until_utc = CASE WHEN excluded.is_enabled = 0 THEN NULL ELSE subtitle_providers.rate_limited_until_utc END,
                 updated_utc = excluded.updated_utc;
             """;
 
@@ -145,14 +183,23 @@ public sealed class SqliteSubtitleProviderRepository(
     /// counter that only goes up would eventually disable everything.</para>
     ///
     /// <para><b>A wrong login or a used-up quota actually pauses the provider
-    /// (#896).</b> Before this, the row recorded the failure and Deluno kept
-    /// asking it every cycle regardless — wasting a search attempt on a source
-    /// that cannot answer until a person fixes it. <c>is_enabled</c> is turned
-    /// off and <c>disabled_reason</c> is filled in, the same field the screen
-    /// already had a column for and nothing ever wrote to. Off is what
+    /// (#896, #946).</b> Before this, the row recorded the failure and Deluno
+    /// kept asking it every cycle regardless — wasting a search attempt on a
+    /// source that cannot answer. <c>is_enabled</c> is turned off and
+    /// <c>disabled_reason</c> is filled in, the same field the screen already
+    /// had a column for. Off is what
     /// <see cref="SubtitleProviderConnection.IsAskable"/> already reads, so
     /// this is the one write that makes "search again: no" true — no second
     /// check anywhere else needs to know why.</para>
+    ///
+    /// <para><b>The two pauses come back differently.</b> A wrong login needs
+    /// a person to fix the credential, so its pause never sets
+    /// <c>rate_limited_until_utc</c> — it stays off until a manual save turns
+    /// it back on. A used-up quota resets on its own, so its pause does set
+    /// that column to when the allowance resets; <see cref="ListAsync"/>
+    /// reads it back off automatically once that time passes
+    /// (<see cref="ReactivateDueProvidersAsync"/>), same as turning it back on
+    /// by hand would.</para>
     /// </summary>
     public async Task RecordHealthAsync(
         string providerKey,
@@ -166,6 +213,8 @@ public sealed class SqliteSubtitleProviderRepository(
     {
         var now = timeProvider.GetUtcNow();
         var isAuthFailure = !success && failure?.Kind == IntegrationFailureKind.Authentication;
+        var isQuotaFailure = !success && failure?.Kind == IntegrationFailureKind.QuotaExceeded;
+        var pausesProvider = isAuthFailure || isQuotaFailure;
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -180,10 +229,10 @@ public sealed class SqliteSubtitleProviderRepository(
                 last_health_latency_ms = @latency,
                 last_health_test_utc = @testedUtc,
                 consecutive_failures = CASE WHEN @success = 1 THEN 0 ELSE consecutive_failures + 1 END,
-                rate_limited_until_utc = COALESCE(@rateLimitedUntil, rate_limited_until_utc),
+                rate_limited_until_utc = CASE WHEN @isAuthFailure = 1 THEN NULL ELSE COALESCE(@rateLimitedUntil, rate_limited_until_utc) END,
                 last_health_failure_json = @failureJson,
-                is_enabled = CASE WHEN @isAuthFailure = 1 THEN 0 ELSE is_enabled END,
-                disabled_reason = CASE WHEN @success = 1 THEN NULL WHEN @isAuthFailure = 1 THEN @message ELSE disabled_reason END,
+                is_enabled = CASE WHEN @pausesProvider = 1 THEN 0 ELSE is_enabled END,
+                disabled_reason = CASE WHEN @success = 1 THEN NULL WHEN @pausesProvider = 1 THEN @message ELSE disabled_reason END,
                 updated_utc = @updatedUtc
             WHERE provider_key = @providerKey COLLATE NOCASE;
             """;
@@ -196,6 +245,7 @@ public sealed class SqliteSubtitleProviderRepository(
         AddParameter(command, "@rateLimitedUntil", rateLimitedUntilUtc?.ToString("O"));
         AddParameter(command, "@failureJson", failure is null ? null : JsonSerializer.Serialize(failure));
         AddParameter(command, "@isAuthFailure", isAuthFailure ? 1 : 0);
+        AddParameter(command, "@pausesProvider", pausesProvider ? 1 : 0);
         AddParameter(command, "@updatedUtc", now.ToString("O"));
         AddParameter(command, "@providerKey", providerKey);
 

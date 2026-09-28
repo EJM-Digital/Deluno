@@ -387,6 +387,68 @@ public sealed class SubtitleFetchTests
         Assert.Equal(IntegrationFailureKind.RateLimit, Assert.Single(repository.TypedFailures)!.Kind);
     }
 
+    /// <summary>
+    /// #946: OpenSubtitles' 406 answer for a spent daily allowance pauses the
+    /// provider and writes the same Activity line an authentication pause
+    /// does — the other half of #896's "actually pause a provider" promise,
+    /// which only ever covered a wrong login.
+    /// </summary>
+    [Fact]
+    public async Task A_quota_exhausted_download_pauses_the_provider_and_is_written_to_activity()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt)
+        {
+            ThrownDownloadException = new SubtitleProviderQuotaExhaustedException(
+                "first", "The daily download allowance is used up for today.",
+                DateTimeOffset.Parse("2026-04-30T00:00:00Z"))
+        };
+        var repository = new FakeRepository([Connection("first")]);
+        var activity = new RecordingActivityFeedRepository();
+        var service = new SubtitleFetchService(
+            new SubtitleProviderRegistry([provider]), repository, new FakeWriter(),
+            TimeProvider.System, NullLogger<SubtitleFetchService>.Instance, activity);
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        var health = Assert.Single(repository.Health);
+        Assert.False(health.Success);
+        Assert.Equal(DateTimeOffset.Parse("2026-04-30T00:00:00Z"), health.RateLimitedUntil);
+        Assert.Equal(IntegrationFailureKind.QuotaExceeded, Assert.Single(repository.TypedFailures)!.Kind);
+
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Equal("subtitle.provider.paused", recorded.Category);
+        Assert.Contains("first", recorded.Message, StringComparison.Ordinal);
+        Assert.Equal("subtitle-provider", recorded.RelatedEntityType);
+        Assert.Equal("first", recorded.RelatedEntityId);
+    }
+
+    /// <summary>
+    /// The "accepted but no link" shape (#946) — HTTP 200, no reset time in
+    /// the body — falls back to the next UTC midnight rather than leaving the
+    /// provider with no resume time at all.
+    /// </summary>
+    [Fact]
+    public async Task A_quota_exhaustion_without_a_reset_time_still_gets_a_resume_time()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt)
+        {
+            ThrownDownloadException = new SubtitleProviderQuotaExhaustedException(
+                "first", "Accepted the request but did not return a link.")
+        };
+        var repository = new FakeRepository([Connection("first")]);
+        var service = Build([provider], new FakeWriter(), repository);
+
+        await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        var health = Assert.Single(repository.Health);
+        Assert.NotNull(health.RateLimitedUntil);
+    }
+
     [Fact]
     public async Task A_tv_only_provider_is_not_asked_about_a_film()
     {
@@ -699,6 +761,7 @@ public sealed class SubtitleFetchTests
         public bool RateLimited { get; set; }
         public bool Unreachable { get; set; }
         public Exception? ThrownException { get; set; }
+        public Exception? ThrownDownloadException { get; set; }
         public int Searches { get; private set; }
         public string? LastDownloadToken { get; private set; }
 
@@ -718,6 +781,7 @@ public sealed class SubtitleFetchTests
         public Task<byte[]> DownloadAsync(
             SubtitleCandidate candidate, SubtitleProviderCredentials credentials, CancellationToken cancellationToken)
         {
+            if (ThrownDownloadException is not null) throw ThrownDownloadException;
             LastDownloadToken = candidate.DownloadToken;
             return Task.FromResult(PayloadByToken.TryGetValue(candidate.DownloadToken, out var specific) ? specific : payload);
         }

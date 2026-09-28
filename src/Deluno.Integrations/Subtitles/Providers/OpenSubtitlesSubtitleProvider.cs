@@ -122,12 +122,19 @@ public sealed class OpenSubtitlesSubtitleProvider(IHttpClientFactory httpClientF
             Content = SizedJson.Create(new { file_id = int.Parse(candidate.DownloadToken) })
         };
 
+        // A 406 here is the documented answer for a spent daily allowance
+        // (#946) and is turned into SubtitleProviderQuotaExhaustedException
+        // by SubtitleProviderHttp itself, with whatever reset time the body
+        // gave.
         var response = await SubtitleProviderHttp.SendJsonAsync<OpenSubtitlesDownload>(client, request, Key, cancellationToken);
         var link = response?.Link;
         if (string.IsNullOrWhiteSpace(link))
         {
-            throw new InvalidOperationException(
-                "OpenSubtitles accepted the request but did not return a link. That is usually the daily download allowance being spent.");
+            // The other shape the same fact answers with: HTTP 200, a body
+            // that parsed, and no link — no reset time to read from this one,
+            // so the caller falls back to its own guess.
+            throw new SubtitleProviderQuotaExhaustedException(
+                Key, "OpenSubtitles accepted the request but did not return a link. That is usually the daily download allowance being spent.");
         }
 
         using var plain = SubtitleProviderHttp.Create(httpClientFactory);

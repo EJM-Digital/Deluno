@@ -761,7 +761,7 @@ export interface IntegrationFailure {
   serviceId: string;
   serviceName: string;
   operation: string;
-  kind: "Authentication" | "RateLimit" | "Timeout" | "Protocol" | "Unavailable" | "MalformedResponse" | "RejectedAction" | "Configuration" | "CircuitOpen" | "Unknown" | string;
+  kind: "Authentication" | "RateLimit" | "Timeout" | "Protocol" | "Unavailable" | "MalformedResponse" | "RejectedAction" | "Configuration" | "CircuitOpen" | "QuotaExceeded" | "Unknown" | string;
   retryState: "NotRetryable" | "Retrying" | "RetryScheduled" | "CircuitOpen" | "ManualAction" | string;
   message: string;
   code: string | null;
