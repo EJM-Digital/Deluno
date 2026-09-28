@@ -226,6 +226,25 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
 
   const [openPanel, setOpenPanel] = useState<"sort" | "filter" | "view" | null>(null);
 
+  /**
+   * True only while `monitoring === "monitored"` is Missing's own doing
+   * (#1032), not something the person chose themselves via the Unmonitored
+   * toggle or the filter panel's monitoring select. Missing sets `monitoring`
+   * as a side effect of a click that was about the *status* axis — picking a
+   * different status chip next should not keep that side effect narrowing the
+   * new chip's own shelf, or its printed count stops matching what the shelf
+   * shows, which is exactly the #934 guarantee this row exists to keep. A
+   * choice the person made on the monitoring axis directly (either control
+   * below) is a different thing entirely and stays in effect across chips,
+   * same as it always has.
+   */
+  const [monitoringForcedByMissing, setMonitoringForcedByMissing] = useState(false);
+
+  function setMonitoringExplicitly(next: MonitoringFilter) {
+    setMonitoringForcedByMissing(false);
+    setMonitoring(next);
+  }
+
   const counts: Partial<Record<QuickFilter, number>> = {
     all: facets?.all ?? 0,
     missing: facets?.missing ?? 0,
@@ -491,7 +510,17 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                     type="button"
                     onClick={() => {
                       setQuickFilter(chip.key);
-                      if (isMissing) setMonitoring("monitored");
+                      if (isMissing) {
+                        setMonitoring("monitored");
+                        setMonitoringForcedByMissing(true);
+                      } else if (monitoringForcedByMissing) {
+                        // Leaving Missing for a different status: undo the
+                        // side effect Missing left behind rather than let it
+                        // keep narrowing a chip nobody asked to combine with
+                        // monitoring (see the state's own comment above).
+                        setMonitoring("any");
+                        setMonitoringForcedByMissing(false);
+                      }
                     }}
                     aria-pressed={isMissing ? active && monitoring === "monitored" : undefined}
                     title={isMissing
@@ -566,7 +595,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
               <button
                   type="button"
-                  onClick={() => setMonitoring(monitoring === "unmonitored" ? "any" : "unmonitored")}
+                  onClick={() => setMonitoringExplicitly(monitoring === "unmonitored" ? "any" : "unmonitored")}
                   aria-pressed={monitoring === "unmonitored"}
                   title="Titles Deluno is not watching. Stacks with the state chips rather than replacing them."
                   className={cn(
@@ -704,7 +733,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
             onChange={setConditions}
             onClear={clearConditions}
             monitoring={monitoring}
-            onMonitoringChange={setMonitoring}
+            onMonitoringChange={setMonitoringExplicitly}
             monitoredCount={facets?.monitored ?? 0}
             unmonitoredCount={facets?.unmonitored ?? 0}
           />
