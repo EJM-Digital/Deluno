@@ -477,12 +477,26 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
 
               {chips.map((chip) => {
                 const active = quickFilter === chip.key;
+                // #1032: Missing and Wanted (#790) were the same question asked
+                // twice — "what am I actually missing" always meant "and I have
+                // told Deluno to watch for it". `missing` and `monitored` are
+                // still two separate, stackable axes (see the Unmonitored
+                // toggle below), so this chip sets both at once rather than
+                // asking for two clicks to reach what "Missing" now means.
+                const isMissing = chip.key === "missing";
                 return (
                   <button
                     key={chip.key}
                     ref={(element) => registerChipButton(chip.key, element)}
                     type="button"
-                    onClick={() => setQuickFilter(chip.key)}
+                    onClick={() => {
+                      setQuickFilter(chip.key);
+                      if (isMissing) setMonitoring("monitored");
+                    }}
+                    aria-pressed={isMissing ? active && monitoring === "monitored" : undefined}
+                    title={isMissing
+                      ? "Monitored titles with no acceptable file. Sets the Missing chip and the Monitored filter together."
+                      : undefined}
                     className={cn(
                       "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
                       active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
@@ -549,36 +563,6 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
                 A chip that could not be given a colour had no business in a row
                 that is the shelf's colour legend; this one has one.
               */}
-              {/*
-                Radarr's one-click "Wanted" filter (#790). `missing` and
-                `monitored` are already two separate, stackable axes here
-                (see the comment above), so Wanted is not a new state — it is
-                a shortcut that sets both at once instead of asking for two
-                clicks to reach the question "what am I actually missing".
-              */}
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickFilter("missing");
-                  setMonitoring("monitored");
-                }}
-                aria-pressed={quickFilter === "missing" && monitoring === "monitored"}
-                title="Missing titles Deluno is watching for. Sets the Missing chip and the Monitored filter together."
-                className={cn(
-                  "relative flex min-h-[calc(var(--library-toolbar-height)*0.78)] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[length:var(--library-toolbar-size)] select-none",
-                  quickFilter === "missing" && monitoring === "monitored"
-                    ? "font-semibold text-foreground"
-                    : "font-medium text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span
-                  aria-hidden
-                  className="h-1 w-4 shrink-0 rounded-full"
-                  style={{ background: `hsl(var(${TITLE_MARK_PRESENTATION.missing.cssVar}))` }}
-                />
-                <span>Wanted</span>
-              </button>
-
               <span aria-hidden="true" className="mx-1 h-5 border-l border-hairline" />
               <button
                   type="button"

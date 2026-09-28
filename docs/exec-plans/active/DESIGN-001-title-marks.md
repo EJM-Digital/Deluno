@@ -16,6 +16,16 @@ Rendered reference, every mark drawn at real poster sizes:
 > labels. Read this document for what a mark means and DESIGN-006 for what a
 > card looks like.
 
+> **Reversed in part by [#1032](https://github.com/jampat000/Deluno/issues/1032)**
+> (28 Sep 2026). Every bar and legend swatch used to carry a non-colour
+> texture as well as its hue, so a reader who could not separate the colours
+> could read the pattern instead — the rule [#318](https://github.com/jampat000/Deluno/issues/318)
+> asked for. James reversed it directly: *"do we really care about
+> accessibility? no I think not so lets remove them"*. Colour alone now
+> carries a mark's state; `.title-mark-pattern` and its per-rung selectors are
+> gone from `apps/web/src/index.css`, and nothing in `title-mark.tsx` draws
+> one.
+
 ## The idea
 
 A title gets **one dot** and **one bar**.

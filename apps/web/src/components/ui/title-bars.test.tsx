@@ -268,49 +268,37 @@ describe("the bars are pinned to the artwork's edges", () => {
   });
 });
 
-describe("the texture is for the bar that has no words", () => {
+describe("colour alone carries the bar's state (#1032)", () => {
   const texture = (bar: HTMLElement) => bar.querySelector(".title-mark-pattern");
 
   /**
-   * The texture exists so hue is never the only carrier (#318). A 5px strip
-   * has nothing but hue, so it needs one.
+   * #1032 reverses #318's texture rule at James's direction: *"do we really
+   * care about accessibility? no I think not so lets remove them"*. No bar,
+   * wordless or labelled, draws a pattern any more — colour is the only
+   * carrier.
    */
-  it("textures the wordless strip", () => {
+  it("draws no texture on the wordless strip", () => {
     const [media] = bars(film(), false, false);
-    expect(texture(media!)).not.toBeNull();
+    expect(texture(media!)).toBeNull();
   });
 
-  /**
-   * And the labelled bar too, which is the one this got wrong.
-   *
-   * The label is the QUALITY - "Bluray-1080p" - not the state. Quality met and
-   * Upgradable are both drawn on a bar reading the same quality, so without a
-   * texture the only thing between them is hue. Three posters all saying "WEB
-   * 1080p", one green and two yellow, is exactly the case #318 exists for.
-   */
-  it("textures the labelled bar, because its words are the quality not the state", () => {
+  it("draws no texture on the labelled bar either", () => {
     const [media] = bars(film(), true, true);
     expect(media!.textContent).toContain("Bluray-1080p");
-    expect(texture(media!)).not.toBeNull();
+    expect(texture(media!)).toBeNull();
   });
 });
 
 describe("the key is painted in what the posters actually wear", () => {
   /**
-   * The texture is a carrier of state, not decoration. A key that shows the
-   * hue and not the pattern teaches half the language to the one reader the
-   * pattern exists for.
+   * The legend swatches match the posters: neither draws a texture now that
+   * #1032 has removed it.
    */
-  it("gives every legend swatch the texture its strip wears", () => {
+  it("gives every legend swatch no texture, matching the strip it explains", () => {
     const { container } = render(<TitleMarkBarLegend type="show" />);
     const swatches = [...container.querySelectorAll<HTMLElement>("span.title-mark-pattern")];
 
-    expect(swatches.length).toBeGreaterThan(0);
-    for (const swatch of swatches) {
-      // The same state class the poster strip carries, so one pattern change
-      // moves both.
-      expect(swatch.className).toMatch(/title-mark-(missing|downloading|upgrade|covered|airing|upcoming)/);
-    }
+    expect(swatches.length).toBe(0);
   });
 });
 
