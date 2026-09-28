@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Security;
 
@@ -17,6 +18,14 @@ public static class SecurityServiceCollectionExtensions
         services.AddSingleton<IAllowedHostsSettingsCache, AllowedHostsSettingsCache>();
         services.AddSingleton<IForwardedHostTracker, ForwardedHostTracker>();
         services.AddSingleton<IAllowedHostsCandidateProvider, AllowedHostsCandidateProvider>();
+        // #993: Skip sign-in for devices on the local network.
+        services.AddSingleton<ILocalNetworkAuthRepository, SqliteLocalNetworkAuthRepository>();
+        services.AddSingleton<ILocalNetworkAuthSettingsCache, LocalNetworkAuthSettingsCache>();
+        services.AddSingleton<ITrustedProxyClientAddressResolver, TrustedProxyClientAddressResolver>();
+        // Real logging to Activity is registered by the host (Deluno.Worker),
+        // which can see both this module and Deluno.Jobs; this default keeps
+        // the feature usable for any composition that does not.
+        services.TryAddSingleton<ILocalNetworkAuthChangeNotifier, NoOpLocalNetworkAuthChangeNotifier>();
         services.AddHttpContextAccessor();
         services.AddAuthentication(DelunoAuthenticationHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, DelunoAuthenticationHandler>(

@@ -88,6 +88,15 @@ public static class UserAuthorization
 
         if (!TryReadUser(httpContext, out var authenticated) || authenticated is null)
         {
+            // #993: a request Deluno can prove arrived from a local network
+            // address -- never one merely claimed by a forwarded-for header
+            // from an untrusted source -- is treated as already signed in,
+            // but only once the setting is on (off by default, #936).
+            if (await TryLocalNetworkAuthAsync(httpContext, repository, cancellationToken))
+            {
+                return null;
+            }
+
             return Results.Unauthorized();
         }
 
@@ -104,6 +113,62 @@ public static class UserAuthorization
 
         httpContext.Items[UserItemKey] = current;
         return null;
+    }
+
+    /// <summary>
+    /// #993: whether this request should be treated as signed in because it
+    /// came from a local network address, with skip-sign-in turned on. Every
+    /// check fails safe -- missing services, an unresolved address, or the
+    /// setting being off all mean "no" -- so this can never widen access by
+    /// accident.
+    /// </summary>
+    private static async Task<bool> TryLocalNetworkAuthAsync(
+        HttpContext httpContext,
+        ISecurityRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var settingsCache = httpContext.RequestServices.GetService<Hardening.ILocalNetworkAuthSettingsCache>();
+        if (settingsCache is null)
+        {
+            return false;
+        }
+
+        var settings = await settingsCache.GetAsync(cancellationToken);
+        if (!settings.Enabled)
+        {
+            return false;
+        }
+
+        var resolver = httpContext.RequestServices.GetService<Hardening.ITrustedProxyClientAddressResolver>();
+        var address = resolver is null
+            ? httpContext.Connection.RemoteIpAddress
+            : await resolver.ResolveAsync(httpContext, cancellationToken);
+        if (address is null)
+        {
+            return false;
+        }
+
+        if (!LocalNetworkMatcher.IsLocal(address, settings.AdditionalLocalNetworks))
+        {
+            return false;
+        }
+
+        // An empty allow list means the local-network rule applies to every
+        // local address, as designed; a non-empty one narrows it further --
+        // still only for an address that is also local.
+        if (settings.AllowList.Count > 0 && !LocalNetworkMatcher.MatchesAny(address, settings.AllowList))
+        {
+            return false;
+        }
+
+        var user = await repository.GetSoleUserAsync(cancellationToken);
+        if (user is null)
+        {
+            return false;
+        }
+
+        httpContext.Items[UserItemKey] = user;
+        return true;
     }
 
     public static bool TryReadApiKey(HttpContext httpContext, out ApiKeyItem? item)

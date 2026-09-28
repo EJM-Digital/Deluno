@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AllowedHostsOverview } from "../lib/api";
+import type { AllowedHostsOverview, LocalNetworkAuthOverview } from "../lib/api";
 
 /**
  * #939: Allowed Hosts is a tick list built from detected addresses, never a
@@ -26,9 +26,20 @@ const overview: AllowedHostsOverview = {
   currentHost: "my-pc"
 };
 
+const localNetworkAuthOverview: LocalNetworkAuthOverview = {
+  enabled: false,
+  additionalLocalNetworks: [],
+  allowList: [],
+  trustedProxies: [],
+  currentAddress: "192.168.1.99",
+  currentAddressIsLocal: true,
+  currentAddressTrusted: true,
+  allowedHostsEnabled: false
+};
+
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => ({ allowedHosts: overview }),
+  useLoaderData: () => ({ allowedHosts: overview, localNetworkAuth: localNetworkAuthOverview }),
   useRevalidator: () => ({ revalidate: vi.fn() })
 }));
 
@@ -84,5 +95,72 @@ describe("system security page allowed hosts", () => {
       "/api/security/allowed-hosts",
       expect.objectContaining({ method: "PUT" })
     ));
+  });
+});
+
+/**
+ * #993: Skip sign-in for devices on your home network. The allow list, when
+ * it has entries, narrows the trusted set -- add/remove happens on this
+ * card, and an obviously invalid entry is refused before it ever reaches
+ * the server.
+ */
+describe("system security page local network auth", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+  });
+
+  it("is off by default and shows the current address", () => {
+    render(
+      <MemoryRouter>
+        <SystemSecurityPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("switch", { name: /Skip sign-in on the local network/ })).not.toBeChecked();
+    expect(screen.getByText(/192\.168\.1\.99/)).toBeInTheDocument();
+  });
+
+  it("saves the setting when turned on", async () => {
+    fetchJsonMock.mockResolvedValueOnce({ enabled: true, additionalLocalNetworks: [], allowList: [], trustedProxies: [] });
+
+    render(
+      <MemoryRouter>
+        <SystemSecurityPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /Skip sign-in on the local network/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(() => expect(fetchJsonMock).toHaveBeenCalledWith(
+      "/api/security/local-network-auth",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ enabled: true, additionalLocalNetworks: [], allowList: [], trustedProxies: [] })
+      })
+    ));
+  });
+
+  it("adds and removes an allow-list entry, and refuses an invalid one", () => {
+    render(
+      <MemoryRouter>
+        <SystemSecurityPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: /Skip sign-in on the local network/ }));
+
+    const input = screen.getByPlaceholderText("192.168.1.0/28");
+    const addButton = screen.getByRole("button", { name: "Add address to the allow list" });
+    fireEvent.change(input, { target: { value: "not-an-address" } });
+    fireEvent.click(addButton);
+    expect(screen.getByText(/is not a valid address or subnet/)).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "192.168.1.20" } });
+    fireEvent.click(addButton);
+    expect(screen.getByText("192.168.1.20")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove 192.168.1.20 from the allow list" }));
+    expect(screen.queryByText("192.168.1.20")).not.toBeInTheDocument();
   });
 });

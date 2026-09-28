@@ -256,6 +256,22 @@ public static class SecurityEndpointRouteBuilderExtensions
             [FromServices] IAllowedHostsSettingsCache settingsCache,
             CancellationToken cancellationToken) => AllowedHostsEndpoints.SaveAsync(request, httpContext, repository, settingsCache, cancellationToken));
 
+        // #993: Skip sign-in for devices on the local network.
+        security.MapGet("/local-network-auth", (
+            HttpContext httpContext,
+            [FromServices] ILocalNetworkAuthRepository repository,
+            [FromServices] IAllowedHostsRepository allowedHostsRepository,
+            [FromServices] ITrustedProxyClientAddressResolver resolver,
+            CancellationToken cancellationToken) => LocalNetworkAuthEndpoints.GetOverviewAsync(httpContext, repository, allowedHostsRepository, resolver, cancellationToken));
+
+        security.MapPut("/local-network-auth", (
+            [FromBody] UpdateLocalNetworkAuthRequest request,
+            HttpContext httpContext,
+            [FromServices] ILocalNetworkAuthRepository repository,
+            [FromServices] ILocalNetworkAuthSettingsCache settingsCache,
+            [FromServices] ILocalNetworkAuthChangeNotifier changeNotifier,
+            CancellationToken cancellationToken) => LocalNetworkAuthEndpoints.SaveAsync(request, httpContext, repository, settingsCache, changeNotifier, cancellationToken));
+
         return endpoints;
     }
 

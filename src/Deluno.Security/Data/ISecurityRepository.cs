@@ -22,6 +22,14 @@ public interface ISecurityRepository
         string id,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The single account Deluno is single-user for (#993): used to give a
+    /// local-network request that skips sign-in the same identity a real
+    /// sign-in would have, without asking which user -- there is only ever
+    /// one. Null before the first user is bootstrapped.
+    /// </summary>
+    Task<UserItem?> GetSoleUserAsync(CancellationToken cancellationToken);
+
     Task<bool> ChangeUserPasswordAsync(
         string userId,
         string currentPassword,
