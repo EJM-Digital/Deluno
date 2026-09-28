@@ -53,6 +53,15 @@ public sealed class CustomFormatMatcherLoadTests
     }
 
     [Fact]
+    public void An_invalid_imported_regex_still_matches_as_literal_text()
+    {
+        const string conditions = "x264-[GRP";
+
+        Assert.True(CustomFormatDefinitionMatcher.Evaluate("Movie.2026.1080p.BluRay.x264-[GRP", conditions, anyCondition: true, "movies").IsMatch);
+        Assert.False(CustomFormatDefinitionMatcher.Evaluate("Movie.2026.1080p.BluRay.x264-OTHER", conditions, anyCondition: true, "movies").IsMatch);
+    }
+
+    [Fact]
     public void Every_guide_pattern_answers_the_same_on_the_linear_engine_as_on_the_backtracking_one()
     {
         string[] releases =
