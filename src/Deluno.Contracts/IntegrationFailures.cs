@@ -31,6 +31,15 @@ public enum IntegrationFailureKind
     /// needs a person to fix something before it will ever answer again.
     /// </summary>
     QuotaExceeded,
+    /// <summary>
+    /// A Cloudflare (or similar) challenge turned the request away before it
+    /// ever reached the indexer's own content — a site that needs a
+    /// Cloudflare helper (FlareSolverr or Byparr), not a bad release and not
+    /// an outage (#971). It needs a person to set up or fix the helper
+    /// before it will answer again, so it is grouped with the other
+    /// manual-action kinds rather than treated as transient.
+    /// </summary>
+    Blocked,
     Unknown
 }
 
@@ -84,6 +93,7 @@ public sealed record IntegrationFailure(
         IntegrationFailureKind.Configuration => "configuration",
         IntegrationFailureKind.CircuitOpen => "circuit-open",
         IntegrationFailureKind.QuotaExceeded => "quota-exceeded",
+        IntegrationFailureKind.Blocked => "blocked",
         _ => "unknown"
     };
 
@@ -111,6 +121,7 @@ public sealed record IntegrationFailure(
         IntegrationFailureKind.QuotaExceeded => RetryAfterUtc is { } quotaUntil
             ? $"The quota resets on its own around {quotaUntil.ToLocalTime():HH:mm}; nothing to fix unless you want it sooner."
             : "The quota will reset on its own; nothing to fix unless you want it sooner.",
+        IntegrationFailureKind.Blocked => "Set up a Cloudflare helper (FlareSolverr or Byparr) under Settings, General, then test the connection again.",
         _ => "Review the integration details and test the connection again."
     };
 }
@@ -148,7 +159,8 @@ public static class IntegrationFailureFactory
                 : IntegrationFailureKind.Protocol,
             "connectivity" or "unreachable" or "unavailable" => IntegrationFailureKind.Unavailable,
             "unexpected-response" or "malformed-response" or "malformed" => IntegrationFailureKind.MalformedResponse,
-            "rejected" or "blocked" or "paused" or "unready" or "planned" or "notfound" or "failed" => IntegrationFailureKind.RejectedAction,
+            "blocked" or "cloudflare" => IntegrationFailureKind.Blocked,
+            "rejected" or "paused" or "unready" or "planned" or "notfound" or "failed" => IntegrationFailureKind.RejectedAction,
             "configuration" or "invalid_url" => IntegrationFailureKind.Configuration,
             "circuit-open" or "circuit_open" or "circuitopen" => IntegrationFailureKind.CircuitOpen,
             _ => IntegrationFailureKind.Unknown
@@ -283,6 +295,30 @@ public static class IntegrationFailureFactory
             retryScheduled: retryScheduled);
     }
 
+    /// <summary>
+    /// A Cloudflare (or similar) challenge turned the request away, distinct
+    /// from a real outage or a rejected search (#971). A caller that already
+    /// knows this — e.g. it caught a <c>TrackerBlockedException</c>, a type
+    /// this project cannot reference from here — builds the failure with
+    /// this instead of the generic <see cref="FromException"/>, which would
+    /// otherwise classify it as <see cref="IntegrationFailureKind.Unknown"/>.
+    /// </summary>
+    public static IntegrationFailure Blocked(
+        string serviceType,
+        string serviceId,
+        string serviceName,
+        string operation,
+        string message,
+        int attempts = 0)
+        => Create(
+            serviceType,
+            serviceId,
+            serviceName,
+            operation,
+            IntegrationFailureKind.Blocked,
+            message,
+            attempts: attempts);
+
     public static IntegrationFailure CircuitOpen(
         string serviceType,
         string serviceId,
@@ -343,7 +379,8 @@ public static class IntegrationFailureFactory
                 IntegrationFailureKind.Protocol or
                 IntegrationFailureKind.MalformedResponse or
                 IntegrationFailureKind.RejectedAction or
-                IntegrationFailureKind.Configuration => IntegrationRetryState.ManualAction,
+                IntegrationFailureKind.Configuration or
+                IntegrationFailureKind.Blocked => IntegrationRetryState.ManualAction,
             _ when retryScheduled => IntegrationRetryState.RetryScheduled,
             _ when retryAfterUtc is not null => IntegrationRetryState.RetryScheduled,
             IntegrationFailureKind.RateLimit or

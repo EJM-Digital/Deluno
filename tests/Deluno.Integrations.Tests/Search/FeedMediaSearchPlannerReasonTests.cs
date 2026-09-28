@@ -1012,6 +1012,54 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal(9, recordingEngine.LastQuery.Episode);
     }
 
+    /// <summary>
+    /// #971: a tracker behind a Cloudflare check is its own kind of failure,
+    /// not an unclassified one - the indexer's health must say plainly that
+    /// a Cloudflare helper is needed, and it must never be counted the same
+    /// way as an outage or a rejected search.
+    /// </summary>
+    [Fact]
+    public async Task A_cloudflare_blocked_tracker_search_is_classified_as_blocked_not_unknown()
+    {
+        var tracker = CreateIndexer("tracker-1", "1337x") with
+        {
+            Protocol = "tracker",
+            BaseUrl = "https://1337x.to/",
+            Categories = "5000",
+            DefinitionId = "1337x"
+        };
+        var blockedEngine = new CloudflareBlockedTrackerEngine();
+        var trackers = new Deluno.Integrations.Search.Trackers.TrackerIndexers(
+            new Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<Deluno.Integrations.Search.Trackers.TrackerDefinitionCatalog>.Instance),
+            blockedEngine);
+
+        var plan = await CreatePlanner(CreateConnections(tracker).Object, trackerIndexers: trackers).BuildPlanAsync(
+            "Example",
+            2026,
+            "movies",
+            null,
+            "WEB 1080p",
+            [CreateSource(tracker)],
+            cancellationToken: CancellationToken.None);
+
+        var failure = Assert.Single(plan.Failures ?? []);
+        Assert.Equal(IntegrationFailureKind.Blocked, failure.Kind);
+        Assert.Contains("Cloudflare", failure.Message, StringComparison.Ordinal);
+        Assert.False(failure.IsTransient);
+    }
+
+    private sealed class CloudflareBlockedTrackerEngine : Deluno.Integrations.Search.Trackers.ITrackerEngine
+    {
+        public Task<Deluno.Integrations.Search.Trackers.TrackerSearchResult> SearchAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, Deluno.Integrations.Search.Trackers.TrackerQuery query, CancellationToken cancellationToken)
+            => throw new Deluno.Integrations.Search.Trackers.TrackerException(
+                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.",
+                new Deluno.Integrations.Search.Trackers.TrackerBlockedException("1337x.to is behind a Cloudflare check."));
+
+        public Task<Deluno.Integrations.Search.Trackers.TrackerGrab> ResolveDownloadAsync(
+            Deluno.Integrations.Search.Trackers.TrackerConnection connection, string link, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     private sealed class RecordingTrackerEngine : Deluno.Integrations.Search.Trackers.ITrackerEngine
     {
         public Deluno.Integrations.Search.Trackers.TrackerQuery? LastQuery { get; private set; }

@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Net.Sockets;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Integrations.Search.Trackers;
@@ -40,6 +42,52 @@ public sealed class TrackerIndexersTests
         Assert.Equal("degraded", status);
         Assert.Equal("configuration", category);
         Assert.Contains("not installed", message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// #971: a Cloudflare check turning every mirror away is its own kind of
+    /// failure - a Cloudflare helper is needed, not a network fix - and must
+    /// never be reported the same way as a genuine connectivity problem.
+    /// </summary>
+    [Fact]
+    public async Task Testing_a_tracker_behind_a_cloudflare_check_reports_blocked_not_connectivity()
+    {
+        var engine = new Mock<ITrackerEngine>();
+        engine.Setup(instance => instance.SearchAsync(It.IsAny<TrackerConnection>(), It.IsAny<TrackerQuery>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TrackerException(
+                "1337x.to is behind a Cloudflare check that turns automated searches away. A Cloudflare helper (FlareSolverr or Byparr), set in Settings, gets Deluno past it; if one is set, it could not get through either.",
+                new TrackerBlockedException("1337x.to is behind a Cloudflare check.")));
+        var indexers = new TrackerIndexers(Catalog, engine.Object);
+        var indexer = CreateIndexer("indexer-1", "1337x", definitionId: "1337x");
+
+        var (status, message, category) = await indexers.TestAsync(indexer, CancellationToken.None);
+
+        Assert.Equal("degraded", status);
+        Assert.Equal("blocked", category);
+        Assert.Contains("Cloudflare helper", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A genuinely unreachable tracker (Deluno's own request refused, timed
+    /// out, or otherwise never answered) stays "connectivity", never
+    /// "blocked" - the two need different fixes (#971).
+    /// </summary>
+    [Fact]
+    public async Task Testing_a_tracker_that_is_genuinely_unreachable_still_reports_connectivity()
+    {
+        var engine = new Mock<ITrackerEngine>();
+        engine.Setup(instance => instance.SearchAsync(It.IsAny<TrackerConnection>(), It.IsAny<TrackerQuery>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TrackerException(
+                "None of the 2 addresses for 1337x answered. The last: 1337x.st could not be reached: Connection refused",
+                new HttpRequestException("refused", new SocketException((int)SocketError.ConnectionRefused))));
+        var indexers = new TrackerIndexers(Catalog, engine.Object);
+        var indexer = CreateIndexer("indexer-1", "1337x", definitionId: "1337x");
+
+        var (status, message, category) = await indexers.TestAsync(indexer, CancellationToken.None);
+
+        Assert.Equal("unreachable", status);
+        Assert.Equal("connectivity", category);
+        Assert.Contains("1337x.st", message, StringComparison.Ordinal);
     }
 
     [Fact]

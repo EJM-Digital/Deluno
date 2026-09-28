@@ -619,6 +619,32 @@ public sealed class FeedMediaSearchPlanner(
                     var document = await XDocument.LoadAsync(stream, LoadOptions.None, token);
                     return await ReadCandidatesAsync(document, token);
                 }
+                catch (TrackerException exception) when (exception.InnerException is TrackerBlockedException)
+                {
+                    // A Cloudflare check turning every mirror away is not an
+                    // unknown failure and not an outage or a bad release
+                    // (#971): it is its own kind, with its own plain
+                    // next-action (set up a Cloudflare helper), so it is
+                    // never confused with a real connectivity problem.
+                    logger.LogInformation(
+                        "Indexer {IndexerName} ({IndexerId}) is behind a Cloudflare check: {Reason}",
+                        indexer.Name,
+                        indexer.Id,
+                        exception.Message);
+                    return new IndexerSearchOutcome(
+                        [],
+                        CandidatesTruncatedByIndexer: false,
+                        Failed: true,
+                        CircuitOpen: false,
+                        Outcome: "failed",
+                        ErrorMessage: exception.Message,
+                        Failure: IntegrationFailureFactory.Blocked(
+                            "indexer",
+                            indexer.Id,
+                            indexer.Name,
+                            "search",
+                            exception.Message));
+                }
                 catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
                 {
                     logger.LogWarning(
