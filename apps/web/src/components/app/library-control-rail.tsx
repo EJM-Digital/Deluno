@@ -304,8 +304,20 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               one undifferentiated run of five controls in the order they were
               written -- library, layout, order, filter, options -- which is not
               an order at all.
+
+              On a phone this whole cluster is one `shrink-0` run with nowhere
+              to wrap to — the search box above already claims the width — so
+              it used to sit at its full ~559px content width inside a ~350px
+              line with `overflow-x: visible`, hanging Sort off the right edge
+              and putting View off-screen entirely (#959). It now scrolls
+              sideways like the chip row below it, the same fix for the same
+              shape of problem: `flex-nowrap` plus `overflow-x-auto` with the
+              scrollbar hidden, constrained to the full width of its own line
+              (`w-full`) so there is something for it to scroll *within*. From
+              `sm` up there is room for it beside the search box again, so it
+              reverts to the original wrapping, auto-width run.
             */}
-            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2">
+            <div className="flex w-full min-w-0 flex-nowrap items-center gap-x-2 gap-y-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:w-auto sm:min-w-0 sm:shrink-0 sm:flex-wrap sm:overflow-visible">
               <MenuSelect
                 label="Library"
                 value={libraryId ?? ""}

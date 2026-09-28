@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { CatalogueFacets } from "../../lib/api";
 import type { LibraryControlSet } from "../../lib/library-controls";
@@ -112,6 +112,40 @@ describe("ControlRail facet wiring", () => {
     // over from a different chip.
     const unmonitoredToggle = screen.getByRole("button", { name: /Unmonitored/ });
     expect(unmonitoredToggle).toHaveTextContent("0");
+  });
+});
+
+/**
+ * #959: on a phone the Library/Filter/Sort/View cluster has nowhere to wrap
+ * to (the search box above already claims the width), so it used to sit at
+ * its full content width with `overflow-x: visible`, cutting Sort off and
+ * putting View off-screen entirely. jsdom does not lay out real pixels, so
+ * this cannot assert the 390px measurement from the issue — it asserts the
+ * structural fix instead: the cluster is a `flex-nowrap` row that scrolls
+ * sideways (`overflow-x-auto`) rather than one that wraps or overflows.
+ */
+describe("ControlRail narrow-width control cluster", () => {
+  it("scrolls the Library/Filter/Sort/View cluster sideways instead of wrapping or overflowing", () => {
+    const { container } = render(
+      <ControlRail label="Movies" variant="movies" facets={facets()} controls={controls()} />
+    );
+
+    const cluster = container.querySelector('div[class*="sm:shrink-0"][class*="sm:flex-wrap"]');
+    expect(cluster).not.toBeNull();
+    expect(cluster).toHaveClass("flex-nowrap");
+    expect(cluster).toHaveClass("overflow-x-auto");
+    expect(cluster).toHaveClass("w-full");
+
+    // Every control the cluster holds is still present and reachable in the
+    // DOM — scrolling hides none of them, it just changes how overflow is
+    // handled. Library and Sort are `MenuSelect` triggers (role="combobox"),
+    // named by `aria-label` rather than visible text; Filter and View are
+    // the plain buttons beside them.
+    const scoped = within(cluster as HTMLElement);
+    expect(scoped.getByRole("combobox", { name: "Library" })).toBeInTheDocument();
+    expect(scoped.getByRole("combobox", { name: "Sort" })).toBeInTheDocument();
+    expect(scoped.getByText("Filter")).toBeInTheDocument();
+    expect(scoped.getByText("View")).toBeInTheDocument();
   });
 });
 
