@@ -150,6 +150,15 @@ Operational visibility is split intentionally:
   from the installed file path, and a download dispatch records one correlated
   `file_provenance_recorded` timeline event with source, destination, rename,
   processor, matched custom rules, transfer result, and immutable plan proof.
+- Deluno deliberately writes no `.nfo` or artwork files on import (the owner, 28
+  Sep 2026, parity sheet row G230, #709, #1025). That is a Kodi-style
+  media-manager convention; Deluno's supported servers — Plex, Jellyfin, and
+  Emby — fetch their own metadata and artwork directly rather than reading it
+  off disk, so writing it would be effort spent maintaining data nothing reads.
+  Deluno never reads an existing `.nfo` for metadata either. The one place it
+  still touches the file at all is Refine Before Import's hand-off cleanup,
+  which discards a processor's leftover `.nfo`/artwork as scrap from its own
+  working copy — clearing clutter it did not create, not maintaining it.
 
 ## Current Architectural Risk
 
