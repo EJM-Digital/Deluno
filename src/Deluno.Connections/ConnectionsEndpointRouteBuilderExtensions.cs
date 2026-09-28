@@ -46,10 +46,26 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         var proxies = endpoints.MapGroup("/api/indexer-proxies")
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-        indexers.MapGet(string.Empty, async ([FromServices] IConnectionsRepository repository, CancellationToken cancellationToken) =>
+        indexers.MapGet(string.Empty, async (
+            [FromServices] IConnectionsRepository repository,
+            [FromServices] IIndexerCallLimiter callLimiter,
+            CancellationToken cancellationToken) =>
         {
             var items = await repository.ListIndexersAsync(cancellationToken);
-            return Results.Ok(items);
+            // #977: the Health section needs to say how many searches/grabs
+            // have been used against this indexer's own cap and when it
+            // resets. IIndexerCallLimiter.Peek reads the in-memory window
+            // without consuming a call, so this is safe to compute on every
+            // list read.
+            var now = DateTimeOffset.UtcNow;
+            var withLimitStatus = items
+                .Select(item => item with
+                {
+                    QueryLimitStatus = callLimiter.Peek(item, IndexerCallKind.Query, now),
+                    GrabLimitStatus = callLimiter.Peek(item, IndexerCallKind.Grab, now)
+                })
+                .ToArray();
+            return Results.Ok(withLimitStatus);
         });
 
         indexers.MapPost(string.Empty, async (

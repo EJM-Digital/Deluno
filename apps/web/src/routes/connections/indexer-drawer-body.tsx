@@ -15,7 +15,7 @@ import { INDEXER_PRESETS, PRIORITY_OPTIONS, type IndexerProtocol, type MediaScop
 import type { IndexerForm, SharingRule } from "./forms";
 import { describeCustomSharingRule, describeGlobalSharingRule, describeSeasonPackSeedTime, describeStrictSharingRule } from "../../lib/sharing-rule";
 import { STRICT_SHARING } from "./forms";
-import { formatSeconds, healthChip, relative, vipWarningActive } from "./format";
+import { describeCallLimitStatus, formatSeconds, healthChip, relative, vipWarningActive } from "./format";
 import { CategoryPicker } from "./category-picker";
 import { IndexerFlagPicker } from "./indexer-flag-picker";
 import { TrackerFields } from "./tracker-fields";
@@ -368,6 +368,8 @@ export function IndexerDrawerBody({
               </>
             ) : null}
             {editing.consecutiveFailures > 0 ? (<><dt className="text-muted-foreground">Failures</dt><dd className="text-warning">{editing.consecutiveFailures} in a row{editing.disabledReason ? ` — ${editing.disabledReason}` : ""}</dd></>) : null}
+            {describeCallLimitStatus("Search", editing.queryLimitStatus) ? (<><dt className="text-muted-foreground">Search limit</dt><dd className="text-warning">{describeCallLimitStatus("Search", editing.queryLimitStatus)}</dd></>) : null}
+            {describeCallLimitStatus("Grab", editing.grabLimitStatus) ? (<><dt className="text-muted-foreground">Grab limit</dt><dd className="text-warning">{describeCallLimitStatus("Grab", editing.grabLimitStatus)}</dd></>) : null}
           </dl>
           <div className="flex flex-wrap gap-2">
             {editing.consecutiveFailures > 0 ? (
