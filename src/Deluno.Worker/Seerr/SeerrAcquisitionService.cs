@@ -91,7 +91,15 @@ public sealed class SeerrAcquisitionService(
                 new LibraryRoutingMetadata(metadata.Genres, metadata.OriginalLanguage, metadata.Certification, metadata.Studio, is4k),
                 libraries,
                 rules,
-                fallbackLibraryId);
+                // #1035: a 4K request never falls back to the normal library.
+                is4k ? null : fallbackLibraryId);
+
+            if (!routing.Matched && is4k)
+            {
+                return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "No rule placed this 4K request",
+                    $"This 4K request for \"{metadata.Title}\" was refused: no routing rule placed it, and a 4K request is never put in the normal library. Add a \"requested in 4K\" rule on the Destination Rules page.",
+                    cancellationToken);
+            }
 
             if (!routing.Matched)
             {
