@@ -33,6 +33,7 @@ import {
   type CandidateSortKey,
   defaultSortDirection,
   filterCandidates,
+  formatGrabs,
   formatProtocol,
   formatReleaseAge,
   formatSeedersAndLeechers,
@@ -55,6 +56,7 @@ interface ManualSearchCandidate {
   sizeBytes?: number | null;
   seeders?: number | null;
   leechers?: number | null;
+  grabs?: number | null;
   indexerProtocol?: string | null;
   releaseAgeHours?: number | null;
   downloadUrl?: string | null;
@@ -273,6 +275,7 @@ export function SearchPage() {
                 { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleSort("protocol")} />, mobile: true },
                 { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleSort("age")} /> },
                 { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleSort("seeders")} /> },
+                { label: <SortHeader label="Grabs" active={candidateSort?.key === "grabs"} direction={candidateSort?.direction} onClick={() => toggleSort("grabs")} /> },
                 { label: <SortHeader label="Size" active={candidateSort?.key === "size"} direction={candidateSort?.direction} onClick={() => toggleSort("size")} /> },
                 { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
               ]}
@@ -287,6 +290,7 @@ export function SearchPage() {
                   <ListCell primary={formatProtocol(candidate.indexerProtocol)} mobile />
                   <ListCell primary={formatReleaseAge(candidate.releaseAgeHours)} />
                   <ListCell primary={formatSeedersAndLeechers(candidate.seeders, candidate.leechers)} />
+                  <ListCell primary={formatGrabs(candidate.grabs)} />
                   <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
                   <div role="cell" className="flex items-center justify-end gap-2">
                     <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>

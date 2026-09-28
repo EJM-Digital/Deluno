@@ -39,6 +39,7 @@ const searchResult = {
       sizeBytes: 2_147_483_648,
       seeders: 12,
       leechers: 3,
+      grabs: 47,
       indexerProtocol: "torznab",
       releaseAgeHours: 5,
       downloadUrl: "https://fixture.invalid/x.torrent"
@@ -112,6 +113,8 @@ describe("multi-indexer manual Search page (#753)", () => {
     await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
     expect(screen.getByText("Torrent")).toBeTruthy();
     expect(screen.getByText("12 / 3")).toBeTruthy();
+    // #969: the grab-count column.
+    expect(screen.getByText("47")).toBeTruthy();
 
     const searchCall = vi.mocked(authedFetch).mock.calls.find(([url]) => (url as string) === "/api/search");
     expect(searchCall).toBeTruthy();

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultSortDirection,
   filterCandidates,
+  formatGrabs,
   formatProtocol,
   formatReleaseAge,
   formatSeedersAndLeechers,
@@ -16,7 +17,7 @@ import {
  */
 
 function candidate(overrides: Partial<CandidateColumnsInput> & { indexerName: string }): CandidateColumnsInput {
-  return { indexerProtocol: null, releaseAgeHours: null, seeders: null, leechers: null, sizeBytes: null, ...overrides };
+  return { indexerProtocol: null, releaseAgeHours: null, seeders: null, leechers: null, sizeBytes: null, grabs: null, ...overrides };
 }
 
 describe("sortCandidates", () => {
@@ -59,6 +60,20 @@ describe("sortCandidates", () => {
     expect(sortCandidates(items, "size", "asc").map((item) => item.indexerName)).toEqual(["a", "b"]);
     expect(sortCandidates(items, "size", "desc").map((item) => item.indexerName)).toEqual(["b", "a"]);
   });
+
+  it("sorts by grabs, with an unreported grab count last in descending order (#969)", () => {
+    const items = [
+      candidate({ indexerName: "reported-low", grabs: 2 }),
+      candidate({ indexerName: "unreported", grabs: null }),
+      candidate({ indexerName: "reported-high", grabs: 40 })
+    ];
+
+    expect(sortCandidates(items, "grabs", "desc").map((item) => item.indexerName)).toEqual([
+      "reported-high",
+      "reported-low",
+      "unreported"
+    ]);
+  });
 });
 
 describe("filterCandidates", () => {
@@ -98,5 +113,12 @@ describe("formatting helpers", () => {
   it("formats seeders and leechers together, missing values as a dash", () => {
     expect(formatSeedersAndLeechers(12, 3)).toBe("12 / 3");
     expect(formatSeedersAndLeechers(null, null)).toBe("— / —");
+  });
+
+  it("formats the grab count, blank when the indexer does not report it (#969)", () => {
+    expect(formatGrabs(47)).toBe("47");
+    expect(formatGrabs(0)).toBe("0");
+    expect(formatGrabs(null)).toBe("—");
+    expect(formatGrabs(undefined)).toBe("—");
   });
 });

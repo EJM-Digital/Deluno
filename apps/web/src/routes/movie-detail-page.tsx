@@ -55,6 +55,7 @@ import {
   type CandidateSortKey,
   defaultSortDirection,
   filterCandidates,
+  formatGrabs,
   formatProtocol,
   formatReleaseAge,
   formatSeedersAndLeechers,
@@ -1078,6 +1079,7 @@ export function MovieDetailPage() {
                   { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("protocol")} /> },
                   { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("age")} /> },
                   { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("seeders")} /> },
+                  { label: <SortHeader label="Grabs" active={candidateSort?.key === "grabs"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("grabs")} /> },
                   { label: <SortHeader label="Size" active={candidateSort?.key === "size"} direction={candidateSort?.direction} onClick={() => toggleCandidateSort("size")} /> },
                   { label: "Decision", width: LIST_TRACK.status, mobile: true }
                 ]}
@@ -1103,6 +1105,7 @@ export function MovieDetailPage() {
                     <ListCell primary={formatProtocol(candidate.indexerProtocol)} />
                     <ListCell primary={formatReleaseAge(candidate.releaseAgeHours)} />
                     <ListCell primary={formatSeedersAndLeechers(candidate.seeders, candidate.leechers)} />
+                    <ListCell primary={formatGrabs(candidate.grabs)} />
                     <ListCell primary={candidate.sizeBytes ? formatBytes(candidate.sizeBytes) : "—"} />
                     <ListCell mobile>
                       <Chip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</Chip>
@@ -1732,6 +1735,8 @@ interface SearchPlanCandidate {
   // #753: enriched results columns, alongside the existing seeders and
   // decisionReasons (a rejection's own reason).
   leechers?: number | null;
+  // #969: blank when the indexer never reports a grab count.
+  grabs?: number | null;
   indexerProtocol?: string | null;
   releaseAgeHours?: number | null;
   decisionStatus?: string;

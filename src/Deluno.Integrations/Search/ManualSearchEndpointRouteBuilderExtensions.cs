@@ -153,6 +153,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                         candidate.SizeBytes,
                         candidate.Seeders,
                         candidate.Leechers,
+                        candidate.Grabs,
                         candidate.IndexerProtocol,
                         candidate.ReleaseAgeHours,
                         candidate.DownloadUrl,

@@ -595,12 +595,13 @@ public sealed class FeedMediaSearchPlannerReasonTests
     }
 
     [Fact]
-    public async Task A_candidate_carries_its_protocol_age_and_leechers_for_the_enriched_results_columns()
+    public async Task A_candidate_carries_its_protocol_age_leechers_and_grabs_for_the_enriched_results_columns()
     {
-        // #753: the manual Search page and the per-title interactive search
-        // results both add protocol/age/seeders/leechers columns -- this is
-        // where those values are captured, straight off the same torznab
-        // attributes the release-acceptance decision already reads.
+        // #753/#969: the manual Search page and the per-title interactive
+        // search results both add protocol/age/seeders/leechers/grabs
+        // columns -- this is where those values are captured, straight off
+        // the same torznab attributes the release-acceptance decision
+        // already reads.
         var indexer = CreateIndexer("enriched-indexer", "Enriched indexer");
         var handler = new FixedFeedHandler(
             $"""
@@ -611,6 +612,7 @@ public sealed class FeedMediaSearchPlannerReasonTests
                 <pubDate>{DateTimeOffset.UtcNow.AddHours(-5):R}</pubDate>
                 <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" />
                 <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="peers" value="3" />
+                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="grabs" value="47" />
               </item>
             </channel></rss>
             """);
@@ -630,8 +632,42 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Equal("torznab", candidate.IndexerProtocol);
         Assert.Equal(12, candidate.Seeders);
         Assert.Equal(3, candidate.Leechers);
+        Assert.Equal(47, candidate.Grabs);
         Assert.NotNull(candidate.ReleaseAgeHours);
         Assert.InRange(candidate.ReleaseAgeHours!.Value, 4.9, 5.1);
+    }
+
+    [Fact]
+    public async Task A_candidate_leaves_grabs_blank_when_the_indexer_never_reports_it()
+    {
+        // #969: "blank when the indexer does not report it" -- an indexer
+        // that never sends a grabs attr must not surface a fabricated 0.
+        var indexer = CreateIndexer("no-grabs-indexer", "No grabs indexer");
+        var handler = new FixedFeedHandler(
+            $"""
+            <rss><channel>
+              <item>
+                <title>Example.Release.WEB.1080p</title>
+                <link>https://fixture.invalid/x</link>
+                <pubDate>{DateTimeOffset.UtcNow.AddHours(-5):R}</pubDate>
+                <torznab:attr xmlns:torznab="http://torznab.com/schemas/2015/feed" name="seeders" value="12" />
+              </item>
+            </channel></rss>
+            """);
+
+        var plan = await CreatePlanner(
+            CreateConnections(indexer).Object,
+            handler).BuildPlanAsync(
+                "Example",
+                2026,
+                "movies",
+                null,
+                "WEB 1080p",
+                [CreateSource(indexer)],
+                cancellationToken: CancellationToken.None);
+
+        var candidate = Assert.Single(plan.Candidates);
+        Assert.Null(candidate.Grabs);
     }
 
     [Fact]
