@@ -1647,6 +1647,18 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                       >
                         Fix
                       </Button>
+                    ) : check.id === "download-health:dangerous-file" && check.status !== "ok" ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[length:var(--type-caption)]"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate("/search-cycles/failed-downloads");
+                        }}
+                      >
+                        Fix
+                      </Button>
                     ) : outputDetails ? (
                       <div className="flex gap-1.5">
                         {outputDetails.isMedia ? (

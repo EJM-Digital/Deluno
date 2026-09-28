@@ -75,13 +75,24 @@ public sealed class ContentBlocklistFileListingTests
     }
 
     [Fact]
-    public async Task Utorrent_does_not_support_file_listing_yet()
+    public async Task Utorrent_lists_files_from_getfiles()
     {
-        // #816: "where available" - uTorrent's WebUI has no file-listing call
-        // wired up in this pass, so the base implementation's "unknown"
-        // answer is what a caller sees, and the content blocklist falls back
-        // to the release name for it.
-        var files = await new UTorrentDownloadClient(() => new NeverCalledHandler())
+        var handler = new UTorrentFilesHandler(
+            """{"files":["abc123",[["Example.Movie.2026.mkv",123,123,1],["Setup.exe",456,456,1]]]}""");
+
+        var files = await new UTorrentDownloadClient(() => handler)
+            .GetFilesAsync(UTorrentClient(), "abc123", CancellationToken.None);
+
+        Assert.NotNull(files);
+        Assert.Equal(["Example.Movie.2026.mkv", "Setup.exe"], files);
+    }
+
+    [Fact]
+    public async Task Utorrent_reports_no_files_when_the_client_will_not_say()
+    {
+        var handler = new UTorrentFilesHandler(body: null);
+
+        var files = await new UTorrentDownloadClient(() => handler)
             .GetFilesAsync(UTorrentClient(), "abc123", CancellationToken.None);
 
         Assert.Null(files);
@@ -240,6 +251,31 @@ public sealed class ContentBlocklistFileListingTests
         {
             var query = request.RequestUri?.Query ?? string.Empty;
             if (!query.Contains("mode=get_files", StringComparison.Ordinal))
+            {
+                return Task.FromResult(JsonResponse("{}"));
+            }
+
+            return body is null
+                ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))
+                : Task.FromResult(JsonResponse(body));
+        }
+    }
+
+    private sealed class UTorrentFilesHandler(string? body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (path.Contains("token.html", StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("<html><div id='token'>test-token</div></html>", Encoding.UTF8, "text/html")
+                });
+            }
+
+            var query = request.RequestUri?.Query ?? string.Empty;
+            if (!query.Contains("action=getfiles", StringComparison.Ordinal))
             {
                 return Task.FromResult(JsonResponse("{}"));
             }

@@ -255,6 +255,39 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
         return DownloadQueueStatuses.Queued;
     }
 
+    /// <summary>
+    /// The files inside one torrent (#816/#944), read with the WebUI's own
+    /// <c>action=getfiles</c> call. Its reply is positional and heterogeneous
+    /// - <c>files: [hash, [[name, size, downloaded, priority], ...]]</c> -
+    /// unlike the flat, named-field replies qBittorrent/Transmission/Deluge
+    /// return, so the second element is deserialized separately rather than
+    /// typed directly on <see cref="UTorrentGetFilesResponse"/>.
+    /// </summary>
+    public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(queueItemId)) return null;
+        using var http = CreateHttp(client, baseUri, TimeSpan.FromSeconds(8));
+        try
+        {
+            var token = await DownloadClientHelpers.GetUTorrentTokenAsync(http, cancellationToken);
+            var payload = await http.GetFromJsonAsync<UTorrentGetFilesResponse>(
+                $"gui/?token={Uri.EscapeDataString(token)}&action=getfiles&hash={Uri.EscapeDataString(queueItemId)}", cancellationToken);
+            if (payload?.Files is not { Count: > 1 } files) return null;
+
+            var entries = files[1].Deserialize<List<List<JsonElement>>>() ?? [];
+            return entries
+                .Where(entry => entry.Count > 0)
+                .Select(entry => AsString(entry[0]))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return null;
+        }
+    }
+
     private HttpClient CreateHttp(DownloadClientItem client, Uri baseUri, TimeSpan timeout)
         => new(handler(client), disposeHandler: handlerFactory is null) { BaseAddress = baseUri, Timeout = timeout };
 
@@ -344,6 +377,7 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
     private static double AsDouble(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var parsed) ? parsed : double.TryParse(value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private static long AsInt64(JsonElement value) => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var parsed) ? parsed : long.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) ? parsed : 0;
     private sealed record UTorrentListResponse([property: JsonPropertyName("torrents")] IReadOnlyList<IReadOnlyList<JsonElement>>? Torrents);
+    private sealed record UTorrentGetFilesResponse([property: JsonPropertyName("files")] IReadOnlyList<JsonElement>? Files);
     private sealed record UTorrentGetPropsResponse([property: JsonPropertyName("props")] IReadOnlyList<UTorrentProps>? Props);
     private sealed record UTorrentProps(
         [property: JsonPropertyName("hash")] string? Hash,

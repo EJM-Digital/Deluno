@@ -14,7 +14,8 @@ const {
   getEffectiveFormatGoal,
   hasAnsweredAllAutomationQuestions,
   resolveDraftFormatGoal,
-  saveAllowedHosts
+  saveAllowedHosts,
+  saveDangerousFileCheck
 } = await import("./setup-guide-page");
 type AutomationChoices = Parameters<typeof buildAutomationSettingsPayload>[0];
 type SecurityForm = Parameters<typeof saveAllowedHosts>[0];
@@ -28,7 +29,8 @@ const UNANSWERED: AutomationChoices = {
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
   leftoverCleanup: null,
-  leftoverDownloadCleanup: null
+  leftoverDownloadCleanup: null,
+  dangerousFileCheck: null
 };
 
 const ALL_NO: AutomationChoices = {
@@ -40,7 +42,8 @@ const ALL_NO: AutomationChoices = {
   removeBadDownloads: false,
   deleteBadDownloadFiles: false,
   leftoverCleanup: false,
-  leftoverDownloadCleanup: false
+  leftoverDownloadCleanup: false,
+  dangerousFileCheck: false
 };
 
 const ALL_YES: AutomationChoices = {
@@ -52,7 +55,8 @@ const ALL_YES: AutomationChoices = {
   removeBadDownloads: true,
   deleteBadDownloadFiles: true,
   leftoverCleanup: true,
-  leftoverDownloadCleanup: true
+  leftoverDownloadCleanup: true,
+  dangerousFileCheck: true
 };
 
 describe("setup guide draft format goal (#731)", () => {
@@ -112,9 +116,10 @@ describe("setup guide Automation step (#936)", () => {
     expect(hasAnsweredAllAutomationQuestions(ALL_YES)).toBe(true);
   });
 
-  it("asks exactly the eight behaviours #936 lists plus #932's leftover-download cleanup, each with its own key", () => {
+  it("asks exactly the eight behaviours #936 lists plus #932's leftover-download cleanup and #944's dangerous-file check, each with its own key", () => {
     const keys = AUTOMATION_QUESTIONS.map((item) => item.key).sort();
     expect(keys).toEqual([
+      "dangerousFileCheck",
       "deleteBadDownloadFiles",
       "leftoverCleanup",
       "leftoverDownloadCleanup",
@@ -238,6 +243,51 @@ describe("setup guide Security step (#939)", () => {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: true, allowedHosts: ["localhost", "my-pc"] })
+    });
+  });
+});
+
+describe("setup guide dangerous-file check question (#944)", () => {
+  afterEach(() => {
+    fetchJsonMock.mockReset();
+  });
+
+  const loaded = {
+    enabled: false,
+    mode: "blacklist",
+    useBuiltInPatterns: true,
+    customPatterns: [],
+    remoteUrl: null,
+    remotePatterns: [],
+    lastRefreshedUtc: null,
+    syncToQbittorrentEnabled: false,
+    updatedUtc: "1970-01-01T00:00:00Z"
+  };
+
+  it("leaving the question unanswered saves nothing", async () => {
+    await saveDangerousFileCheck({ automation: { ...ALL_NO, dangerousFileCheck: null } } as unknown as Parameters<typeof saveDangerousFileCheck>[0], loaded);
+
+    expect(fetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("answering No writes an explicit off, honoring the choice even over an existing install's migrated-on default", async () => {
+    await saveDangerousFileCheck({ automation: { ...ALL_NO, dangerousFileCheck: false } } as unknown as Parameters<typeof saveDangerousFileCheck>[0], { ...loaded, enabled: true });
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/download-health/content-blocklist", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...loaded, enabled: false })
+    });
+  });
+
+  it("answering Yes turns the check on, keeping every other loaded field", async () => {
+    const loadedWithPatterns = { ...loaded, customPatterns: ["*.iso"] };
+    await saveDangerousFileCheck({ automation: { ...ALL_NO, dangerousFileCheck: true } } as unknown as Parameters<typeof saveDangerousFileCheck>[0], loadedWithPatterns);
+
+    expect(fetchJsonMock).toHaveBeenCalledWith("/api/download-health/content-blocklist", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...loadedWithPatterns, enabled: true })
     });
   });
 });
