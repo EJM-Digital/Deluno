@@ -168,6 +168,12 @@ export interface MediaSubtitleAttemptHistoryEntry {
   provider: string | null;
   outcome: string;
   attemptedUtc: string;
+  /**
+   * The rung of the best candidate this attempt found (#982) — the same
+   * number a held subtitle's own match carries. Null when nothing was
+   * found, so there was no candidate to score.
+   */
+  score: number | null;
 }
 
 export interface LibrarySourceLinkItem {

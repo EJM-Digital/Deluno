@@ -255,6 +255,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     await mediaSubtitleRepository.RecordAttemptHistoryAsync(
                         kind, item.MediaId, language, provider: null,
                         $"{decision.ToStoredName()}: {outcome.Reason}", cancellationToken);
+                    // No candidate was written, so there is nothing to score
+                    // (score stays null — the default above).
                     await notificationEventPublisher.PublishSubtitleFailedAsync(
                         item.Title, language, outcome.Reason, cancellationToken);
                     continue;
@@ -300,7 +302,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     await mediaSubtitleRepository.RecordAttemptHistoryAsync(
                         kind, item.MediaId, language, outcome.ProviderKey,
                         $"{SubtitleDecision.MeetsSubtitlePlan.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
-                        cancellationToken);
+                        cancellationToken,
+                        score: (int)outcome.Match);
                 }
                 else
                 {
@@ -331,7 +334,8 @@ public sealed class LibrarySubtitleSearchJobHandler(
                     await mediaSubtitleRepository.RecordAttemptHistoryAsync(
                         kind, item.MediaId, language, outcome.ProviderKey,
                         $"{decision.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
-                        cancellationToken);
+                        cancellationToken,
+                        score: (int)outcome.Match);
 
                     // And this is where the timing gets fixed. "Not provably in
                     // time" is precisely the set worth listening to the audio

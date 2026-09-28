@@ -1948,12 +1948,21 @@ export function ShowDetailPage() {
 
             {(episodeSubtitleHistory[openEpisode.episodeId]?.length ?? 0) > 0 ? (
               <DrawerSection title="Subtitle search history" aside={`Last ${episodeSubtitleHistory[openEpisode.episodeId]!.length}`}>
-                <ListTable chevron={false} columns={[{ label: "Language" }, { label: "Provider", mobile: true }, { label: "What happened" }]}>
+                <ListTable
+                  chevron={false}
+                  columns={[
+                    { label: "Language" },
+                    { label: "Provider", mobile: true },
+                    { label: "What happened" },
+                    { label: "Score", mobile: true }
+                  ]}
+                >
                   {episodeSubtitleHistory[openEpisode.episodeId]!.map((entry, index) => (
                     <ListRow key={`${entry.language}-${entry.attemptedUtc}-${index}`}>
                       <ListNameCell name={entry.language.toUpperCase()} sub={new Date(entry.attemptedUtc).toLocaleString()} />
                       <ListCell primary={entry.provider ?? "—"} mobile />
                       <ListCell primary={entry.outcome} />
+                      <ListCell primary={subtitleScoreLabel(entry.score)} mobile />
                     </ListRow>
                   ))}
                 </ListTable>
@@ -2552,6 +2561,24 @@ function formatSearchScope(item: SeriesSearchHistoryItem) {
   }
   if (item.seasonNumber !== null) return formatSeasonLabel(item.seasonNumber);
   return "Whole show";
+}
+
+/**
+ * The rung a subtitle attempt scored (#982) — the same ladder a held
+ * subtitle's own match carries. "—" for an attempt that found nothing, so
+ * there was no candidate to score.
+ */
+function subtitleScoreLabel(score: number | null) {
+  switch (score) {
+    case 2:
+      return "Made for this file";
+    case 1:
+      return "Same source";
+    case 0:
+      return "Any release";
+    default:
+      return "—";
+  }
 }
 
 function searchOutcomeTone(outcome: string): Tone {

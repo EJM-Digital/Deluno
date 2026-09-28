@@ -138,7 +138,14 @@ public sealed record MediaSubtitleWantedItem(
     string? EpisodeTitle,
     string? ReleaseName,
     IReadOnlyList<string> LanguagesToFetch,
-    IntegrationFailure? LastFailure = null);
+    IntegrationFailure? LastFailure = null,
+    /// <summary>
+    /// This title's single most recent subtitle search attempt (#982), from
+    /// the same append-only history the title's own subtitle panel reads —
+    /// so the Wanted screen's status is never a second idea of what was
+    /// tried. Null when nothing has been attempted yet.
+    /// </summary>
+    MediaSubtitleAttemptHistoryEntry? LastAttempt = null);
 
 /// <summary>
 /// One subtitle Deluno has decided never to offer again for one file, and why.
@@ -165,7 +172,14 @@ public sealed record MediaSubtitleAttemptHistoryEntry(
     string Language,
     string? Provider,
     string Outcome,
-    DateTimeOffset AttemptedUtc);
+    DateTimeOffset AttemptedUtc,
+    /// <summary>
+    /// The rung (<c>SubtitleMatch</c>, as an int) of the best candidate this
+    /// attempt found — the same number <see cref="MediaSubtitleRow.MatchRung"/>
+    /// records for the subtitle actually written. Null for an attempt that
+    /// found nothing, because there is no candidate to score.
+    /// </summary>
+    int? Score = null);
 
 public interface IMediaSubtitleRepository
 {
@@ -253,7 +267,8 @@ public interface IMediaSubtitleRepository
         string language,
         string? provider,
         string outcome,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        int? score = null);
 
     /// <summary>The most recent attempts for one title, newest first.</summary>
     Task<IReadOnlyList<MediaSubtitleAttemptHistoryEntry>> ListAttemptHistoryAsync(

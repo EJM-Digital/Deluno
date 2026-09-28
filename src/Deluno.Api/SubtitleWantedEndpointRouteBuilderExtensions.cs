@@ -73,7 +73,11 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
                     SeasonNumber: item.SeasonNumber,
                     EpisodeNumber: item.EpisodeNumber,
                     EpisodeTitle: item.EpisodeTitle,
-                    LanguagesMissing: item.LanguagesToFetch)));
+                    LanguagesMissing: item.LanguagesToFetch,
+                    // #982: the same attempt history row the title's own
+                    // subtitle panel reads, so this screen's status is never
+                    // a second idea of what was actually tried.
+                    LastAttempt: item.LastAttempt)));
             }
 
             return Results.Ok(items);
@@ -162,7 +166,8 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
         int? SeasonNumber,
         int? EpisodeNumber,
         string? EpisodeTitle,
-        IReadOnlyList<string> LanguagesMissing);
+        IReadOnlyList<string> LanguagesMissing,
+        MediaSubtitleAttemptHistoryEntry? LastAttempt);
 
     private sealed record SearchAllWantedRequestItem(string Kind, string MediaId, string LibraryId);
 

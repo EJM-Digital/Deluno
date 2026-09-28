@@ -11,6 +11,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
 import { fetchJson } from "../lib/api";
+import type { MediaSubtitleAttemptHistoryEntry } from "../lib/api/types/resources";
 import { authedFetch } from "../lib/use-auth";
 import { describeRequestFailure } from "../lib/search-reasons";
 import { configurationNavAreas } from "../components/app/settings-shell";
@@ -31,6 +32,21 @@ interface SubtitleWantedRow {
   episodeNumber: number | null;
   episodeTitle: string | null;
   languagesMissing: string[];
+  /**
+   * This title's single most recent subtitle search attempt (#982), from
+   * the same append-only history the title's own subtitle panel shows.
+   * Null when nothing has been attempted yet.
+   */
+  lastAttempt: MediaSubtitleAttemptHistoryEntry | null;
+}
+
+function lastTryLabel(row: SubtitleWantedRow): string {
+  if (!row.lastAttempt) {
+    return "Not tried yet";
+  }
+  const when = new Date(row.lastAttempt.attemptedUtc).toLocaleString();
+  const provider = row.lastAttempt.provider ? ` via ${row.lastAttempt.provider}` : "";
+  return `${row.lastAttempt.outcome}${provider} — ${when}`;
 }
 
 export async function subtitleWantedLoader() {
@@ -106,6 +122,7 @@ export function SubtitleWantedPage() {
               { label: "Title" },
               { label: "Library", mobile: true },
               { label: "Missing" },
+              { label: "Last try", mobile: true },
               { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
             ]}
           >
@@ -114,6 +131,7 @@ export function SubtitleWantedPage() {
                 <ListNameCell name={row.title} sub={rowLabel(row)} />
                 <ListCell primary={row.libraryName} mobile />
                 <ListCell primary={row.languagesMissing.map((code) => code.toUpperCase()).join(", ")} />
+                <ListCell primary={lastTryLabel(row)} mobile />
                 <div role="cell" className="flex justify-end">
                   <Button
                     type="button"

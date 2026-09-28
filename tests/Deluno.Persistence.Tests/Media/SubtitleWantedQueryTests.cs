@@ -334,6 +334,33 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
     }
 
+    /// <summary>
+    /// #982: the Wanted row's own status reads from the same append-only
+    /// history a title's subtitle panel shows, not a second query with its
+    /// own idea of what was tried.
+    /// </summary>
+    [Fact]
+    public async Task A_wanted_row_carries_its_most_recent_attempt()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordAttemptHistoryAsync(
+            MediaKind.Movie, id, "en", "gestdown", "Rejected: not found", CancellationToken.None);
+        await subtitles.RecordAttemptHistoryAsync(
+            MediaKind.Movie, id, "en", "podnapisi", "Usable fallback: any release", CancellationToken.None, score: 0);
+
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+
+        Assert.NotNull(item.LastAttempt);
+        // The second, later attempt - never the first one written.
+        Assert.Equal("podnapisi", item.LastAttempt!.Provider);
+        Assert.Equal("Usable fallback: any release", item.LastAttempt.Outcome);
+        Assert.Equal(0, item.LastAttempt.Score);
+    }
+
     [Fact]
     public void The_bar_and_the_fetcher_read_the_same_held_predicate()
     {

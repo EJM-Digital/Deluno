@@ -186,7 +186,8 @@ public sealed class SubtitleTitleSearchJobHandler(
             await mediaSubtitleRepository.RecordAttemptHistoryAsync(
                 kind, item.MediaId, language, outcome.ProviderKey,
                 $"{decisionOnSuccess.ToStoredName()}: {SubtitleMatchRanking.Describe(outcome.Match)}",
-                cancellationToken);
+                cancellationToken,
+                score: (int)outcome.Match);
         }
 
         return $"{item.Title}: {SubtitleDecisions.Describe(tally, library.Name)}";

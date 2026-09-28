@@ -146,7 +146,25 @@ public sealed class SqliteMediaSubtitleRepository(
                     ORDER BY att.last_search_utc DESC
                     LIMIT 1
                 ),
-                ov.languages
+                ov.languages,
+                (
+                    -- This title's single most recent search attempt (#982),
+                    -- from the same append-only history the title's own
+                    -- subtitle panel reads — ordered by id, not the
+                    -- timestamp, because two languages searched in the same
+                    -- pass can share a timestamp and only the row's own
+                    -- insertion order tells them apart.
+                    SELECT json_object(
+                        'language', h.language,
+                        'provider', h.provider,
+                        'outcome', h.outcome,
+                        'attemptedUtc', h.attempted_utc,
+                        'score', h.score)
+                    FROM {map.SubtitleAttemptHistoryTable} h
+                    WHERE h.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                    ORDER BY h.id DESC
+                    LIMIT 1
+                )
             FROM {map.SubtitleFileSource}
             {map.SubtitleSearchJoin}
             {map.SubtitleFileLibraryJoin}
@@ -236,6 +254,8 @@ public sealed class SqliteMediaSubtitleRepository(
                 continue;
             }
 
+            var lastAttempt = reader.IsDBNull(12) ? null : ReadLastAttempt(reader.GetString(12));
+
             items.Add(new MediaSubtitleWantedItem(
                 MediaId: reader.GetString(0),
                 FilePath: reader.GetString(1),
@@ -246,10 +266,37 @@ public sealed class SqliteMediaSubtitleRepository(
                 EpisodeTitle: reader.IsDBNull(6) ? null : reader.GetString(6),
                 ReleaseName: reader.IsDBNull(7) ? null : reader.GetString(7),
                 LanguagesToFetch: missing,
-                LastFailure: lastFailure));
+                LastFailure: lastFailure,
+                LastAttempt: lastAttempt));
         }
 
         return items;
+    }
+
+    /// <summary>Parses the <c>json_object(...)</c> row <see cref="ListWantedAsync"/> reads its latest attempt from.</summary>
+    private static MediaSubtitleAttemptHistoryEntry? ReadLastAttempt(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            var attemptedUtcText = root.GetProperty("attemptedUtc").GetString();
+            if (attemptedUtcText is null || !DateTimeOffset.TryParse(attemptedUtcText, out var attemptedUtc))
+            {
+                return null;
+            }
+
+            return new MediaSubtitleAttemptHistoryEntry(
+                Language: root.GetProperty("language").GetString() ?? string.Empty,
+                Provider: root.GetProperty("provider").ValueKind == JsonValueKind.Null ? null : root.GetProperty("provider").GetString(),
+                Outcome: root.GetProperty("outcome").GetString() ?? string.Empty,
+                AttemptedUtc: attemptedUtc,
+                Score: root.GetProperty("score").ValueKind == JsonValueKind.Null ? null : root.GetProperty("score").GetInt32());
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -434,7 +481,8 @@ public sealed class SqliteMediaSubtitleRepository(
         string language,
         string? provider,
         string outcome,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? score = null)
     {
         var map = MediaTableMap.For(kind);
         var now = timeProvider.GetUtcNow();
@@ -445,14 +493,15 @@ public sealed class SqliteMediaSubtitleRepository(
 
         using var insert = connection.CreateCommand();
         insert.CommandText = $"""
-            INSERT INTO {map.SubtitleAttemptHistoryTable} ({map.SubtitleMediaIdColumn}, language, provider, outcome, attempted_utc)
-            VALUES (@mediaId, @language, @provider, @outcome, @now);
+            INSERT INTO {map.SubtitleAttemptHistoryTable} ({map.SubtitleMediaIdColumn}, language, provider, outcome, attempted_utc, score)
+            VALUES (@mediaId, @language, @provider, @outcome, @now, @score);
             """;
         AddParameter(insert, "@mediaId", mediaId);
         AddParameter(insert, "@language", language);
         AddParameter(insert, "@provider", (object?)provider ?? DBNull.Value);
         AddParameter(insert, "@outcome", outcome);
         AddParameter(insert, "@now", now.ToString("O"));
+        AddParameter(insert, "@score", (object?)score ?? DBNull.Value);
         await insert.ExecuteNonQueryAsync(cancellationToken);
 
         // Trimmed on every write rather than by a separate sweep: the cap is
@@ -487,7 +536,7 @@ public sealed class SqliteMediaSubtitleRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT language, provider, outcome, attempted_utc
+            SELECT language, provider, outcome, attempted_utc, score
             FROM {map.SubtitleAttemptHistoryTable}
             WHERE {map.SubtitleMediaIdColumn} = @mediaId
             ORDER BY attempted_utc DESC
@@ -503,7 +552,8 @@ public sealed class SqliteMediaSubtitleRepository(
                 Language: reader.GetString(0),
                 Provider: reader.IsDBNull(1) ? null : reader.GetString(1),
                 Outcome: reader.GetString(2),
-                AttemptedUtc: DateTimeOffset.Parse(reader.GetString(3))));
+                AttemptedUtc: DateTimeOffset.Parse(reader.GetString(3)),
+                Score: reader.IsDBNull(4) ? null : reader.GetInt32(4)));
         }
 
         return items;
