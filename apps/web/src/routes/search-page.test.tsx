@@ -157,4 +157,32 @@ describe("multi-indexer manual Search page (#753)", () => {
     expect(body.downloadClientId).toBeUndefined();
     expect(body).toMatchObject({ releaseName: "Example.Release.WEB.1080p", searchType: "movie" });
   });
+
+  // #955: a search result never grabbed still names a release, so it gets
+  // the same "Block this release" action the Queue, history and a title's
+  // page already offer (cleanup sheet J5, #925).
+  it("offers Block this release on a search result and blocks it", async () => {
+    mockFetch();
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText("Search for a release…"), { target: { value: "Example" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Search$/ }));
+    await waitFor(() => expect(screen.getByText("Example.Release.WEB.1080p")).toBeTruthy());
+
+    const blockButton = await screen.findByRole("button", { name: 'Block "Example.Release.WEB.1080p"' });
+    fireEvent.click(blockButton);
+
+    const confirmButton = await screen.findByRole("button", { name: "Block this release" });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/blocked-releases",
+      expect.objectContaining({ method: "POST" })
+    ));
+    const blockCall = vi.mocked(authedFetch).mock.calls.find(
+      ([url, init]) => (url as string) === "/api/blocked-releases" && (init as RequestInit | undefined)?.method === "POST"
+    );
+    const body = JSON.parse((blockCall![1] as RequestInit).body as string);
+    expect(body).toMatchObject({ releaseName: "Example.Release.WEB.1080p", indexerName: "EZTV", mediaType: "movie" });
+  });
 });
