@@ -36,6 +36,8 @@ import {
   type GuideFormatBundle,
   type GuidePackage,
   type AllowedHostsOverview,
+  type ContentBlocklistSettings,
+  emptyContentBlocklistSettings,
   readErrorText } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
@@ -65,7 +67,8 @@ type AutomationChoiceKey =
   | "removeBadDownloads"
   | "deleteBadDownloadFiles"
   | "leftoverCleanup"
-  | "leftoverDownloadCleanup";
+  | "leftoverDownloadCleanup"
+  | "dangerousFileCheck";
 
 export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
 
@@ -78,7 +81,8 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
   removeBadDownloads: null,
   deleteBadDownloadFiles: null,
   leftoverCleanup: null,
-  leftoverDownloadCleanup: null
+  leftoverDownloadCleanup: null,
+  dangerousFileCheck: null
 };
 
 export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string; help: string }[] = [
@@ -126,6 +130,11 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
     key: "leftoverDownloadCleanup",
     question: "Automatically delete leftover download files?",
     help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the Queue's leftovers list for you to remove."
+  },
+  {
+    key: "dangerousFileCheck",
+    question: "Check the files inside a download for anything dangerous?",
+    help: "Checks every file inside a download - not just its name - against a blocklist of executables, scripts and shortcuts. If off, a dangerous file packaged inside an otherwise normal-looking release can slip through."
   }
 ];
 
@@ -141,6 +150,7 @@ interface SetupGuideLoaderData {
   draft: SetupDraftItem;
   guide: GuidePackage;
   allowedHosts: AllowedHostsOverview;
+  contentBlocklist: ContentBlocklistSettings;
 }
 
 interface GuideForm {
@@ -369,7 +379,7 @@ const CLIENT_SETUP_PRESETS = [
 ] as const;
 
 export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
-  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts] = await Promise.all([
+  const [settings, libraries, qualityProfiles, customFormats, indexers, clients, metadataStatus, progress, draft, guide, allowedHosts, contentBlocklist] = await Promise.all([
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<QualityProfileItem[]>("/api/quality-profiles"),
@@ -382,10 +392,14 @@ export async function setupGuideLoader(): Promise<SetupGuideLoaderData> {
     fetchTrashGuidePackage(),
     // #939: the Security step shows these detected addresses rather than
     // asking anyone to type one in.
-    fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts")
+    fetchJson<AllowedHostsOverview>("/api/security/allowed-hosts"),
+    // #944: the setup guide asks about this rather than pre-selecting it
+    // (#936), so the current saved value is needed to preserve every other
+    // field (mode, patterns) when the answer is written back.
+    fetchJson<ContentBlocklistSettings>("/api/download-health/content-blocklist").catch(() => emptyContentBlocklistSettings)
   ]);
 
-  return { allowedHosts, clients, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
+  return { allowedHosts, clients, contentBlocklist, customFormats, draft, guide, indexers, libraries, metadataStatus, progress, qualityProfiles, settings };
 }
 
 export function SetupGuidePage() {
@@ -558,6 +572,11 @@ export function SetupGuidePage() {
       // server-side (so left off) if the address answering this very
       // request was not ticked -- setup can never lock itself out.
       await saveAllowedHosts(form).catch(() => undefined);
+      // #944: an explicit Yes or No here always writes the real setting,
+      // unlike Allowed Hosts (which only ever turns on) - an existing
+      // install's migration may have already frozen this on, and a plain
+      // "No" answer here should still be honored.
+      await saveDangerousFileCheck(form, data.contentBlocklist).catch(() => undefined);
       const qualityProfileCache = [...data.qualityProfiles];
       const customFormatCache = [...data.customFormats];
       const movieCustomFormatIds = hasMovies ? await ensureCustomFormats(customFormatCache, "movies", form, data.guide, createdEntities) : [];
@@ -1793,6 +1812,21 @@ export async function saveAllowedHosts(form: GuideForm) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled: true, allowedHosts: form.allowedHostsSelection })
+  });
+}
+
+/**
+ * #944: the content blocklist (#816) is fetched and saved through its own
+ * endpoint, not the big flat settings object (see `ContentBlocklistSettings`
+ * in lib/api). Every other field (mode, patterns, sync) is kept exactly as
+ * loaded - only `enabled` changes, from this Yes/No answer.
+ */
+export async function saveDangerousFileCheck(form: GuideForm, loaded: ContentBlocklistSettings) {
+  if (form.automation.dangerousFileCheck === null) return;
+  await fetchJson("/api/download-health/content-blocklist", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...loaded, enabled: form.automation.dangerousFileCheck === true })
   });
 }
 

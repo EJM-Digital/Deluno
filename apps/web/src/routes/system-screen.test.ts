@@ -86,3 +86,17 @@ describe("system screen activity timeline page size and clear (#871)", () => {
     expect(source).toMatch(/decision explanation/);
   });
 });
+
+/**
+ * #944: while the content blocklist's dangerous-file check is off, System ->
+ * Health's row for it gets a one-click Fix straight to where it's turned on,
+ * the same shape the Allowed Hosts row (#939) already uses.
+ */
+describe("system screen dangerous-file health check Fix button (#944)", () => {
+  const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
+
+  it("routes the dangerous-file check's Fix button to the content blocklist settings", () => {
+    expect(source).toMatch(/check\.id === "download-health:dangerous-file"/);
+    expect(source).toMatch(/navigate\("\/search-cycles\/failed-downloads"\)/);
+  });
+});
