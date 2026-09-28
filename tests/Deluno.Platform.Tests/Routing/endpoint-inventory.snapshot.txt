@@ -196,6 +196,7 @@ GET /api/search-cycles
 GET /api/search-retry-windows
 GET /api/search/categories
 GET /api/security/allowed-hosts
+GET /api/security/local-network-auth
 GET /api/seerr-servers/
 GET /api/seerr-servers/{id}/acquisitions
 GET /api/series/calendar
@@ -541,6 +542,7 @@ PUT /api/recycle-bin/settings
 PUT /api/release-profiles/{id}
 PUT /api/retention/rules/{id}
 PUT /api/security/allowed-hosts
+PUT /api/security/local-network-auth
 PUT /api/seerr-servers/{id}
 PUT /api/series/episodes/monitoring
 PUT /api/series/monitoring
