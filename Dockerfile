@@ -20,6 +20,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS publish
 
 WORKDIR /src
 COPY NuGet.Config global.json Directory.Build.props ./
+# Deluno.Api embeds the release notes from the repository root (#1037).
+COPY RELEASE_NOTES.md ./
 COPY src src
 COPY --from=web-build /src/apps/web/dist apps/web/dist
 
