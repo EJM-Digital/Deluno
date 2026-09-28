@@ -456,6 +456,9 @@ public sealed class AcquisitionOverrideServiceTests
         public List<DownloadQueueItem> Queue { get; } = [];
         public bool OverviewThrows { get; set; }
 
+        public Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
         public Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
         {
             if (OverviewThrows)

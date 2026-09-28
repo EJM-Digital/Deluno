@@ -83,6 +83,46 @@ public sealed class DownloadClientTelemetryService(
 
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
+        var built = await BuildAnnotatedSnapshotsAsync(cancellationToken);
+        var visibleSnapshots = built.OrderedClients
+            .Zip(built.Snapshots, (client, snapshot) => snapshot with
+            {
+                Queue = snapshot.Queue
+                    .Where(item => IsDelunosOwnDownload(
+                        item,
+                        built.SettledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                        built.CapturedUtc))
+                    .ToArray()
+            })
+            .ToArray();
+
+        return new DownloadTelemetryOverview(
+            Summary: built.Summary,
+            Clients: visibleSnapshots,
+            CapturedUtc: built.CapturedUtc);
+    }
+
+    /// <summary>
+    /// Every client's queue and history exactly as the client reports it,
+    /// ownership untouched -- unlike <see cref="GetOverviewAsync"/>, this
+    /// keeps items another tool, or a person, added to the client. Used only
+    /// by the leftover-download scan (#958/#933 M2): a foreign item is really
+    /// on disk and must still hold its file, even though it never appears on
+    /// the Queue screen.
+    /// </summary>
+    public async Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
+    {
+        var built = await BuildAnnotatedSnapshotsAsync(cancellationToken);
+        return built.Snapshots;
+    }
+
+    private async Task<(
+        IReadOnlyList<DownloadClientItem> OrderedClients,
+        IReadOnlyList<DownloadClientTelemetrySnapshot> Snapshots,
+        IReadOnlyDictionary<string, IReadOnlyList<DownloadDispatchItem>> SettledDispatchesByClientId,
+        DownloadTelemetrySummary Summary,
+        DateTimeOffset CapturedUtc)> BuildAnnotatedSnapshotsAsync(CancellationToken cancellationToken)
+    {
         var capturedUtc = timeProvider.GetUtcNow();
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
         var downloadHealthRules = await healthRepository.GetDownloadHealthRulesAsync(platformSettings, cancellationToken);
@@ -219,22 +259,7 @@ public sealed class DownloadClientTelemetryService(
         // whole queue, foreign items included - see above.
         var overviewSummary = Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue));
 
-        var visibleSnapshots = orderedClients
-            .Zip(healthAnnotatedSnapshots, (client, snapshot) => snapshot with
-            {
-                Queue = snapshot.Queue
-                    .Where(item => IsDelunosOwnDownload(
-                        item,
-                        settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-                        capturedUtc))
-                    .ToArray()
-            })
-            .ToArray();
-
-        return new DownloadTelemetryOverview(
-            Summary: overviewSummary,
-            Clients: visibleSnapshots,
-            CapturedUtc: capturedUtc);
+        return (orderedClients, healthAnnotatedSnapshots, settledDispatchesByClientId, overviewSummary, capturedUtc);
     }
 
     /// <summary>

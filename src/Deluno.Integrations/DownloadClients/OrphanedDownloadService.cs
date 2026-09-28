@@ -46,8 +46,14 @@ public sealed class OrphanedDownloadService(
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
     {
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        var telemetry = await telemetryService.GetOverviewAsync(cancellationToken);
-        var scans = DownloadFolders(libraries, telemetry)
+        // Unfiltered (#958, cleanup sheet M2): the Queue screen only ever
+        // shows Deluno's own downloads, but a leftover scan must still treat
+        // an item another tool -- or a person -- added to the client as
+        // holding its file. Reading straight from the client, before the
+        // ownership test GetOverviewAsync applies for display, is the only
+        // way to see it.
+        var clientSnapshots = await telemetryService.GetUnfilteredSnapshotsAsync(cancellationToken);
+        var scans = DownloadFolders(libraries, clientSnapshots)
             .Select(folder => new DownloadFolderScan(folder.LibraryId, folder.LibraryName, folder.Path, ReadTopLevel(folder.Path)))
             .ToArray();
         if (scans.All(scan => scan.Entries.Count == 0))
@@ -61,7 +67,7 @@ public sealed class OrphanedDownloadService(
         var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(1000, null, cancellationToken, includeArchived: true);
 
         var claimed = new List<string>();
-        foreach (var client in telemetry.Clients)
+        foreach (var client in clientSnapshots)
         {
             claimed.AddRange(client.Queue.Select(item => item.SourcePath ?? string.Empty));
             claimed.AddRange(client.History.Select(item => item.SourcePath ?? string.Empty));
@@ -198,7 +204,7 @@ public sealed class OrphanedDownloadService(
     /// </summary>
     internal static IReadOnlyList<(string Path, string LibraryId, string LibraryName)> DownloadFolders(
         IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries,
-        DownloadTelemetryOverview telemetry)
+        IReadOnlyList<DownloadClientTelemetrySnapshot> clientSnapshots)
     {
         var protectedRoots = libraries
             .SelectMany(library => new[] { library.RootPath, library.ProcessorOutputPath ?? string.Empty })
@@ -231,7 +237,7 @@ public sealed class OrphanedDownloadService(
             Add(library.DownloadsPath, library);
         }
 
-        foreach (var client in telemetry.Clients)
+        foreach (var client in clientSnapshots)
         {
             var items = client.Queue.Select(item => (item.SourcePath, item.LibraryId, item.MediaType))
                 .Concat(client.History.Select(item => (item.SourcePath, LibraryId: (string?)null, item.MediaType)));
