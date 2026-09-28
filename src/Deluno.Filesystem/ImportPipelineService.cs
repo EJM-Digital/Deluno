@@ -2340,7 +2340,9 @@ public sealed partial class ImportPipelineService(
         var preferredMode = settings.UseHardlinks && canHardlink ? "hardlink" : "copy";
         var explanation = rule is null
             ? "No destination rule matched, so Deluno used the default root folder."
-            : $"Matched {rule.MatchKind} destination rule '{rule.Name}'.";
+            : string.Equals(rule.MatchKind.Trim(), "tag", StringComparison.OrdinalIgnoreCase)
+                ? $"Placed by the tag \"{rule.MatchValue.Trim()}\" (destination rule '{rule.Name}')."
+                : $"Matched {rule.MatchKind} destination rule '{rule.Name}'.";
 
         return new ImportPreviewResponse(
             SourcePath: request.SourcePath,

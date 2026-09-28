@@ -389,7 +389,9 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             MatchedRuleName: match?.Name,
             Reason: match is null
                 ? "No destination rule matched, so Deluno used the default root folder."
-                : $"Matched {match.MatchKind} rule '{match.Name}' with priority {match.Priority}.");
+                : string.Equals(match.MatchKind.Trim(), "tag", StringComparison.OrdinalIgnoreCase)
+                    ? $"Placed by the tag \"{match.MatchValue.Trim()}\" (rule '{match.Name}', priority {match.Priority})."
+                    : $"Matched {match.MatchKind} rule '{match.Name}' with priority {match.Priority}.");
     }
 
     private static string NormalizeMediaType(string? mediaType)
