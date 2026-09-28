@@ -115,6 +115,13 @@ Delivery behavior:
 - event filters are prefix-based (`movies`, `series`, `health`) and support `*` for all
 - Discord webhook URLs receive Discord embed payloads
 - other URLs receive a generic JSON payload with event metadata
+- an event about one title (movie, series or episode) carries that title's tag
+  names: the generic payload has a top-level `tags` array of names (empty when
+  the title has no tags, and also copied into `details.tags`); chat providers
+  (Discord, Slack, Telegram, Pushover, ntfy, Gotify, Apprise) append a
+  `Tags: a, b` line to the message when the title has tags. Events that name
+  no title (health, library paused, app update) have no `tags` key at all.
+  Deluno writes no `.nfo` files, so there is nothing to tag there.
 - delivery retries are attempted up to three times for transient failures:
   - attempt 1: immediate
   - attempt 2: after 2 seconds
