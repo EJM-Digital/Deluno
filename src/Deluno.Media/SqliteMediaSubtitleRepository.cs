@@ -46,6 +46,7 @@ public sealed class SqliteMediaSubtitleRepository(
         IReadOnlyList<string> languages,
         int limit,
         bool embeddedCounts,
+        bool pictureBasedCounts,
         CancellationToken cancellationToken)
     {
         if (languages.Count == 0)
@@ -90,7 +91,7 @@ public sealed class SqliteMediaSubtitleRepository(
 
         // What counts as held — the same predicate `CatalogueSubtitleRollup`
         // gives the bar.
-        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts);
+        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts, pictureBasedCounts);
 
         // ...and what counts as *settled*, which is a stricter question and the
         // one this query asks.
@@ -310,6 +311,7 @@ public sealed class SqliteMediaSubtitleRepository(
         string mediaId,
         IReadOnlyList<string> languages,
         bool embeddedCounts,
+        bool pictureBasedCounts,
         CancellationToken cancellationToken)
     {
         if (languages.Count == 0)
@@ -322,7 +324,7 @@ public sealed class SqliteMediaSubtitleRepository(
             map.DatabaseName,
             cancellationToken);
 
-        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts);
+        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts, pictureBasedCounts);
         var settledPredicate = $"{heldPredicate} AND (sub.source = '{SubtitleSources.Embedded}' OR sub.match_rung >= @cutoff)";
 
         using var command = connection.CreateCommand();
@@ -1238,13 +1240,32 @@ public static class CatalogueSubtitleRollup
     /// always counted a track inside the container; some people want a sidecar
     /// regardless, because a player handles the two differently and an embedded
     /// track cannot be swapped or corrected (#321).</para>
+    ///
+    /// <para><b>A picture-only embedded track counts unless the library says
+    /// otherwise (#988).</b> A PGS or VobSub track is a stream of bitmap
+    /// images, not words, so it can never be swapped for the words a provider
+    /// ships. Off, an embedded row whose codec
+    /// <see cref="SubtitlePictureCodecs.IsPictureBased"/> names is dropped from
+    /// held; meaningless once <paramref name="embeddedCounts"/> has already
+    /// dropped every embedded row.</para>
     /// </summary>
-    public static string HeldPredicate(bool embeddedCounts)
-        => embeddedCounts
-            ? "sub.forced = 0"
-            : $"sub.forced = 0 AND sub.source <> '{SubtitleSources.Embedded}'";
+    public static string HeldPredicate(bool embeddedCounts, bool pictureBasedCounts = true)
+    {
+        if (!embeddedCounts)
+        {
+            return $"sub.forced = 0 AND sub.source <> '{SubtitleSources.Embedded}'";
+        }
 
-    public static string Sql(MediaTableMap map, int idCount, int languageCount, bool embeddedCounts = true)
+        if (pictureBasedCounts)
+        {
+            return "sub.forced = 0";
+        }
+
+        var pictureCodecs = string.Join(", ", SubtitlePictureCodecs.All.Select(codec => $"'{codec}'"));
+        return $"sub.forced = 0 AND NOT (sub.source = '{SubtitleSources.Embedded}' AND sub.codec IN ({pictureCodecs}))";
+    }
+
+    public static string Sql(MediaTableMap map, int idCount, int languageCount, bool embeddedCounts = true, bool pictureBasedCounts = true)
     {
         var idParameters = string.Join(", ", Enumerable.Range(0, idCount).Select(index => $"@id{index}"));
         var languageParameters = string.Join(", ", Enumerable.Range(0, languageCount).Select(index => $"@lang{index}"));
@@ -1269,7 +1290,7 @@ public static class CatalogueSubtitleRollup
             FROM {map.SubtitleTable} sub
             {map.SubtitleRollupJoin}
             WHERE {map.SubtitleRollupIdColumn} IN ({idParameters})
-              AND {HeldPredicate(embeddedCounts)}
+              AND {HeldPredicate(embeddedCounts, pictureBasedCounts)}
               AND sub.language IN ({languageParameters})
             GROUP BY {map.SubtitleRollupIdColumn};
             """;

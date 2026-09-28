@@ -257,3 +257,109 @@ describe("Subtitle languages: permission control lives in this screen too (#838)
     expect(JSON.parse(init.body as string)).toEqual({ setPermissionsOnImport: true, folderChmod: "755", chownGroup: "" });
   });
 });
+
+/**
+ * #988: a switch so an embedded picture-only subtitle track (PGS/VobSub)
+ * does not count as already holding the language, so a text subtitle is
+ * still fetched. Off by default -- the same default "count subtitles inside
+ * the video" already uses -- so every library keeps exactly what Deluno did
+ * before this setting existed.
+ */
+describe("Subtitle languages: picture-based embedded subtitles do not count (#988)", () => {
+  const library: LibraryItem = {
+    id: "lib-1",
+    name: "Movies",
+    mediaType: "movies",
+    purpose: "Main",
+    rootPath: "D:\\Media",
+    downloadsPath: null,
+    qualityProfileId: null,
+    qualityProfileName: null,
+    cutoffQuality: null,
+    upgradeUntilCutoff: false,
+    upgradeUnknownItems: false,
+    importWorkflow: "standard",
+    processorName: null,
+    processorOutputPath: null,
+    processorTimeoutMinutes: 60,
+    processorFailureMode: "block",
+    autoSearchEnabled: true,
+    missingSearchEnabled: true,
+    upgradeSearchEnabled: true,
+    searchIntervalMinutes: 6,
+    retryDelayHours: 24,
+    maxItemsPerRun: 25,
+    searchWindowStartHour: null,
+    searchWindowEndHour: null,
+    automationStatus: "idle",
+    searchRequested: false,
+    lastSearchedUtc: null,
+    nextSearchUtc: null,
+    createdUtc: "2026-01-01T00:00:00Z",
+    updatedUtc: "2026-01-01T00:00:00Z",
+    subtitleLanguages: ["en"],
+    subtitleLanguageMode: "all"
+  };
+
+  const libraryLoaderData = {
+    libraries: [library],
+    languages: [{ code: "en", name: "English" }],
+    settings: emptyPlatformSettingsSnapshot
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reflects today's behaviour (on) for a library that has never opened this setting", async () => {
+    Object.assign(loaderData, libraryLoaderData);
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("row", { name: /Movies/ }));
+    const dontCount = await screen.findByRole("switch", { name: "Picture-based subtitles (PGS/VobSub) don't count" });
+    expect(dontCount).not.toBeChecked();
+  });
+
+  it("saves pictureBasedCounts: false when turned on", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    Object.assign(loaderData, libraryLoaderData);
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("row", { name: /Movies/ }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Picture-based subtitles (PGS/VobSub) don't count" }));
+    fireEvent.click(screen.getByRole("button", { name: /Save/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const call = fetchMock.mock.calls.find(([url]) => (url as string).includes("/subtitles"));
+    expect(call).toBeDefined();
+    const body = JSON.parse((call![1] as RequestInit).body as string);
+    expect(body.pictureBasedCounts).toBe(false);
+    expect(body.embeddedCounts).toBe(true);
+  });
+
+  it("names the setting in the list when it is off", () => {
+    Object.assign(loaderData, {
+      ...libraryLoaderData,
+      libraries: [{ ...library, subtitlePictureBasedCounts: false }]
+    });
+
+    render(
+      <MemoryRouter>
+        <SubtitleLanguagesPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Picture-based embedded tracks do not count")).toBeInTheDocument();
+  });
+});

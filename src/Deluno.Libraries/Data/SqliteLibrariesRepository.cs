@@ -40,7 +40,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_name_policy_json,
                    l.subtitle_omit_language_code, l.randomize_search_order,
                 l.subtitle_language_type_preferences_json,
-                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days
+                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days,
+                   l.subtitle_picture_based_counts
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -682,6 +683,7 @@ public sealed class SqliteLibrariesRepository(
                 subtitle_language_mode = @mode,
                 subtitle_unknown_language = @unknownLanguage,
                 subtitle_embedded_counts = @embeddedCounts,
+                subtitle_picture_based_counts = @pictureBasedCounts,
                 subtitle_content_policy_json = @contentPolicy,
                 subtitle_timing_policy_json = @timingPolicy,
                 subtitle_name_policy_json = @namePolicy,
@@ -704,6 +706,7 @@ public sealed class SqliteLibrariesRepository(
                 ? string.Empty
                 : SubtitleLanguages.Normalize(request.UnknownLanguage) ?? string.Empty);
         AddParameter(command, "@embeddedCounts", request.EmbeddedCounts ? 1 : 0);
+        AddParameter(command, "@pictureBasedCounts", request.PictureBasedCounts ? 1 : 0);
         AddParameter(
             command,
             "@contentPolicy",
@@ -746,7 +749,8 @@ public sealed class SqliteLibrariesRepository(
         command.CommandText =
             """
             SELECT id, subtitle_languages, subtitle_language_mode,
-                   subtitle_unknown_language, subtitle_embedded_counts
+                   subtitle_unknown_language, subtitle_embedded_counts,
+                   subtitle_picture_based_counts
             FROM libraries;
             """;
 
@@ -760,7 +764,8 @@ public sealed class SqliteLibrariesRepository(
                 Languages: ParseSubtitleLanguages(reader.IsDBNull(1) ? null : reader.GetString(1)),
                 Mode: NormalizeSubtitleLanguageMode(reader.IsDBNull(2) ? null : reader.GetString(2)),
                 UnknownLanguage: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
-                EmbeddedCounts: reader.IsDBNull(4) || reader.GetInt32(4) == 1);
+                EmbeddedCounts: reader.IsDBNull(4) || reader.GetInt32(4) == 1,
+                PictureBasedCounts: reader.IsDBNull(5) || reader.GetInt32(5) == 1);
         }
 
         return preferences;
@@ -1082,7 +1087,8 @@ public sealed class SqliteLibrariesRepository(
                 l.subtitle_name_policy_json,
                    l.subtitle_omit_language_code, l.randomize_search_order,
                 l.subtitle_language_type_preferences_json,
-                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days
+                   l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days,
+                   l.subtitle_picture_based_counts
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1411,7 +1417,8 @@ public sealed class SqliteLibrariesRepository(
                 reader.IsDBNull(39) ? null : reader.GetString(39)),
             MaxMissingItemsPerRun: reader.IsDBNull(40) ? 25 : reader.GetInt32(40),
             MaxUpgradeItemsPerRun: reader.IsDBNull(41) ? 25 : reader.GetInt32(41),
-            SearchWindowDays: reader.IsDBNull(42) ? 127 : reader.GetInt32(42));
+            SearchWindowDays: reader.IsDBNull(42) ? 127 : reader.GetInt32(42),
+            SubtitlePictureBasedCounts: reader.IsDBNull(43) || reader.GetInt64(43) == 1);
     }
 
 

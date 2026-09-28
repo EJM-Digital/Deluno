@@ -193,7 +193,7 @@ public sealed class SubtitleBackoffTests
         int limit = 50,
         string[]? languages = null)
         => subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", languages ?? ["en"], limit, embeddedCounts: true, CancellationToken.None);
+            MediaKind.Movie, "library-movies", languages ?? ["en"], limit, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None);
 
     private static async Task<string> ImportAsync(IMovieCatalogRepository movies, string title)
     {

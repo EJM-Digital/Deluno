@@ -204,11 +204,13 @@ public interface IMediaSubtitleRepository
     /// a library's bounded slice (#840) — a person-triggered search asks for
     /// this title right now, regardless of whether it is mid-backoff.
     /// </summary>
+    /// <param name="pictureBasedCounts">Whether a picture-only embedded track (PGS/VobSub) counts as held (#988).</param>
     Task<MediaSubtitleWantedItem?> GetWantedItemAsync(
         MediaKind kind,
         string mediaId,
         IReadOnlyList<string> languages,
         bool embeddedCounts,
+        bool pictureBasedCounts,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<MediaSubtitleWantedItem>> ListWantedAsync(
@@ -217,6 +219,7 @@ public interface IMediaSubtitleRepository
         IReadOnlyList<string> languages,
         int limit,
         bool embeddedCounts,
+        bool pictureBasedCounts,
         CancellationToken cancellationToken);
 
     /// <summary>

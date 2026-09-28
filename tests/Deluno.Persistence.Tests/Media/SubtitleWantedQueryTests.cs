@@ -39,7 +39,7 @@ public sealed class SubtitleWantedQueryTests
         await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en"), CancellationToken.None);
 
         var wanted = await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en", "ja"], 50, embeddedCounts: true, CancellationToken.None);
+            MediaKind.Movie, "library-movies", ["en", "ja"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None);
 
         var item = Assert.Single(wanted);
         // English is held, so it is not asked for again. Asking anyway is what
@@ -67,7 +67,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en", SubtitleMatch.AnyRelease), CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
@@ -87,7 +87,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en", SubtitleMatch.SameSource), CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
@@ -135,7 +135,7 @@ public sealed class SubtitleWantedQueryTests
         await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("en"), CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en") with { Forced = true }, CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
@@ -168,7 +168,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, Row("en") with { HearingImpaired = true }, CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public sealed class SubtitleWantedQueryTests
         // The same rule the rollup follows and the reason a library nobody has
         // asked for subtitles pays nothing for the feature.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", [], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", [], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public sealed class SubtitleWantedQueryTests
         // A title with no file holds no subtitles to be short of, which is
         // DESIGN-002's position and the reason its bar is absent rather than red.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public sealed class SubtitleWantedQueryTests
         }
 
         var wanted = await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 5, embeddedCounts: true, CancellationToken.None);
+            MediaKind.Movie, "library-movies", ["en"], 5, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None);
 
         Assert.Equal(5, wanted.Count);
     }
@@ -229,12 +229,12 @@ public sealed class SubtitleWantedQueryTests
         // The default, and what Deluno has always done: a track inside the
         // container is coverage.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         // Off, because a player handles the two differently and an embedded
         // track cannot be swapped or corrected (#321). Now the sidecar is wanted.
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, pictureBasedCounts: true, CancellationToken.None));
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
@@ -259,7 +259,7 @@ public sealed class SubtitleWantedQueryTests
             CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     /// <summary>
@@ -281,7 +281,7 @@ public sealed class SubtitleWantedQueryTests
             CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: false, pictureBasedCounts: true, CancellationToken.None));
         Assert.Equal(["en"], item.LanguagesToFetch);
     }
 
@@ -304,14 +304,14 @@ public sealed class SubtitleWantedQueryTests
 
         // Without an override, the library's own English is covered.
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         // This one title overrides to Japanese only — a language the library
         // never listed at all, not merely a narrower slice of it.
         await overrides.SetAsync(MediaKind.Movie, id, new SubtitleLanguageOverride(["ja"], "all"), CancellationToken.None);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
         Assert.Equal(["ja"], item.LanguagesToFetch);
     }
 
@@ -331,7 +331,7 @@ public sealed class SubtitleWantedQueryTests
         await subtitles.RecordFetchedAsync(MediaKind.Movie, id, Row("ja"), CancellationToken.None);
 
         Assert.Empty(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
     }
 
     /// <summary>
@@ -352,7 +352,7 @@ public sealed class SubtitleWantedQueryTests
             MediaKind.Movie, id, "en", "podnapisi", "Usable fallback: any release", CancellationToken.None, score: 0);
 
         var item = Assert.Single(await subtitles.ListWantedAsync(
-            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, CancellationToken.None));
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
 
         Assert.NotNull(item.LastAttempt);
         // The second, later attempt - never the first one written.
@@ -375,6 +375,59 @@ public sealed class SubtitleWantedQueryTests
         // Forced is never coverage either way round.
         Assert.Contains("sub.forced = 0", CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: true), StringComparison.Ordinal);
         Assert.Contains("sub.forced = 0", CatalogueSubtitleRollup.HeldPredicate(embeddedCounts: false), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #988: a PGS or VobSub embedded track is a picture, not text, so it is
+    /// never a duplicate of the words a provider would fetch. Off by default,
+    /// which is what Deluno has always done -- the same default #321's
+    /// "count subtitles inside the video" already uses.
+    /// </summary>
+    [Fact]
+    public async Task A_picture_based_embedded_track_stops_counting_when_the_library_says_so()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie,
+            id,
+            Row("en") with { Source = SubtitleSources.Embedded, Codec = "hdmv_pgs_subtitle" },
+            CancellationToken.None);
+
+        // On by default (today's behaviour): a picture-only track still counts,
+        // same as any other embedded track.
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: true, CancellationToken.None));
+
+        // Off: a picture-only track no longer counts, so the text subtitle is
+        // still wanted even though the container already carries English.
+        var item = Assert.Single(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: false, CancellationToken.None));
+        Assert.Equal(["en"], item.LanguagesToFetch);
+    }
+
+    /// <summary>
+    /// A text embedded track (SubRip, ASS, ...) is not touched by this switch
+    /// -- only a codec <see cref="SubtitlePictureCodecs.IsPictureBased"/> names
+    /// is ever dropped from held.
+    /// </summary>
+    [Fact]
+    public async Task A_text_embedded_track_still_counts_when_picture_based_tracks_do_not()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, subtitles) = await CreateAsync(storage);
+        var id = await ImportAsync(movies, "Dune");
+
+        await subtitles.RecordFetchedAsync(
+            MediaKind.Movie,
+            id,
+            Row("en") with { Source = SubtitleSources.Embedded, Codec = "subrip" },
+            CancellationToken.None);
+
+        Assert.Empty(await subtitles.ListWantedAsync(
+            MediaKind.Movie, "library-movies", ["en"], 50, embeddedCounts: true, pictureBasedCounts: false, CancellationToken.None));
     }
 
     /* ------------------------------------------------------------ helpers */

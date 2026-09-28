@@ -61,7 +61,7 @@ public static class SubtitleWantedEndpointRouteBuilderExtensions
                     : MediaKind.Movie;
 
                 var wanted = await mediaSubtitleRepository.ListWantedAsync(
-                    kind, library.Id, library.SubtitleLanguages, PerLibraryLimit, library.SubtitleEmbeddedCounts, cancellationToken);
+                    kind, library.Id, library.SubtitleLanguages, PerLibraryLimit, library.SubtitleEmbeddedCounts, library.SubtitlePictureBasedCounts, cancellationToken);
 
                 items.AddRange(wanted.Select(item => new SubtitleWantedRow(
                     Kind: kind.ToString(),
