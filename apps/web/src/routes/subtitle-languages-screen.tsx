@@ -39,6 +39,7 @@ interface Form {
   mode: "all" | "first";
   unknownLanguage: string;
   embeddedCounts: boolean;
+  pictureBasedCounts: boolean;
   contentPolicy: SubtitleContentModificationPolicy;
   timingPolicy: SubtitleTimingPolicy;
   /** Comma-separated while being typed; split into terms on save. */
@@ -178,6 +179,7 @@ export function SubtitleLanguagesPage() {
     mode: "all",
     unknownLanguage: "",
     embeddedCounts: true,
+    pictureBasedCounts: true,
     contentPolicy: EMPTY_CONTENT_POLICY,
     timingPolicy: EMPTY_TIMING_POLICY,
     mustContain: "",
@@ -196,6 +198,7 @@ export function SubtitleLanguagesPage() {
       mode: library.subtitleLanguageMode === "first" ? "first" : "all",
       unknownLanguage: library.subtitleUnknownLanguage ?? "",
       embeddedCounts: library.subtitleEmbeddedCounts ?? true,
+      pictureBasedCounts: library.subtitlePictureBasedCounts ?? true,
       contentPolicy: { ...EMPTY_CONTENT_POLICY, ...(library.subtitleContentPolicy ?? {}) },
       timingPolicy: { ...EMPTY_TIMING_POLICY, ...(library.subtitleTimingPolicy ?? {}) },
       mustContain: (library.subtitleNamePolicy?.mustContain ?? []).join(", "),
@@ -322,7 +325,13 @@ export function SubtitleLanguagesPage() {
                   />
                   <ListCell
                     primary={library.subtitleUnknownLanguage ? nameOf(library.subtitleUnknownLanguage, languages) : "Left unknown"}
-                    secondary={library.subtitleEmbeddedCounts === false ? "Embedded tracks do not count" : undefined}
+                    secondary={
+                      library.subtitleEmbeddedCounts === false
+                        ? "Embedded tracks do not count"
+                        : library.subtitlePictureBasedCounts === false
+                          ? "Picture-based embedded tracks do not count"
+                          : undefined
+                    }
                   />
                   <ListCell mobile>
                     <Chip tone={wanted.length ? "ok" : "idle"}>{wanted.length ? `${wanted.length}` : "Off"}</Chip>
@@ -411,6 +420,17 @@ export function SubtitleLanguagesPage() {
                     checked={form.embeddedCounts}
                     disabled={busy}
                     onCheckedChange={(embeddedCounts) => setForm({ ...form, embeddedCounts })}
+                  />
+                </Field>
+
+                <Field
+                  label="Picture-based subtitles (PGS/VobSub) don't count"
+                  help="On by default. A PGS or VobSub track inside the video is a picture, not text — turn this on to still fetch a text subtitle even though the container already has one of these. Only matters while 'Count subtitles inside the video' above is on."
+                >
+                  <Switch
+                    checked={!form.pictureBasedCounts}
+                    disabled={busy || !form.embeddedCounts}
+                    onCheckedChange={(dontCount) => setForm({ ...form, pictureBasedCounts: !dontCount })}
                   />
                 </Field>
                 </DrawerSection>

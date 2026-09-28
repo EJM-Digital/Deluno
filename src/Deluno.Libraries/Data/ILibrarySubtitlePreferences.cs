@@ -33,7 +33,9 @@ public sealed record LibrarySubtitlePreference(
     /// <summary>Whether a track inside the container counts as held.</summary>
     bool EmbeddedCounts = true,
     /// <summary>Per-language hearing-impaired and forced-track preferences (#836, #835).</summary>
-    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null)
+    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null,
+    /// <summary>Whether an embedded picture-only track (PGS/VobSub) counts as held (#988).</summary>
+    bool PictureBasedCounts = true)
 {
     /// <summary>
     /// The <c>wanted</c> half of the bar under a poster, per file. One rule,

@@ -95,7 +95,7 @@ public sealed class LibrarySubtitleSearchJobHandler(
 
         var slice = Math.Max(1, library.MaxItemsPerRun);
         var wanted = await mediaSubtitleRepository.ListWantedAsync(
-            kind, library.Id, languages, slice, library.SubtitleEmbeddedCounts, cancellationToken);
+            kind, library.Id, languages, slice, library.SubtitleEmbeddedCounts, library.SubtitlePictureBasedCounts, cancellationToken);
         var timingPolicy = SubtitleTimingPolicyCodec.Normalize(library.SubtitleTimingPolicy)
             ?? new SubtitleTimingPolicy();
 

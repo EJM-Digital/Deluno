@@ -113,4 +113,23 @@ public sealed record LibraryItem(
     /// bit 6). 127 (every bit set) is every day, which is what every library
     /// had before this existed and is the default (#832).
     /// </summary>
-    int SearchWindowDays = 127);
+    int SearchWindowDays = 127,
+    /// <summary>
+    /// Whether an embedded picture-only subtitle track (PGS/VobSub) counts as
+    /// held (#988, parity decision sheet row P05).
+    ///
+    /// <para>True by default, which is what Deluno has always done and keeps
+    /// doing for every library that has not opened this setting -- the same
+    /// default <see cref="SubtitleEmbeddedCounts"/> uses. Off means a track
+    /// whose codec is <see cref="Deluno.Contracts.SubtitlePictureCodecs"/>
+    /// never counts as holding the language on its own, so a text subtitle is
+    /// still fetched even though the container already carries a bitmap
+    /// track — the words a provider ships and the pictures a player burns in
+    /// are not the same thing, and only text can ever be searched, styled or
+    /// read by something that is not a video renderer.</para>
+    ///
+    /// <para>Meaningless when <see cref="SubtitleEmbeddedCounts"/> is already
+    /// off: nothing embedded counts at all, so there is nothing left for this
+    /// to narrow further.</para>
+    /// </summary>
+    bool SubtitlePictureBasedCounts = true);

@@ -33,4 +33,9 @@ public sealed record UpdateLibrarySubtitlesRequest(
     /// with no row here gets the defaults — see
     /// <see cref="SubtitleLanguageTypePreference"/>.
     /// </summary>
-    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null);
+    IReadOnlyList<SubtitleLanguageTypePreference>? LanguageTypePreferences = null,
+    /// <summary>
+    /// Whether an embedded picture-only track (PGS/VobSub) counts as held
+    /// (#988). See <see cref="Deluno.Libraries.Contracts.LibraryItem.SubtitlePictureBasedCounts"/>.
+    /// </summary>
+    bool PictureBasedCounts = true);

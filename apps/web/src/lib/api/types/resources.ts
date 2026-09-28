@@ -57,6 +57,7 @@ export interface LibraryItem {
   subtitleUnknownLanguage?: string;
   /** Whether a subtitle track inside the video counts as held. On by default. */
   subtitleEmbeddedCounts?: boolean;
+  subtitlePictureBasedCounts?: boolean;
   /** Named post-download subtitle cleanups. */
   subtitleContentPolicy?: SubtitleContentModificationPolicy | null;
   /** Automatic timing repair policy for fetched subtitles. */

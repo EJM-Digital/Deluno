@@ -132,6 +132,36 @@ public sealed class LibrarySubtitleLanguagePersistenceTests
 
         Assert.Equal(string.Empty, listed.SubtitleUnknownLanguage);
         Assert.True(listed.SubtitleEmbeddedCounts);
+        // #988: keeps counting a picture-only embedded track, exactly what
+        // Deluno did before this switch existed -- both for a library that
+        // has never opened it and for one created after it shipped.
+        Assert.True(listed.SubtitlePictureBasedCounts);
+    }
+
+    /// <summary>
+    /// #988 (parity decision sheet row P05): the "picture-based subtitles
+    /// don't count" switch round-trips beside the embedded-track one it sits
+    /// next to, and setting it does not disturb the other.
+    /// </summary>
+    [Fact]
+    public async Task Picture_based_treatment_round_trips_independently_of_embedded_treatment()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await CreateRepositoryAsync(storage);
+        var library = await repository.CreateLibraryAsync(NewLibrary("Movies", "movies"), CancellationToken.None);
+
+        var updated = await repository.UpdateLibrarySubtitlesAsync(
+            library.Id,
+            new UpdateLibrarySubtitlesRequest(["en"], "all", PictureBasedCounts: false),
+            CancellationToken.None);
+
+        Assert.False(updated!.SubtitlePictureBasedCounts);
+        // Untouched by a request that only names the picture-based switch.
+        Assert.True(updated.SubtitleEmbeddedCounts);
+
+        var listed = (await repository.ListLibrariesAsync(CancellationToken.None)).Single(item => item.Id == library.Id);
+        Assert.False(listed.SubtitlePictureBasedCounts);
+        Assert.True(listed.SubtitleEmbeddedCounts);
     }
 
     [Fact]

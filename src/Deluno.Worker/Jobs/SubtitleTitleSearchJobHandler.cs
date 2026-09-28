@@ -71,7 +71,7 @@ public sealed class SubtitleTitleSearchJobHandler(
         }
 
         var item = await mediaSubtitleRepository.GetWantedItemAsync(
-            kind, payload.MediaId, languages, library.SubtitleEmbeddedCounts, cancellationToken);
+            kind, payload.MediaId, languages, library.SubtitleEmbeddedCounts, library.SubtitlePictureBasedCounts, cancellationToken);
         if (item is null)
         {
             return "This title has no file on disk to search subtitles for.";
