@@ -251,6 +251,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             ILogger<MovieFileDeleteNotification> logger,
             [FromServices] IOutboundNotificationService? outboundNotificationService,
             [FromServices] INotificationService? notificationService,
+            [FromServices] IMediaTagStore? mediaTagStore,
             CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
@@ -305,6 +306,9 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             // Same "file delete" concept the import pipeline fires for a
             // replaced file (#856) - a person deleting a file by hand from
             // the Files tab is just as much a file being removed.
+            var movieTags = mediaTagStore is null
+                ? null
+                : (await mediaTagStore.ListAsync(MediaKind.Movie, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
             await NotificationOutboundDispatch.DispatchIfEnabledAsync(
                 outboundNotificationService,
                 notificationService,
@@ -315,7 +319,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 prefs => prefs.FileDeletedEnabled,
                 "movie-files-delete",
                 logger,
-                cancellationToken);
+                cancellationToken,
+                movieTags);
 
             return Results.Ok(new { deleted = true, wasPrimary });
         });

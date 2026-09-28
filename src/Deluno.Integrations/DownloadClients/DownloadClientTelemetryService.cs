@@ -42,7 +42,10 @@ public sealed class DownloadClientTelemetryService(
     IDispatchRecoveryHandler? recoveryHandler = null,
     IOutboundNotificationService? outboundNotificationService = null,
     INotificationService? notificationPreferences = null,
-    IDownloadSharingRepository? sharingRepository = null)
+    IDownloadSharingRepository? sharingRepository = null,
+    // #990: resolves a dispatch's movie/series tags, so a tagged
+    // notification connection fires for a cleanup event scoped to it.
+    IMediaTagStore? mediaTagStore = null)
     : IDownloadClientTelemetryService
 {
     /// <summary>
@@ -57,7 +60,8 @@ public sealed class DownloadClientTelemetryService(
         string message,
         string? detailsJson,
         Func<NotificationPreferences, bool> isEnabled,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? titleTags = null)
     {
         if (outboundNotificationService is null)
         {
@@ -73,7 +77,36 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken);
+        await outboundNotificationService.DispatchAsync(eventCategory, title, message, detailsJson, cancellationToken, titleTags);
+    }
+
+    /// <summary>
+    /// #990: a dispatch's own tags, from its EntityType/EntityId when that
+    /// names a movie or series directly. An episode dispatch's EntityId is
+    /// the episode, not the show, and Deluno's tag store only holds
+    /// movie/series tags, so an episode-scoped cleanup event is treated the
+    /// same as one that names no title — a follow-up could resolve the
+    /// episode's show and use its tags instead.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> ResolveDispatchTitleTagsAsync(string? entityType, string? entityId, CancellationToken cancellationToken)
+    {
+        if (mediaTagStore is null || string.IsNullOrWhiteSpace(entityId))
+        {
+            return null;
+        }
+
+        var kind = entityType?.ToLowerInvariant() switch
+        {
+            "movie" => MediaKind.Movie,
+            "series" => MediaKind.Series,
+            _ => (MediaKind?)null
+        };
+        if (kind is null)
+        {
+            return null;
+        }
+
+        return (await mediaTagStore.ListAsync(kind.Value, entityId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
     }
 
     // #824 is off by default, so most callers - including every existing
@@ -542,13 +575,15 @@ public sealed class DownloadClientTelemetryService(
             dispatch is not null ? dispatch.EntityType : "download_dispatch",
             dispatch?.EntityId ?? dispatch?.Id ?? queueItemId,
             cancellationToken);
+        var queueRemovalTags = await ResolveDispatchTitleTagsAsync(dispatch?.EntityType, dispatch?.EntityId, cancellationToken);
         await DispatchCleanupNotificationAsync(
             "download.queue.removed",
             $"Queue item removed: {title}",
             message,
             null,
             prefs => prefs.QueueItemRemovedEnabled,
-            cancellationToken);
+            cancellationToken,
+            queueRemovalTags);
 
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
     }
@@ -1345,13 +1380,15 @@ public sealed class DownloadClientTelemetryService(
                     "download_dispatch",
                     dispatch.Id,
                     cancellationToken);
+                var remediatedTags = await ResolveDispatchTitleTagsAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken);
                 await DispatchCleanupNotificationAsync(
                     "download.health.remediated",
                     $"Stalled/slow download handled: {dispatch.ReleaseName}",
                     activityMessage,
                     details,
                     prefs => prefs.StalledDownloadHandledEnabled,
-                    cancellationToken);
+                    cancellationToken,
+                    remediatedTags);
             }
         }
 

@@ -53,7 +53,10 @@ public sealed class RetentionService(
     // #856: gates the per-file "file.deleted" event a season/episode removal
     // fires below, same toggle a title removal or a manual Files-tab delete
     // uses. Optional so existing positional test constructions keep compiling.
-    INotificationService? notificationPreferences = null)
+    INotificationService? notificationPreferences = null,
+    // #990: the show's own tags, so a tagged notification connection still
+    // fires for a season/episode removal scoped to it.
+    IMediaTagStore? mediaTagStore = null)
 {
     public const string LeavingSoonEvent = "retention.leaving-soon";
     public const string RemovedEvent = "retention.removed";
@@ -475,6 +478,9 @@ public sealed class RetentionService(
             unit.ShowId,
             cancellationToken);
 
+        var showTags = mediaTagStore is null
+            ? null
+            : (await mediaTagStore.ListAsync(MediaKind.Series, unit.ShowId, cancellationToken)).Select(assignment => assignment.Name).ToArray();
         await NotificationOutboundDispatch.DispatchIfEnabledAsync(
             notifications,
             notificationPreferences,
@@ -485,7 +491,8 @@ public sealed class RetentionService(
             prefs => prefs.FileDeletedEnabled,
             "retention-episode-removal",
             logger,
-            cancellationToken);
+            cancellationToken,
+            showTags);
 
         if (!rule.RemoveFromServers)
         {

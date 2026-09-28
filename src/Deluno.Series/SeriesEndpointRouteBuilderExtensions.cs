@@ -1109,12 +1109,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             var forcedImportPreferences = await notificationPreferences.GetPreferencesAsync(cancellationToken);
             if (forcedImportPreferences.ForcedImportEnabled)
             {
+                var forcedTitleTags = (await tagStore.ListAsync(MediaKind.Series, id, cancellationToken)).Select(assignment => assignment.Name).ToArray();
                 await outboundNotificationService.DispatchAsync(
                     "acquisition.override",
                     $"Forced re-download: {item.Title}",
                     forceRedownloadMessage,
                     forceRedownloadDetails,
-                    cancellationToken);
+                    cancellationToken,
+                    forcedTitleTags);
             }
 
             return Results.Ok(answer);

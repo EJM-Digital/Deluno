@@ -820,6 +820,71 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #990: import.completed carries the imported title's own tags, read
+    /// while the catalogue entry the import matched already exists — so a
+    /// notification connection scoped to a tag actually gets to see it. An
+    /// untagged title dispatches with no tags at all, the same as before
+    /// tags reached this path.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_carries_the_titles_own_tags_on_import_completed()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var tagStore = new SqliteMediaTagStore(storage.Factory, timeProvider);
+        var outbound = new RecordingOutboundNotificationService();
+        var enabledPrefs = new FakeNotificationService(new NotificationPreferences { ImportCompletedEnabled = true });
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            downloadDispatchesRepository: new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider),
+            outboundNotificationService: outbound,
+            notificationService: enabledPrefs,
+            mediaTagStore: tagStore);
+
+        // The catalogue entry exists — and is tagged — before the import
+        // that fills in its file, exactly like a title added ahead of time
+        // (from Seerr, or by hand) and then downloaded.
+        var catalogued = await movies.AddAsync(new CreateMovieRequest("Spirited Away", 2001, null), CancellationToken.None);
+        await tagStore.ReplaceAsync(MediaKind.Movie, catalogued.Id, [new MediaTagAssignment("anime-tag", "anime")], CancellationToken.None);
+
+        var sourcePath = Path.Combine(downloadsPath, "Spirited.Away.2001.WEB.1080p.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Range(0, 4096).Select(value => (byte)(value % 251)).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            libraryId: library.Id, mediaType: "movies", entityType: "movie", entityId: catalogued.Id,
+            releaseName: "Spirited Away 2001 WEB 1080p", indexerName: "TestIndexer",
+            downloadClientId: "client-1", downloadClientName: "TestClient",
+            status: "sent", notesJson: null, cancellationToken: CancellationToken.None);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Spirited Away", 2001, [], [], null, null),
+                "copy", Overwrite: false, AllowCopyFallback: true, DispatchId: dispatchId),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("import.completed", outbound.DispatchedCategories);
+        var titleTags = outbound.DispatchedTitleTags["import.completed"];
+        Assert.NotNull(titleTags);
+        Assert.Contains("anime", titleTags);
+    }
+
+    /// <summary>
     /// #857: disabling ImportCompletedEnabled suppresses the outbound
     /// dispatch, matching how the other lifecycle toggles gate their events.
     /// </summary>
@@ -7165,7 +7230,8 @@ public sealed class ImportPipelineServiceTests
         IImportFailureRuleRepository? failureRules = null,
         Deluno.Connections.Data.ISeerrAcquisitionsRepository? seerrAcquisitions = null,
         Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
-        Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null)
+        Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
+        IMediaTagStore? mediaTagStore = null)
         => new(
             platform,
             librariesRepository,
@@ -7196,7 +7262,8 @@ public sealed class ImportPipelineServiceTests
             freeSpaceBytesProbe: freeSpaceBytesProbe ?? (_ => long.MaxValue),
             seerrAcquisitions: seerrAcquisitions,
             seerrRepository: seerrRepository,
-            seerrClient: seerrClient);
+            seerrClient: seerrClient,
+            mediaTagStore: mediaTagStore);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,
@@ -7440,9 +7507,13 @@ public sealed class ImportPipelineServiceTests
     {
         public List<string> DispatchedCategories { get; } = [];
 
+        /// <summary>#990: the titleTags each dispatch carried, by event category (last write wins for a repeated category).</summary>
+        public Dictionary<string, IReadOnlyList<string>?> DispatchedTitleTags { get; } = [];
+
         public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken, IReadOnlyList<string>? titleTags = null)
         {
             DispatchedCategories.Add(eventCategory);
+            DispatchedTitleTags[eventCategory] = titleTags;
             return Task.CompletedTask;
         }
 

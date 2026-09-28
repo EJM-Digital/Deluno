@@ -87,7 +87,10 @@ public sealed class RefusedDownloadCleanupService(
     IActivityFeedRepository activityFeedRepository,
     ILogger<RefusedDownloadCleanupService> logger,
     IOutboundNotificationService? outboundNotificationService = null,
-    INotificationService? notificationPreferences = null) : IRefusedDownloadCleanupService
+    INotificationService? notificationPreferences = null,
+    // #990: the cleared release's own title tags, so a tagged notification
+    // connection fires for a cleanup scoped to it.
+    IMediaTagStore? mediaTagStore = null) : IRefusedDownloadCleanupService
 {
     public async Task<RefusedDownloadCleanupResult> CleanUpEverythingAsync(CancellationToken cancellationToken)
     {
@@ -248,11 +251,18 @@ public sealed class RefusedDownloadCleanupService(
                 entityType,
                 release.EntityId,
                 cancellationToken);
+            var clearedTags = mediaTagStore is null || string.IsNullOrWhiteSpace(release.EntityId)
+                ? null
+                : (await mediaTagStore.ListAsync(
+                    string.Equals(entityType, "series", StringComparison.OrdinalIgnoreCase) ? MediaKind.Series : MediaKind.Movie,
+                    release.EntityId,
+                    cancellationToken)).Select(assignment => assignment.Name).ToArray();
             await DispatchCleanupNotificationAsync(
                 "download.cleanup.cleared",
                 $"Cleanup cleared: {release.ReleaseName}",
                 cleanupMessage,
-                cancellationToken);
+                cancellationToken,
+                clearedTags);
 
             return RefusedDownloadCleanupOutcomes.Cleared;
         }
@@ -274,7 +284,8 @@ public sealed class RefusedDownloadCleanupService(
         string eventCategory,
         string title,
         string message,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? titleTags = null)
     {
         if (outboundNotificationService is null)
         {
@@ -290,6 +301,6 @@ public sealed class RefusedDownloadCleanupService(
             }
         }
 
-        await outboundNotificationService.DispatchAsync(eventCategory, title, message, null, cancellationToken);
+        await outboundNotificationService.DispatchAsync(eventCategory, title, message, null, cancellationToken, titleTags);
     }
 }
