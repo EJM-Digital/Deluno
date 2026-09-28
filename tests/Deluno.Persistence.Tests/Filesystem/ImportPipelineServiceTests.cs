@@ -4709,6 +4709,17 @@ public sealed class ImportPipelineServiceTests
         Assert.True(File.Exists(extraPath));
         var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
         Assert.Equal(2, detail!.Episodes.Count(episode => episode.HasFile));
+
+        // #957: an unmatched season-pack file is not only named in the
+        // response and Activity -- it raises the same kind of recovery case
+        // a missing processor-output file does, so it shows on the show page
+        // and on Health until dealt with. It named no episode, so only
+        // "Import manually" applies, not "Search".
+        var summary = await repository.GetImportRecoverySummaryAsync(CancellationToken.None);
+        var unmatchedCase = Assert.Single(summary.RecentCases, item => item.FailureKind == "processor-unmatched-output");
+        Assert.Contains("Making.Of", unmatchedCase.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("does not resolve to a catalogued episode", unmatchedCase.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Import what is there manually, or search again.", unmatchedCase.RecommendedAction);
     }
 
     /// <summary>
@@ -4796,6 +4807,14 @@ public sealed class ImportPipelineServiceTests
         // Still missing, not blocked.
         var missingEpisode = detail.Episodes.Single(episode => episode.EpisodeNumber == 2);
         Assert.False(missingEpisode.HasFile);
+
+        // #957: the corrupt file matched an episode, so its case names that
+        // episode and offers Search as well as Import manually -- the same
+        // plumbing a missing processor-output file already uses (#930).
+        var unmatchedCase = Assert.Single(recovery.RecentCases, item => item.FailureKind == "processor-unmatched-output");
+        Assert.Contains("moov atom not found", unmatchedCase.Summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Search for this episode, or import it manually.", unmatchedCase.RecommendedAction);
+        Assert.Contains($"\"episodeId\":\"{missingEpisode.EpisodeId}\"", unmatchedCase.DetailsJson, StringComparison.OrdinalIgnoreCase);
 
         // #889: a search is queued for exactly the missing episode - never
         // the whole show, which already has two episodes it does not need
