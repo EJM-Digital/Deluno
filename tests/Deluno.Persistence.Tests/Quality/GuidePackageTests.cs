@@ -163,6 +163,64 @@ public sealed class GuidePackageTests
             && relationship.ToTraitId == "audio.format.truehd");
     }
 
+    /// <summary>
+    /// #987: the owner wants TRaSH's own HDR/Dolby Vision formats promoted from
+    /// Advanced to reviewed, using TRaSH's own scores, so #938's plain
+    /// quality choices actually use them instead of only the four Deluno
+    /// invented HDR10/HDR10+/Dolby Vision/HLG replacements.
+    /// </summary>
+    [Theory]
+    [InlineData("493b6d1dbec3c3364c59d7607f7e3405", "HDR")]
+    [InlineData("505d871304820ba7106b693be6fe4a9e", "HDR")]
+    [InlineData("b337d6812e06c200ec9a2d3cfa9d20a7", "DV Boost")]
+    [InlineData("7c3a61a9c6cb04f52f1544be6d44a026", "DV Boost")]
+    [InlineData("caa37d0df9c348912df1fb1d88f9273a", "HDR10+ Boost")]
+    [InlineData("0c4b99df9206d2cfac3c05ab897dd62a", "HDR10+ Boost")]
+    [InlineData("923b6abef9b17f937fab56cfcf89e1f1", "DV (w/o HDR fallback)")]
+    [InlineData("9b27ab6498ec0f31a3353992e19434ca", "DV (w/o HDR fallback)")]
+    [InlineData("f700d29429c023a5734505e77daeaea7", "DV (Disk)")]
+    [InlineData("ef4963043b0987f8485bc9106f16db38", "DV (Disk)")]
+    [InlineData("9c38ebb7384dada637be8899efa68e6f", "SDR")]
+    [InlineData("2016d1676f5ee13a5b7257ff86ac9a93", "SDR")]
+    public void Hdr_and_dolby_vision_formats_are_reviewed_with_a_typed_mapping(string trashId, string name)
+    {
+        var package = GuidePackageCatalog.Current;
+        var format = Assert.Single(package.CustomFormats, item => item.TrashId == trashId);
+
+        Assert.Equal(name, format.Name);
+        Assert.Equal("hdr", format.Category);
+        Assert.Equal(GuideMappingStatus.Reviewed, format.MappingStatus);
+        Assert.NotEmpty(format.MappedTraitIds);
+        Assert.All(format.MappedTraitIds, traitId =>
+            Assert.True(PreferenceTraitRegistry.Current.TryResolve(traitId, out _), $"'{traitId}' is not a known trait."));
+    }
+
+    /// <summary>
+    /// #987: a release with "DV (w/o HDR fallback)" must score in the
+    /// compiled plan exactly as TRaSH's own web-2160p profile scores it
+    /// (-10000), and, now that it is reviewed, must be represented by the
+    /// typed "no HDR fallback" trait rather than left as an Advanced-only
+    /// legacy rule.
+    /// </summary>
+    [Fact]
+    public void Dv_without_hdr_fallback_scores_as_trash_says_and_is_typed_not_advanced()
+    {
+        const string trashId = "923b6abef9b17f937fab56cfcf89e1f1";
+        var package = GuidePackageCatalog.Current;
+        var format = Assert.Single(package.CustomFormats, item => item.TrashId == trashId);
+        Assert.Equal(-10000, format.OriginalScore);
+
+        var compilation = GuidePlanCompiler.Compile("web-2160p", "movies", package);
+        var source = Assert.Single(compilation.Plan.Sources!, item => item.SourceId == trashId);
+
+        Assert.Equal("-10000", source.OriginalScore);
+        Assert.Equal("-10000", source.AssignedScore);
+        Assert.DoesNotContain(compilation.AdvancedRules, rule => rule.TrashId == trashId);
+
+        var dynamicRange = compilation.Plan.Families.Single(family => family.Dimension == "HDR / dynamic range");
+        Assert.Contains(dynamicRange.Levels, level => level.TraitIds.Contains("video.dynamic-range.no-hdr-fallback"));
+    }
+
     [Theory]
     [InlineData("french")]
     [InlineData("german")]
