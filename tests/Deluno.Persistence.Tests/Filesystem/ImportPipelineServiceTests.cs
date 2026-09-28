@@ -3241,9 +3241,66 @@ public sealed class ImportPipelineServiceTests
         Assert.Equal("Series -  Title (2020).mkv", Path.GetFileName(result.Response!.Preview.DestinationPath));
     }
 
-    /// <summary>#760: MediaInfo and Original Filename tokens read the same release-name evidence Quality already does, on the real import path.</summary>
+    /// <summary>
+    /// #760/#979: a MediaInfo token whose field the probe read wins over the
+    /// release name -- CreateService's default probe says h264, the release
+    /// name says x265, and the name lies. Audio channels still comes from the
+    /// name, because this probe has no audio stream to read: the two tokens
+    /// disagree with the name on purpose, one falls back and one does not, so
+    /// this covers both directions in one file.
+    /// </summary>
     [Fact]
-    public async Task ExecuteAsync_renders_MediaInfo_and_original_filename_tokens_from_the_release_name()
+    public async Task ExecuteAsync_renders_MediaInfo_tokens_from_the_probe_over_a_disagreeing_release_name()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        // The name claims x265 (HEVC); CreateService's default probe
+        // (SuccessfulProbeService) reads the file itself as h264 (H.264).
+        // They disagree deliberately.
+        const string releaseName = "Silent.Hill.2020.2160p.WEB-DL.DTS-HD.5.1.x265-DELUNO";
+        var sourcePath = Path.Combine(downloadsPath, releaseName + ".mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(
+            platform,
+            movieRootPath,
+            downloadsPath,
+            movieFileFormat: "{Movie Title} ({Release Year}) [{MediaInfo VideoCodec} {MediaInfo AudioChannels}] {Original Filename}");
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Silent Hill", 2020, [], [], null, null),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true),
+            CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        // Codec: the probe (H.264), not the name's claimed HEVC.
+        // Channels: the name's 5.1, since this probe read no audio stream.
+        Assert.Equal(
+            $"Silent Hill (2020) [H.264 5.1] {releaseName}.mkv",
+            Path.GetFileName(result.Response!.Preview.DestinationPath));
+    }
+
+    /// <summary>
+    /// #979: with no usable probe (ffprobe is unavailable on this install),
+    /// the MediaInfo tokens fall back to the release name exactly as they
+    /// always did.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_falls_back_to_the_release_name_when_the_probe_has_nothing()
     {
         using var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
@@ -3266,7 +3323,13 @@ public sealed class ImportPipelineServiceTests
             movieFileFormat: "{Movie Title} ({Release Year}) [{MediaInfo VideoCodec} {MediaInfo AudioChannels}] {Original Filename}");
         await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
         var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
-        var service = CreateService(storage, timeProvider, platform, libraries, movies);
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            movies,
+            mediaProbeService: new UnavailableProbeService());
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
@@ -6912,6 +6975,13 @@ public sealed class ImportPipelineServiceTests
     {
         public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
             => Task.FromResult(new MediaProbeInfo("failed", "test", message, null, null, null, [], [], []));
+    }
+
+    /// <summary>#979: an install with no ffprobe on the path -- unavailable, not failed, so it never blocks an import, only removes the probe's naming evidence.</summary>
+    private sealed class UnavailableProbeService : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(new MediaProbeInfo("unavailable", "test", "ffprobe is unavailable.", null, null, null, [], [], []));
     }
 
     private static async Task<ProcessedScene> ProcessedSceneAsync(

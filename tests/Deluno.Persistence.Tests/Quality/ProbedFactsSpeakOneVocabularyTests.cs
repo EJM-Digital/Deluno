@@ -114,4 +114,56 @@ public sealed class ProbedFactsSpeakOneVocabularyTests
         Assert.Equal("PRORES", MediaProbedFacts.VideoCodec("prores"));
         Assert.Equal("VORBIS", MediaProbedFacts.AudioCodec("vorbis", null));
     }
+
+    /// <summary>#979: the pixel format and the name's "10bit"/"12bit" tag say the same thing.</summary>
+    [Theory]
+    [InlineData("yuv420p10le", "Movie.2016.2160p.WEB.10bit.x265-GRP.mkv", "10-bit")]
+    [InlineData("yuv420p12le", "Movie.2016.2160p.WEB.12bit.x265-GRP.mkv", "12-bit")]
+    [InlineData("p010le", null, "10-bit")]
+    [InlineData("p012le", null, "12-bit")]
+    public void The_pixel_format_and_the_name_agree_about_bit_depth(string pixelFormat, string? fileName, string expected)
+    {
+        Assert.Equal(expected, MediaProbedFacts.BitDepth(pixelFormat));
+        if (fileName is not null)
+        {
+            Assert.Equal(expected, MediaFileNameFacts.Parse(fileName).BitDepth);
+        }
+    }
+
+    /// <summary>
+    /// A plain SDR pixel format without a depth suffix reads as 8-bit — a
+    /// measurement, unlike the name parser, which stays silent because scene
+    /// naming never tags "8bit" (it is the assumed default).
+    /// </summary>
+    [Theory]
+    [InlineData("yuv420p")]
+    [InlineData("nv12")]
+    [InlineData("yuvj420p")]
+    public void An_untagged_pixel_format_reads_as_eight_bit(string pixelFormat)
+        => Assert.Equal("8-bit", MediaProbedFacts.BitDepth(pixelFormat));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("unknownfmt")]
+    public void An_unrecognised_or_missing_pixel_format_says_nothing(string? pixelFormat)
+        => Assert.Null(MediaProbedFacts.BitDepth(pixelFormat));
+
+    /// <summary>
+    /// The colour transfer and the name's HDR token say the same thing, and
+    /// side data (Dolby Vision) outranks the transfer the same way the name
+    /// parser ranks "dv" ahead of a bare "hdr".
+    /// </summary>
+    [Theory]
+    [InlineData("smpte2084", null, "HDR10")]
+    [InlineData("arib-std-b67", null, "HDR")]
+    [InlineData("smpte2084", "DOVI configuration record", "Dolby Vision")]
+    [InlineData(null, null, null)]
+    [InlineData("bt709", null, null)]
+    public void The_colour_transfer_and_side_data_say_the_dynamic_range(
+        string? colorTransfer, string? sideDataType, string? expected)
+    {
+        var sideData = sideDataType is null ? null : new[] { sideDataType };
+        Assert.Equal(expected, MediaProbedFacts.DynamicRange(colorTransfer, sideData));
+    }
 }
