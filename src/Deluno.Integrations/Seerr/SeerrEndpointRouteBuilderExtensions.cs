@@ -239,7 +239,9 @@ public static class SeerrEndpointRouteBuilderExtensions
             MovieQualityProfileId: request.MovieQualityProfileId ?? stored?.MovieQualityProfileId,
             SeriesLibraryId: request.SeriesLibraryId ?? stored?.SeriesLibraryId,
             SeriesQualityProfileId: request.SeriesQualityProfileId ?? stored?.SeriesQualityProfileId,
-            WebhookSecret: stored?.WebhookSecret);
+            WebhookSecret: stored?.WebhookSecret,
+            Tags: request.Tags ?? stored?.Tags ?? string.Empty,
+            Tags4k: request.Tags4k ?? stored?.Tags4k ?? string.Empty);
     }
 
     private static Dictionary<string, string[]> Validate(SaveSeerrRequest request, SeerrConnection? stored)

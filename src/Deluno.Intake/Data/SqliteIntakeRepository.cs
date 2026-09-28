@@ -302,7 +302,8 @@ public sealed class SqliteIntakeRepository(
                 title = excluded.title,
                 year = excluded.year,
                 imdb_id = excluded.imdb_id,
-                last_seen_utc = excluded.last_seen_utc;
+                last_seen_utc = excluded.last_seen_utc,
+                dropped_utc = NULL;
             """;
         AddParameter(command, "@id", Guid.CreateVersion7().ToString("N"));
         AddParameter(command, "@sourceId", sourceId);
@@ -330,6 +331,81 @@ public sealed class SqliteIntakeRepository(
         AddParameter(select, "@entryKey", entryKey);
         using var reader = await select.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadIntakeTitleOrigin(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<IntakeDroppedTitle>> MarkDroppedTitlesAsync(
+        string sourceId,
+        DateTimeOffset syncStartedUtc,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var dropped = new List<(string MediaType, string EntityId, string Title)>();
+        using (var select = connection.CreateCommand())
+        {
+            select.Transaction = transaction;
+            select.CommandText =
+                """
+                SELECT media_type, entity_id, title
+                FROM intake_title_origins
+                WHERE source_id = @sourceId AND dropped_utc IS NULL AND last_seen_utc < @started;
+                """;
+            AddParameter(select, "@sourceId", sourceId);
+            AddParameter(select, "@started", syncStartedUtc.ToString("O"));
+            using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                dropped.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+            }
+        }
+
+        if (dropped.Count == 0)
+        {
+            return [];
+        }
+
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText =
+                """
+                UPDATE intake_title_origins
+                SET dropped_utc = @now
+                WHERE source_id = @sourceId AND dropped_utc IS NULL AND last_seen_utc < @started;
+                """;
+            AddParameter(update, "@sourceId", sourceId);
+            AddParameter(update, "@started", syncStartedUtc.ToString("O"));
+            AddParameter(update, "@now", timeProvider.GetUtcNow().ToString("O"));
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var offEveryList = new List<IntakeDroppedTitle>();
+        foreach (var group in dropped.GroupBy(item => (item.MediaType, item.EntityId)))
+        {
+            using var stillListed = connection.CreateCommand();
+            stillListed.Transaction = transaction;
+            stillListed.CommandText =
+                """
+                SELECT 1
+                FROM intake_title_origins o
+                WHERE o.media_type = @mediaType AND o.entity_id = @entityId
+                  AND o.dropped_utc IS NULL
+                  AND EXISTS (SELECT 1 FROM intake_sources s WHERE s.id = o.source_id)
+                LIMIT 1;
+                """;
+            AddParameter(stillListed, "@mediaType", group.Key.MediaType);
+            AddParameter(stillListed, "@entityId", group.Key.EntityId);
+            if (await stillListed.ExecuteScalarAsync(cancellationToken) is null)
+            {
+                offEveryList.Add(new IntakeDroppedTitle(group.Key.MediaType, group.Key.EntityId, group.First().Title));
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return offEveryList;
     }
 
     public async Task<IntakeSourceItem> CreateIntakeSourceAsync(

@@ -72,13 +72,13 @@ public sealed class SqliteMovieCollectionsRepository(
                     name, overview, poster_url, backdrop_url, monitored, monitor_movies,
                     quality_profile_id, quality_profile_name, minimum_availability,
                     search_on_add, last_synced_utc, next_sync_utc, last_sync_error,
-                    created_utc, updated_utc
+                    created_utc, updated_utc, tags
                 )
                 VALUES (
                     @id, @provider, @providerId, @libraryId, @libraryName, @rootPath,
                     @name, @overview, @posterUrl, @backdropUrl, @monitored, @monitorMovies,
                     @qualityProfileId, @qualityProfileName, @minimumAvailability,
-                    @searchOnAdd, NULL, NULL, NULL, @now, @now
+                    @searchOnAdd, NULL, NULL, NULL, @now, @now, @tags
                 )
                 ON CONFLICT(provider, provider_id, library_id) DO UPDATE SET
                     library_name = excluded.library_name,
@@ -93,6 +93,7 @@ public sealed class SqliteMovieCollectionsRepository(
                     quality_profile_name = excluded.quality_profile_name,
                     minimum_availability = excluded.minimum_availability,
                     search_on_add = excluded.search_on_add,
+                    tags = CASE WHEN @tagsGiven = 1 THEN excluded.tags ELSE movie_collections.tags END,
                     updated_utc = excluded.updated_utc;
                 """;
             AddParameter(command, "@id", id);
@@ -111,6 +112,8 @@ public sealed class SqliteMovieCollectionsRepository(
             AddParameter(command, "@qualityProfileName", Normalize(qualityProfileName));
             AddParameter(command, "@minimumAvailability", minimumAvailability);
             AddParameter(command, "@searchOnAdd", request.SearchOnAdd ? 1 : 0);
+            AddParameter(command, "@tags", NormalizeCsv(request.Tags));
+            AddParameter(command, "@tagsGiven", request.Tags is null ? 0 : 1);
             AddParameter(command, "@now", now);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -385,9 +388,11 @@ public sealed class SqliteMovieCollectionsRepository(
                 quality_profile_id = COALESCE(@qualityProfileId, quality_profile_id),
                 minimum_availability = COALESCE(@minimumAvailability, minimum_availability),
                 search_on_add = COALESCE(@searchOnAdd, search_on_add),
+                tags = COALESCE(@tags, tags),
                 updated_utc = @now
             WHERE id = @id;
             """;
+        AddParameter(command, "@tags", request.Tags is null ? null : NormalizeCsv(request.Tags));
         AddParameter(command, "@monitored", request.Monitored.HasValue ? request.Monitored.Value ? 1 : 0 : null);
         AddParameter(command, "@monitorMovies", request.MonitorMovies.HasValue ? request.MonitorMovies.Value ? 1 : 0 : null);
         AddParameter(command, "@qualityProfileId", Normalize(request.QualityProfileId));
@@ -509,7 +514,7 @@ public sealed class SqliteMovieCollectionsRepository(
             COUNT(m.provider_id) AS member_count,
             COALESCE(SUM(CASE WHEN m.local_movie_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS held_count,
             c.last_synced_utc, c.next_sync_utc, c.last_sync_error,
-            c.created_utc, c.updated_utc
+            c.created_utc, c.updated_utc, c.tags
         FROM movie_collections c
         LEFT JOIN movie_collection_members m ON m.collection_id = c.id
         """;
@@ -570,7 +575,8 @@ public sealed class SqliteMovieCollectionsRepository(
             ReadNullableTimestamp(reader, 19),
             ReadNullableString(reader, 20),
             ParseTimestamp(reader.GetString(21)),
-            ParseTimestamp(reader.GetString(22)));
+            ParseTimestamp(reader.GetString(22)),
+            reader.GetString(23));
     }
 
     private static async Task<MovieCollectionMemberItem?> ReadMemberAsync(

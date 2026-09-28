@@ -101,4 +101,6 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? RemoveAndDeletePackedArchivesFromClient = null,
     string? UnmatchedImportPolicy = null,
     int? UnmatchedImportGiveUpDays = null,
-    bool? DownloadHealthDangerousFileEnabled = null);
+    bool? DownloadHealthDangerousFileEnabled = null,
+    bool? TagTitlesOffEveryList = null,
+    string? OffListTag = null);

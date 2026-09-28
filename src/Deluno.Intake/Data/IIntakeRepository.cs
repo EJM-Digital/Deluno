@@ -23,6 +23,15 @@ public interface IIntakeRepository
 
     Task<IntakeTitleOriginItem?> RecordIntakeTitleOriginAsync(CreateIntakeTitleOriginRequest request, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// After a list's sync fetched its entries (#1046): marks every title of
+    /// this list that the sync did not see again as dropped from it, and
+    /// returns the ones that are now on no list at all (every list they came
+    /// from has dropped them, or no longer exists). A title seen again by a
+    /// later sync is no longer dropped.
+    /// </summary>
+    Task<IReadOnlyList<IntakeDroppedTitle>> MarkDroppedTitlesAsync(string sourceId, DateTimeOffset syncStartedUtc, CancellationToken cancellationToken);
+
     Task<IntakeSourceItem> CreateIntakeSourceAsync(
         CreateIntakeSourceRequest request,
         CancellationToken cancellationToken);

@@ -494,6 +494,8 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
 
         public Task<IntakeTitleOriginItem?> RecordIntakeTitleOriginAsync(CreateIntakeTitleOriginRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<IntakeDroppedTitle>> MarkDroppedTitlesAsync(string sourceId, DateTimeOffset syncStartedUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<IntakeSourceItem> CreateIntakeSourceAsync(CreateIntakeSourceRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
 
         public Task<IntakeSourceItem?> UpdateIntakeSourceAsync(string id, UpdateIntakeSourceRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();

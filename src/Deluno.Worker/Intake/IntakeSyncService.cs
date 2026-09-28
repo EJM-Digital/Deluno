@@ -41,7 +41,8 @@ public sealed class IntakeSyncService(
     IHttpClientFactory httpClientFactory,
     ILogger<IntakeSyncService> logger,
     ITraktTokenProvider? traktTokenProvider = null,
-    ITraktClient? traktClient = null)
+    ITraktClient? traktClient = null,
+    ITitleTagService? titleTagService = null)
     : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
     private const int PreviewLimit = 100;
@@ -243,7 +244,7 @@ public sealed class IntakeSyncService(
         bool? searchOnAddOverride,
         CancellationToken cancellationToken)
     {
-
+        var syncStartedUtc = timeProvider.GetUtcNow();
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var targetLibrary = ResolveTargetLibrary(source, libraries);
         if (targetLibrary is null)
@@ -533,6 +534,14 @@ public sealed class IntakeSyncService(
                 cancellationToken);
         }
 
+        // #1046: the optional "no longer on any list" tag (Sonarr's ListSyncTag). Only
+        // after a clean sync of the real list, so a failed or partial fetch never
+        // makes a title look as if it had left.
+        if (suppliedEntries is null && errors == 0 && titleTagService is not null)
+        {
+            await TagTitlesOffEveryListAsync(source, syncStartedUtc, relatedJobId, cancellationToken);
+        }
+
         var status = errors > 0
             ? "partial"
             : "success";
@@ -586,6 +595,51 @@ public sealed class IntakeSyncService(
             errors,
             searchRequested,
             summary);
+    }
+
+    private async Task TagTitlesOffEveryListAsync(
+        IntakeSourceItem source,
+        DateTimeOffset syncStartedUtc,
+        string? relatedJobId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var tag = settings?.OffListTag?.Trim();
+            if (settings is null || !settings.TagTitlesOffEveryList || string.IsNullOrWhiteSpace(tag))
+            {
+                return;
+            }
+
+            var offEveryList = await intakeRepository.MarkDroppedTitlesAsync(source.Id, syncStartedUtc, cancellationToken);
+            var tagged = new List<string>();
+            foreach (var title in offEveryList)
+            {
+                var kind = title.MediaType == "tv" ? MediaKind.Series : MediaKind.Movie;
+                var given = await titleTagService!.GiveAsync(kind, title.EntityId, [tag], cancellationToken);
+                if (given.Count > 0)
+                {
+                    tagged.Add(title.Title);
+                }
+            }
+
+            if (tagged.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "intake.off-list-tagged",
+                    $"{source.Name}: {tagged.Count} title{(tagged.Count == 1 ? " is" : "s are")} no longer on any list, so Deluno tagged {(tagged.Count == 1 ? "it" : "them")} “{tag}”: {string.Join(", ", tagged.Take(10))}{(tagged.Count > 10 ? $" and {tagged.Count - 10} more" : string.Empty)}.",
+                    JsonSerializer.Serialize(new { source.Id, source.Name, tag, count = tagged.Count }, JsonOptions),
+                    relatedJobId,
+                    "intake-source",
+                    source.Id,
+                    cancellationToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Tagging titles that left every list failed for intake source {SourceId}.", source.Id);
+        }
     }
 
     private async Task<IReadOnlyList<IntakeEntry>> FetchEntriesAsync(IntakeSourceItem source, CancellationToken cancellationToken)

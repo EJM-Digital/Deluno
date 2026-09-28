@@ -32,7 +32,9 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
         var result = new Dictionary<string, List<TagUserItem>>(StringComparer.Ordinal);
-        foreach (var row in await ReadRowsAsync(connection, null, cancellationToken))
+        var allRows = await ReadRowsAsync(connection, null, cancellationToken);
+        allRows.AddRange(await ReadCollectionRowsAsync(cancellationToken));
+        foreach (var row in allRows)
         {
             foreach (var tag in row.Tags)
             {
@@ -74,6 +76,55 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
 
         await Exec(connection, transaction, "UPDATE tags SET name = @name WHERE id = @id;", cancellationToken, ("@name", next), ("@id", tagId));
         await transaction.CommitAsync(cancellationToken);
+
+        // #1046: a collection's tags live in the movie database, so they follow the rename there.
+        try
+        {
+            await using var movies = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+            foreach (var row in await ReadCollectionRowsAsync(movies, cancellationToken))
+            {
+                if (!row.Tags.Contains(previous, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var updated = row.Tags
+                    .Select(tag => string.Equals(tag, previous, StringComparison.OrdinalIgnoreCase) ? next : tag)
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                await Exec(movies, null, "UPDATE movie_collections SET tags = @value WHERE id = @id;", cancellationToken, ("@value", string.Join(",", updated)), ("@id", row.Id));
+            }
+        }
+        catch (DbException)
+        {
+            // No movie database yet means no collection can carry the tag.
+        }
+    }
+
+    private async Task<List<TagRow>> ReadCollectionRowsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var movies = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+            return await ReadCollectionRowsAsync(movies, cancellationToken);
+        }
+        catch (DbException)
+        {
+            return [];
+        }
+    }
+
+    private static async Task<List<TagRow>> ReadCollectionRowsAsync(DbConnection movies, CancellationToken cancellationToken)
+    {
+        var rows = new List<TagRow>();
+        using var command = movies.CreateCommand();
+        command.CommandText = "SELECT id, name, tags FROM movie_collections WHERE trim(tags) <> '';";
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new TagRow("movie_collections", "tags", "collection", reader.GetString(0), reader.GetString(1), "/collections", Split(reader.GetString(2))));
+        }
+
+        return rows;
     }
 
     public async Task<bool> DeleteAsync(string tagId, string name, CancellationToken cancellationToken)
@@ -93,7 +144,8 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
         string Label,
         string Link,
         IReadOnlyList<string> Tags,
-        bool HasOtherSharingMatch = false);
+        bool HasOtherSharingMatch = false,
+        string IdColumn = "id");
 
     private static async Task<List<TagRow>> ReadRowsAsync(DbConnection connection, DbTransaction? transaction, CancellationToken cancellationToken)
     {
@@ -115,6 +167,16 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
             r => new TagRow("indexer_sources", "tags", "indexer", r.GetString(0), r.GetString(1), "/indexers/indexers", Split(r.GetString(2))));
         await Read("SELECT id, name, tags FROM download_clients WHERE trim(tags) <> '';",
             r => new TagRow("download_clients", "tags", "downloadClient", r.GetString(0), r.GetString(1), "/indexers/download-clients", Split(r.GetString(2))));
+        // #1046: a Seerr connection gives tags to the titles it adds, and the optional
+        // "no longer on any list" setting names one; both must follow a rename and block a delete.
+        foreach (var column in new[] { "tags", "tags_4k" })
+        {
+            await Read($"SELECT id, name, {column} FROM seerr_servers WHERE trim({column}) <> '';",
+                r => new TagRow("seerr_servers", column, "seerrConnection", r.GetString(0), r.GetString(1), "/indexers/media-servers", Split(r.GetString(2))));
+        }
+
+        await Read("SELECT setting_key, setting_value FROM system_settings WHERE setting_key = 'lists.offListTag' AND trim(setting_value) <> '';",
+            r => new TagRow("system_settings", "setting_value", "listSetting", r.GetString(0), "Titles no longer on any list", "/settings/lists", [r.GetString(1).Trim()], IdColumn: "setting_key"));
         await Read("SELECT id, name, tags FROM notification_webhooks WHERE trim(tags) <> '';",
             r => new TagRow("notification_webhooks", "tags", "notification", r.GetString(0), r.GetString(1), "/settings/notifications", Split(r.GetString(2))));
         await Read("SELECT id, tags_csv, category_pattern, tracker_pattern FROM sharing_rules WHERE trim(coalesce(tags_csv, '')) <> '';",
@@ -148,10 +210,10 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
     {
         // Table and column names come from the closed list in ReadRowsAsync, never from input.
         object? stored = row.Table == "sharing_rules" && value.Length == 0 ? null : value;
-        return Exec(connection, transaction, $"UPDATE {row.Table} SET {row.Column} = @value WHERE id = @id;", cancellationToken, ("@value", stored), ("@id", row.Id));
+        return Exec(connection, transaction, $"UPDATE {row.Table} SET {row.Column} = @value WHERE {row.IdColumn} = @id;", cancellationToken, ("@value", stored), ("@id", row.Id));
     }
 
-    private static async Task<int> Exec(DbConnection connection, DbTransaction transaction, string sql, CancellationToken cancellationToken, params (string Name, object? Value)[] parameters)
+    private static async Task<int> Exec(DbConnection connection, DbTransaction? transaction, string sql, CancellationToken cancellationToken, params (string Name, object? Value)[] parameters)
     {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;

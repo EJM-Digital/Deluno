@@ -29,7 +29,9 @@ public sealed record MovieCollectionItem(
     DateTimeOffset? NextSyncUtc,
     string? LastSyncError,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc);
+    DateTimeOffset UpdatedUtc,
+    /// <summary>Comma-separated tag names given to every movie this collection adds (#1046). Empty gives none.</summary>
+    string Tags = "");
 
 public sealed record MovieCollectionMemberItem(
     string CollectionId,
@@ -52,14 +54,16 @@ public sealed record CreateMovieCollectionRequest(
     bool MonitorMovies = true,
     string? QualityProfileId = null,
     string? MinimumAvailability = null,
-    bool SearchOnAdd = false);
+    bool SearchOnAdd = false,
+    string? Tags = null);
 
 public sealed record UpdateMovieCollectionRequest(
     bool? Monitored = null,
     bool? MonitorMovies = null,
     string? QualityProfileId = null,
     string? MinimumAvailability = null,
-    bool? SearchOnAdd = null);
+    bool? SearchOnAdd = null,
+    string? Tags = null);
 
 public sealed record MovieCollectionSyncResult(
     string CollectionId,

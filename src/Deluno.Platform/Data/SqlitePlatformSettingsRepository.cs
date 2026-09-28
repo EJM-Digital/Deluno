@@ -294,6 +294,9 @@ public sealed class SqlitePlatformSettingsRepository(
         // IDownloadHealthRepository.GetDownloadHealthRulesAsync the same way
         // the older download-health.* legacy toggles already are.
         await UpsertSettingAsync(connection, transaction, "download-health.dangerousFile.enabled", request.DownloadHealthDangerousFileEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        // #1046: off by default (#936), for existing installs too: a missing key reads as off.
+        await UpsertSettingAsync(connection, transaction, "lists.tagTitlesOffEveryList", request.TagTitlesOffEveryList == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "lists.offListTag", (request.OffListTag ?? string.Empty).Trim(), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -674,7 +677,9 @@ public sealed class SqlitePlatformSettingsRepository(
                 ? GetValue(settings, "import.unmatchedPolicy")!
                 : UnmatchedImportPolicies.Hold,
             UnmatchedImportGiveUpDays: ReadPositiveInt(GetValue(settings, "import.unmatchedGiveUpDays"), 7, 1, 365),
-            DownloadHealthDangerousFileEnabled: string.Equals(GetValue(settings, "download-health.dangerousFile.enabled"), "true", StringComparison.OrdinalIgnoreCase));
+            DownloadHealthDangerousFileEnabled: string.Equals(GetValue(settings, "download-health.dangerousFile.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            TagTitlesOffEveryList: string.Equals(GetValue(settings, "lists.tagTitlesOffEveryList"), "true", StringComparison.OrdinalIgnoreCase),
+            OffListTag: (GetValue(settings, "lists.offListTag") ?? string.Empty).Trim());
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

@@ -8,7 +8,10 @@ const KIND_LABELS: Record<string, string> = {
   sharingRule: "Seeding rule",
   librarySource: "Library source",
   acquisitionRule: "Release rule",
-  destinationRule: "Destination rule"
+  destinationRule: "Destination rule",
+  seerrConnection: "Seerr connection",
+  collection: "Collection",
+  listSetting: "List setting"
 };
 
 export function tagUserKindLabel(kind: string): string {
@@ -22,7 +25,10 @@ const KIND_NOUNS: Record<string, [string, string]> = {
   sharingRule: ["seeding rule", "seeding rules"],
   librarySource: ["library source rule", "library source rules"],
   acquisitionRule: ["release rule", "release rules"],
-  destinationRule: ["destination rule", "destination rules"]
+  destinationRule: ["destination rule", "destination rules"],
+  seerrConnection: ["Seerr connection", "Seerr connections"],
+  collection: ["collection", "collections"],
+  listSetting: ["list setting", "list settings"]
 };
 
 /** "3 titles and 1 download client": what still uses a tag, in plain words. */

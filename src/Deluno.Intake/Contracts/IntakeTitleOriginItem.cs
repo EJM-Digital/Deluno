@@ -19,6 +19,9 @@ public sealed record IntakeTitleOriginItem(
     DateTimeOffset FirstSeenUtc,
     DateTimeOffset LastSeenUtc);
 
+/// <summary>A title that a list sync found missing from every list it came from (#1046).</summary>
+public sealed record IntakeDroppedTitle(string MediaType, string EntityId, string Title);
+
 public sealed record CreateIntakeTitleOriginRequest(
     string SourceId,
     string SourceName,
