@@ -143,6 +143,43 @@ test.describe("first-run and auth screens", () => {
     ).toBeVisible();
   });
 
+  test("guided setup shows both stages, Stage 1 before Stage 2 (#1034)", async ({ page }) => {
+    await authenticateAndNavigate(page, "/setup-guide");
+
+    await expect(page.getByText("Stage 1", { exact: false })).toBeVisible();
+    await expect(page.getByText("This computer and you", { exact: false })).toBeVisible();
+    await expect(page.getByText("Stage 2", { exact: false })).toBeVisible();
+    await expect(page.getByText("Deluno itself", { exact: false })).toBeVisible();
+
+    // Stage 1's first-run questions all appear in the rail before any media step.
+    for (const label of ["Your account", "Time and region", "How you sign in", "Addresses", "Other devices", "Updates"]) {
+      await expect(page.getByRole("button", { name: new RegExp(label) })).toBeVisible();
+    }
+  });
+
+  test("guided setup asks the time and region questions with a detected timezone", async ({ page }) => {
+    await authenticateAndNavigate(page, "/setup-guide");
+    await page.getByRole("button", { name: /Time and region/ }).click();
+
+    await expect(page.getByRole("heading", { name: "Time and region", exact: true })).toBeVisible();
+    await expect(page.getByRole("radiogroup", { name: "Interface language" })).toBeVisible();
+    await expect(page.getByLabel("Timezone")).not.toHaveValue("");
+    await expect(page.getByRole("button", { name: "Use this browser" })).toBeVisible();
+  });
+
+  test("guided setup keeps Start disabled until the Updates question is answered (#936)", async ({ page }) => {
+    await authenticateAndNavigate(page, "/setup-guide");
+    await page.getByRole("button", { name: /^\d+ Updates/ }).click();
+
+    await expect(page.getByRole("heading", { name: "Updates", exact: true })).toBeVisible();
+    await expect(page.getByText("Update Deluno automatically?")).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Update Deluno automatically? Yes" })).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByRole("radio", { name: "Update Deluno automatically? No" })).toHaveAttribute("aria-checked", "false");
+
+    await page.getByRole("button", { name: /^\d+ Start/ }).click();
+    await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
+  });
+
   test("setup overview shows the complete ordered journey and keeps import lists optional", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings");
 
