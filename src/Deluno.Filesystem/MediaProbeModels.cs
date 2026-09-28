@@ -34,7 +34,21 @@ public sealed record MediaVideoStreamInfo(
     string? PixelFormat,
     double? FrameRate,
     long? Bitrate,
-    string? Language);
+    string? Language,
+    /// <summary>
+    /// The transfer characteristic ffprobe reads off the stream (for example
+    /// <c>smpte2084</c> for PQ/HDR10, <c>arib-std-b67</c> for HLG). Used by
+    /// <see cref="Deluno.Quality.MediaProbedFacts.DynamicRange"/> so a
+    /// renamed file with no HDR token left in its name can still be told
+    /// apart from an SDR one (#979).
+    /// </summary>
+    string? ColorTransfer = null,
+    /// <summary>
+    /// Side-data block names ffprobe reports for the stream (for example
+    /// <c>DOVI configuration record</c>), used to tell Dolby Vision apart
+    /// from plain PQ/HDR10, which share the same transfer characteristic.
+    /// </summary>
+    IReadOnlyList<string>? SideDataTypes = null);
 
 public sealed record MediaAudioStreamInfo(
     int Index,

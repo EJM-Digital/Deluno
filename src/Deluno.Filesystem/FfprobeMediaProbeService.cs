@@ -88,7 +88,9 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
                     stream.PixelFormat,
                     ParseFrameRate(stream.AverageFrameRate ?? stream.RealFrameRate),
                     ParseLong(stream.BitRate),
-                    LanguageOf(stream)))
+                    LanguageOf(stream),
+                    stream.ColorTransfer,
+                    SideDataTypesOf(stream)))
                 .ToArray();
             var audio = streams
                 .Where(stream => string.Equals(stream.CodecType, "audio", StringComparison.OrdinalIgnoreCase))
@@ -186,6 +188,15 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
             ? language
             : null;
 
+    private static IReadOnlyList<string>? SideDataTypesOf(FfprobeStream stream)
+        => stream.SideDataList is { Count: > 0 }
+            ? stream.SideDataList
+                .Select(item => item.Type)
+                .Where(type => !string.IsNullOrWhiteSpace(type))
+                .Select(type => type!)
+                .ToArray()
+            : null;
+
     private static int? ParseInt(string? value)
         => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
 
@@ -238,6 +249,11 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         [property: JsonPropertyName("channels")] int? Channels,
         [property: JsonPropertyName("channel_layout")] string? ChannelLayout,
         [property: JsonPropertyName("sample_rate")] string? SampleRate,
+        [property: JsonPropertyName("color_transfer")] string? ColorTransfer,
+        [property: JsonPropertyName("side_data_list")] IReadOnlyList<FfprobeSideData>? SideDataList,
         [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags,
         [property: JsonPropertyName("disposition")] IReadOnlyDictionary<string, int>? Disposition);
+
+    private sealed record FfprobeSideData(
+        [property: JsonPropertyName("side_data_type")] string? Type);
 }

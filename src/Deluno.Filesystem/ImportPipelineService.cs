@@ -4667,11 +4667,20 @@ public sealed partial class ImportPipelineService(
         var releaseGroup = ReleaseGroupPattern().Match(evidence) is { Success: true } group
             ? group.Groups["group"].Value
             : null;
-        // #760: MediaInfo tokens read the same name evidence Quality and the
-        // release group already do -- a probe pipeline is a larger feature
-        // than a naming token, and the name carries this by convention the
-        // same way it carries codec and audio for the library list.
+        // #760/#979: MediaInfo tokens read the file's own probe first -- a
+        // measurement of the bytes that arrived, not a claim about them. A
+        // release renamed on the way in (or one whose name simply lies) still
+        // gets the right codec this way. The name is the fallback, for the
+        // case the probe covers deliberately: unavailable ffprobe, an
+        // unreadable file, or a field the probe itself did not read.
         var mediaFacts = MediaFileNameFacts.Parse(evidence);
+        var probedVideo = await ProbeVideoForNamingAsync(request.SourcePath, cancellationToken);
+        var probedAudio = probedVideo.Audio;
+        var videoCodec = MediaProbedFacts.VideoCodec(probedVideo.Codec) ?? mediaFacts.VideoCodec;
+        var audioCodec = MediaProbedFacts.AudioCodec(probedAudio.Codec, probedAudio.Profile) ?? mediaFacts.AudioCodec;
+        var audioChannels = MediaProbedFacts.AudioChannels(probedAudio.ChannelLayout, probedAudio.Channels) ?? mediaFacts.AudioChannels;
+        var dynamicRange = MediaProbedFacts.DynamicRange(probedVideo.ColorTransfer, probedVideo.SideDataTypes) ?? mediaFacts.DynamicRange;
+        var bitDepth = MediaProbedFacts.BitDepth(probedVideo.PixelFormat) ?? mediaFacts.BitDepth;
         // A short, stable identifier for the release, so two files that
         // otherwise render the same name can still be told apart.
         var releaseHash = Convert.ToHexString(SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(evidence)))[..8].ToLowerInvariant();
@@ -4683,11 +4692,11 @@ public sealed partial class ImportPipelineService(
                 OriginalTitle: request.OriginalTitle,
                 OriginalFileName: originalFileName,
                 ReleaseHash: releaseHash,
-                VideoCodec: mediaFacts.VideoCodec,
-                AudioCodec: mediaFacts.AudioCodec,
-                AudioChannels: mediaFacts.AudioChannels,
-                VideoDynamicRangeType: mediaFacts.DynamicRange,
-                VideoBitDepth: mediaFacts.BitDepth);
+                VideoCodec: videoCodec,
+                AudioCodec: audioCodec,
+                AudioChannels: audioChannels,
+                VideoDynamicRangeType: dynamicRange,
+                VideoBitDepth: bitDepth);
         }
 
         var profileId = ResolveLibrary(libraries, mediaType, request.LibraryId)?.QualityProfileId;
@@ -4707,11 +4716,11 @@ public sealed partial class ImportPipelineService(
                 OriginalTitle: request.OriginalTitle,
                 OriginalFileName: originalFileName,
                 ReleaseHash: releaseHash,
-                VideoCodec: mediaFacts.VideoCodec,
-                AudioCodec: mediaFacts.AudioCodec,
-                AudioChannels: mediaFacts.AudioChannels,
-                VideoDynamicRangeType: mediaFacts.DynamicRange,
-                VideoBitDepth: mediaFacts.BitDepth);
+                VideoCodec: videoCodec,
+                AudioCodec: audioCodec,
+                AudioChannels: audioChannels,
+                VideoDynamicRangeType: dynamicRange,
+                VideoBitDepth: bitDepth);
         }
 
         var guide = guidePackageStore is null
@@ -4753,11 +4762,68 @@ public sealed partial class ImportPipelineService(
             OriginalTitle: request.OriginalTitle,
             OriginalFileName: originalFileName,
             ReleaseHash: releaseHash,
-            VideoCodec: mediaFacts.VideoCodec,
-            AudioCodec: mediaFacts.AudioCodec,
-            AudioChannels: mediaFacts.AudioChannels,
-            VideoDynamicRangeType: mediaFacts.DynamicRange,
-            VideoBitDepth: mediaFacts.BitDepth);
+            VideoCodec: videoCodec,
+            AudioCodec: audioCodec,
+            AudioChannels: audioChannels,
+            VideoDynamicRangeType: dynamicRange,
+            VideoBitDepth: bitDepth);
+    }
+
+    /// <summary>
+    /// The first video stream's codec/colour facts, and its matching audio
+    /// stream's facts, from a probe of the imported file (#979). Returns
+    /// blank facts rather than throwing when the probe is unavailable, fails,
+    /// or the file has no video stream yet -- the caller falls back to the
+    /// name either way, the same as it already does for a probe that never
+    /// ran.
+    /// </summary>
+    private async Task<ProbedNamingFacts> ProbeVideoForNamingAsync(string sourcePath, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            return ProbedNamingFacts.None;
+        }
+
+        MediaProbeInfo probe;
+        try
+        {
+            probe = await mediaProbeService.ProbeAsync(sourcePath, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A naming token is not worth failing an import over; the name
+            // parse below still has evidence to work with.
+            return ProbedNamingFacts.None;
+        }
+
+        if (probe.Status != "succeeded")
+        {
+            return ProbedNamingFacts.None;
+        }
+
+        var video = probe.VideoStreams.FirstOrDefault();
+        var audio = probe.AudioStreams.FirstOrDefault();
+        return new ProbedNamingFacts(
+            video?.Codec,
+            video?.PixelFormat,
+            video?.ColorTransfer,
+            video?.SideDataTypes,
+            new ProbedAudioNamingFacts(audio?.Codec, audio?.Profile, audio?.ChannelLayout, audio?.Channels));
+    }
+
+    private sealed record ProbedNamingFacts(
+        string? Codec,
+        string? PixelFormat,
+        string? ColorTransfer,
+        IReadOnlyList<string>? SideDataTypes,
+        ProbedAudioNamingFacts Audio)
+    {
+        public static ProbedNamingFacts None { get; } = new(null, null, null, null, ProbedAudioNamingFacts.None);
+    }
+
+    private sealed record ProbedAudioNamingFacts(string? Codec, string? Profile, string? ChannelLayout, int? Channels)
+    {
+        public static ProbedAudioNamingFacts None { get; } = new(null, null, null, null);
     }
 
     private static IEnumerable<string> SplitIds(string? csv)

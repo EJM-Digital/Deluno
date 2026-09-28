@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace Deluno.Quality;
 
 /// <summary>
@@ -22,7 +24,7 @@ namespace Deluno.Quality;
 /// name-only. Saying otherwise would be a switch that still draws a dash and a
 /// claim that it had been fixed.</para>
 /// </summary>
-public static class MediaProbedFacts
+public static partial class MediaProbedFacts
 {
     /// <summary>
     /// ffprobe's codec name to the word the rest of Deluno uses.
@@ -123,4 +125,82 @@ public static class MediaProbedFacts
             // nearest familiar layout.
             _ => $"{channels}.0"
         };
+
+    /// <summary>
+    /// Colour bit depth from ffprobe's pixel format name, welded to "bit" the
+    /// same way <see cref="MediaFileNameFacts"/> does: <c>10-bit</c>, not
+    /// <c>10</c>.
+    ///
+    /// <para>ffmpeg's naming is not fully regular: <c>nv12</c> ends in "12"
+    /// but is an 8-bit format (the digits name the chroma layout, not the
+    /// depth), while <c>yuv420p10le</c> and <c>p010le</c> really are 10-bit.
+    /// The known-format lists below exist so a chroma-layout number is never
+    /// mistaken for a colour depth.</para>
+    /// </summary>
+    public static string? BitDepth(string? pixelFormat)
+    {
+        var format = pixelFormat?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(format))
+        {
+            return null;
+        }
+
+        if (format.StartsWith("p012", StringComparison.Ordinal))
+        {
+            return "12-bit";
+        }
+
+        if (format.StartsWith("p010", StringComparison.Ordinal))
+        {
+            return "10-bit";
+        }
+
+        var explicitDepth = ExplicitPixelFormatBitDepth().Match(format);
+        if (explicitDepth.Success)
+        {
+            return $"{explicitDepth.Groups["bits"].Value}-bit";
+        }
+
+        // No depth suffix at all: ffmpeg's 8-bit formats never carry one
+        // (yuv420p, nv12, rgb24, ...), so a recognised colour-format prefix
+        // without one is honestly 8-bit rather than unknown.
+        return EightBitPixelFormatPrefixes.Any(prefix => format.StartsWith(prefix, StringComparison.Ordinal))
+            ? "8-bit"
+            : null;
+    }
+
+    private static readonly string[] EightBitPixelFormatPrefixes =
+        ["yuv", "yuvj", "nv", "rgb", "bgr", "gbr", "gray", "uyvy", "yuyv", "pal8"];
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"p(?<bits>10|12)(le|be)?$")]
+    private static partial System.Text.RegularExpressions.Regex ExplicitPixelFormatBitDepth();
+
+    /// <summary>
+    /// HDR flavour from the stream's own colour metadata, in the same
+    /// vocabulary <see cref="MediaFileNameFacts"/> reads off a name: HDR10+,
+    /// Dolby Vision, HDR10, HDR, or nothing for SDR.
+    ///
+    /// <para>Dolby Vision and PQ/HDR10 share the same transfer characteristic
+    /// (<c>smpte2084</c>), so side data is what tells them apart — the same
+    /// way the name parser needs "dv"/"dolby vision" to outrank a bare "hdr"
+    /// token. HDR10+'s per-frame metadata is not visible at the stream level
+    /// ffprobe reports here, so that one still relies on the name.</para>
+    /// </summary>
+    public static string? DynamicRange(string? colorTransfer, IReadOnlyList<string>? sideDataTypes)
+    {
+        if (sideDataTypes is not null &&
+            sideDataTypes.Any(type => type.Contains("dovi", StringComparison.OrdinalIgnoreCase) ||
+                                       type.Contains("dolby vision", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "Dolby Vision";
+        }
+
+        return colorTransfer?.Trim().ToLowerInvariant() switch
+        {
+            null or "" => null,
+            "smpte2084" => "HDR10",
+            "arib-std-b67" => "HDR",
+            _ => null
+        };
+    }
 }
