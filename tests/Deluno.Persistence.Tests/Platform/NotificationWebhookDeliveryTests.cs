@@ -96,6 +96,37 @@ public sealed class NotificationWebhookDeliveryTests
         Assert.Equal(2, animeTitleHandler.Attempts);
     }
 
+    /// <summary>
+    /// #1036: tags only filter notifications about a title. An event that
+    /// names no title (titleTags null, e.g. a health warning) reaches a tagged
+    /// connection too, while a title event with non-matching tags still skips it.
+    /// </summary>
+    [Fact]
+    public async Task A_tagged_webhook_receives_events_that_are_not_about_a_title_but_still_skips_a_non_matching_title()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Anime channel", "https://hooks.example.test/anime", "all", true, Tags: "anime"),
+            CancellationToken.None);
+
+        var healthHandler = new SequencedHandler([]);
+        await new OutboundNotificationService(repository, new SingleClientFactory(healthHandler), NullLogger<OutboundNotificationService>.Instance)
+            .DispatchAsync("health.warning", "Indexer down", "Message", null, CancellationToken.None, titleTags: null);
+        Assert.Equal(1, healthHandler.Attempts);
+
+        var otherTitleHandler = new SequencedHandler([]);
+        await new OutboundNotificationService(repository, new SingleClientFactory(otherTitleHandler), NullLogger<OutboundNotificationService>.Instance)
+            .DispatchAsync("import.completed", "Some Movie", "Message", null, CancellationToken.None, titleTags: ["kids"]);
+        Assert.Equal(0, otherTitleHandler.Attempts);
+    }
+
     [Fact]
     public async Task DispatchAsync_retries_failed_delivery_then_records_success()
     {
