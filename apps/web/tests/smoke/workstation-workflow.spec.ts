@@ -31,7 +31,12 @@ test.describe("dashboard workflow", () => {
     await expect(drawer.getByRole("switch", { name: "Search this library automatically" })).toHaveCount(0);
     await expect(drawer.getByRole("switch", { name: "Find missing media" })).toHaveCount(0);
     await expect(drawer.getByRole("switch", { name: "Look for better releases" })).toHaveCount(0);
-    await expect(drawer.getByRole("button", { name: "Choose folder", exact: true })).toHaveCount(1);
+    // Two folders, each one field with its own picker and plain help (#1079): where imported
+    // files go, and where finished downloads for this library arrive. Nothing more.
+    await expect(drawer.getByText("Library folder", { exact: true })).toHaveCount(1);
+    await expect(drawer.getByText("Downloads folder", { exact: true })).toHaveCount(1);
+    await expect(drawer.getByText("Leave it empty to use the folder each download client reports.", { exact: false })).toHaveCount(1);
+    await expect(drawer.getByRole("button", { name: "Choose folder", exact: true })).toHaveCount(2);
 
     await page.goto("/settings/import-policy");
     await expect(page.getByText("Folder to check after a download finishes", { exact: true })).toHaveCount(0);
