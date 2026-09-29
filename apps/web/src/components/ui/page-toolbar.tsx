@@ -86,7 +86,7 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
   // like every other gap, rather than a margin this component invents.
   return (
     <>
-      <div className={cn("flex min-h-[var(--toolbar-height)] flex-wrap items-center justify-between gap-[var(--grid-gap)] border-b border-hairline/80 dark:border-white/[0.08] sm:h-[var(--toolbar-height)] sm:flex-nowrap", className)} style={accentStyle}>
+      <div className={cn("flex min-h-[var(--toolbar-height)] min-w-0 max-w-full flex-wrap items-center justify-between gap-[var(--grid-gap)] border-b border-hairline/80 dark:border-white/[0.08] sm:h-[var(--toolbar-height)] sm:flex-nowrap", className)} style={accentStyle}>
         {tabs?.length ? (
           <nav
             aria-label="Sections"
