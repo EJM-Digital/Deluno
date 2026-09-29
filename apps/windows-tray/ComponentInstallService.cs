@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -290,6 +291,12 @@ public sealed class ComponentInstallService(
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
                 $"{spec.DisplayName}'s installer changed after it was checked. Deluno did not run it.");
+        }
+
+        if (exitCode is ElevatedInstallScript.ReparsePointExitCode or ElevatedInstallScript.FolderExitCode && IsMsi(path))
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"Deluno could not make a safe folder to run {spec.DisplayName}'s installer from, so it did not run it.");
         }
 
         if (exitCode is null or not 0)
@@ -721,45 +728,33 @@ public sealed class HttpComponentDownloader : IComponentDownloader
 }
 
 /// <summary>
-/// Reads the file's own Authenticode certificate, if it has one. This does
-/// not walk the trust chain -- it answers "does this file carry a signature
-/// at all", which is what the manifest's <c>mustBeSigned</c> flag asks for.
+/// Authenticode check (#1061). <c>WinVerifyTrust</c> (the same engine
+/// <c>Get-AuthenticodeSignature</c> uses) proves the signature covers the file's
+/// bytes and chains to a trusted root, with revocation checked over the whole chain
+/// as far as the machine can reach the servers. Only then is the signer's
+/// certificate read, and its publisher compared exactly. A certificate lifted out of
+/// a file whose bytes were changed is therefore refused.
 /// </summary>
 public sealed class WindowsAuthenticodeVerifier : IAuthenticodeVerifier
 {
     public bool IsSignedBy(string path, string? publisher)
     {
-        if (string.IsNullOrWhiteSpace(publisher))
-        {
-            return IsSigned(path);
-        }
-
-        if (!OperatingSystem.IsWindows())
+        if (!IsSigned(path))
         {
             return false;
         }
 
+        if (string.IsNullOrWhiteSpace(publisher))
+        {
+            return true;
+        }
+
         try
         {
-#pragma warning disable SYSLIB0057
+#pragma warning disable SYSLIB0057 // CreateFromSignedFile predates the X509CertificateLoader API; no direct replacement exists for reading an embedded Authenticode signature.
             using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
 #pragma warning restore SYSLIB0057
-            using var chain = new X509Chain();
-            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
-            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
-            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(15);
-            chain.ChainPolicy.ApplicationPolicy.Add(new System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.3")); // code signing
-            if (!chain.Build(certificate))
-            {
-                // A signing certificate is valid for the time it signed; an offline revocation server is not a bad file.
-                var onlyOffline = chain.ChainStatus.All(status => status.Status is X509ChainStatusFlags.RevocationStatusUnknown or X509ChainStatusFlags.OfflineRevocation);
-                if (!onlyOffline)
-                {
-                    return false;
-                }
-            }
-
-            return certificate.Subject.Contains(publisher, StringComparison.OrdinalIgnoreCase);
+            return PublisherMatches(certificate, publisher);
         }
         catch
         {
@@ -767,23 +762,120 @@ public sealed class WindowsAuthenticodeVerifier : IAuthenticodeVerifier
         }
     }
 
+    /// <summary>True when the certificate's subject has a CN or O that is exactly <paramref name="publisher"/> (not a substring of it).</summary>
+    public static bool PublisherMatches(X509Certificate2 certificate, string publisher)
+    {
+        var wanted = publisher.Trim();
+        foreach (var rdn in certificate.SubjectName.EnumerateRelativeDistinguishedNames())
+        {
+            var type = rdn.GetSingleElementType().Value;
+            if (type is not ("2.5.4.3" or "2.5.4.10"))
+            {
+                continue;
+            }
+
+            if (string.Equals(rdn.GetSingleElementValue()?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether the file carries a signature that is valid for its current bytes and chains to a trusted root.</summary>
     public bool IsSigned(string path)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() || !File.Exists(path))
         {
             return false;
         }
 
         try
         {
-#pragma warning disable SYSLIB0057 // CreateFromSignedFile predates the X509CertificateLoader API; no direct replacement exists for reading an embedded Authenticode signature.
-            using var certificate = X509Certificate.CreateFromSignedFile(path);
-#pragma warning restore SYSLIB0057
-            return certificate.Subject.Length > 0;
+            return WinTrust.Verify(path);
         }
         catch
         {
             return false;
+        }
+    }
+}
+
+/// <summary>Managed wrapper for <c>WinVerifyTrust</c> with <c>WINTRUST_ACTION_GENERIC_VERIFY_V2</c>.</summary>
+internal static class WinTrust
+{
+    private const uint UiNone = 2;
+    private const uint RevokeWholeChain = 1;
+    private const uint ChoiceFile = 1;
+    private const uint StateActionIgnore = 0;
+    private const uint RevocationCheckChainExcludeRoot = 0x80;
+    // Revocation server unreachable: the signature is still good, so this is not a bad file.
+    private const int CertERevocationOffline = unchecked((int)0x80092013);
+    private const int CryptENoRevocationCheck = unchecked((int)0x80092012);
+
+    private static readonly Guid GenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WinTrustFileInfo
+    {
+        public uint cbStruct;
+        public IntPtr pcwszFilePath;
+        public IntPtr hFile;
+        public IntPtr pgKnownSubject;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WinTrustData
+    {
+        public uint cbStruct;
+        public IntPtr pPolicyCallbackData;
+        public IntPtr pSIPClientData;
+        public uint dwUIChoice;
+        public uint fdwRevocationChecks;
+        public uint dwUnionChoice;
+        public IntPtr pFile;
+        public uint dwStateAction;
+        public IntPtr hWVTStateData;
+        public IntPtr pwszURLReference;
+        public uint dwProvFlags;
+        public uint dwUIContext;
+        public IntPtr pSignatureSettings;
+    }
+
+    [DllImport("wintrust.dll", ExactSpelling = true, SetLastError = false)]
+    private static extern int WinVerifyTrust(IntPtr hwnd, [MarshalAs(UnmanagedType.LPStruct)] Guid action, IntPtr data);
+
+    public static bool Verify(string path)
+    {
+        var filePathPtr = Marshal.StringToHGlobalUni(path);
+        var fileInfoPtr = IntPtr.Zero;
+        var dataPtr = IntPtr.Zero;
+        try
+        {
+            var fileInfo = new WinTrustFileInfo { cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>(), pcwszFilePath = filePathPtr };
+            fileInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
+            Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
+            var data = new WinTrustData
+            {
+                cbStruct = (uint)Marshal.SizeOf<WinTrustData>(),
+                dwUIChoice = UiNone,
+                fdwRevocationChecks = RevokeWholeChain,
+                dwUnionChoice = ChoiceFile,
+                pFile = fileInfoPtr,
+                dwStateAction = StateActionIgnore,
+                dwProvFlags = RevocationCheckChainExcludeRoot
+            };
+            dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustData>());
+            Marshal.StructureToPtr(data, dataPtr, false);
+            var result = WinVerifyTrust(new IntPtr(-1), GenericVerifyV2, dataPtr);
+            return result is 0 or CertERevocationOffline or CryptENoRevocationCheck;
+        }
+        finally
+        {
+            if (dataPtr != IntPtr.Zero) { Marshal.FreeHGlobal(dataPtr); }
+            if (fileInfoPtr != IntPtr.Zero) { Marshal.FreeHGlobal(fileInfoPtr); }
+            Marshal.FreeHGlobal(filePathPtr);
         }
     }
 }
