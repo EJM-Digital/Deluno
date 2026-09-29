@@ -111,16 +111,15 @@ public sealed class DownloadClientTelemetryService(
     }
 
     /// <summary>
-    /// Every client's queue and history exactly as the client reports it,
-    /// ownership untouched -- unlike <see cref="GetOverviewAsync"/>, this
-    /// keeps items another tool, or a person, added to the client. Used only
-    /// by the leftover-download scan (#958/#933 M2): a foreign item is really
-    /// on disk and must still hold its file, even though it never appears on
-    /// the Queue screen. The outside items are appended untouched after
-    /// everything else is done: no strike, progress record, count or action
-    /// is ever based on them (#1062).
+    /// The same Deluno-only view as <see cref="GetOverviewAsync"/>, plus the
+    /// paths of the items Deluno did not send
+    /// (<see cref="DownloadClientTelemetrySnapshot.OutsideSourcePaths"/>).
+    /// Used only by the leftover-download scan (#958/#1062): those items are
+    /// never listed, counted or acted on - no strike, progress record or
+    /// action is ever based on them - but their files are really on disk and
+    /// must never be swept up.
     /// </summary>
-    public async Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetSnapshotsForLeftoverScanAsync(CancellationToken cancellationToken)
     {
         var built = await BuildAnnotatedSnapshotsAsync(includeOutsideItems: true, cancellationToken);
         return built.Snapshots;
@@ -304,8 +303,11 @@ public sealed class DownloadClientTelemetryService(
                     clientHostsById.GetValueOrDefault(snapshot.ClientId));
                 return snapshot with
                 {
-                    Queue = snapshot.Queue.Concat(mappedOutside.Queue).ToArray(),
-                    History = snapshot.History.Concat(mappedOutside.History).ToArray()
+                    OutsideSourcePaths = mappedOutside.Queue.Select(item => item.SourcePath)
+                        .Concat(mappedOutside.History.Select(item => item.SourcePath))
+                        .Where(path => !string.IsNullOrWhiteSpace(path))
+                        .Select(path => path!)
+                        .ToArray()
                 };
             }).ToArray();
         }

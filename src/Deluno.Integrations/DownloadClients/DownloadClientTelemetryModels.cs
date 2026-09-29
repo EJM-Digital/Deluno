@@ -59,10 +59,12 @@ public static class DownloadClientActions
     /// <summary>#810/#933: whether this action is one of the queue-reorder/force-start verbs, which are only ever allowed against a download Deluno itself dispatched.</summary>
     public static bool IsQueuePriorityOrForceStart(string action) => QueuePriorityOrForceStartActions.Contains(action);
 
-    /// <summary>#1062/#933: every verb that reorders, force-starts or removes a download acts only on one Deluno sent.</summary>
-    public static bool RequiresDelunoOwnership(string action) =>
-        QueuePriorityOrForceStartActions.Contains(action) ||
-        action is Delete or DeleteWithData or Forget;
+    /// <summary>
+    /// #1062/#933: every verb on a queue item - pause, resume, recheck,
+    /// reorder, force-start, remove - acts only on a download Deluno sent.
+    /// Deluno does not act on anything else in a client.
+    /// </summary>
+    public static bool RequiresDelunoOwnership(string action) => true;
 }
 
 /// <summary>
@@ -442,6 +444,15 @@ public sealed record DownloadClientTelemetrySnapshot(
 {
     /// <summary>Last live integration failure, if this snapshot is degraded.</summary>
     public IntegrationFailure? LastFailure { get; init; }
+
+    /// <summary>
+    /// The paths of items in this client that Deluno did not send (#1062). Only
+    /// the leftover-download scan asks for them, and only so a file another
+    /// tool is still using is never swept up; nothing lists or counts them, and
+    /// they never reach the API.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string> OutsideSourcePaths { get; init; } = [];
 
     /// <summary>
     /// Free space on the client's own download volume, exactly as the client's
