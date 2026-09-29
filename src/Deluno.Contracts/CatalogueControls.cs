@@ -196,20 +196,9 @@ public sealed record CatalogueControls(
         new("showTitle", "Title", "The movie or series name", DefaultOn: true),
         // Both shelves use the bottom bar for this same subtitle question.
         new("showSubtitleCountOnBar", "Subtitle count on the bar", "How many of the languages you asked for are here", DefaultOn: true),
-        // A line under the poster, on both shelves, on by default.
-        //
-        // This was briefly taken off the movie shelf on the reasoning that the
-        // bars already say monitoring — the rule that removed the Quality option
-        // once the bar carried the quality. That went too far: the bars say it
-        // in COLOUR, and a reader who wants it in words should be able to switch
-        // it on like every other line under a poster. The two do not compete;
-        // one is for scanning a wall and the other is for reading one card.
-        // One switch, one fact. It used to draw the release year *and* the
-        // monitored state, so neither could be turned off without the other —
-        // the owner: "year should be removed as a not required option and it should
-        // not be aligned to monitored or not monitored". The year is gone and
-        // this does the one thing its name says.
-        new("showMonitored", "Monitoring", "Whether Deluno is watching for this title", DefaultOn: true, Line: true),
+        // There is no Monitoring line switch: the card says monitoring through its
+        // bars (DESIGN-006), so showMonitored was deleted (#1048). A stored setting
+        // that still carries it is ignored.
 
         // **The status mark is not here, and that is deliberate.** It was a
         // switch — "Status mark", on by default — and the owner: *"I think status

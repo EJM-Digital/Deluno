@@ -1,6 +1,6 @@
 import {
   CalendarDays, Clapperboard, Disc, HardDrive, ListVideo, MonitorPlay, Play,
-  ShieldCheck, ShieldOff, Star, Tag, Timer, Tv, Users, RefreshCw, Search} from "lucide-react";
+  Star, Tag, Timer, Tv, Users, RefreshCw, Search} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -527,32 +527,6 @@ function PosterCard({
           >
             {item.title}
           </p>
-        ) : null}
-
-        {/*
-          The year is gone.
-
-          It was drawn by the same switch as the monitored state — "Year and
-          monitoring" — so the two were welded together and neither could be
-          turned off without the other. The owner: "year should be removed as a not
-          required option and it should not be aligned to monitored or not
-          monitored." It is not required, and pairing it with monitoring was the
-          part that made it feel mandatory.
-
-          The switch is now Monitoring, and it does one thing.
-        */}
-        {carriesMeta && displayOptions.showMonitored ? (
-          <div
-            className="flex h-[1lh] min-w-0 items-center justify-center gap-1 leading-tight text-[length:var(--library-meta-size)] text-muted-foreground"
-            title={item.monitored
-              ? "Deluno will keep looking for this title."
-              : "Deluno will not search for this title automatically."}
-          >
-            {item.monitored
-              ? <ShieldCheck className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
-              : <ShieldOff className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />}
-            <span className="truncate">{item.monitored ? "Monitored" : "Unmonitored"}</span>
-          </div>
         ) : null}
 
         {carriesMeta ? <PosterExtras item={item} displayOptions={displayOptions} /> : null}
