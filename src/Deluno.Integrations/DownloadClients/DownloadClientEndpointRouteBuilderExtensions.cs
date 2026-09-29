@@ -437,6 +437,23 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return report is null ? Results.NotFound() : Results.Ok(report);
         });
 
+        // Where each library's downloads really land, for a processor that has
+        // to watch the right folder (#1073). Generic: any processor may read it.
+        endpoints.MapGet("/api/integrations/processors/download-destinations", async (
+            HttpContext httpContext,
+            string? libraryId,
+            IFolderChainService folderChain,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null) return denied;
+            var scopeDenied = UserAuthorization.RequireApiScope(httpContext, "imports");
+            if (scopeDenied is not null) return scopeDenied;
+
+            var libraries = await folderChain.ListDestinationsAsync(libraryId, cancellationToken);
+            return libraries is null ? Results.NotFound() : Results.Ok(new { libraries });
+        });
+
         endpoints.MapPost("/api/download-clients/{clientId}/grab", async (
             string clientId,
             HttpContext httpContext,

@@ -15,7 +15,24 @@ public static class FolderChainStatuses
 public sealed record FolderChainLink(string Step, string Status, string Message, string? Path = null);
 
 /// <summary>One routed download client: the category Deluno sends, where the client saves it, and whether that is the library's folder.</summary>
-public sealed record FolderChainClient(string ClientId, string ClientName, string Protocol, string Category, IReadOnlyList<FolderChainLink> Links);
+/// <param name="SavedBy"><c>deluno-per-grab</c> when Deluno names the library's downloads folder on each grab (Transmission, Deluge: #1073); <c>client-category</c> when the client's own category folder decides.</param>
+/// <param name="SaveFolder">The folder finished downloads land in, as this host writes it. Null when the client did not say.</param>
+/// <param name="ClientSaveFolder">The same folder as the client writes it (differs behind a path mapping).</param>
+public sealed record FolderChainClient(
+    string ClientId,
+    string ClientName,
+    string Protocol,
+    string Category,
+    IReadOnlyList<FolderChainLink> Links,
+    string SavedBy = FolderChainSavedBy.ClientCategory,
+    string? SaveFolder = null,
+    string? ClientSaveFolder = null);
+
+public static class FolderChainSavedBy
+{
+    public const string ClientCategory = "client-category";
+    public const string DelunoPerGrab = "deluno-per-grab";
+}
 
 /// <summary>
 /// Everything a library's downloads pass through, checked end to end (#616).
@@ -43,9 +60,42 @@ public sealed record FolderChainReport(
     public bool AllMatch => Clients.SelectMany(client => client.Links).Concat(LibraryLinks).All(link => link.Status == FolderChainStatuses.Ok);
 }
 
+/// <summary>
+/// One place a library's downloads can land, published for a processor (#1073).
+/// <c>CategoryKind</c> is <c>category</c> or <c>label</c>. <c>SaveFolder</c> is as Deluno's host
+/// writes it, <c>ClientSaveFolder</c> as the client writes it. <c>SavedBy</c> is
+/// <c>deluno-per-grab</c> or <c>client-category</c>. <c>MatchesDownloadsPath</c> is null when the
+/// client did not say. <c>Status</c> is <c>ok</c>, <c>problem</c> or <c>unknown</c>.
+/// </summary>
+public sealed record DownloadDestination(
+    string DownloadClientId,
+    string DownloadClientName,
+    string Protocol,
+    string Category,
+    string CategoryKind,
+    string? SaveFolder,
+    string? ClientSaveFolder,
+    string SavedBy,
+    bool? MatchesDownloadsPath,
+    string Status,
+    string Message);
+
+/// <summary>A library and every download destination Deluno routes it to.</summary>
+public sealed record LibraryDownloadDestinations(
+    string LibraryId,
+    string LibraryName,
+    string MediaType,
+    string? DownloadsPath,
+    string? ProcessorOutputPath,
+    string ImportWorkflow,
+    IReadOnlyList<DownloadDestination> Destinations);
+
 public interface IFolderChainService
 {
     Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken);
+
+    /// <summary>The download destinations of one library, or of every library when none is named. Null for an unknown library.</summary>
+    Task<IReadOnlyList<LibraryDownloadDestinations>?> ListDestinationsAsync(string? libraryId, CancellationToken cancellationToken);
 }
 
 public sealed class FolderChainService(
@@ -88,6 +138,15 @@ public sealed class FolderChainService(
             }
 
             var check = await implementation.CheckCategoryAsync(client, category, cancellationToken);
+            var clientMappings = mappings.Where(mapping => string.Equals(mapping.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
+            // #1073: Transmission and Deluge have no category folders, so Deluno
+            // names the library's downloads folder on every grab. Where it does,
+            // that folder is the one downloads land in, whatever the client is
+            // set to. Where libraries sharing a category disagree it names none,
+            // and the client's own folder is checked below as before.
+            var perGrab = implementation.SetsSaveFolderPerGrab
+                ? await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken)
+                : null;
             links.Add(new(
                 "category",
                 check.Status switch
@@ -100,16 +159,21 @@ public sealed class FolderChainService(
 
             // The client's path as this host sees it, through any mapping for a
             // client in Docker or on another machine.
-            var clientFolder = DownloadClientTelemetryService.TranslateRemotePath(
-                check.SavePath,
-                mappings.Where(mapping => string.Equals(mapping.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)));
-            links.Add(FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
+            var clientFolder = perGrab?.HostFolder ?? DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
+            links.Add(perGrab is not null
+                ? new("folder", FolderChainStatuses.Ok,
+                    $"Deluno sends each {kind} download to {perGrab.ClientFolder} itself, the folder the {library.Name} library expects, whatever folder {client.Name} is set to by default.",
+                    perGrab.HostFolder)
+                : FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
             if (ContentLayoutLink(client, category) is { } layoutLink)
             {
                 links.Add(layoutLink);
             }
 
-            chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
+            chains.Add(new(client.Id, client.Name, client.Protocol, category, links,
+                perGrab is not null ? FolderChainSavedBy.DelunoPerGrab : FolderChainSavedBy.ClientCategory,
+                clientFolder,
+                perGrab?.ClientFolder ?? check.SavePath));
         }
 
         return new FolderChainReport(
@@ -124,6 +188,53 @@ public sealed class FolderChainService(
             chains,
             LibraryLinks(library, usesProcessor, kind, chains.Count));
     }
+
+    public async Task<IReadOnlyList<LibraryDownloadDestinations>?> ListDestinationsAsync(string? libraryId, CancellationToken cancellationToken)
+    {
+        var all = await libraries.ListLibrariesAsync(cancellationToken);
+        var selected = string.IsNullOrWhiteSpace(libraryId)
+            ? all.ToArray()
+            : all.Where(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (selected.Length == 0 && !string.IsNullOrWhiteSpace(libraryId))
+        {
+            return null;
+        }
+
+        var result = new List<LibraryDownloadDestinations>();
+        foreach (var library in selected)
+        {
+            var report = await CheckAsync(library.Id, cancellationToken);
+            if (report is null)
+            {
+                continue;
+            }
+
+            var destinations = report.Clients.Select(client =>
+            {
+                var status = client.Links.Any(link => link.Status == FolderChainStatuses.Problem) ? FolderChainStatuses.Problem
+                    : client.Links.Any(link => link.Status == FolderChainStatuses.Unknown) ? FolderChainStatuses.Unknown
+                    : FolderChainStatuses.Ok;
+                var message = client.Links.FirstOrDefault(link => link.Status == FolderChainStatuses.Problem)?.Message
+                    ?? client.Links.FirstOrDefault(link => link.Step == "folder")?.Message
+                    ?? string.Empty;
+                bool? matches = string.IsNullOrWhiteSpace(client.SaveFolder) || string.IsNullOrWhiteSpace(library.DownloadsPath)
+                    ? null
+                    : SamePath(client.SaveFolder, library.DownloadsPath);
+                return new DownloadDestination(
+                    client.ClientId, client.ClientName, client.Protocol, client.Category,
+                    CategoryKind(client.Protocol), client.SaveFolder, client.ClientSaveFolder, client.SavedBy, matches, status, message);
+            }).ToArray();
+            result.Add(new LibraryDownloadDestinations(
+                library.Id, library.Name, library.MediaType, library.DownloadsPath,
+                report.UsesProcessor ? report.ReadyPath : null, library.ImportWorkflow ?? string.Empty, destinations));
+        }
+
+        return result;
+    }
+
+    /// <summary>What the client calls the tag Deluno routes by: Usenet clients and qBittorrent have categories; the other torrent clients have labels.</summary>
+    private static string CategoryKind(string protocol)
+        => protocol.ToLowerInvariant() is "sabnzbd" or "nzbget" or "qbittorrent" ? "category" : "label";
 
     /// <summary>
     /// #999: qBittorrent's "no subfolder" content layout drops a multi-file

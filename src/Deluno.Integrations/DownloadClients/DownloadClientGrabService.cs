@@ -97,6 +97,7 @@ public sealed class DownloadClientGrabService(
         }
 
         request = resolved.Request;
+        request = await WithSaveFolderAsync(client, request, cancellationToken);
 
         await realtimeEventPublisher.PublishDispatchGrabAttemptAsync(
             request.DispatchId ?? "unknown",
@@ -194,6 +195,37 @@ public sealed class DownloadClientGrabService(
     }
 
     /// <summary>
+    /// #1073: for a client with no category folders of its own, names the
+    /// library's downloads folder on the grab. A failed lookup or a folder the
+    /// libraries do not agree on leaves the grab exactly as it was.
+    /// </summary>
+    private async Task<DownloadClientGrabRequest> WithSaveFolderAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (librariesRepository is null
+            || !downloadClientRegistry.TryGet(client.Protocol, out var implementation)
+            || !implementation.SetsSaveFolderPerGrab)
+        {
+            return request;
+        }
+
+        try
+        {
+            var mappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(client.Id, cancellationToken);
+            var folder = await ClientSaveFolders.ResolveAsync(
+                librariesRepository, client, request.MediaType, DownloadClientHelpers.ResolveCategory(client, request), mappings, cancellationToken);
+            return folder is null ? request : request with { SaveFolder = folder.ClientFolder };
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogWarning(exception, "Could not work out {Client}'s save folder for {Release}; the client's own folder applies.", client.Name, request.ReleaseName);
+            return request;
+        }
+    }
+
+    /// <summary>
     /// #942: uTorrent's WebUI add-url/add-file answers only with a build
     /// number, not a refusal a dead link can be told apart by — so a grab
     /// that never surfaces a new hash is genuinely ambiguous, not a release
@@ -251,7 +283,10 @@ public sealed class DownloadClientGrabService(
         DownloadClientGrabRequest request,
         CancellationToken cancellationToken)
     {
-        if (librariesRepository is null || healthCheckRepository is null || string.IsNullOrWhiteSpace(request.Category))
+        // #1073: a grab Deluno gave its own folder went where it was told; the
+        // client's category settings say nothing about it.
+        if (librariesRepository is null || healthCheckRepository is null || string.IsNullOrWhiteSpace(request.Category)
+            || !string.IsNullOrWhiteSpace(request.SaveFolder))
         {
             return;
         }
