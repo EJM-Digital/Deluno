@@ -50,7 +50,7 @@ export function SegmentedControl<T extends string>({
       aria-label={rest["aria-label"]}
       aria-describedby={field?.describedBy}
       className={cn(
-        "flex h-[var(--control-height)] w-full overflow-hidden rounded-[10px] border border-hairline bg-surface-1",
+        "no-scrollbar flex h-[var(--control-height)] w-full overflow-x-auto overflow-y-hidden rounded-[10px] border border-hairline bg-surface-1",
         disabled && "opacity-60",
         className
       )}

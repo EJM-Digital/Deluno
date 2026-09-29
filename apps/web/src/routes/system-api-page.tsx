@@ -120,7 +120,7 @@ export function SystemApiPage() {
         count="Shown once — Deluno stores only a hash, so copy it before you leave"
         actions={<SaveStatus state={save.state} message={save.message} />}
       >
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           {createdKey ? (
             <div className="rounded-2xl border border-primary/35 bg-primary/10 p-[var(--tile-pad)]">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -147,7 +147,7 @@ export function SystemApiPage() {
             </div>
           ) : null}
 
-            <form className="grid gap-[var(--grid-gap)]" onSubmit={handleCreate}>
+            <form className="grid grid-cols-1 gap-[var(--grid-gap)]" onSubmit={handleCreate}>
               <Field
                 label="Key name"
                 help="Use a human name that tells you where the key is used. Example: dashboard, mobile app, Home Assistant, backup script."

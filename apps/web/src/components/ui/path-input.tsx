@@ -216,8 +216,8 @@ export function PathInput({
 
   return (
     <>
-      <div className={cn(stacked ? "grid gap-2" : "flex items-center gap-2", className)}>
-        <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+      <div className={cn(stacked ? "grid gap-2" : "flex flex-wrap items-center gap-2", className)}>
+        <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={stacked ? undefined : "min-w-0 flex-1 basis-48"} />
         <div className={cn("flex items-center gap-2", stacked && "flex-wrap")}>
           {showCheck ? (
             <Button
