@@ -21,6 +21,49 @@ public static class ClientSaveFolders
     public const string NeedsMappingMessage =
         "Deluno can't name this folder for a client on another machine without a path mapping. Add one for the library's downloads folder, and Deluno will send each download there.";
 
+    public enum PathStyle { Unknown, Windows, Posix }
+
+    /// <summary>Drive-letter or UNC paths are Windows style, a leading slash is POSIX style, anything else (a relative name) is unknown.</summary>
+    public static PathStyle StyleOf(string? path)
+    {
+        var value = path?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return PathStyle.Unknown;
+        }
+
+        if (value.StartsWith("\\\\", StringComparison.Ordinal) || (value.Length >= 2 && char.IsLetter(value[0]) && value[1] == ':'))
+        {
+            return PathStyle.Windows;
+        }
+
+        return value[0] == '/' ? PathStyle.Posix : PathStyle.Unknown;
+    }
+
+    /// <summary>True when Deluno itself runs in a container (its folders are not the client's even on the same host).</summary>
+    public static bool RunningInContainer()
+        => string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether an unmapped host folder can be named to a client Deluno believes
+    /// is on this machine (#1073). "Localhost" is not proof: a client in Docker
+    /// Desktop or WSL2, or a container using the host network, answers on the
+    /// same address yet has its own file system. So the client's own reported
+    /// folder must be written in the same path style as the host folder, and a
+    /// Deluno running in a container never shares its folders without a mapping.
+    /// </summary>
+    public static bool CanShareHostFolder(bool sameMachine, bool delunoInContainer, string hostFolder, string? clientReportedPath)
+    {
+        if (!sameMachine || delunoInContainer)
+        {
+            return false;
+        }
+
+        var clientStyle = StyleOf(clientReportedPath);
+        var hostStyle = StyleOf(hostFolder);
+        return clientStyle == PathStyle.Unknown || hostStyle == PathStyle.Unknown || clientStyle == hostStyle;
+    }
+
     /// <summary>True when the client runs on this machine: localhost, a loopback or local address, or this computer's own name.</summary>
     public static bool IsSameMachine(DownloadClientItem client)
     {
@@ -77,7 +120,8 @@ public static class ClientSaveFolders
         string mediaType,
         string category,
         IReadOnlyList<DownloadClientPathMappingItem> mappings,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task<string?>>? clientReportedPath = null)
     {
         var folders = new List<string>();
         foreach (var library in (await libraries.ListLibrariesAsync(cancellationToken))
@@ -102,7 +146,14 @@ public static class ClientSaveFolders
         var host = distinct[0].TrimEnd('/', '\\');
         var clientFolder = ToClientPath(host, mappings);
         var mapped = !string.Equals(clientFolder, host, StringComparison.Ordinal) || IsCovered(host, mappings);
-        return new Resolved(host, mapped || IsSameMachine(client) ? clientFolder : null);
+        if (mapped)
+        {
+            return new Resolved(host, clientFolder);
+        }
+
+        var sameMachine = IsSameMachine(client);
+        var reported = sameMachine && clientReportedPath is not null ? await clientReportedPath(cancellationToken) : null;
+        return new Resolved(host, CanShareHostFolder(sameMachine, RunningInContainer(), host, reported) ? clientFolder : null);
     }
 
     private static bool IsCovered(string hostFolder, IEnumerable<DownloadClientPathMappingItem> mappings)

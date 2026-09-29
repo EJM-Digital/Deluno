@@ -68,6 +68,7 @@ public sealed class DownloadFolderChangeNoticeService(
         }
 
         var changes = new List<string>();
+        var unreachable = false;
         var clients = await connections.ListDownloadClientsAsync(cancellationToken);
         var mappings = await connections.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         foreach (var library in await libraries.ListLibrariesAsync(cancellationToken))
@@ -88,19 +89,36 @@ public sealed class DownloadFolderChangeNoticeService(
 
                 var category = ClientSaveFolders.RoutedCategory(client, library, link.Category);
                 var clientMappings = mappings.Where(item => string.Equals(item.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
-                var named = await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken);
+                DownloadClientCategoryCheckResult? check = null;
+                async Task<DownloadClientCategoryCheckResult> CheckAsync()
+                    => check ??= await FolderChainService.CheckCategoryBoundedAsync(implementation, client, category, FolderChainService.DefaultStepTimeout, cancellationToken);
+                var named = await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken,
+                    async _ => (await CheckAsync()).SavePath);
                 if (named?.ClientFolder is null)
                 {
                     continue;
                 }
 
-                var check = await FolderChainService.CheckCategoryBoundedAsync(implementation, client, category, FolderChainService.DefaultStepTimeout, cancellationToken);
+                check = await CheckAsync();
+                if (string.Equals(check.Status, DownloadClientCategoryStatuses.Unreachable, StringComparison.OrdinalIgnoreCase))
+                {
+                    // The client did not answer (still starting after the upgrade reboot): try again next start.
+                    unreachable = true;
+                    continue;
+                }
+
                 var old = DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
                 if (!string.IsNullOrWhiteSpace(old) && !FolderChainService.SamePath(old, named.HostFolder))
                 {
                     changes.Add($"{client.Name} used to save {library.Name} downloads to {old}; they now go to {named.HostFolder}");
                 }
             }
+        }
+
+        if (unreachable)
+        {
+            // Nothing written, no marker: the next start looks again.
+            return false;
         }
 
         if (changes.Count > 0)

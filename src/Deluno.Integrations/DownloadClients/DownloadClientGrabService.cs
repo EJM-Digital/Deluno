@@ -215,7 +215,9 @@ public sealed class DownloadClientGrabService(
         {
             var mappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(client.Id, cancellationToken);
             var folder = await ClientSaveFolders.ResolveAsync(
-                librariesRepository, client, request.MediaType, DownloadClientHelpers.ResolveCategory(client, request), mappings, cancellationToken);
+                librariesRepository, client, request.MediaType, DownloadClientHelpers.ResolveCategory(client, request), mappings, cancellationToken,
+                async token => (await FolderChainService.CheckCategoryBoundedAsync(
+                    implementation, client, DownloadClientHelpers.ResolveCategory(client, request), FolderChainService.DefaultStepTimeout, token)).SavePath);
             return folder?.ClientFolder is { } clientFolder ? request with { SaveFolder = clientFolder } : request;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
