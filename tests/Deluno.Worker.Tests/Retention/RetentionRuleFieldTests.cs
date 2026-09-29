@@ -406,10 +406,31 @@ public sealed class RetentionRuleFieldTests
             Episode("e", 3, 1, Now.AddDays(-2), false)
         ], Now);
 
-        Assert.Null(math.Missing(null));
-        Assert.Null(math.Missing(1));
+        // Undated is Upcoming, not missing (#1072): only aired episodes count.
+        Assert.Equal(1, math.Missing(null));
+        Assert.Equal(0, math.Missing(1));
         Assert.Equal(0, math.Missing(2));
         Assert.Equal(1, math.Missing(3));
+    }
+
+    [Fact]
+    public void Upcoming_means_not_aired_or_no_air_date_and_a_season_or_show_is_upcoming_only_when_none_of_it_has_aired()
+    {
+        var future = Episode("f", 1, 1, Now.AddDays(3), false);
+        var undated = Episode("u", 1, 2, null, false);
+        var aired = Episode("a", 2, 1, Now.AddDays(-3), true);
+
+        Assert.True(RetentionEpisodeMath.EpisodeUpcoming(future, Now));
+        Assert.True(RetentionEpisodeMath.EpisodeUpcoming(undated, Now));
+        Assert.False(RetentionEpisodeMath.EpisodeUpcoming(aired, Now));
+
+        var math = new RetentionEpisodeMath([future, undated, aired], Now);
+        Assert.True(math.SeasonUpcoming(1));
+        Assert.False(math.SeasonUpcoming(2));
+        Assert.False(math.SeasonUpcoming(9));
+        Assert.False(math.ShowUpcoming());
+        Assert.True(new RetentionEpisodeMath([future, undated], Now).ShowUpcoming());
+        Assert.False(new RetentionEpisodeMath([], Now).ShowUpcoming());
     }
 
     [Fact]

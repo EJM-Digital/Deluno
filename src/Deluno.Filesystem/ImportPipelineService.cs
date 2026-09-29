@@ -2581,11 +2581,12 @@ public sealed partial class ImportPipelineService(
     /// this only supplies the facts and keeps the count.
     /// </summary>
     /// <summary>Smallest size Force Import will accept for a file it could not read; anything below (or of unknown size) stays stopped.</summary>
-    public const long ForceImportMinimumBytes = 100L * 1024 * 1024;
+    public const int DefaultForceImportMinimumMegabytes = 100;
 
-    public static bool LooksLikeASampleWithoutProbing(string? sourcePath, long? sizeBytes)
+    public static bool LooksLikeASampleWithoutProbing(string? sourcePath, long? sizeBytes, int minimumMegabytes = DefaultForceImportMinimumMegabytes)
     {
-        if (string.IsNullOrWhiteSpace(sourcePath) || sizeBytes is not > 0 || sizeBytes < ForceImportMinimumBytes)
+        var minimumBytes = Math.Max(1, minimumMegabytes) * 1024L * 1024L;
+        if (string.IsNullOrWhiteSpace(sourcePath) || sizeBytes is not > 0 || sizeBytes < minimumBytes)
         {
             return true;
         }
@@ -2615,7 +2616,7 @@ public sealed partial class ImportPipelineService(
         // The probe could not read the file, so its no-video and likely-sample verdicts never ran. Forcing
         // must not import a sample just because the file could not be read: what can be told without
         // reading it (a sample-looking name, a file too small to be a feature or episode) still stops it (#1072).
-        if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes))
+        if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes, settings.ForceImportMinimumMegabytes))
         {
             logger.LogWarning("Force Import left {Source} stopped: it could not be read and looks like a sample.", preview.SourcePath);
             return false;

@@ -198,6 +198,7 @@ public sealed record PlatformSettingsSnapshot(
     // key reads as off. The tries default to 3.
     bool ForceImportEnabled = false,
     int ForceImportMaxTries = 3,
+    int ForceImportMinimumMegabytes = 100,
     // #762: per-season (and specials, season 0) subfolders under the series
     // folder, the way Sonarr's Season Folder Format and Specials Folder
     // Format split one combined series folder. Blank means no subfolder --

@@ -1248,6 +1248,72 @@ public sealed class RetentionRuleTests
     }
 
     [Fact]
+    public async Task A_queued_check_obeys_the_rule_as_edited_while_it_waited()
+    {
+        var stale = await WatchedFilmRuleAsync(rule => rule);
+        // While the check sat queued the rule was edited to ask for films nobody has watched.
+        _store.Add(stale with { Steps = [Keep("server.watchedBy:nobody:")] });
+
+        var run = await Service().CheckAsync(stale, "schedule", CancellationToken.None);
+
+        Assert.Empty(await _store.ListMarksAsync(stale.Id, CancellationToken.None));
+        Assert.Equal(0, run.MatchedCount);
+    }
+
+    [Fact]
+    public async Task A_queued_scheduled_check_does_nothing_when_the_rule_was_switched_off_or_deleted()
+    {
+        var stale = await WatchedFilmRuleAsync(rule => rule);
+        _store.Add(stale with { IsEnabled = false });
+
+        var off = await Service().CheckAsync(stale, "schedule", CancellationToken.None);
+        Assert.Contains("switched off", off.Summary, StringComparison.Ordinal);
+        Assert.Empty(await _store.ListMarksAsync(stale.Id, CancellationToken.None));
+        Assert.Empty(_store.Runs);
+
+        await _store.DeleteRuleAsync(stale.Id, CancellationToken.None);
+        var gone = await Service().CheckAsync(stale, "schedule", CancellationToken.None);
+        Assert.Contains("no longer exists", gone.Summary, StringComparison.Ordinal);
+        Assert.Empty(await _store.ListMarksAsync(stale.Id, CancellationToken.None));
+    }
+
+    private static SeriesEpisodeInventoryItem AiredOrNot(string id, int season, int number, DateTimeOffset? aired)
+        => new(id, season, number, null, null, aired, true, true, "", "", false, null, null, false, null, null, null, Now, null, null, null, null, null);
+
+    private void SeasonOneEpisodes(params SeriesEpisodeInventoryItem[] episodes)
+        => _series.Setup(repo => repo.GetInventoryDetailAsync("s1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeriesInventoryDetail("s1", "Breaking Bad", 2008, 2, episodes.Length, episodes.Length, episodes));
+
+    [Fact]
+    public async Task A_season_and_an_episode_that_have_not_aired_or_have_no_air_date_are_never_selected()
+    {
+        SeasonLibrary();
+        // Season 1: nothing has aired (one still to come, one undated). Upcoming, the movie word, so no rule touches it.
+        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(10)), AiredOrNot("e2", 1, 2, null));
+
+        var season = await Evaluator().EvaluateAsync(Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season }, CancellationToken.None);
+        Assert.Empty(season.Matched);
+
+        var episodes = await Evaluator().EvaluateAsync(Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Episode }, CancellationToken.None);
+        Assert.DoesNotContain(episodes.Matched, match => match.EntityId is "e1" or "e2");
+    }
+
+    [Fact]
+    public async Task A_season_with_something_aired_is_not_upcoming_and_an_aired_episode_can_still_be_selected()
+    {
+        SeasonLibrary();
+        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(-10)), AiredOrNot("e2", 1, 2, Now.AddDays(-9)));
+
+        var season = await Evaluator().EvaluateAsync(Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season }, CancellationToken.None);
+        Assert.Equal("s1:s1", Assert.Single(season.Matched).EntityId);
+
+        // An episode that is undated is Upcoming even inside a season that has aired.
+        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(-10)), AiredOrNot("e2", 1, 2, null));
+        var episodes = await Evaluator().EvaluateAsync(Rule(Keep("server.watchedBy:everyone:")) with { Level = RetentionLevels.Episode }, CancellationToken.None);
+        Assert.Equal(["e1"], episodes.Matched.Select(match => match.EntityId));
+    }
+
+    [Fact]
     public async Task Checks_of_one_rule_run_one_at_a_time()
     {
         var rule = await WatchedFilmRuleAsync(rule => rule);

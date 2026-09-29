@@ -1672,7 +1672,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var now = timeProvider.GetUtcNow().ToString("O");
         var idParameters = string.Join(", ", items.Select((_, index) => $"@id{index}"));
 
-        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir)>(items.Count);
+        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir, int NoneOnDisk)>(items.Count);
 
         using (var command = connection.CreateCommand())
         {
@@ -1684,7 +1684,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END),
                     SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END),
                     SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
-                    MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END)
+                    MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END),
+                    CASE WHEN SUM(CASE WHEN e.has_file = 1 THEN 1 ELSE 0 END) = 0 THEN COUNT(*) ELSE 0 END
                 FROM episode_entries e
                 WHERE e.series_id IN ({idParameters})
                 GROUP BY e.series_id;
@@ -1704,7 +1705,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
                     reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
                     reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-                    reader.IsDBNull(5) ? null : reader.GetString(5));
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    reader.IsDBNull(6) ? 0 : reader.GetInt32(6));
             }
         }
 
@@ -1739,7 +1741,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     counts.Aired,
                     counts.AiredWithFile,
                     counts.AiredUpgradable,
-                    counts.NextAir is not null)
+                    counts.NextAir is not null,
+                    counts.NoneOnDisk)
             });
         }
 
@@ -3520,6 +3523,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var airedWithFile = 0;
         var airedUpgradable = 0;
         var hasFutureAirDate = false;
+        var episodeCount = 0;
 
         using (var rollup = connection.CreateCommand())
         {
@@ -3530,7 +3534,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN air_date_utc > @now THEN 1 ELSE 0 END), 0)
+                    COALESCE(MAX(CASE WHEN air_date_utc > @now THEN 1 ELSE 0 END), 0),
+                    CASE WHEN COALESCE(SUM(has_file), 0) = 0 THEN COUNT(*) ELSE 0 END
                 FROM episode_entries
                 WHERE series_id = @seriesId;
                 """;
@@ -3544,10 +3549,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 airedWithFile = reader.GetInt32(1);
                 airedUpgradable = reader.GetInt32(2);
                 hasFutureAirDate = reader.GetInt32(3) == 1;
+                episodeCount = reader.GetInt32(4);
             }
         }
 
-        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate);
+        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate, episodeCount);
 
         using var update = connection.CreateCommand();
         update.Transaction = transaction;

@@ -18,7 +18,12 @@ public sealed record RetentionTitleFacts(
     bool? SeasonFinale = null,
     bool? SeriesFinale = null,
     int? EpisodeRank = null,
-    int? SeasonRank = null);
+    int? SeasonRank = null,
+    /// <summary>
+    /// Upcoming: an episode that has not aired or has no air date, a season or show none of whose episodes has
+    /// aired. The word movies use, from the same rule the TV "Upcoming" pill uses. Retention never acts on it.
+    /// </summary>
+    bool Upcoming = false);
 
 /// <summary>What Deluno knows about a season or an episode that its show does not say.</summary>
 public sealed record RetentionPartFacts(
@@ -231,7 +236,8 @@ public sealed class RetentionUnitReader(
                 if (level == RetentionLevels.Show)
                 {
                     RetentionEpisodeMath? showMath = null;
-                    if (needs.HasFlag(RetentionUnitNeeds.Inventory) && await series.GetInventoryDetailAsync(show.Id, cancellationToken) is { } showInventory)
+                    // Always read: whether the show is Upcoming is asked of every show, whatever the steps need.
+                    if (await series.GetInventoryDetailAsync(show.Id, cancellationToken) is { } showInventory)
                     {
                         showMath = new RetentionEpisodeMath(showInventory.Episodes, now);
                     }
@@ -244,7 +250,8 @@ public sealed class RetentionUnitReader(
                             QualityProfile: profile,
                             Monitored: show.Monitored,
                             SeriesType: show.SeriesType,
-                            MissingEpisodes: showMath?.Missing(null),
+                            MissingEpisodes: needs.HasFlag(RetentionUnitNeeds.Inventory) ? showMath?.Missing(null) : null,
+                            Upcoming: showMath?.ShowUpcoming() == true,
                             SeriesFinale: showMath?.SeriesFinale(null, null, Ended(show.Id)))));
                     continue;
                 }
@@ -283,6 +290,7 @@ public sealed class RetentionUnitReader(
                                 Monitored: math?.SeasonMonitored(season.Key),
                                 SeriesType: show.SeriesType,
                                 MissingEpisodes: math?.Missing(season.Key),
+                                Upcoming: math?.SeasonUpcoming(season.Key) == true,
                                 SeasonFinale: math?.SeasonFinale(season.Key, null),
                                 SeriesFinale: math?.SeriesFinale(season.Key, null, Ended(show.Id)),
                                 SeasonRank: math?.SeasonRank(season.Key))));
@@ -311,7 +319,8 @@ public sealed class RetentionUnitReader(
                             SeriesType: show.SeriesType,
                             SeasonFinale: math?.SeasonFinale(season, file.File.EpisodeId),
                             SeriesFinale: math?.SeriesFinale(season, file.File.EpisodeId, Ended(show.Id)),
-                            EpisodeRank: math?.EpisodeRank(file.File.EpisodeId!))));
+                            EpisodeRank: math?.EpisodeRank(file.File.EpisodeId!),
+                            Upcoming: episode is not null && RetentionEpisodeMath.EpisodeUpcoming(episode, now))));
                 }
             }
 

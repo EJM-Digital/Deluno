@@ -89,6 +89,7 @@ public sealed record UpdatePlatformSettingsRequest(
     int? LeftoverMinAgeHours = null,
     bool? ForceImportEnabled = null,
     int? ForceImportMaxTries = null,
+    int? ForceImportMinimumMegabytes = null,
     string? SeasonFolderFormat = null,
     string? SpecialsFolderFormat = null,
     string? MultiEpisodeStyle = null,

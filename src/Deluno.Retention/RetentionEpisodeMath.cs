@@ -52,18 +52,28 @@ public sealed class RetentionEpisodeMath
 
     /// <summary>
     /// Monitored episodes that have aired and have no file. Specials only count in a season of their own.
-    /// An episode with no air date has not been said to have aired, so it is not counted as missing; but
-    /// while any monitored episode without a file has no date, the count cannot be trusted either way
-    /// ("none missing" would only mean "none known to be missing"), so the answer is unknown (null) and a
-    /// rule leaves the title alone (#1072).
+    /// An episode with no air date has not aired, so it is Upcoming, not missing (#1072).
     /// </summary>
     public int? Missing(int? season)
+        => _episodes.Count(episode => (season is null ? episode.SeasonNumber > 0 : episode.SeasonNumber == season) && episode.Monitored && !episode.HasFile && episode.AirDateUtc <= _now);
+
+    /// <summary>
+    /// Upcoming, the word movies use: an episode that has not aired yet or has no air date. Retention never acts on
+    /// it, and "missing episodes" counts only episodes that have aired.
+    /// </summary>
+    public static bool EpisodeUpcoming(SeriesEpisodeInventoryItem episode, DateTimeOffset now)
+        => episode.AirDateUtc is not { } aired || aired > now;
+
+    /// <summary>A season none of whose episodes has aired (the rule the TV Upcoming pill uses: nothing aired yet, something listed).</summary>
+    public bool SeasonUpcoming(int season)
     {
-        var scope = _episodes.Where(episode => (season is null ? episode.SeasonNumber > 0 : episode.SeasonNumber == season) && episode.Monitored && !episode.HasFile).ToArray();
-        return scope.Any(episode => episode.AirDateUtc is null)
-            ? null
-            : scope.Count(episode => episode.AirDateUtc <= _now);
+        var inSeason = _episodes.Where(episode => episode.SeasonNumber == season).ToArray();
+        return inSeason.Length > 0 && inSeason.All(episode => EpisodeUpcoming(episode, _now));
     }
+
+    /// <summary>A show none of whose episodes has aired.</summary>
+    public bool ShowUpcoming()
+        => _episodes.Count > 0 && _episodes.All(episode => EpisodeUpcoming(episode, _now));
 
     /// <summary>Whether any episode of the season is monitored; null when Deluno lists none.</summary>
     public bool? SeasonMonitored(int season)

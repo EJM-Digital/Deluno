@@ -90,7 +90,31 @@ public sealed class RetentionService(
     }
 
     public Task<RetentionRun> CheckAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
-        => OneAtATimeAsync(rule.Id, () => CheckCoreAsync(rule, trigger, cancellationToken), cancellationToken);
+        => OneAtATimeAsync(rule.Id, async () =>
+        {
+            // A check can sit queued behind another for minutes with the rule as it was when it was listed. The rule
+            // is read again here, inside the gate, so an edit made in that time (a new action, a protecting step,
+            // switched off, deleted) is what the check obeys (#1072).
+            var current = await repository.GetRuleAsync(rule.Id, cancellationToken);
+            if (current is null)
+            {
+                return NotRun(rule, RetentionRunKinds.Check, trigger, "The rule no longer exists, so nothing was checked.");
+            }
+
+            if (trigger == "schedule" && !current.IsEnabled)
+            {
+                return NotRun(current, RetentionRunKinds.Check, trigger, "The rule was switched off while this check waited, so it was not run.");
+            }
+
+            return await CheckCoreAsync(current, trigger, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>An answer for a check or confirmation that did not run; nothing is written to history.</summary>
+    private RetentionRun NotRun(RetentionRule rule, string kind, string trigger, string summary)
+    {
+        var now = timeProvider.GetUtcNow();
+        return new RetentionRun(Guid.CreateVersion7().ToString("N"), rule.Id, rule.Name, kind, trigger, null, now, now, 0, 0, 0, 0, 0, summary, []);
+    }
 
     private async Task<RetentionRun> CheckCoreAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
     {
@@ -280,7 +304,13 @@ public sealed class RetentionService(
 
     /// <summary>A person confirms Ready to remove titles. The rule is asked again first.</summary>
     public Task<RetentionRun> ConfirmAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
-        => OneAtATimeAsync(rule.Id, () => ConfirmCoreAsync(rule, entityIds, cancellationToken), cancellationToken);
+        => OneAtATimeAsync(rule.Id, async () =>
+        {
+            var current = await repository.GetRuleAsync(rule.Id, cancellationToken);
+            return current is null
+                ? NotRun(rule, RetentionRunKinds.Confirmed, "person", "The rule no longer exists, so nothing was removed.")
+                : await ConfirmCoreAsync(current, entityIds, cancellationToken);
+        }, cancellationToken);
 
     private async Task<RetentionRun> ConfirmCoreAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
     {

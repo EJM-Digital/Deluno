@@ -428,6 +428,7 @@ function ImportPolicyPage() {
         leftoverMinAgeHours: form.leftoverMinAgeHours,
         forceImportEnabled: form.forceImportEnabled,
         forceImportMaxTries: form.forceImportMaxTries,
+        forceImportMinimumMegabytes: form.forceImportMinimumMegabytes,
         unmatchedImportPolicy: form.unmatchedImportPolicy,
         unmatchedImportGiveUpDays: form.unmatchedImportGiveUpDays
       });
@@ -574,7 +575,7 @@ function ImportPolicyFields({
       <div className="border-t border-hairline p-[var(--card-pad-x)]">
         <div className="grid content-start gap-1.5 pb-[var(--grid-gap)]">
           <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Force import</p>
-          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Off for a new install. When on, Deluno imports a download anyway after its import has already stopped once for one minor reason, and only this one: Deluno could not read the file to check it (a share that dropped, a lock, or a slow disk), so nothing was found wrong with it. It never goes past a file Deluno read and found wrong, a title it cannot identify, or a file that would replace one you already have. Because Deluno could not read the file, it cannot tell a sample by looking inside, so a file whose name looks like a sample, or that is under 100 MB, stays stopped. Every forced import is written to Activity.</p>
+          <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">Off for a new install. When on, Deluno imports a download anyway after its import has already stopped once for one minor reason, and only this one: Deluno could not read the file to check it (a share that dropped, a lock, or a slow disk), so nothing was found wrong with it. It never goes past a file Deluno read and found wrong, a title it cannot identify, or a file that would replace one you already have. Because Deluno could not read the file, it cannot tell a sample by looking inside, so a file whose name looks like a sample, or that is smaller than the size below, stays stopped. Every forced import is written to Activity.</p>
         </div>
         <SwitchRow label="Import files Deluno could not check" description="Only after the first stop, and only into a gap. If the file turns out to be damaged, remove it from the title's page and search again." checked={form.forceImportEnabled} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, forceImportEnabled: checked }))} />
         {form.forceImportEnabled ? (
@@ -582,6 +583,14 @@ function ImportPolicyFields({
             <div className="flex items-center gap-2">
               <Input type="number" min={1} max={25} value={form.forceImportMaxTries} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMaxTries: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
               <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">tries</span>
+            </div>
+          </Field>
+        ) : null}
+        {form.forceImportEnabled ? (
+          <Field label="Smallest file to force" help="Files smaller than this are never force-imported, so samples and trailers stay out.">
+            <div className="flex items-center gap-2">
+              <Input type="number" min={1} max={100000} value={form.forceImportMinimumMegabytes} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMinimumMegabytes: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
             </div>
           </Field>
         ) : null}
