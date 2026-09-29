@@ -299,7 +299,18 @@ public sealed class FolderChainService(
         var finished = await Task.WhenAny(task, Task.Delay(timeout, cancellationToken));
         if (finished == task)
         {
-            return await task;
+            try
+            {
+                return await task;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A client that honours its token (or its own HTTP timeout)
+                // ends with a cancellation when the step timeout fires. That is
+                // "did not answer", not the caller cancelling: only the
+                // caller's own cancellation may propagate.
+                throw new TimeoutException();
+            }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
