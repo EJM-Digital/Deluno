@@ -68,6 +68,41 @@ public sealed class TrayApplication : ApplicationContext
 
         SetState(TrayState.Starting);
         _ = StartServerAsync();
+        _ = StartInstalledComponentsAsync();
+    }
+
+    /// <summary>
+    /// After a restart, starts the download clients Deluno itself started at
+    /// install if they are not answering (#1051, #1052). Never blocks or fails
+    /// the tray; what it did is written to component-startup.log.
+    /// </summary>
+    private static async Task StartInstalledComponentsAsync()
+    {
+        try
+        {
+            var starter = new ComponentAutoStarter(
+                new FileStartedComponentsRegistry(),
+                new LoopbackPortProbe(),
+                new RealProcessStarter(),
+                message =>
+                {
+                    try
+                    {
+                        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno", "logs");
+                        Directory.CreateDirectory(logDir);
+                        File.AppendAllText(Path.Combine(logDir, "component-startup.log"), $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+                    }
+                    catch
+                    {
+                        // Best-effort.
+                    }
+                });
+            await starter.RunAsync(BundledComponents.Load(), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A client that could not be started again is still startable by hand.
+        }
     }
 
     private void SetState(TrayState state)
