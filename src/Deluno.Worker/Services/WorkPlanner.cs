@@ -1477,7 +1477,7 @@ public sealed class WorkPlanner(
         {
             var actionResult = await downloadClientTelemetryService.ExecuteActionAsync(
                 item.ClientId,
-                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id, dispatch?.DispatchId),
+                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
                 cancellationToken);
             removedFromClient = actionResult.Succeeded;
         }

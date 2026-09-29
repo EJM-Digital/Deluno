@@ -486,16 +486,16 @@ public sealed record DownloadTelemetryOverview(
     IReadOnlyList<DownloadClientTelemetrySnapshot> Clients,
     DateTimeOffset CapturedUtc);
 
+/// <summary>
+/// The body of the public queue-actions route. It carries only what the caller
+/// may say - the action and the item - and never a claim about who owns the
+/// item: ownership is always decided server-side from Deluno's own dispatch
+/// records (#1062). Internal callers that hold a dispatch use
+/// <see cref="IDownloadClientTelemetryService.ExecuteActionForDispatchAsync"/>.
+/// </summary>
 public sealed record DownloadClientActionRequest(
     string Action,
-    string QueueItemId,
-    /// <summary>
-    /// The dispatch Deluno recorded for this download, when the caller knows it
-    /// (an internal cleanup or a forced re-download). A dispatch that has no
-    /// client id yet, or is archived, still proves Deluno sent the download
-    /// (#1062).
-    /// </summary>
-    string? DispatchId = null);
+    string QueueItemId);
 
 public sealed record DownloadClientActionResult(
     string ClientId,

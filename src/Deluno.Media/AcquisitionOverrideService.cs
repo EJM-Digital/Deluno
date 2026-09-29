@@ -230,10 +230,16 @@ public sealed class AcquisitionOverrideService(
             // delete would report success and change nothing. On a torrent
             // client the two are the same request, and saying "forget" is still
             // the honest name for what is being asked.
-            var result = await downloadClients.ExecuteActionAsync(
-                clientId,
-                new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId, request.DispatchId),
-                cancellationToken);
+            // The dispatch is looked up here from Deluno's own records; the
+            // download client service only trusts it when it is for this
+            // client and matches this very item (#1062).
+            var ownDispatch = dispatches is not null && request.DispatchId is { Length: > 0 } requestedDispatchId
+                ? await dispatches.GetDispatchIncludingArchivedAsync(requestedDispatchId, cancellationToken)
+                : null;
+            var forgetRequest = new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId);
+            var result = ownDispatch is not null
+                ? await downloadClients.ExecuteActionForDispatchAsync(clientId, forgetRequest, ownDispatch, cancellationToken)
+                : await downloadClients.ExecuteActionAsync(clientId, forgetRequest, cancellationToken);
 
             if (result.Succeeded)
             {

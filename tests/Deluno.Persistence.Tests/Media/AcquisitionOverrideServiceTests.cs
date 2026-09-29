@@ -162,6 +162,13 @@ public sealed class AcquisitionOverrideServiceTests
                 return Task.CompletedTask;
             }
 
+            if (targetMethod?.Name == nameof(IDownloadDispatchesRepository.GetDispatchIncludingArchivedAsync))
+            {
+                // The override looks the dispatch up so the client service can
+                // check it describes the item; this one holds none.
+                return Task.FromResult<Deluno.Jobs.Contracts.DownloadDispatchItem?>(null);
+            }
+
             throw new NotSupportedException(targetMethod?.Name);
         }
     }

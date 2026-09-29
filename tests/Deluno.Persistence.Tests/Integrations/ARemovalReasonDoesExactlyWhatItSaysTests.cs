@@ -288,7 +288,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
 
         Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned);
-        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.Forget, null);
+        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.Forget);
 
         Assert.True(forgotten.Succeeded);
         Assert.False(forgotten.Refused);
@@ -296,22 +296,63 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
     }
 
-    /// <summary>#1062: a forced re-download names its own dispatch, even when the client id is not recorded yet.</summary>
+    /// <summary>
+    /// #1062 (review finding): the public queue-actions body cannot name a
+    /// dispatch at all, so a caller can never make an item Deluno's by saying
+    /// so. Ownership comes only from Deluno's own records.
+    /// </summary>
     [Fact]
-    public async Task A_forced_redownload_can_forget_an_item_by_naming_Delunos_own_dispatch_but_not_a_foreign_one()
+    public void The_public_action_request_has_no_way_to_name_a_dispatch()
+    {
+        Assert.Null(typeof(DownloadClientActionRequest).GetProperty("DispatchId"));
+        Assert.Equal(2, typeof(DownloadClientActionRequest).GetConstructors().Single().GetParameters().Length);
+    }
+
+    /// <summary>#1062: a forced re-download holds its own dispatch, even when the client id was never recorded - as long as the client shows that item under that release name.</summary>
+    [Fact]
+    public async Task A_dispatch_the_client_never_gave_an_id_for_can_forget_the_item_the_client_shows_for_it()
     {
         using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
-        await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
+        var idLessDispatch = await world.RecordDispatchWithoutIdAsync("Other.Movie.2024.1080p.WEB-DL-GROUP");
+        world.Client.Queue.Add(ClientItem("id-the-client-gave-later", "Other.Movie.2024.1080p.WEB-DL-GROUP"));
 
-        var own = await world.ActAsync("id-the-client-gave-later", DownloadClientActions.Forget, world.DispatchId);
+        var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.Forget, idLessDispatch);
+
         Assert.True(own.Succeeded);
         Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
-
-        world.Client.LastAction = null;
-        var foreign = await world.ActAsync("hand-added", DownloadClientActions.Forget, "no-such-dispatch");
-        Assert.True(foreign.Refused);
-        Assert.Null(world.Client.LastAction);
+        // ...and the dispatch now carries the id, so the download stays Deluno's.
+        Assert.True((await world.CheckOwnershipAsync("id-the-client-gave-later")).Owned);
     }
+
+    [Fact]
+    public async Task A_dispatch_is_never_proof_for_an_item_it_does_not_describe()
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+        var idLessDispatch = await world.RecordDispatchWithoutIdAsync("Other.Movie.2024.1080p.WEB-DL-GROUP");
+        world.Client.Queue.Add(ClientItem("hand-added", "Something.Else.Entirely.2020.720p"));
+
+        // Names a hand-added item (different release name): refused, and nothing called.
+        var byName = await world.ActForDispatchAsync("hand-added", DownloadClientActions.Forget, idLessDispatch);
+        Assert.True(byName.Refused);
+        Assert.Null(world.Client.LastAction);
+
+        // The world's own dispatch has its own id; naming another item with it: refused.
+        var byId = await world.ActForDispatchAsync("hand-added", DownloadClientActions.DeleteWithData, world.DispatchId);
+        Assert.True(byId.Refused);
+        Assert.Null(world.Client.LastAction);
+
+        // An item that is not in the client at all cannot be proven either.
+        var missing = await world.ActForDispatchAsync("not-there", DownloadClientActions.Forget, idLessDispatch);
+        Assert.True(missing.Refused);
+        Assert.False((await world.CheckOwnershipAsync("hand-added")).Owned);
+    }
+
+    private static DownloadQueueItem ClientItem(string id, string releaseName)
+        => new(
+            Id: id, ClientId: "client", ClientName: "client", Protocol: "sabnzbd", MediaType: "movie",
+            Title: releaseName, ReleaseName: releaseName, Category: "movies", Status: "downloading",
+            Progress: 0.5, SpeedMbps: 1, EtaSeconds: 60, SizeBytes: 1000, DownloadedBytes: 500, Peers: 0,
+            IndexerName: "TestIndexer", ErrorMessage: null, AddedUtc: DateTimeOffset.UnixEpoch);
 
     [Fact]
     public async Task Delunos_own_download_deletes_its_data_only_when_removeFromClient_is_set()
@@ -352,8 +393,14 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         public Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        /// <summary>What the client is showing right now.</summary>
+        public List<DownloadQueueItem> Queue { get; } = [];
+
         public Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
-            => throw new NotSupportedException();
+            => Task.FromResult<DownloadClientTelemetrySnapshot?>(new DownloadClientTelemetrySnapshot(
+                client.Id, client.Name, protocol, null, "healthy", null, Capabilities,
+                new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0),
+                Queue.ToArray(), [], capturedUtc));
 
         public Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem client, string action, string queueItemId, CancellationToken cancellationToken)
         {
@@ -421,10 +468,12 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             SqliteSeriesCatalogRepository? series,
             string? seriesId,
             SqliteDownloadDispatchesRepository dispatches,
-            string dispatchId)
+            string dispatchId,
+            string libraryId)
         {
             Dispatches = dispatches;
             DispatchId = dispatchId;
+            LibraryId = libraryId;
             _storage = storage;
             _service = service;
             Client = fakeClient;
@@ -442,6 +491,8 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         public SqliteDownloadDispatchesRepository Dispatches { get; }
 
         public string DispatchId { get; }
+
+        public string LibraryId { get; }
 
         public FakeClient Client { get; }
 
@@ -565,7 +616,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 blocklist,
                 titleUnmonitorService: titleUnmonitorService);
 
-            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId);
+            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId, library.Id);
         }
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)
@@ -583,8 +634,20 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         public Task<DownloadClientActionResult> ActForeignAsync(string queueItemId, string action)
             => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId), CancellationToken.None);
 
-        public Task<DownloadClientActionResult> ActAsync(string queueItemId, string action, string? dispatchId)
-            => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId, dispatchId), CancellationToken.None);
+        public Task<DownloadClientActionResult> ActAsync(string queueItemId, string action)
+            => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId), CancellationToken.None);
+
+        public async Task<DownloadClientActionResult> ActForDispatchAsync(string queueItemId, string action, string dispatchId)
+        {
+            var dispatch = (await Dispatches.GetDispatchIncludingArchivedAsync(dispatchId, CancellationToken.None))!;
+            return await _service.ExecuteActionForDispatchAsync(ClientId, new DownloadClientActionRequest(action, queueItemId), dispatch, CancellationToken.None);
+        }
+
+        /// <summary>A dispatch the client never handed an id back for.</summary>
+        public Task<string> RecordDispatchWithoutIdAsync(string release)
+            => Jobs.RecordDownloadDispatchAsync(
+                LibraryId, MediaType, MediaType == "tv" ? "series" : "movie", EntityId, release, Indexer, ClientId, ClientId, "sent", null,
+                cancellationToken: CancellationToken.None);
 
         public Task<DownloadOwnership> CheckOwnershipAsync(string queueItemId)
             => _service.CheckOwnershipAsync(ClientId, queueItemId, CancellationToken.None);

@@ -512,6 +512,16 @@ describe("leftover downloads: select all", () => {
     expect(screen.getByRole("button", { name: "Remove 2 selected" })).toBeVisible();
   });
 
+  it("says in one plain line that Transfers only shows downloads Deluno sent (#1062)", () => {
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Deluno only shows downloads it sent.")).toBeVisible();
+  });
+
   it("offers no select-all button when there is nothing Deluno can remove", () => {
     queueLoaderData.orphans = [orphan({ delunoGrabbedIt: false })];
 

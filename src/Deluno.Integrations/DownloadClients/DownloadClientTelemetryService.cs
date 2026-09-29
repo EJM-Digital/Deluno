@@ -98,22 +98,15 @@ public sealed class DownloadClientTelemetryService(
 
     public async Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken)
     {
-        var built = await BuildAnnotatedSnapshotsAsync(cancellationToken);
-        var visibleSnapshots = built.OrderedClients
-            .Zip(built.Snapshots, (client, snapshot) => snapshot with
-            {
-                Queue = snapshot.Queue
-                    .Where(item => IsDelunosOwnDownload(
-                        item,
-                        built.SettledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
-                        built.CapturedUtc))
-                    .ToArray()
-            })
-            .ToArray();
+        // Deluno only ever sees the downloads it sent (#1062): the outside
+        // items are dropped as each client's answer arrives, before anything
+        // is counted, evaluated or shown, so every screen, health check and
+        // API built on this overview agrees.
+        var built = await BuildAnnotatedSnapshotsAsync(includeOutsideItems: false, cancellationToken);
 
         return new DownloadTelemetryOverview(
             Summary: built.Summary,
-            Clients: visibleSnapshots,
+            Clients: built.Snapshots,
             CapturedUtc: built.CapturedUtc);
     }
 
@@ -123,11 +116,13 @@ public sealed class DownloadClientTelemetryService(
     /// keeps items another tool, or a person, added to the client. Used only
     /// by the leftover-download scan (#958/#933 M2): a foreign item is really
     /// on disk and must still hold its file, even though it never appears on
-    /// the Queue screen.
+    /// the Queue screen. The outside items are appended untouched after
+    /// everything else is done: no strike, progress record, count or action
+    /// is ever based on them (#1062).
     /// </summary>
     public async Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
     {
-        var built = await BuildAnnotatedSnapshotsAsync(cancellationToken);
+        var built = await BuildAnnotatedSnapshotsAsync(includeOutsideItems: true, cancellationToken);
         return built.Snapshots;
     }
 
@@ -136,7 +131,7 @@ public sealed class DownloadClientTelemetryService(
         IReadOnlyList<DownloadClientTelemetrySnapshot> Snapshots,
         IReadOnlyDictionary<string, IReadOnlyList<DownloadDispatchItem>> SettledDispatchesByClientId,
         DownloadTelemetrySummary Summary,
-        DateTimeOffset CapturedUtc)> BuildAnnotatedSnapshotsAsync(CancellationToken cancellationToken)
+        DateTimeOffset CapturedUtc)> BuildAnnotatedSnapshotsAsync(bool includeOutsideItems, CancellationToken cancellationToken)
     {
         var capturedUtc = timeProvider.GetUtcNow();
         var platformSettings = await platformRepository.GetAsync(cancellationToken);
@@ -154,6 +149,7 @@ public sealed class DownloadClientTelemetryService(
         // (#280).
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 250, cancellationToken);
         var snapshots = new List<DownloadClientTelemetrySnapshot>();
+        var outsideByClientId = new Dictionary<string, (IReadOnlyList<DownloadQueueItem> Queue, IReadOnlyList<DownloadClientHistoryItem> History)>(StringComparer.OrdinalIgnoreCase);
         var orderedClients = clients
             .OrderBy(item => item.Priority)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
@@ -199,9 +195,25 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
             if (liveSnapshot is not null)
             {
-                liveSnapshot = await ApplyDownloadProgressStallAsync(liveSnapshot, capturedUtc, downloadHealthRules, cancellationToken);
                 var clientDispatches = dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>());
-                liveSnapshot = await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken);
+                // Deluno only ever sees what it sent (#1062): what the client
+                // holds that Deluno did not send is set aside here, before
+                // any stall clock, count, strike or action can look at it.
+                var split = await SplitOutsideItemsAsync(
+                    liveSnapshot,
+                    settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    capturedUtc,
+                    cancellationToken);
+                if (includeOutsideItems && (split.OutsideQueue.Count > 0 || split.OutsideHistory.Count > 0))
+                {
+                    outsideByClientId[client.Id] = (split.OutsideQueue, split.OutsideHistory);
+                }
+
+                liveSnapshot = await ApplyDownloadProgressStallAsync(split.Own, capturedUtc, downloadHealthRules, cancellationToken);
+                // The vanished-download check needs everything the client
+                // lists (an empty own list is not "the client lost it"), so it
+                // reads the whole answer while only Deluno's own is kept.
+                liveSnapshot = await RecordWhatTheClientShowsAsync(liveSnapshot, clientDispatches, cancellationToken, split.WholeAnswer);
                 snapshots.Add(DownloadClientHelpers.NormalizeSnapshotFailures(
                     EnrichQueueImportState(
                         EnrichWithDispatchHistory(
@@ -270,11 +282,135 @@ public sealed class DownloadClientTelemetryService(
             contentBlocklist,
             cancellationToken)));
 
-        // The free-space/connectivity summary is still read off the client's
-        // whole queue, foreign items included - see above.
+        // Counts are of Deluno's own downloads only (#1062).
         var overviewSummary = Summarize(healthAnnotatedSnapshots.SelectMany(snapshot => snapshot.Queue));
 
-        return (orderedClients, healthAnnotatedSnapshots, settledDispatchesByClientId, overviewSummary, capturedUtc);
+        IReadOnlyList<DownloadClientTelemetrySnapshot> result = healthAnnotatedSnapshots;
+        if (includeOutsideItems && outsideByClientId.Count > 0)
+        {
+            // Only the leftover-download scan asks for these, to know which
+            // files a download somebody else added is still holding. Added
+            // last, path-mapped like the rest, and never evaluated.
+            result = healthAnnotatedSnapshots.Select(snapshot =>
+            {
+                if (!outsideByClientId.TryGetValue(snapshot.ClientId, out var outside))
+                {
+                    return snapshot;
+                }
+
+                var mappedOutside = ApplyPathMappings(
+                    snapshot with { Queue = outside.Queue, History = outside.History },
+                    pathMappings,
+                    clientHostsById.GetValueOrDefault(snapshot.ClientId));
+                return snapshot with
+                {
+                    Queue = snapshot.Queue.Concat(mappedOutside.Queue).ToArray(),
+                    History = snapshot.History.Concat(mappedOutside.History).ToArray()
+                };
+            }).ToArray();
+        }
+
+        return (orderedClients, result, settledDispatchesByClientId, overviewSummary, capturedUtc);
+    }
+
+    private readonly record struct OutsideSplit(
+        DownloadClientTelemetrySnapshot Own,
+        DownloadClientTelemetrySnapshot WholeAnswer,
+        IReadOnlyList<DownloadQueueItem> OutsideQueue,
+        IReadOnlyList<DownloadClientHistoryItem> OutsideHistory);
+
+    /// <summary>
+    /// Separates what Deluno sent from everything else the client holds
+    /// (#1062). A download Deluno sent before the client handed back its id is
+    /// recognised by name for a short while (see <see cref="IsDelunosOwnDownload"/>);
+    /// the moment that happens its id is written onto the dispatch, so it stays
+    /// Deluno's once that window has passed.
+    /// </summary>
+    private async Task<OutsideSplit> SplitOutsideItemsAsync(
+        DownloadClientTelemetrySnapshot live,
+        IReadOnlyList<DownloadDispatchItem> settledDispatches,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var ownQueue = new List<DownloadQueueItem>(live.Queue.Count);
+        var outsideQueue = new List<DownloadQueueItem>();
+        foreach (var item in live.Queue)
+        {
+            if (!IsDelunosOwnDownload(item, settledDispatches, now))
+            {
+                outsideQueue.Add(item);
+                continue;
+            }
+
+            ownQueue.Add(item);
+            // Only an item recognised by name alone (no dispatch carries its
+            // id yet) gives its id to the dispatch it was matched to.
+            var alreadyIdentified = settledDispatches.Any(dispatch =>
+                string.Equals(dispatch.TorrentHashOrItemId, item.Id, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(dispatch.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+            var waiting = alreadyIdentified ? null : settledDispatches.FirstOrDefault(dispatch =>
+                string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId) &&
+                string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase) &&
+                now - dispatch.CreatedUtc <= RecentDispatchWindow &&
+                !string.Equals(dispatch.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+            if (waiting is not null && !string.IsNullOrWhiteSpace(item.Id))
+            {
+                try
+                {
+                    await dispatchesRepository.RecordClientItemIdAsync(waiting.Id, item.Id, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // Next poll tries again; it is still recognised by name meanwhile.
+                }
+            }
+        }
+
+        var ownHistory = new List<DownloadClientHistoryItem>(live.History.Count);
+        var outsideHistory = new List<DownloadClientHistoryItem>();
+        foreach (var item in live.History)
+        {
+            if (IsDelunosOwnHistoryItem(item, settledDispatches, now))
+            {
+                ownHistory.Add(item);
+            }
+            else
+            {
+                outsideHistory.Add(item);
+            }
+        }
+
+        var own = live with
+        {
+            Queue = ownQueue,
+            History = ownHistory,
+            Summary = Summarize(ownQueue)
+        };
+        return new OutsideSplit(own, live, outsideQueue, outsideHistory);
+    }
+
+    /// <summary>
+    /// The client's own history row for something Deluno sent: its id, or the
+    /// id it is filed under elsewhere, is the one Deluno recorded (or the
+    /// dispatch's own id, for a row Deluno derived from its records), with the
+    /// same short name-only allowance for a dispatch still waiting for its id.
+    /// </summary>
+    internal static bool IsDelunosOwnHistoryItem(
+        DownloadClientHistoryItem item,
+        IReadOnlyList<DownloadDispatchItem> clientDispatches,
+        DateTimeOffset now)
+    {
+        static bool Same(string? left, string? right)
+            => !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right)
+               && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        return clientDispatches.Any(dispatch =>
+            Same(dispatch.TorrentHashOrItemId, item.Id) ||
+            Same(dispatch.TorrentHashOrItemId, item.ExternalId) ||
+            Same(dispatch.Id, item.Id) ||
+            (string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId) &&
+             string.Equals(dispatch.ReleaseName, item.ReleaseName, StringComparison.OrdinalIgnoreCase) &&
+             now - dispatch.CreatedUtc <= RecentDispatchWindow));
     }
 
     /// <summary>
@@ -326,40 +462,100 @@ public sealed class DownloadClientTelemetryService(
             now - dispatch.CreatedUtc <= RecentDispatchWindow);
     }
 
-    public Task<DownloadOwnership> CheckOwnershipAsync(
+    public async Task<DownloadOwnership> CheckOwnershipAsync(
         string clientId,
         string queueItemId,
-        CancellationToken cancellationToken)
-        => CheckOwnershipAsync(clientId, queueItemId, null, cancellationToken);
-
-    private async Task<DownloadOwnership> CheckOwnershipAsync(
-        string clientId,
-        string queueItemId,
-        string? dispatchId,
         CancellationToken cancellationToken)
     {
-        // A dispatch the caller names (still waiting for its client id, or
-        // archived) is proof on its own, as long as it was for this client.
-        if (!string.IsNullOrWhiteSpace(dispatchId))
-        {
-            var named = await dispatchesRepository.GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
-            if (named is not null && string.Equals(named.DownloadClientId, clientId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new DownloadOwnership(true, null);
-            }
-        }
-
-        // Archived dispatches count: Deluno archives a dispatch as it finishes
-        // with it, and the download can still be sitting in the client.
+        // Ownership is only ever decided from Deluno's own dispatch records,
+        // matched on the client's id for the item (#1062): never on anything a
+        // caller says. Archived dispatches count: Deluno archives a dispatch
+        // as it finishes with it, and the download can still be sitting in the
+        // client.
         var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(clientId, queueItemId, cancellationToken);
         return dispatch is not null
             ? new DownloadOwnership(true, null)
-            : new DownloadOwnership(false, $"Deluno did not send the download \"{queueItemId}\", so it will not remove or change it. Manage it in the download client itself.");
+            : new DownloadOwnership(false, NotSentMessage(queueItemId));
     }
 
-    public async Task<DownloadClientActionResult> ExecuteActionAsync(
+    private static string NotSentMessage(string queueItemId)
+        => $"Deluno did not send the download \"{queueItemId}\", so it will not remove or change it. Manage it in the download client itself.";
+
+    /// <summary>
+    /// A caller-held dispatch counts as proof only when it is for this client
+    /// and describes this very item: its recorded id equals the item's id, or
+    /// (a dispatch the client never gave an id for) the client itself shows the
+    /// item under that id with the dispatch's own release name. Then the id is
+    /// recorded so the download stays Deluno's from here on.
+    /// </summary>
+    private async Task<DownloadOwnership> CheckDispatchOwnershipAsync(
+        DownloadClientItem client,
+        string queueItemId,
+        DownloadDispatchItem dispatch,
+        CancellationToken cancellationToken)
+    {
+        var notSent = new DownloadOwnership(false, NotSentMessage(queueItemId));
+        if (!string.Equals(dispatch.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return notSent;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+        {
+            return string.Equals(dispatch.TorrentHashOrItemId.Trim(), queueItemId.Trim(), StringComparison.OrdinalIgnoreCase)
+                ? new DownloadOwnership(true, null)
+                : notSent;
+        }
+
+        var live = await TryGetLiveSnapshotAsync(client, timeProvider.GetUtcNow(), cancellationToken);
+        var shown = live?.Queue.FirstOrDefault(item => string.Equals(item.Id, queueItemId, StringComparison.OrdinalIgnoreCase));
+        if (shown is null || !string.Equals(shown.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase))
+        {
+            return notSent;
+        }
+
+        await dispatchesRepository.RecordClientItemIdAsync(dispatch.Id, queueItemId, cancellationToken);
+        return new DownloadOwnership(true, null);
+    }
+
+    public async Task<bool> AdoptClientItemIdAsync(
+        string clientId,
+        string queueItemId,
+        string releaseName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(queueItemId) || string.IsNullOrWhiteSpace(releaseName))
+        {
+            return false;
+        }
+
+        var dispatch = await dispatchesRepository.FindDispatchWithoutClientIdByReleaseNameAsync(clientId, releaseName, cancellationToken);
+        if (dispatch is null)
+        {
+            return false;
+        }
+
+        await dispatchesRepository.RecordClientItemIdAsync(dispatch.Id, queueItemId, cancellationToken);
+        return true;
+    }
+
+    public Task<DownloadClientActionResult> ExecuteActionAsync(
         string clientId,
         DownloadClientActionRequest request,
+        CancellationToken cancellationToken)
+        => ExecuteActionWithOwnershipAsync(clientId, request, null, cancellationToken);
+
+    public Task<DownloadClientActionResult> ExecuteActionForDispatchAsync(
+        string clientId,
+        DownloadClientActionRequest request,
+        DownloadDispatchItem dispatch,
+        CancellationToken cancellationToken)
+        => ExecuteActionWithOwnershipAsync(clientId, request, dispatch, cancellationToken);
+
+    private async Task<DownloadClientActionResult> ExecuteActionWithOwnershipAsync(
+        string clientId,
+        DownloadClientActionRequest request,
+        DownloadDispatchItem? dispatch,
         CancellationToken cancellationToken)
     {
         var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
@@ -401,7 +597,9 @@ public sealed class DownloadClientTelemetryService(
         // #1062: removal goes through the same check.
         if (DownloadClientActions.RequiresDelunoOwnership(action))
         {
-            var ownership = await CheckOwnershipAsync(client.Id, request.QueueItemId, request.DispatchId, cancellationToken);
+            var ownership = dispatch is not null
+                ? await CheckDispatchOwnershipAsync(client, request.QueueItemId, dispatch, cancellationToken)
+                : await CheckOwnershipAsync(client.Id, request.QueueItemId, cancellationToken);
             if (!ownership.Owned)
             {
                 return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, ownership.Message!)
@@ -1637,7 +1835,8 @@ public sealed class DownloadClientTelemetryService(
     internal async Task<DownloadClientTelemetrySnapshot> RecordWhatTheClientShowsAsync(
         DownloadClientTelemetrySnapshot live,
         IReadOnlyList<DownloadDispatchItem> clientDispatches,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DownloadClientTelemetrySnapshot? wholeAnswer = null)
     {
         // #927: a download the client no longer lists at all - not in the
         // queue, not in history - used to be noticed only hours later, by
@@ -1646,7 +1845,7 @@ public sealed class DownloadClientTelemetryService(
         var recovered = new List<DownloadQueueItem>();
         if (dispatchAlertRepository is not null)
         {
-            foreach (var dispatch in VanishedFromClient(live, clientDispatches))
+            foreach (var dispatch in VanishedFromClient(wholeAnswer ?? live, clientDispatches))
             {
                 try
                 {

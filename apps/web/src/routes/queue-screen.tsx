@@ -961,6 +961,9 @@ export function QueuePage() {
           />
         }
       >
+        <p className="border-b border-hairline px-[var(--card-pad-x)] py-2 text-[length:var(--type-caption)] text-muted-foreground">
+          Deluno only shows downloads it sent.
+        </p>
         {queue.length === 0 ? (
           <ListEmpty
             title="Nothing in motion"

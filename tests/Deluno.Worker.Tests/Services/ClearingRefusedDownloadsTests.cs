@@ -185,10 +185,12 @@ public sealed class ClearingRefusedDownloadsTests
 
     /// <summary>
     /// #1062: a download Deluno never sent is left alone, and said so plainly
-    /// rather than reported as the client being unavailable.
+    /// rather than reported as the client being unavailable. The row is
+    /// closed and Activity says why, so it never sits "awaiting cleanup"
+    /// unseen for ever.
     /// </summary>
     [Fact]
-    public async Task A_download_Deluno_never_sent_is_left_alone_and_is_not_reported_as_the_client_being_down()
+    public async Task A_download_Deluno_never_sent_is_left_alone_and_the_row_is_closed_with_an_Activity_line()
     {
         var blocklist = Blocklist(Refused("hash-1"));
         var clients = new Mock<IDownloadClientTelemetryService>();
@@ -196,12 +198,46 @@ public sealed class ClearingRefusedDownloadsTests
                 It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) =>
                 new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Deluno did not send it.") { Refused = true });
+        var activity = new Mock<IActivityFeedRepository>();
+
+        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing(), activityFeedRepository: activity.Object)
+            .CleanUpOneAsync("block-1", CancellationToken.None);
+
+        Assert.Equal(RefusedDownloadCleanupOutcomes.NotSentByDeluno, outcome);
+        blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
+        activity.Verify(feed => feed.RecordActivityAsync(
+            "download.cleanup.left-alone",
+            It.Is<string>(message => message.Contains("Deluno did not send that download")),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        // Never asked the client to remove it: only ownership was refused.
+        clients.Verify(service => service.ExecuteActionAsync(
+            It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// #1062 residual: Deluno did send it, but the client never handed back an
+    /// id, so the dispatch has none. The blocked row names the id; the
+    /// dispatch is given it and the download is cleaned up, not left for ever.
+    /// </summary>
+    [Fact]
+    public async Task A_release_Deluno_sent_whose_dispatch_never_got_the_clients_id_is_given_it_and_cleaned_up()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = new Mock<IDownloadClientTelemetryService>();
+        var adopted = false;
+        clients.Setup(service => service.AdoptClientItemIdAsync("qbittorrent-main", "hash-1", "Arrival.2016.2160p", It.IsAny<CancellationToken>()))
+            .Returns(() => { adopted = true; return Task.FromResult(true); });
+        clients.Setup(service => service.ExecuteActionAsync(
+                It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) => adopted
+                ? new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, true, "forgotten")
+                : new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Deluno did not send it.") { Refused = true });
 
         var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing())
             .CleanUpOneAsync("block-1", CancellationToken.None);
 
-        Assert.Equal(RefusedDownloadCleanupOutcomes.NotSentByDeluno, outcome);
-        blocklist.Verify(list => list.MarkCleanedUpAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(RefusedDownloadCleanupOutcomes.Cleared, outcome);
+        blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
