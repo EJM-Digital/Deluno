@@ -36,7 +36,7 @@ public sealed record TitleRescanMissingFile(string FileName, string Path, bool M
 
 public sealed record TitleRescanUntrackedFile(string FileName, string Path, long? SizeBytes, string IssueId);
 
-/// <param name="Outcome">ok | changed | nothing-tracked | library-unreachable</param>
+/// <param name="Outcome">ok | changed | not-changed | nothing-tracked | library-unreachable | library-unknown</param>
 public sealed record TitleRescanResult(
     string MediaType,
     string TitleId,

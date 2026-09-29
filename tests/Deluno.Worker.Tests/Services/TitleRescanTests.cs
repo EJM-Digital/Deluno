@@ -102,6 +102,53 @@ public sealed class TitleRescanTests : IDisposable
     }
 
     [Fact]
+    public async Task An_empty_mount_point_is_treated_as_unreachable_and_nothing_is_unmonitored()
+    {
+        // The folder exists (a volume that did not mount) but holds nothing at all.
+        var emptyMount = Directory.CreateDirectory(Path.Combine(_root, "mount")).FullName;
+        var gone = Path.Combine(emptyMount, "Arrival (2016)", "Arrival.mkv");
+        var rig = new Rig(this, gone, rootOverride: emptyMount);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.Equal("library-unreachable", result!.Outcome);
+        Assert.Contains("changed nothing", result.Summary);
+        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task An_unknown_library_says_nothing_was_changed_and_marks_nothing()
+    {
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-elsewhere-" + Guid.NewGuid().ToString("N"), "Arrival.mkv");
+        var rig = new Rig(this, elsewhere, libraryIdOverride: "no-such-library");
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.Equal("library-unknown", result!.Outcome);
+        Assert.Contains("changed nothing", result.Summary);
+        Assert.DoesNotContain("marked it missing", result.Summary);
+        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_refused_repair_is_not_reported_as_marked_missing()
+    {
+        // The library is known but the file sits outside its root, so the repair is refused.
+        File.WriteAllText(Path.Combine(_root, "other.mkv"), "x");
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-elsewhere-" + Guid.NewGuid().ToString("N"), "Arrival.mkv");
+        var rig = new Rig(this, elsewhere);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.Equal("not-changed", result!.Outcome);
+        Assert.False(result.Missing[0].MarkedMissing);
+        Assert.Contains("could not mark it missing", result.Summary);
+        Assert.DoesNotContain("marked it missing and stopped", result.Summary);
+        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task An_unknown_title_is_not_found()
     {
         var rig = new Rig(this, Path.Combine(_root, "x.mkv"));
@@ -137,7 +184,7 @@ public sealed class TitleRescanTests : IDisposable
         public List<(string Category, string Message)> Activity { get; } = [];
         public FilesystemReconciliationService Service { get; }
 
-        public Rig(TitleRescanTests owner, string filePath, string? rootOverride = null)
+        public Rig(TitleRescanTests owner, string filePath, string? rootOverride = null, string libraryIdOverride = "lib-1")
         {
             var now = DateTimeOffset.UnixEpoch;
             var library = new LibraryItem(
@@ -150,7 +197,7 @@ public sealed class TitleRescanTests : IDisposable
             Movies.Setup(m => m.GetByIdAsync("movie-1", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new MovieListItem(
                     "movie-1", "Arrival", 2016, null, true, true, null, null, null, null, null, null, null, [],
-                    null, null, null, null, now, now, FilePath: filePath, LibraryId: "lib-1"));
+                    null, null, null, null, now, now, FilePath: filePath, LibraryId: libraryIdOverride));
             Movies.Setup(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 

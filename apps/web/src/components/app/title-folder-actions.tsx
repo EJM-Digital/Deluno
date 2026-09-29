@@ -24,7 +24,7 @@ import { Button } from "../ui/button";
 import { toast } from "../shell/toaster";
 
 export interface TitleRescanResult {
-  outcome: "ok" | "changed" | "nothing-tracked" | "library-unreachable";
+  outcome: "ok" | "changed" | "not-changed" | "nothing-tracked" | "library-unreachable" | "library-unknown";
   title: string;
   filesChecked: number;
   filesPresent: number;
