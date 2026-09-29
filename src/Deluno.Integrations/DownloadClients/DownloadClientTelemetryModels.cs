@@ -488,7 +488,14 @@ public sealed record DownloadTelemetryOverview(
 
 public sealed record DownloadClientActionRequest(
     string Action,
-    string QueueItemId);
+    string QueueItemId,
+    /// <summary>
+    /// The dispatch Deluno recorded for this download, when the caller knows it
+    /// (an internal cleanup or a forced re-download). A dispatch that has no
+    /// client id yet, or is archived, still proves Deluno sent the download
+    /// (#1062).
+    /// </summary>
+    string? DispatchId = null);
 
 public sealed record DownloadClientActionResult(
     string ClientId,

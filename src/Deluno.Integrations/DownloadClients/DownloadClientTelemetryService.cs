@@ -326,12 +326,32 @@ public sealed class DownloadClientTelemetryService(
             now - dispatch.CreatedUtc <= RecentDispatchWindow);
     }
 
-    public async Task<DownloadOwnership> CheckOwnershipAsync(
+    public Task<DownloadOwnership> CheckOwnershipAsync(
         string clientId,
         string queueItemId,
         CancellationToken cancellationToken)
+        => CheckOwnershipAsync(clientId, queueItemId, null, cancellationToken);
+
+    private async Task<DownloadOwnership> CheckOwnershipAsync(
+        string clientId,
+        string queueItemId,
+        string? dispatchId,
+        CancellationToken cancellationToken)
     {
-        var dispatch = await dispatchesRepository.FindDispatchByHashAsync(clientId, queueItemId, cancellationToken);
+        // A dispatch the caller names (still waiting for its client id, or
+        // archived) is proof on its own, as long as it was for this client.
+        if (!string.IsNullOrWhiteSpace(dispatchId))
+        {
+            var named = await dispatchesRepository.GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
+            if (named is not null && string.Equals(named.DownloadClientId, clientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new DownloadOwnership(true, null);
+            }
+        }
+
+        // Archived dispatches count: Deluno archives a dispatch as it finishes
+        // with it, and the download can still be sitting in the client.
+        var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(clientId, queueItemId, cancellationToken);
         return dispatch is not null
             ? new DownloadOwnership(true, null)
             : new DownloadOwnership(false, $"Deluno did not send the download \"{queueItemId}\", so it will not remove or change it. Manage it in the download client itself.");
@@ -381,7 +401,7 @@ public sealed class DownloadClientTelemetryService(
         // #1062: removal goes through the same check.
         if (DownloadClientActions.RequiresDelunoOwnership(action))
         {
-            var ownership = await CheckOwnershipAsync(client.Id, request.QueueItemId, cancellationToken);
+            var ownership = await CheckOwnershipAsync(client.Id, request.QueueItemId, request.DispatchId, cancellationToken);
             if (!ownership.Owned)
             {
                 return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, ownership.Message!)
@@ -551,7 +571,7 @@ public sealed class DownloadClientTelemetryService(
             };
         }
 
-        var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
+        var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
         var title = dispatch?.ReleaseName ?? queueItemId;
 
         var clientAction = options.RemoveFromClient

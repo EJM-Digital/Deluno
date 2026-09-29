@@ -30,6 +30,9 @@ public static class RefusedDownloadCleanupOutcomes
 
     public const string NotFound = "notFound";
 
+    /// <summary>Deluno never sent this download, so it is left in the client for its owner.</summary>
+    public const string NotSentByDeluno = "notSentByDeluno";
+
     /// <summary>
     /// A release the client itself reported as failed (#882/#883/#885) is
     /// left exactly where it is, because the user's cleanup setting is off
@@ -229,6 +232,13 @@ public sealed class RefusedDownloadCleanupService(
                 clientId,
                 new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
                 cancellationToken);
+
+            if (result.Refused)
+            {
+                // Deluno never sent this download (added by hand, or by another
+                // tool), so it is not Deluno's to remove. Not the client's fault.
+                return RefusedDownloadCleanupOutcomes.NotSentByDeluno;
+            }
 
             if (!result.Succeeded)
             {

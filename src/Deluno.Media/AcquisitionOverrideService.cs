@@ -232,7 +232,7 @@ public sealed class AcquisitionOverrideService(
             // the honest name for what is being asked.
             var result = await downloadClients.ExecuteActionAsync(
                 clientId,
-                new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
+                new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId, request.DispatchId),
                 cancellationToken);
 
             if (result.Succeeded)
