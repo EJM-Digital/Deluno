@@ -14,6 +14,8 @@ export interface LibraryItem {
   upgradeUnknownItems: boolean;
   importWorkflow: "standard" | "refine-before-import" | string;
   processorName: string | null;
+  /** The processor connection this library hands downloads to; renaming the connection does not change it. */
+  processorConnectionId?: string | null;
   processorOutputPath: string | null;
   processorTimeoutMinutes: number;
   processorFailureMode: "block" | "import-original" | "manual-review" | string;

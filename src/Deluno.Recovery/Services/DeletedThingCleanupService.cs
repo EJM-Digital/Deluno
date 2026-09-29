@@ -75,13 +75,16 @@ public sealed class DeletedThingCleanupService(
         return new DeletionCleanup(0, downloads.Archived, handoffs.HandoffIds.Count, settled, forgotten);
     }
 
-    public async Task<DeletionCleanup> ProcessorDeletedAsync(string processorName, CancellationToken cancellationToken)
+    public async Task<DeletionCleanup> ProcessorDeletedAsync(string processorConnectionId, string processorName, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(processorName)) return DeletionCleanup.Nothing;
         var why = $"{processorName} was removed from Deluno";
 
         var handoffs = await EndHandoffsAsync(
-            handoff => string.Equals(handoff.ProcessorName, processorName, StringComparison.OrdinalIgnoreCase),
+            // By id (#1077); a hand-off that never matched a connection is found by name.
+            handoff => !string.IsNullOrWhiteSpace(handoff.ProcessorConnectionId)
+                ? string.Equals(handoff.ProcessorConnectionId, processorConnectionId, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(handoff.ProcessorName, processorName, StringComparison.OrdinalIgnoreCase),
             why,
             cancellationToken);
         var settled = await SettleAsync(Downloads.None, handoffs, why, cancellationToken);

@@ -75,6 +75,13 @@ public interface IProcessorRepository
     Task<ProcessorConnectionItem?> GetProcessorConnectionAsync(string id, CancellationToken cancellationToken);
     Task<ProcessorConnectionItem?> FindProcessorConnectionByNameAsync(string? name, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The connection a library or hand-off is linked to (#1077). Looks it up by
+    /// id, so renaming the connection changes nothing; the name is tried only
+    /// for a row that never matched a connection.
+    /// </summary>
+    Task<ProcessorConnectionItem?> FindProcessorConnectionAsync(string? id, string? nameFallback, CancellationToken cancellationToken);
+
     Task<ProcessorConnectionItem> CreateProcessorConnectionAsync(
         CreateProcessorConnectionRequest request,
         CancellationToken cancellationToken);

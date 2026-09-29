@@ -60,6 +60,22 @@ public sealed class SqliteProcessorRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorConnection(reader) : null;
     }
 
+    public async Task<ProcessorConnectionItem?> FindProcessorConnectionAsync(string? id, string? nameFallback, CancellationToken cancellationToken)
+    {
+        // The id is the link (#1077). The name is only for a row that could not
+        // be matched to a connection when it was written.
+        if (!string.IsNullOrWhiteSpace(id))
+        {
+            var byId = await GetProcessorConnectionAsync(id, cancellationToken);
+            if (byId is not null)
+            {
+                return byId;
+            }
+        }
+
+        return await FindProcessorConnectionByNameAsync(nameFallback, cancellationToken);
+    }
+
     public async Task<ProcessorConnectionItem> CreateProcessorConnectionAsync(
         CreateProcessorConnectionRequest request,
         CancellationToken cancellationToken)
@@ -313,6 +329,10 @@ public sealed class SqliteProcessorRepository(
         var sourcePath = request.SourcePath.Trim();
         var sourceKey = BuildProcessorSourceKey(sourcePath);
 
+        var linked = await FindProcessorConnectionAsync(request.ProcessorConnectionId, request.ProcessorName, cancellationToken);
+        var processorConnectionId = linked?.Id;
+        var processorDisplayName = linked?.Name ?? NormalizeName(request.ProcessorName);
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
@@ -323,10 +343,10 @@ public sealed class SqliteProcessorRepository(
                 """
                 INSERT INTO processor_handoffs (
                     id, library_id, media_type, client_id, queue_item_id, release_name, source_path, source_key,
-                    processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc
+                    processor_name, processor_connection_id, status, output_path, import_job_id, failure_message, created_utc, updated_utc
                 ) VALUES (
                     @id, @libraryId, @mediaType, @clientId, @queueItemId, @releaseName, @sourcePath, @sourceKey,
-                    @processorName, 'waiting', NULL, NULL, NULL, @createdUtc, @updatedUtc
+                    @processorName, @processorConnectionId, 'waiting', NULL, NULL, NULL, @createdUtc, @updatedUtc
                 )
                 ON CONFLICT(library_id, source_key) DO NOTHING;
                 """;
@@ -338,7 +358,8 @@ public sealed class SqliteProcessorRepository(
             AddParameter(insert, "@releaseName", request.ReleaseName.Trim());
             AddParameter(insert, "@sourcePath", sourcePath);
             AddParameter(insert, "@sourceKey", sourceKey);
-            AddParameter(insert, "@processorName", NormalizeName(request.ProcessorName));
+            AddParameter(insert, "@processorName", processorDisplayName);
+            AddParameter(insert, "@processorConnectionId", processorConnectionId);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
             await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -379,6 +400,7 @@ public sealed class SqliteProcessorRepository(
                     client_id = @clientId,
                     release_name = @releaseName,
                     processor_name = @processorName,
+                    processor_connection_id = @processorConnectionId,
                     status = 'waiting',
                     output_path = NULL,
                     import_job_id = NULL,
@@ -443,7 +465,8 @@ public sealed class SqliteProcessorRepository(
             AddParameter(restart, "@mediaType", request.MediaType.Trim().ToLowerInvariant());
             AddParameter(restart, "@clientId", request.ClientId.Trim());
             AddParameter(restart, "@releaseName", request.ReleaseName.Trim());
-            AddParameter(restart, "@processorName", NormalizeName(request.ProcessorName));
+            AddParameter(restart, "@processorName", processorDisplayName);
+            AddParameter(restart, "@processorConnectionId", processorConnectionId);
             AddParameter(restart, "@createdUtc", now.ToString("O"));
             AddParameter(restart, "@updatedUtc", now.ToString("O"));
             await restart.ExecuteNonQueryAsync(cancellationToken);
@@ -596,8 +619,8 @@ public sealed class SqliteProcessorRepository(
 
     /// <summary>One column list for every hand-off read, so a new column cannot reach some reads and miss others.</summary>
     private const string HandoffSelect =
-        "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, processor_name, status, output_path, import_job_id, failure_message, created_utc, updated_utc, "
-        + "processor_state, processor_message, processor_queue_position, processor_scheduled_for_utc, processor_last_changed_utc, processor_checked_utc, processor_unreachable_since_utc, processor_answering_since_utc "
+        "SELECT id, library_id, media_type, client_id, queue_item_id, release_name, source_path, COALESCE((SELECT pc.name FROM processor_connections pc WHERE pc.id = processor_handoffs.processor_connection_id), processor_name), status, output_path, import_job_id, failure_message, created_utc, updated_utc, "
+        + "processor_state, processor_message, processor_queue_position, processor_scheduled_for_utc, processor_last_changed_utc, processor_checked_utc, processor_unreachable_since_utc, processor_answering_since_utc, processor_connection_id "
         + "FROM processor_handoffs";
 
     private static ProcessorHandoffItem ReadProcessorHandoff(System.Data.Common.DbDataReader reader)
@@ -616,7 +639,8 @@ public sealed class SqliteProcessorRepository(
                     ReadOptionalTimestamp(reader, 18),
                     ParseTimestamp(reader.GetString(19)),
                     ReadOptionalTimestamp(reader, 20),
-                    ReadOptionalTimestamp(reader, 21)));
+                    ReadOptionalTimestamp(reader, 21)),
+            ProcessorConnectionId: reader.IsDBNull(22) ? null : reader.GetString(22));
 
     private static DateTimeOffset? ReadOptionalTimestamp(System.Data.Common.DbDataReader reader, int ordinal)
         => reader.IsDBNull(ordinal) ? null : ParseTimestamp(reader.GetString(ordinal));
@@ -681,14 +705,15 @@ public sealed class SqliteProcessorRepository(
         command.CommandText =
             """
             INSERT INTO processor_handoff_outcomes (
-                handoff_id, processor_name, library_id, release_name, outcome, imported_path, reason, occurred_utc,
+                handoff_id, processor_name, processor_connection_id, library_id, release_name, outcome, imported_path, reason, occurred_utc,
                 delivery, attempts, last_attempt_utc, next_attempt_utc, released, processor_said, recorded_utc
             ) VALUES (
-                @handoffId, @processorName, @libraryId, @releaseName, @outcome, @importedPath, @reason, @occurredUtc,
+                @handoffId, @processorName, @processorConnectionId, @libraryId, @releaseName, @outcome, @importedPath, @reason, @occurredUtc,
                 @delivery, @attempts, @lastAttemptUtc, @nextAttemptUtc, @released, @processorSaid, @recordedUtc
             )
             ON CONFLICT(handoff_id) DO UPDATE SET
                 processor_name = excluded.processor_name,
+                processor_connection_id = excluded.processor_connection_id,
                 library_id = excluded.library_id,
                 release_name = excluded.release_name,
                 outcome = excluded.outcome,
@@ -705,6 +730,7 @@ public sealed class SqliteProcessorRepository(
             """;
         AddParameter(command, "@handoffId", record.HandoffId.Trim());
         AddParameter(command, "@processorName", record.ProcessorName);
+        AddParameter(command, "@processorConnectionId", record.ProcessorConnectionId);
         AddParameter(command, "@libraryId", record.LibraryId);
         AddParameter(command, "@releaseName", record.ReleaseName);
         AddParameter(command, "@outcome", record.Outcome);
@@ -766,8 +792,8 @@ public sealed class SqliteProcessorRepository(
     }
 
     private const string OutcomeSelect =
-        "SELECT handoff_id, processor_name, library_id, release_name, outcome, imported_path, reason, occurred_utc, "
-        + "delivery, attempts, last_attempt_utc, next_attempt_utc, released, processor_said, recorded_utc "
+        "SELECT handoff_id, COALESCE((SELECT pc.name FROM processor_connections pc WHERE pc.id = processor_handoff_outcomes.processor_connection_id), processor_name), library_id, release_name, outcome, imported_path, reason, occurred_utc, "
+        + "delivery, attempts, last_attempt_utc, next_attempt_utc, released, processor_said, recorded_utc, processor_connection_id "
         + "FROM processor_handoff_outcomes";
 
     private static ProcessorOutcomeRecord ReadProcessorOutcome(System.Data.Common.DbDataReader reader)
@@ -786,7 +812,8 @@ public sealed class SqliteProcessorRepository(
             ReadOptionalTimestamp(reader, 11),
             reader.GetInt64(12) == 1,
             reader.IsDBNull(13) ? null : reader.GetString(13),
-            ParseTimestamp(reader.GetString(14)));
+            ParseTimestamp(reader.GetString(14)),
+            reader.IsDBNull(15) ? null : reader.GetString(15));
 
     private ProcessorConnectionItem ReadProcessorConnection(System.Data.Common.DbDataReader reader)
     {

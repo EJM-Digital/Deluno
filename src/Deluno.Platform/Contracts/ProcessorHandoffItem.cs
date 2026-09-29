@@ -22,7 +22,9 @@ public sealed record ProcessorHandoffItem(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc,
     ProcessorHandoffObservation? Processor = null,
-    ProcessorOutcomeRecord? Outcome = null);
+    ProcessorOutcomeRecord? Outcome = null,
+    /// <summary>The processor connection's id (#1077). <see cref="ProcessorName"/> is its current name for display; every lookup goes by this id.</summary>
+    string? ProcessorConnectionId = null);
 
 /// <param name="DownloadAddedUtc">
 /// When the download client took this download, when it says. A torrent's queue
@@ -37,4 +39,5 @@ public sealed record CreateProcessorHandoffRequest(
     string ReleaseName,
     string SourcePath,
     string? ProcessorName,
-    DateTimeOffset? DownloadAddedUtc = null);
+    DateTimeOffset? DownloadAddedUtc = null,
+    string? ProcessorConnectionId = null);

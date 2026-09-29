@@ -205,7 +205,7 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
                 .ReturnsAsync(handoffStatus is null
                     ? []
                     : [new ProcessorHandoffItem("handoff-1", "library-1", "movies", "client-1", "nzo-1", Release, "C:\\Downloads\\Movies\\x", "Weir", handoffStatus, null, null, null, Now, Now)]);
-            Processors.Setup(repository => repository.FindProcessorConnectionByNameAsync("Weir", It.IsAny<CancellationToken>()))
+            Processors.Setup(repository => repository.FindProcessorConnectionAsync(It.IsAny<string?>(), "Weir", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ProcessorConnectionItem("connection-1", "Weir", "weir", "http://weir.invalid", "X-Api-Key", null, true, "healthy", null, null, Now, Now));
         }
 

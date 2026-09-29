@@ -62,7 +62,7 @@ public static class ProcessorHandoffCancellation
         string ending = ProcessorHandoffStatuses.Cancelled,
         bool discardEvenIfBusy = false)
     {
-        var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        var connection = await repository.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
         var told = connection is { IsEnabled: true } && processorConnections is not null
             ? await processorConnections.CancelHandoffAsync(connection, handoff.Id, cancellationToken)
             : null;

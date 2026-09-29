@@ -694,6 +694,8 @@ function NamingPreview({ label, value }: { label: string; value: string }) {
 
 interface WorkflowForm {
   importWorkflow: string;
+  /** The chosen connection's id; the name below is only shown for a link that matches no connection. */
+  processorConnectionId: string;
   processorName: string;
   processorOutputPath: string;
   processorTimeoutMinutes: string;
@@ -738,8 +740,9 @@ function ProcessingWorkflowPage() {
 
   const editingLibrary = drawer.kind === "library" ? libraries.find((library) => library.id === drawer.id) ?? null : null;
   const isRefined = workflow.importWorkflow === "refine-before-import";
-  const selectedProcessor = workflow.processorName ? processorConnections.find((connection) => connection.name === workflow.processorName) : null;
-  const workflowReady = !isRefined || (Boolean(workflow.processorOutputPath.trim()) && (!workflow.processorName || Boolean(selectedProcessor?.isEnabled)));
+  const hasProcessor = Boolean(workflow.processorConnectionId || workflow.processorName);
+  const selectedProcessor = findLinkedProcessor(processorConnections, workflow.processorConnectionId, workflow.processorName);
+  const workflowReady = !isRefined || (Boolean(workflow.processorOutputPath.trim()) && (!hasProcessor || Boolean(selectedProcessor?.isEnabled)));
   const dirty =
     drawer.kind === "library"
       ? JSON.stringify(workflow) !== JSON.stringify(workflowInitial)
@@ -829,6 +832,7 @@ function ProcessingWorkflowPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             importWorkflow: workflow.importWorkflow,
+            processorConnectionId: workflow.processorConnectionId || null,
             processorName: workflow.processorName || null,
             processorOutputPath: workflow.processorOutputPath || null,
             processorTimeoutMinutes: Number(workflow.processorTimeoutMinutes || DEFAULT_STALL_MINUTES),
@@ -938,8 +942,8 @@ function ProcessingWorkflowPage() {
           <ListTable columns={[{ label: "Library" }, { label: "What happens" }, { label: "Processed folder", width: "minmax(0,1.4fr)" }, { label: "After import" }, { label: "If processing fails" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
             {libraries.map((library) => {
               const refined = (library.importWorkflow ?? "standard") === "refine-before-import";
-              const processor = library.processorName ? processorConnections.find((connection) => connection.name === library.processorName) : null;
-              const ready = !refined || (Boolean(library.processorOutputPath) && (!library.processorName || Boolean(processor?.isEnabled)));
+              const processor = findLinkedProcessor(processorConnections, library.processorConnectionId, library.processorName);
+              const ready = !refined || (Boolean(library.processorOutputPath) && (!(library.processorConnectionId || library.processorName) || Boolean(processor?.isEnabled)));
               return (
                 <ListRow key={library.id} onClick={() => openLibrary(library)} selected={drawer.kind === "library" && drawer.id === library.id}>
                   <ListNameCell name={library.name} sub={library.mediaType === "tv" ? "TV shows" : "Movies"} />
@@ -1076,17 +1080,26 @@ function ProcessingWorkflowPage() {
                   </Field>
                 </FieldRow>
                 <Field label="Completion signal" optional help="Leave this on folder watching unless a connected processor sends a completion message back to Deluno. A disabled connection cannot be selected.">
-                  <Select value={workflow.processorName} onChange={(event) => setWorkflow((current) => ({ ...current, processorName: event.target.value }))} placeholder="Watch the folder (no processor message)">
+                  <Select
+                    value={workflow.processorConnectionId || (workflow.processorName ? UNMATCHED_PROCESSOR : "")}
+                    onChange={(event) => setWorkflow((current) => {
+                      const value = event.target.value;
+                      if (value === UNMATCHED_PROCESSOR) return current;
+                      const chosen = processorConnections.find((connection) => connection.id === value);
+                      return { ...current, processorConnectionId: chosen?.id ?? "", processorName: chosen?.name ?? "" };
+                    })}
+                    placeholder="Watch the folder (no processor message)"
+                  >
                     {processorConnections.map((connection) => (
-                      <option key={connection.id} value={connection.name} disabled={!connection.isEnabled}>
+                      <option key={connection.id} value={connection.id} disabled={!connection.isEnabled}>
                         {connection.name}
                         {connection.isEnabled ? "" : " (disabled)"}
                       </option>
                     ))}
-                    {workflow.processorName && !processorConnections.some((connection) => connection.name === workflow.processorName) ? <option value={workflow.processorName}>{workflow.processorName} (existing)</option> : null}
+                    {!workflow.processorConnectionId && workflow.processorName && !selectedProcessor ? <option value={UNMATCHED_PROCESSOR}>{workflow.processorName} (existing)</option> : null}
                   </Select>
                 </Field>
-                {workflow.processorName && !selectedProcessor?.isEnabled ? <p className="text-[length:var(--type-caption)] text-warning">This processor connection is disabled or missing. Enable it, choose folder watching, or select another connection before saving.</p> : null}
+                {hasProcessor && !selectedProcessor?.isEnabled ? <p className="text-[length:var(--type-caption)] text-warning">This processor connection is disabled or missing. Enable it, choose folder watching, or select another connection before saving.</p> : null}
                 </DrawerSection>
               ) : null}
             <DrawerSection title="Source cleanup">
@@ -1186,11 +1199,18 @@ function emptyWorkflow(): WorkflowForm {
   // #914: a new library holds the file and asks by default. Nothing but an
   // existing library that already chose "Import the original file" keeps
   // that choice.
-  return { importWorkflow: "standard", processorName: "", processorOutputPath: "", processorTimeoutMinutes: String(DEFAULT_STALL_MINUTES), processorFailureMode: "block", cleanupMode: "keep-source", removeEmptySourceFolders: false };
+  return { importWorkflow: "standard", processorConnectionId: "", processorName: "", processorOutputPath: "", processorTimeoutMinutes: String(DEFAULT_STALL_MINUTES), processorFailureMode: "block", cleanupMode: "keep-source", removeEmptySourceFolders: false };
+}
+const UNMATCHED_PROCESSOR = "__unmatched__";
+/** A library's processor by id (#1077), so a rename never loses it; the name is tried only for a link that never matched a connection. */
+export function findLinkedProcessor(connections: ProcessorConnectionItem[], id: string | null | undefined, name: string | null | undefined) {
+  if (id) return connections.find((connection) => connection.id === id) ?? null;
+  return name ? connections.find((connection) => connection.name === name) ?? null : null;
 }
 function workflowFrom(library: LibraryItem): WorkflowForm {
   return {
     importWorkflow: library.importWorkflow ?? "standard",
+    processorConnectionId: library.processorConnectionId ?? "",
     processorName: library.processorName ?? "",
     processorOutputPath: library.processorOutputPath ?? "",
     processorTimeoutMinutes: String(library.processorTimeoutMinutes || DEFAULT_STALL_MINUTES),

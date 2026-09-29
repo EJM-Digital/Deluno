@@ -31,7 +31,7 @@ public sealed class ProcessorHandoffWatcherTests
 
     public ProcessorHandoffWatcherTests()
     {
-        _repository.Setup(repo => repo.FindProcessorConnectionByNameAsync("Weir", It.IsAny<CancellationToken>()))
+        _repository.Setup(repo => repo.FindProcessorConnectionAsync(It.IsAny<string?>(), "Weir", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProcessorConnectionItem(
                 "connection-1", "Weir", "generic-webhook", "http://weir:8788/api/v1/intake/webhook/deluno",
                 "X-Webhook-Secret", "secret", true, "healthy", null, null, Now, Now));

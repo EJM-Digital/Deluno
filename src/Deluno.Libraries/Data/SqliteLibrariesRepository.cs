@@ -29,7 +29,7 @@ public sealed class SqliteLibrariesRepository(
             SELECT
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
-                l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
+                l.import_workflow, COALESCE((SELECT pc.name FROM processor_connections pc WHERE pc.id = l.processor_connection_id), l.processor_name), l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_minutes,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
@@ -41,7 +41,7 @@ public sealed class SqliteLibrariesRepository(
                    l.subtitle_omit_language_code, l.randomize_search_order,
                 l.subtitle_language_type_preferences_json,
                    l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days,
-                   l.subtitle_picture_based_counts
+                   l.subtitle_picture_based_counts, l.processor_connection_id
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -425,6 +425,10 @@ public sealed class SqliteLibrariesRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        var (linkedProcessorId, linkedProcessorName) = await ResolveProcessorLinkAsync(
+            connection, request.ProcessorConnectionId, request.ProcessorName, cancellationToken);
+        item = item with { ProcessorName = linkedProcessorName, ProcessorConnectionId = linkedProcessorId };
+
         var qualityProfileId = await SqliteQualityRepository.ResolveQualityProfileIdAsync(
             connection,
             mediaType,
@@ -439,7 +443,7 @@ public sealed class SqliteLibrariesRepository(
             """
             INSERT INTO libraries (
                 id, name, media_type, purpose, root_path, downloads_path, quality_profile_id,
-                import_workflow, processor_name, processor_output_path, processor_timeout_minutes, processor_failure_mode,
+                import_workflow, processor_name, processor_connection_id, processor_output_path, processor_timeout_minutes, processor_failure_mode,
                 cleanup_mode, remove_empty_source_folders,
                 auto_search_enabled,
                 missing_search_enabled, upgrade_search_enabled, search_interval_minutes,
@@ -450,7 +454,7 @@ public sealed class SqliteLibrariesRepository(
             )
             VALUES (
                 @id, @name, @mediaType, @purpose, @rootPath, @downloadsPath, @qualityProfileId,
-                @importWorkflow, @processorName, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
+                @importWorkflow, @processorName, @processorConnectionId, @processorOutputPath, @processorTimeoutMinutes, @processorFailureMode,
                 @cleanupMode, @removeEmptySourceFolders,
                 @autoSearchEnabled,
                 @missingSearchEnabled, @upgradeSearchEnabled, @searchIntervalMinutes,
@@ -470,6 +474,7 @@ public sealed class SqliteLibrariesRepository(
         AddParameter(command, "@qualityProfileId", qualityProfileId);
         AddParameter(command, "@importWorkflow", item.ImportWorkflow);
         AddParameter(command, "@processorName", item.ProcessorName);
+        AddParameter(command, "@processorConnectionId", item.ProcessorConnectionId);
         AddParameter(command, "@processorOutputPath", item.ProcessorOutputPath);
         AddParameter(command, "@processorTimeoutMinutes", item.ProcessorTimeoutMinutes);
         AddParameter(command, "@processorFailureMode", item.ProcessorFailureMode);
@@ -893,6 +898,7 @@ public sealed class SqliteLibrariesRepository(
             SET
                 import_workflow = @importWorkflow,
                 processor_name = @processorName,
+                processor_connection_id = @processorConnectionId,
                 processor_output_path = @processorOutputPath,
                 processor_timeout_minutes = @processorTimeoutMinutes,
                 processor_failure_mode = @processorFailureMode,
@@ -904,7 +910,10 @@ public sealed class SqliteLibrariesRepository(
 
         AddParameter(command, "@id", id);
         AddParameter(command, "@importWorkflow", workflow);
-        AddParameter(command, "@processorName", NormalizeName(request.ProcessorName));
+        var (linkedProcessorId, linkedProcessorName) = await ResolveProcessorLinkAsync(
+            connection, request.ProcessorConnectionId, request.ProcessorName, cancellationToken);
+        AddParameter(command, "@processorName", linkedProcessorName);
+        AddParameter(command, "@processorConnectionId", linkedProcessorId);
         AddParameter(command, "@processorOutputPath", processorOutputPath);
         AddParameter(command, "@processorTimeoutMinutes", ProcessorStallLimits.Normalize(request.ProcessorTimeoutMinutes));
         AddParameter(command, "@processorFailureMode", NormalizeProcessorFailureMode(request.ProcessorFailureMode));
@@ -1069,6 +1078,42 @@ public sealed class SqliteLibrariesRepository(
     }
 
 
+    /// <summary>
+    /// A library links to its processor by the connection's id (#1077), so
+    /// renaming the connection changes nothing. The name is kept beside it only
+    /// as a snapshot for display. A name that matches no connection is kept
+    /// unlinked, and is found by name until a connection of that name exists.
+    /// </summary>
+    private static async Task<(string? Id, string? Name)> ResolveProcessorLinkAsync(
+        System.Data.Common.DbConnection connection,
+        string? connectionId,
+        string? name,
+        CancellationToken cancellationToken)
+    {
+        var requestedName = NormalizeName(name);
+        if (string.IsNullOrWhiteSpace(connectionId) && requestedName is null)
+        {
+            return (null, null);
+        }
+
+        using var command = connection.CreateCommand();
+        if (!string.IsNullOrWhiteSpace(connectionId))
+        {
+            command.CommandText = "SELECT id, name FROM processor_connections WHERE id = @id LIMIT 1;";
+            AddParameter(command, "@id", connectionId.Trim());
+        }
+        else
+        {
+            command.CommandText = "SELECT id, name FROM processor_connections WHERE name = @name COLLATE NOCASE ORDER BY created_utc LIMIT 1;";
+            AddParameter(command, "@name", requestedName);
+        }
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? (reader.GetString(0), reader.GetString(1))
+            : (null, requestedName);
+    }
+
     private static async Task<LibraryItem?> GetLibraryAsync(
         System.Data.Common.DbConnection connection,
         string id,
@@ -1080,7 +1125,7 @@ public sealed class SqliteLibrariesRepository(
             SELECT
                 l.id, l.name, l.media_type, l.purpose, l.root_path, l.downloads_path,
                 l.quality_profile_id, q.name, q.cutoff_quality, q.upgrade_until_cutoff, q.upgrade_unknown_items,
-                l.import_workflow, l.processor_name, l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
+                l.import_workflow, COALESCE((SELECT pc.name FROM processor_connections pc WHERE pc.id = l.processor_connection_id), l.processor_name), l.processor_output_path, l.processor_timeout_minutes, l.processor_failure_mode,
                 l.auto_search_enabled, l.missing_search_enabled, l.upgrade_search_enabled, l.search_interval_minutes,
                 l.retry_delay_hours, l.max_items_per_run, l.search_window_start_hour, l.search_window_end_hour,
                 l.created_utc, l.updated_utc, l.default_policy_set_id, p.name,
@@ -1092,7 +1137,7 @@ public sealed class SqliteLibrariesRepository(
                    l.subtitle_omit_language_code, l.randomize_search_order,
                 l.subtitle_language_type_preferences_json,
                    l.max_missing_items_per_run, l.max_upgrade_items_per_run, l.search_window_days,
-                   l.subtitle_picture_based_counts
+                   l.subtitle_picture_based_counts, l.processor_connection_id
             FROM libraries l
             LEFT JOIN quality_profiles q ON q.id = l.quality_profile_id
             LEFT JOIN policy_sets p ON p.id = l.default_policy_set_id
@@ -1425,7 +1470,8 @@ public sealed class SqliteLibrariesRepository(
             MaxMissingItemsPerRun: reader.IsDBNull(40) ? 25 : reader.GetInt32(40),
             MaxUpgradeItemsPerRun: reader.IsDBNull(41) ? 25 : reader.GetInt32(41),
             SearchWindowDays: reader.IsDBNull(42) ? 127 : reader.GetInt32(42),
-            SubtitlePictureBasedCounts: reader.IsDBNull(43) || reader.GetInt64(43) == 1);
+            SubtitlePictureBasedCounts: reader.IsDBNull(43) || reader.GetInt64(43) == 1,
+            ProcessorConnectionId: reader.IsDBNull(44) ? null : reader.GetString(44));
     }
 
 

@@ -132,4 +132,6 @@ public sealed record LibraryItem(
     /// off: nothing embedded counts at all, so there is nothing left for this
     /// to narrow further.</para>
     /// </summary>
-    bool SubtitlePictureBasedCounts = true);
+    bool SubtitlePictureBasedCounts = true,
+    /// <summary>The processor connection's id (#1077). <see cref="ProcessorName"/> is its current name, for display; renaming the connection changes nothing about the link.</summary>
+    string? ProcessorConnectionId = null);
