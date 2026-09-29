@@ -14,8 +14,31 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $Root
 
-$logDir = Join-Path ([System.IO.Path]::GetTempPath()) "deluno-gate"
+# Create a unique log directory per checkout using a hash of the repo root path.
+# This prevents multiple concurrent gates (e.g., main + worktree) from interleaving logs.
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$hash = [System.BitConverter]::ToString($md5.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Root))) -replace "-", ""
+$hashPrefix = $hash.Substring(0, 8)
+$logDir = Join-Path ([System.IO.Path]::GetTempPath()) "deluno-gate-$hashPrefix"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+# Check if the required Playwright smoke test ports are available.
+$smokeApiPort = if ($env:DELUNO_SMOKE_API_PORT) { [int]$env:DELUNO_SMOKE_API_PORT } else { 5199 }
+$smokeWebPort = if ($env:DELUNO_SMOKE_WEB_PORT) { [int]$env:DELUNO_SMOKE_WEB_PORT } else { 5174 }
+$portsToCheck = @($smokeApiPort, $smokeWebPort)
+foreach ($port in $portsToCheck) {
+    try {
+        $connection = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        if ($connection) {
+            Write-Host "Port $port is already in use (listening on 127.0.0.1:$port)." -ForegroundColor Yellow
+            Write-Host "Set DELUNO_SMOKE_API_PORT (currently $smokeApiPort) and DELUNO_SMOKE_WEB_PORT (currently $smokeWebPort) to unused ports and try again." -ForegroundColor Yellow
+            exit 1
+        }
+    } catch {
+        # If Get-NetTCPConnection fails, skip the check and let Playwright fail later.
+    }
+}
+
 $total = [System.Diagnostics.Stopwatch]::StartNew()
 
 Write-Host "Release build..."
