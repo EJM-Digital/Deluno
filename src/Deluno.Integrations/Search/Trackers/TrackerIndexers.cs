@@ -29,14 +29,23 @@ public sealed class TrackerIndexers(
                              : $"This tracker's definition ('{indexer.DefinitionId}') is not installed. Add one to the trackers folder or remove this indexer.");
 
         var settings = new Dictionary<string, string?>(StringComparer.Ordinal);
+        // Settings this site's current file does not know are leftovers from an
+        // earlier bundled version; they are dropped here, keeping all it knows.
+        var known = definition.Settings.Select(setting => setting.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, value) in indexer.DefinitionSettings ?? new Dictionary<string, string>())
         {
-            settings[name] = value;
+            if (known.Contains(name))
+            {
+                settings[name] = value;
+            }
         }
 
         foreach (var (name, value) in indexer.DefinitionSecrets ?? new Dictionary<string, string>())
         {
-            settings[name] = value;
+            if (known.Contains(name))
+            {
+                settings[name] = value;
+            }
         }
 
         // An API key typed into the ordinary field counts as the tracker's key.

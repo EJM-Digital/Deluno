@@ -74,7 +74,7 @@ public sealed class TrackerSiteMappingTests : IDisposable
     }
 
     [Fact]
-    public void A_site_the_list_does_not_have_or_a_setting_it_does_not_know_is_a_problem_in_plain_words()
+    public void A_site_the_list_does_not_have_is_a_problem_but_a_setting_it_does_not_know_is_not()
     {
         var gone = TrackerSiteMapping.Resolve(Indexer("1", "Gone Tracker", "no-such-site"), catalog);
         Assert.NotNull(gone.Problem);
@@ -82,7 +82,12 @@ public sealed class TrackerSiteMappingTests : IDisposable
 
         var lost = TrackerSiteMapping.Resolve(Indexer("2", "My YTS", "yts", new() { ["retired_option"] = "1" }), catalog);
         Assert.True(lost.WasOwnSite);
-        Assert.Contains("retired_option", lost.Problem, StringComparison.Ordinal);
+        Assert.Null(lost.Problem);
+
+        // #986 rig: the exact stale keys left on TorrentDownloads.
+        var stale = TrackerSiteMapping.Resolve(Indexer("4", "Torrent Downloads", "torrentdownloads",
+            new() { ["fallbackdownloadlink"] = "1", ["info_download"] = "1", ["primarydownloadlink"] = "1" }), catalog);
+        Assert.Null(stale.Problem);
 
         var none = TrackerSiteMapping.Resolve(Indexer("3", "Blank", null), catalog);
         Assert.NotNull(none.Problem);
@@ -102,7 +107,7 @@ public sealed class TrackerSiteMappingTests : IDisposable
 
         var outcomes = await new TrackerSiteHealthCheck(repository.Object, catalog).RunAsync(CancellationToken.None);
 
-        Assert.Equal(["tracker-site:b", "tracker-site:c"], outcomes.Select(item => item.Id).Order());
+        Assert.Equal(["tracker-site:b"], outcomes.Select(item => item.Id).Order());
         Assert.All(outcomes, outcome =>
         {
             Assert.Equal(HealthCheckStatuses.Problem, outcome.Status);
@@ -141,7 +146,7 @@ public sealed class TrackerSiteMappingTests : IDisposable
         Assert.Contains("My YTS", line.Message, StringComparison.Ordinal);
         Assert.Contains("Old Nyaa", line.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("Gone Tracker", line.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain("Odd Rutor", line.Message, StringComparison.Ordinal);
+        Assert.Contains("Odd Rutor", line.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("EZTV", line.Message, StringComparison.Ordinal);
         Assert.Contains("settings were kept", line.Message, StringComparison.Ordinal);
     }

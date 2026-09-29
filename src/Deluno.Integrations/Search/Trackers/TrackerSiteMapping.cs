@@ -48,15 +48,9 @@ public static class TrackerSiteMapping
             return new TrackerSiteResolution(wanted, Retired.ContainsKey(saved), $"The site list has no site '{wanted}' that Deluno can use.");
         }
 
-        var known = definition.Settings.Select(setting => setting.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var lost = (indexer.DefinitionSettings?.Keys ?? Enumerable.Empty<string>())
-            .Concat(indexer.DefinitionSecrets?.Keys ?? Enumerable.Empty<string>())
-            .Where(name => !known.Contains(name))
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        return lost.Length == 0
-            ? new TrackerSiteResolution(wanted, Retired.ContainsKey(saved), null)
-            : new TrackerSiteResolution(wanted, Retired.ContainsKey(saved), $"{definition.Name} no longer has the setting{(lost.Length == 1 ? "" : "s")} {string.Join(", ", lost)}.");
+        // Settings the site's file does not know are harmless leftovers from an earlier
+        // bundled version: ignored when the site runs (TrackerIndexers.ConnectAsync), never a problem.
+        return new TrackerSiteResolution(wanted, Retired.ContainsKey(saved), null);
     }
 }
 
