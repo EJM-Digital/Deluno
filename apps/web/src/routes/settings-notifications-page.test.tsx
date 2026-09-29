@@ -245,3 +245,33 @@ describe("recovery and cleanup notification preferences (#858)", () => {
     expect(body.forcedImportEnabled).toBe(false);
   });
 });
+
+describe("per-connection triggers (#1016, #1017)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("a new connection picks triggers one by one, including Deluno update, and the health-warning switch follows Health problems", async () => {
+    vi.mocked(authedFetch).mockImplementation(async (input: RequestInfo | URL) => new Response(String(input).startsWith("/api/tags") ? "[]" : JSON.stringify({ id: "w1", eventFilters: "grab" }), { status: 200 }));
+    renderPage();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New webhook" })[0]);
+    expect(screen.getByRole("checkbox", { name: /^Deluno update/ })).toBeTruthy();
+
+    // Untick Everything: the ticks fall back to a plain set, without Deluno update.
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Everything/ }));
+    expect((screen.getByRole("checkbox", { name: /^Deluno update/ }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole("switch", { name: /Include health warnings/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Health problems/ }));
+    expect(screen.queryByRole("switch", { name: /Include health warnings/ })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Deluno update/ }));
+    fireEvent.change(screen.getByPlaceholderText(/https?:\/\//i), { target: { value: "https://hooks.example.test/x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add webhook" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith("/api/notification-webhooks", expect.objectContaining({ method: "POST" })));
+    const [, init] = vi.mocked(authedFetch).mock.calls.find(([url, options]) => url === "/api/notification-webhooks" && (options as RequestInit).method === "POST")!;
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.eventFilters).toBe("grab,import,upgrade,app.update");
+    expect(body.includeHealthWarnings).toBe(true);
+  });
+});

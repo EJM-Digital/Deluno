@@ -14,7 +14,7 @@ import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, RotateCcw, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { Checkbox } from "../components/ui/checkbox";
+import { Checkbox, CheckboxRow } from "../components/ui/checkbox";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -34,6 +34,21 @@ import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, Co
 import { useRowSelection } from "../lib/connection-tags";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
+
+/** One tick per trigger, like Radarr and Sonarr's per-connection On... boxes (#1016). Stored as a comma-separated list in eventFilters; "all" means every event. */
+const TRIGGER_OPTIONS = [
+  { value: "grab", label: "Grab", description: "A download was sent to a client." },
+  { value: "import", label: "Import", description: "A file was added to the library." },
+  { value: "upgrade", label: "Upgrade", description: "A better release replaced a file." },
+  { value: "health", label: "Health problems", description: "Something needs attention, and when it is fine again." },
+  { value: "retention", label: "Leaving soon", description: "Leaving soon, removed, waiting for you or failed." },
+  { value: "app.update", label: "Deluno update", description: "Deluno started running a newer version. Also needs the Application update switch in Triggers below." },
+  { value: "test", label: "Test events only", description: "Only the Test button." }
+];
+
+function parseTriggers(eventFilters: string): string[] {
+  return eventFilters.split(",").map((part) => part.trim()).filter(Boolean);
+}
 
 const EVENT_OPTIONS = [
   { value: "all", label: "All events" },
@@ -140,6 +155,8 @@ interface WebhookForm {
   config: NotificationProviderConfig;
   /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires for a title only when it shares one of them. Tags never limit notifications that are not about one title. */
   tags: string;
+  /** Radarr/Sonarr's Include Health Warnings (#1016). */
+  includeHealthWarnings: boolean;
 }
 
 const PROVIDER_OPTIONS: Array<{ value: NotificationProvider; label: string }> = [
@@ -229,6 +246,7 @@ export function SettingsNotificationsPage() {
   const [tagsOpen, setTagsOpen] = useState(false);
 
   const isOpen = mode.kind !== "closed";
+  const triggers = useMemo(() => parseTriggers(form.eventFilters), [form.eventFilters]);
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
   const dirty = isOpen && (
     form.name !== initialForm.name ||
@@ -237,6 +255,7 @@ export function SettingsNotificationsPage() {
     form.isEnabled !== initialForm.isEnabled ||
     form.provider !== initialForm.provider ||
     form.tags !== initialForm.tags ||
+    form.includeHealthWarnings !== initialForm.includeHealthWarnings ||
     JSON.stringify(form.config) !== JSON.stringify(initialForm.config)
   );
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
@@ -254,7 +273,8 @@ export function SettingsNotificationsPage() {
           isEnabled: webhook.isEnabled,
           provider: webhook.provider ?? "generic",
           config: parseConfig(webhook.configJson),
-          tags: webhook.tags ?? ""
+          tags: webhook.tags ?? "",
+          includeHealthWarnings: webhook.includeHealthWarnings ?? false
         }
       : emptyForm();
     setMode(webhook ? { kind: "edit", id: webhook.id } : { kind: "create" });
@@ -289,7 +309,8 @@ export function SettingsNotificationsPage() {
         isEnabled: form.isEnabled,
         provider: form.provider,
         config: form.config,
-        tags: form.tags.trim()
+        tags: form.tags.trim(),
+        includeHealthWarnings: form.includeHealthWarnings
       };
       const requestBody = { ...nextForm, configJson: serializeConfig(form.config) };
       const response = await authedFetch(mode.kind === "edit" ? `/api/notification-webhooks/${mode.id}` : "/api/notification-webhooks", { method: mode.kind === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody) });
@@ -343,7 +364,7 @@ export function SettingsNotificationsPage() {
 
   async function toggleWebhook(webhook: NotificationWebhookItem, isEnabled: boolean) {
     await run(`toggle:${webhook.id}`, async () => {
-      const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled, provider: webhook.provider, configJson: webhook.configJson }) });
+      const response = await authedFetch(`/api/notification-webhooks/${webhook.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: webhook.name, url: webhook.url, eventFilters: webhook.eventFilters, isEnabled, provider: webhook.provider, configJson: webhook.configJson, includeHealthWarnings: webhook.includeHealthWarnings }) });
       if (!response.ok) throw new Error(`Could not ${isEnabled ? "enable" : "pause"} ${webhook.name}.`);
     });
     if (mode.kind === "edit" && mode.id === webhook.id && !dirty) {
@@ -425,7 +446,7 @@ export function SettingsNotificationsPage() {
                     </ListCell>
                   ) : null}
                   <ListCell mono primary={webhook.url || providerLabel(webhook.provider)} />
-                  <ListCell primary={eventLabel(webhook.eventFilters)} secondary={webhook.eventFilters === "all" ? "Every event type" : "Filtered"} />
+                  <ListCell primary={eventLabel(webhook.eventFilters)} secondary={parseTriggers(webhook.eventFilters).includes("all") ? "Every event type" : "Chosen events"} />
                   <ListCell numeric primary={webhook.lastFiredUtc ? relative(webhook.lastFiredUtc) : <span className="text-muted-foreground">Never</span>} secondary={webhook.lastError ?? undefined} />
                   <ListCell mobile>
                     <Chip tone={chip.tone}>{chip.label}</Chip>
@@ -584,9 +605,38 @@ export function SettingsNotificationsPage() {
               />
             </Field>
           </FieldRow>
-          <Field label="Events" help="Which events trigger a send.">
-            <Select value={form.eventFilters} onChange={(event) => setForm((current) => ({ ...current, eventFilters: event.target.value }))} options={EVENT_OPTIONS} />
+          <Field label="Send when" help="Tick what this connection should hear about. Each connection chooses for itself.">
+            <div className="space-y-1" role="group" aria-label="Send when">
+              <CheckboxRow
+                label="Everything"
+                description="Every kind of event Deluno sends."
+                checked={triggers.includes("all")}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, eventFilters: checked ? "all" : "grab,import,upgrade,health" }))}
+              />
+              {TRIGGER_OPTIONS.map((option) => (
+                <CheckboxRow
+                  key={option.value}
+                  label={option.label}
+                  description={option.description}
+                  checked={triggers.includes("all") || triggers.includes(option.value)}
+                  disabled={triggers.includes("all")}
+                  onCheckedChange={(checked) => setForm((current) => {
+                    const next = parseTriggers(current.eventFilters).filter((value) => value !== option.value && value !== "all");
+                    if (checked) next.push(option.value);
+                    return { ...current, eventFilters: next.length ? next.join(",") : "all" };
+                  })}
+                />
+              ))}
+            </div>
           </Field>
+          {triggers.includes("all") || triggers.includes("health") ? (
+            <SwitchRow
+              label="Include health warnings"
+              description="Also send the smaller advisory warnings (metadata, subtitle providers, Seerr, tags). Off, this connection hears only about problems that stop Deluno working."
+              checked={form.includeHealthWarnings}
+              onCheckedChange={(checked) => setForm((current) => ({ ...current, includeHealthWarnings: checked }))}
+            />
+          ) : null}
           <Field label="Tags" optional help="Leave blank to fire for any title. With tags set, Deluno fires this connection for a title only when the title shares one of them — for example, keep an anime channel to anime titles. Tags only limit notifications about a title: health warnings, library pauses, app updates and other general notices always go to every connection.">
             <TagPicker label="Notification tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
           </Field>
@@ -680,7 +730,7 @@ export function SettingsNotificationsPage() {
 /* --------------------------------------------------------------- utils */
 
 function emptyForm(): WebhookForm {
-  return { name: "", url: "", eventFilters: "all", isEnabled: true, provider: "generic", config: {}, tags: "" };
+  return { name: "", url: "", eventFilters: "all", isEnabled: true, provider: "generic", config: {}, tags: "", includeHealthWarnings: false };
 }
 function parseConfig(configJson: string | null): NotificationProviderConfig {
   if (!configJson) return {};
@@ -698,7 +748,11 @@ function providerLabel(provider: NotificationProvider): string {
   return PROVIDER_OPTIONS.find((option) => option.value === provider)?.label ?? "Outbound webhook";
 }
 function eventLabel(value: string) {
-  return EVENT_OPTIONS.find((option) => option.value === value)?.label.split(" — ")[0] ?? value;
+  const parts = parseTriggers(value);
+  if (parts.length === 0 || parts.includes("all")) return "All events";
+  return parts
+    .map((part) => TRIGGER_OPTIONS.find((option) => option.value === part)?.label ?? EVENT_OPTIONS.find((option) => option.value === part)?.label.split(" — ")[0] ?? part)
+    .join(", ");
 }
 function statusChip(webhook: NotificationWebhookItem, globallyEnabled: boolean): { tone: NonNullable<ChipProps["tone"]>; label: string } {
   if (!webhook.isEnabled) return { tone: "idle", label: "Off" };

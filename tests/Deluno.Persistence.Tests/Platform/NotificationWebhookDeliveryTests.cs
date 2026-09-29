@@ -128,6 +128,80 @@ public sealed class NotificationWebhookDeliveryTests
     }
 
     /// <summary>
+    /// #1016: Radarr and Sonarr's per-connection "Include Health Warnings". An
+    /// advisory-tier health event reaches only a connection that turned the
+    /// switch on; a problem that stops Deluno working reaches every connection
+    /// that listens for health; a new connection starts with the switch off.
+    /// </summary>
+    [Fact]
+    public async Task A_health_warning_reaches_only_a_connection_that_included_health_warnings()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        var errorsOnly = await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Errors only", "https://hooks.example.test/errors", "health", true),
+            CancellationToken.None);
+        Assert.False(errorsOnly.IncludeHealthWarnings);
+        await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("With warnings", "https://hooks.example.test/warnings", "health", true, IncludeHealthWarnings: true),
+            CancellationToken.None);
+
+        var warningHandler = new SequencedHandler([]);
+        await new OutboundNotificationService(repository, new SingleClientFactory(warningHandler), NullLogger<OutboundNotificationService>.Instance)
+            .DispatchAsync("health.problem" + HealthCheckCategories.OutboundWarningSuffix, "Metadata", "Message", null, CancellationToken.None);
+        Assert.Equal(1, warningHandler.Attempts);
+
+        var errorHandler = new SequencedHandler([]);
+        await new OutboundNotificationService(repository, new SingleClientFactory(errorHandler), NullLogger<OutboundNotificationService>.Instance)
+            .DispatchAsync("health.problem", "Download client", "Message", null, CancellationToken.None);
+        Assert.Equal(2, errorHandler.Attempts);
+
+        var turnedOn = await repository.UpdateNotificationWebhookAsync(
+            errorsOnly.Id,
+            new UpdateNotificationWebhookRequest("Errors only", "https://hooks.example.test/errors", "health", true, IncludeHealthWarnings: true),
+            CancellationToken.None);
+        Assert.True(turnedOn!.IncludeHealthWarnings);
+        var untouched = await repository.UpdateNotificationWebhookAsync(
+            errorsOnly.Id,
+            new UpdateNotificationWebhookRequest("Errors only", "https://hooks.example.test/errors", "health", true),
+            CancellationToken.None);
+        Assert.True(untouched!.IncludeHealthWarnings);
+    }
+
+    /// <summary>
+    /// #1017: a connection picks the "Deluno update" trigger by name; one that
+    /// listens for something else does not receive it.
+    /// </summary>
+    [Theory]
+    [InlineData("app.update", true)]
+    [InlineData("grab,app.update", true)]
+    [InlineData("import", false)]
+    public async Task A_connection_receives_the_application_update_event_only_when_it_lists_it(string filters, bool delivered)
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        await EnableOutboundNotificationsAsync(storage);
+        var repository = new SqliteNotificationRepository(storage.Factory, timeProvider);
+        await repository.CreateNotificationWebhookAsync(new CreateNotificationWebhookRequest("Updates", "https://hooks.example.test/u", filters, true), CancellationToken.None);
+        var handler = new SequencedHandler([]);
+
+        await new OutboundNotificationService(repository, new SingleClientFactory(handler), NullLogger<OutboundNotificationService>.Instance)
+            .DispatchAsync("app.update", "Deluno updated", "Message", null, CancellationToken.None);
+
+        Assert.Equal(delivered ? 1 : 0, handler.Attempts);
+    }
+
+    /// <summary>
     /// #1036: an episode event is about its show, so it carries the show's
     /// tags. A show tagged "kids" is skipped by a connection tagged "adults"
     /// and reaches one tagged "kids"; an unknown episode is title-less.

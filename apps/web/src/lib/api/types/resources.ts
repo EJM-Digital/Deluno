@@ -1053,6 +1053,8 @@ export interface NotificationWebhookItem {
   configJson: string | null;
   /** Comma-separated tag names (#990). Blank fires this connection for any title; a tagged connection fires only for a title sharing one of them. */
   tags: string;
+  /** Radarr/Sonarr's Include Health Warnings (#1016): off, this connection skips the smaller advisory health warnings. */
+  includeHealthWarnings?: boolean;
 }
 
 export interface NotificationWebhookDeliveryItem {

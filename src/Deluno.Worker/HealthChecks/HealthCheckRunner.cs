@@ -157,8 +157,14 @@ public sealed class HealthCheckRunner(
             result.Id,
             cancellationToken);
 
+        // Advisory-tier checks travel with an ".advisory" suffix so a connection
+        // that has not asked for health warnings skips them (#1016). The
+        // "health" filter is a prefix, so every connection still matches.
+        var outboundCategory = (started ? "health.problem" : "health.resolved")
+            + (HealthCheckCategories.IsWarningTier(result.Category) ? HealthCheckCategories.OutboundWarningSuffix : string.Empty);
+
         await notificationService.DispatchAsync(
-            started ? "health.problem" : "health.resolved",
+            outboundCategory,
             title,
             message,
             result.DetailsJson,
