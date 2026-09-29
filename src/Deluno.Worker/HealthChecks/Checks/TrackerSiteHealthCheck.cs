@@ -7,8 +7,8 @@ namespace Deluno.Worker.HealthChecks.Checks;
 
 /// <summary>
 /// A tracker indexer whose site Deluno can no longer run as saved (#986): its
-/// site is not in the built-in list, or a setting saved for it does not exist
-/// in the site's file. Only problems are reported, and each row goes away the
+/// site is not in the built-in list. Settings the site's file does not know are
+/// harmless leftovers and never reported. Only problems are reported, and each row goes away the
 /// moment the indexer is fixed or removed; nothing is ever deleted here.
 /// </summary>
 public sealed class TrackerSiteHealthCheck(IConnectionsRepository connections, ITrackerDefinitionCatalog catalog) : IHealthCheck
@@ -36,7 +36,7 @@ public sealed class TrackerSiteHealthCheck(IConnectionsRepository connections, I
                 Category,
                 $"{indexer.Name} (tracker site)",
                 $"{indexer.Name} cannot be searched as it is saved. {resolution.Problem}",
-                cause: "Deluno's tracker sites now come from the built-in Prowlarr site list, and this indexer's saved site or settings do not match it.",
+                cause: "Deluno's tracker sites now come from the built-in Prowlarr site list, and this indexer's saved site is not in it.",
                 fix: $"Open Connections, edit {indexer.Name} and choose its site again, or remove it. Nothing was deleted.",
                 detailsJson: $$"""{"indexerId":"{{indexer.Id}}","definitionId":"{{indexer.DefinitionId}}"}"""));
         }
