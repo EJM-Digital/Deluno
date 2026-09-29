@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Storage;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Persistence.Tests.Support;
@@ -148,5 +149,48 @@ public sealed class MovieBulkLibraryToolsPersistenceTests
         // Never asked to reassign, so it keeps its original library and path.
         Assert.Equal("movies-main", failedAfter!.LibraryId);
         Assert.Equal("/library/movies-main/Dune Part Three (2026)/Dune3.mkv", failedAfter.FilePath);
+    }
+
+    [Fact]
+    public async Task Relocating_a_moved_folder_rewrites_every_tracked_path_under_it_and_only_those()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-30T00:00:00Z"));
+        var repository = await CreateRepositoryAsync(storage, timeProvider);
+
+        var movie = await repository.AddAsync(new CreateMovieRequest("Arrival", 2016, "tt2543164"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(
+            movie.Id, "movies-main", "covered", "Imported.", hasFile: true,
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p", qualityCutoffMet: true, CancellationToken.None);
+        await repository.ImportExistingAsync(
+            "movies-main", movie.Title, 2016, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            filePath: "/library/main/Arrival (2016)/Arrival.mkv", fileSizeBytes: 42,
+            CancellationToken.None, movieId: movie.Id);
+
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies))
+        {
+            foreach (var sql in new[]
+                     {
+                         $"INSERT INTO movie_subtitle_state (movie_id, language, forced, hearing_impaired, source, file_path, created_utc, updated_utc) VALUES ('{movie.Id}', 'en', 0, 0, 'external', '/library/main/Arrival (2016)/Subs/Arrival.en.srt', 'x', 'x');",
+                         $"INSERT INTO movie_subtitle_state (movie_id, language, forced, hearing_impaired, source, file_path, created_utc, updated_utc) VALUES ('{movie.Id}', 'fr', 0, 0, 'external', '/library/main/Arrival (2016) Extra/Arrival.fr.srt', 'x', 'x');",
+                         $"INSERT INTO movie_subtitle_scan (movie_id, file_path, probe_status, scanned_utc) VALUES ('{movie.Id}', '/library/main/Arrival (2016)/Arrival.mkv', 'ok', 'x');"
+                     })
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        var rewritten = await repository.RelocateTrackedFilePathsAsync(
+            movie.Id, "/library/main/Arrival (2016)", "/library/4k/Arrival (2016)", CancellationToken.None);
+
+        Assert.Equal(3, rewritten);
+        var paths = await repository.ListTrackedFilePathsAsync(movie.Id, CancellationToken.None);
+        Assert.Contains("/library/4k/Arrival (2016)/Arrival.mkv", paths);
+        Assert.Contains("/library/4k/Arrival (2016)/Subs/Arrival.en.srt", paths);
+        // A sibling folder that merely starts with the same name is not under the moved folder.
+        Assert.Contains("/library/main/Arrival (2016) Extra/Arrival.fr.srt", paths);
+        Assert.DoesNotContain(paths, p => p.StartsWith("/library/main/Arrival (2016)/", StringComparison.Ordinal));
     }
 }

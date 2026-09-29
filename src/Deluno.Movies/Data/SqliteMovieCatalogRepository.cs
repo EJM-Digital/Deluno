@@ -3649,6 +3649,77 @@ public sealed class SqliteMovieCatalogRepository(
         return updated;
     }
 
+    private static readonly string[] TrackedPathTables = ["movie_wanted_state", "movie_subtitle_state", "movie_subtitle_scan"];
+
+    public async Task<IReadOnlyList<string>> ListTrackedFilePathsAsync(string movieId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var paths = new List<string>();
+        foreach (var table in TrackedPathTables)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT file_path FROM {table} WHERE movie_id = @movieId AND file_path IS NOT NULL;";
+            AddParameter(command, "@movieId", movieId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                paths.Add(reader.GetString(0));
+            }
+        }
+
+        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    public async Task<int> RelocateTrackedFilePathsAsync(
+        string movieId,
+        string oldFolder,
+        string newFolder,
+        CancellationToken cancellationToken)
+    {
+        var oldTrimmed = oldFolder.TrimEnd('/', '\\');
+        var newTrimmed = newFolder.TrimEnd('/', '\\');
+        if (oldTrimmed.Length == 0 || newTrimmed.Length == 0)
+        {
+            return 0;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        // Match on a folder boundary only, so "Arrival" never captures "Arrival 2". Slashes may be
+        // either kind in a stored path; replacing them one for one keeps the character count, so the
+        // remainder after the old folder is cut at the same place.
+        var prefix = oldTrimmed.Replace('\\', '/').ToLowerInvariant() + "/";
+        var rewritten = 0;
+        foreach (var table in TrackedPathTables)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                $"""
+                UPDATE {table}
+                SET file_path = @newFolder || substr(file_path, @oldLength + 1)
+                WHERE movie_id = @movieId
+                  AND file_path IS NOT NULL
+                  AND substr(lower(replace(file_path, char(92), '/')), 1, @prefixLength) = @prefix;
+                """;
+            AddParameter(command, "@movieId", movieId);
+            AddParameter(command, "@newFolder", newTrimmed);
+            AddParameter(command, "@oldLength", oldTrimmed.Length);
+            AddParameter(command, "@prefix", prefix);
+            AddParameter(command, "@prefixLength", prefix.Length);
+            rewritten += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return rewritten;
+    }
+
     private static MovieWantedItem MapWanted(MediaWantedItem item)
         => new(
             MovieId: item.Id,
