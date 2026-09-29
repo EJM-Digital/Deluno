@@ -400,6 +400,30 @@ used to need three calls:
 `GET /api/system/info` (the System screen's "This installation" card), so the
 two cannot disagree.
 
+### Disk space and find-by-IMDb-id
+
+`GET /api/diskspace` (`read` scope), Radarr's `GET /api/v3/diskspace`
+(`DiskSpaceController`): a plain list of `{ path, label, freeSpace,
+totalSpace }` in bytes, one per drive that holds Deluno's own data folder, a
+library's folder or a library's downloads folder. `path` is the first such
+folder on the drive and `label` says whose it is ("Deluno's own data",
+"Films", "Films downloads"). A drive that cannot be read is left out rather
+than reported as empty. Monitoring's storage summary reads the same code.
+
+`GET /api/movies/lookup/imdb?imdbId=tt0133093` (`read` scope), Radarr's
+`GET /api/v3/movie/lookup/imdb`. It asks the metadata provider for that exact
+IMDb id, never a similar title, and answers the film as the Add screen shows
+it, plus `libraryEntryId` when Deluno already holds it.
+
+| Status | Meaning |
+|---|---|
+| `200` | The film. |
+| `400` | `imdbId` is not an IMDb title id (`tt` and 5 to 10 digits). |
+| `404` | No film has that id (an id that names a show is not a film here). |
+
+The calendar needs no new address: `GET /api/calendar/feed.ics` already
+carries both films and episodes.
+
 ## Refine Before Import
 
 When a Deluno library is configured for **Refine before import**, an external processor can clean the completed download without bypassing Deluno's destination resolver, import mover, rename rules, or metadata refresh. The normal path is processor-agnostic: the processor writes below the library's configured processed-output root using the completed download's final source-folder name, and Deluno matches that stable path component to its durable hand-off.

@@ -421,20 +421,14 @@ public sealed class MonitoringService(
         try
         {
             var fullPath = Path.GetFullPath(dataRoot);
-            var root = Path.GetPathRoot(fullPath);
-            if (string.IsNullOrWhiteSpace(root))
+            var reading = VolumeSpace.TryRead(fullPath);
+            if (reading is null)
             {
                 return new MonitoringStorageSummary(fullPath, null, null, null, false);
             }
 
-            var drive = new DriveInfo(root);
-            if (!drive.IsReady)
-            {
-                return new MonitoringStorageSummary(fullPath, null, null, null, false);
-            }
-
-            var total = drive.TotalSize;
-            var free = drive.AvailableFreeSpace;
+            var total = reading.TotalBytes;
+            var free = reading.FreeBytes;
             var percent = total <= 0 ? (double?)null : Math.Round((double)free / total * 100d, 2);
             return new MonitoringStorageSummary(
                 DataRoot: fullPath,
