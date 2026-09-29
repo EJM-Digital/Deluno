@@ -1505,7 +1505,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 item.Id,
                 item.Title,
                 match.ProviderId,
-                cancellationToken);
+                cancellationToken,
+                deliberateRelink: true);
             await activityFeedRepository.RecordActivityAsync(
                 "metadata.series.linked",
                 $"{item.Title} metadata was linked to {match.Provider.ToUpperInvariant()} item {match.ProviderId}.",
@@ -3764,7 +3765,8 @@ public static class SeriesEndpointRouteBuilderExtensions
         string seriesId,
         string seriesTitle,
         string? providerId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool deliberateRelink = false)
     {
         if (string.IsNullOrWhiteSpace(providerId))
         {
@@ -3779,13 +3781,14 @@ public static class SeriesEndpointRouteBuilderExtensions
                 metadataProvider,
                 providerId,
                 SeriesCatalogueChoice.ExistingEpisodes(inventory),
-                cancellationToken);
+                cancellationToken,
+                deliberateRelink);
             if (choice.Hold != MetadataCatalogueHold.None)
             {
                 // The show's numbering came from TheTVDB. Its episodes stay as
                 // they are and the next refresh tries TheTVDB again.
                 await SeriesCatalogueChoice.RecordHoldAsync(
-                    activityFeedRepository, choice.Hold, seriesId, seriesTitle, null, cancellationToken);
+                    activityFeedRepository, null, choice.Hold, seriesId, seriesTitle, null, cancellationToken);
                 return SeriesCatalogueSyncResult.None;
             }
 
@@ -4121,14 +4124,20 @@ public static class SeriesEndpointRouteBuilderExtensions
         }
 
         IReadOnlyList<MetadataSeason> seasons;
+        var tvdbDisagrees = false;
         try
         {
             var existing = await repository.GetInventoryDetailAsync(item.Id, cancellationToken);
+            // A person choosing this record on purpose (often to correct a wrong
+            // TheTVDB link) gets the preview of what changes; only "TheTVDB did not
+            // answer" holds it, because then there is no list to preview.
             var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 lookup.Result.ProviderId,
                 SeriesCatalogueChoice.ExistingEpisodes(existing),
-                cancellationToken);
+                cancellationToken,
+                deliberateRelink: true);
+            tvdbDisagrees = choice.TvdbDisagreesButChosen;
             if (choice.Hold != MetadataCatalogueHold.None)
             {
                 return new SeriesMetadataLinkPlan(
@@ -4211,6 +4220,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             "Provider artwork, overview, ratings, genres, IDs, network, and episode catalogue will be refreshed from the selected record.",
             $"The selected catalogue has {impact.ProposedEpisodeCount} episodes across {impact.ProposedSeasonCount} seasons; {evaluation.NewEpisodeCount} new episode rows will be added."
         };
+        if (tvdbDisagrees)
+        {
+            consequences.Add("This show's episodes are numbered by TheTVDB, and the selected record's episode list does not match them. Applying it switches the show to the selected record's episode list; any episode Deluno already has that the list lacks is counted below.");
+        }
         if (!string.Equals(current.Context, proposed.Context, StringComparison.OrdinalIgnoreCase))
         {
             consequences.Add($"Network will change from {DisplayMetadataValue(current.Context)} to {DisplayMetadataValue(proposed.Context)}.");

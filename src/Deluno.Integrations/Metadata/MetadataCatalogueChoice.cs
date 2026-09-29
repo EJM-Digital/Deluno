@@ -15,7 +15,8 @@ public enum MetadataCatalogueHold
 
 public sealed record MetadataCatalogueChoiceResult(
     IReadOnlyList<MetadataSeason> Seasons,
-    MetadataCatalogueHold Hold = MetadataCatalogueHold.None);
+    MetadataCatalogueHold Hold = MetadataCatalogueHold.None,
+    bool TvdbDisagreesButChosen = false);
 
 /// <summary>
 /// Chooses which provider's episode list a show is synced to. TheTVDB's list
@@ -38,7 +39,8 @@ public static class MetadataCatalogueChoice
         IMetadataProvider provider,
         string providerId,
         IReadOnlyCollection<MetadataEpisodeIdentity> existingEpisodes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool deliberateRelink = false)
     {
         var preferred = await provider.GetSeriesCatalogueAsync(providerId, MetadataCatalogueSource.Preferred, cancellationToken) ?? [];
         var onTvdb = existingEpisodes.Any(episode => string.Equals(episode.CatalogueSource, "tvdb", StringComparison.OrdinalIgnoreCase));
@@ -62,6 +64,14 @@ public static class MetadataCatalogueChoice
         if (lineUp)
         {
             return new MetadataCatalogueChoiceResult(preferred);
+        }
+
+        if (onTvdb && deliberateRelink)
+        {
+            // A person choosing another record on purpose (usually to fix a wrong
+            // TheTVDB link) is not an unattended refresh: they see the preview of
+            // what changes and confirm it. Their chosen list goes through, flagged.
+            return new MetadataCatalogueChoiceResult(preferred, TvdbDisagreesButChosen: true);
         }
 
         if (onTvdb)
