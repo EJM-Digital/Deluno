@@ -136,6 +136,7 @@ public sealed class BundledComponentsTests
                 !string.IsNullOrWhiteSpace(spec.Sha256)
                     || spec.MustBeSigned
                     || !string.IsNullOrWhiteSpace(spec.GithubChecksumAsset)
+                    || !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern)
                     || !string.IsNullOrWhiteSpace(spec.ChecksumSuffix),
                 $"{spec.Kind} has no pinned checksum, no signature requirement, and no dynamic checksum source.");
         }
