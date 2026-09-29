@@ -232,6 +232,43 @@ public sealed class MovieOneRungPerMovieTests
         Assert.Equal(0L, Convert.ToInt64(await count.ExecuteScalarAsync()));
     }
 
+    [Fact]
+    public async Task A_file_gone_from_disk_clears_the_stale_file_data_and_unmonitors_in_one_step_but_an_external_redownload_stays_monitored()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+        var gone = await SeedAsync(movies, "Gone Film", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: true);
+        var redownload = await SeedAsync(movies, "Redownload Film", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: true);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        await ExecuteAsync(connection, "UPDATE movie_wanted_state SET file_path = '/movies/' || movie_id || '.mkv', current_quality = 'Bluray-1080p';");
+
+        // Found gone by the file check (#1065): file fields, status and monitored change together.
+        Assert.True(await movies.MarkTrackedFileGoneAsync(gone, "lib-a", $"/movies/{gone}.mkv", CancellationToken.None));
+        // Another tool asked for a re-download: Deluno's own replacement keeps the film monitored and searching.
+        Assert.True(await movies.MarkTrackedFileMissingAsync(redownload, "lib-a", $"/movies/{redownload}.mkv", CancellationToken.None));
+
+        foreach (var id in new[] { gone, redownload })
+        {
+            Assert.Equal("missing", await StatusAsync(connection, id));
+            await using var row = connection.CreateCommand();
+            row.CommandText = "SELECT file_path, current_quality, quality_cutoff_met, has_file FROM movie_wanted_state WHERE movie_id = @id;";
+            var p = row.CreateParameter();
+            p.ParameterName = "@id";
+            p.Value = id;
+            row.Parameters.Add(p);
+            await using var reader = await row.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.True(reader.IsDBNull(0), "no file path is kept for a file that is gone");
+            Assert.True(reader.IsDBNull(1), "no quality is kept for a file that is gone");
+            Assert.Equal(0L, reader.GetInt64(2));
+            Assert.Equal(0L, reader.GetInt64(3));
+        }
+
+        Assert.False((await movies.GetByIdAsync(gone, CancellationToken.None))!.Monitored);
+        Assert.True((await movies.GetByIdAsync(redownload, CancellationToken.None))!.Monitored);
+    }
+
     private static MediaWantedDecisionInput Input(bool upgradeUntilCutoff, bool upgradeUnknown, string? current)
         => new("movies", true, current, "WEB 2160p", upgradeUntilCutoff, upgradeUnknown);
 
