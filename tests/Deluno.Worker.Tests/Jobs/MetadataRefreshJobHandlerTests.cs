@@ -1,4 +1,5 @@
 using Deluno.Integrations.Metadata;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -215,5 +216,89 @@ public sealed class MetadataRefreshJobHandlerTests
             "series",
             series.Id,
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static (SeriesMetadataRefreshJobHandler Handler, Mock<ISeriesCatalogRepository> Series, Mock<IActivityFeedRepository> Activity, JobQueueItem Job)
+        BuildTvdbNumberedShow(IReadOnlyList<MetadataSeason> preferred, IReadOnlyList<MetadataSeason> tmdbOnly)
+    {
+        var series = new SeriesListItem(
+            "series-1", "A Show", 2020, "tt1234567", true, true,
+            "tmdb", "42", null, null, null, null, null, [], null, null, null, Now, Now, Now);
+        var match = new MetadataSearchResult(
+            "tmdb", "42", "tv", "A Show", null, 2020, null, null, null, null, [], [], null, null);
+        var metadataProvider = new Mock<IMetadataProvider>();
+        metadataProvider
+            .Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetadataProviderRecordLookup(MetadataProviderRecordStatus.Found, "tmdb", "42", match));
+        metadataProvider
+            .Setup(provider => provider.GetSeriesCatalogueAsync("42", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(preferred);
+        metadataProvider
+            .Setup(provider => provider.GetSeriesCatalogueAsync("42", MetadataCatalogueSource.TmdbOnly, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tmdbOnly);
+
+        SeriesEpisodeInventoryItem Episode(int number, string title, DateTimeOffset air) => new(
+            $"e{number}", 1, number, title, null, air, true, true, "have", "", true, null, null, false, null, null, null, Now,
+            CatalogueSource: "tvdb");
+        var inventory = new SeriesInventoryDetail(
+            "series-1", "A Show", 2020, 1, 4, 4,
+            [
+                Episode(1, "Pilot", Now),
+                Episode(2, "Second", Now.AddDays(7)),
+                Episode(3, "Third", Now.AddDays(14)),
+                Episode(4, "Fourth", Now.AddDays(21))
+            ]);
+        var seriesRepository = new Mock<ISeriesCatalogRepository>();
+        seriesRepository.Setup(repository => repository.GetByIdAsync("series-1", It.IsAny<CancellationToken>())).ReturnsAsync(series);
+        seriesRepository.Setup(repository => repository.GetInventoryDetailAsync("series-1", It.IsAny<CancellationToken>())).ReturnsAsync(inventory);
+        var activity = new Mock<IActivityFeedRepository>();
+        var handler = new SeriesMetadataRefreshJobHandler(metadataProvider.Object, seriesRepository.Object, activity.Object);
+        return (handler, seriesRepository, activity, TestJobs.Create("series.metadata.refresh", relatedEntityId: "series-1"));
+    }
+
+    private static MetadataSeason TmdbSeason() => new(1, null, 4, null,
+    [
+        new(1, 1, "Pilot", null, Now, null, null),
+        new(1, 2, "Second", null, Now.AddDays(7), null, null),
+        new(1, 3, "Third", null, Now.AddDays(14), null, null),
+        new(1, 4, "Fourth", null, Now.AddDays(21), null, null)
+    ]);
+
+    [Fact]
+    public async Task SeriesMetadataRefreshJobHandler_holds_a_TheTVDB_numbered_show_during_a_TheTVDB_outage()
+    {
+        // TheTVDB is down, so the preferred list is TMDb's.
+        var (handler, series, activity, job) = BuildTvdbNumberedShow([TmdbSeason()], [TmdbSeason()]);
+
+        await handler.HandleAsync(job, CancellationToken.None);
+
+        series.Verify(repository => repository.SyncEpisodeCatalogueAsync(
+            It.IsAny<string>(), It.IsAny<IReadOnlyList<CatalogueEpisodeItem>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        activity.Verify(repository => repository.RecordActivityAsync(
+            "metadata.series.catalogue.held",
+            It.Is<string>(message => message.Contains("did not answer", StringComparison.Ordinal)),
+            It.IsAny<string?>(), job.Id, "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SeriesMetadataRefreshJobHandler_rejects_a_TheTVDB_list_that_is_another_shows_episodes()
+    {
+        var wrong = new MetadataSeason(1, null, 4, null,
+        [
+            new(1, 1, "Something Else", null, Now.AddYears(5), null, "tvdb"),
+            new(1, 2, "Other Show", null, Now.AddYears(5).AddDays(7), null, "tvdb"),
+            new(1, 3, "Unrelated", null, Now.AddYears(5).AddDays(14), null, "tvdb"),
+            new(1, 4, "Nope", null, Now.AddYears(5).AddDays(21), null, "tvdb")
+        ]);
+        var (handler, series, activity, job) = BuildTvdbNumberedShow([wrong], [TmdbSeason()]);
+
+        await handler.HandleAsync(job, CancellationToken.None);
+
+        series.Verify(repository => repository.SyncEpisodeCatalogueAsync(
+            It.IsAny<string>(), It.IsAny<IReadOnlyList<CatalogueEpisodeItem>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        activity.Verify(repository => repository.RecordActivityAsync(
+            "metadata.series.catalogue.held",
+            It.Is<string>(message => message.Contains("does not match", StringComparison.Ordinal)),
+            It.IsAny<string?>(), job.Id, "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 }
