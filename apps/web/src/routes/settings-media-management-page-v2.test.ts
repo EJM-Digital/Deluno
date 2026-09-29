@@ -43,3 +43,26 @@ describe("processor connection health-check address", () => {
     expect(processorSub({ secretConfigured: false, healthCheckUrl: null, healthStatus: "healthy" })).toBe("No token");
   });
 });
+
+/** #1077: a library links to its processor by id, so renaming the connection changes nothing. */
+describe("a library's processor link", () => {
+  const connections = [{ id: "c1", name: "Media cleaner" }] as never[];
+
+  it("finds the processor by id after it has been renamed", async () => {
+    const { findLinkedProcessor } = await import("./settings-media-management-page-v2");
+    expect(findLinkedProcessor(connections, "c1", "Weir")).toMatchObject({ id: "c1" });
+  });
+
+  it("uses the name only when the library was never linked to a connection", async () => {
+    const { findLinkedProcessor } = await import("./settings-media-management-page-v2");
+    expect(findLinkedProcessor(connections, null, "Media cleaner")).toMatchObject({ id: "c1" });
+    expect(findLinkedProcessor(connections, null, "Weir")).toBeNull();
+    expect(findLinkedProcessor(connections, "gone", "Media cleaner")).toBeNull();
+  });
+
+  it("saves the id, not the name, as the link", () => {
+    const source = readFileSync(resolve(__dirname, "settings-media-management-page-v2.tsx"), "utf8");
+    expect(source).toMatch(/processorConnectionId: workflow\.processorConnectionId \|\| null/);
+    expect(source).not.toMatch(/value=\{connection\.name\}/);
+  });
+});

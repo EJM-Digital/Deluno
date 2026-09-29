@@ -109,7 +109,8 @@ public sealed record ProcessorOutcomeRecord(
     DateTimeOffset? NextAttemptUtc,
     bool Released,
     string? ProcessorSaid,
-    DateTimeOffset RecordedUtc)
+    DateTimeOffset RecordedUtc,
+    string? ProcessorConnectionId = null)
 {
     public const string Imported = "imported";
     public const string NotImported = "not-imported";

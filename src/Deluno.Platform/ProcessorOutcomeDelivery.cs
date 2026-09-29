@@ -53,7 +53,7 @@ public static class ProcessorOutcomeDelivery
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        var connection = await repository.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
         if (connection is null) return null;
 
         var record = new ProcessorOutcomeRecord(
@@ -75,7 +75,8 @@ public static class ProcessorOutcomeDelivery
             nowUtc + InFlightGrace,
             false,
             null,
-            nowUtc);
+            nowUtc,
+            connection.Id);
         await repository.SaveProcessorOutcomeAsync(record, cancellationToken);
         return await SendAsync(repository, processorConnections, activityFeed, record, nowUtc, cancellationToken);
     }
@@ -115,7 +116,7 @@ public static class ProcessorOutcomeDelivery
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var connection = await repository.FindProcessorConnectionByNameAsync(record.ProcessorName, cancellationToken);
+        var connection = await repository.FindProcessorConnectionAsync(record.ProcessorConnectionId, record.ProcessorName, cancellationToken);
         if (connection is null)
         {
             return await SettleAsync(

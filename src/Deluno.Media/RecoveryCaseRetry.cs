@@ -180,7 +180,7 @@ public static class RecoveryCaseRetry
             return RecoveryRetryOutcome.Refused($"{handoff.ProcessorName ?? "The processor"} still has {dispatch.ReleaseName}, so there is nothing to run again until it finishes.");
         }
 
-        var connection = await processors.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        var connection = await processors.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
         if (connection is not { IsEnabled: true })
         {
             return RecoveryRetryOutcome.Refused($"The connection to {handoff.ProcessorName ?? "the processor"} is unavailable. Restore and test it before running {dispatch.ReleaseName} again.");
@@ -375,7 +375,7 @@ public static class RecoveryCaseRetry
             return RecoveryRetryOutcome.Refused($"{processor} has finished with {dispatch.ReleaseName}; its import follows without anything more from you.");
         }
 
-        var connection = await processors.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+        var connection = await processors.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
         if (connection is not { IsEnabled: true })
         {
             return RecoveryRetryOutcome.Refused($"The connection to {processor} is unavailable. Restore and test it before trying {dispatch.ReleaseName} again.");

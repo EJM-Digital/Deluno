@@ -73,7 +73,9 @@ public sealed class ProcessorHealthCheck(
             // and the wrong one for another when both route through it.
             var servedLibraries = libraryList.Where(library =>
                 string.Equals(library.ImportWorkflow, "refine-before-import", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(library.ProcessorName, connection.Name, StringComparison.OrdinalIgnoreCase)).ToArray();
+                (!string.IsNullOrWhiteSpace(library.ProcessorConnectionId)
+                    ? string.Equals(library.ProcessorConnectionId, connection.Id, StringComparison.OrdinalIgnoreCase)
+                    : string.Equals(library.ProcessorName, connection.Name, StringComparison.OrdinalIgnoreCase))).ToArray();
             if (servedLibraries.Length == 0)
             {
                 continue;

@@ -55,5 +55,5 @@ public interface IDeletedThingCleanup
     /// still something to ask, rather than timing out hours later and raising
     /// cases naming a processor that was deliberately deleted.
     /// </summary>
-    Task<DeletionCleanup> ProcessorDeletedAsync(string processorName, CancellationToken cancellationToken);
+    Task<DeletionCleanup> ProcessorDeletedAsync(string processorConnectionId, string processorName, CancellationToken cancellationToken);
 }

@@ -51,7 +51,7 @@ public sealed class AProcessorIsToldWhatBecameOfItTests
                 ProcessorName = "Weir"
             });
         _connection = Blank<ProcessorConnectionItem>() with { Id = "c1", Name = "Weir", IsEnabled = true };
-        _processors.Setup(repo => repo.FindProcessorConnectionByNameAsync("Weir", It.IsAny<CancellationToken>()))
+        _processors.Setup(repo => repo.FindProcessorConnectionAsync(It.IsAny<string?>(), "Weir", It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => _connection);
 
         // What is owed lives in a store the tests can read, as it does in SQLite.

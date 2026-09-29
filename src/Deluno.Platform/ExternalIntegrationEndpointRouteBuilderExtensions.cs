@@ -437,7 +437,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 });
             }
 
-            var connection = await repository.FindProcessorConnectionByNameAsync(handoff.ProcessorName, cancellationToken);
+            var connection = await repository.FindProcessorConnectionAsync(handoff.ProcessorConnectionId, handoff.ProcessorName, cancellationToken);
             if (connection is not { IsEnabled: true })
             {
                 return Results.Conflict(new
@@ -830,7 +830,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (connection is null) return Results.NotFound();
 
             // Before the row goes, while there is still something to ask.
-            await cleanup.ProcessorDeletedAsync(connection.Name, cancellationToken);
+            await cleanup.ProcessorDeletedAsync(connection.Id, connection.Name, cancellationToken);
 
             return await repository.DeleteProcessorConnectionAsync(id, cancellationToken)
                 ? Results.NoContent()
@@ -1056,8 +1056,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             // anything below compares or imports them. With no mapping pairs
             // configured for this connection, every path passes through
             // unchanged.
-            var mappingConnection = !string.IsNullOrWhiteSpace(library.ProcessorName)
-                ? await repository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken)
+            var mappingConnection = !string.IsNullOrWhiteSpace(library.ProcessorConnectionId) || !string.IsNullOrWhiteSpace(library.ProcessorName)
+                ? await repository.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken)
                 : null;
             IReadOnlyList<ProcessorPathMappingItem> pathMappings = mappingConnection is not null
                 ? await repository.ListProcessorPathMappingsAsync(mappingConnection.Id, cancellationToken)

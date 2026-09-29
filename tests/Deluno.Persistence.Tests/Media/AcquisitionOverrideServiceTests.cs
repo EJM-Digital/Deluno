@@ -414,6 +414,8 @@ public sealed class AcquisitionOverrideServiceTests
             => throw new NotSupportedException();
         public Task<ProcessorConnectionItem?> FindProcessorConnectionByNameAsync(string? name, CancellationToken cancellationToken)
             => throw new NotSupportedException();
+        public Task<ProcessorConnectionItem?> FindProcessorConnectionAsync(string? id, string? nameFallback, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
         public Task<ProcessorConnectionItem> CreateProcessorConnectionAsync(CreateProcessorConnectionRequest request, CancellationToken cancellationToken)
             => throw new NotSupportedException();
         public Task<ProcessorConnectionItem?> UpdateProcessorConnectionAsync(string id, UpdateProcessorConnectionRequest request, CancellationToken cancellationToken)

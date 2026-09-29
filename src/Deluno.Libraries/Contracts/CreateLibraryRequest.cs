@@ -23,4 +23,6 @@ public sealed record CreateLibraryRequest(
     /// <summary>How many missing-item candidates a search cycle works through, independent of the upgrade cap (#830). Falls back to <see cref="MaxItemsPerRun"/> when unset.</summary>
     int? MaxMissingItemsPerRun = null,
     /// <summary>How many cutoff-unmet (upgrade) candidates a search cycle works through, independent of the missing cap (#830). Falls back to <see cref="MaxItemsPerRun"/> when unset.</summary>
-    int? MaxUpgradeItemsPerRun = null);
+    int? MaxUpgradeItemsPerRun = null,
+    /// <summary>The processor connection to hand downloads to, by id (#1077). Wins over <see cref="ProcessorName"/>, which older callers still send.</summary>
+    string? ProcessorConnectionId = null);

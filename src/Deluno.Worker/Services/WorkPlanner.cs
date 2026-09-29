@@ -943,7 +943,7 @@ public sealed class WorkPlanner(
         var inFlightByProcessor = (await processorRepository.ListProcessorHandoffsWithStatusAsync(
                 ProcessorHandoffStatuses.WithProcessor,
                 cancellationToken))
-            .GroupBy(handoff => handoff.ProcessorName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(handoff => handoff.ProcessorConnectionId ?? handoff.ProcessorName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
         var recentWaiting = await activityFeedRepository.ListActivityAsync(150, null, null, cancellationToken);
@@ -1102,7 +1102,7 @@ public sealed class WorkPlanner(
             if (!released &&
                 ImportWorkflows.HandsToProcessor(library.ImportWorkflow) &&
                 existing is null &&
-                inFlightByProcessor.GetValueOrDefault(library.ProcessorName ?? string.Empty) >= MostFilesWithOneProcessor)
+                inFlightByProcessor.GetValueOrDefault(library.ProcessorConnectionId ?? library.ProcessorName ?? string.Empty) >= MostFilesWithOneProcessor)
             {
                 continue;
             }
@@ -1118,11 +1118,12 @@ public sealed class WorkPlanner(
                         item.ReleaseName,
                         item.SourcePath,
                         library.ProcessorName,
-                        item.AddedUtc),
+                        item.AddedUtc,
+                        library.ProcessorConnectionId),
                     cancellationToken);
                 var currentHandoff = handoff;
                 ProcessorSubmissionResult? submission = null;
-                var connection = await processorRepository.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken);
+                var connection = await processorRepository.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken);
                 if (connection is { IsEnabled: true } && handoff.Status == "waiting")
                 {
                     // Deluno's own view of sourcePath, translated to the
@@ -1187,6 +1188,7 @@ public sealed class WorkPlanner(
                             library.Id,
                             library.Name,
                             library.ProcessorName,
+                            ProcessorConnectionId = library.ProcessorConnectionId,
                             library.ProcessorOutputPath,
                             library.ProcessorTimeoutMinutes
                         }, PayloadJsonOptions),

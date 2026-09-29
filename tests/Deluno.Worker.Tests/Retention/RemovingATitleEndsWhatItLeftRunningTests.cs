@@ -166,7 +166,7 @@ public sealed class RemovingATitleEndsWhatItLeftRunningTests
                 .Setup(repository => repository.ListProcessorHandoffsWithStatusAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => handoffs.Where(h => ProcessorHandoffStatuses.IsWithProcessor(h.Status)).ToArray());
             Handoffs
-                .Setup(repository => repository.FindProcessorConnectionByNameAsync("Weir", It.IsAny<CancellationToken>()))
+                .Setup(repository => repository.FindProcessorConnectionAsync(It.IsAny<string?>(), "Weir", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Blank<ProcessorConnectionItem>() with { Name = "Weir", IsEnabled = true });
             Handoffs
                 .Setup(repository => repository.UpdateProcessorHandoffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))

@@ -116,11 +116,15 @@ public sealed class ProcessorHandoffWatcher(
                 continue;
             }
 
+            // The library's link wins, then the hand-off's own; both are ids, so a
+            // renamed connection is still this connection (#1077).
+            var connectionId = library.ProcessorConnectionId ?? handoff.ProcessorConnectionId;
             var connectionName = library.ProcessorName ?? handoff.ProcessorName ?? string.Empty;
-            if (!connections.TryGetValue(connectionName, out var connection))
+            var connectionKey = connectionId ?? connectionName;
+            if (!connections.TryGetValue(connectionKey, out var connection))
             {
-                connection = await processorRepository.FindProcessorConnectionByNameAsync(connectionName, cancellationToken);
-                connections[connectionName] = connection;
+                connection = await processorRepository.FindProcessorConnectionAsync(connectionId, connectionName, cancellationToken);
+                connections[connectionKey] = connection;
             }
 
             var limit = TimeSpan.FromMinutes(ProcessorStallLimits.Normalize(library.ProcessorTimeoutMinutes));
