@@ -31,7 +31,7 @@ public sealed record DownloadClientWiring(
     string TvCategory);
 
 /// <param name="Created">False when a client of that kind on this computer was already connected and was reused.</param>
-public sealed record DownloadClientConnectResult(string Name, bool Created, bool Healthy, string Message);
+public sealed record DownloadClientConnectResult(string Name, bool Created, bool Healthy, string Message, DownloadClientItem? Client = null);
 
 /// <summary>
 /// The one place a download client that is installed on this computer becomes a
@@ -78,6 +78,6 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
         }
 
         await connections.UpdateDownloadClientHealthAsync(client.Id, test.HealthStatus, test.Message, test.FailureCategory, null, cancellationToken);
-        return new DownloadClientConnectResult(client.Name, existing is null, test.HealthStatus == "healthy", test.Message);
+        return new DownloadClientConnectResult(client.Name, existing is null, test.HealthStatus == "healthy", test.Message, client);
     }
 }

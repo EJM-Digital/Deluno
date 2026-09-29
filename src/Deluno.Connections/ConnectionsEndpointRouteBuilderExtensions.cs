@@ -1572,20 +1572,54 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return ("degraded", "Add the client address before testing.", "configuration");
         }
 
+        return await RunWithSlowRetryAsync(
+            timeout => TestDownloadClientOnceAsync(item, uri, timeout, cancellationToken),
+            DownloadClientFirstTestTimeout,
+            DownloadClientRetryTestTimeout,
+            cancellationToken);
+    }
+
+    /// <summary>First budget for a connection test; a busy new PC can be slower than this once.</summary>
+    public static readonly TimeSpan DownloadClientFirstTestTimeout = TimeSpan.FromSeconds(8);
+
+    /// <summary>The longer budget for the one retry after a timeout.</summary>
+    public static readonly TimeSpan DownloadClientRetryTestTimeout = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// The one connection-test rule shared by the drawer's Test button and connecting the
+    /// installed apps (#1060): a test that runs out of time is tried once more with a longer
+    /// budget before the client is called unreachable, and if it answers then it is healthy
+    /// with a plain note that it was slow. A refused connection, a wrong login or any other
+    /// answer is a real answer and is never retried.
+    /// </summary>
+    public static async Task<(string healthStatus, string message, string? failureCategory)> RunWithSlowRetryAsync(
+        Func<TimeSpan, Task<(string healthStatus, string message, string? failureCategory)>> attempt,
+        TimeSpan firstTimeout,
+        TimeSpan retryTimeout,
+        CancellationToken cancellationToken)
+    {
         try
         {
-            return item.Protocol.ToLowerInvariant() switch
-            {
-                "qbittorrent" => await TestQbittorrentAsync(item, uri, cancellationToken),
-                "sabnzbd" => await TestSabnzbdAsync(item, uri, cancellationToken),
-                "transmission" => await TestTransmissionAsync(item, uri, cancellationToken),
-                "deluge" => await TestDelugeAsync(item, uri, cancellationToken),
-                "nzbget" => await TestNzbGetAsync(item, uri, cancellationToken),
-                "utorrent" => await TestUTorrentAsync(item, uri, cancellationToken),
-                "rtorrent" => await TestRtorrentAsync(item, uri, cancellationToken),
-                // Unreachable: the dispatchable guard above covers every other value.
-                _ => ("degraded", $"Deluno cannot send downloads to a '{item.Protocol}' client.", "configuration")
-            };
+            return await attempt(firstTimeout);
+        }
+        catch (Exception ex) when (IsTimeout(ex, cancellationToken))
+        {
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        {
+            return ("unreachable", ex.Message, "connectivity");
+        }
+
+        try
+        {
+            var (status, message, category) = await attempt(retryTimeout);
+            return status == "healthy"
+                ? (status, $"{message} It was slow to answer: the first try timed out after {(int)firstTimeout.TotalSeconds} seconds and the second try passed.", category)
+                : (status, message, category);
+        }
+        catch (Exception ex) when (IsTimeout(ex, cancellationToken))
+        {
+            return ("unreachable", $"It did not answer within {(int)retryTimeout.TotalSeconds} seconds, tried twice. It may be busy or still starting; test it again in a minute.", "connectivity");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
         {
@@ -1593,10 +1627,29 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         }
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestQbittorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static bool IsTimeout(Exception ex, CancellationToken cancellationToken)
+        => !cancellationToken.IsCancellationRequested
+           && (ex is TimeoutException || ex is TaskCanceledException || ex.InnerException is TimeoutException);
+
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDownloadClientOnceAsync(
+        DownloadClientItem item, Uri uri, TimeSpan timeout, CancellationToken cancellationToken)
+        => item.Protocol.ToLowerInvariant() switch
+        {
+            "qbittorrent" => await TestQbittorrentAsync(item, uri, cancellationToken, timeout),
+            "sabnzbd" => await TestSabnzbdAsync(item, uri, cancellationToken, timeout),
+            "transmission" => await TestTransmissionAsync(item, uri, cancellationToken, timeout),
+            "deluge" => await TestDelugeAsync(item, uri, cancellationToken, timeout),
+            "nzbget" => await TestNzbGetAsync(item, uri, cancellationToken, timeout),
+            "utorrent" => await TestUTorrentAsync(item, uri, cancellationToken, timeout),
+            "rtorrent" => await TestRtorrentAsync(item, uri, cancellationToken, timeout),
+            // Unreachable: the dispatchable guard above covers every other value.
+            _ => ("degraded", $"Deluno cannot send downloads to a '{item.Protocol}' client.", "configuration")
+        };
+
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestQbittorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
         using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
-        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         if (!string.IsNullOrWhiteSpace(item.Username) || !string.IsNullOrWhiteSpace(item.Secret))
         {
             using var login = await client.PostAsync(
@@ -1619,14 +1672,14 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : HealthFromStatusCode("qBittorrent", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestSabnzbdAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestSabnzbdAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
         if (string.IsNullOrWhiteSpace(item.Secret))
         {
             return ("degraded", "SABnzbd API key is missing.", "auth");
         }
 
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient { Timeout = timeout };
 
         // mode=queue, not mode=version. SABnzbd answers mode=version to anybody
         // — no key, wrong key, any key — so testing it asked a question that
@@ -1641,9 +1694,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : HealthFromStatusCode("SABnzbd", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestTransmissionAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient { Timeout = timeout };
         AddBasicAuth(client, item);
         var endpoint = new Uri(uri, "transmission/rpc");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -1669,9 +1722,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : HealthFromStatusCode("Transmission", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestDelugeAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient { Timeout = timeout };
         var login = new DelugeRequest("auth.login", [item.Secret ?? string.Empty]);
         using var response = await client.PostSizedJsonAsync(new Uri(uri, "json"), login, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1685,9 +1738,9 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : ("degraded", "Deluge login failed. Check the Web UI password.", "auth");
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestNzbGetAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient { Timeout = timeout };
         AddBasicAuth(client, item);
         using var response = await client.PostSizedJsonAsync(
             new Uri(uri, "jsonrpc"),
@@ -1698,10 +1751,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             : HealthFromStatusCode("NZBGet", response.StatusCode);
     }
 
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestUTorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
         using var handler = new HttpClientHandler { CookieContainer = new CookieContainer(), Credentials = BuildCredential(item) };
-        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         var html = await client.GetStringAsync("gui/token.html", cancellationToken);
         return html.Contains("<div", StringComparison.OrdinalIgnoreCase)
             ? ("healthy", $"Connected to uTorrent at {uri.Host}:{uri.Port}.", null)
@@ -1714,10 +1767,10 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     /// endpoint is reachable and speaking rTorrent's RPC, without needing the
     /// adapter's own fuller codec here.
     /// </summary>
-    private static async Task<(string healthStatus, string message, string? failureCategory)> TestRtorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken)
+    private static async Task<(string healthStatus, string message, string? failureCategory)> TestRtorrentAsync(DownloadClientItem item, Uri uri, CancellationToken cancellationToken, TimeSpan timeout)
     {
         using var handler = new HttpClientHandler();
-        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(8) };
+        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         AddBasicAuth(client, item);
         const string requestXml = "<?xml version=\"1.0\"?><methodCall><methodName>system.client_version</methodName><params></params></methodCall>";
         using var content = new StringContent(requestXml, Encoding.UTF8, "text/xml");
