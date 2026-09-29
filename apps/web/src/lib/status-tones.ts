@@ -122,6 +122,8 @@ export const STATUS_PRESENTATION = {
   "retention.ready": { tone: "warn", label: "Ready to remove" },
   // Due, but a server could not be asked; it goes on by itself once it can.
   "retention.held": { tone: "info", label: "Held" },
+  // Its day came and the rule's action, which is not a removal, was done (#1011).
+  "retention.done": { tone: "ok", label: "Done" },
   "retention.kept": { tone: "ok", label: "Kept" },
   // Gone by rule, and nothing is waiting on it.
   "retention.removed": { tone: "idle", label: "Removed" }
@@ -141,9 +143,9 @@ export function statusLabel(key: StatusKey): string {
   return STATUS_PRESENTATION[key].label;
 }
 
-/** A retention mark's state (`leaving`, `ready`, `held`) as a chip. */
+/** A retention mark's state (`leaving`, `ready`, `held`, `done`) as a chip. */
 export function retentionMarkPresentation(state: string): StatusPresentation {
-  return state === "ready" ? STATUS_PRESENTATION["retention.ready"] : state === "held" ? STATUS_PRESENTATION["retention.held"] : STATUS_PRESENTATION["retention.leaving"];
+  return state === "ready" ? STATUS_PRESENTATION["retention.ready"] : state === "held" ? STATUS_PRESENTATION["retention.held"] : state === "done" ? STATUS_PRESENTATION["retention.done"] : STATUS_PRESENTATION["retention.leaving"];
 }
 
 /* ═══════════════ THE MARK ON A TITLE ═══════════════ */

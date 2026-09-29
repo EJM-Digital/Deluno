@@ -264,3 +264,35 @@ in tests.
    removed-by-rule record for episodes, and the screens.
 3. **Server collections** (#521).
 4. **Seerr** (#522).
+
+## What a rule does on the day, and the hand-made edges (#1008 to #1012)
+
+These come from the parity decision sheet (G174 to G178); each was checked
+against Maintainerr's source by name (`collection-handler.ts`,
+`collection-worker.service.ts`, `collections.service.ts`, `ServarrAction`).
+
+- **Expiry action** (#1011). Per rule: remove (what every rule did until now,
+  and what an existing rule keeps), stop monitoring (files stay), only write it
+  down in Activity, or give the title a Deluno tag. Deluno is the Sonarr/Radarr
+  here, so Maintainerr's "tag in the arr" is a Deluno tag through
+  `ITitleTagService`; a season or episode gives its show the tag. A title whose
+  action was done is marked Done and left alone until it stops matching or is
+  kept; changing the rule's action starts it afresh after a new wait. Only a
+  removing rule puts anything in a server's Leaving soon collection. A new rule
+  starts on "only write it down".
+- **Wait while playing** (#1012). Before a removal (never before the other
+  actions) Deluno asks every server the rule reads what is being played (Plex
+  `/status/sessions`, Jellyfin and Emby `/Sessions`). A title in use, or whose
+  season or show is in use, is held and tried at the next check, with an
+  Activity line. Maintainerr treats a failed lookup as "nothing playing"; Deluno
+  does not: if a server cannot say, nothing is removed. An existing rule keeps
+  removing as before; a new rule starts with the wait on. It also covers a
+  person confirming a removal.
+- **Keep in Deluno only** (#1009). A per-rule switch: nothing is created on a
+  media server for that rule's list. Off for every existing rule.
+- **Add by hand** (#1008). Add a title to a rule's list from Leaving soon; it
+  is marked Manual, waits the rule's days, and the steps no longer decide
+  whether it stays. Taking a title off by hand is a Keep from that rule, which
+  keeps the rule from putting it back.
+- **Postpone** (#1010). Push a title's day back N days (1 to 3650) without
+  keeping it; past its day it counts from today. It only ever moves a day later.

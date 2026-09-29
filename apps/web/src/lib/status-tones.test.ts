@@ -3,6 +3,7 @@ import {
   STATUS_PRESENTATION,
   TITLE_MARK_PRESENTATION as MARKS,
   wantedStatusPresentation,
+  retentionMarkPresentation,
   TITLE_MARK_LADDER,
   TITLE_MARK_PRESENTATION,
   titleMark,
@@ -466,5 +467,15 @@ describe("classes are spelled out, never derived", () => {
     const withSheen = Object.entries(MARKS).filter(([, presentation]) => presentation.sheen);
     expect(withSheen.map(([mark]) => mark)).toEqual(["covered"]);
     expect(MARKS.covered.sheen).toBe("mark-grail");
+  });
+});
+
+describe("a Leaving soon mark's chip", () => {
+  it("says Done for a title whose day's action was done, and Leaving soon for anything it does not know", () => {
+    expect(retentionMarkPresentation("done").label).toBe("Done");
+    expect(retentionMarkPresentation("ready").label).toBe("Ready to remove");
+    expect(retentionMarkPresentation("held").label).toBe("Held");
+    expect(retentionMarkPresentation("leaving").label).toBe("Leaving soon");
+    expect(retentionMarkPresentation("something-new").label).toBe("Leaving soon");
   });
 });

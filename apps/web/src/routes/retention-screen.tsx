@@ -11,7 +11,10 @@ import { automationNavItems } from "../components/app/settings-shell";
 import { describeCondition, RetentionStepBuilder, type RetentionField, type RetentionStep, type RetentionStepCount } from "../components/app/retention-step-builder";
 import { RetentionKeepDialog, type KeepChoice } from "../components/app/retention-keep-dialog";
 import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { Chip } from "../components/ui/chip";
+import { RetentionAddTitleDialog } from "../components/app/retention-add-title-dialog";
+import { RetentionPostponeDialog } from "../components/app/retention-postpone-dialog";
 import { retentionMarkPresentation } from "../lib/status-tones";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -26,6 +29,8 @@ import type { MediaServerConnection } from "./media-servers-screen";
 
 type Level = "movie" | "show" | "season" | "episode";
 type RemovalMode = "automatic" | "ask";
+/** What a rule does on a title's day (#1011). Only `delete` removes anything. */
+type ExpiryAction = "delete" | "unmonitor" | "log" | "tag";
 
 /** Mirrors `Deluno.Retention.RetentionRule`. */
 interface RetentionRule {
@@ -41,6 +46,10 @@ interface RetentionRule {
   checkIntervalHours: number;
   lastCheckedUtc: string | null;
   nextCheckUtc: string | null;
+  expiryAction: ExpiryAction;
+  expiryTag: string | null;
+  keepInDelunoOnly: boolean;
+  deferWhilePlaying: boolean;
 }
 
 /** Mirrors `Deluno.Retention.RetentionTrial`. */
@@ -53,6 +62,8 @@ interface RetentionTrial {
   unreachableServers: string[];
   problems: string[];
   unmanaged: { server: string; title: string; year: number | null }[];
+  expiryAction: ExpiryAction;
+  expiryDescription: string;
 }
 
 /** Mirrors `Deluno.Retention.RetentionMark`. */
@@ -68,8 +79,10 @@ interface RetentionMark {
   reasons: string[];
   firstMatchedUtc: string;
   removeAfterUtc: string;
-  state: "leaving" | "ready" | "held" | string;
+  state: "leaving" | "ready" | "held" | "done" | string;
   stateReason: string | null;
+  /** A person put it on the list by hand (#1008). */
+  manual: boolean;
 }
 
 /** Mirrors `Deluno.Retention.RetentionKeep`. */
@@ -104,7 +117,19 @@ interface RuleForm {
   waitDays: string;
   removalMode: RemovalMode;
   checkIntervalHours: string;
+  expiryAction: ExpiryAction;
+  expiryTag: string;
+  keepInDelunoOnly: boolean;
+  deferWhilePlaying: boolean;
 }
+
+/** What each action does, in the words the choice is made in. Plain words; the codes stay in the API. */
+const EXPIRY_ACTIONS: { value: ExpiryAction; label: string }[] = [
+  { value: "delete", label: "Remove it (files to the recycle bin)" },
+  { value: "unmonitor", label: "Stop monitoring it (files stay)" },
+  { value: "log", label: "Only write it down in Activity" },
+  { value: "tag", label: "Give it a tag" }
+];
 
 const LEVELS: { value: Level; label: string; noun: string }[] = [
   { value: "movie", label: "Movies", noun: "movie" },
@@ -141,7 +166,11 @@ function formFrom(rule: RetentionRule | null): RuleForm {
         removeFromServers: rule.removeFromServers,
         waitDays: String(rule.waitDays),
         removalMode: rule.removalMode,
-        checkIntervalHours: String(rule.checkIntervalHours)
+        checkIntervalHours: String(rule.checkIntervalHours),
+        expiryAction: rule.expiryAction,
+        expiryTag: rule.expiryTag ?? "",
+        keepInDelunoOnly: rule.keepInDelunoOnly,
+        deferWhilePlaying: rule.deferWhilePlaying
       }
     : {
         name: "",
@@ -155,7 +184,13 @@ function formFrom(rule: RetentionRule | null): RuleForm {
         removeFromServers: true,
         waitDays: "14",
         removalMode: "automatic",
-        checkIntervalHours: "8"
+        checkIntervalHours: "8",
+        // A new rule starts on the gentlest choices: it only writes the day down, and nothing is removed while it plays.
+        // Removing is a choice made on purpose. (A rule saved before these choices existed keeps removing.)
+        expiryAction: "log",
+        expiryTag: "",
+        keepInDelunoOnly: false,
+        deferWhilePlaying: true
       };
 }
 
@@ -169,8 +204,28 @@ function payload(form: RuleForm) {
     removeFromServers: form.removeFromServers,
     waitDays: Number(form.waitDays),
     removalMode: form.removalMode,
-    checkIntervalHours: Number(form.checkIntervalHours)
+    checkIntervalHours: Number(form.checkIntervalHours),
+    expiryAction: form.expiryAction,
+    expiryTag: form.expiryAction === "tag" ? form.expiryTag.trim() : null,
+    keepInDelunoOnly: form.keepInDelunoOnly,
+    // Asking a server what is playing needs a server to ask.
+    deferWhilePlaying: form.deferWhilePlaying && form.mediaServerIds.length > 0
   };
+}
+
+/** What a rule does on the day, for the list. */
+function dayWords(rule: RetentionRule) {
+  const asks = rule.removalMode === "ask";
+  switch (rule.expiryAction) {
+    case "unmonitor":
+      return asks ? "Then asks, and stops monitoring" : "Then stops monitoring it";
+    case "log":
+      return asks ? "Then asks you" : "Then only writes it down";
+    case "tag":
+      return asks ? `Then asks, and tags “${rule.expiryTag ?? ""}”` : `Then tags it “${rule.expiryTag ?? ""}”`;
+    default:
+      return asks ? "Then asks you" : "Then removes it";
+  }
 }
 
 /** The first step of a rule, and how many follow, for the list. */
@@ -207,12 +262,15 @@ export function RetentionPage() {
   const [trial, setTrial] = useState<RetentionTrial | null>(null);
   const [trialBusy, setTrialBusy] = useState(false);
   const [keeping, setKeeping] = useState<RetentionMark | null>(null);
+  const [postponing, setPostponing] = useState<RetentionMark | null>(null);
+  const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<RetentionMark | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
 
   const editing = drawer.id ? rules.find((rule) => rule.id === drawer.id) ?? null : null;
+  const confirmingAction: ExpiryAction = rules.find((rule) => rule.id === confirming?.ruleId)?.expiryAction ?? "delete";
   const ruleFields = fields[form.level] ?? [];
   const dirty = drawer.open && JSON.stringify(payload(form)) !== JSON.stringify(payload(initial));
   const footerState = resolveDrawerSaveState(saveState, dirty);
@@ -253,7 +311,9 @@ export function RetentionPage() {
 
   // Live counts: what the rule as drawn would select now. Asked a moment after
   // the last change, so typing a value does not read every library per key.
-  const trialKey = drawer.open ? JSON.stringify({ level: form.level, steps: form.steps, servers: form.mediaServerIds, remove: form.removeFromServers }) : null;
+  const trialKey = drawer.open
+    ? JSON.stringify({ level: form.level, steps: form.steps, servers: form.mediaServerIds, remove: form.removeFromServers, action: form.expiryAction, tag: form.expiryTag })
+    : null;
   useEffect(() => {
     if (!trialKey) return;
     let cancelled = false;
@@ -378,6 +438,34 @@ export function RetentionPage() {
     }
   }
 
+  async function postpone(mark: RetentionMark, days: number) {
+    setBusy("postpone");
+    try {
+      const response = await authedFetch("/api/retention/leaving-soon/postpone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ruleId: mark.ruleId, entityIds: [mark.entityId], days })
+      });
+      if (!response.ok) {
+        const problem = await readValidationProblem(response.clone()).catch(() => null);
+        throw new Error(problem?.errors ? Object.values(problem.errors).flat().join(" ") : "");
+      }
+      const moved = (await response.json()) as RetentionMark[];
+      setPostponing(null);
+      setPageMessage(
+        moved.length > 0
+          ? `${mark.title} is postponed by ${days} ${days === 1 ? "day" : "days"}: ${formatDateTime(moved[0].removeAfterUtc, preferences)}. It is not kept.`
+          : `${mark.title} has nothing to postpone.`
+      );
+      revalidator.revalidate();
+    } catch (error) {
+      setPostponing(null);
+      setPageMessage(error instanceof Error && error.message ? error.message : `${mark.title} could not be postponed. Try again.`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function undoKeep(item: RetentionKeep) {
     setBusy(`undo:${item.id}`);
     try {
@@ -412,7 +500,17 @@ export function RetentionPage() {
         actions={<PageToolbarAction type="button" onClick={() => open(null)}>New rule</PageToolbarAction>}
       />
 
-      <ListCard title="Leaving soon" count={marks.length ? `${marks.length} ${marks.length === 1 ? "title" : "titles"}${leavingBytes > 0 ? ` · ${formatBytes(leavingBytes)}` : ""}` : undefined}>
+      <ListCard
+        title="Leaving soon"
+        count={marks.length ? `${marks.length} ${marks.length === 1 ? "title" : "titles"}${leavingBytes > 0 ? ` · ${formatBytes(leavingBytes)}` : ""}` : undefined}
+        actions={
+          rules.some((rule) => rule.isEnabled) ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)} disabled={busy !== null}>
+              Add a title…
+            </Button>
+          ) : undefined
+        }
+      >
         {pageMessage ? <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-foreground" role="status">{pageMessage}</p> : null}
         {marks.length === 0 ? (
           <ListEmpty title="Nothing is leaving soon" description="When a rule matches a title, it waits here for the rule's days before it goes, and anyone can keep it." />
@@ -423,25 +521,45 @@ export function RetentionPage() {
               { label: "Why" },
               { label: "Goes" },
               { label: "Size", width: LIST_TRACK.status },
-              { label: "", width: "220px", mobile: true, srOnly: true }
+              { label: "", width: "320px", mobile: true, srOnly: true }
             ]}
           >
             {marks.map((mark) => {
               const chip = retentionMarkPresentation(mark.state);
+              // A rule that does not remove titles is "Ready", not "Ready to remove".
+              const removes = (rules.find((rule) => rule.id === mark.ruleId)?.expiryAction ?? "delete") === "delete";
+              const chipLabel = mark.state === "ready" && !removes ? "Ready" : chip.label;
               return (
                 <ListRow key={`${mark.ruleId}:${mark.entityId}`}>
                   <ListNameCell name={`${mark.title}${mark.year && mark.level === "movie" ? ` (${mark.year})` : ""}`} sub={`${levelLabel(mark.level)} · ${mark.ruleName}`} />
-                  <ListCell primary={mark.reasons[0] ?? "—"} secondary={mark.reasons.length > 1 ? `and ${mark.reasons.length - 1} more` : undefined} />
                   <ListCell
-                    primary={<Chip tone={chip.tone}>{chip.label}</Chip>}
-                    secondary={mark.state === "held" ? mark.stateReason ?? undefined : formatDateTime(mark.removeAfterUtc, preferences)}
+                    primary={mark.reasons[0] ?? "—"}
+                    secondary={
+                      mark.manual ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Badge variant="info">Manual</Badge>
+                          <span>added by hand</span>
+                        </span>
+                      ) : mark.reasons.length > 1 ? (
+                        `and ${mark.reasons.length - 1} more`
+                      ) : undefined
+                    }
+                  />
+                  <ListCell
+                    primary={<Chip tone={chip.tone}>{chipLabel}</Chip>}
+                    secondary={mark.state === "held" || mark.state === "done" ? mark.stateReason ?? undefined : formatDateTime(mark.removeAfterUtc, preferences)}
                   />
                   <ListCell primary={mark.sizeBytes ? formatBytes(mark.sizeBytes) : "—"} />
                   <ListCell mobile>
                     <span className="flex justify-end gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setKeeping(mark)} disabled={busy !== null}>Keep…</Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setKeeping(mark)} disabled={busy !== null} aria-label={`Keep ${mark.title}`}>Keep…</Button>
+                      {mark.state !== "done" ? (
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPostponing(mark)} disabled={busy !== null} aria-label={`Postpone ${mark.title}`}>Postpone…</Button>
+                      ) : null}
                       {mark.state === "ready" ? (
-                        <Button type="button" variant="destructive" size="sm" onClick={() => setConfirming(mark)} disabled={busy !== null}>Remove…</Button>
+                        <Button type="button" variant={removes ? "destructive" : "outline"} size="sm" onClick={() => setConfirming(mark)} disabled={busy !== null} aria-label={`${removes ? "Remove" : "Go ahead with"} ${mark.title}`}>
+                          {removes ? "Remove…" : "Go ahead…"}
+                        </Button>
                       ) : null}
                     </span>
                   </ListCell>
@@ -477,7 +595,7 @@ export function RetentionPage() {
                     sub={`${levelLabel(rule.level)}${rule.mediaServerIds.length ? ` · ${rule.mediaServerIds.map((id) => serverNames.get(id) ?? "Removed server").join(", ")}` : ""}`}
                   />
                   <ListCell primary={selects.primary} secondary={selects.secondary} />
-                  <ListCell primary={`Waits ${rule.waitDays} ${rule.waitDays === 1 ? "day" : "days"}`} secondary={rule.removalMode === "ask" ? "Then asks you" : "Then removes it"} />
+                  <ListCell primary={`Waits ${rule.waitDays} ${rule.waitDays === 1 ? "day" : "days"}`} secondary={dayWords(rule)} />
                   <ListCell primary={rule.isEnabled && rule.nextCheckUtc ? formatDateTime(rule.nextCheckUtc, preferences) : "—"} />
                   <ListCell mobile>
                     <Switch size="sm" aria-label={`${rule.isEnabled ? "Turn off" : "Turn on"} ${rule.name}`} checked={rule.isEnabled} disabled={busy === `toggle:${rule.id}`} onCheckedChange={(checked) => void toggle(rule, checked)} />
@@ -552,6 +670,11 @@ export function RetentionPage() {
             considered={trial?.considered ?? null}
             noun={LEVELS.find((level) => level.value === form.level)?.noun ?? "title"}
           />
+          {trial && !trial.problems.length && trial.matchedCount > 0 ? (
+            <p className="text-[length:var(--type-caption)] text-foreground">
+              {trial.matchedCount === 1 ? "This title" : `These ${trial.matchedCount} titles`}, on {trial.matchedCount === 1 ? "its" : "their"} day: {trial.expiryDescription}
+            </p>
+          ) : null}
           {trial?.problems.length ? (
             <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-warning" role="alert">
               {trial.problems.map((problem) => <li key={problem}>{problem}</li>)}
@@ -610,6 +733,23 @@ export function RetentionPage() {
             checked={form.removeFromServers}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, removeFromServers: checked }))}
           />
+          <SwitchRow
+            label="Keep the list in Deluno only"
+            description="Nothing is created on these servers. The list stays here for review, and keeping, postponing and the day's action work as usual."
+            checked={form.keepInDelunoOnly}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, keepInDelunoOnly: checked }))}
+          />
+          <SwitchRow
+            label="Never remove something while it plays"
+            description={
+              form.mediaServerIds.length === 0
+                ? "Choose a server above so Deluno can ask it what is being played."
+                : "Deluno asks these servers what is being played. A title that is playing waits for the next check, and so does everything if a server cannot say."
+            }
+            checked={form.deferWhilePlaying && form.mediaServerIds.length > 0}
+            disabled={form.mediaServerIds.length === 0}
+            onCheckedChange={(checked) => setForm((current) => ({ ...current, deferWhilePlaying: checked }))}
+          />
         </DrawerSection>
 
         <DrawerSection title="When it matches">
@@ -621,12 +761,24 @@ export function RetentionPage() {
               <Select value={form.checkIntervalHours} onChange={(event) => setForm((current) => ({ ...current, checkIntervalHours: event.target.value }))} options={INTERVALS} />
             </Field>
           </FieldRow>
-          <Field label="On the day" help={form.removalMode === "ask" ? "It waits in Leaving soon as Ready to remove until you confirm." : "Removed if it still matches and nobody kept it."}>
+          <Field label="What happens">
+            <Select
+              value={form.expiryAction}
+              onChange={(event) => setForm((current) => ({ ...current, expiryAction: event.target.value as ExpiryAction }))}
+              options={EXPIRY_ACTIONS}
+            />
+          </Field>
+          {form.expiryAction === "tag" ? (
+            <Field label="Tag to give" help="Made if it does not exist yet. A season or episode gives its show the tag.">
+              <Input value={form.expiryTag} onChange={(event) => setForm((current) => ({ ...current, expiryTag: event.target.value }))} placeholder="watched-and-old" maxLength={60} autoComplete="off" />
+            </Field>
+          ) : null}
+          <Field label="On the day" help={form.removalMode === "ask" ? "It waits in Leaving soon as Ready until you confirm." : "Done if it still matches and nobody kept it."}>
             <SegmentedControl<RemovalMode>
               value={form.removalMode}
               onValueChange={(removalMode) => setForm((current) => ({ ...current, removalMode }))}
               options={[
-                { value: "automatic", label: "Remove it" },
+                { value: "automatic", label: "Do it by itself" },
                 { value: "ask", label: "Ask me first" }
               ]}
             />
@@ -676,15 +828,38 @@ export function RetentionPage() {
         busy={busy === "keep"}
         onConfirm={(choice) => keeping && void keep(keeping, choice)}
       />
+      <RetentionPostponeDialog
+        open={postponing !== null}
+        onOpenChange={(next) => {
+          if (!next) setPostponing(null);
+        }}
+        title={postponing?.title ?? "title"}
+        removeAfterUtc={postponing?.removeAfterUtc ?? null}
+        busy={busy === "postpone"}
+        onConfirm={(days) => postponing && void postpone(postponing, days)}
+      />
+      <RetentionAddTitleDialog
+        open={adding}
+        onOpenChange={setAdding}
+        rules={rules}
+        onAdded={(message) => {
+          setPageMessage(message);
+          revalidator.revalidate();
+        }}
+      />
       <ConfirmDialog
         open={confirming !== null}
         onOpenChange={(next) => {
           if (!next) setConfirming(null);
         }}
-        title={`Remove ${confirming?.title ?? "title"}?`}
-        description={`The rule is checked once more first. If it still matches, the files go to the recycle bin (${confirming?.sizeBytes ? formatBytes(confirming.sizeBytes) : "size unknown"}) and ${confirming?.level === "season" || confirming?.level === "episode" ? "the episodes are no longer wanted" : "an exclusion records why, so no list adds it back"}.`}
-        confirmLabel="Remove"
-        confirmVariant="destructive"
+        title={`${confirmingAction === "delete" ? "Remove" : "Go ahead with"} ${confirming?.title ?? "title"}?`}
+        description={
+          confirmingAction === "delete"
+            ? `The rule is checked once more first. If it still matches, the files go to the recycle bin (${confirming?.sizeBytes ? formatBytes(confirming.sizeBytes) : "size unknown"}) and ${confirming?.level === "season" || confirming?.level === "episode" ? "the episodes are no longer wanted" : "an exclusion records why, so no list adds it back"}. If something is playing it, it waits.`
+            : "The rule is checked once more first. If it still matches, its action is done. No files are removed."
+        }
+        confirmLabel={confirmingAction === "delete" ? "Remove" : "Go ahead"}
+        confirmVariant={confirmingAction === "delete" ? "destructive" : "default"}
         busy={busy === "confirm"}
         onConfirm={() => confirming && void confirmRemoval(confirming)}
       />
