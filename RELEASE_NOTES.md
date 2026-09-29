@@ -34,6 +34,12 @@ then Run anyway.
 - A Weir (processor) connection now tests healthy instead of always showing a
   warning, and any processor connection can be given its own health-check
   address.
+- The installer keeps each app's own security settings. It adds only what
+  Deluno needs to connect to it, never switches a protection off, and does not
+  add a password to an app that has none by default. Deluno never hands the
+  passwords it stores for your apps to anything that asks. If you set up your
+  apps before this version, setting them up properly is up to you: Deluno
+  does not nag you about it.
 
 ### Tags
 
@@ -94,6 +100,22 @@ then Run anyway.
   played, keep its list off your media server, take titles you add by hand,
   and postpone a removal by a number of days. Deluno checks every connected
   media server for something playing before it removes a title.
+- Nothing upcoming is ever removed. An episode or show that has not aired yet,
+  or has no air date, is shown as Upcoming (the word already used for movies),
+  and retention never touches it.
+- A rule whose test cannot be answered, such as "is not" on a value Deluno
+  does not know, leaves the title alone and shows it as undecided in the
+  preview instead of treating it as a match.
+- Before a removal Deluno checks again that the title is not being played. If
+  it cannot rule out that the playing title is the one being removed, it waits
+  for the next run.
+- A Plex "watched by nobody" or zero-views rule only decides when plex.tv
+  confirms your server is not shared with anyone. Otherwise it leaves titles
+  alone.
+- Rules now follow a tag rename, and a tag a retention rule uses cannot be
+  deleted: the Tags page shows which rule uses it.
+- Retention rules see every title that has a file, monitored or not, and
+  confirming a title you added by hand removes it as you asked.
 
 ### Library pills and cards
 
@@ -107,6 +129,21 @@ then Run anyway.
   on a phone Sort and View no longer run off the screen.
 - A followed movie collection can be unfollowed, and selected collections can
   be changed together.
+- Deleting a film's file from disk makes the film Unmonitored automatically,
+  so Deluno does not go looking for it again. Its status says it has no file.
+  A film you deliberately left at Quality met is no longer flipped back to
+  Upgradable, and films that were flipped are put back.
+- If a library folder is empty, or holds only system folders such as
+  lost+found, Deluno treats the drive as not mounted: nothing is marked
+  missing or unmonitored. Rescan folder asks first and says exactly what it
+  did, and the scheduled library check follows the same rule.
+- Rename folder and Move only ever touch a title's own folder. A library
+  folder, a whole drive, a folder shared with other titles or a group folder is
+  refused with a plain reason. Moving a title to another library moves only its
+  own folder, and a loose file goes into a new Title (Year) folder.
+- A library's downloads folder now shows on the library screen with a folder
+  picker, and saving a library never wipes it. The folder check gives up after
+  a few seconds with a plain message and Check again, instead of spinning.
 
 ### Downloads and searching
 
@@ -122,9 +159,29 @@ then Run anyway.
 - Season packs are removed from the client after import, and removing or
   unmonitoring a series or season stops its downloads.
 - Force import can bring in a file Deluno could not read, when you allow it.
+  It has a minimum size setting you can change, with help about samples and
+  trailers.
+- Deluno only shows and acts on downloads it sent. A download you add to your
+  download client yourself is invisible to Deluno: not listed, counted,
+  cleaned or touched on Transfers, Queue, Health, clean-up or the API.
+- Transmission and Deluge downloads now go to the library's own downloads
+  folder on every grab, and the folder check compares where a download really
+  went.
 - qBittorrent can choose where a download's files go. Leftover clean-up has
   Run now and a skip list. Processors can translate folder paths for one in
   Docker or on another machine.
+
+### Connection names
+
+- Connections are named for you, from the app and the computer, such as
+  qBittorrent on RIG, with the port added when two of the same app share a
+  computer. Indexers are named after their site. The Name box is gone from
+  every connection form, and the name Deluno shows for itself is the
+  computer's own name.
+- Renaming a connection can no longer break anything: libraries, hand-offs to
+  a processor and indexer history now follow a connection, not its label.
+  Changing a connection's address or key still stops it working and shows on
+  Health until you fix it.
 
 ### Notifications
 
@@ -146,6 +203,14 @@ then Run anyway.
 - Subtitles: a used-up quota pauses the provider, a picture-based subtitle can
   be set not to count as a language, and each attempt keeps its score.
 - Two settings that did nothing (write .nfo files, artwork) are gone.
+- If TheTVDB does not answer, or sends a list that does not match the show's
+  episodes, the show's episodes stay as they are and Deluno tries again next
+  refresh. Activity says so.
+- A site login is only ever sent to that site, a download served from another
+  address is fetched without it, response sizes are capped, and a broken
+  downloaded site file never replaces a working one.
+- A background job that fails no longer stops the whole app: the failure is
+  logged and shown on Health, where you can clear it.
 
 ## 1.0.0-rc.22
 

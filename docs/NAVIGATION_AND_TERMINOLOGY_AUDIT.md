@@ -41,6 +41,11 @@ link.
 - Deluno does not download files itself. External download clients own protocol
   work, queueing, repair, unpacking, retention, and seeding; Deluno dispatches,
   observes, imports, routes, and recovers media around them.
+- **Only Deluno's own downloads** (decided 30 Sep 2026): Deluno only sees and
+  acts on downloads it sent. Anything added to a download client outside Deluno
+  is invisible to it: not listed, counted, cleaned or touched on Transfers,
+  Queue, Health, clean-up or the API. A removal is refused for a download Deluno
+  did not send.
 - **Queue removal permission** lives with Download clients. It only enables a
   confirmed manual removal from an external client; the automatic three-strike
   recovery policy remains in Automation & recovery.

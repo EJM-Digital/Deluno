@@ -206,6 +206,11 @@ using the managed broker never holds it.
   (`MetadataCatalogueChoice`); moving it is a deliberate choice through the
   normal numbering and rename preview. Alternate orderings are only taken from
   TheTVDB for a show that sits on TheTVDB's numbering.
+- If TheTVDB does not answer while a show sits on TheTVDB's numbering, the
+  show's episodes are left as they are and the next refresh tries again (decided
+  by James, 30 Sep 2026). A TheTVDB episode list that does not match the show's
+  episodes is rejected rather than applied, and Activity notes it. A wrong
+  TheTVDB id therefore cannot overwrite a show's episodes.
 - A TheTVDB failure is never a metadata outage: the app falls back to TMDb and
   does not record the failure against the provider status.
 
