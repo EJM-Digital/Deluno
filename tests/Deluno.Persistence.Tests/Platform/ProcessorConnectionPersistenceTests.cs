@@ -67,4 +67,40 @@ public sealed class ProcessorConnectionPersistenceTests
         Assert.True(await repository.DeleteProcessorConnectionAsync(created.Id, CancellationToken.None));
         Assert.Empty(await repository.ListProcessorConnectionsAsync(CancellationToken.None));
     }
+
+    /// <summary>#1055: the optional health-check address is stored, kept when an update does not send it, and cleared when sent empty.</summary>
+    [Fact]
+    public async Task The_health_check_address_is_stored_kept_and_cleared()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-29T02:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var without = await repository.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Plain", "generic-webhook", "https://a.example.test/hook", "Authorization", null, true),
+            CancellationToken.None);
+        Assert.Null(without.HealthCheckUrl);
+
+        var created = await repository.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Weir", "generic-webhook", "http://127.0.0.1:9347/hook", "X-Webhook-Secret", null, true, "http://127.0.0.1:9347/ready"),
+            CancellationToken.None);
+        Assert.Equal("http://127.0.0.1:9347/ready", created.HealthCheckUrl);
+        Assert.Equal("http://127.0.0.1:9347/ready", (await repository.GetProcessorConnectionAsync(created.Id, CancellationToken.None))!.HealthCheckUrl);
+
+        var kept = await repository.UpdateProcessorConnectionAsync(
+            created.Id,
+            new UpdateProcessorConnectionRequest("Weir", null, null, null, null, true),
+            CancellationToken.None);
+        Assert.Equal("http://127.0.0.1:9347/ready", kept!.HealthCheckUrl);
+
+        var cleared = await repository.UpdateProcessorConnectionAsync(
+            created.Id,
+            new UpdateProcessorConnectionRequest("Weir", null, null, null, null, true, ""),
+            CancellationToken.None);
+        Assert.Null(cleared!.HealthCheckUrl);
+    }
 }

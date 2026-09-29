@@ -706,6 +706,7 @@ interface CallbackForm {
   provider: string;
   submissionUrl: string;
   authHeaderName: string;
+  healthCheckUrl: string;
   secret: string;
   isEnabled: boolean;
 }
@@ -1107,6 +1108,9 @@ function ProcessingWorkflowPage() {
               <Field label="Processor job URL" help="Deluno sends a job here when a download needs processing. Your processor reports back to Deluno when the cleaned file is ready.">
                 <Input value={callback.submissionUrl} onChange={(event) => setCallback((current) => ({ ...current, submissionUrl: event.target.value }))} placeholder="https://processor.example/webhooks/deluno" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
               </Field>
+              <Field label="Health check address" optional help="An address Deluno can ask to see whether the processor is up; a normal answer means healthy. Leave empty and the test can only confirm the job URL answers.">
+                <Input value={callback.healthCheckUrl} onChange={(event) => setCallback((current) => ({ ...current, healthCheckUrl: event.target.value }))} placeholder="https://processor.example/health" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
+              </Field>
             </DrawerSection>
             <DrawerSection title="Authentication">
               <FieldRow>
@@ -1172,7 +1176,7 @@ function workflowFrom(library: LibraryItem): WorkflowForm {
   };
 }
 function emptyCallback(): CallbackForm {
-  return { name: "", provider: "generic-webhook", submissionUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true };
+  return { name: "", provider: "generic-webhook", submissionUrl: "", healthCheckUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true };
 }
 function healthTone(status: string): NonNullable<ChipProps["tone"]> {
   switch (status) {

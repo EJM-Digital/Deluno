@@ -23,7 +23,7 @@ public sealed class SqliteProcessorRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc FROM processor_connections ORDER BY name COLLATE NOCASE;";
+            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc, health_check_url FROM processor_connections ORDER BY name COLLATE NOCASE;";
         var items = new List<ProcessorConnectionItem>();
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -54,7 +54,7 @@ public sealed class SqliteProcessorRepository(
             cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc FROM processor_connections WHERE name = @name COLLATE NOCASE LIMIT 1;";
+            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc, health_check_url FROM processor_connections WHERE name = @name COLLATE NOCASE LIMIT 1;";
         AddParameter(command, "@name", name.Trim());
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorConnection(reader) : null;
@@ -77,7 +77,8 @@ public sealed class SqliteProcessorRepository(
             null,
             null,
             now,
-            now);
+            now,
+            NormalizeProcessorConnectionUrl(request.HealthCheckUrl));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -87,10 +88,10 @@ public sealed class SqliteProcessorRepository(
             """
             INSERT INTO processor_connections (
                 id, name, provider, submission_url, auth_header_name, secret_value, is_enabled,
-                health_status, last_health_message, last_health_test_utc, created_utc, updated_utc
+                health_status, last_health_message, last_health_test_utc, created_utc, updated_utc, health_check_url
             ) VALUES (
                 @id, @name, @provider, @submissionUrl, @authHeaderName, @secretValue, @isEnabled,
-                @healthStatus, NULL, NULL, @createdUtc, @updatedUtc
+                @healthStatus, NULL, NULL, @createdUtc, @updatedUtc, @healthCheckUrl
             );
             """;
         AddParameter(command, "@id", item.Id);
@@ -103,6 +104,7 @@ public sealed class SqliteProcessorRepository(
         AddParameter(command, "@healthStatus", item.HealthStatus);
         AddParameter(command, "@createdUtc", item.CreatedUtc.ToString("O"));
         AddParameter(command, "@updatedUtc", item.UpdatedUtc.ToString("O"));
+        AddParameter(command, "@healthCheckUrl", item.HealthCheckUrl);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return item;
     }
@@ -127,6 +129,8 @@ public sealed class SqliteProcessorRepository(
         var submissionUrl = NormalizeProcessorConnectionUrl(request.SubmissionUrl) ?? existing.SubmissionUrl;
         var authHeaderName = NormalizeProcessorAuthHeaderName(request.AuthHeaderName ?? existing.AuthHeaderName);
         var secret = string.IsNullOrWhiteSpace(request.Secret) ? existing.Secret : request.Secret.Trim();
+        // Not sent keeps the address; sent empty clears it.
+        var healthCheckUrl = request.HealthCheckUrl is null ? existing.HealthCheckUrl : NormalizeProcessorConnectionUrl(request.HealthCheckUrl);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -137,10 +141,12 @@ public sealed class SqliteProcessorRepository(
                 auth_header_name = @authHeaderName,
                 secret_value = @secretValue,
                 is_enabled = @isEnabled,
+                health_check_url = @healthCheckUrl,
                 updated_utc = @updatedUtc
             WHERE id = @id;
             """;
         AddParameter(command, "@id", id.Trim());
+        AddParameter(command, "@healthCheckUrl", healthCheckUrl);
         AddParameter(command, "@name", name);
         AddParameter(command, "@provider", provider);
         AddParameter(command, "@submissionUrl", submissionUrl);
@@ -797,7 +803,8 @@ public sealed class SqliteProcessorRepository(
             reader.IsDBNull(8) ? null : reader.GetString(8),
             reader.IsDBNull(9) ? null : ParseTimestamp(reader.GetString(9)),
             ParseTimestamp(reader.GetString(10)),
-            ParseTimestamp(reader.GetString(11)));
+            ParseTimestamp(reader.GetString(11)),
+            reader.IsDBNull(12) ? null : reader.GetString(12));
     }
 
     private async Task<ProcessorConnectionItem?> GetProcessorConnectionAsync(
@@ -812,7 +819,7 @@ public sealed class SqliteProcessorRepository(
 
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc FROM processor_connections WHERE id = @id LIMIT 1;";
+            "SELECT id, name, provider, submission_url, auth_header_name, secret_value, is_enabled, health_status, last_health_message, last_health_test_utc, created_utc, updated_utc, health_check_url FROM processor_connections WHERE id = @id LIMIT 1;";
         AddParameter(command, "@id", id.Trim());
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadProcessorConnection(reader) : null;

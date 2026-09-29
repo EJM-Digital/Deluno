@@ -20,7 +20,8 @@ namespace Deluno.Worker.HealthChecks.Checks;
 public sealed class ProcessorHealthCheck(
     IProcessorRepository processors,
     IProcessorConnectionService processorConnections,
-    ILibrariesRepository libraries) : IHealthCheck
+    ILibrariesRepository libraries,
+    TimeProvider? timeProvider = null) : IHealthCheck
 {
     public string Category => HealthCheckCategories.Processor;
 
@@ -39,6 +40,14 @@ public sealed class ProcessorHealthCheck(
 
         foreach (var connection in connections)
         {
+            // Just added and never tested: whatever added it is testing it now (#1055).
+            if (connection.LastHealthTestUtc is null
+                && !string.Equals(connection.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
+                && (timeProvider ?? TimeProvider.System).GetUtcNow() - connection.CreatedUtc < DownloadClientHealthCheck.NewClientGrace)
+            {
+                continue;
+            }
+
             var reachableId = $"processor:{connection.Id}";
             var name = $"{connection.Name} (processor)";
 

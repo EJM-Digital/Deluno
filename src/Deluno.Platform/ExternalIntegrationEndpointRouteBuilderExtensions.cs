@@ -788,7 +788,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
-            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
+            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName, request.HealthCheckUrl);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             return Results.Ok(await repository.CreateProcessorConnectionAsync(request, cancellationToken));
         });
@@ -802,7 +802,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
-            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName);
+            var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName, request.HealthCheckUrl);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var updated = await repository.UpdateProcessorConnectionAsync(id, request, cancellationToken);
             return updated is null ? Results.NotFound() : Results.Ok(updated);
@@ -1463,7 +1463,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
     private static Dictionary<string, string[]> ValidateProcessorConnection(
         string? name,
         string? submissionUrl,
-        string? authHeaderName)
+        string? authHeaderName,
+        string? healthCheckUrl = null)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(name))
@@ -1480,6 +1481,13 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         if (!string.IsNullOrWhiteSpace(authHeaderName) && authHeaderName.Any(char.IsWhiteSpace))
         {
             errors["authHeaderName"] = ["Authentication header names cannot contain spaces."];
+        }
+
+        if (!string.IsNullOrWhiteSpace(healthCheckUrl) &&
+            (!Uri.TryCreate(healthCheckUrl.Trim(), UriKind.Absolute, out var healthUri) ||
+             (healthUri.Scheme != Uri.UriSchemeHttp && healthUri.Scheme != Uri.UriSchemeHttps)))
+        {
+            errors["healthCheckUrl"] = ["Use a valid http or https address for the health check, or leave it empty."];
         }
 
         return errors;

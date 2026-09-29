@@ -248,6 +248,9 @@ public sealed class WeirCompanion(
     /// <summary>Weir's own default port (W-E-I-R on a phone keypad).</summary>
     private const int WeirDefaultPort = 9347;
 
+    /// <summary>Weir's published readiness route (its docs: GET /ready, no sign-in).</summary>
+    public const string WeirReadyPath = "/ready";
+
     public string Id => CompanionToolIds.Weir;
 
     public string Name => "Weir";
@@ -350,11 +353,15 @@ public sealed class WeirCompanion(
                 $"{baseUrl}{secret.GetProperty("webhook_url_path").GetString()}",
                 secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
                 secret.GetProperty("webhook_secret").GetString(),
-                true),
+                true,
+                // Weir publishes GET /ready ({"ready": true} once its database is open) at
+                // its root. Its hand-off route only takes POST, so this is how Deluno asks
+                // whether it is up (#1055). The generic processor test just follows the address.
+                $"{baseUrl}{WeirReadyPath}"),
             cancellationToken);
         var test = await processorConnections.TestAsync(connection, cancellationToken);
         await processors.RecordProcessorConnectionHealthAsync(connection.Id, test.Status, test.Message, cancellationToken);
-        if (!test.IsReachable)
+        if (test.Status != "healthy")
         {
             throw new CompanionStepException($"{Name} is installed and added to Deluno, but its test did not pass: {test.Message}");
         }

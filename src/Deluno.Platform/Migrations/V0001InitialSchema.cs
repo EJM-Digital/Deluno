@@ -133,7 +133,8 @@ public static class PlatformDatabaseMigrations
         new V0125ReleaseProfileTagSetsAndOrder(),
         new V0126DownloadClientContentLayout(),
         new V0127IntakeSourceTags(),
-        new V0128AutoTagRules()
+        new V0128AutoTagRules(),
+        new V0129ProcessorHealthCheckUrl()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

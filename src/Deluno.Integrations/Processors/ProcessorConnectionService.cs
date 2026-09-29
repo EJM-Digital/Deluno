@@ -19,16 +19,41 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();
+        var healthUrl = string.IsNullOrWhiteSpace(connection.HealthCheckUrl) ? null : connection.HealthCheckUrl.Trim();
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Head, connection.SubmissionUrl);
-            ApplyAuthentication(request, connection);
+            // With a health-check address the processor can be asked a real question:
+            // GET it, and a 2xx answer means it is up. Without one, all Deluno can do is
+            // knock on the hand-off address, which only accepts submissions.
+            using var request = new HttpRequestMessage(healthUrl is null ? HttpMethod.Head : HttpMethod.Get, healthUrl ?? connection.SubmissionUrl);
+            if (healthUrl is null || SameHost(healthUrl, connection.SubmissionUrl))
+            {
+                // The credential goes only to the processor's own host.
+                ApplyAuthentication(request, connection);
+            }
+
             using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
             var latency = (int)Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             var statusCode = (int)response.StatusCode;
+
+            if (healthUrl is not null)
+            {
+                if (response.IsSuccessStatusCode)
+                {
+                    return new ProcessorConnectionTestResult(connection.Id, true, "healthy", "The processor answered its health check and reports it is up.", statusCode, latency);
+                }
+
+                return response.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
+                        => new ProcessorConnectionTestResult(connection.Id, false, "degraded", $"The processor is running but rejected the configured credential on its health check (HTTP {statusCode}). Check the secret and header name on this connection.", statusCode, latency),
+                    _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"The processor answered its health check with HTTP {statusCode}, so it is running but does not report that it is ready. Check the processor, then test again.", statusCode, latency)
+                };
+            }
+
             if (response.IsSuccessStatusCode)
             {
-                return new ProcessorConnectionTestResult(connection.Id, true, "healthy", "Processor endpoint responded successfully.", statusCode, latency);
+                return new ProcessorConnectionTestResult(connection.Id, true, "healthy", "The processor's hand-off address answered. That confirms it is up, but Deluno cannot check more than this without a health-check address.", statusCode, latency);
             }
 
             // A HEAD probe answers one question: did something answer? Any HTTP status
@@ -41,14 +66,14 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             //
             // Everything else is inconclusive rather than bad. Processors answer a HEAD
             // on a POST-only route in whichever way their framework happens to: 405 is
-            // the letter of the spec, but FastAPI — which Weir was built on as Weir, and plenty of others
-            // are built on — returns 404, and treating that as "unreachable" reported a
-            // working processor as broken.
+            // the letter of the spec, but FastAPI returns 404, and treating that as
+            // "unreachable" reported a working processor as broken. It stays "degraded"
+            // because nothing here proves it works; a health-check address does (#1055).
             return response.StatusCode switch
             {
                 System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
                     => new ProcessorConnectionTestResult(connection.Id, false, "degraded", "Processor endpoint is reachable but rejected the configured credential.", statusCode, latency),
-                _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"Processor endpoint is reachable but answered Deluno's safe connection check with HTTP {statusCode}, so it does not support that check. Deluno will validate the endpoint when the first hand-off is submitted.", statusCode, latency)
+                _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"Deluno could reach the processor, but its hand-off address only accepts submissions and answered the connection check with HTTP {statusCode}, so Deluno could not confirm it is working. Add a health-check address to this connection to test it properly; until then Deluno will validate it when the first hand-off is submitted.", statusCode, latency)
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
@@ -57,6 +82,12 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             return new ProcessorConnectionTestResult(connection.Id, false, "unreachable", "Deluno could not reach the processor endpoint. Check its URL, network path, and service status.", null, latency);
         }
     }
+
+    private static bool SameHost(string first, string second)
+        => Uri.TryCreate(first, UriKind.Absolute, out var a)
+           && Uri.TryCreate(second, UriKind.Absolute, out var b)
+           && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
+           && a.Port == b.Port;
 
     public async Task<ProcessorSubmissionResult> SubmitAsync(
         ProcessorConnectionItem connection,
