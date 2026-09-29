@@ -326,8 +326,10 @@ test.describe("dashboard workflow", () => {
           await expect(mediumMark).toBeVisible();
           await expect(mediumMark).not.toHaveClass(/bg-warning/);
           await expect(mediumMark).not.toHaveClass(/bg-success/);
-          // The meta line, not the strip: an unmonitored title now says Unmonitored on both.
-          await expect(titleCard.locator("span.truncate").getByText(monitoringLabel, { exact: true })).toBeVisible();
+          // The card says monitoring through its bar, once. There is no
+          // Monitored/Unmonitored line under the title any more (#1048).
+          await expect(titleCard.locator("span.truncate").getByText(/^(Monitored|Unmonitored)$/)).toHaveCount(0);
+          if (!monitored) await expect(mediumMark).toContainText(monitoringLabel);
 
           // The same mark at every size — it was a chip at medium and a bare dot
           // at small, so the two sizes could disagree about a title.
