@@ -12,7 +12,8 @@ namespace Deluno.Platform;
 /// <para>It never renames anything. When it cannot prove a folder is the
 /// title's own it returns no folder and a plain reason. The Code is one of
 /// <c>no-files</c>, <c>flat-layout</c>, <c>library-folder</c>,
-/// <c>outside-library</c>, <c>spread-out</c> or <c>shared-folder</c>.</para>
+/// <c>outside-library</c>, <c>spread-out</c>, <c>bucket-folder</c>,
+/// <c>shared-folder</c> or <c>unreadable-folder</c>.</para>
 /// </summary>
 public sealed record TitleFolderTarget(string? Folder, string Code, string Message)
 {
@@ -31,20 +32,35 @@ public static class TitleFolderGuard
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(200));
 
+    /// <summary>A folder that groups many titles: a letter, a range, a collection, a whole category.</summary>
+    private static readonly Regex BucketFolderName = new(
+        @"^(.|#|[a-z0-9]\s*-\s*[a-z0-9]|\d+\s*-\s*\d+|.*\bcollection|anime|cartoons?|documentar(y|ies)|kids|movies|films?|tv|tv shows?|tv series|shows?|series)$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(200));
+
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".wmv", ".mpg", ".mpeg", ".ts", ".m2ts", ".mts",
+        ".webm", ".flv", ".ogm", ".ogv", ".divx", ".iso", ".vob", ".3gp"
+    };
+
     /// <summary>
     /// The folder that belongs to one movie: the folder its file sits in, but
     /// only when that folder is the movie's own. Refused when the file sits
     /// straight in a library folder (flat layout), when the folder is a drive
-    /// root or holds a library, when it is outside every library, or when any
-    /// other title has a file in it.
+    /// root or holds a library, when it is outside every library, when it is
+    /// a group folder (a letter, a collection), or when anything else is in
+    /// it: another title on record (movie or show), or any other video file
+    /// on the disk.
     /// </summary>
     public static async Task<TitleFolderTarget> ForMovieAsync(
         string? filePath,
         IReadOnlyList<string> libraryRoots,
         Func<string, CancellationToken, Task<bool>> otherTitlesHaveFilesUnder,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, IEnumerable<string>>? enumerateFiles = null)
     {
-        var directory = string.IsNullOrWhiteSpace(filePath) ? null : Path.GetDirectoryName(filePath);
+        var directory = string.IsNullOrWhiteSpace(filePath) ? null : DirectoryOf(filePath);
         if (string.IsNullOrEmpty(directory))
         {
             return NoFiles();
@@ -52,66 +68,55 @@ public static class TitleFolderGuard
 
         var roots = Normalise(libraryRoots);
         var refusal = RefuseIfNotOwnFolder(directory, roots);
-        return refusal ?? await CheckSharedAsync(directory, otherTitlesHaveFilesUnder, cancellationToken);
+        return refusal ?? await CheckSharedAsync(directory, [filePath!], otherTitlesHaveFilesUnder, enumerateFiles, cancellationToken);
     }
 
     /// <summary>
-    /// The folder that belongs to one show. With the library layout known it
-    /// is the first folder under the library folder that all of the show's
-    /// files sit in - so a show with a single season on disk still gets its
-    /// show folder, never "Season 01". Without a matching library it is the
-    /// folder all its files share, stepped up out of a season folder.
+    /// The folder that belongs to one show: the folder all of the show's
+    /// files share, stepped up out of season folders ("Season 1", "S01",
+    /// "Specials") and never above the library folder. It comes from the
+    /// show's own files, never from "the first folder under the library", so
+    /// <c>/tv/Anime/Bleach/Season 1</c> gives <c>Bleach</c>, not <c>Anime</c>.
+    /// The same checks as for a movie then apply.
     /// </summary>
     public static async Task<TitleFolderTarget> ForSeriesAsync(
         IReadOnlyList<string> episodeFilePaths,
         IReadOnlyList<string> libraryRoots,
         Func<string, CancellationToken, Task<bool>> otherTitlesHaveFilesUnder,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, IEnumerable<string>>? enumerateFiles = null)
     {
-        var directories = episodeFilePaths
-            .Select(Path.GetDirectoryName)
-            .Where(directory => !string.IsNullOrEmpty(directory))
-            .Select(directory => directory!)
-            .ToArray();
-        if (episodeFilePaths.Count == 0 || directories.Length != episodeFilePaths.Count)
+        var directories = episodeFilePaths.Select(DirectoryOf).ToArray();
+        if (episodeFilePaths.Count == 0 || directories.Any(string.IsNullOrEmpty))
         {
             return NoFiles();
         }
 
         var roots = Normalise(libraryRoots);
-        string showFolder;
-        var root = roots.FirstOrDefault(candidate => IsSameOrUnder(directories[0], candidate));
-        if (root is not null)
+        var showFolder = CommonFolder(directories);
+        if (showFolder is null)
         {
-            var first = Split(directories[0]).Skip(Split(root).Length).FirstOrDefault();
-            if (first is null)
-            {
-                return FlatLayout(root);
-            }
+            return NoFiles();
+        }
 
-            showFolder = Path.Combine(root, first);
-            if (!directories.All(directory => IsSameOrUnder(directory, showFolder)))
-            {
-                return TitleFolderTarget.Refuse(
+        while (IsSeasonFolderName(LastSegment(showFolder)) && DirectoryOf(showFolder) is { Length: > 0 } up)
+        {
+            showFolder = up;
+        }
+
+        var root = roots.FirstOrDefault(candidate => IsSameOrUnder(directories[0], candidate));
+        if (root is not null && Same(showFolder, root))
+        {
+            return directories.All(directory => Same(directory, root)
+                                                || (Same(DirectoryOf(directory), root) && IsSeasonFolderName(LastSegment(directory))))
+                ? FlatLayout(root)
+                : TitleFolderTarget.Refuse(
                     "spread-out",
                     "This show's files are spread across more than one folder, so there is no single folder that is only this show's. Deluno leaves them alone.");
-            }
-        }
-        else
-        {
-            var common = CommonFolder(directories);
-            if (common is null)
-            {
-                return NoFiles();
-            }
-
-            showFolder = IsSeasonFolderName(Path.GetFileName(common)) && Path.GetDirectoryName(common) is { Length: > 0 } up
-                ? up
-                : common;
         }
 
         var refusal = RefuseIfNotOwnFolder(showFolder, roots);
-        return refusal ?? await CheckSharedAsync(showFolder, otherTitlesHaveFilesUnder, cancellationToken);
+        return refusal ?? await CheckSharedAsync(showFolder, episodeFilePaths, otherTitlesHaveFilesUnder, enumerateFiles, cancellationToken);
     }
 
     /// <summary>True for "Season 01", "Season 1 (2019)", "S01", "Series 2", "Specials".</summary>
@@ -124,13 +129,13 @@ public static class TitleFolderGuard
 
     private static TitleFolderTarget FlatLayout(string libraryFolder) => TitleFolderTarget.Refuse(
         "flat-layout",
-        $"This title's files sit straight in the library folder \"{Path.GetFileName(Trim(libraryFolder))}\", not in a folder of their own, so there is no folder to rename. Nothing would change.");
+        $"This title's files sit straight in the library folder \"{LastSegment(Trim(libraryFolder))}\", not in a folder of their own, so there is no folder to rename. Nothing would change.");
 
     private static TitleFolderTarget? RefuseIfNotOwnFolder(string folder, IReadOnlyList<string> roots)
     {
         var trimmed = Trim(folder);
         var parts = Split(trimmed);
-        if (string.IsNullOrEmpty(Path.GetDirectoryName(trimmed)) || (parts.Length == 1 && parts[0].EndsWith(':')))
+        if (string.IsNullOrEmpty(DirectoryOf(trimmed)) || (parts.Length == 1 && parts[0].EndsWith(':')))
         {
             return TitleFolderTarget.Refuse(
                 "library-folder",
@@ -157,19 +162,77 @@ public static class TitleFolderGuard
                 "This title's files are not inside any of your library folders, so Deluno cannot tell which folder is its own and leaves it alone.");
         }
 
+        if (BucketFolderName.IsMatch(LastSegment(trimmed).Trim()))
+        {
+            return TitleFolderTarget.Refuse(
+                "bucket-folder",
+                $"The folder \"{LastSegment(trimmed)}\" looks like a group folder (a letter, a collection or a whole category), not a folder that belongs to one title, so Deluno leaves it alone.");
+        }
+
         return null;
     }
 
     private static async Task<TitleFolderTarget> CheckSharedAsync(
         string folder,
+        IReadOnlyList<string> ownFiles,
         Func<string, CancellationToken, Task<bool>> otherTitlesHaveFilesUnder,
+        Func<string, IEnumerable<string>>? enumerateFiles,
         CancellationToken cancellationToken)
     {
-        return await otherTitlesHaveFilesUnder(folder, cancellationToken)
-            ? TitleFolderTarget.Refuse(
+        var name = LastSegment(Trim(folder));
+        if (await otherTitlesHaveFilesUnder(folder, cancellationToken))
+        {
+            return TitleFolderTarget.Refuse(
                 "shared-folder",
-                $"The folder \"{Path.GetFileName(Trim(folder))}\" also holds files that belong to other titles, so it is not this title's own folder. Deluno leaves it alone.")
-            : TitleFolderTarget.Safe(folder);
+                $"The folder \"{name}\" also holds files that belong to other titles, so it is not this title's own folder. Deluno leaves it alone.");
+        }
+
+        // The database only knows tracked titles. Look at the disk too: any
+        // video file in the folder, or under it, that is not this title's own
+        // belongs to something else, tracked or not.
+        var own = new HashSet<string>(ownFiles.Select(Canonical), StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var file in (enumerateFiles ?? EnumerateFilesOnDisk)(folder))
+            {
+                if (VideoExtensions.Contains(Path.GetExtension(file)) && !own.Contains(Canonical(file)))
+                {
+                    return TitleFolderTarget.Refuse(
+                        "shared-folder",
+                        $"The folder \"{name}\" also holds video files that are not this title's (for example \"{LastSegment(file)}\"), so it is not this title's own folder. Deluno leaves it alone.");
+                }
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return TitleFolderTarget.Refuse(
+                "unreadable-folder",
+                $"Deluno could not look inside the folder \"{name}\" to check that it holds only this title, so it leaves it alone.");
+        }
+
+        return TitleFolderTarget.Safe(folder);
+    }
+
+    private static IEnumerable<string> EnumerateFilesOnDisk(string folder) =>
+        Directory.Exists(folder)
+            ? Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).ToArray()
+            : [];
+
+    private static string Canonical(string path) => string.Join('/', Split(path));
+
+    private static string LastSegment(string path) => Split(path).LastOrDefault() ?? string.Empty;
+
+    /// <summary>The parent folder of a path, understanding both separators on every platform (UNC included).</summary>
+    private static string DirectoryOf(string path)
+    {
+        var trimmed = path.TrimEnd(Separators);
+        var index = trimmed.LastIndexOfAny(Separators);
+        return index switch
+        {
+            < 0 => string.Empty,
+            0 => trimmed[..1],
+            _ => trimmed[..index]
+        };
     }
 
     private static string[] Normalise(IReadOnlyList<string> roots) =>
@@ -209,6 +272,11 @@ public static class TitleFolderGuard
 
     private static string[] Split(string path) => path.Split(Separators, StringSplitOptions.RemoveEmptyEntries);
 
+    /// <summary>
+    /// The deepest folder all the directories share, cut from the first
+    /// directory's own spelling so the result is exactly what is on disk
+    /// (case, UNC prefix and separators kept).
+    /// </summary>
     private static string? CommonFolder(IReadOnlyList<string> directories)
     {
         var segmented = directories.Select(Split).ToArray();
@@ -231,9 +299,28 @@ public static class TitleFolderGuard
             return null;
         }
 
-        var joined = string.Join(Path.DirectorySeparatorChar, segmented[0].Take(length));
-        return Path.IsPathRooted(directories[0]) && !Path.IsPathRooted(joined)
-            ? Path.DirectorySeparatorChar + joined
-            : joined;
+        var path = directories[0];
+        var index = 0;
+        var seen = 0;
+        while (index < path.Length && Array.IndexOf(Separators, path[index]) >= 0)
+        {
+            index++;
+        }
+
+        while (index < path.Length)
+        {
+            if (Array.IndexOf(Separators, path[index]) >= 0 && Array.IndexOf(Separators, path[index - 1]) < 0)
+            {
+                seen++;
+                if (seen == length)
+                {
+                    return path[..index];
+                }
+            }
+
+            index++;
+        }
+
+        return path.TrimEnd(Separators);
     }
 }
