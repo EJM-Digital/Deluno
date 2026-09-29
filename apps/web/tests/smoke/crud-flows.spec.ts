@@ -70,14 +70,15 @@ test.describe("indexer and download client CRUD", () => {
   // ── Indexer CRUD ──────────────────────────────────────────────────────────
 
   test("indexer created via API appears on the indexers page", async ({ page }) => {
-    const uniqueName = `Smoke-Indexer-${Date.now()}`;
+    // #1076: an indexer is named for its site, never typed.
+    const uniqueName = `smoke-indexer-${Date.now()}.example.test`;
 
     const createResp = await page.request.post("/api/indexers", {
       data: {
         name: uniqueName,
         protocol: "torznab",
         privacy: "private",
-        baseUrl: "https://smoke-indexer.example.test",
+        baseUrl: `https://${uniqueName}`,
         apiKey: null,
         priority: 10,
         categories: "2000",
@@ -100,14 +101,14 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("indexer deleted via API disappears from the indexers page", async ({ page }) => {
-    const uniqueName = `Smoke-Del-${Date.now()}`;
+    const uniqueName = `smoke-del-${Date.now()}.example.test`;
 
     const createResp = await page.request.post("/api/indexers", {
       data: {
         name: uniqueName,
         protocol: "rss",
         privacy: "public",
-        baseUrl: "https://smoke-rss.example.test",
+        baseUrl: `https://${uniqueName}`,
         apiKey: null,
         priority: 50,
         categories: "",
@@ -158,10 +159,8 @@ test.describe("indexer and download client CRUD", () => {
 
     await page.goto("/indexers/indexers");
     await page.getByRole("button", { name: "New indexer" }).first().click();
-    // The drawer takes the name typed into it as its title.
     const drawer = page.getByRole("dialog");
     await drawer.getByLabel("Protocol").selectOption("newznab");
-    await drawer.getByLabel("Name").fill("Smoke draft test");
     await drawer.getByLabel("Newznab URL").fill("https://api.example.test");
     await drawer.getByLabel("API key").fill("draft-key");
 
@@ -169,7 +168,7 @@ test.describe("indexer and download client CRUD", () => {
     await drawer.getByRole("button", { name: "Test", exact: true }).click();
 
     await expect(drawer.getByText("Reached api.example.test and received a valid Newznab response.")).toBeVisible();
-    expect(sent).toMatchObject({ name: "Smoke draft test", protocol: "newznab", baseUrl: "https://api.example.test", apiKey: "draft-key" });
+    expect(sent).toMatchObject({ protocol: "newznab", baseUrl: "https://api.example.test", apiKey: "draft-key" });
     await page.keyboard.press("Escape");
   });
 
@@ -185,14 +184,14 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("updated indexer fields are returned correctly by the API", async ({ page }) => {
-    const uniqueName = `Smoke-Update-${Date.now()}`;
+    const uniqueName = `smoke-update-${Date.now()}.example.test`;
 
     const createResp = await page.request.post("/api/indexers", {
       data: {
         name: uniqueName,
         protocol: "rss",
         privacy: "public",
-        baseUrl: "https://before.example.test",
+        baseUrl: `https://${uniqueName}`,
         apiKey: null,
         priority: 10,
         categories: "",
@@ -206,13 +205,13 @@ test.describe("indexer and download client CRUD", () => {
     const indexer = await createResp.json() as { id: string; mediaScope: string };
 
     try {
-      // Update only the name — mediaScope must be preserved (regression for the newScope PATCH bug)
+      // Update only the address (the name follows it, #1076) — mediaScope must be preserved (regression for the newScope PATCH bug)
       const updateResp = await page.request.put(`/api/indexers/${indexer.id}`, {
         data: {
-          name: `${uniqueName}-renamed`,
+          name: null,
           protocol: null,
           privacy: null,
-          baseUrl: null,
+          baseUrl: `https://renamed-${uniqueName}`,
           apiKey: null,
           priority: null,
           categories: null,
@@ -225,7 +224,7 @@ test.describe("indexer and download client CRUD", () => {
       expect(updateResp.ok(), `PUT /api/indexers/${indexer.id} failed: ${updateResp.status()}`).toBe(true);
 
       const updated = await updateResp.json() as { name: string; mediaScope: string };
-      expect(updated.name).toBe(`${uniqueName}-renamed`);
+      expect(updated.name).toBe(`renamed-${uniqueName}`);
       expect(updated.mediaScope).toBe("movies"); // must be unchanged — was broken before the fix
     } finally {
       await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
@@ -273,10 +272,10 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("editing an indexer in the drawer keeps its identity", async ({ page }) => {
-    const name = `Smoke-IndexerDrawer-${Date.now()}`;
+    const name = `smoke-indexerdrawer-${Date.now()}.example.test`;
     const updatedUrl = "https://after-indexer.example.test/feed.rss";
     const create = await page.request.post("/api/indexers", {
-      data: { name, protocol: "rss", privacy: "public", baseUrl: "https://before-indexer.example.test/feed.rss", priority: 10, categories: "", tags: "", mediaScope: "movies", isEnabled: true },
+      data: { name, protocol: "rss", privacy: "public", baseUrl: `https://${name}/feed.rss`, priority: 10, categories: "", tags: "", mediaScope: "movies", isEnabled: true },
       headers: authHeaders()
     });
     expect(create.ok()).toBe(true);
@@ -286,7 +285,7 @@ test.describe("indexer and download client CRUD", () => {
       await page.goto("/indexers/indexers");
       await page.getByRole("row").filter({ hasText: name }).click();
       const drawer = page.getByRole("dialog", { name });
-      await expect(drawer.getByLabel("URL")).toHaveValue("https://before-indexer.example.test/feed.rss");
+      await expect(drawer.getByLabel("URL")).toHaveValue(`https://${name}/feed.rss`);
       await drawer.getByLabel("URL").fill(updatedUrl);
       const update = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/indexers/${indexer.id}`);
       await drawer.getByRole("button", { name: "Save indexer" }).click();
@@ -300,8 +299,8 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("shows when Deluno is proactively pacing an indexer", async ({ page }, testInfo) => {
-    const uniqueName = `Smoke-Pacing-${Date.now()}`;
-    const host = "pacing-indexer.example.test";
+    const host = `smoke-pacing-${Date.now()}.example.test`;
+    const uniqueName = host;
     const createResp = await page.request.post("/api/indexers", {
       data: {
         name: uniqueName,
@@ -348,13 +347,15 @@ test.describe("indexer and download client CRUD", () => {
   // ── Download client CRUD ──────────────────────────────────────────────────
 
   test("download client created via API appears on the indexers page", async ({ page }) => {
-    const uniqueName = `Smoke-Client-${Date.now()}`;
+    // #1076: a download client is named "app on host", never typed.
+    const host = `smoke-client-${Date.now()}.example.test`;
+    const uniqueName = `qBittorrent on ${host}`;
 
     const createResp = await page.request.post("/api/download-clients", {
       data: {
         name: uniqueName,
         protocol: "qbittorrent",
-        host: "localhost",
+        host,
         port: 8080,
         username: null,
         password: null,
@@ -379,13 +380,14 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("download client deleted via API disappears from the indexers page", async ({ page }) => {
-    const uniqueName = `Smoke-ClientDel-${Date.now()}`;
+    const host = `smoke-clientdel-${Date.now()}.example.test`;
+    const uniqueName = `Transmission on ${host}`;
 
     const createResp = await page.request.post("/api/download-clients", {
       data: {
         name: uniqueName,
         protocol: "transmission",
-        host: "localhost",
+        host,
         port: 9091,
         username: null,
         password: null,
@@ -416,13 +418,14 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("updated download client fields are returned correctly by the API", async ({ page }) => {
-    const uniqueName = `Smoke-ClientUpdate-${Date.now()}`;
+    const host = `smoke-clientupdate-${Date.now()}.example.test`;
+    const uniqueName = `qBittorrent on ${host}`;
 
     const createResp = await page.request.post("/api/download-clients", {
       data: {
         name: uniqueName,
         protocol: "qbittorrent",
-        host: "localhost",
+        host,
         port: 8080,
         username: null,
         password: null,
@@ -460,7 +463,7 @@ test.describe("indexer and download client CRUD", () => {
       expect(updateResp.ok(), `PUT /api/download-clients/${client.id} failed: ${updateResp.status()}`).toBe(true);
 
       const updated = await updateResp.json() as { name: string; host: string; port: number };
-      expect(updated.name).toBe(uniqueName);   // name preserved (null patch)
+      expect(updated.name).toBe("qBittorrent on 192.168.1.50"); // the name follows the host (#1076)
       expect(updated.host).toBe("192.168.1.50"); // host updated
       expect(updated.port).toBe(8080);           // port preserved (null patch)
     } finally {
@@ -469,10 +472,10 @@ test.describe("indexer and download client CRUD", () => {
   });
 
   test("editing a download client in the drawer keeps its identity", async ({ page }) => {
-    const name = `Smoke-ClientDrawer-${Date.now()}`;
+    const name = `qBittorrent on before-${Date.now()}.example.test`;
     const updatedHost = "after-client.example.test";
     const create = await page.request.post("/api/download-clients", {
-      data: { name, protocol: "qbittorrent", host: "before-client.example.test", port: 8080, username: null, password: null, endpointUrl: null, moviesCategory: "smoke-movies", tvCategory: "smoke-tv", categoryTemplate: null, priority: 1, isEnabled: true },
+      data: { name, protocol: "qbittorrent", host: name.replace("qBittorrent on ", ""), port: 8080, username: null, password: null, endpointUrl: null, moviesCategory: "smoke-movies", tvCategory: "smoke-tv", categoryTemplate: null, priority: 1, isEnabled: true },
       headers: authHeaders()
     });
     expect(create.ok()).toBe(true);
@@ -482,7 +485,7 @@ test.describe("indexer and download client CRUD", () => {
       await page.goto("/indexers/download-clients");
       await page.getByRole("row").filter({ hasText: name }).click();
       const drawer = page.getByRole("dialog", { name });
-      await expect(drawer.getByLabel("Custom host / IP")).toHaveValue("before-client.example.test");
+      await expect(drawer.getByLabel("Custom host / IP")).toHaveValue(name.replace("qBittorrent on ", ""));
       await drawer.getByLabel("Custom host / IP").fill(updatedHost);
       const update = page.waitForResponse((response) => response.request().method() === "PUT" && new URL(response.url()).pathname === `/api/download-clients/${client.id}`);
       await drawer.getByRole("button", { name: "Save client" }).click();
