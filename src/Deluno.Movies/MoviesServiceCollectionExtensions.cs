@@ -56,6 +56,7 @@ public static class MoviesServiceCollectionExtensions
         services.AddSingleton<IMigrationCatalogImporter, MovieMigrationCatalogImporter>();
         services.AddHostedService<MoviesSchemaInitializer>();
         services.AddHostedService<CollectionExclusionMigrationHostedService>();
+        services.AddHostedService<MovieRungRepairReportService>();
         return services;
     }
 }
