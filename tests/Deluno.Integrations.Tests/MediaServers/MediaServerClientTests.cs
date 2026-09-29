@@ -219,31 +219,88 @@ public sealed class MediaServerClientTests
         Assert.Contains("Sintel.mkv", body, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("""{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"}]}}""", true)]
-    [InlineData("""{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"},{"id":2,"name":"ben"}]}}""", false)]
-    [InlineData("""{"MediaContainer":{}}""", false)]
-    [InlineData("not json", false)]
-    [InlineData(null, false)]
-    public async Task Plex_says_the_account_covers_everyone_only_when_it_is_the_only_real_account_on_the_server(string? accountsBody, bool everyone)
+    private const string SoloAccounts = """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"}]}}""";
+    private const string EmptyList = """<MediaContainer size="0"></MediaContainer>""";
+    private const string OwnerOnlyHome = """<MediaContainer size="1"><User id="1" title="jampat" admin="1"/></MediaContainer>""";
+
+    /// <summary>A Plex whose owner token can be asked; each part can be swapped for what a household really looks like. Null = that call fails.</summary>
+    private static async Task<bool> PlexAccountIsEveryoneAsync(
+        string? accounts = SoloAccounts, string? shared = EmptyList, string? friends = EmptyList, string? home = OwnerOnlyHome, string? me = """{"id":1,"username":"jampat"}""")
     {
-        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.Host == "discover.provider.plex.tv"
-            ? Json("""{"MediaContainer":{"totalSize":0}}""")
-            : request.RequestUri!.AbsolutePath switch
+        HttpResponseMessage Answer(string? body) => body is null ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Json(body);
+        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.Host switch
         {
-            "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
-            "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
-            "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
-            "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
-            "/accounts" => accountsBody is null ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Json(accountsBody),
-            "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","year":2010,"viewCount":1}]}}"""),
-            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            "discover.provider.plex.tv" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+            "plex.tv" => request.RequestUri.AbsolutePath switch
+            {
+                "/api/v2/user" => Answer(me),
+                "/api/servers/machine-1/shared_servers" => Answer(shared),
+                "/api/users" => Answer(friends),
+                "/api/home/users" => Answer(home),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            },
+            _ => request.RequestUri.AbsolutePath switch
+            {
+                "/" => Json("""{"MediaContainer":{"machineIdentifier":"machine-1","friendlyName":"Rig"}}"""),
+                "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
+                "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+                "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+                "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
+                "/accounts" => Answer(accounts),
+                "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","year":2010,"viewCount":1}]}}"""),
+                _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            }
         }));
 
         var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
 
-        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
-        Assert.Equal(everyone, Assert.Single(library.Items).Watch.PerUserKnown);
+        return Assert.Single(Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value.Items).Watch.PerUserKnown;
+    }
+
+    [Fact]
+    public async Task Plex_says_the_account_is_everyone_only_when_plex_tv_and_the_server_both_show_nobody_else()
+        => Assert.True(await PlexAccountIsEveryoneAsync());
+
+    [Fact]
+    public async Task A_friend_the_server_has_not_listed_yet_but_plex_tv_says_has_the_server_is_not_ignored()
+        => Assert.False(await PlexAccountIsEveryoneAsync(shared: """<MediaContainer size="1"><SharedServer id="9" userID="22" username="ben"/></MediaContainer>"""));
+
+    [Fact]
+    public async Task A_friend_on_the_friends_list_means_not_everyone()
+        => Assert.False(await PlexAccountIsEveryoneAsync(friends: """<MediaContainer size="1"><User id="22" title="ben"/></MediaContainer>"""));
+
+    [Fact]
+    public async Task A_home_user_means_not_everyone()
+        => Assert.False(await PlexAccountIsEveryoneAsync(home: """<MediaContainer size="2"><User id="1" admin="1"/><User id="33" title="Kids" restricted="1"/></MediaContainer>"""));
+
+    [Fact]
+    public async Task A_second_account_in_the_servers_own_table_means_not_everyone()
+        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"},{"id":2,"name":"ben"}]}}"""));
+
+    [Fact]
+    public async Task A_single_account_that_is_not_the_connected_one_means_not_everyone()
+        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":7,"name":"someone"}]}}"""));
+
+    [Theory]
+    [InlineData("accounts")]
+    [InlineData("shared")]
+    [InlineData("friends")]
+    [InlineData("home")]
+    [InlineData("me")]
+    public async Task Any_call_that_fails_means_not_everyone(string failing)
+        => Assert.False(await PlexAccountIsEveryoneAsync(
+            accounts: failing == "accounts" ? null : SoloAccounts,
+            shared: failing == "shared" ? null : EmptyList,
+            friends: failing == "friends" ? null : EmptyList,
+            home: failing == "home" ? null : OwnerOnlyHome,
+            me: failing == "me" ? null : """{"id":1,"username":"jampat"}"""));
+
+    [Fact]
+    public async Task Unreadable_answers_mean_not_everyone()
+    {
+        Assert.False(await PlexAccountIsEveryoneAsync(shared: "not xml"));
+        Assert.False(await PlexAccountIsEveryoneAsync(accounts: "not json"));
+        Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{}}"""));
     }
 
     [Fact]

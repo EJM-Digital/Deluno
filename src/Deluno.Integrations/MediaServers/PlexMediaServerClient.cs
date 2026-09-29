@@ -179,25 +179,91 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
     }
 
     /// <summary>
-    /// Whether the token's account is the only real account on this server (the server's own /accounts list, which
-    /// only its owner can read). A library listing reports one account's plays; with shared or managed users on the
-    /// server it says nothing about theirs. Anything short of a clear "one account" (refused, unreadable, more than
-    /// one) is false, so a rule about nobody, everyone or a count of zero stays undecided (#1074).
+    /// Whether the connected account is everyone who can watch on this server. Proven, never assumed: a server's
+    /// own /accounts table can lack a shared friend who has not played yet, so it cannot prove absence. Both must
+    /// hold, with the owner's token: plex.tv says nobody else has access (no shares of this server, no friends, no
+    /// home member besides the owner), and /accounts has exactly one named account, with the connected account's id.
+    /// Any call that fails, any other user, a token that is not the owner's, or an id that differs is false, so a
+    /// rule about nobody, everyone or none stays undecided and the title is held (#1074).
     /// </summary>
     private async Task<bool> AccountIsTheOnlyOneAsync(MediaServerConnection connection, CancellationToken cancellationToken)
     {
-        var call = await GetAsync(connection, "/accounts", cancellationToken);
-        using var document = call.Ok ? TryParse(call.Body) : null;
-        if (Container(document) is not { } container ||
-            !container.TryGetProperty("Account", out var accounts) ||
-            accounts.ValueKind != JsonValueKind.Array)
+        try
+        {
+            var root = await GetAsync(connection, "/", cancellationToken);
+            using var rootDocument = root.Ok ? TryParse(root.Body) : null;
+            if (Container(rootDocument) is not { } rootContainer || String(rootContainer, "machineIdentifier") is not { Length: > 0 } machine)
+            {
+                return false;
+            }
+
+            var me = await SendAsync(httpClientFactory, HttpMethod.Get, new Uri("https://plex.tv/api/v2/user"), Headers(connection), "plex.tv", cancellationToken);
+            using var meDocument = me.Ok ? TryParse(me.Body) : null;
+            var ownerId = meDocument is not null && meDocument.RootElement.ValueKind == JsonValueKind.Object ? Int(meDocument.RootElement, "id") : null;
+            if (ownerId is not > 0)
+            {
+                return false;
+            }
+
+            // plex.tv: nobody else has access. Each list must be readable, or it proves nothing.
+            var shared = await PlexTvUsersAsync(connection, $"/api/servers/{Uri.EscapeDataString(machine)}/shared_servers", "SharedServer", cancellationToken);
+            var friends = await PlexTvUsersAsync(connection, "/api/users", "User", cancellationToken);
+            var home = await PlexTvUsersAsync(connection, "/api/home/users", "User", cancellationToken);
+            if (shared is not { Count: 0 } || friends is not { Count: 0 } || home is null || home.Any(id => id != ownerId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+            {
+                return false;
+            }
+
+            // The server's own table: exactly one named account (id 0 is the system's), and it is this one.
+            var call = await GetAsync(connection, "/accounts", cancellationToken);
+            using var document = call.Ok ? TryParse(call.Body) : null;
+            if (Container(document) is not { } container ||
+                !container.TryGetProperty("Account", out var accounts) ||
+                accounts.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            var named = accounts.EnumerateArray().Where(entry => Int(entry, "id") is > 0 && !string.IsNullOrWhiteSpace(String(entry, "name"))).ToArray();
+            return named.Length == 1 && Int(named[0], "id") == ownerId;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return false;
         }
+    }
 
-        // Id 0 (nameless) is the server's own system account, not a person.
-        var people = accounts.EnumerateArray().Count(entry => Int(entry, "id") is > 0 && !string.IsNullOrWhiteSpace(String(entry, "name")));
-        return people == 1;
+    /// <summary>
+    /// The ids of the users a plex.tv list holds (its XML elements named <paramref name="element"/>, by their
+    /// <c>id</c> or <c>userID</c>); null when the list could not be read.
+    /// </summary>
+    private async Task<List<string>?> PlexTvUsersAsync(MediaServerConnection connection, string path, string element, CancellationToken cancellationToken)
+    {
+        var headers = Headers(connection).ToDictionary(pair => pair.Key, pair => pair.Value);
+        headers["Accept"] = "application/xml";
+        var call = await SendAsync(httpClientFactory, HttpMethod.Get, new Uri("https://plex.tv" + path), headers, "plex.tv", cancellationToken);
+        if (!call.Ok)
+        {
+            return null;
+        }
+
+        try
+        {
+            var root = System.Xml.Linq.XDocument.Parse(call.Body ?? string.Empty).Root;
+            if (root is null || !string.Equals(root.Name.LocalName, "MediaContainer", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return root.Elements()
+                .Where(node => string.Equals(node.Name.LocalName, element, StringComparison.Ordinal))
+                .Select(node => (string?)node.Attribute("userID") ?? (string?)node.Attribute("id") ?? string.Empty)
+                .ToList();
+        }
+        catch (System.Xml.XmlException)
+        {
+            return null;
+        }
     }
 
     private static MediaServerAnswer<MediaServerLibrary> Unreachable(string reason)
