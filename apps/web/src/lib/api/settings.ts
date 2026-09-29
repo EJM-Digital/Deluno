@@ -119,6 +119,9 @@ export interface PlatformSettingsPatch {
   leftoverExcludePatterns?: string;
   /** #1001: hours an entry must sit unclaimed before it is listed at all. */
   leftoverMinAgeHours?: number;
+  /** #1013: off by default. */
+  forceImportEnabled?: boolean;
+  forceImportMaxTries?: number;
   /** #762: blank clears the subfolder. */
   seasonFolderFormat?: string;
   specialsFolderFormat?: string;

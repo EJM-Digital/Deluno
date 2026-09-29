@@ -88,6 +88,8 @@ public sealed record UpdatePlatformSettingsRequest(
     int? LeftoverDownloadCleanupAgeHours = null,
     string? LeftoverExcludePatterns = null,
     int? LeftoverMinAgeHours = null,
+    bool? ForceImportEnabled = null,
+    int? ForceImportMaxTries = null,
     string? SeasonFolderFormat = null,
     string? SpecialsFolderFormat = null,
     string? MultiEpisodeStyle = null,

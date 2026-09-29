@@ -7042,6 +7042,133 @@ public sealed class ImportPipelineServiceTests
             => Task.FromResult(new MediaProbeInfo("failed", "test", message, null, null, null, [], [], []));
     }
 
+    /// <summary>#1013: a file Deluno could not read to check -- not judged bad, just unreadable at that moment.</summary>
+    private sealed class UnreadableProbeService : IMediaProbeService
+    {
+        public Task<MediaProbeInfo> ProbeAsync(string path, CancellationToken cancellationToken)
+            => Task.FromResult(new MediaProbeInfo("unreadable", "test", "Deluno could not read this file to check it.", null, null, null, [], [], []));
+    }
+
+    private sealed record ForceImportScene(
+        TestStorage Storage,
+        ImportPipelineService Service,
+        string SourcePath,
+        string MovieRoot,
+        SqliteJobStore JobStore) : IDisposable
+    {
+        public void Dispose() => Storage.Dispose();
+
+        public Task<ImportPipelineResult> ImportAsync(string dispatchId, bool overwrite = false)
+            => Service.ExecuteAsync(
+                new ImportExecuteRequest(
+                    new ImportPreviewRequest(SourcePath, null, "movies", "Silent Hill", 2020, [], [], null, null),
+                    "copy",
+                    Overwrite: overwrite,
+                    AllowCopyFallback: true,
+                    DispatchId: dispatchId),
+                CancellationToken.None);
+
+        public int ImportedFileCount => Directory.Exists(MovieRoot)
+            ? Directory.EnumerateFiles(MovieRoot, "*", SearchOption.AllDirectories).Count()
+            : 0;
+    }
+
+    private static async Task<ForceImportScene> ForceImportSceneAsync(IMediaProbeService probe, bool forceImport, int maxTries = 3)
+    {
+        var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Silent.Hill.2020.1080p.WEB-DL.x264-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await platform.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(
+                await platform.GetAsync(CancellationToken.None),
+                new PatchPlatformSettingsRequest(ForceImportEnabled: forceImport, ForceImportMaxTries: maxTries)),
+            CancellationToken.None);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var service = CreateService(
+            storage, timeProvider, platform, libraries, movies,
+            mediaProbeService: probe,
+            forceImportAttempts: new SqliteForceImportAttemptsRepository(storage.Factory, timeProvider));
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        return new ForceImportScene(storage, service, sourcePath, movieRootPath, jobStore);
+    }
+
+    /// <summary>#1013: with Force Import off, an unreadable file stays stopped however often it is tried.</summary>
+    [Fact]
+    public async Task Force_import_is_off_by_default_so_an_unreadable_file_stays_stopped()
+    {
+        using var scene = await ForceImportSceneAsync(new UnreadableProbeService(), forceImport: false);
+
+        Assert.False((await scene.ImportAsync("dispatch-1")).Succeeded);
+        Assert.False((await scene.ImportAsync("dispatch-1")).Succeeded);
+        Assert.False((await scene.ImportAsync("dispatch-1")).Succeeded);
+        Assert.Equal(0, scene.ImportedFileCount);
+    }
+
+    /// <summary>
+    /// #1013: the first stop is left to the ordinary retry; the next one is
+    /// forced, imported, and said out loud in Activity in plain words.
+    /// </summary>
+    [Fact]
+    public async Task Force_import_imports_past_an_unreadable_file_after_the_first_stop_and_says_so_in_Activity()
+    {
+        using var scene = await ForceImportSceneAsync(new UnreadableProbeService(), forceImport: true);
+
+        var first = await scene.ImportAsync("dispatch-1");
+        Assert.False(first.Succeeded);
+        Assert.Equal(0, scene.ImportedFileCount);
+
+        var second = await scene.ImportAsync("dispatch-1");
+        Assert.True(second.Succeeded, second.Message);
+        Assert.Equal(1, scene.ImportedFileCount);
+
+        var activity = await scene.JobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        var forced = Assert.Single(activity, entry => entry.Category == "filesystem.import.forced");
+        Assert.Contains("could not read the file to check it", forced.Message, StringComparison.Ordinal);
+        Assert.Contains("forced try 1 of 3", forced.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// #1013 -- the safety guard. A file Deluno read and found wrong is never
+    /// forced, however many tries are allowed and however often it is tried.
+    /// </summary>
+    [Fact]
+    public async Task Force_import_refuses_a_file_Deluno_read_and_rejected()
+    {
+        using var scene = await ForceImportSceneAsync(new RejectingProbeService("Corrupt container; no readable video or audio."), forceImport: true, maxTries: 25);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            Assert.False((await scene.ImportAsync("dispatch-1")).Succeeded);
+        }
+
+        Assert.Equal(0, scene.ImportedFileCount);
+        var activity = await scene.JobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.DoesNotContain(activity, entry => entry.Category == "filesystem.import.forced");
+    }
+
+    /// <summary>#1013: it fills a gap only. It never puts an unchecked file on top of one already there.</summary>
+    [Fact]
+    public async Task Force_import_never_replaces_a_file_that_is_already_in_the_library()
+    {
+        using var scene = await ForceImportSceneAsync(new UnreadableProbeService(), forceImport: true);
+
+        Assert.False((await scene.ImportAsync("dispatch-1", overwrite: true)).Succeeded);
+        Assert.False((await scene.ImportAsync("dispatch-1", overwrite: true)).Succeeded);
+        Assert.Equal(0, scene.ImportedFileCount);
+    }
+
     /// <summary>#979: an install with no ffprobe on the path -- unavailable, not failed, so it never blocks an import, only removes the probe's naming evidence.</summary>
     private sealed class UnavailableProbeService : IMediaProbeService
     {
@@ -7231,7 +7358,8 @@ public sealed class ImportPipelineServiceTests
         Deluno.Connections.Data.ISeerrAcquisitionsRepository? seerrAcquisitions = null,
         Deluno.Connections.Data.ISeerrRepository? seerrRepository = null,
         Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
-        IMediaTagStore? mediaTagStore = null)
+        IMediaTagStore? mediaTagStore = null,
+        IForceImportAttemptsRepository? forceImportAttempts = null)
         => new(
             platform,
             librariesRepository,
@@ -7263,7 +7391,8 @@ public sealed class ImportPipelineServiceTests
             seerrAcquisitions: seerrAcquisitions,
             seerrRepository: seerrRepository,
             seerrClient: seerrClient,
-            mediaTagStore: mediaTagStore);
+            mediaTagStore: mediaTagStore,
+            forceImportAttempts: forceImportAttempts);
 
     private static FilesystemReconciliationService CreateReconciliationService(
         TestStorage storage,

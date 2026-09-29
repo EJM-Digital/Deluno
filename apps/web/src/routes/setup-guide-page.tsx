@@ -95,6 +95,7 @@ type AutomationChoiceKey =
   | "deleteBadDownloadFiles"
   | "leftoverCleanup"
   | "leftoverDownloadCleanup"
+  | "forceImport"
   | "dangerousFileCheck";
 
 export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
@@ -109,6 +110,7 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
   deleteBadDownloadFiles: null,
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
+  forceImport: null,
   dangerousFileCheck: null
 };
 
@@ -157,6 +159,11 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
     key: "leftoverDownloadCleanup",
     question: "Automatically delete leftover download files?",
     help: "A leftover is a download-folder file nothing is using any more (no client, import or hand-off) once it has sat for a while. If off, leftovers stay on the Queue's leftovers list for you to remove."
+  },
+  {
+    key: "forceImport",
+    question: "Import a download anyway when Deluno could not read the file to check it?",
+    help: "Only after the import has already stopped once, and only for a file Deluno could not read (a share that dropped, a lock, a slow disk) - never one it read and found wrong, and never onto a file you already have. If off, that download stays stopped for you to look at."
   },
   {
     key: "dangerousFileCheck",
@@ -269,7 +276,10 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     // #932: the age threshold is not asked here - it keeps its own 24-hour
     // default (set in Settings -> Media Management -> Cleanup) whichever way
     // this question is answered.
-    leftoverDownloadCleanupEnabled: automation.leftoverDownloadCleanup === true
+    leftoverDownloadCleanupEnabled: automation.leftoverDownloadCleanup === true,
+    // #1013: the tries keep their own default of 3 (Settings -> Media
+    // Management) whichever way this question is answered.
+    forceImportEnabled: automation.forceImport === true
   };
 }
 

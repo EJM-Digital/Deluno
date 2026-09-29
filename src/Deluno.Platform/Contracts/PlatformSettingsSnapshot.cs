@@ -192,6 +192,13 @@ public sealed record PlatformSettingsSnapshot(
     // so an existing install behaves exactly as before.
     string LeftoverExcludePatterns = "",
     int LeftoverMinAgeHours = 2,
+    // #1013: Force Import goes past the short closed list in ForceImportPolicy
+    // (today: "Deluno could not read the file to check it") for a download
+    // whose import has already stopped once. Off for a new install, asked in the
+    // setup guide (#936), and an existing install is never flipped on: a missing
+    // key reads as off. The tries default to 3.
+    bool ForceImportEnabled = false,
+    int ForceImportMaxTries = 3,
     // #762: per-season (and specials, season 0) subfolders under the series
     // folder, the way Sonarr's Season Folder Format and Specials Folder
     // Format split one combined series folder. Blank means no subfolder --

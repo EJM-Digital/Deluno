@@ -34,6 +34,7 @@ const UNANSWERED: AutomationChoices = {
   deleteBadDownloadFiles: null,
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
+  forceImport: null,
   dangerousFileCheck: null
 };
 
@@ -47,6 +48,7 @@ const ALL_NO: AutomationChoices = {
   deleteBadDownloadFiles: false,
   leftoverCleanup: false,
   leftoverDownloadCleanup: false,
+  forceImport: false,
   dangerousFileCheck: false
 };
 
@@ -60,6 +62,7 @@ const ALL_YES: AutomationChoices = {
   deleteBadDownloadFiles: true,
   leftoverCleanup: true,
   leftoverDownloadCleanup: true,
+  forceImport: true,
   dangerousFileCheck: true
 };
 
@@ -125,6 +128,7 @@ describe("setup guide Automation step (#936)", () => {
     expect(keys).toEqual([
       "dangerousFileCheck",
       "deleteBadDownloadFiles",
+      "forceImport",
       "leftoverCleanup",
       "leftoverDownloadCleanup",
       "qualityUpgrades",
@@ -152,7 +156,8 @@ describe("setup guide Automation step (#936)", () => {
       cleanupRemoveClientEntryAfterThreshold: false,
       cleanupPurgePayloadAfterThreshold: false,
       subtitleFetchAutomaticEnabled: false,
-      leftoverDownloadCleanupEnabled: false
+      leftoverDownloadCleanupEnabled: false,
+      forceImportEnabled: false
     });
     expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
       autoSearchEnabled: false,
@@ -350,5 +355,18 @@ describe("setup guide Updates step (#1034, #936)", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "notify-only", channel: "stable", autoCheck: true })
     });
+  });
+});
+
+describe("Force import setup question (#1013)", () => {
+  it("defaults off and only Yes turns it on, leaving every other setting alone", () => {
+    expect(buildAutomationSettingsPayload(ALL_NO).forceImportEnabled).toBe(false);
+    expect(buildAutomationSettingsPayload(UNANSWERED).forceImportEnabled).toBe(false);
+    expect(buildAutomationSettingsPayload({ ...ALL_NO, forceImport: true })).toMatchObject({
+      forceImportEnabled: true,
+      leftoverDownloadCleanupEnabled: false,
+      renameOnImport: false
+    });
+    expect(buildLibraryAutomationFields(ALL_YES)).not.toHaveProperty("forceImportEnabled");
   });
 });

@@ -98,6 +98,8 @@ public static class PlatformSettingsPatchMerger
             LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours,
             LeftoverExcludePatterns: patch.LeftoverExcludePatterns ?? current.LeftoverExcludePatterns,
             LeftoverMinAgeHours: patch.LeftoverMinAgeHours ?? current.LeftoverMinAgeHours,
+            ForceImportEnabled: patch.ForceImportEnabled ?? current.ForceImportEnabled,
+            ForceImportMaxTries: patch.ForceImportMaxTries ?? current.ForceImportMaxTries,
             SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
