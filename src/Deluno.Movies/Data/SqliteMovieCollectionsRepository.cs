@@ -376,7 +376,8 @@ public sealed class SqliteMovieCollectionsRepository(
     public async Task<MovieCollectionItem?> UpdateAsync(
         string id,
         UpdateMovieCollectionRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        MovieCollectionResolvedTargets? resolved = null)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DatabaseName, cancellationToken);
         using var command = connection.CreateCommand();
@@ -386,6 +387,10 @@ public sealed class SqliteMovieCollectionsRepository(
             SET monitored = COALESCE(@monitored, monitored),
                 monitor_movies = COALESCE(@monitorMovies, monitor_movies),
                 quality_profile_id = COALESCE(@qualityProfileId, quality_profile_id),
+                quality_profile_name = COALESCE(@qualityProfileName, quality_profile_name),
+                library_id = COALESCE(@libraryId, library_id),
+                library_name = COALESCE(@libraryName, library_name),
+                root_path = COALESCE(@rootPath, root_path),
                 minimum_availability = COALESCE(@minimumAvailability, minimum_availability),
                 search_on_add = COALESCE(@searchOnAdd, search_on_add),
                 tags = COALESCE(@tags, tags),
@@ -393,6 +398,10 @@ public sealed class SqliteMovieCollectionsRepository(
             WHERE id = @id;
             """;
         AddParameter(command, "@tags", request.Tags is null ? null : NormalizeCsv(request.Tags));
+        AddParameter(command, "@qualityProfileName", Normalize(resolved?.QualityProfileName));
+        AddParameter(command, "@libraryId", resolved?.LibraryName is null ? null : Normalize(request.LibraryId));
+        AddParameter(command, "@libraryName", Normalize(resolved?.LibraryName));
+        AddParameter(command, "@rootPath", Normalize(resolved?.RootPath));
         AddParameter(command, "@monitored", request.Monitored.HasValue ? request.Monitored.Value ? 1 : 0 : null);
         AddParameter(command, "@monitorMovies", request.MonitorMovies.HasValue ? request.MonitorMovies.Value ? 1 : 0 : null);
         AddParameter(command, "@qualityProfileId", Normalize(request.QualityProfileId));

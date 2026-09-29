@@ -541,6 +541,7 @@ PUT /api/libraries/{id}/subtitles
 PUT /api/libraries/{id}/workflow
 PUT /api/library-views/{id}
 PUT /api/media-servers/{id}
+PUT /api/movie-collections/bulk
 PUT /api/movie-collections/{id}
 PUT /api/movie-collections/{id}/members/{providerId}/exclusion
 PUT /api/movies/monitoring

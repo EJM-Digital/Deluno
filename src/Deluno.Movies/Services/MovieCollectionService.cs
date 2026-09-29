@@ -287,6 +287,94 @@ public sealed class MovieCollectionService(
         }
     }
 
+    public async Task<IReadOnlyList<MovieCollectionItem>> UpdateManyAsync(
+        IReadOnlyList<string> collectionIds,
+        UpdateMovieCollectionRequest changes,
+        CancellationToken cancellationToken)
+    {
+        if (collectionIds.Count == 0)
+        {
+            throw new ArgumentException("Choose at least one collection.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(changes.MinimumAvailability)
+            && !MovieAvailability.All.Contains(changes.MinimumAvailability.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Choose one of: {string.Join(", ", MovieAvailability.All)}.");
+        }
+
+        string? profileName = null;
+        if (!string.IsNullOrWhiteSpace(changes.QualityProfileId))
+        {
+            var profile = (await qualityRepository.ListQualityProfilesAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, changes.QualityProfileId.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (profile is null)
+            {
+                throw new ArgumentException("That quality profile no longer exists.");
+            }
+
+            profileName = profile.Name;
+        }
+
+        Deluno.Libraries.Contracts.LibraryItem? library = null;
+        if (!string.IsNullOrWhiteSpace(changes.LibraryId))
+        {
+            library = (await librariesRepository.ListLibrariesAsync(cancellationToken)).FirstOrDefault(item =>
+                string.Equals(item.Id, changes.LibraryId.Trim(), StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.MediaType, "movies", StringComparison.OrdinalIgnoreCase));
+            if (library is null)
+            {
+                throw new ArgumentException("Choose a movie library for the collections.");
+            }
+        }
+
+        var resolved = new MovieCollectionResolvedTargets(profileName, library?.Name, library?.RootPath);
+        var normalized = changes with { LibraryId = library?.Id, QualityProfileId = changes.QualityProfileId?.Trim() };
+        var updated = new List<MovieCollectionItem>();
+        foreach (var id in collectionIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            MovieCollectionItem? item;
+            try
+            {
+                item = await collectionsRepository.UpdateAsync(id, normalized, cancellationToken, resolved);
+            }
+            catch (Microsoft.Data.Sqlite.SqliteException) when (library is not null)
+            {
+                throw new ArgumentException($"A collection you picked is already followed in {library.Name}.");
+            }
+
+            if (item is not null)
+            {
+                updated.Add(item);
+            }
+        }
+
+        if (updated.Count > 0 && activityFeedRepository is not null)
+        {
+            var parts = new List<string>();
+            if (changes.Monitored is { } m) parts.Add(m ? "monitoring on" : "monitoring off");
+            if (changes.MonitorMovies is { } mm) parts.Add(mm ? "adding missing movies on" : "adding missing movies off");
+            if (profileName is not null) parts.Add($"quality profile {profileName}");
+            if (!string.IsNullOrWhiteSpace(changes.MinimumAvailability)) parts.Add($"minimum availability {MovieAvailability.Normalize(changes.MinimumAvailability)}");
+            if (library is not null) parts.Add($"folder {library.RootPath}");
+            if (changes.SearchOnAdd is { } s) parts.Add(s ? "search on add on" : "search on add off");
+            if (changes.Tags is not null) parts.Add("tags changed");
+            if (parts.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "collection.edited",
+                    $"You changed {updated.Count} movie collection{(updated.Count == 1 ? "" : "s")}: {string.Join(", ", parts)}.",
+                    null,
+                    null,
+                    "movie-collection",
+                    updated.Count == 1 ? updated[0].Id : null,
+                    cancellationToken);
+            }
+        }
+
+        return updated;
+    }
+
     private async Task<CollectionQuality> ResolveQualityAsync(
         MovieCollectionItem collection,
         Deluno.Libraries.Contracts.LibraryItem library,

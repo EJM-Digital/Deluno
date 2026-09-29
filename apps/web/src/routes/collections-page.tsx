@@ -11,20 +11,22 @@ import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
-import { fetchJson, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem } from "../lib/api";
+import { fetchJson, type LibraryItem, type MovieCollectionItem, type MovieCollectionMemberItem, type QualityProfileItem } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 
 interface CollectionsLoaderData {
   collections: MovieCollectionItem[];
   libraries: LibraryItem[];
+  qualityProfiles: QualityProfileItem[];
   membersByCollection: Record<string, MovieCollectionMemberItem[]>;
 }
 
 export async function collectionsLoader(): Promise<CollectionsLoaderData> {
-  const [collections, libraries] = await Promise.all([
+  const [collections, libraries, qualityProfiles] = await Promise.all([
     fetchJson<MovieCollectionItem[]>("/api/movie-collections").catch(() => []),
-    fetchJson<LibraryItem[]>("/api/libraries").catch(() => [])
+    fetchJson<LibraryItem[]>("/api/libraries").catch(() => []),
+    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
   ]);
   const entries = await Promise.all(collections.map(async (collection) => [
     collection.id,
@@ -33,12 +35,13 @@ export async function collectionsLoader(): Promise<CollectionsLoaderData> {
   return {
     collections,
     libraries,
+    qualityProfiles,
     membersByCollection: Object.fromEntries(entries)
   };
 }
 
 export function CollectionsPage() {
-  const { collections, libraries, membersByCollection } = useLoaderData() as CollectionsLoaderData;
+  const { collections, libraries, qualityProfiles, membersByCollection } = useLoaderData() as CollectionsLoaderData;
   const revalidator = useRevalidator();
   const movieLibraries = useMemo(() => libraries.filter((library) => library.mediaType === "movies"), [libraries]);
   const [addOpen, setAddOpen] = useState(false);
@@ -131,6 +134,26 @@ export function CollectionsPage() {
     }
   }
 
+  async function applyBulk(changes: BulkCollectionChanges) {
+    if (!selected.length || busy) return;
+    setBusy("bulk");
+    try {
+      const response = await authedFetch("/api/movie-collections/bulk", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionIds: selected, ...changes })
+      });
+      if (!response.ok) throw new Error(await bulkErrorText(response));
+      toast.success(`${selected.length} collection${selected.length === 1 ? "" : "s"} updated`);
+      setSelected([]);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Collections could not be updated.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-[var(--page-gap)]">
       <PageToolbar
@@ -179,12 +202,22 @@ export function CollectionsPage() {
       ) : null}
 
       {selected.length > 0 ? (
-        <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <span className="text-sm font-semibold text-foreground">{selected.length} selected</span>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(true)} disabled={busy === "bulk"}>Monitor</Button>
-            <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(false)} disabled={busy === "bulk"}>Stop monitoring</Button>
+        <Card className="flex flex-col gap-[var(--grid-gap)] px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-foreground">{selected.length} selected</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(true)} disabled={busy === "bulk"}>Monitor</Button>
+              <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(false)} disabled={busy === "bulk"}>Stop monitoring</Button>
+            </div>
           </div>
+          <CollectionBulkEditor
+            key={selected.join(",")}
+            count={selected.length}
+            qualityProfiles={qualityProfiles.filter((profile) => profile.mediaType === "movies")}
+            libraries={movieLibraries}
+            disabled={busy === "bulk"}
+            onApply={applyBulk}
+          />
         </Card>
       ) : null}
 
@@ -287,6 +320,94 @@ export function CollectionTagsRow({ collection, disabled, onSave }: { collection
           Save tags for {collection.name}
         </Button>
       ) : null}
+    </div>
+  );
+}
+
+/** What the bulk editor sends: only the fields somebody chose. */
+export interface BulkCollectionChanges {
+  monitorMovies?: boolean;
+  qualityProfileId?: string;
+  minimumAvailability?: string;
+  libraryId?: string;
+  searchOnAdd?: boolean;
+}
+
+const YES_NO_OPTIONS = [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }];
+const AVAILABILITY_OPTIONS = [
+  { value: "announced", label: "As soon as it is announced" },
+  { value: "inCinemas", label: "When it is in cinemas" },
+  { value: "released", label: "When it is released" }
+];
+
+async function bulkErrorText(response: Response): Promise<string> {
+  try {
+    const body = await response.json() as { errors?: Record<string, string[]> };
+    const first = Object.values(body.errors ?? {})[0]?.[0];
+    if (first) return first;
+  } catch {
+    // fall through to the plain sentence
+  }
+  return "Collections could not be updated.";
+}
+
+/**
+ * #998: Radarr's collection editor, for the collections ticked on the page. Every
+ * field starts at "Leave as it is"; only what somebody chooses is sent.
+ */
+export function CollectionBulkEditor({ count, qualityProfiles, libraries, disabled, onApply }: {
+  count: number;
+  qualityProfiles: QualityProfileItem[];
+  libraries: LibraryItem[];
+  disabled: boolean;
+  onApply: (changes: BulkCollectionChanges) => void;
+}) {
+  const [profile, setProfile] = useState("");
+  const [availability, setAvailability] = useState("");
+  const [folder, setFolder] = useState("");
+  const [addMissing, setAddMissing] = useState("");
+  const [searchOnAdd, setSearchOnAdd] = useState("");
+  const anything = Boolean(profile || availability || folder || addMissing || searchOnAdd);
+
+  function apply() {
+    const changes: BulkCollectionChanges = {};
+    if (profile) changes.qualityProfileId = profile;
+    if (availability) changes.minimumAvailability = availability;
+    if (folder) changes.libraryId = folder;
+    if (addMissing) changes.monitorMovies = addMissing === "yes";
+    if (searchOnAdd) changes.searchOnAdd = searchOnAdd === "yes";
+    onApply(changes);
+  }
+
+  return (
+    <div className="space-y-3 border-t border-hairline pt-3">
+      <div className="grid gap-[var(--grid-gap)] md:grid-cols-3 xl:grid-cols-5">
+        <label className="space-y-1.5 text-sm font-medium text-foreground">
+          Quality profile
+          <Select value={profile} onChange={(event) => setProfile(event.target.value)} placeholder="Leave as it is" options={qualityProfiles.map((item) => ({ value: item.id, label: item.name }))} />
+        </label>
+        <label className="space-y-1.5 text-sm font-medium text-foreground">
+          Look for movies
+          <Select value={availability} onChange={(event) => setAvailability(event.target.value)} placeholder="Leave as it is" options={AVAILABILITY_OPTIONS} />
+        </label>
+        <label className="space-y-1.5 text-sm font-medium text-foreground">
+          Movie folder
+          <Select value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="Leave as it is" options={libraries.map((item) => ({ value: item.id, label: `${item.name} (${item.rootPath})` }))} />
+        </label>
+        <label className="space-y-1.5 text-sm font-medium text-foreground">
+          Add missing movies
+          <Select value={addMissing} onChange={(event) => setAddMissing(event.target.value)} placeholder="Leave as it is" options={YES_NO_OPTIONS} />
+        </label>
+        <label className="space-y-1.5 text-sm font-medium text-foreground">
+          Search when movies are added
+          <Select value={searchOnAdd} onChange={(event) => setSearchOnAdd(event.target.value)} placeholder="Leave as it is" options={YES_NO_OPTIONS} />
+        </label>
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={apply} disabled={disabled || !anything}>
+          Apply to {count} collection{count === 1 ? "" : "s"}
+        </Button>
+      </div>
     </div>
   );
 }

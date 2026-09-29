@@ -63,7 +63,25 @@ public sealed record UpdateMovieCollectionRequest(
     string? QualityProfileId = null,
     string? MinimumAvailability = null,
     bool? SearchOnAdd = null,
-    string? Tags = null);
+    string? Tags = null,
+    /// <summary>Move the collection to another movie library, which is its root folder (#998, Radarr's RootFolderPath).</summary>
+    string? LibraryId = null);
+
+/// <summary>#998: change the same settings on several collections at once, as Radarr's collection editor does.</summary>
+public sealed record BulkUpdateMovieCollectionsRequest(
+    IReadOnlyList<string>? CollectionIds,
+    bool? Monitored = null,
+    bool? MonitorMovies = null,
+    string? QualityProfileId = null,
+    string? MinimumAvailability = null,
+    bool? SearchOnAdd = null,
+    string? LibraryId = null);
+
+/// <summary>Names looked up for the ids an update carries, so the stored copy never goes stale.</summary>
+public sealed record MovieCollectionResolvedTargets(
+    string? QualityProfileName = null,
+    string? LibraryName = null,
+    string? RootPath = null);
 
 public sealed record MovieCollectionSyncResult(
     string CollectionId,

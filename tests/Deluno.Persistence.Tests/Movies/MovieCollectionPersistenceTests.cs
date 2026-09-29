@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -63,5 +64,47 @@ public sealed class MovieCollectionPersistenceTests
         Assert.Single(due);
         Assert.NotNull(due[0].NextSyncUtc);
         Assert.Empty(await collections.ClaimDueAsync(timeProvider.GetUtcNow(), TimeSpan.FromHours(24), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Bulk_update_changes_profile_availability_search_on_add_and_folder_for_every_collection()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-08-31T00:00:00Z"));
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new Deluno.Infrastructure.Storage.Migrations.SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var collections = new SqliteMovieCollectionsRepository(storage.Factory, timeProvider);
+
+        var ids = new List<string>();
+        foreach (var providerId in new[] { "645", "10" })
+        {
+            var created = await collections.UpsertAsync(
+                "movies-main", "Movies", "D:\\Movies", "quality-1", "HD",
+                new CreateMovieCollectionRequest(providerId, "movies-main"),
+                new MetadataCollection("tmdb", providerId, $"Collection {providerId}", null, null, null, []),
+                CancellationToken.None);
+            ids.Add(created.Id);
+        }
+
+        var changes = new UpdateMovieCollectionRequest(
+            QualityProfileId: "quality-2", MinimumAvailability: "inCinemas", SearchOnAdd: true, LibraryId: "movies-4k");
+        foreach (var id in ids)
+        {
+            await collections.UpdateAsync(id, changes, CancellationToken.None, new MovieCollectionResolvedTargets("Ultra HD", "Movies 4K", "E:\\4K"));
+        }
+
+        foreach (var item in await collections.ListAsync(CancellationToken.None))
+        {
+            Assert.Equal("quality-2", item.QualityProfileId);
+            Assert.Equal("Ultra HD", item.QualityProfileName);
+            Assert.Equal(MovieAvailability.Normalize("inCinemas"), item.MinimumAvailability);
+            Assert.True(item.SearchOnAdd);
+            Assert.Equal("movies-4k", item.LibraryId);
+            Assert.Equal("Movies 4K", item.LibraryName);
+            Assert.Equal("E:\\4K", item.RootPath);
+            Assert.True(item.MonitorMovies);
+        }
     }
 }
