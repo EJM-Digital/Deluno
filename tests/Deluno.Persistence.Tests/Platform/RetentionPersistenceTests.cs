@@ -32,6 +32,52 @@ public sealed class RetentionPersistenceTests
     }
 
     [Fact]
+    public async Task A_rule_saved_the_way_every_rule_used_to_be_still_deletes_syncs_and_does_not_wait_on_playback()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+
+        var saved = await repository.SaveRuleAsync(null, new SaveRetentionRuleRequest("Old", RetentionLevels.Movie, true, [RetentionStep.KeepOnly("server.watchedBy:anyone:")], ["server-1"], true), CancellationToken.None);
+
+        Assert.Equal((RetentionExpiryActions.Delete, (string?)null, false, false), (saved!.ExpiryAction, saved.ExpiryTag, saved.KeepInDelunoOnly, saved.DeferWhilePlaying));
+    }
+
+    [Fact]
+    public async Task A_rules_expiry_action_tag_and_switches_are_stored_and_a_request_that_says_nothing_keeps_them()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+        var steps = new[] { RetentionStep.KeepOnly("server.watchedBy:anyone:") };
+
+        var saved = await repository.SaveRuleAsync(null, new SaveRetentionRuleRequest("Tagger", RetentionLevels.Movie, true, steps, ["server-1"], false,
+            ExpiryAction: RetentionExpiryActions.Tag, ExpiryTag: " watched-and-old ", KeepInDelunoOnly: true, DeferWhilePlaying: true), CancellationToken.None);
+        Assert.Equal((RetentionExpiryActions.Tag, "watched-and-old", true, true), (saved!.ExpiryAction, saved.ExpiryTag, saved.KeepInDelunoOnly, saved.DeferWhilePlaying));
+
+        // A saved-again rule that does not mention them (an older client) is not turned back into a deleting one.
+        var again = await repository.SaveRuleAsync(saved.Id, new SaveRetentionRuleRequest("Tagger", RetentionLevels.Movie, true, steps, ["server-1"], false), CancellationToken.None);
+        Assert.Equal((RetentionExpiryActions.Tag, "watched-and-old", true, true), (again!.ExpiryAction, again.ExpiryTag, again.KeepInDelunoOnly, again.DeferWhilePlaying));
+
+        var changed = await repository.SaveRuleAsync(saved.Id, new SaveRetentionRuleRequest("Tagger", RetentionLevels.Movie, true, steps, ["server-1"], false, ExpiryAction: RetentionExpiryActions.Unmonitor, KeepInDelunoOnly: false), CancellationToken.None);
+        Assert.Equal((RetentionExpiryActions.Unmonitor, false), (changed!.ExpiryAction, changed.KeepInDelunoOnly));
+    }
+
+    [Fact]
+    public async Task A_mark_remembers_that_a_person_added_it_by_hand_and_that_its_day_was_done()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await RepositoryAsync(storage);
+        var rule = await repository.SaveRuleAsync(null, new SaveRetentionRuleRequest("Watched", RetentionLevels.Movie, true, [RetentionStep.KeepOnly("server.watchedBy:anyone:")], ["server-1"], true), CancellationToken.None);
+        var mark = new RetentionMark(rule!.Id, rule.Name, "m1", RetentionLevels.Movie, null, null, [], "Nosferatu", 1922, 1000, ["Added to the list by hand."],
+            Now, Now.AddDays(14), RetentionMarkStates.Leaving, null, Now) { Manual = true };
+
+        await repository.UpsertMarkAsync(mark, CancellationToken.None);
+        await repository.UpsertMarkAsync(mark with { State = RetentionMarkStates.Done, StateReason = "Tagged." }, CancellationToken.None);
+
+        var read = Assert.Single(await repository.ListMarksAsync(null, CancellationToken.None));
+        Assert.Equal((true, RetentionMarkStates.Done, "Tagged."), (read.Manual, read.State, read.StateReason));
+    }
+
+    [Fact]
     public async Task A_mark_keeps_its_first_matched_day_and_goes_with_its_rule()
     {
         using var storage = TestStorage.Create();

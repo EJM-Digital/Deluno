@@ -46,6 +46,48 @@ public sealed class RetentionCollectionServiceTests
     }
 
     [Fact]
+    public async Task A_rule_that_keeps_its_list_in_Deluno_only_never_creates_anything_on_a_server()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf", "px") with { KeepInDelunoOnly = true });
+        await Mark("r1", "m1", ("jf", "j1", null), ("px", "p1", "1"));
+
+        await Service().SyncAsync(CancellationToken.None);
+
+        Assert.Empty(_jellyfin.Requests);
+        Assert.Empty(_plex.Requests);
+        Assert.Empty(_store.Collections);
+        // Its marks are still Deluno's own: reviewing, keeping and postponing them is untouched.
+        Assert.Single(await _store.ListMarksAsync("r1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Turning_keep_in_Deluno_only_on_takes_the_titles_off_the_server_and_another_rules_titles_stay()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));
+        _store.Add(Rule("r2", RetentionLevels.Movie, "jf"));
+        await Mark("r1", "m1", ("jf", "j1", null));
+        await Mark("r2", "m2", ("jf", "j2", null));
+        await Service().SyncAsync(CancellationToken.None);
+        Assert.Equal(["j1", "j2"], _jellyfin.Requests[0].Members.Select(member => member.ItemId).Order());
+
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf") with { KeepInDelunoOnly = true });
+        await Service().SyncAsync(CancellationToken.None);
+
+        Assert.Equal(["j2"], _jellyfin.Requests[1].Members.Select(member => member.ItemId));
+    }
+
+    [Fact]
+    public async Task A_rule_that_does_not_remove_titles_has_nothing_leaving_to_show_on_a_server()
+    {
+        _store.Add(Rule("r1", RetentionLevels.Movie, "jf") with { ExpiryAction = RetentionExpiryActions.Unmonitor });
+        await Mark("r1", "m1", ("jf", "j1", null));
+
+        await Service().SyncAsync(CancellationToken.None);
+
+        Assert.Empty(_jellyfin.Requests);
+    }
+
+    [Fact]
     public async Task A_server_with_nothing_leaving_is_not_touched()
     {
         _store.Add(Rule("r1", RetentionLevels.Movie, "jf"));

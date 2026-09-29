@@ -134,7 +134,8 @@ public static class PlatformDatabaseMigrations
         new V0126DownloadClientContentLayout(),
         new V0127IntakeSourceTags(),
         new V0128AutoTagRules(),
-        new V0129ProcessorHealthCheckUrl()
+        new V0129ProcessorHealthCheckUrl(),
+        new V0130RetentionActions()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

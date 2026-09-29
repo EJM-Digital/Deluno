@@ -83,6 +83,7 @@ public static class RetentionModule
             [FromServices] IMediaServerRepository mediaServers,
             [FromServices] ISeerrRepository seerrServers,
             [FromServices] RetentionCollectionService collections,
+            [FromServices] RetentionService service,
             CancellationToken cancellationToken) =>
         {
             var problems = RetentionEvaluator.Validate(request, await mediaServers.ListAsync(cancellationToken), (await seerrServers.ListAsync(cancellationToken)).Count(server => server.IsEnabled));
@@ -91,10 +92,17 @@ public static class RetentionModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = problems.ToArray() });
             }
 
+            var before = await repository.GetRuleAsync(id, cancellationToken);
             var saved = await repository.SaveRuleAsync(id, request, cancellationToken);
             if (saved is null)
             {
                 return Results.NotFound();
+            }
+
+            // A titles whose day already came under the old action is done afresh, after a new wait, under the new one.
+            if (before is not null && (before.ExpiryAction != saved.ExpiryAction || !string.Equals(before.ExpiryTag, saved.ExpiryTag, StringComparison.OrdinalIgnoreCase)))
+            {
+                await service.ForgetDoneAsync(saved.Id, cancellationToken);
             }
 
             // Turning a rule off or changing its servers changes what the collections hold.
@@ -128,7 +136,8 @@ public static class RetentionModule
                 request.Steps ?? RetentionStepList.FromConditions(request.Conditions ?? []),
                 request.MediaServerIds ?? [], request.RemoveFromServers,
                 request.WaitDays ?? RetentionLimits.DefaultWaitDays, RetentionRemovalModes.Normalize(request.RemovalMode),
-                request.CheckIntervalHours ?? RetentionLimits.DefaultCheckIntervalHours, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+                request.CheckIntervalHours ?? RetentionLimits.DefaultCheckIntervalHours, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch,
+                RetentionExpiryActions.Normalize(request.ExpiryAction), request.ExpiryTag?.Trim(), request.KeepInDelunoOnly ?? false, request.DeferWhilePlaying ?? false);
             var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, (server, mediaType, token) => cache.GetAsync(server, mediaType, clients, token));
             var matched = evaluation.Matched.ToArray();
             return Results.Ok(new RetentionTrial(
@@ -142,7 +151,83 @@ public static class RetentionModule
                 evaluation.Candidates.Count(item => item.Outcome == RetentionItemOutcomes.Undecided),
                 evaluation.UnreachableServers,
                 evaluation.Problems,
-                evaluation.Unmanaged ?? []));
+                evaluation.Unmanaged ?? [],
+                rule.ExpiryAction,
+                RetentionExpiryActions.Describe(rule.ExpiryAction, rule.ExpiryTag)));
+        });
+
+        // Titles a person can add to a rule's list by hand (#1008): what Deluno holds files for at the rule's level.
+        group.MapGet("rules/{id}/titles", async (
+            string id,
+            string? query,
+            [FromServices] IRetentionRepository repository,
+            [FromServices] RetentionEvaluator evaluator,
+            CancellationToken cancellationToken) =>
+        {
+            var rule = await repository.GetRuleAsync(id, cancellationToken);
+            if (rule is null)
+            {
+                return Results.NotFound();
+            }
+
+            var listed = (await repository.ListMarksAsync(rule.Id, cancellationToken)).Select(mark => mark.EntityId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var kept = (await repository.ListKeepsAsync(cancellationToken))
+                .Where(keep => keep.RuleId is null || string.Equals(keep.RuleId, rule.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(keep => keep.EntityId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var found = await evaluator.SearchTitlesAsync(rule.Level, query, 20, cancellationToken);
+            return Results.Ok(found.Select(unit => new RetentionAddable(
+                unit.EntityId,
+                unit.Level,
+                unit.Level is RetentionLevels.Season or RetentionLevels.Episode ? $"{unit.ShowTitle} · {unit.Title}" : unit.Title,
+                unit.Year,
+                listed.Contains(unit.EntityId),
+                kept.Contains(unit.EntityId))).ToArray());
+        });
+
+        group.MapPost("rules/{id}/titles", async (
+            string id,
+            [FromBody] AddRetentionTitleRequest request,
+            [FromServices] IRetentionRepository repository,
+            [FromServices] RetentionService service,
+            [FromServices] RetentionCollectionService collections,
+            CancellationToken cancellationToken) =>
+        {
+            var rule = await repository.GetRuleAsync(id, cancellationToken);
+            if (rule is null)
+            {
+                return Results.NotFound();
+            }
+
+            var added = await service.AddManualAsync(rule, request.EntityId, cancellationToken);
+            if (added.Mark is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["title"] = [added.Problem ?? "It could not be added."] });
+            }
+
+            await collections.TrySyncAsync(cancellationToken);
+            return Results.Ok(added.Mark);
+        });
+
+        // Postpone: push a removal day back N days without keeping the title (#1010).
+        group.MapPost("leaving-soon/postpone", async (
+            [FromBody] PostponeRetentionRequest request,
+            [FromServices] IRetentionRepository repository,
+            [FromServices] RetentionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var rule = string.IsNullOrWhiteSpace(request.RuleId) ? null : await repository.GetRuleAsync(request.RuleId, cancellationToken);
+            if (rule is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (request.Days is not { } days || days < RetentionLimits.MinPostponeDays || days > RetentionLimits.MaxPostponeDays)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = [$"Postpone by a whole number of days from {RetentionLimits.MinPostponeDays} to {RetentionLimits.MaxPostponeDays}."] });
+            }
+
+            return Results.Ok(await service.PostponeAsync(rule, request.EntityIds ?? [], days, cancellationToken));
         });
 
         // Run now: the same check the schedule runs.

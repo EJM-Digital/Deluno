@@ -33,7 +33,11 @@ public sealed class RetentionCollectionService(
 
     public async Task SyncAsync(CancellationToken cancellationToken)
     {
-        var rules = (await repository.ListRulesAsync(cancellationToken)).Where(rule => rule.IsEnabled).ToDictionary(rule => rule.Id, StringComparer.OrdinalIgnoreCase);
+        // A rule that keeps its list in Deluno only (#1009) never puts anything on a server, and one that does
+        // not remove titles (#1011) has nothing "leaving" to show there.
+        var rules = (await repository.ListRulesAsync(cancellationToken))
+            .Where(rule => rule.IsEnabled && !rule.KeepInDelunoOnly && rule.ExpiryAction == RetentionExpiryActions.Delete)
+            .ToDictionary(rule => rule.Id, StringComparer.OrdinalIgnoreCase);
         var marks = await repository.ListMarksAsync(null, cancellationToken);
         var states = (await repository.ListCollectionStatesAsync(cancellationToken)).ToDictionary(state => (state.ServerId, state.MediaType));
         var connections = (await servers.ListAsync(cancellationToken)).ToDictionary(server => server.Id, StringComparer.OrdinalIgnoreCase);
@@ -54,7 +58,7 @@ public sealed class RetentionCollectionService(
             }
 
             var members = marks
-                .Where(mark => mark.MediaType == mediaType && rules.TryGetValue(mark.RuleId, out var rule) && rule.MediaServerIds.Contains(serverId, StringComparer.OrdinalIgnoreCase))
+                .Where(mark => mark.State != RetentionMarkStates.Done && mark.MediaType == mediaType && rules.TryGetValue(mark.RuleId, out var rule) && rule.MediaServerIds.Contains(serverId, StringComparer.OrdinalIgnoreCase))
                 .SelectMany(mark => mark.ServerItems)
                 .Where(item => string.Equals(item.ServerId, serverId, StringComparison.OrdinalIgnoreCase))
                 .DistinctBy(item => item.ItemId, StringComparer.Ordinal)

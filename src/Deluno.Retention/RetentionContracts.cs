@@ -13,8 +13,53 @@ public static class RetentionRemovalModes
         => string.Equals(value?.Trim(), Ask, StringComparison.OrdinalIgnoreCase) ? Ask : Automatic;
 }
 
+/// <summary>
+/// What a rule does with a title on its day (#1011). Maintainerr's collection
+/// handler offers the same choices (delete, unmonitor, do nothing, tag); Deluno
+/// is the *arr, so "tag" gives the title a Deluno tag.
+/// </summary>
+public static class RetentionExpiryActions
+{
+    /// <summary>Files to the recycle bin and the title removed. What every rule did before the choice existed.</summary>
+    public const string Delete = "delete";
+
+    /// <summary>Stop monitoring; the files stay, so nothing more is searched for or upgraded.</summary>
+    public const string Unmonitor = "unmonitor";
+
+    /// <summary>Nothing changes; the day is only written down in Activity.</summary>
+    public const string Log = "log";
+
+    /// <summary>The title is given the rule's tag; nothing else changes.</summary>
+    public const string Tag = "tag";
+
+    public static readonly string[] All = [Delete, Unmonitor, Log, Tag];
+
+    public static bool IsKnown(string? value) => All.Contains(value?.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A value read from storage or a request. Absent is <see cref="Delete"/>, which is what a
+    /// rule saved before the choice existed did; a value nobody knows is the gentlest
+    /// choice, <see cref="Log"/>, never a deletion.
+    /// </summary>
+    public static string Normalize(string? value)
+        => string.IsNullOrWhiteSpace(value) ? Delete : All.FirstOrDefault(known => string.Equals(known, value.Trim(), StringComparison.OrdinalIgnoreCase)) ?? Log;
+
+    /// <summary>What will happen on the day, in the words a screen prints.</summary>
+    public static string Describe(string action, string? tag)
+        => Normalize(action) switch
+        {
+            Unmonitor => "It stops being monitored. Its files stay.",
+            Log => "Nothing changes. Deluno only writes it down in Activity.",
+            Tag => $"It is given the tag “{tag}”. Nothing else changes.",
+            _ => "Its files go to the recycle bin and it is removed."
+        };
+}
+
 public static class RetentionLimits
 {
+    public const int MaxTagLength = 60;
+    public const int MinPostponeDays = 1;
+    public const int MaxPostponeDays = 3650;
     public const int DefaultWaitDays = 14;
     public const int MinWaitDays = 1;
     public const int MaxWaitDays = 365;
@@ -39,6 +84,10 @@ public static class RetentionLimits
 /// <param name="WaitDays">How long a title stays Leaving soon before its removal day.</param>
 /// <param name="RemovalMode"><see cref="RetentionRemovalModes"/>.</param>
 /// <param name="CheckIntervalHours">How often the rule is checked.</param>
+/// <param name="ExpiryAction"><see cref="RetentionExpiryActions"/>: what happens on a title's day (#1011).</param>
+/// <param name="ExpiryTag">The tag the <c>tag</c> action gives.</param>
+/// <param name="KeepInDelunoOnly">The rule's Leaving soon list is never made a collection on a media server (#1009).</param>
+/// <param name="DeferWhilePlaying">A removal waits, and is tried at the next check, while the title is being played (#1012).</param>
 public sealed record RetentionRule(
     string Id,
     string Name,
@@ -52,7 +101,11 @@ public sealed record RetentionRule(
     int CheckIntervalHours,
     DateTimeOffset? LastCheckedUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc)
+    DateTimeOffset UpdatedUtc,
+    string ExpiryAction = RetentionExpiryActions.Delete,
+    string? ExpiryTag = null,
+    bool KeepInDelunoOnly = false,
+    bool DeferWhilePlaying = false)
 {
     public string MediaType => RetentionLevels.MediaType(Level);
 
@@ -71,7 +124,11 @@ public sealed record SaveRetentionRuleRequest(
     string? RemovalMode = null,
     int? CheckIntervalHours = null,
     string? MediaType = null,
-    IReadOnlyList<string>? Conditions = null);
+    IReadOnlyList<string>? Conditions = null,
+    string? ExpiryAction = null,
+    string? ExpiryTag = null,
+    bool? KeepInDelunoOnly = null,
+    bool? DeferWhilePlaying = null);
 
 public static class RetentionRunKinds
 {
@@ -110,6 +167,9 @@ public static class RetentionItemOutcomes
     public const string Held = "held";
 
     public const string Removed = "removed";
+
+    /// <summary>Its day came and the rule's action was not a removal: it was recorded, unmonitored or tagged (#1011).</summary>
+    public const string Done = "done";
 
     /// <summary>The first version's "in the preview, no longer matched".</summary>
     public const string Changed = "changed";
@@ -173,7 +233,9 @@ public sealed record RetentionTrial(
     int UndecidedCount,
     IReadOnlyList<string> UnreachableServers,
     IReadOnlyList<string> Problems,
-    IReadOnlyList<RetentionUnmanagedItem> Unmanaged);
+    IReadOnlyList<RetentionUnmanagedItem> Unmanaged,
+    string ExpiryAction = RetentionExpiryActions.Delete,
+    string ExpiryDescription = "");
 
 public static class RetentionMarkStates
 {
@@ -185,6 +247,9 @@ public static class RetentionMarkStates
 
     /// <summary>Not removed on its day: a server could not be asked, or a step could not be answered. Tried again at the next check.</summary>
     public const string Held = "held";
+
+    /// <summary>Its day came and the rule's action, which is not a removal, has been done. It stays until it stops matching or is kept (#1011).</summary>
+    public const string Done = "done";
 }
 
 /// <summary>A title a rule has marked Leaving soon (#494).</summary>
@@ -212,7 +277,26 @@ public sealed record RetentionMark(
 
     /// <summary>What the mark was matched to on each server at its last check (#521).</summary>
     public IReadOnlyList<RetentionServerItem> ServerItems { get; init; } = [];
+
+    /// <summary>
+    /// A person put this title on the list by hand (#1008). The rule's steps no
+    /// longer decide whether it stays; only a keep, or the title leaving
+    /// Deluno, takes it off.
+    /// </summary>
+    public bool Manual { get; init; }
 }
+
+/// <param name="Problem">Why nothing was added, in words for the screen; null when it worked.</param>
+public sealed record RetentionManualAddResult(RetentionMark? Mark, string? Problem);
+
+/// <param name="EntityId">The movie, show, season or episode to add to the rule's list.</param>
+public sealed record AddRetentionTitleRequest(string? EntityId);
+
+/// <param name="Days">How many days to push each removal back.</param>
+public sealed record PostponeRetentionRequest(string? RuleId, IReadOnlyList<string>? EntityIds, int? Days);
+
+/// <summary>A title a person can add to a rule's list by hand.</summary>
+public sealed record RetentionAddable(string EntityId, string Level, string Title, int? Year, bool AlreadyListed, bool Kept);
 
 /// <summary>A marked title's item on one server: what goes in that server's Leaving soon collection.</summary>
 /// <param name="Level">The server item's level: movie, show, season or episode.</param>
