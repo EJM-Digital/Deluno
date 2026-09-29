@@ -385,12 +385,25 @@ public sealed class FilesystemReconciliationService(
     {
         try
         {
-            return !Directory.EnumerateFileSystemEntries(rootPath).Any();
+            return Directory.EnumerateFileSystemEntries(rootPath).All(IsSystemFolder);
         }
         catch (Exception)
         {
             return true;
         }
+    }
+
+    /// <summary>
+    /// A folder the operating system or a volume puts on an otherwise empty mount (an ext4 volume's lost+found,
+    /// the Windows recycle bin and volume information, a Linux trash folder). It holds none of the library.
+    /// </summary>
+    internal static bool IsSystemFolder(string path)
+    {
+        var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return string.Equals(name, "lost+found", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "$RECYCLE.BIN", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith(".Trash-", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DescribeRescan(

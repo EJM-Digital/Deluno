@@ -192,6 +192,13 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
                 <p id="title-folder-description" className="mt-2 text-[length:var(--type-body)] leading-relaxed text-muted-foreground">
                   {panel.result.summary}
                 </p>
+                {panel.result.outcome === "library-unreachable" || panel.result.outcome === "library-unknown" ? (
+                  <p className="mt-3 rounded-lg border border-hairline px-3 py-2 text-sm text-foreground">
+                    {panel.result.outcome === "library-unreachable"
+                      ? "Nothing was changed: no file was marked missing and the title stays monitored. Mount the drive, then rescan."
+                      : "Nothing was changed: no file was marked missing and the title stays monitored. Put the title back in a library, then rescan."}
+                  </p>
+                ) : null}
                 {panel.result.missing.length > 0 ? (
                   <div className="mt-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">No longer on disk</p>
