@@ -97,7 +97,7 @@ public sealed class RetentionEvaluator(
 
         foreach (var condition in conditions.Where(RetentionFieldCatalog.IsRetentionField))
         {
-            var (field, op, value, problem) = Parse(condition);
+            var (field, op, value, problem, _) = Parse(condition);
             if (problem is not null)
             {
                 problems.Add(problem);
@@ -194,7 +194,22 @@ public sealed class RetentionEvaluator(
             switch (answer)
             {
                 case MediaServerAnswer<MediaServerLibrary>.Reported reported:
-                    indexes.Add(new RetentionServerIndex(server, reported.Value));
+                    var library = reported.Value;
+                    // A server's bulk listing leaves episodes' audio tracks out; a rule
+                    // that reads them asks the server for just those (#1003).
+                    if (level == RetentionLevels.Episode &&
+                        client is IMediaServerAudioLanguageReader audio &&
+                        conditions.Any(condition => condition.StartsWith("server.audioLanguages", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var missing = library.Items.Where(item => item.Level == MediaServerItemLevels.Episode && item.AudioLanguages is null).Select(item => item.ServerItemId).ToArray();
+                        var read = missing.Length == 0 ? new Dictionary<string, IReadOnlyList<string>>() : await audio.ReadAudioLanguagesAsync(server, missing, cancellationToken);
+                        if (read.Count > 0)
+                        {
+                            library = library with { Items = library.Items.Select(item => read.TryGetValue(item.ServerItemId, out var languages) ? item with { AudioLanguages = languages } : item).ToArray() };
+                        }
+                    }
+
+                    indexes.Add(new RetentionServerIndex(server, library));
                     break;
                 case MediaServerAnswer<MediaServerLibrary>.Unreachable failed:
                     unreachable.Add(Naming(server, failed.Reason));
@@ -220,7 +235,7 @@ public sealed class RetentionEvaluator(
             unreachable.AddRange(seerrUnreachable);
         }
 
-        var all = await units.ReadAsync(level, cancellationToken);
+        var all = await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions));
         var qualityRanks = qualityModel is null
             ? null
             : (await qualityModel.GetAsync(cancellationToken)).Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase);
@@ -245,8 +260,8 @@ public sealed class RetentionEvaluator(
                 return catalogue[condition].Contains(unit.CatalogueId) ? RetentionAnswer.Yes(sentence) : RetentionAnswer.No(sentence);
             }
 
-            var (field, op, value, _) = Parse(condition);
-            return answers.Answer(unit, field!, op!, value);
+            var (field, op, value, _, person) = Parse(condition);
+            return answers.Answer(unit, field!, op!, value, person);
         }
 
         var outcome = Run(steps, all, Ask);
@@ -400,22 +415,34 @@ public sealed class RetentionEvaluator(
         return new StepOutcome(current ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase), undecided, counts);
     }
 
-    private static (RetentionFieldDefinition? Field, string? Op, string? Value, string? Problem) Parse(string condition)
+    private static (RetentionFieldDefinition? Field, string? Op, string? Value, string? Problem, string? Person) Parse(string condition)
     {
         var parts = condition.Split(':', 3);
         var field = RetentionFieldCatalog.Find(parts[0]);
         if (field is null)
         {
-            return (null, null, null, $"There is no “{parts[0]}” for a rule to use.");
+            return (null, null, null, $"There is no “{RetentionFieldCatalog.BaseId(parts[0])}” for a rule to use.", null);
         }
 
         var op = parts.Length > 1 ? parts[1].Trim().ToLowerInvariant() : string.Empty;
         if (!field.Operators.Contains(op))
         {
-            return (field, null, null, $"“{field.Label}” cannot be compared with “{op}”.");
+            return (field, null, null, $"“{field.Label}” cannot be compared with “{op}”.", null);
         }
 
-        return (field, op, parts.Length > 2 ? parts[2] : null, null);
+        // A per-person field names whose answer it wants: field@name (#1006).
+        var person = RetentionFieldCatalog.PersonOf(parts[0]);
+        if (field.PerPerson && person is null)
+        {
+            return (field, null, null, $"“{field.Label}” needs the person it is asked about.", null);
+        }
+
+        if (!field.PerPerson && parts[0].Contains('@'))
+        {
+            return (field, null, null, $"“{field.Label}” is not asked about one person.", null);
+        }
+
+        return (field, op, parts.Length > 2 ? parts[2] : null, null, person);
     }
 
     private static bool NeedsValue(string op)

@@ -19,7 +19,7 @@ namespace Deluno.Integrations.MediaServers;
 /// recycle bin, so instead it rescans the folder they were in and empties the
 /// section's trash, which is how Plex drops an item whose files are gone.</para>
 /// </summary>
-public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient
+public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient, IMediaServerAudioLanguageReader
 {
     private const int PageSize = 500;
 
@@ -150,11 +150,21 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             return Unreachable(playlists.Problem);
         }
 
+        var sectionKeys = directories.EnumerateArray()
+            .Where(directory => string.Equals(String(directory, "type"), sectionType, StringComparison.OrdinalIgnoreCase))
+            .Select(directory => String(directory, "key"))
+            .OfType<string>()
+            .ToArray();
+        var smartCollections = await SmartCollectionsAsync(connection, sectionKeys, cancellationToken);
+
         var watchlist = await WatchlistAsync(connection, cancellationToken);
         return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary(
             items
                 .Select(item => item with
                 {
+                    SmartCollections = smartCollections is null || item.Level is not (MediaServerItemLevels.Movie or MediaServerItemLevels.Show)
+                        ? null
+                        : smartCollections.TryGetValue(item.ServerItemId, out var smartNames) ? smartNames : [],
                     Playlists = playlists.Names.TryGetValue(item.ServerItemId, out var names) ? names : [],
                     // Plex's watchlist belongs to the account, not the server. If
                     // plex.tv could not be asked, nobody is said to have it listed.
@@ -790,8 +800,115 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             Collections = Names(entry, "Collection", "tag"),
             Ratings = new MediaServerRatings(Critic: Double(entry, "rating"), Audience: Double(entry, "audienceRating")),
             Video = video,
+            AudioLanguages = PlexAudioLanguages(entry),
+            Runtime = Long(entry, "duration") is > 0 and var milliseconds ? TimeSpan.FromMilliseconds(milliseconds) : null,
             Viewers = viewer is null ? [] : [viewer]
         };
+    }
+
+    /// <summary>
+    /// The audio tracks' languages, from the streams of the first file. Null when
+    /// the entry carries no streams (a bulk listing does not), or a track has no tag.
+    /// </summary>
+    internal static IReadOnlyList<string>? PlexAudioLanguages(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("Media", out var media) || media.ValueKind != JsonValueKind.Array || media.GetArrayLength() == 0 ||
+            !media[0].TryGetProperty("Part", out var parts) || parts.ValueKind != JsonValueKind.Array || parts.GetArrayLength() == 0 ||
+            !parts[0].TryGetProperty("Stream", out var streams) || streams.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return MediaServerLanguages.OfAudioTracks(streams.EnumerateArray()
+            .Where(stream => Long(stream, "streamType") == 2)
+            .Select(stream => String(stream, "languageCode") ?? String(stream, "language"))
+            .ToArray());
+    }
+
+    /// <summary>
+    /// Episodes' audio languages, asked for a batch at a time: the bulk listing
+    /// leaves streams out, and only a rule that reads them pays for this.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> ReadAudioLanguagesAsync(
+        MediaServerConnection connection,
+        IReadOnlyList<string> serverItemIds,
+        CancellationToken cancellationToken)
+    {
+        var found = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var batch in serverItemIds.Chunk(50))
+        {
+            var call = await GetAsync(connection, $"/library/metadata/{string.Join(',', batch.Select(Uri.EscapeDataString))}", cancellationToken);
+            using var document = call.Ok ? TryParse(call.Body) : null;
+            if (Container(document) is not { } container ||
+                !container.TryGetProperty("Metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var entry in metadata.EnumerateArray())
+            {
+                if (String(entry, "ratingKey") is { Length: > 0 } key && PlexAudioLanguages(entry) is { } languages)
+                {
+                    found[key] = languages;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Which titles are in which smart collections (#1007), by ratingKey. A smart
+    /// collection is a saved search: the items do not carry its tag, so each
+    /// smart collection's members are read. Null when it could not be read in
+    /// full, which is "not known", never "in none".
+    /// </summary>
+    private async Task<Dictionary<string, List<string>>?> SmartCollectionsAsync(
+        MediaServerConnection connection,
+        IReadOnlyList<string> sectionKeys,
+        CancellationToken cancellationToken)
+    {
+        var members = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var section in sectionKeys)
+        {
+            var smart = new List<(string Key, string Title)>();
+            var listed = await PageAsync(
+                connection,
+                $"/library/sections/{Uri.EscapeDataString(section)}/collections?includeGuids=0",
+                entry =>
+                {
+                    var flag = entry.TryGetProperty("smart", out var value) && (value.ValueKind == JsonValueKind.True || (value.ValueKind == JsonValueKind.String && value.GetString() == "1") || (value.ValueKind == JsonValueKind.Number && value.GetInt32() == 1));
+                    if (flag && String(entry, "ratingKey") is { Length: > 0 } key)
+                    {
+                        smart.Add((key, String(entry, "title") ?? "Smart collection"));
+                    }
+                },
+                cancellationToken);
+            if (listed is not null)
+            {
+                return null;
+            }
+
+            foreach (var collection in smart)
+            {
+                var children = await PageAsync(
+                    connection,
+                    $"/library/collections/{Uri.EscapeDataString(collection.Key)}/children?excludeAllLeaves=1",
+                    entry =>
+                    {
+                        if (String(entry, "ratingKey") is not { Length: > 0 } key) return;
+                        if (!members.TryGetValue(key, out var list)) members[key] = list = [];
+                        if (!list.Contains(collection.Title, StringComparer.OrdinalIgnoreCase)) list.Add(collection.Title);
+                    },
+                    cancellationToken);
+                if (children is not null)
+                {
+                    return null;
+                }
+            }
+        }
+
+        return members;
     }
 
     /// <summary>A film's or show's own page: every person, tag and score.</summary>
@@ -827,6 +944,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             Labels = Names(detail, "Label", "tag") is { Count: > 0 } labels ? labels : item.Labels,
             Collections = Names(detail, "Collection", "tag") is { Count: > 0 } collections ? collections : item.Collections,
             People = people,
+            AudioLanguages = PlexAudioLanguages(detail) ?? item.AudioLanguages,
             Ratings = item.Ratings with { Imdb = imdb, RottenTomatoesCritic = rtCritic, RottenTomatoesAudience = rtAudience, Tmdb = tmdb }
         };
     }

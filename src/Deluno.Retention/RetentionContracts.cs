@@ -160,7 +160,8 @@ public sealed record RetentionField(
     IReadOnlyList<string> Operators,
     IReadOnlyList<string>? Options,
     string Source,
-    IReadOnlyList<string> UnsupportedOn);
+    IReadOnlyList<string> UnsupportedOn,
+    bool PerPerson = false);
 
 /// <summary>What a rule would select right now, for the builder: nothing is saved.</summary>
 public sealed record RetentionTrial(

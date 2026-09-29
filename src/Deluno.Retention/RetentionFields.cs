@@ -74,6 +74,8 @@ public static class RetentionValueKinds
 /// </summary>
 /// <param name="Levels">The levels the field means something at.</param>
 /// <param name="UnsupportedOn">Server kinds that cannot answer it. A rule reading only those is refused.</param>
+/// <param name="PerPerson">The field is asked about one named person: the condition reads <c>field@name</c> (the name percent-encoded), so a rule can say whose (#1006).</param>
+/// <param name="Needs">What Deluno has to read about a title to answer it, so a rule that does not use the field pays nothing.</param>
 public sealed record RetentionFieldDefinition(
     string Id,
     string Label,
@@ -82,9 +84,28 @@ public sealed record RetentionFieldDefinition(
     string ValueKind,
     string Source,
     IReadOnlyList<string> Levels,
-    IReadOnlyList<string>? UnsupportedOn = null)
+    IReadOnlyList<string>? UnsupportedOn = null,
+    bool PerPerson = false,
+    RetentionUnitNeeds Needs = RetentionUnitNeeds.None,
+    IReadOnlyList<string>? Options = null)
 {
     public IReadOnlyList<string> Operators => RetentionOperators.For(ValueKind);
+}
+
+/// <summary>What has to be read about each title before a field can be answered (#1004).</summary>
+[Flags]
+public enum RetentionUnitNeeds
+{
+    None = 0,
+
+    /// <summary>The show's episode list: finales, ranks, missing episodes, a season's monitoring.</summary>
+    Inventory = 1,
+
+    /// <summary>The name of the quality profile, including a per-title choice.</summary>
+    Profile = 2,
+
+    /// <summary>Whether the show has ended.</summary>
+    ShowStatus = 4
 }
 
 public static class RetentionFieldCatalog
@@ -101,6 +122,7 @@ public static class RetentionFieldCatalog
     private const string Storage = "storage";
     private const string Part = "part";
     private const string Requests = "requests";
+    private const string Title = "title";
 
     public static readonly IReadOnlyList<RetentionFieldDefinition> Fields =
     [
@@ -142,6 +164,13 @@ public static class RetentionFieldCatalog
         new("server.resolution", "Video resolution", "2160p, 1080p, 720p, 480p or SD, as the server read the file.", ServerDetails, RetentionValueKinds.Text, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Episode]),
         new("server.bitrate", "File bitrate", "Kilobits a second, as the server read the file.", ServerDetails, RetentionValueKinds.Integer, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Episode]),
         new("server.codec", "Video codec", "As the server read the file: h264, hevc, av1.", ServerDetails, RetentionValueKinds.Text, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Episode]),
+        new("server.audioLanguages", "Audio languages", "The languages of the file's audio tracks, as the server read them (English, French). If any track has no language tag on the server, the answer is left undecided rather than guessed.", ServerDetails, RetentionValueKinds.TextList, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Episode]),
+        new("server.collectionNewestView", "Newest view across its collections", "The most recent time anyone finished anything that shares a collection with it, itself included. One recently watched film keeps the whole set. Undecided when it is in no collection.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Show]),
+        new("server.viewedThroughSeason", "Last viewed, through this season", "The most recent time anyone finished an episode of this season or any earlier one, so nothing is cleared ahead of someone part way through a rewatch. Specials only count against specials.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, [RetentionLevels.Season, RetentionLevels.Episode]),
+        new("server.collectionsWithSmart", "Collections present in, smart ones too", "How many collections it is in, counting the smart collections that pick their members by a saved search. Plex only.", ServerDetails, RetentionValueKinds.Integer, RetentionFieldSources.Server, [RetentionLevels.Movie, RetentionLevels.Show], PlexOnly),
+        new("server.personViews", "Times one person finished it", "How many times the person you name has finished it. Pick the person in the rule. Undecided if the server does not list that person.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere, PerPerson: true),
+        new("server.personWatchMinutes", "Minutes one person has watched it", "Minutes the person you name has spent on finished plays: how many times they finished it, times how long it runs. Undecided if the server does not say how long it runs.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere, PerPerson: true),
+        new("server.personLastViewed", "Last finished by one person", "The most recent time the person you name finished it.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere, PerPerson: true),
 
         new("disk.freeGb", "Free space on the library drive", "Gigabytes free where the library lives. Checked again before anything is removed.", Storage, RetentionValueKinds.Gigabytes, RetentionFieldSources.Disk, Everywhere),
         new("disk.freePercent", "Free space on the library drive (%)", "Percent free where the library lives.", Storage, RetentionValueKinds.Decimal, RetentionFieldSources.Disk, Everywhere),
@@ -152,6 +181,15 @@ public static class RetentionFieldCatalog
         new("seerr.approvalDate", "Approval date", "When a request for it was most recently approved in Seerr.", Requests, RetentionValueKinds.Date, RetentionFieldSources.Seerr, Everywhere),
         new("seerr.isRequested", "Is requested", "Whether anyone has asked for it in Seerr.", Requests, RetentionValueKinds.Boolean, RetentionFieldSources.Seerr, Everywhere),
         new("seerr.timesRequested", "Times requested", "How many requests Seerr holds for it.", Requests, RetentionValueKinds.Integer, RetentionFieldSources.Seerr, Everywhere),
+
+        new("title.qualityProfile", "Quality profile", "The name of the quality profile that looks after it: the one chosen for this title, or its library's.", Title, RetentionValueKinds.Text, RetentionFieldSources.Deluno, Everywhere, Needs: RetentionUnitNeeds.Profile),
+        new("title.monitored", "Monitored", "Whether Deluno is watching for it. A season counts as monitored while any of its episodes is.", Title, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Everywhere, Needs: RetentionUnitNeeds.Inventory),
+        new("title.seriesType", "Show type", "Standard, daily or anime, as Deluno numbers its episodes.", Title, RetentionValueKinds.Text, RetentionFieldSources.Deluno, [RetentionLevels.Show, RetentionLevels.Season, RetentionLevels.Episode], Options: ["standard", "daily", "anime"]),
+        new("title.missingEpisodes", "Missing episodes", "Monitored episodes that have aired and that Deluno has no file for. Specials are left out of a whole show's count.", Title, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Totals, Needs: RetentionUnitNeeds.Inventory),
+        new("title.seasonFinale", "Season finale", "Whether it is, or holds, the last episode of its season, with that episode on disk. Undecided while the season still has episodes to come.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Parts, Needs: RetentionUnitNeeds.Inventory),
+        new("title.seriesFinale", "Series finale", "Whether it is, or holds, the last episode of the last season of a show that has ended or been cancelled, with that episode on disk. Undecided when Deluno does not know whether the show has ended.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, [RetentionLevels.Show, RetentionLevels.Season, RetentionLevels.Episode], Needs: RetentionUnitNeeds.Inventory | RetentionUnitNeeds.ShowStatus),
+        new("title.episodeRank", "Place among the newest episodes", "Where it stands among the episodes of its show that have aired and are on disk, newest first: 1 is the newest. To keep only the newest 5, remove what is at least 6. Specials are left out.", Part, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Episodes, Needs: RetentionUnitNeeds.Inventory),
+        new("title.seasonRank", "Place among the newest seasons", "Where the season stands among the show's seasons with an aired episode on disk, newest first: 1 is the newest. To keep only the newest 2, remove what is at least 3. Specials are left out.", Part, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Seasons, Needs: RetentionUnitNeeds.Inventory),
 
         new("part.seasonNumber", "Season number", "Specials are season 0.", Part, RetentionValueKinds.Integer, RetentionFieldSources.Deluno, Parts),
         new("part.latestSeason", "Latest season", "Whether it is, or is in, the show's newest season.", Part, RetentionValueKinds.Boolean, RetentionFieldSources.Deluno, Parts),
@@ -169,7 +207,21 @@ public static class RetentionFieldCatalog
     ];
 
     public static RetentionFieldDefinition? Find(string id)
-        => Fields.FirstOrDefault(field => string.Equals(field.Id, id, StringComparison.OrdinalIgnoreCase));
+        => Fields.FirstOrDefault(field => string.Equals(field.Id, BaseId(id), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The field's id without the person a per-person field is asked about.</summary>
+    public static string BaseId(string id)
+        => id.IndexOf('@') is var at and >= 0 ? id[..at] : id;
+
+    /// <summary>The person named in a per-person field's id (<c>server.personViews@owner</c>), or null.</summary>
+    public static string? PersonOf(string id)
+        => id.IndexOf('@') is var at and >= 0 && Uri.UnescapeDataString(id[(at + 1)..]).Trim() is { Length: > 0 } person ? person : null;
+
+    /// <summary>Everything the rule's conditions need read about each title.</summary>
+    public static RetentionUnitNeeds NeedsOf(IEnumerable<string> conditions)
+        => conditions.Where(IsRetentionField)
+            .Select(condition => Find(Upgrade(condition).Split(':', 2)[0])?.Needs ?? RetentionUnitNeeds.None)
+            .Aggregate(RetentionUnitNeeds.None, (all, next) => all | next);
 
     public static bool IsRetentionField(string condition)
     {
@@ -177,6 +229,7 @@ public static class RetentionFieldCatalog
         return field.StartsWith("server.", StringComparison.OrdinalIgnoreCase) ||
                field.StartsWith("disk.", StringComparison.OrdinalIgnoreCase) ||
                field.StartsWith("part.", StringComparison.OrdinalIgnoreCase) ||
+               field.StartsWith("title.", StringComparison.OrdinalIgnoreCase) ||
                field.StartsWith("seerr.", StringComparison.OrdinalIgnoreCase);
     }
 

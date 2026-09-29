@@ -26,6 +26,8 @@ export interface RetentionField {
   options: string[] | null;
   source: "deluno" | "server" | "disk" | string;
   unsupportedOn: string[];
+  /** Asked about one named person, so the rule says whose (#1006). */
+  perPerson?: boolean;
 }
 
 /** Mirrors `Deluno.Retention.RetentionStepCount`. */
@@ -82,20 +84,37 @@ export function takesValue(operator: string) {
   return !["set", "unset", "nobody", "anyone", "everyone"].includes(operator);
 }
 
+/**
+ * A condition reads `field:operator:value`. A per-person field carries whose
+ * answer it wants in its id, as `field@name` with the name percent-encoded so
+ * a colon or an @ in it cannot break the condition (#1006).
+ */
 export function parseCondition(raw: string | null | undefined) {
-  const [field = "", operator = "", ...rest] = (raw ?? "").split(":");
-  return { field, operator, value: rest.join(":") };
+  const [fullField = "", operator = "", ...rest] = (raw ?? "").split(":");
+  const at = fullField.indexOf("@");
+  const field = at >= 0 ? fullField.slice(0, at) : fullField;
+  let person = "";
+  if (at >= 0) {
+    try {
+      person = decodeURIComponent(fullField.slice(at + 1));
+    } catch {
+      person = fullField.slice(at + 1);
+    }
+  }
+
+  return { field, person, operator, value: rest.join(":") };
 }
 
-export function encodeCondition(field: string, operator: string, value: string) {
-  return `${field}:${operator}:${takesValue(operator) ? value : ""}`;
+export function encodeCondition(field: string, operator: string, value: string, person?: string | null) {
+  const id = person === null || person === undefined ? field : `${field}@${encodeURIComponent(person)}`;
+  return `${id}:${operator}:${takesValue(operator) ? value : ""}`;
 }
 
 /** A condition in a sentence, for lists and summaries. */
 export function describeCondition(raw: string | null | undefined, fields: RetentionField[]) {
-  const { field: id, operator, value } = parseCondition(raw);
+  const { field: id, person, operator, value } = parseCondition(raw);
   const field = fields.find((item) => item.id === id);
-  const label = field?.label ?? id;
+  const label = `${field?.label ?? id}${person ? ` (${person})` : ""}`;
   const shown = value.split("|").filter(Boolean).join(", ");
   if (!takesValue(operator)) return `${label} ${operatorLabel(field, operator)}`;
   if (field?.valueKind === "boolean") return `${label} is ${shown === "true" ? "yes" : "no"}`;
@@ -108,7 +127,7 @@ function newCondition(op: RetentionStep["op"], fields: RetentionField[]): Retent
   return {
     type: "condition",
     op,
-    condition: first ? encodeCondition(first.id, first.operators[0] ?? "", first.valueKind === "boolean" ? "true" : "") : ""
+    condition: first ? encodeCondition(first.id, first.operators[0] ?? "", first.valueKind === "boolean" ? "true" : "", first.perPerson ? "" : null) : ""
   };
 }
 
@@ -274,11 +293,15 @@ interface RowProps {
 }
 
 function ConditionRow({ step, index, label, fixedOp, fields, serverKinds, onChange, onRemove }: RowProps) {
-  const { field: fieldId, operator, value } = parseCondition(step.condition);
+  const { field: fieldId, person, operator, value } = parseCondition(step.condition);
   const field = fields.find((item) => item.id === fieldId);
   const name = `${label} ${index + 1}`;
   const unanswerable = (item: RetentionField) => item.source === "server" && serverKinds.length > 0 && serverKinds.every((kind) => item.unsupportedOn.includes(kind));
-  const set = (nextField: string, nextOperator: string, nextValue: string) => onChange({ ...step, condition: encodeCondition(nextField, nextOperator, nextValue) });
+  const set = (nextField: string, nextOperator: string, nextValue: string, nextPerson?: string | null) => {
+    const target = fields.find((item) => item.id === nextField);
+    const who = target?.perPerson ? (nextPerson ?? person) : null;
+    onChange({ ...step, condition: encodeCondition(nextField, nextOperator, nextValue, who) });
+  };
 
   return (
     <div className="grid grid-cols-[9rem_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2">
@@ -312,7 +335,20 @@ function ConditionRow({ step, index, label, fixedOp, fields, serverKinds, onChan
         onChange={(event) => set(fieldId, event.target.value, takesValue(event.target.value) ? value : "")}
         options={(field?.operators ?? []).map((item) => ({ value: item, label: operatorLabel(field, item) }))}
       />
-      <ValueInput field={field} operator={operator} value={value} name={name} onChange={(next) => set(fieldId, operator, next)} />
+      {field?.perPerson ? (
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            aria-label={`${name} person`}
+            value={person}
+            onChange={(event) => set(fieldId, operator, value, event.target.value)}
+            placeholder="Whose? Their name on the server"
+            autoComplete="off"
+          />
+          <ValueInput field={field} operator={operator} value={value} name={name} onChange={(next) => set(fieldId, operator, next)} />
+        </div>
+      ) : (
+        <ValueInput field={field} operator={operator} value={value} name={name} onChange={(next) => set(fieldId, operator, next)} />
+      )}
       <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${name.toLowerCase()}`} onClick={onRemove}>
         <Trash2 className="h-3.5 w-3.5" />
       </Button>

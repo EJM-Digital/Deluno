@@ -71,17 +71,19 @@ public sealed class RetentionFieldAnswers(
     private readonly Dictionary<string, (long FreeBytes, long TotalBytes)?> _drives = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyDictionary<string, int> _qualityRanks = qualityRanks ?? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-    public RetentionAnswer Answer(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value)
+    /// <param name="person">Whose answer a per-person field is asked for.</param>
+    public RetentionAnswer Answer(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value, string? person = null)
         => field.Source switch
         {
             RetentionFieldSources.Disk => Disk(unit, field, op, value),
+            RetentionFieldSources.Deluno when field.Id.StartsWith("title.", StringComparison.Ordinal) => Title(unit, field, op, value),
             RetentionFieldSources.Deluno => Part(unit, field, op, value),
             RetentionFieldSources.Seerr => Seerr(unit, field, op, value),
-            _ => Server(unit, field, op, value)
+            _ => Server(unit, field, op, value, person)
         };
 
     // ---------------------------------------------------------------- servers
-    private RetentionAnswer Server(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value)
+    private RetentionAnswer Server(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value, string? person = null)
     {
         var able = servers.Where(index => field.UnsupportedOn?.Contains(index.Server.Kind, StringComparer.OrdinalIgnoreCase) != true).ToArray();
         if (able.Length == 0)
@@ -96,6 +98,13 @@ public sealed class RetentionFieldAnswers(
             // A title the servers do not hold has not been "never watched" -
             // it may simply not have been scanned yet. Nothing is decided on it.
             return RetentionAnswer.CannotSay($"{field.Label}: not on {where}.");
+        }
+
+        // The fields that need more than one item's own facts (#1003, #1006, #1007).
+        var special = field.PerPerson ? OnePerson(unit, field, op, value, person, able, matches) : Special(unit, field, op, value, matches, where);
+        if (special is { } answered)
+        {
+            return answered;
         }
 
         switch (field.ValueKind)
@@ -141,6 +150,124 @@ public sealed class RetentionFieldAnswers(
             {
                 var number = NumberOf(field.Id, matches);
                 return Holds(Number(op, value, number, 1), $"{Lead(field, op, value)}: {(number is null ? "none" : number.Value.ToString("0.#", CultureInfo.InvariantCulture))}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The answer for a field that reads across items or across servers. Null
+    /// means the field is an ordinary one and the generic path answers it.
+    /// </summary>
+    private RetentionAnswer? Special(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value, RetentionServerMatch[] matches, string where)
+    {
+        switch (field.Id)
+        {
+            case "server.audioLanguages":
+            {
+                // Every server that holds it must have said: half an answer is no answer.
+                if (matches.Any(match => match.Item.AudioLanguages is null))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: {where} did not say the language of every audio track.");
+                }
+
+                var names = matches.SelectMany(match => match.Item.AudioLanguages!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                // What is typed is read as the same languages a server's tags are: "fr", "fre" and "French" agree.
+                var wanted = string.Join('|', Values(value).Select(entry => MediaServerLanguages.Name(entry) ?? entry));
+                return Holds(TextList(op, wanted, names), $"{Lead(field, op, wanted)}: {(names.Length == 0 ? "none" : string.Join(", ", names))}");
+            }
+
+            case "server.collectionNewestView":
+            {
+                if (matches.All(match => !match.InCollection))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: it is not in any collection on {where}.");
+                }
+
+                var when = matches.Select(match => match.CollectionNewestView).Max();
+                return Holds(Date(op, value, when), $"{Lead(field, op, value)}: {(when is null ? "never" : when.Value.ToString("d MMM yyyy", CultureInfo.InvariantCulture))}");
+            }
+
+            case "server.viewedThroughSeason":
+            {
+                if (unit.SeasonNumber is not { } season || matches.Any(match => match.ShowEpisodes is null))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: {where} does not list the show's other seasons.");
+                }
+
+                // Specials only count against specials; a numbered season counts itself and every earlier one.
+                bool Through(MediaServerItem episode) => season == 0 ? episode.SeasonNumber == 0 : episode.SeasonNumber is > 0 && episode.SeasonNumber <= season;
+                var when = matches
+                    .SelectMany(match => match.ShowEpisodes!.Where(Through))
+                    .SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played).Select(viewer => viewer.LastPlayedUtc))
+                    .Max();
+                return Holds(Date(op, value, when), $"{Lead(field, op, value)}: {(when is null ? "never" : when.Value.ToString("d MMM yyyy", CultureInfo.InvariantCulture))}");
+            }
+
+            case "server.collectionsWithSmart":
+            {
+                // Smart collections are read separately; a server that could not be
+                // asked for them has not said it is in none.
+                if (matches.Any(match => match.Item.SmartCollections is null))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: {where} could not be asked for its smart collections.");
+                }
+
+                var count = matches.SelectMany(match => match.Item.Collections.Concat(match.Item.SmartCollections!)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+                return Holds(Number(op, value, count, 1), $"{Lead(field, op, value)}: {count}");
+            }
+
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>What one named person has done with it (#1006).</summary>
+    private RetentionAnswer OnePerson(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value, string? person, IReadOnlyList<RetentionServerIndex> able, RetentionServerMatch[] matches)
+    {
+        if (string.IsNullOrWhiteSpace(person))
+        {
+            return RetentionAnswer.CannotSay($"{field.Label}: the rule does not say whose.");
+        }
+
+        // A person the server does not list has not "watched nothing": the
+        // server may simply be a different account, or spell the name another way.
+        var listed = matches.Where(match => match.Users.Contains(person, StringComparer.OrdinalIgnoreCase)).ToArray();
+        if (listed.Length != matches.Length)
+        {
+            return RetentionAnswer.CannotSay($"{field.Label}: {Names(able)} does not list {person}.");
+        }
+
+        // A show or a season is its episodes; a film or an episode is itself.
+        IEnumerable<(MediaServerItem Item, MediaServerViewer? Viewer)> Mine(RetentionServerMatch match)
+            => (match.Episodes.Count > 0 ? match.Episodes : [match.Item])
+                .Select(item => (item, item.Viewers.FirstOrDefault(viewer => string.Equals(viewer.User, person, StringComparison.OrdinalIgnoreCase))));
+
+        var mine = matches.SelectMany(Mine).ToArray();
+        var lead = $"{Lead(field, op, value)} ({person})";
+        switch (field.Id)
+        {
+            case "server.personViews":
+            {
+                var views = mine.Sum(entry => entry.Viewer?.PlayCount ?? 0);
+                return Holds(Number(op, value, views, 1), $"{lead}: {views}");
+            }
+
+            case "server.personWatchMinutes":
+            {
+                var watched = mine.Where(entry => (entry.Viewer?.PlayCount ?? 0) > 0).ToArray();
+                if (watched.Any(entry => entry.Item.Runtime is null))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: {Names(able)} does not say how long it runs.");
+                }
+
+                var minutes = Math.Round(watched.Sum(entry => entry.Viewer!.PlayCount * entry.Item.Runtime!.Value.TotalMinutes));
+                return Holds(Number(op, value, minutes, 1), $"{lead}: {minutes:0}");
+            }
+
+            default:
+            {
+                var when = mine.Where(entry => entry.Viewer is { Played: true }).Select(entry => entry.Viewer!.LastPlayedUtc).Max();
+                return Holds(Date(op, value, when), $"{lead}: {(when is null ? "never" : when.Value.ToString("d MMM yyyy", CultureInfo.InvariantCulture))}");
             }
         }
     }
@@ -340,6 +467,38 @@ public sealed class RetentionFieldAnswers(
             "part.path" => Holds(Text(op, value, part.Path), $"{phrase}: {part.Path ?? "not known"}"),
             "part.cutoffMet" => part.CutoffMet is { } met ? Holds(Boolean(value, met), $"{phrase}: {(met ? "yes" : "no")}") : RetentionAnswer.CannotSay($"{field.Label}: not known."),
             "part.monitored" => part.Monitored is { } monitored ? Holds(Boolean(value, monitored), $"{phrase}: {(monitored ? "yes" : "no")}") : RetentionAnswer.CannotSay($"{field.Label}: not known."),
+            _ => RetentionAnswer.CannotSay($"{field.Label} is not something Deluno can answer.")
+        };
+    }
+
+    // ------------------------------------------------------ Deluno's own facts
+    /// <summary>
+    /// The fields Deluno answers from what it holds about a title (#1003 to #1014).
+    /// A fact it does not have is "cannot say", never "no".
+    /// </summary>
+    private static RetentionAnswer Title(RetentionUnit unit, RetentionFieldDefinition field, string op, string? value)
+    {
+        var facts = unit.Facts;
+        var phrase = Lead(field, op, value);
+        RetentionAnswer Unknown() => RetentionAnswer.CannotSay($"{field.Label}: not known.");
+        RetentionAnswer Flag(bool? fact) => fact is { } known ? Holds(Boolean(value, known), $"{phrase}: {(known ? "yes" : "no")}") : Unknown();
+        RetentionAnswer Count(int? fact) => fact is { } known ? Holds(Number(op, value, known, 1), $"{phrase}: {known.ToString(CultureInfo.InvariantCulture)}") : Unknown();
+
+        if (facts is null)
+        {
+            return Unknown();
+        }
+
+        return field.Id switch
+        {
+            "title.qualityProfile" => string.IsNullOrWhiteSpace(facts.QualityProfile) ? Unknown() : Holds(Text(op, value, facts.QualityProfile), $"{phrase}: {facts.QualityProfile}"),
+            "title.seriesType" => string.IsNullOrWhiteSpace(facts.SeriesType) ? Unknown() : Holds(Text(op, value, facts.SeriesType), $"{phrase}: {facts.SeriesType}"),
+            "title.monitored" => Flag(facts.Monitored),
+            "title.seasonFinale" => Flag(facts.SeasonFinale),
+            "title.seriesFinale" => Flag(facts.SeriesFinale),
+            "title.missingEpisodes" => Count(facts.MissingEpisodes),
+            "title.episodeRank" => Count(facts.EpisodeRank),
+            "title.seasonRank" => Count(facts.SeasonRank),
             _ => RetentionAnswer.CannotSay($"{field.Label} is not something Deluno can answer.")
         };
     }
