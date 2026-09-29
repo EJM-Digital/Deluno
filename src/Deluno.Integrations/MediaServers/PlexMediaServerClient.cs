@@ -79,6 +79,8 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             ? String(myPlex, "username")
             : null;
         account = string.IsNullOrWhiteSpace(account) ? "Plex account" : account;
+        // Only when the server says this is the one and only account on it is "nobody watched it" a claim about everyone (#1074).
+        var accountIsEveryone = await AccountIsTheOnlyOneAsync(connection, cancellationToken);
 
         // Movies are type 1; shows, seasons and episodes 2, 3 and 4.
         var types = mediaType == "tv" ? new[] { 2, 3, 4 } : [1];
@@ -107,7 +109,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                             return;
                         }
 
-                        if (ToItem(entry, mediaType, key, account) is { } item)
+                        if (ToItem(entry, mediaType, key, account, accountIsEveryone) is { } item)
                         {
                             items.Add(item);
                         }
@@ -174,6 +176,28 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                 })
                 .ToArray(),
             [account]));
+    }
+
+    /// <summary>
+    /// Whether the token's account is the only real account on this server (the server's own /accounts list, which
+    /// only its owner can read). A library listing reports one account's plays; with shared or managed users on the
+    /// server it says nothing about theirs. Anything short of a clear "one account" (refused, unreadable, more than
+    /// one) is false, so a rule about nobody, everyone or a count of zero stays undecided (#1074).
+    /// </summary>
+    private async Task<bool> AccountIsTheOnlyOneAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    {
+        var call = await GetAsync(connection, "/accounts", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (Container(document) is not { } container ||
+            !container.TryGetProperty("Account", out var accounts) ||
+            accounts.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        // Id 0 (nameless) is the server's own system account, not a person.
+        var people = accounts.EnumerateArray().Count(entry => Int(entry, "id") is > 0 && !string.IsNullOrWhiteSpace(String(entry, "name")));
+        return people == 1;
     }
 
     private static MediaServerAnswer<MediaServerLibrary> Unreachable(string reason)
@@ -696,7 +720,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         return separator > 0 ? path[..separator] : path;
     }
 
-    private static MediaServerItem? ToItem(JsonElement entry, string mediaType, string sectionKey, string account)
+    private static MediaServerItem? ToItem(JsonElement entry, string mediaType, string sectionKey, string account, bool accountIsEveryone = false)
     {
         if (String(entry, "ratingKey") is not { Length: > 0 } ratingKey)
         {
@@ -780,7 +804,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             tvdb,
             paths,
             added,
-            new MediaServerWatchState(played, [], lastViewed, PerUserKnown: false),
+            new MediaServerWatchState(played, [], lastViewed, PerUserKnown: accountIsEveryone),
             sectionKey)
         {
             Level = level,
