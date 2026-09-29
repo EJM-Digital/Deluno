@@ -28,6 +28,10 @@ public static class SearchEndpointRouteBuilderExtensions
         // user looks for is never simply missing.
         endpoints.MapGet("/api/trackers", (Trackers.ITrackerDefinitionCatalog catalog) => Results.Ok(catalog.List()));
 
+        // #986: where the bundled definitions come from and under what terms,
+        // so the notice travels with them and is readable from the app.
+        endpoints.MapGet("/api/trackers/definitions/notice", () => Results.Text(Trackers.TrackerDefinitionCatalog.BundledNotice(), "text/markdown"));
+
         // #756: the scheduled/manual tracker-definition update's own state --
         // on/off, cadence, and what its last pass did.
         endpoints.MapGet("/api/trackers/definitions/update-check", async (

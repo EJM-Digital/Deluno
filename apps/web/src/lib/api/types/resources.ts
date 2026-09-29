@@ -938,6 +938,8 @@ export interface TrackerDefinitionSummary {
   mayNeedCloudflareHelp: boolean;
   /** Why the engine cannot run it, or null when it can. */
   unsupported: string | null;
+  /** bundled (the built-in Prowlarr site list), deluno (a Deluno-written file kept over the list's) or data-folder (a newer update or a file put there). */
+  origin: string;
 }
 
 export interface TrackerSettingSummary {

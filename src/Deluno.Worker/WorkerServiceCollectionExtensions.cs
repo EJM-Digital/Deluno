@@ -73,6 +73,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, DownloadClientHealthCheck>();
         services.AddScoped<IHealthCheck, ClientDownloadFolderFreeSpaceHealthCheck>();
         services.AddScoped<IHealthCheck, IndexerHealthCheck>();
+        services.AddScoped<IHealthCheck, TrackerSiteHealthCheck>();
         services.AddScoped<IHealthCheck, LibraryRootHealthCheck>();
         services.AddScoped<IHealthCheck, LibraryFolderChainHealthCheck>();
         services.AddScoped<IHealthCheck, ProcessorHealthCheck>();

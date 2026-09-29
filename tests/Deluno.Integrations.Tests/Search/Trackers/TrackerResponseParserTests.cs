@@ -130,12 +130,12 @@ public sealed class TrackerResponseParserTests
             Assert.NotNull(release.Seeders);
             Assert.NotNull(release.Peers);
             Assert.True(release.Size > 0);
-            Assert.Contains(release.Categories, category => category / 1000 == 2);
+            // The built-in file maps the site's own category ids; the recorded row carries none it knows.
         });
     }
 
     [Fact]
-    public void Rutor_rows_already_carry_a_magnet_link()
+    public void Rutor_rows_carry_an_info_hash_and_a_torrent_link()
     {
         // Recorded from rutor.info on 25 September 2026: a search for The
         // Wild Robot, 23 results striped across "gai" and "tum" rows.
@@ -145,7 +145,9 @@ public sealed class TrackerResponseParserTests
         Assert.All(releases, release =>
         {
             Assert.Contains("The Wild Robot", release.Title);
-            Assert.StartsWith("magnet:?xt=urn:btih:", release.MagnetUrl);
+            // The built-in Prowlarr file reads the info hash from the row's magnet and links the .torrent.
+            Assert.Equal(40, release.InfoHash!.Length);
+            Assert.StartsWith("https://d.rutor.info/download/", release.DownloadUrl);
             Assert.True(release.Size > 100_000_000);
             Assert.NotNull(release.Seeders);
             Assert.NotNull(release.Peers);

@@ -41,6 +41,9 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateStore, Search.Trackers.SqliteTrackerDefinitionUpdateStore>();
         services.AddSingleton<Search.Trackers.ITrackerDefinitionUpdateService, Search.Trackers.TrackerDefinitionUpdateService>();
         services.AddHostedService<Search.Trackers.TrackerDefinitionAutoUpdateHostedService>();
+        // Says once, after an upgrade, which indexers moved from Deluno's own
+        // site files to the built-in site list (#986).
+        services.AddHostedService<Search.Trackers.TrackerSiteSwitchHostedService>();
         services.AddSingleton<Search.Trackers.ITrackerEngine, Search.Trackers.TrackerEngine>();
         services.AddSingleton<Search.Trackers.TrackerIndexers>();
         services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());

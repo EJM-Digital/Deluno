@@ -1,3 +1,4 @@
+# KEPT over the built-in Prowlarr file of the same id (#986): this one uses EZTV's JSON API by IMDb id (exact for a film or show); the built-in file only searches by keyword on the HTML site, which sits behind Cloudflare.
 # Deluno's own definition (#606), written from EZTV's public JSON API
 # (eztvx.to/api/get-torrents), not copied from any indexer manager.
 id: eztv

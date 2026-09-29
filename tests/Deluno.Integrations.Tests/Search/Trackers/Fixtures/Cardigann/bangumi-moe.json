@@ -1,0 +1,31 @@
+{
+  "page": 1,
+  "count": 2,
+  "torrents": [
+    {
+      "_id": "6501aa",
+      "category_tag_id": "549ef207fe682f7549f1ea90",
+      "title": "[Sub Group] Example Show - 01 [1080p][HEVC]",
+      "introduction": "<p><img src=\"https://bangumi.moe/poster/1.jpg\" /></p>",
+      "infoHash": "0123456789abcdef0123456789abcdef01234567",
+      "category_tag": { "locale": { "en": "Anime" } },
+      "publish_time": "2026-09-20T06:10:15.772Z",
+      "size": "1.4 GB",
+      "downloads": 55,
+      "seeders": 30,
+      "leechers": 4
+    },
+    {
+      "_id": "6501ab",
+      "category_tag_id": "549ef207fe682f7549f1ea90",
+      "title": "[Sub Group] Example Show - 02 [1080p][HEVC]",
+      "introduction": "",
+      "infoHash": "fedcba9876543210fedcba9876543210fedcba98",
+      "category_tag": { "locale": { "en": "Anime" } },
+      "publish_time": "2026-09-21T06:10:15.772Z",
+      "downloads": 12,
+      "seeders": 8,
+      "leechers": 1
+    }
+  ]
+}

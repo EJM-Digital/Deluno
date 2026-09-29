@@ -60,6 +60,34 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_definition_identical_to_the_bundled_copy_is_not_written_a_second_time()
+    {
+        var (service, _, activity, source, _, _) = Build();
+        var (id, bundledYaml) = TrackerDefinitionCatalog.Bundled().First(item => item.Id == "uindex");
+        source.Definitions.Add(new RemoteTrackerDefinition(id, bundledYaml.ReplaceLineEndings("\r\n")));
+        source.Definitions.Add(new RemoteTrackerDefinition("newtracker", ValidYaml("newtracker")));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Equal(["newtracker"], state.UpdatedTrackerIds);
+        Assert.False(File.Exists(Path.Combine(dataRoot, "trackers", "uindex.yml")));
+        Assert.Single(activity.Recorded);
+    }
+
+    [Fact]
+    public async Task A_site_Deluno_keeps_its_own_file_for_is_not_replaced_by_the_repositorys_copy()
+    {
+        var (service, _, _, source, catalog, _) = Build();
+        source.Definitions.Add(new RemoteTrackerDefinition("eztv", ValidYaml("eztv") + "\n# from the repository\n"));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Empty(state.UpdatedTrackerIds);
+        Assert.False(File.Exists(Path.Combine(dataRoot, "trackers", "eztv.yml")));
+        Assert.Equal(TrackerDefinitionOrigins.Deluno, catalog.List().Single(item => item.Id == "eztv").Origin);
+    }
+
+    [Fact]
     public async Task Update_now_runs_even_when_the_scheduled_switch_is_off()
     {
         var (service, store, _, source, _, _) = Build();
