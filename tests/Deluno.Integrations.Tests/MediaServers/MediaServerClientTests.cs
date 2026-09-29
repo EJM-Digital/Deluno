@@ -219,6 +219,33 @@ public sealed class MediaServerClientTests
         Assert.Contains("Sintel.mkv", body, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("""{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"}]}}""", true)]
+    [InlineData("""{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"},{"id":2,"name":"ben"}]}}""", false)]
+    [InlineData("""{"MediaContainer":{}}""", false)]
+    [InlineData("not json", false)]
+    [InlineData(null, false)]
+    public async Task Plex_says_the_account_covers_everyone_only_when_it_is_the_only_real_account_on_the_server(string? accountsBody, bool everyone)
+    {
+        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.Host == "discover.provider.plex.tv"
+            ? Json("""{"MediaContainer":{"totalSize":0}}""")
+            : request.RequestUri!.AbsolutePath switch
+        {
+            "/library/metadata/101" => Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"101"}]}}"""),
+            "/playlists" => Json("""{"MediaContainer":{"totalSize":0}}"""),
+            "/library/sections" => Json("""{"MediaContainer":{"Directory":[{"key":"1","type":"movie"}]}}"""),
+            "/myplex/account" => Json("""{"MyPlex":{"username":"jampat"}}"""),
+            "/accounts" => accountsBody is null ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Json(accountsBody),
+            "/library/sections/1/all" => Json("""{"MediaContainer":{"totalSize":1,"Metadata":[{"ratingKey":"101","type":"movie","title":"Sintel","year":2010,"viewCount":1}]}}"""),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        }));
+
+        var answer = await client.ListItemsAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), "movies", CancellationToken.None);
+
+        var library = Assert.IsType<MediaServerAnswer<MediaServerLibrary>.Reported>(answer).Value;
+        Assert.Equal(everyone, Assert.Single(library.Items).Watch.PerUserKnown);
+    }
+
     [Fact]
     public async Task Plex_reads_ids_files_scores_and_one_account_watch_state()
     {

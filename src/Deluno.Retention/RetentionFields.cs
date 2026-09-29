@@ -117,6 +117,11 @@ public static class RetentionFieldCatalog
     private static readonly IReadOnlyList<string> Parts = [RetentionLevels.Season, RetentionLevels.Episode];
     private static readonly IReadOnlyList<string> PlexOnly = [MediaServerKinds.Jellyfin, MediaServerKinds.Emby];
 
+    /// <summary>
+    /// Plex's library listing is one account's watching. Said on every field it touches, in plain words (#1074).
+    /// </summary>
+    private const string PlexAccountNote = " On Plex this is the connected account only, so a rule about nobody, everyone or none is left undecided unless that is the only account on the server.";
+
     private const string Watching = "watching";
     private const string ServerDetails = "server";
     private const string Storage = "storage";
@@ -126,22 +131,22 @@ public static class RetentionFieldCatalog
 
     public static readonly IReadOnlyList<RetentionFieldDefinition> Fields =
     [
-        new("server.watchedBy", "Watched by", "Who has finished it. A show or season counts once every episode in it has been.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
-        new("server.watchedBySinceAdded", "Watched by, since added", "Who has finished it, counting only plays after it joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
-        new("server.timesViewed", "Times viewed", "How many times it has been finished, added up across people.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
-        new("server.playAttempts", "Play attempts (unfinished)", "People who started it and stopped part way.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
-        new("server.lastViewed", "Last viewed (finished)", "The most recent time anyone finished it.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
-        new("server.lastPlayed", "Last played (finished or not)", "The most recent time anyone played it at all, whether or not they finished.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
-        new("server.favouritedBy", "Favourited by", "Who marked it a favourite.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
-        new("server.watchlistedBy", "Watchlisted by", "Who has it on their watchlist.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, PlexOnly),
-        new("server.userRating", "User rating", "The highest score anyone gave it, out of ten.", Watching, RetentionValueKinds.Rating, RetentionFieldSources.Server, Everywhere),
-        new("server.allEpisodesSeenBy", "All episodes seen by", "Who has finished every episode.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
-        new("server.allEpisodesSeenBySinceAdded", "All episodes seen by, since added", "Who has finished every episode, counting only plays after the show joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
-        new("server.watchers", "Watchers", "Who has finished at least one episode.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
-        new("server.watchersSinceAdded", "Watchers, since added", "Who has finished at least one episode, counting only plays after the show joined Deluno.", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
-        new("server.watchedEpisodes", "Watched episodes", "Episodes somebody has finished.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
-        new("server.totalViews", "Total views", "Every finished viewing of every episode, added up.", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
-        new("server.newestEpisodeViewed", "Newest episode view", "The most recent time anyone played an episode.", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Totals),
+        new("server.watchedBy", "Watched by", "Who has finished it. A show or season counts once every episode in it has been." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
+        new("server.watchedBySinceAdded", "Watched by, since added", "Who has finished it, counting only plays after it joined Deluno." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
+        new("server.timesViewed", "Times viewed", "How many times it has been finished, added up across people." + PlexAccountNote + "", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
+        new("server.playAttempts", "Play attempts (unfinished)", "People who started it and stopped part way." + PlexAccountNote + "", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Everywhere),
+        new("server.lastViewed", "Last viewed (finished)", "The most recent time anyone finished it." + PlexAccountNote + "", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
+        new("server.lastPlayed", "Last played (finished or not)", "The most recent time anyone played it at all, whether or not they finished." + PlexAccountNote + "", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
+        new("server.favouritedBy", "Favourited by", "Who marked it a favourite." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere),
+        new("server.watchlistedBy", "Watchlisted by", "Who has it on their watchlist." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Everywhere, PlexOnly),
+        new("server.userRating", "User rating", "The highest score anyone gave it, out of ten." + PlexAccountNote + "", Watching, RetentionValueKinds.Rating, RetentionFieldSources.Server, Everywhere),
+        new("server.allEpisodesSeenBy", "All episodes seen by", "Who has finished every episode." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.allEpisodesSeenBySinceAdded", "All episodes seen by, since added", "Who has finished every episode, counting only plays after the show joined Deluno." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.watchers", "Watchers", "Who has finished at least one episode." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.watchersSinceAdded", "Watchers, since added", "Who has finished at least one episode, counting only plays after the show joined Deluno." + PlexAccountNote + "", Watching, RetentionValueKinds.Users, RetentionFieldSources.Server, Totals),
+        new("server.watchedEpisodes", "Watched episodes", "Episodes somebody has finished." + PlexAccountNote + "", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
+        new("server.totalViews", "Total views", "Every finished viewing of every episode, added up." + PlexAccountNote + "", Watching, RetentionValueKinds.Integer, RetentionFieldSources.Server, Totals),
+        new("server.newestEpisodeViewed", "Newest episode view", "The most recent time anyone played an episode." + PlexAccountNote + "", Watching, RetentionValueKinds.Date, RetentionFieldSources.Server, Totals),
 
         new("server.added", "Added to the server", "When the server first saw it.", ServerDetails, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),
         new("server.releaseDate", "Release date", "Release date, or an episode's air date, as the server has it.", ServerDetails, RetentionValueKinds.Date, RetentionFieldSources.Server, Everywhere),

@@ -100,6 +100,14 @@ public sealed class RetentionFieldAnswers(
             return RetentionAnswer.CannotSay($"{field.Label}: not on {where}.");
         }
 
+        // A Plex library listing reports one account's plays. "Nobody", "everyone" or "none" then only says
+        // the connected account did not, so it decides nothing (#1074).
+        if (!field.PerPerson && SaysNobodyElseDid(field, op) &&
+            matches.FirstOrDefault(match => !AccountsKnown(match)) is { } accountOnly)
+        {
+            return RetentionAnswer.CannotSay($"{field.Label}: {accountOnly.Server.Name} only reports what the connected Plex account has watched, so Deluno cannot say nobody else has.");
+        }
+
         // The fields that need more than one item's own facts (#1003, #1006, #1007).
         var special = field.PerPerson ? OnePerson(unit, field, op, value, person, able, matches) : Special(unit, field, op, value, matches, where);
         if (special is { } answered)
@@ -284,6 +292,29 @@ public sealed class RetentionFieldAnswers(
             }
         }
     }
+
+    private static bool AccountsKnown(RetentionServerMatch match)
+        => match.Item.Watch.PerUserKnown
+            && match.Episodes.All(episode => episode.Watch.PerUserKnown)
+            && (match.ShowEpisodes?.All(episode => episode.Watch.PerUserKnown) ?? true);
+
+    /// <summary>
+    /// Whether this test on a watching field is a claim about people beyond the ones listed: none, all, a count
+    /// that is at most a number, or a date that is old or never. "At least", "recently" and "anyone" hold whatever
+    /// else others did, so they stay decided.
+    /// </summary>
+    private static bool SaysNobodyElseDid(RetentionFieldDefinition field, string op)
+        => field.Id switch
+        {
+            "server.watchedBy" or "server.watchedBySinceAdded" or "server.favouritedBy" or "server.watchlistedBy"
+                or "server.watchers" or "server.watchersSinceAdded" or "server.allEpisodesSeenBy" or "server.allEpisodesSeenBySinceAdded"
+                => op is RetentionOperators.Nobody or RetentionOperators.Everyone or "notin",
+            "server.timesViewed" or "server.totalViews" or "server.playAttempts" or "server.watchedEpisodes" or "server.userRating"
+                => op is not ("min" or "set"),
+            "server.lastViewed" or "server.lastPlayed" or "server.newestEpisodeViewed" or "server.collectionNewestView" or "server.viewedThroughSeason"
+                => op is "unset" or "beyond" or "before",
+            _ => false
+        };
 
     /// <summary>A field a rule can ask "since added" instead of all-time (#834).</summary>
     private static bool IsSinceAdded(string fieldId) => fieldId.EndsWith("SinceAdded", StringComparison.Ordinal);

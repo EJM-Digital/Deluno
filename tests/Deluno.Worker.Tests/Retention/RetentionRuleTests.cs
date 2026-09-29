@@ -1130,6 +1130,119 @@ public sealed class RetentionRuleTests
         _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ------------------------------------------------- a Plex account is not everyone (#1074)
+
+    private void OneAccountOnlyServer()
+        => ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653") with { Watch = new MediaServerWatchState(false, [], null, PerUserKnown: false) },
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", playedBy: ["owner"], last: Now.AddDays(-3)) with { Watch = new MediaServerWatchState(true, ["owner"], Now.AddDays(-3), PerUserKnown: false) });
+
+    [Theory]
+    [InlineData("server.watchedBy:nobody:")]
+    [InlineData("server.watchedBy:notin:ben")]
+    [InlineData("server.watchedBy:everyone:")]
+    [InlineData("server.favouritedBy:nobody:")]
+    [InlineData("server.timesViewed:max:0")]
+    [InlineData("server.timesViewed:is:0")]
+    [InlineData("server.lastViewed:unset:")]
+    [InlineData("server.lastViewed:beyond:30")]
+    public async Task On_a_server_that_reports_one_account_only_a_claim_about_nobody_else_decides_nothing(string condition)
+    {
+        OneAccountOnlyServer();
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep(condition)), CancellationToken.None);
+
+        Assert.Empty(evaluation.Matched);
+        Assert.Contains(evaluation.Candidates, item => item.EntityId == "m1" && item.Outcome == RetentionItemOutcomes.Undecided);
+        Assert.Contains("only reports what the connected Plex account", evaluation.Candidates.First(item => item.EntityId == "m1").Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("server.watchedBy:anyone:", "m2")]
+    [InlineData("server.watchedBy:in:owner", "m2")]
+    [InlineData("server.timesViewed:min:1", "m2")]
+    [InlineData("server.lastViewed:within:30", "m2")]
+    public async Task On_a_server_that_reports_one_account_a_title_that_account_watched_is_still_found(string condition, string expected)
+    {
+        OneAccountOnlyServer();
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep(condition)), CancellationToken.None);
+
+        Assert.Equal(expected, Assert.Single(evaluation.Matched).EntityId);
+    }
+
+    [Fact]
+    public async Task A_server_that_reports_every_user_still_decides_watched_by_nobody()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653"));
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep("server.watchedBy:nobody:")), CancellationToken.None);
+
+        Assert.Equal("m1", Assert.Single(evaluation.Matched).EntityId);
+    }
+
+    // ------------------------------------------------- lows from the integrity review (#1072)
+
+    [Fact]
+    public async Task A_mark_that_starts_being_held_is_said_once_in_Activity_and_not_again_while_it_stays_held()
+    {
+        ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", genres: ["Comedy"]),
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", genres: ["Comedy"]));
+        var rule = Rule(Keep("server.genres:notin:Horror")) with { WaitDays = 30 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        // Nosferatu drops off the server: the rule can no longer tell, so its mark is held.
+        ServerAnswers(Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", genres: ["Comedy"]));
+        var feed = new Mock<IActivityFeedRepository>();
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!, item => item.EntityId == "m1").Outcome);
+        Said(feed, "retention.check", "held", Times.Once());
+
+        var again = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.DoesNotContain(again.Items!, item => item.Outcome == RetentionItemOutcomes.Held);
+    }
+
+    [Fact]
+    public async Task Switching_a_rule_to_delete_starts_the_wait_of_marks_already_leaving_again_from_today()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 3, ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "old" });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(Now.AddDays(3), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
+
+        // Its promised day has come and gone before the rule is switched, so an unchanged mark would be removed at once.
+        _clock.Now = Now.AddDays(4);
+        var deleting = rule with { ExpiryAction = RetentionExpiryActions.Delete, ExpiryTag = null };
+        var feed = new Mock<IActivityFeedRepository>();
+        Assert.Equal(1, await Service(feed).RestartWaitForDeleteAsync(deleting, CancellationToken.None));
+
+        Assert.Equal(Now.AddDays(7), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
+        Said(feed, "retention.restarted", "starts again from today", Times.Once());
+        await Service().CheckAsync(deleting, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Checks_of_one_rule_run_one_at_a_time()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule);
+        var active = 0;
+        var most = 0;
+        _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>())).Returns(async () =>
+        {
+            most = Math.Max(most, Interlocked.Increment(ref active));
+            await Task.Delay(40);
+            Interlocked.Decrement(ref active);
+            return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary([Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40))], ["owner", "ben"]));
+        });
+
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Service().CheckAsync(rule, "manual", CancellationToken.None)));
+
+        Assert.Equal(1, most);
+    }
+
     // ------------------------------------------------- playing on another server, by show and numbers (#1071)
 
     private static MediaServerPlay EpisodePlay(string? showTmdb, int? season, int? episode, string? showName = "Breaking Bad", string? showTvdb = null)
