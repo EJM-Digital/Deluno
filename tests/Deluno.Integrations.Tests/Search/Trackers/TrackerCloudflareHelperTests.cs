@@ -101,15 +101,58 @@ public sealed class TrackerCloudflareHelperTests
         Assert.Null(FlareSolverrCloudflareHelper.Read(JsonSerializer.Deserialize<FlareSolverrCloudflareHelper.Answer>("""{"status":"error","message":"timeout"}"""), new Uri("https://1337x.to/")));
     }
 
-    private static (TrackerEngine Engine, TrackerConnection Connection) Connect(CloudflareSite site, ICloudflareHelper? helper)
+    /// <summary>
+    /// #1027: the helper at its address is not running, so its connection is
+    /// refused. That is the helper's fault, not the tracker's: the message
+    /// names the helper, and the second mirror is not tried through the same
+    /// dead helper.
+    /// </summary>
+    [Fact]
+    public async Task A_helper_that_is_not_running_is_named_and_no_other_mirror_is_tried()
     {
-        var definition = TrackerDefinition.Parse("""
+        var site = new CloudflareSite(honoursClearance: true);
+        var (engine, connection) = Connect(site, new UnavailableHelper(), secondMirror: true);
+
+        var failure = await Assert.ThrowsAsync<CloudflareHelperUnavailableException>(
+            () => engine.SearchAsync(connection, new TrackerQuery("x"), CancellationToken.None));
+
+        Assert.Equal(
+            "cloudflared.example is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Settings.",
+            failure.Message);
+        Assert.DoesNotContain("could not be reached", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(["cloudflared.example"], site.Hosts);
+    }
+
+    private sealed class UnavailableHelper : ICloudflareHelper
+    {
+        public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken, string? helperUrl = null) => Task.FromResult(true);
+
+        public Task<CloudflareSolution?> FetchAsync(Uri url, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+            => throw new CloudflareHelperUnavailableException(
+                url.Host,
+                "http://127.0.0.1:8191",
+                new HttpRequestException("refused", new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused)));
+
+        public Task<CloudflareSolution?> PostAsync(Uri url, IReadOnlyDictionary<string, string> formData, CancellationToken cancellationToken, CloudflareHelperProxy? proxy = null, string? helperUrl = null)
+            => FetchAsync(url, cancellationToken, proxy, helperUrl);
+
+        public Task DestroySessionAsync(string host, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task DestroyAllSessionsAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReconcileSessionsAsync(IReadOnlyCollection<string> activeHosts, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private static (TrackerEngine Engine, TrackerConnection Connection) Connect(CloudflareSite site, ICloudflareHelper? helper, bool secondMirror = false)
+    {
+        var definition = TrackerDefinition.Parse($$$"""
             id: cloudflared
             name: Cloudflared
             type: public
             encoding: UTF-8
             links:
               - https://cloudflared.example/
+            {{{(secondMirror ? "  - https://cloudflared-two.example/" : "")}}}
             caps:
               categorymappings:
                 - {id: 1, cat: Movies, desc: Movies}
@@ -147,8 +190,12 @@ public sealed class TrackerCloudflareHelperTests
     {
         public string? LastUserAgent { get; private set; }
 
+        /// <summary>The host of each request the site was asked, in order.</summary>
+        public List<string> Hosts { get; } = [];
+
         public HttpResponseMessage Answer(HttpRequestMessage request, CookieContainer cookies)
         {
+            Hosts.Add(request.RequestUri!.Host);
             LastUserAgent = request.Headers.UserAgent.ToString();
             var cleared = cookies.GetCookies(request.RequestUri!)["cf_clearance"] is not null && LastUserAgent == HelperUserAgent;
             return honoursClearance && cleared

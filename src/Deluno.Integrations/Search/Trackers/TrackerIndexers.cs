@@ -155,6 +155,12 @@ public sealed class TrackerIndexers(
             // as Deluno's own request never reaching one (#971, #1027): it
             // needs a Cloudflare helper set up, not a network fix, and must
             // never be counted like an outage or a bad release.
+            // The helper itself not answering is a setup problem too (#1027).
+            if (exception is CloudflareHelperUnavailableException || exception.InnerException is CloudflareHelperUnavailableException)
+            {
+                return ("degraded", exception.Message, "configuration");
+            }
+
             if (exception.InnerException is TrackerBlockedException)
             {
                 return ("degraded", exception.Message, "blocked");

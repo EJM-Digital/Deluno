@@ -55,21 +55,9 @@ public static class SearchEndpointRouteBuilderExtensions
                 return Results.Ok(new { healthy = false, message = "Enter the helper's address, such as http://127.0.0.1:8191." });
             }
 
-            try
-            {
-                var http = httpClientFactory.CreateClient(Trackers.FlareSolverrCloudflareHelper.HttpClientName);
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                using var response = await http.GetAsync(address, timeout.Token);
-                var body = await response.Content.ReadAsStringAsync(timeout.Token);
-                return response.IsSuccessStatusCode
-                    ? Results.Ok(new { healthy = true, message = body.Contains("FlareSolverr is ready", StringComparison.OrdinalIgnoreCase) ? $"FlareSolverr answered at {address.Authority}." : $"A helper answered at {address.Authority}." })
-                    : Results.Ok(new { healthy = false, message = $"{address.Authority} answered HTTP {(int)response.StatusCode}." });
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-            {
-                return Results.Ok(new { healthy = false, message = $"Nothing answered at {address.Authority}: {ex.Message}" });
-            }
+            var http = httpClientFactory.CreateClient(Trackers.FlareSolverrCloudflareHelper.HttpClientName);
+            var (healthy, message) = await Trackers.CloudflareHelperProbe.CheckAsync(http, address, cancellationToken);
+            return Results.Ok(new { healthy, message });
         });
 
         var indexerScoreboard = endpoints.MapGroup("/api/indexers");
