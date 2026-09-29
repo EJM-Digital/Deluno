@@ -1261,6 +1261,10 @@ export interface DownloadQueueItem {
   lastActivityUtc?: string | null;
   /** #811: when the client finished this item. Null while still in progress, or where the client does not report it. */
   completionUtc?: string | null;
+  /** #1026: this download's place in the client's own queue, 1 being next to start (Transmission and Deluge). Null where the client reports none. */
+  queuePosition?: number | null;
+  /** #1026: this download's own seed limits in plain words (Transmission and Deluge). Null where the client says nothing. */
+  seedLimit?: string | null;
 }
 
 /**

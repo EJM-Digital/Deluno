@@ -346,7 +346,22 @@ public sealed record DownloadQueueItem(
     /// other client leaves it false, since nothing else in what Deluno reads
     /// from them distinguishes this from ordinary downloading.
     /// </summary>
-    bool IsFetchingMetadata = false);
+    bool IsFetchingMetadata = false,
+    /// <summary>
+    /// #1026: this item's place in the client's own queue, 1 being next to
+    /// start (Transmission's <c>queuePosition</c>, Deluge's <c>queue</c>, both
+    /// counted from 0 by the client). Null where the client reports none
+    /// (Deluge says -1 for a torrent that is not queued) or does not expose it.
+    /// </summary>
+    int? QueuePosition = null,
+    /// <summary>
+    /// #1026: this item's own seed limits in plain words, when the client
+    /// holds ones specific to the torrent ("Stops seeding at ratio 2 or after
+    /// 30 minutes with no uploading"), or a plain statement that it follows
+    /// the client's overall limits or never stops. Null where the client says
+    /// nothing about it.
+    /// </summary>
+    string? SeedLimit = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

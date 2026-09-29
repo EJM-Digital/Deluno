@@ -1364,6 +1364,12 @@ export function QueuePage() {
                 {openQueueItem.availability != null ? (
                   <Fact label="Availability" value={`${openQueueItem.availability.toFixed(2)} (1.0 is one full copy across all peers)`} />
                 ) : null}
+                {openQueueItem.queuePosition != null ? (
+                  <Fact label="Place in queue" value={`${openQueueItem.queuePosition} (1 is next to start)`} />
+                ) : null}
+                {openQueueItem.seedLimit ? (
+                  <Fact label="Seed limit" value={openQueueItem.seedLimit} />
+                ) : null}
                 {openQueueItem.lastActivityUtc ? (
                   <Fact label="Last activity" value={formatAgo(openQueueItem.lastActivityUtc, preferences)} />
                 ) : null}

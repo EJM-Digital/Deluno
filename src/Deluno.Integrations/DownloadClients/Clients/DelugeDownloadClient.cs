@@ -85,7 +85,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // seen as met for Deluge. tracker_status: the field that actually
         // carries a ban/unregistered/offline tracker error; message is blanked
         // whenever it reads "OK" and says nothing else useful.
-        var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path", "move_completed", "move_completed_path", "ratio", "seeding_time", "tracker_status", "private" }, new Dictionary<string, object>()], 2);
+        var payload = new DelugeRequest("web.update_ui", [new[] { "name", "state", "progress", "download_payload_rate", "upload_payload_rate", "eta", "total_size", "total_done", "num_peers", "time_added", "label", "message", "save_path", "move_completed", "move_completed_path", "ratio", "seeding_time", "tracker_status", "private", "queue", "stop_at_ratio", "stop_ratio", "remove_at_ratio" }, new Dictionary<string, object>()], 2);
         var response = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<DelugeUpdateResult>>(http, new Uri(baseUri, "json"), payload, cancellationToken);
         var queue = (response?.Result?.Torrents ?? new Dictionary<string, DelugeTorrent>()).Select(pair =>
         {
@@ -114,7 +114,12 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
                 // catches the phrasing a tracker actually sent back.
                 TrackerStatus: DownloadClientHelpers.LooksUnregistered(item.TrackerStatus)
                     ? DownloadTrackerStatuses.Unregistered
-                    : string.IsNullOrWhiteSpace(item.TrackerStatus) ? DownloadTrackerStatuses.Unknown : DownloadTrackerStatuses.Ok);
+                    : string.IsNullOrWhiteSpace(item.TrackerStatus) ? DownloadTrackerStatuses.Unknown : DownloadTrackerStatuses.Ok,
+                // #1026: Deluge's own queue field counts from 0 and is -1 for a
+                // torrent that is not queued. stop_at_ratio/stop_ratio are the
+                // torrent's own seed limit (copied from the global one when added).
+                QueuePosition: item.Queue is >= 0 ? item.Queue + 1 : null,
+                SeedLimit: SeedLimitText.ForDeluge(item.StopAtRatio, item.StopRatio, item.RemoveAtRatio));
         })
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
@@ -394,5 +399,5 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     private sealed record DelugeUpdateResult([property: JsonPropertyName("torrents")] IReadOnlyDictionary<string, DelugeTorrent>? Torrents);
     private sealed record DelugeFilesResult([property: JsonPropertyName("files")] IReadOnlyList<DelugeFileEntry>? Files);
     private sealed record DelugeFileEntry([property: JsonPropertyName("path")] string? Path);
-    private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath, [property: JsonPropertyName("move_completed")] bool? MoveCompleted = null, [property: JsonPropertyName("move_completed_path")] string? MoveCompletedPath = null, [property: JsonPropertyName("ratio")] double? Ratio = null, [property: JsonPropertyName("seeding_time")] double? SeedingTime = null, [property: JsonPropertyName("tracker_status")] string? TrackerStatus = null, [property: JsonPropertyName("private")] bool? Private = null);
+    private sealed record DelugeTorrent([property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("state")] string? State, [property: JsonPropertyName("progress")] double? Progress, [property: JsonPropertyName("download_payload_rate")] double? DownloadPayloadRate, [property: JsonPropertyName("upload_payload_rate")] double? UploadPayloadRate, [property: JsonPropertyName("eta")] double? Eta, [property: JsonPropertyName("total_size")] double? TotalSize, [property: JsonPropertyName("total_done")] double? TotalDone, [property: JsonPropertyName("num_peers")] int? NumPeers, [property: JsonPropertyName("time_added")] double? TimeAdded, [property: JsonPropertyName("label")] string? Label, [property: JsonPropertyName("message")] string? Message, [property: JsonPropertyName("save_path")] string? SavePath, [property: JsonPropertyName("move_completed")] bool? MoveCompleted = null, [property: JsonPropertyName("move_completed_path")] string? MoveCompletedPath = null, [property: JsonPropertyName("ratio")] double? Ratio = null, [property: JsonPropertyName("seeding_time")] double? SeedingTime = null, [property: JsonPropertyName("tracker_status")] string? TrackerStatus = null, [property: JsonPropertyName("private")] bool? Private = null, [property: JsonPropertyName("queue")] int? Queue = null, [property: JsonPropertyName("stop_at_ratio")] bool? StopAtRatio = null, [property: JsonPropertyName("stop_ratio")] double? StopRatio = null, [property: JsonPropertyName("remove_at_ratio")] bool? RemoveAtRatio = null);
 }

@@ -744,4 +744,21 @@ describe("download drawer: availability, last activity and completion (#970)", (
     expect(screen.queryByText("Last activity")).not.toBeInTheDocument();
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });
+
+  // #1026: Transmission and Deluge report a queue place and per-torrent seed limits.
+  it("shows the place in the client queue and the seed limit when the client reports them", () => {
+    openDrawerWith(queueItem({ queuePosition: 3, seedLimit: "Stops seeding at ratio 2 or after 30 minutes with no uploading." }));
+
+    expect(screen.getByText("Place in queue")).toBeInTheDocument();
+    expect(screen.getByText(/3 \(1 is next to start\)/)).toBeInTheDocument();
+    expect(screen.getByText("Seed limit")).toBeInTheDocument();
+    expect(screen.getByText(/Stops seeding at ratio 2/)).toBeInTheDocument();
+  });
+
+  it("hides the queue place and seed limit when the client reports neither", () => {
+    openDrawerWith(queueItem({ queuePosition: null, seedLimit: null }));
+
+    expect(screen.queryByText("Place in queue")).not.toBeInTheDocument();
+    expect(screen.queryByText("Seed limit")).not.toBeInTheDocument();
+  });
 });
