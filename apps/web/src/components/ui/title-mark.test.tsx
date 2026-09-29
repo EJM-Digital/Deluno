@@ -118,16 +118,23 @@ describe("the subtitle bar's legend", () => {
     expect(heading?.className).toContain("text-foreground");
   });
 
-  it("shines its gold, the same as everywhere else gold is drawn", () => {
-    // One gold in one treatment wherever "Deluno has finished" is said. This
-    // swatch was deliberately flat while the bar beside it was painted from the
-    // semantic colour; both are the leaf now, so both shine.
+  it("uses neutral swatches, not the status mark colours", () => {
+    // The subtitle bar on a card is neutral (#1048), never red — red means
+    // something is needed. The legend matches the card by using neutral
+    // colours for all three segments instead of the mark colours (red/green/gold).
     const { container } = render(<TitleMarkBarLegend type="show" />);
-    const gold = swatches(container)
-      .find((strip) => strip.style.backgroundColor.includes(TITLE_MARK_PAINT.covered.surface));
+    const swatches_ = swatches(container);
 
-    expect(gold, "no gold swatch in the legend").toBeTruthy();
-    expect(gold!.className).toContain(TITLE_MARK_PRESENTATION.covered.sheen);
+    expect(swatches_).toHaveLength(TITLE_BAR_SEGMENTS.length);
+    for (const strip of swatches_) {
+      // All swatches use the neutral colour
+      expect(strip.style.backgroundColor).toContain("--mark-idle");
+      // Not the status colours: no gold leaf treatment, no mark colours
+      expect(strip.className).not.toContain(TITLE_MARK_PRESENTATION.covered.sheen);
+      expect(strip.style.backgroundColor).not.toContain(TITLE_MARK_PAINT.covered.surface);
+      expect(strip.style.backgroundColor).not.toContain(TITLE_MARK_PAINT.upgrade.surface);
+      expect(strip.style.backgroundColor).not.toContain(TITLE_MARK_PAINT.missing.surface);
+    }
   });
 
   it("names nothing a poster cannot draw", () => {
