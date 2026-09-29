@@ -451,6 +451,9 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// <summary>Update quality profile for a series</summary>
     Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken);
 
+    /// <summary>The per-show quality profile <see cref="UpdateQualityProfileAsync"/> writes; null when the show follows its library (#1014).</summary>
+    Task<string?> GetQualityProfileIdAsync(string seriesId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Changes the series' "monitor new episodes" preset (#801) - whether an
     /// episode this series discovers on a future refresh comes out monitored.

@@ -4327,6 +4327,20 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<string?> GetQualityProfileIdAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT quality_profile_id FROM series_entries WHERE id = @id LIMIT 1;";
+        AddParameter(command, "@id", seriesId);
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is DBNull or null ? null : value.ToString();
+    }
+
     public async Task<bool> UpdateQualityProfileAsync(string seriesId, string qualityProfileId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

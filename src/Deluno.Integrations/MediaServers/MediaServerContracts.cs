@@ -143,6 +143,34 @@ public sealed record MediaServerItem(
 
     /// <summary>Who has it on a watchlist. Null where the server has no watchlist to ask.</summary>
     public IReadOnlyList<string>? WatchlistedBy { get; init; }
+
+    /// <summary>
+    /// The languages of the file's audio tracks (#1003), as the server's own
+    /// tags say them. Null when the server did not say, or when any audio track
+    /// has no language tag: a partial list must never read as a complete one.
+    /// </summary>
+    public IReadOnlyList<string>? AudioLanguages { get; init; }
+
+    /// <summary>How long it runs, when the server says (#1006). Null is "not known".</summary>
+    public TimeSpan? Runtime { get; init; }
+
+    /// <summary>
+    /// The smart collections it is in (#1007). Null where the server has no
+    /// smart collections or could not be asked; empty is a real "in none".
+    /// </summary>
+    public IReadOnlyList<string>? SmartCollections { get; init; }
+}
+
+/// <summary>
+/// A server that can name the audio languages of episodes its bulk listing
+/// leaves out (#1003). Best effort: an episode it could not read stays unknown.
+/// </summary>
+public interface IMediaServerAudioLanguageReader
+{
+    Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> ReadAudioLanguagesAsync(
+        MediaServerConnection connection,
+        IReadOnlyList<string> serverItemIds,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>

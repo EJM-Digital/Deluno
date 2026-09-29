@@ -40,7 +40,7 @@ public static class RetentionModule
             var kind = RetentionFieldCatalog.CatalogueKind(at);
             var retention = RetentionFieldCatalog.Fields
                 .Where(field => field.Levels.Contains(at))
-                .Select(field => new RetentionField(field.Id, field.Label, field.Hint, field.Group, field.ValueKind, field.Operators, null, field.Source, field.UnsupportedOn ?? []));
+                .Select(field => new RetentionField(field.Id, field.Label, field.Hint, field.Group, field.ValueKind, field.Operators, field.Options, field.Source, field.UnsupportedOn ?? [], field.PerPerson));
             // A season or episode is asked its show's catalogue questions.
             var catalogue = CatalogueFilterFields.For(kind).Select(field => new RetentionField(
                 field.Id,

@@ -10,7 +10,17 @@ public sealed record RetentionServerMatch(
     MediaServerConnection Server,
     MediaServerItem Item,
     IReadOnlyList<MediaServerItem> Episodes,
-    IReadOnlyList<string> Users);
+    IReadOnlyList<string> Users)
+{
+    /// <summary>For a season or an episode: every episode of its show on this server (#1007).</summary>
+    public IReadOnlyList<MediaServerItem>? ShowEpisodes { get; init; }
+
+    /// <summary>For a film or show in a collection: the newest finished view of anything sharing one with it; null when it is in none or nothing was viewed.</summary>
+    public DateTimeOffset? CollectionNewestView { get; init; }
+
+    /// <summary>Whether it is in any (ordinary) collection, so "no view" can be told from "no collection".</summary>
+    public bool InCollection => Item.Collections.Count > 0;
+}
 
 /// <summary>
 /// One server's library, indexed so each unit finds its item (#494).
@@ -43,7 +53,34 @@ public sealed class RetentionServerIndex
                 _episodesByPath.TryAdd(NormalizePath(path), episode);
             }
         }
+
+        _collectionViews = new Lazy<Dictionary<string, DateTimeOffset?>>(() =>
+        {
+            var views = new Dictionary<string, DateTimeOffset?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var title in _titles.Where(title => title.Collections.Count > 0))
+            {
+                var viewed = NewestFinishedView(title, title.Level == MediaServerItemLevels.Show ? _episodesByShow[title.ServerItemId] : []);
+                foreach (var name in title.Collections)
+                {
+                    views[name] = views.TryGetValue(name, out var seen) && seen > viewed ? seen : viewed ?? seen;
+                }
+            }
+
+            return views;
+        });
     }
+
+    /// <summary>
+    /// Every collection's name to the newest finished view of anything in it
+    /// (#1007): a title's own, and for a show, any of its episodes'.
+    /// </summary>
+    private readonly Lazy<Dictionary<string, DateTimeOffset?>> _collectionViews;
+
+    internal static DateTimeOffset? NewestFinishedView(MediaServerItem item, IEnumerable<MediaServerItem> episodes)
+        => item.Viewers.Where(viewer => viewer.Played).Concat(episodes.SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played)))
+            .Select(viewer => viewer.LastPlayedUtc)
+            .Append(item.Watch.PlayedByAnyone ? item.Watch.LastPlayedUtc : null)
+            .Max();
 
     public MediaServerConnection Server => _server;
 
@@ -61,7 +98,12 @@ public sealed class RetentionServerIndex
             case RetentionLevels.Show:
             {
                 var title = FindTitle(unit);
-                return title is null ? null : new RetentionServerMatch(_server, title, unit.Level == RetentionLevels.Show ? _episodesByShow[title.ServerItemId].ToArray() : [], _library.Users);
+                return title is null
+                    ? null
+                    : new RetentionServerMatch(_server, title, unit.Level == RetentionLevels.Show ? _episodesByShow[title.ServerItemId].ToArray() : [], _library.Users)
+                    {
+                        CollectionNewestView = title.Collections.Count == 0 ? null : title.Collections.Select(name => _collectionViews.Value.GetValueOrDefault(name)).Max()
+                    };
             }
 
             case RetentionLevels.Season:
@@ -84,7 +126,7 @@ public sealed class RetentionServerIndex
                 var episodes = _episodesByShow[show.ServerItemId]
                     .Where(item => string.Equals(item.SeasonServerItemId, season.ServerItemId, StringComparison.OrdinalIgnoreCase) || item.SeasonNumber == unit.SeasonNumber)
                     .ToArray();
-                return new RetentionServerMatch(_server, season, episodes, _library.Users);
+                return new RetentionServerMatch(_server, season, episodes, _library.Users) { ShowEpisodes = _episodesByShow[show.ServerItemId].ToArray() };
             }
 
             default:
@@ -93,7 +135,10 @@ public sealed class RetentionServerIndex
                 {
                     if (_episodesByPath.TryGetValue(NormalizePath(path), out var byPath))
                     {
-                        return new RetentionServerMatch(_server, byPath, [], _library.Users);
+                        return new RetentionServerMatch(_server, byPath, [], _library.Users)
+                        {
+                            ShowEpisodes = byPath.ShowServerItemId is null ? null : _episodesByShow[byPath.ShowServerItemId].ToArray()
+                        };
                     }
                 }
 
@@ -101,7 +146,7 @@ public sealed class RetentionServerIndex
                 var episode = show is null
                     ? null
                     : _episodesByShow[show.ServerItemId].FirstOrDefault(item => item.SeasonNumber == unit.SeasonNumber && item.EpisodeNumber == unit.EpisodeNumber);
-                return episode is null ? null : new RetentionServerMatch(_server, episode, [], _library.Users);
+                return episode is null ? null : new RetentionServerMatch(_server, episode, [], _library.Users) { ShowEpisodes = _episodesByShow[show!.ServerItemId].ToArray() };
             }
         }
     }

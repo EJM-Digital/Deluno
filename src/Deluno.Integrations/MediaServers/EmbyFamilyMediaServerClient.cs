@@ -604,9 +604,18 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         // The first source is the file the server plays; its video stream is
         // the picture a person sees.
         var video = MediaServerVideo.None;
+        IReadOnlyList<string>? audioLanguages = null;
         if (item.TryGetProperty("MediaSources", out var sources) && sources.ValueKind == JsonValueKind.Array && sources.GetArrayLength() > 0)
         {
             var source = sources[0];
+            if (source.TryGetProperty("MediaStreams", out var allStreams) && allStreams.ValueKind == JsonValueKind.Array)
+            {
+                audioLanguages = MediaServerLanguages.OfAudioTracks(allStreams.EnumerateArray()
+                    .Where(entry => String(entry, "Type") == "Audio")
+                    .Select(entry => String(entry, "Language"))
+                    .ToArray());
+            }
+
             var stream = source.TryGetProperty("MediaStreams", out var streams) && streams.ValueKind == JsonValueKind.Array
                 ? streams.EnumerateArray().FirstOrDefault(entry => String(entry, "Type") == "Video")
                 : default;
@@ -646,7 +655,9 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             People = Names(item, "People"),
             Labels = tags,
             Ratings = new MediaServerRatings(Critic: critic, Audience: community, RottenTomatoesCritic: critic, Tmdb: community),
-            Video = video
+            Video = video,
+            AudioLanguages = audioLanguages,
+            Runtime = Long(item, "RunTimeTicks") is > 0 and var ticks ? TimeSpan.FromTicks(ticks) : null
         };
     }
 
