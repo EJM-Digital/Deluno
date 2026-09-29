@@ -29,23 +29,30 @@ public static class SystemInstallationInfoEndpointRouteBuilderExtensions
     {
         api.MapGet("/system/info", (
                 IOptions<StoragePathOptions> storage,
-                TimeProvider timeProvider) =>
-        {
-            var process = Process.GetCurrentProcess();
-            var startUtc = new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero);
-            var dataRoot = Path.GetFullPath(storage.Value.DataRoot);
-
-            return Results.Ok(new SystemInstallationInfoResponse(
-                ProcessStartUtc: startUtc,
-                UptimeSeconds: (long)Math.Max(0, (timeProvider.GetUtcNow() - startUtc).TotalSeconds),
-                OsDescription: RuntimeInformation.OSDescription,
-                RuntimeVersion: RuntimeInformation.FrameworkDescription,
-                DatabaseType: "SQLite",
-                DatabaseLocation: dataRoot,
-                AppDataPath: dataRoot));
-        })
+                TimeProvider timeProvider) => Results.Ok(Describe(storage.Value.DataRoot, timeProvider)))
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         return api;
+    }
+
+    /// <summary>
+    /// The one reading of "how long has Deluno been running, on what, storing
+    /// where", shared by <c>/api/system/info</c> and the combined
+    /// <c>/api/system/status</c> (#1020) so the two cannot disagree.
+    /// </summary>
+    public static SystemInstallationInfoResponse Describe(string dataRootPath, TimeProvider timeProvider)
+    {
+        var process = Process.GetCurrentProcess();
+        var startUtc = new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero);
+        var dataRoot = Path.GetFullPath(dataRootPath);
+
+        return new SystemInstallationInfoResponse(
+            ProcessStartUtc: startUtc,
+            UptimeSeconds: (long)Math.Max(0, (timeProvider.GetUtcNow() - startUtc).TotalSeconds),
+            OsDescription: RuntimeInformation.OSDescription,
+            RuntimeVersion: RuntimeInformation.FrameworkDescription,
+            DatabaseType: "SQLite",
+            DatabaseLocation: dataRoot,
+            AppDataPath: dataRoot);
     }
 }

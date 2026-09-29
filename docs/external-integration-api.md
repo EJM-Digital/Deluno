@@ -375,6 +375,31 @@ Commands are remembered in memory for the last 100 asked since Deluno started.
 | `400` | No `name`, or a name Deluno does not run. |
 | `403` | The key lacks the scope in the table. |
 
+### System status (one address for a dashboard)
+
+`GET /api/system/status` (`read` scope) is what a dashboard such as Homepage
+or Homarr asks. Its first block carries the field names of Radarr's and
+Sonarr's `GET /api/v3/system/status` (checked against `SystemResource` in
+Radarr.Api.V3): `appName`, `instanceName`, `version` (for example
+`1.0.0-rc.23`), `buildTime`, `isDebug`, `isProduction`, `isUserInteractive`,
+`startupPath`, `appData`, `osName`, `osVersion`, `isNetCore`, `isLinux`,
+`isOsx`, `isWindows`, `isDocker`, `branch` (the update channel),
+`databaseType`, `databaseVersion`, `authentication`, `urlBase`,
+`runtimeVersion`, `runtimeName` and `startTime`. Radarr's `isAdmin`,
+`mode`, `migrationVersion` and `package*` fields have no Deluno counterpart and
+are not sent. Added for Deluno: `uptimeSeconds`, and three small blocks that
+used to need three calls:
+
+| Block | Fields | Same numbers as |
+|---|---|---|
+| `health` | `status` (`healthy` or `attention`), `failedChecks`, `openAlerts` | `/api/monitoring/dashboard` |
+| `updates` | `channel`, `updateAvailable`, `latestVersion`, `state` | `/api/updates/status` |
+| `tasks` | `total`, `running`, `failing` | `/api/system/tasks` |
+
+`startTime`, `uptimeSeconds` and `appData` are read by the same code as
+`GET /api/system/info` (the System screen's "This installation" card), so the
+two cannot disagree.
+
 ## Refine Before Import
 
 When a Deluno library is configured for **Refine before import**, an external processor can clean the completed download without bypassing Deluno's destination resolver, import mover, rename rules, or metadata refresh. The normal path is processor-agnostic: the processor writes below the library's configured processed-output root using the completed download's final source-folder name, and Deluno matches that stable path component to its durable hand-off.
