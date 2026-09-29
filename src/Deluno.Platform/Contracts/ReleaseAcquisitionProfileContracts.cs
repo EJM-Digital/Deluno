@@ -39,7 +39,23 @@ public sealed record ReleaseProfileItem(
     /// profile before either of its bypass toggles is turned on, and every
     /// profile that existed before this column did.
     /// </summary>
-    bool BypassIfHighestQuality = false);
+    bool BypassIfHighestQuality = false,
+    /// <summary>
+    /// #994: every tag this rule applies to. A title carrying any one of them
+    /// matches, the way a Radarr/Sonarr profile linked to several tags does.
+    /// Empty means the rule has no tag (the default rule). <see cref="TagName"/>
+    /// stays the first of these for older callers.
+    /// </summary>
+    IReadOnlyList<string>? TagNames = null,
+    /// <summary>#995: place in the list of rules; the lowest number is the top rule.</summary>
+    int Position = 0)
+{
+    /// <summary>The tags this rule applies to, whichever way they were stored.</summary>
+    public IReadOnlyList<string> AppliesToTags
+        => TagNames is { Count: > 0 }
+            ? TagNames
+            : string.IsNullOrWhiteSpace(TagName) ? [] : [TagName.Trim()];
+}
 
 public sealed record CreateReleaseProfileRequest(
     string? Name,
@@ -52,7 +68,8 @@ public sealed record CreateReleaseProfileRequest(
     IReadOnlyList<ReleaseTermScore>? PreferredTerms,
     bool? Enabled = null,
     IReadOnlyList<string>? IndexerIds = null,
-    bool? BypassIfHighestQuality = null);
+    bool? BypassIfHighestQuality = null,
+    IReadOnlyList<string>? TagNames = null);
 
 /// <summary>
 /// PUT is a full edit of the profile. Empty strings and an empty term list
@@ -70,7 +87,31 @@ public sealed record UpdateReleaseProfileRequest(
     IReadOnlyList<ReleaseTermScore>? PreferredTerms,
     bool? Enabled = null,
     IReadOnlyList<string>? IndexerIds = null,
-    bool? BypassIfHighestQuality = null);
+    bool? BypassIfHighestQuality = null,
+    IReadOnlyList<string>? TagNames = null);
+
+/// <summary>
+/// #995: how several matching release rules are used. <c>combine</c> is what
+/// Deluno has always done - every matching rule applies at once. <c>first-match</c>
+/// is the Radarr/Sonarr delay-profile way: the rules sit in a list, the top rule
+/// that matches the title's tags is the only one used, and the rule with no tag
+/// is the default that applies when none of the others match. A missing setting
+/// means <c>combine</c>, so an install that upgrades keeps behaving as before.
+/// </summary>
+public static class ReleaseRuleModes
+{
+    public const string Combine = "combine";
+    public const string FirstMatch = "first-match";
+    public const string SettingKey = "releaseRules.mode";
+
+    public static string Normalize(string? value)
+        => string.Equals(value?.Trim(), FirstMatch, StringComparison.OrdinalIgnoreCase) ? FirstMatch : Combine;
+}
+
+public sealed record ReleaseRuleSettings(string Mode);
+
+/// <summary>The new order of the rules, top rule first. Ids left out keep their place after these.</summary>
+public sealed record ReorderReleaseProfilesRequest(IReadOnlyList<string>? Ids);
 
 public static class AcquisitionSearchKinds
 {

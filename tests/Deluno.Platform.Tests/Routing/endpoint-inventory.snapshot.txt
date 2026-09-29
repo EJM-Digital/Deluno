@@ -182,6 +182,7 @@ GET /api/recycle-bin/
 GET /api/recycle-bin/cleanup/preview
 GET /api/recycle-bin/settings
 GET /api/release-profiles/
+GET /api/release-profiles/mode
 GET /api/release-profiles/{id}
 GET /api/retention/collections
 GET /api/retention/fields
@@ -542,6 +543,8 @@ PUT /api/quality-model/
 PUT /api/quality-profiles/order
 PUT /api/quality-profiles/{id}
 PUT /api/recycle-bin/settings
+PUT /api/release-profiles/mode
+PUT /api/release-profiles/order
 PUT /api/release-profiles/{id}
 PUT /api/retention/rules/{id}
 PUT /api/security/allowed-hosts

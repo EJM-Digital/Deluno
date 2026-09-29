@@ -7,7 +7,8 @@
  * can reach a download client.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { TagPicker } from "../components/app/tag-picker";
+import { ArrowDown, ArrowUp } from "lucide-react";
+import { TagPicker, joinTagList, parseTagList } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -25,7 +26,7 @@ import { configurationNavAreas } from "../components/app/settings-shell";
 import { toast } from "../components/shell/toaster";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { authedFetch } from "../lib/use-auth";
-import { fetchJson, type IndexerItem, type PlatformSettingsSnapshot, type ReleaseProfileItem, type ReleaseTermScore } from "../lib/api";
+import { fetchJson, type IndexerItem, type PlatformSettingsSnapshot, type ReleaseProfileItem, type ReleaseRuleMode, type ReleaseTermScore } from "../lib/api";
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -38,15 +39,22 @@ const PROPER_REPACK_OPTIONS = [
   { value: "do-not-prefer", label: "Do not prefer", description: "Turns this off entirely. Leave Proper/Repack handling to your own Custom Formats." }
 ];
 
+const RULE_MODE_OPTIONS: { value: ReleaseRuleMode; label: string; description: string }[] = [
+  { value: "combine", label: "Use every rule that matches", description: "A title takes the longest wait from all its matching rules, and every must-contain and must-not-contain term from all of them." },
+  { value: "first-match", label: "Use only the first rule that matches", description: "Rules are listed in order. A title uses the highest rule whose tags it carries, and nothing else. A rule with no tag is the default for titles no other rule matches." }
+];
+
 interface LoaderData {
   profiles: ReleaseProfileItem[];
   indexers: IndexerItem[];
   settings: PlatformSettingsSnapshot;
+  ruleMode?: ReleaseRuleMode;
 }
 
 interface ProfileForm {
   name: string;
-  tagName: string;
+  /** Comma-separated tag names this rule applies to; blank makes it the default rule. */
+  tags: string;
   preferredProtocol: string;
   usenetDelayMinutes: string;
   torrentDelayMinutes: string;
@@ -61,12 +69,55 @@ interface ProfileForm {
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
 
 export async function settingsReleaseRulesLoader(): Promise<LoaderData> {
-  const [profiles, indexers, settings] = await Promise.all([
+  const [profiles, indexers, settings, mode] = await Promise.all([
     fetchJson<ReleaseProfileItem[]>("/api/release-profiles"),
     fetchJson<IndexerItem[]>("/api/indexers"),
-    fetchJson<PlatformSettingsSnapshot>("/api/settings")
+    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
+    fetchJson<{ mode: ReleaseRuleMode }>("/api/release-profiles/mode").catch(() => ({ mode: "combine" as ReleaseRuleMode }))
   ]);
-  return { profiles, indexers, settings };
+  return { profiles, indexers, settings, ruleMode: mode.mode };
+}
+
+function RuleModeCard({ mode, onChanged }: { mode: ReleaseRuleMode; onChanged: () => void }) {
+  const [value, setValue] = useState<ReleaseRuleMode>(mode);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "error">("idle");
+
+  useEffect(() => setValue(mode), [mode]);
+
+  async function change(next: ReleaseRuleMode) {
+    setValue(next);
+    setSaveState("saving");
+    try {
+      const response = await authedFetch("/api/release-profiles/mode", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: next })
+      });
+      if (!response.ok) throw new Error("not saved");
+      setSaveState("idle");
+      onChanged();
+    } catch {
+      setValue(mode);
+      setSaveState("error");
+    }
+  }
+
+  return (
+    <ListCard title="When more than one rule matches" count="How a title's rules are used">
+      <div className="grid gap-3 p-[var(--card-pad-x)]">
+        <Select
+          aria-label="When more than one rule matches"
+          value={value}
+          onChange={(event) => void change(event.target.value as ReleaseRuleMode)}
+          options={RULE_MODE_OPTIONS.map(({ value: optionValue, label }) => ({ value: optionValue, label }))}
+        />
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          {RULE_MODE_OPTIONS.find((option) => option.value === value)?.description}
+        </p>
+        {saveState === "error" ? <p className="text-[length:var(--type-caption)] text-destructive">Could not save. Try again.</p> : null}
+      </div>
+    </ListCard>
+  );
 }
 
 function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) {
@@ -105,8 +156,9 @@ function ProperRepackCard({ settings }: { settings: PlatformSettingsSnapshot }) 
 }
 
 export function SettingsReleaseRulesPage() {
-  const { profiles, indexers, settings } = useLoaderData() as LoaderData;
+  const { profiles, indexers, settings, ruleMode = "combine" } = useLoaderData() as LoaderData;
   const revalidator = useRevalidator();
+  const [dragId, setDragId] = useState<string | null>(null);
   const [mode, setMode] = useState<DrawerMode>({ kind: "closed" });
   const [form, setForm] = useState<ProfileForm>(emptyForm());
   const [initialForm, setInitialForm] = useState<ProfileForm>(emptyForm());
@@ -128,10 +180,39 @@ export function SettingsReleaseRulesPage() {
     if (shouldClearSaveState(saveState, dirty)) setSaveState(undefined);
   }, [dirty, saveState]);
 
+  const firstMatch = ruleMode === "first-match";
+  // The list is in the order the rules are used. The rule with no tag is the default:
+  // it is only used when no other rule matches, so it always sits last.
   const sorted = useMemo(
-    () => [...profiles].sort((left, right) => left.tagName.localeCompare(right.tagName) || left.name.localeCompare(right.name)),
+    () => [...profiles].sort((left, right) =>
+      Number(tagsOf(left).length === 0) - Number(tagsOf(right).length === 0)
+      || left.position - right.position
+      || left.name.localeCompare(right.name)),
     [profiles]
   );
+  const orderable = sorted.filter((profile) => tagsOf(profile).length > 0);
+
+  async function saveOrder(ids: string[]) {
+    try {
+      const response = await authedFetch("/api/release-profiles/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      });
+      if (!response.ok) throw new Error("The order could not be saved.");
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The order could not be saved.");
+    }
+  }
+
+  function move(id: string, toIndex: number) {
+    const ids = orderable.map((profile) => profile.id);
+    const from = ids.indexOf(id);
+    if (from < 0 || toIndex < 0 || toIndex >= ids.length || from === toIndex) return;
+    ids.splice(toIndex, 0, ids.splice(from, 1)[0]!);
+    void saveOrder(ids);
+  }
 
   function openProfile(profile: ReleaseProfileItem | null) {
     const next = profile ? formFrom(profile) : emptyForm();
@@ -166,7 +247,7 @@ export function SettingsReleaseRulesPage() {
     try {
       const body = JSON.stringify({
         name: form.name.trim(),
-        tagName: form.tagName.trim(),
+        tagNames: parseTagList(form.tags),
         preferredProtocol: form.preferredProtocol,
         usenetDelayMinutes: Number(form.usenetDelayMinutes || 0),
         torrentDelayMinutes: Number(form.torrentDelayMinutes || 0),
@@ -223,6 +304,8 @@ export function SettingsReleaseRulesPage() {
 
       <ProperRepackCard settings={settings} />
 
+      <RuleModeCard mode={ruleMode} onChanged={() => revalidator.revalidate()} />
+
       <ListCard
         title="Acquisition Rules"
         count={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : undefined}
@@ -230,7 +313,7 @@ export function SettingsReleaseRulesPage() {
         {profiles.length === 0 ? (
           <ListEmpty
             title="No acquisition rules yet"
-            description="Add a global rule or attach one to a title tag. Deluno will apply it before automatic and interactive searches can dispatch a release."
+            description="Add a rule for every title, or attach one to one or more title tags. Deluno applies it before automatic and interactive searches can dispatch a release."
             actions={<Button type="button" size="sm" onClick={() => openProfile(null)}>New acquisition rule</Button>}
           />
         ) : (
@@ -240,18 +323,50 @@ export function SettingsReleaseRulesPage() {
               { label: "Applies to", width: "minmax(0,1fr)" },
               { label: "Protocol", width: "130px" },
               { label: "Timing", width: "minmax(0,1.2fr)" },
-              { label: "Terms", width: "minmax(0,1.25fr)" }
+              { label: "Terms", width: "minmax(0,1.25fr)" },
+              ...(firstMatch ? [{ label: "Order", width: "96px" }] : [])
             ]}
           >
-            {sorted.map((profile) => (
-              <ListRow key={profile.id} onClick={() => openProfile(profile)} selected={mode.kind === "edit" && mode.id === profile.id}>
-                <ListNameCell name={profile.name} sub={profile.enabled ? (profile.tagName ? "Tag profile" : "Global profile") : "Disabled"} />
-                <ListCell primary={profile.tagName || "Every title"} secondary={indexerScopeLabel(profile, indexers)} />
-                <ListCell primary={protocolLabel(profile.preferredProtocol)} />
-                <ListCell primary={formatTiming(profile)} secondary={formatAvailability(profile)} />
-                <ListCell primary={termSummary(profile)} secondary={profile.preferredTerms.length ? `${profile.preferredTerms.length} weighted preference${profile.preferredTerms.length === 1 ? "" : "s"}` : undefined} />
-              </ListRow>
-            ))}
+            {sorted.map((profile) => {
+              const tags = tagsOf(profile);
+              const orderIndex = orderable.findIndex((item) => item.id === profile.id);
+              return (
+                <ListRow
+                  key={profile.id}
+                  onClick={() => openProfile(profile)}
+                  selected={mode.kind === "edit" && mode.id === profile.id}
+                  draggable={firstMatch && tags.length > 0}
+                  onDragStart={() => setDragId(profile.id)}
+                  onDragOver={(event) => { if (dragId && tags.length > 0) event.preventDefault(); }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (dragId && orderIndex >= 0) move(dragId, orderIndex);
+                    setDragId(null);
+                  }}
+                  onDragEnd={() => setDragId(null)}
+                >
+                  <ListNameCell name={profile.name} sub={profile.enabled ? (tags.length ? (firstMatch ? `Rule ${orderIndex + 1}` : "Tag rule") : (firstMatch ? "Default rule" : "Rule for every title")) : "Disabled"} />
+                  <ListCell primary={tags.length ? joinTagList(tags) : firstMatch ? "Titles no other rule matches" : "Every title"} secondary={indexerScopeLabel(profile, indexers)} />
+                  <ListCell primary={protocolLabel(profile.preferredProtocol)} />
+                  <ListCell primary={formatTiming(profile)} secondary={formatAvailability(profile)} />
+                  <ListCell primary={termSummary(profile)} secondary={profile.preferredTerms.length ? `${profile.preferredTerms.length} weighted preference${profile.preferredTerms.length === 1 ? "" : "s"}` : undefined} />
+                  {firstMatch ? (
+                    <div role="cell" className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                      {tags.length > 0 ? (
+                        <>
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Move ${profile.name} up`} disabled={orderIndex <= 0} onClick={() => move(profile.id, orderIndex - 1)}>
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="ghost" size="icon" aria-label={`Move ${profile.name} down`} disabled={orderIndex >= orderable.length - 1} onClick={() => move(profile.id, orderIndex + 1)}>
+                            <ArrowDown className="h-4 w-4" />
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </ListRow>
+              );
+            })}
           </ListTable>
         )}
       </ListCard>
@@ -271,8 +386,8 @@ export function SettingsReleaseRulesPage() {
             <Field label="Name" error={errors.name}>
               <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Global release timing" autoComplete="off" />
             </Field>
-            <Field label="Title tag" optional error={errors.tagName} help="Leave blank to apply globally. Otherwise this must match a tag on the title.">
-              <TagPicker single label="Title tag" value={form.tagName} onChange={(tagName) => setForm((current) => ({ ...current, tagName }))} />
+            <Field label="Title tags" optional error={errors.tags} help="Pick one or more. A title carrying any one of them uses this rule. Leave blank for the rule that covers every title. A tag can be in one rule only.">
+              <TagPicker label="Title tags" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} />
             </Field>
           </FieldRow>
           <Field label="Preferred protocol" help="A matching protocol gets a ranking lift; the rule does not exclude the other protocol unless its delay or terms hold it.">
@@ -332,11 +447,11 @@ export function SettingsReleaseRulesPage() {
         </DrawerSection>
 
         <DrawerSection title="Release terms">
-          <Field label="Must contain" optional error={errors.mustContain} help="Comma- or newline-separated terms. A release without one is rejected.">
-            <Textarea value={form.mustContain} onChange={(event) => setForm((current) => ({ ...current, mustContain: event.target.value }))} placeholder="Proper, Remux" rows={2} />
+          <Field label="Must contain" optional error={errors.mustContain} help="Comma- or newline-separated terms. A release without one is rejected. To match a pattern, put it between slashes, like /2160p|4k/i; the i ignores capital letters.">
+            <Textarea value={form.mustContain} onChange={(event) => setForm((current) => ({ ...current, mustContain: event.target.value }))} placeholder="Proper, Remux, /2160p|4k/i" rows={2} />
           </Field>
-          <Field label="Must not contain" optional error={errors.mustNotContain} help="Comma- or newline-separated terms. A release with one is rejected.">
-            <Textarea value={form.mustNotContain} onChange={(event) => setForm((current) => ({ ...current, mustNotContain: event.target.value }))} placeholder="CAM, screener" rows={2} />
+          <Field label="Must not contain" optional error={errors.mustNotContain} help="Comma- or newline-separated terms. A release with one is rejected. Patterns between slashes work here too, like /\b(HC|KORSUB)\b/i.">
+            <Textarea value={form.mustNotContain} onChange={(event) => setForm((current) => ({ ...current, mustNotContain: event.target.value }))} placeholder="CAM, screener, /\bHC\b/i" rows={2} />
           </Field>
           <Disclosure
             title="Advanced legacy term weights"
@@ -384,13 +499,13 @@ export function SettingsReleaseRulesPage() {
 }
 
 function emptyForm(): ProfileForm {
-  return { name: "", tagName: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "", enabled: true, indexerIds: [], bypassIfHighestQuality: false };
+  return { name: "", tags: "", preferredProtocol: "any", usenetDelayMinutes: "", torrentDelayMinutes: "", mustContain: "", mustNotContain: "", preferredTerms: "", enabled: true, indexerIds: [], bypassIfHighestQuality: false };
 }
 
 function formFrom(profile: ReleaseProfileItem): ProfileForm {
   return {
     name: profile.name,
-    tagName: profile.tagName,
+    tags: joinTagList(tagsOf(profile)),
     preferredProtocol: profile.preferredProtocol || "any",
     usenetDelayMinutes: String(profile.usenetDelayMinutes || ""),
     torrentDelayMinutes: String(profile.torrentDelayMinutes || ""),
@@ -404,7 +519,13 @@ function formFrom(profile: ReleaseProfileItem): ProfileForm {
 }
 
 function sameForm(left: ProfileForm, right: ProfileForm) {
-  return left.name === right.name && left.tagName === right.tagName && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms && left.enabled === right.enabled && left.bypassIfHighestQuality === right.bypassIfHighestQuality && sameIds(left.indexerIds, right.indexerIds);
+  return left.name === right.name && left.tags === right.tags && left.preferredProtocol === right.preferredProtocol && left.usenetDelayMinutes === right.usenetDelayMinutes && left.torrentDelayMinutes === right.torrentDelayMinutes && left.mustContain === right.mustContain && left.mustNotContain === right.mustNotContain && left.preferredTerms === right.preferredTerms && left.enabled === right.enabled && left.bypassIfHighestQuality === right.bypassIfHighestQuality && sameIds(left.indexerIds, right.indexerIds);
+}
+
+/** The tags a rule applies to; older rows carry only the single tag name. */
+function tagsOf(profile: ReleaseProfileItem): string[] {
+  if (profile.tagNames?.length) return profile.tagNames;
+  return profile.tagName?.trim() ? [profile.tagName.trim()] : [];
 }
 
 function sameIds(left: string[], right: string[]) {

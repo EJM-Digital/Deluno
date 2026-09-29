@@ -165,20 +165,20 @@ public static class SearchEndpointRouteBuilderExtensions
                 request.PreferredProtocol,
                 request.UsenetDelayMinutes,
                 request.TorrentDelayMinutes,
-                request.PreferredTerms);
+                request.PreferredTerms,
+                mustContain: request.MustContain,
+                mustNotContain: request.MustNotContain,
+                tagNames: request.TagNames);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
             }
 
-            var existingTag = (await repository.ListAsync(cancellationToken))
-                .FirstOrDefault(item => string.Equals(
-                    item.TagName.Trim(),
-                    request.TagName?.Trim() ?? string.Empty,
-                    StringComparison.OrdinalIgnoreCase));
-            if (existingTag is not null)
+            var requestedTags = request.TagNames ?? (request.TagName is null ? [] : [request.TagName]);
+            var taken = ReleaseRuleTagConflict(await repository.ListAsync(cancellationToken), null, requestedTags);
+            if (taken is not null)
             {
-                return Results.Conflict(new { message = $"The tag '{existingTag.TagName}' already has a release profile." });
+                return Results.Conflict(new { message = taken });
             }
 
             return Results.Created(
@@ -199,7 +199,10 @@ public static class SearchEndpointRouteBuilderExtensions
                 request.UsenetDelayMinutes,
                 request.TorrentDelayMinutes,
                 request.PreferredTerms,
-                allowMissingValues: true);
+                allowMissingValues: true,
+                mustContain: request.MustContain,
+                mustNotContain: request.MustNotContain,
+                tagNames: request.TagNames);
             if (errors.Count > 0)
             {
                 return Results.ValidationProblem(errors);
@@ -211,18 +214,35 @@ public static class SearchEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var nextTag = request.TagName?.Trim() ?? current.TagName;
-            var duplicate = (await repository.ListAsync(cancellationToken))
-                .FirstOrDefault(item => !string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(item.TagName.Trim(), nextTag, StringComparison.OrdinalIgnoreCase));
-            if (duplicate is not null)
+            var nextTags = request.TagNames
+                ?? (request.TagName is null ? current.AppliesToTags : [request.TagName]);
+            var taken = ReleaseRuleTagConflict(await repository.ListAsync(cancellationToken), id, nextTags);
+            if (taken is not null)
             {
-                return Results.Conflict(new { message = $"The tag '{duplicate.TagName}' already has a release profile." });
+                return Results.Conflict(new { message = taken });
             }
 
             var updated = await repository.UpdateAsync(id, request, cancellationToken);
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
+
+        // #995: how several matching rules are used, and the order of the rules.
+        releaseProfiles.MapGet("mode", async (
+            IReleaseProfileRepository repository,
+            CancellationToken cancellationToken) =>
+            Results.Ok(new ReleaseRuleSettings(await repository.GetRuleModeAsync(cancellationToken))));
+
+        releaseProfiles.MapPut("mode", async (
+            [FromBody] ReleaseRuleSettings request,
+            IReleaseProfileRepository repository,
+            CancellationToken cancellationToken) =>
+            Results.Ok(new ReleaseRuleSettings(await repository.SetRuleModeAsync(request.Mode, cancellationToken))));
+
+        releaseProfiles.MapPut("order", async (
+            [FromBody] ReorderReleaseProfilesRequest request,
+            IReleaseProfileRepository repository,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await repository.ReorderAsync(request.Ids ?? [], cancellationToken)));
 
         releaseProfiles.MapDelete("{id}", async (
             string id,
@@ -439,6 +459,41 @@ public static class SearchEndpointRouteBuilderExtensions
         return endpoints;
     }
 
+    /// <summary>
+    /// #994: Sonarr's DelayProfileTagInUseValidator - a tag belongs to one rule
+    /// only, so which rule a tagged title uses is never a guess. Null when the tags are free.
+    /// </summary>
+    private static string? ReleaseRuleTagConflict(
+        IReadOnlyList<ReleaseProfileItem> existing,
+        string? ignoreId,
+        IReadOnlyList<string> tags)
+    {
+        var wanted = tags
+            .SelectMany(tag => (tag ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .ToArray();
+        if (wanted.Length == 0)
+        {
+            // The rule with no tag is the default; there can be only one.
+            var otherDefault = existing.FirstOrDefault(item =>
+                !string.Equals(item.Id, ignoreId, StringComparison.OrdinalIgnoreCase)
+                && item.AppliesToTags.Count == 0);
+            return otherDefault is null ? null : $"'{otherDefault.Name}' is already the rule for titles with no tag.";
+        }
+
+        foreach (var tag in wanted)
+        {
+            var owner = existing.FirstOrDefault(item =>
+                !string.Equals(item.Id, ignoreId, StringComparison.OrdinalIgnoreCase)
+                && item.AppliesToTags.Contains(tag, StringComparer.OrdinalIgnoreCase));
+            if (owner is not null)
+            {
+                return $"The tag '{tag}' already belongs to the rule '{owner.Name}'. A tag can be in one rule only.";
+            }
+        }
+
+        return null;
+    }
+
     private static Dictionary<string, string[]> ValidateReleaseProfile(
         string? name,
         string? tagName,
@@ -446,7 +501,10 @@ public static class SearchEndpointRouteBuilderExtensions
         int? usenetDelayMinutes,
         int? torrentDelayMinutes,
         IReadOnlyList<ReleaseTermScore>? preferredTerms,
-        bool allowMissingValues = false)
+        bool allowMissingValues = false,
+        string? mustContain = null,
+        string? mustNotContain = null,
+        IReadOnlyList<string>? tagNames = null)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         if (!allowMissingValues && string.IsNullOrWhiteSpace(name))
@@ -454,9 +512,21 @@ public static class SearchEndpointRouteBuilderExtensions
             errors["name"] = ["Give this release profile a name."];
         }
 
-        if (tagName is { Length: > 100 })
+        if (tagName is { Length: > 100 } || tagNames?.Any(tag => tag.Length > 100) == true)
         {
             errors["tagName"] = ["The tag name must be 100 characters or fewer."];
+        }
+
+        // #996: a term written between slashes is a pattern; say so plainly when one cannot be read.
+        foreach (var (field, text) in new[] { ("mustContain", mustContain), ("mustNotContain", mustNotContain) })
+        {
+            var problem = ReleaseTermPattern.Split(text)
+                .Select(ReleaseTermPattern.Validate)
+                .FirstOrDefault(message => message is not null);
+            if (problem is not null)
+            {
+                errors[field] = [problem];
+            }
         }
 
         if (preferredProtocol is not null

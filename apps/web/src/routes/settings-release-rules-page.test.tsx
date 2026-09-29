@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,10 +32,16 @@ const scopedProfile: ReleaseProfileItem = {
   updatedUtc: new Date(0).toISOString(),
   enabled: false,
   indexerIds: ["idx-1"],
-  bypassIfHighestQuality: false
+  bypassIfHighestQuality: false,
+  tagNames: ["Kids", "Family"],
+  position: 0
 };
 
-const loaderData = { profiles: [scopedProfile], indexers, settings: emptyPlatformSettingsSnapshot };
+const defaultRule: ReleaseProfileItem = { ...scopedProfile, id: "profile-2", name: "Everything else", tagName: "", tagNames: [], position: 1, enabled: true, indexerIds: [] };
+const secondRule: ReleaseProfileItem = { ...scopedProfile, id: "profile-3", name: "Anime rule", tagName: "Anime", tagNames: ["Anime"], position: 2, enabled: true, indexerIds: [] };
+const loaderData: { profiles: ReleaseProfileItem[]; indexers: IndexerItem[]; settings: typeof emptyPlatformSettingsSnapshot; ruleMode: string } = { profiles: [scopedProfile], indexers, settings: emptyPlatformSettingsSnapshot, ruleMode: "combine" };
+const authedFetchMock = vi.fn();
+vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
@@ -94,5 +100,69 @@ describe("release profile enable/disable and indexer scoping (#770)", () => {
 
     expect((screen.getByRole("checkbox", { name: "NZBgeek" }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("checkbox", { name: "TorrentLeech" }) as HTMLInputElement).checked).toBe(true);
+  });
+});
+
+describe("release rules apply to several tags, in an order, with patterns (#994 #995 #996)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    loaderData.profiles = [scopedProfile];
+    loaderData.ruleMode = "combine";
+  });
+
+  it("lists every tag a rule applies to and loads them into the tag picker", async () => {
+    renderPage();
+
+    expect(screen.getByText("Kids, Family")).toBeTruthy();
+    fireEvent.click(screen.getByText("Kids rule"));
+    await screen.findByRole("dialog");
+    expect(screen.getByRole("button", { name: /Remove.*Kids/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Remove.*Family/ })).toBeTruthy();
+  });
+
+  it("tells the user patterns between slashes work in must contain and must not contain", async () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Kids rule"));
+    await screen.findByRole("dialog");
+
+    expect(screen.getAllByText(/between slashes/).length).toBe(2);
+  });
+
+  it("does not show an order column while every matching rule is used", () => {
+    loaderData.profiles = [scopedProfile, defaultRule];
+    renderPage();
+
+    expect(screen.queryByRole("button", { name: "Move Kids rule up" })).toBeNull();
+    expect(screen.getByText("Rule for every title")).toBeTruthy();
+  });
+
+  it("in first-match mode lists the default rule last and saves a new order from the move buttons", async () => {
+    loaderData.ruleMode = "first-match";
+    loaderData.profiles = [defaultRule, scopedProfile, secondRule];
+    authedFetchMock.mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    renderPage();
+
+    expect(screen.getByText("Default rule")).toBeTruthy();
+    expect(screen.getByText("Titles no other rule matches")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Move Kids rule up" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Move Anime rule up" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/release-profiles/order",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ ids: ["profile-3", "profile-1"] }) })
+    ));
+  });
+
+  it("saves the choice of how matching rules are used", async () => {
+    authedFetchMock.mockResolvedValue(new Response(JSON.stringify({ mode: "first-match" }), { status: 200 }));
+    renderPage();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "When more than one rule matches" }), { target: { value: "first-match" } });
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith(
+      "/api/release-profiles/mode",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ mode: "first-match" }) })
+    ));
   });
 });

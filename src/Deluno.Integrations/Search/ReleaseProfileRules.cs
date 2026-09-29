@@ -1,4 +1,5 @@
 using Deluno.Platform.Contracts;
+using Deluno.Quality;
 
 namespace Deluno.Integrations.Search;
 
@@ -106,12 +107,12 @@ public static class ReleaseProfileRuleEvaluator
     }
 
     public static IReadOnlyList<string> SplitTerms(string? value)
-        => (value ?? string.Empty)
-            .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(item => !string.IsNullOrWhiteSpace(item))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        => ReleaseTermPattern.Split(value);
 
+    /// <summary>
+    /// Plain words match anywhere in the name; a term written /like this/i is a
+    /// pattern (#996), the same rule Sonarr's term matcher uses.
+    /// </summary>
     public static bool ContainsTerm(string value, string term)
-        => value.Contains(term.Trim(), StringComparison.OrdinalIgnoreCase);
+        => ReleaseTermPattern.IsMatch(value, term);
 }

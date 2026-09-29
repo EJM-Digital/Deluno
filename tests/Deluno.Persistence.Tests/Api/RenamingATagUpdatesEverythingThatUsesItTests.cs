@@ -48,6 +48,7 @@ public sealed class RenamingATagUpdatesEverythingThatUsesItTests
         Assert.Equal("Family", await ReadAsync(app, "library_source_links", "required_tags", ids["library_source_links"]));
         Assert.Equal("Family", await ReadAsync(app, "library_source_links", "excluded_tags", ids["library_source_links"]));
         Assert.Equal("Family", await ReadAsync(app, "release_profiles", "tag_name", ids["release_profiles"]));
+        Assert.Equal("Family", await ReadAsync(app, "release_profiles", "tag_names", ids["release_profiles"]));
         Assert.Equal("Family", await ReadAsync(app, "destination_rules", "match_value", ids["destination_rules"]));
         var titleTags = await app.Services.GetRequiredService<IMediaTagStore>().ListAsync(MediaKind.Movie, ids["movie"], CancellationToken.None);
         Assert.Equal("Family", Assert.Single(titleTags).Name);

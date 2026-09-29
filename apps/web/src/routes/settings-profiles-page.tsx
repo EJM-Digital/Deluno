@@ -730,7 +730,7 @@ export function SettingsProfilesPage() {
                 <div className="grid gap-[var(--grid-gap)]">
                   <Field
                     label="Only take releases naming"
-                    help="Any one of these words must appear in the release name. Separate with commas."
+                    help="Any one of these words must appear in the release name. Separate with commas. A pattern between slashes, like /NTb|FLUX/i, works too."
                   >
                     <Input
                       value={form.acquisition.mustContain}

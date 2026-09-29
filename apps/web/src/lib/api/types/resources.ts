@@ -968,7 +968,14 @@ export interface ReleaseProfileItem {
   enabled: boolean;
   indexerIds: string[];
   bypassIfHighestQuality: boolean;
+  /** Every tag this rule applies to; empty means it has no tag (the default rule). */
+  tagNames: string[];
+  /** Place in the list of rules; the lowest number is the top rule. */
+  position: number;
 }
+
+/** How several matching release rules are used: every one at once, or only the top match. */
+export type ReleaseRuleMode = "combine" | "first-match";
 
 export interface IndexerScoreboardRow {
   id: string;
