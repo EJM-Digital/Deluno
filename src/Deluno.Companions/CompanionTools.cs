@@ -52,6 +52,8 @@ public abstract class DownloadClientCompanion(
 
     protected abstract string Protocol { get; }
 
+    private readonly DownloadClientConnector _connector = new(connections, new DrawerDownloadClientTester());
+
     protected ICompanionSystem System => system;
 
     protected ICompanionLoginStore Logins => logins;
@@ -86,36 +88,18 @@ public abstract class DownloadClientCompanion(
     protected async Task ConnectAsync(string host, int port, string? username, string secret, string moviesCategory, string tvCategory, CompanionRunContext context, CancellationToken cancellationToken)
     {
         context.Progress.Report("connect", $"Connecting {Name} to Deluno.");
-        var existing = (await connections.ListDownloadClientsAsync(cancellationToken))
-            .FirstOrDefault(client => string.Equals(client.Protocol, Protocol, StringComparison.OrdinalIgnoreCase) && IsLoopback(client.Host));
-        var client = existing ?? await connections.CreateDownloadClientAsync(
-            new CreateDownloadClientRequest(Name, Protocol, host, port, username, secret, null, moviesCategory, tvCategory, null, 10, true),
-            cancellationToken);
-
-        // Waiting for it to answer, then the same test the drawer runs.
-        (string healthStatus, string message, string? failureCategory) test = ("unreachable", "Not tested.", null);
-        for (var attempt = 0; attempt < 20; attempt++)
+        var result = await _connector.ConnectAsync(
+            new DownloadClientWiring(Name, Protocol, host, port, username, secret, moviesCategory, tvCategory),
+            20, TimeSpan.FromSeconds(3), cancellationToken);
+        if (!result.Healthy)
         {
-            test = await ConnectionsEndpointRouteBuilderExtensions.TestDownloadClientAsync(client, cancellationToken);
-            if (test.healthStatus == "healthy")
-            {
-                break;
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
-        }
-
-        await connections.UpdateDownloadClientHealthAsync(client.Id, test.healthStatus, test.message, test.failureCategory, null, cancellationToken);
-        if (test.healthStatus != "healthy")
-        {
-            throw new CompanionStepException($"{Name} is installed and added to Deluno, but its test did not pass: {test.message}");
+            throw new CompanionStepException($"{Name} is installed and added to Deluno, but its test did not pass: {result.Message}");
         }
 
         context.Progress.Report("done", $"{Name} is installed, running and connected. Its test passed.");
     }
 
-    private static bool IsLoopback(string? host)
-        => host is "127.0.0.1" or "localhost" or "::1";
+    private static bool IsLoopback(string? host) => DownloadClientConnector.IsLoopback(host);
 }
 
 public sealed class QbittorrentCompanion(

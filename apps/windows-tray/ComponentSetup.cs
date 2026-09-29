@@ -27,6 +27,53 @@ public static class QBittorrentPassword
     }
 }
 
+/// <summary>
+/// Deluge's Web UI password format (#1054), from <c>deluge/ui/web/auth.py</c>:
+/// <c>pwd_sha1</c> is the hex SHA-1 of the stored <c>pwd_salt</c> text followed by the
+/// password. The salt is derived from the (already random) generated password, so
+/// the two placeholders in the seeded web.conf always agree.
+/// </summary>
+public static class DelugeWebPassword
+{
+    public static string Salt(string password)
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("deluno-deluge-web:" + password)))[..32].ToLowerInvariant();
+
+    public static string Sha1(string password)
+        => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(Salt(password) + password))).ToLowerInvariant();
+}
+
+/// <summary>The one value the tray needs out of SABnzbd's own settings file (#1054).</summary>
+public static class SabnzbdIni
+{
+    /// <summary>The <c>api_key</c> under <c>[misc]</c>, or null when there is none yet or it is blank.</summary>
+    public static string? ApiKey(string? ini)
+    {
+        if (ini is null)
+        {
+            return null;
+        }
+
+        var inMisc = false;
+        foreach (var raw in ini.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith('['))
+            {
+                inMisc = string.Equals(line, "[misc]", StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (inMisc && line.StartsWith("api_key", StringComparison.OrdinalIgnoreCase) && line.IndexOf('=') is var eq and > 0)
+            {
+                var value = line[(eq + 1)..].Trim().Trim('"');
+                return value.Length == 0 ? null : value;
+            }
+        }
+
+        return null;
+    }
+}
+
 /// <summary>A random password for a client Deluno signs in to for the person: letters and digits only, so no client's config format needs escaping.</summary>
 public static class GeneratedPassword
 {
@@ -57,7 +104,9 @@ public static class ComponentConfig
         return content
             .Replace("{{username}}", credentials.Username, StringComparison.Ordinal)
             .Replace("{{password}}", credentials.Password, StringComparison.Ordinal)
-            .Replace("{{qbittorrentPbkdf2}}", QBittorrentPassword.ToIniValue(credentials.Password), StringComparison.Ordinal);
+            .Replace("{{qbittorrentPbkdf2}}", QBittorrentPassword.ToIniValue(credentials.Password), StringComparison.Ordinal)
+            .Replace("{{delugeSalt}}", DelugeWebPassword.Salt(credentials.Password), StringComparison.Ordinal)
+            .Replace("{{delugePwdSha1}}", DelugeWebPassword.Sha1(credentials.Password), StringComparison.Ordinal);
     }
 
     /// <summary>The template with every replacement applied, or null when the template does not contain one of them (the vendor changed the file, so the seed would be wrong).</summary>

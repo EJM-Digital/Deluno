@@ -145,13 +145,19 @@ public sealed class ComponentInstallService(
     IPrerequisiteRegistryReader? prerequisiteRegistry = null,
     ITextFileReader? templates = null,
     IBundledComponentCredentialStore? credentialStore = null,
-    IStartedComponentsRegistry? startedComponents = null)
+    IStartedComponentsRegistry? startedComponents = null,
+    IInstalledComponentRecord? installedRecord = null,
+    TimeSpan? credentialCaptureWait = null)
 {
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
     private readonly ITextFileReader _templates = templates ?? new RealTextFileReader();
     private readonly Lazy<IBundledComponentCredentialStore> _credentials = new(
         () => credentialStore ?? BundledComponentCredentialStores.CreateForDataRoot(AppSettings.Load().DataRoot));
     private readonly IStartedComponentsRegistry _startedComponents = startedComponents ?? new FileStartedComponentsRegistry();
+    private readonly Lazy<IInstalledComponentRecord> _installedRecord = new(
+        () => installedRecord ?? new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(
+            Environment.GetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA") is { Length: > 0 } testRoot ? testRoot : AppSettings.Load().DataRoot)));
+    private readonly TimeSpan _credentialCaptureWait = credentialCaptureWait ?? TimeSpan.FromSeconds(5);
 
     private readonly IInstalledProgramsReader _programs = programs ?? new RegistryInstalledProgramsReader();
     private readonly IPortProbe _portProbe = portProbe ?? new LoopbackPortProbe();
@@ -268,12 +274,68 @@ public sealed class ComponentInstallService(
 
         await SeedConfigAsync(spec, cancellationToken);
 
+        // From here the app is on this computer because the picker put it there, so the
+        // running Deluno connects it (once), whether or not the start below succeeds (#1054).
+        try
+        {
+            _installedRecord.Value.MarkInstalled(spec.Kind, "localhost", spec.DefaultPort);
+        }
+        catch
+        {
+            // Not being able to record it only means the connection is made with "Use X".
+        }
+
         if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.Installed, $"{spec.DisplayName} installed.");
         }
 
-        return await StartAndWaitForReadyAsync(spec, cancellationToken);
+        var result = await StartAndWaitForReadyAsync(spec, cancellationToken);
+        await CaptureGeneratedCredentialsAsync(spec, cancellationToken);
+        return result;
+    }
+
+    /// <summary>
+    /// SABnzbd makes its own API key the first time it runs and writes it to its own ini,
+    /// which only the account that ran it can read. Read it here, in the install session,
+    /// into the same secret store the other clients' sign-ins use, so the running Deluno can
+    /// connect with it (#1054). The key is the "password"; there is no user name.
+    /// </summary>
+    private async Task CaptureGeneratedCredentialsAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(spec.Kind, "sabnzbd", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var deadline = DateTime.UtcNow + _credentialCaptureWait;
+        while (true)
+        {
+            foreach (var path in new[] { @"%LocalAppData%\sabnzbd\sabnzbd.ini", @"%AppData%\SABnzbd\sabnzbd.ini" })
+            {
+                var key = SabnzbdIni.ApiKey(_templates.ReadAllText(Environment.ExpandEnvironmentVariables(path)));
+                if (key is not null)
+                {
+                    try
+                    {
+                        _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(string.Empty, key));
+                    }
+                    catch
+                    {
+                        // The connection just has to be filled in by hand.
+                    }
+
+                    return;
+                }
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+        }
     }
 
     /// <summary>

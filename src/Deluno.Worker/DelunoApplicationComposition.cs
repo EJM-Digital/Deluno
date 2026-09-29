@@ -81,6 +81,8 @@ public static class DelunoApplicationComposition
         services.AddDelunoWorkerModule();
         services.AddDelunoRetentionModule();
         services.AddDelunoCompanionsModule();
+        services.AddScoped<Companions.InstalledComponentWirer>();
+        services.AddHostedService<Companions.InstalledComponentWiringService>();
 
         return services;
     }
