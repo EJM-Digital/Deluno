@@ -529,6 +529,13 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string episodeId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// True when any series other than <paramref name="seriesId"/> has an
+    /// episode file inside <paramref name="directory"/> (#1067) - the folder is
+    /// then not this show's own and must not be renamed as if it were.
+    /// </summary>
+    Task<bool> OtherSeriesHaveFilesUnderAsync(string seriesId, string directory, CancellationToken cancellationToken);
+
     /// <summary>Every episode of this series that has a file, with its path (#788).</summary>
     Task<IReadOnlyList<(string EpisodeId, string FilePath)>> ListEpisodeFilePathsAsync(
         string seriesId,

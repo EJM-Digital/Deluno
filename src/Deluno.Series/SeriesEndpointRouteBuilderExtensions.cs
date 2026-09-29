@@ -2921,6 +2921,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2949,9 +2950,16 @@ public static class SeriesEndpointRouteBuilderExtensions
                 colonReplacementMode: settings.ColonReplacementMode);
 
             var episodeFiles = await repository.ListEpisodeFilePathsAsync(id, cancellationToken);
+            var target = await ResolveOwnFolderAsync(repository, librariesRepository, id, episodeFiles, cancellationToken);
+            if (!target.IsSafe)
+            {
+                return Results.Ok(RenamePreviewOutcome.Refused(target, proposedName));
+            }
+
             var plan = SeriesFolderRelocationPlanner.Plan(
                 episodeFiles.Select(file => file.FilePath).ToArray(),
-                proposedName);
+                proposedName,
+                target.Folder);
             return Results.Ok(RenamePreviewOutcome.Describe(
                 plan is null ? null : Path.GetFileName(plan.SourceDirectory),
                 proposedName,
@@ -3032,6 +3040,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] BulkRenamePreviewRequest request,
             ISeriesCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
@@ -3085,9 +3094,19 @@ public static class SeriesEndpointRouteBuilderExtensions
                     replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
                     colonReplacementMode: settings.ColonReplacementMode);
 
+                // The same guard the title page's preview uses, re-run now at
+                // apply time against the current rows (#1067).
+                var target = await ResolveOwnFolderAsync(repository, librariesRepository, id, episodeFiles, cancellationToken);
+                if (!target.IsSafe)
+                {
+                    failures.Add(new { seriesId = id, seriesItem.Title, reason = target.Message });
+                    continue;
+                }
+
                 var plan = SeriesFolderRelocationPlanner.Plan(
                     episodeFiles.Select(file => file.FilePath).ToArray(),
-                    proposedName);
+                    proposedName,
+                    target.Folder);
                 if (plan is null)
                 {
                     failures.Add(new { seriesId = id, seriesItem.Title, reason = "Its episode files do not share a folder Deluno can rename." });
@@ -3929,6 +3948,28 @@ public static class SeriesEndpointRouteBuilderExtensions
         {
             return new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         }
+    }
+
+    /// <summary>
+    /// The one place a show's own folder is decided for "rename folder", used
+    /// by the single-show preview and by rename-apply so they cannot disagree
+    /// (#1067). Never renames anything.
+    /// </summary>
+    private static async Task<TitleFolderTarget> ResolveOwnFolderAsync(
+        ISeriesCatalogRepository repository,
+        ILibrariesRepository librariesRepository,
+        string seriesId,
+        IReadOnlyList<(string EpisodeId, string FilePath)> episodeFiles,
+        CancellationToken cancellationToken)
+    {
+        var roots = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+            .Select(library => library.RootPath)
+            .ToArray();
+        return await TitleFolderGuard.ForSeriesAsync(
+            episodeFiles.Select(file => file.FilePath).ToArray(),
+            roots,
+            (folder, ct) => repository.OtherSeriesHaveFilesUnderAsync(seriesId, folder, ct),
+            cancellationToken);
     }
 
     private static string? ReadMetadataText(string? metadataJson, params string[] names)

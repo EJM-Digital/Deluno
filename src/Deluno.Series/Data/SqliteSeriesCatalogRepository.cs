@@ -4582,6 +4582,30 @@ public sealed class SqliteSeriesCatalogRepository(
         return results;
     }
 
+    public async Task<bool> OtherSeriesHaveFilesUnderAsync(
+        string seriesId,
+        string directory,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT 1 FROM episode_entries
+            WHERE series_id <> @seriesId AND has_file = 1 AND file_path IS NOT NULL
+              AND (instr(file_path, @slash) = 1 OR instr(file_path, @backslash) = 1)
+            LIMIT 1;
+            """;
+        var trimmed = directory.TrimEnd('/', '\\');
+        AddParameter(command, "@seriesId", seriesId);
+        AddParameter(command, "@slash", trimmed + "/");
+        AddParameter(command, "@backslash", trimmed + "\\");
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
     public async Task<bool> UpdateEpisodeFileLocationAsync(
         string episodeId,
         string previousFilePath,

@@ -16,6 +16,13 @@ public sealed record RenamePreviewOutcome(
     bool WillChange,
     string Message)
 {
+    /// <summary>
+    /// The preview for a title whose folder the shared guard refused to touch
+    /// (#1067): says in plain words why, and that nothing would change.
+    /// </summary>
+    public static RenamePreviewOutcome Refused(TitleFolderTarget refusal, string proposedFolder) =>
+        new(refusal.Code, null, proposedFolder, false, refusal.Message);
+
     public static RenamePreviewOutcome Describe(
         string? currentFolder,
         string proposedFolder,
