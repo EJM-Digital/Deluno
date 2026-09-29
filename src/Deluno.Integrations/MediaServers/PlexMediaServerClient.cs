@@ -873,32 +873,55 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         }
     }
 
-    /// <summary>What is playing now: Plex's own sessions list, with each play's season and show (#1012).</summary>
-    public async Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    /// <summary>What is playing now: Plex's own sessions list, with each play's season, show, file and provider ids (#1012).</summary>
+    public async Task<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
     {
         var call = await GetAsync(connection, "/status/sessions", cancellationToken);
         using var document = call.Ok ? TryParse(call.Body) : null;
         if (Container(document) is not { } container)
         {
-            return new MediaServerAnswer<IReadOnlyList<string>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
+            return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
         }
 
-        var ids = new List<string>();
+        var plays = new List<MediaServerPlay>();
         if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
         {
             foreach (var entry in metadata.EnumerateArray())
             {
-                foreach (var name in new[] { "ratingKey", "parentRatingKey", "grandparentRatingKey" })
+                var ids = new[] { "ratingKey", "parentRatingKey", "grandparentRatingKey" }
+                    .Select(name => String(entry, name))
+                    .OfType<string>()
+                    .Where(id => id.Length > 0)
+                    .ToArray();
+                var paths = new List<string>();
+                if (entry.TryGetProperty("Media", out var media) && media.ValueKind == JsonValueKind.Array)
                 {
-                    if (String(entry, name) is { Length: > 0 } id)
+                    foreach (var version in media.EnumerateArray())
                     {
-                        ids.Add(id);
+                        if (!version.TryGetProperty("Part", out var parts) || parts.ValueKind != JsonValueKind.Array) continue;
+                        paths.AddRange(parts.EnumerateArray().Select(part => String(part, "file")).OfType<string>().Where(file => file.Length > 0));
                     }
                 }
+
+                string? Guid(string scheme)
+                {
+                    if (!entry.TryGetProperty("Guid", out var guids) || guids.ValueKind != JsonValueKind.Array) return null;
+                    foreach (var guid in guids.EnumerateArray())
+                    {
+                        if (String(guid, "id") is { } text && text.StartsWith(scheme + "://", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return text[(scheme.Length + 3)..];
+                        }
+                    }
+
+                    return null;
+                }
+
+                plays.Add(new MediaServerPlay(ids, paths, String(entry, "type") == "movie", Guid("tmdb"), Guid("tvdb"), Guid("imdb")));
             }
         }
 
-        return new MediaServerAnswer<IReadOnlyList<string>>.Reported(ids.Distinct(StringComparer.Ordinal).ToArray());
+        return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(plays);
     }
 
     /// <summary>

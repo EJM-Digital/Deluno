@@ -171,10 +171,6 @@ public sealed class RetentionEvaluator(
             }
         }
 
-        if (request.DeferWhilePlaying == true && chosen.Length == 0)
-        {
-            problems.Add("Choose the media servers to ask what is being played, or turn off waiting while something plays.");
-        }
 
         return problems.Distinct().ToArray();
     }

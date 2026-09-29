@@ -173,16 +173,26 @@ public interface IMediaServerAudioLanguageReader
         CancellationToken cancellationToken);
 }
 
+/// <summary>One thing being played on a server right now (#1012).</summary>
+/// <param name="ItemIds">The server's own ids for the item, its season and its show, so a whole show is seen to be in use while one episode plays.</param>
+/// <param name="Paths">The file(s) being played, as the server sees them.</param>
+/// <param name="IsMovie">Whether it is a film, the only kind whose provider ids can name the title.</param>
+public sealed record MediaServerPlay(
+    IReadOnlyList<string> ItemIds,
+    IReadOnlyList<string> Paths,
+    bool IsMovie = false,
+    string? TmdbId = null,
+    string? TvdbId = null,
+    string? ImdbId = null);
+
 /// <summary>
-/// A server that can say what is being played on it right now (#1012). The
-/// answer is every id involved in a play - the item itself, its season and its
-/// show - so a whole show is seen to be in use while one episode plays. A server
+/// A server that can say what is being played on it right now (#1012). A server
 /// that could not be asked is <see cref="MediaServerAnswer{T}.Unreachable"/>,
 /// never an empty list: "nothing is playing" must not be a guess.
 /// </summary>
 public interface IMediaServerPlaybackReader
 {
-    Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken);
+    Task<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken);
 }
 
 /// <summary>

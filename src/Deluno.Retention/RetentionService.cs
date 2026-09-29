@@ -209,7 +209,7 @@ public sealed class RetentionService(
             // Never take something out from under a viewer, and never guess that nobody is watching (#1012).
             if (NeedsPlaybackCheck(rule))
             {
-                playback ??= await ReadPlaybackAsync(rule, cancellationToken);
+                playback ??= await ReadPlaybackAsync(cancellationToken);
                 if (PlaybackHold(playback, candidates[mark.EntityId]) is { } hold)
                 {
                     var holding = mark with { State = RetentionMarkStates.Held, StateReason = hold, UpdatedUtc = started };
@@ -292,7 +292,7 @@ public sealed class RetentionService(
 
             if (NeedsPlaybackCheck(rule))
             {
-                playback ??= await ReadPlaybackAsync(rule, cancellationToken);
+                playback ??= await ReadPlaybackAsync(cancellationToken);
                 if (PlaybackHold(playback, candidate) is { } hold)
                 {
                     // Stays Ready to remove: the person can confirm again once it has stopped.
@@ -510,29 +510,30 @@ public sealed class RetentionService(
 
     // ------------------------------------------------------- playing now (#1012)
 
-    private sealed record PlaybackReading(IReadOnlyDictionary<string, IReadOnlySet<string>> PlayingByServer, string? CouldNotSee);
+    private sealed record PlaybackReading(IReadOnlyDictionary<string, IReadOnlyList<MediaServerPlay>> PlaysByServer, string? CouldNotSee);
 
     /// <summary>Only a removal is held back for playback; stopping monitoring, tagging and writing it down disturb nobody.</summary>
     private static bool NeedsPlaybackCheck(RetentionRule rule)
-        => rule.DeferWhilePlaying && rule.ExpiryAction == RetentionExpiryActions.Delete && rule.MediaServerIds.Count > 0;
+        => rule.DeferWhilePlaying && rule.ExpiryAction == RetentionExpiryActions.Delete;
 
-    /// <summary>Asks every server the rule reads what is being played. Not being able to ask is recorded, never read as "nothing".</summary>
-    private async Task<PlaybackReading> ReadPlaybackAsync(RetentionRule rule, CancellationToken cancellationToken)
+    /// <summary>
+    /// Asks EVERY enabled media server what is being played, not only the ones the rule reads: the files are
+    /// deleted for all of them. Not being able to ask is recorded, never read as "nothing".
+    /// </summary>
+    private async Task<PlaybackReading> ReadPlaybackAsync(CancellationToken cancellationToken)
     {
-        var playing = new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase);
-        var connections = mediaServers is null ? null : (await mediaServers.ListAsync(cancellationToken)).ToDictionary(server => server.Id, StringComparer.OrdinalIgnoreCase);
+        var plays = new Dictionary<string, IReadOnlyList<MediaServerPlay>>(StringComparer.OrdinalIgnoreCase);
         var problems = new List<string>();
-        foreach (var serverId in rule.MediaServerIds)
+        if (mediaServers is null)
         {
-            if (connections is null || !connections.TryGetValue(serverId, out var server))
-            {
-                problems.Add("a media server this rule reads is no longer in Deluno");
-                continue;
-            }
+            return new PlaybackReading(plays, "Deluno could not list its media servers");
+        }
 
+        foreach (var server in await mediaServers.ListAsync(cancellationToken))
+        {
+            // A server that is turned off is not a server anyone is watching.
             if (!server.IsEnabled)
             {
-                problems.Add($"{server.Name} is turned off");
                 continue;
             }
 
@@ -542,7 +543,7 @@ public sealed class RetentionService(
                 continue;
             }
 
-            MediaServerAnswer<IReadOnlyList<string>> answer;
+            MediaServerAnswer<IReadOnlyList<MediaServerPlay>> answer;
             try
             {
                 answer = await reader.ListPlayingAsync(server, cancellationToken);
@@ -550,24 +551,24 @@ public sealed class RetentionService(
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
                 logger.LogWarning(exception, "Retention could not ask {Server} what is being played.", server.Name);
-                answer = new MediaServerAnswer<IReadOnlyList<string>>.Unreachable($"Deluno could not ask {server.Name} what is being played.");
+                answer = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable($"Deluno could not ask {server.Name} what is being played.");
             }
 
             switch (answer)
             {
-                case MediaServerAnswer<IReadOnlyList<string>>.Reported reported:
-                    playing[server.Id] = reported.Value.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                case MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported reported:
+                    plays[server.Id] = reported.Value;
                     break;
-                case MediaServerAnswer<IReadOnlyList<string>>.Unreachable unreachable:
+                case MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable unreachable:
                     problems.Add(unreachable.Reason.TrimEnd('.'));
                     break;
-                case MediaServerAnswer<IReadOnlyList<string>>.NotSupported unsupported:
+                case MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.NotSupported unsupported:
                     problems.Add(unsupported.Reason.TrimEnd('.'));
                     break;
             }
         }
 
-        return new PlaybackReading(playing, problems.Count == 0 ? null : string.Join("; ", problems));
+        return new PlaybackReading(plays, problems.Count == 0 ? null : string.Join("; ", problems));
     }
 
     /// <returns>Why the title must wait, or null when nothing is playing and nothing is unknown.</returns>
@@ -578,10 +579,22 @@ public sealed class RetentionService(
             return $"Not removed: Deluno could not see what is being played ({reading.CouldNotSee}). It tries again at the next check.";
         }
 
-        var inUse = candidate.ServerItems.Any(match =>
-            reading.PlayingByServer.TryGetValue(match.Server.Id, out var ids) &&
-            (ids.Contains(match.Item.ServerItemId) || match.Episodes.Any(episode => ids.Contains(episode.ServerItemId))));
-        return inUse ? "Not removed: it is being played right now. Deluno tries again at the next check." : null;
+        // On a server the rule reads, the title is known by that server's own id.
+        var byItem = candidate.ServerItems.Any(match =>
+            reading.PlaysByServer.TryGetValue(match.Server.Id, out var plays) &&
+            plays.Any(play => play.ItemIds.Contains(match.Item.ServerItemId, StringComparer.OrdinalIgnoreCase) ||
+                              match.Episodes.Any(episode => play.ItemIds.Contains(episode.ServerItemId, StringComparer.OrdinalIgnoreCase))));
+
+        // On any server, by the file being played (the files are what is deleted), or for a film by its provider ids.
+        var unit = candidate.Unit;
+        var files = unit.Paths.Select(RetentionServerIndex.NormalizePath).ToHashSet(StringComparer.Ordinal);
+        bool Same(string? a, string? b) => !string.IsNullOrWhiteSpace(a) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        var byFileOrId = reading.PlaysByServer.Values.SelectMany(plays => plays).Any(play =>
+            play.Paths.Any(path => files.Contains(RetentionServerIndex.NormalizePath(path))) ||
+            (play.IsMovie && unit.Level == RetentionLevels.Movie &&
+             (Same(play.TmdbId, unit.TmdbId) || Same(play.ImdbId, unit.ImdbId) || Same(play.TvdbId, unit.TvdbId))));
+
+        return byItem || byFileOrId ? "Not removed: it is being played right now. Deluno tries again at the next check." : null;
     }
 
     private async Task TellDeferredAsync(RetentionRule rule, IReadOnlyList<RetentionMark> deferred, PlaybackReading? reading, CancellationToken cancellationToken)

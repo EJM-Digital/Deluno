@@ -60,6 +60,12 @@ public static class RetentionLimits
     public const int MaxTagLength = 60;
     public const int MinPostponeDays = 1;
     public const int MaxPostponeDays = 3650;
+
+    /// <summary>Why a postpone of this many days is refused, or null when it is fine.</summary>
+    public static string? PostponeProblem(int? days)
+        => days is { } count && count >= MinPostponeDays && count <= MaxPostponeDays
+            ? null
+            : $"Postpone by a whole number of days from {MinPostponeDays} to {MaxPostponeDays}.";
     public const int DefaultWaitDays = 14;
     public const int MinWaitDays = 1;
     public const int MaxWaitDays = 365;

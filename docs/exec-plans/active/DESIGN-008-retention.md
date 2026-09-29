@@ -281,10 +281,13 @@ against Maintainerr's source by name (`collection-handler.ts`,
   removing rule puts anything in a server's Leaving soon collection. A new rule
   starts on "only write it down".
 - **Wait while playing** (#1012). Before a removal (never before the other
-  actions) Deluno asks every server the rule reads what is being played (Plex
-  `/status/sessions`, Jellyfin and Emby `/Sessions`). A title in use, or whose
-  season or show is in use, is held and tried at the next check, with an
-  Activity line. Maintainerr treats a failed lookup as "nothing playing"; Deluno
+  actions) Deluno asks every enabled media server, not only the ones the rule
+  reads, what is being played (Plex `/status/sessions`, Jellyfin and Emby
+  `/Sessions`), because the files go for all of them. A play matches the title
+  by the server's own item, season or show id on a server the rule reads, by the
+  file being played (path-normalised, case-insensitive) on any server, or for a
+  film by its tmdb, imdb or tvdb id. A title in use is held and tried at the
+  next check, with an Activity line. Maintainerr treats a failed lookup as "nothing playing"; Deluno
   does not: if a server cannot say, nothing is removed. An existing rule keeps
   removing as before; a new rule starts with the wait on. It also covers a
   person confirming a removal.

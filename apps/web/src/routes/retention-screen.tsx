@@ -208,8 +208,7 @@ function payload(form: RuleForm) {
     expiryAction: form.expiryAction,
     expiryTag: form.expiryAction === "tag" ? form.expiryTag.trim() : null,
     keepInDelunoOnly: form.keepInDelunoOnly,
-    // Asking a server what is playing needs a server to ask.
-    deferWhilePlaying: form.deferWhilePlaying && form.mediaServerIds.length > 0
+    deferWhilePlaying: form.deferWhilePlaying
   };
 }
 
@@ -741,13 +740,8 @@ export function RetentionPage() {
           />
           <SwitchRow
             label="Never remove something while it plays"
-            description={
-              form.mediaServerIds.length === 0
-                ? "Choose a server above so Deluno can ask it what is being played."
-                : "Deluno asks these servers what is being played. A title that is playing waits for the next check, and so does everything if a server cannot say."
-            }
-            checked={form.deferWhilePlaying && form.mediaServerIds.length > 0}
-            disabled={form.mediaServerIds.length === 0}
+            description="Deluno asks every media server you have connected what is being played. A title that is playing on any of them waits for the next check, and so does everything if one cannot say."
+            checked={form.deferWhilePlaying}
             onCheckedChange={(checked) => setForm((current) => ({ ...current, deferWhilePlaying: checked }))}
           />
         </DrawerSection>
