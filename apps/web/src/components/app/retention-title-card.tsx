@@ -3,10 +3,12 @@ import { fetchJson } from "../../lib/api";
 import { useDisplayPreferences, formatDateTime } from "../../lib/display-preferences";
 import { authedFetch } from "../../lib/use-auth";
 import { toast } from "../shell/toaster";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Chip } from "../ui/chip";
-import { LIST_TRACK, ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
+import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { RetentionKeepDialog, type KeepChoice } from "./retention-keep-dialog";
+import { RetentionPostponeDialog } from "./retention-postpone-dialog";
 import { retentionMarkPresentation, STATUS_PRESENTATION } from "../../lib/status-tones";
 
 /** Mirrors `Deluno.Retention.RetentionTitleStatus`. */
@@ -19,8 +21,9 @@ interface RetentionTitleStatus {
     title: string;
     reasons: string[];
     removeAfterUtc: string;
-    state: "leaving" | "ready" | "held" | string;
+    state: "leaving" | "ready" | "held" | "done" | string;
     stateReason: string | null;
+    manual?: boolean;
   }[];
   keeps: { id: string; entityId: string; title: string; ruleId: string | null; ruleName: string | null; note: string | null; createdUtc: string }[];
   episodeRemovals: { episodeId: string; seasonNumber: number | null; episodeNumber: number | null; ruleName: string; reason: string; removedUtc: string }[];
@@ -41,6 +44,7 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
   const { preferences } = useDisplayPreferences();
   const [status, setStatus] = useState<RetentionTitleStatus | null>(null);
   const [keeping, setKeeping] = useState<Mark | null>(null);
+  const [postponing, setPostponing] = useState<Mark | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -72,6 +76,23 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
     }
   }
 
+  async function postpone(mark: Mark, days: number) {
+    setBusy("postpone");
+    try {
+      const response = await authedFetch("/api/retention/leaving-soon/postpone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ruleId: mark.ruleId, entityIds: [mark.entityId], days })
+      });
+      toast[response.ok ? "success" : "error"](response.ok ? `${mark.title} is postponed by ${days} ${days === 1 ? "day" : "days"}. It is not kept.` : `${mark.title} could not be postponed.`);
+      setPostponing(null);
+      await load();
+      onChanged?.();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function undo(path: string, key: string, done: string) {
     setBusy(key);
     try {
@@ -88,17 +109,32 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
   return (
     <>
       <ListCard title="Retention" count={`${rows} ${rows === 1 ? "item" : "items"}`}>
-        <ListTable chevron={false} columns={[{ label: "Rule" }, { label: "Why" }, { label: "When" }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }]}>
+        <ListTable chevron={false} columns={[{ label: "Rule" }, { label: "Why" }, { label: "When" }, { label: "", width: "240px", align: "end", mobile: true, srOnly: true }]}>
           {status.marks.map((mark) => (
             <ListRow key={`${mark.ruleId}:${mark.entityId}`}>
               <ListNameCell name={`“${mark.ruleName}”`} sub={mark.level === "movie" || mark.level === "show" ? undefined : mark.title} />
-              <ListCell primary={mark.reasons[0] ?? "—"} secondary={mark.reasons.length > 1 ? `and ${mark.reasons.length - 1} more` : undefined} />
+              <ListCell
+                primary={mark.reasons[0] ?? "—"}
+                secondary={
+                  mark.manual ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Badge variant="info">Manual</Badge>
+                      <span>added by hand</span>
+                    </span>
+                  ) : mark.reasons.length > 1 ? (
+                    `and ${mark.reasons.length - 1} more`
+                  ) : undefined
+                }
+              />
               <ListCell
                 primary={<Chip tone={retentionMarkPresentation(mark.state).tone}>{retentionMarkPresentation(mark.state).label}</Chip>}
-                secondary={mark.state === "held" ? mark.stateReason ?? undefined : formatDateTime(mark.removeAfterUtc, preferences)}
+                secondary={mark.state === "held" || mark.state === "done" ? mark.stateReason ?? undefined : formatDateTime(mark.removeAfterUtc, preferences)}
               />
-              <div role="cell" className="flex justify-end">
-                <Button type="button" size="sm" variant="outline" onClick={() => setKeeping(mark)} disabled={busy !== null}>Keep…</Button>
+              <div role="cell" className="flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setKeeping(mark)} disabled={busy !== null} aria-label={`Keep ${mark.title} from ${mark.ruleName}`}>Keep…</Button>
+                {mark.state !== "done" ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setPostponing(mark)} disabled={busy !== null} aria-label={`Postpone ${mark.title} on ${mark.ruleName}`}>Postpone…</Button>
+                ) : null}
               </div>
             </ListRow>
           ))}
@@ -133,6 +169,16 @@ export function RetentionTitleCard({ entityId, onChanged }: { entityId: string; 
         </ListTable>
       </ListCard>
 
+      <RetentionPostponeDialog
+        open={postponing !== null}
+        onOpenChange={(next) => {
+          if (!next) setPostponing(null);
+        }}
+        title={postponing?.title ?? "title"}
+        removeAfterUtc={postponing?.removeAfterUtc ?? null}
+        busy={busy === "postpone"}
+        onConfirm={(days) => postponing && void postpone(postponing, days)}
+      />
       <RetentionKeepDialog
         open={keeping !== null}
         onOpenChange={(next) => {

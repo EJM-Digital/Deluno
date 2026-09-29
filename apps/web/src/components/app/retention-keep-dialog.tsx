@@ -58,7 +58,7 @@ export function RetentionKeepDialog({ open, onOpenChange, title, ruleName, busy 
           </div>
 
           <div className="grid gap-[var(--grid-gap)] p-6">
-            <Field label="Keep it from" help={scope === "rule" ? `Another rule can still mark it later.` : "No rule will mark it while it is kept."}>
+            <Field label="Keep it from" help={scope === "rule" ? `It stays off that rule's list, even while the rule still matches it. Another rule can still mark it later.` : "No rule will mark it while it is kept."}>
               <SegmentedControl
                 value={scope}
                 onValueChange={setScope}
