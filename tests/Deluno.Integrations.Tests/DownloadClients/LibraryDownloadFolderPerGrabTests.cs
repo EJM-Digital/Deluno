@@ -11,6 +11,8 @@ using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Notifications;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
 using Moq;
 
 namespace Deluno.Integrations.Tests.DownloadClients;
@@ -214,6 +216,66 @@ public sealed class LibraryDownloadFolderPerGrabTests
 
         Assert.Null(await service.ListDestinationsAsync("missing", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task A_library_using_a_processor_lists_that_connections_enabled_path_mappings_in_both_directions_named()
+    {
+        var library = Library("lib-1", LibraryFolder) with { ImportWorkflow = "refine-before-import", ProcessorName = "Weir" };
+        var processors = Processors(
+            new ProcessorConnectionItem("proc-1", "Weir", "generic", "http://weir.test/intake/webhook/deluno", "Authorization", null, true, "healthy", null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
+            [ProcMapping("m1", @"C:DownloadsCompleted", "/downloads", true, 1), ProcMapping("m2", @"E:WeirReady", "/ready", false, 2)]);
+        var service = new FolderChainService(Libraries([library]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors);
+
+        var listed = Assert.Single((await service.ListDestinationsAsync(null, CancellationToken.None))!);
+
+        Assert.Equal("proc-1", listed.ProcessorConnection!.Id);
+        Assert.Equal("Weir", listed.ProcessorConnection.Name);
+        var mapping = Assert.Single(listed.ProcessorConnection.PathMappings);
+        Assert.Equal(@"C:DownloadsCompleted", mapping.DelunoPath);
+        Assert.Equal("/downloads", mapping.ProcessorPath);
+    }
+
+    [Fact]
+    public async Task A_library_with_no_processor_has_no_processor_connection_in_the_list()
+    {
+        var processors = Processors(
+            new ProcessorConnectionItem("proc-1", "Weir", "generic", "http://weir.test", "Authorization", null, true, "healthy", null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
+            [ProcMapping("m1", "/a", "/b", true, 1)]);
+        var service = new FolderChainService(Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors);
+
+        Assert.Null(Assert.Single((await service.ListDestinationsAsync(null, CancellationToken.None))!).ProcessorConnection);
+    }
+
+    [Fact]
+    public async Task The_processor_connection_serialises_with_the_documented_field_names()
+    {
+        var library = Library("lib-1", LibraryFolder) with { ImportWorkflow = "refine-before-import", ProcessorName = "Weir" };
+        var processors = Processors(
+            new ProcessorConnectionItem("proc-1", "Weir", "generic", "http://weir.test", "Authorization", null, true, "healthy", null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
+            [ProcMapping("m1", "/d", "/p", true, 1)]);
+        var service = new FolderChainService(Libraries([library]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors);
+
+        var json = JsonSerializer.Serialize((await service.ListDestinationsAsync(null, CancellationToken.None))!, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        using var document = JsonDocument.Parse(json);
+        var connection = document.RootElement[0].GetProperty("processorConnection");
+        Assert.Equal("proc-1", connection.GetProperty("id").GetString());
+        Assert.Equal("Weir", connection.GetProperty("name").GetString());
+        var pair = connection.GetProperty("pathMappings")[0];
+        Assert.Equal("/d", pair.GetProperty("delunoPath").GetString());
+        Assert.Equal("/p", pair.GetProperty("processorPath").GetString());
+    }
+
+    private static IProcessorRepository Processors(ProcessorConnectionItem connection, IReadOnlyList<ProcessorPathMappingItem> mappings)
+    {
+        var repository = new Mock<IProcessorRepository>();
+        repository.Setup(instance => instance.FindProcessorConnectionByNameAsync(connection.Name, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        repository.Setup(instance => instance.ListProcessorPathMappingsAsync(connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(mappings);
+        return repository.Object;
+    }
+
+    private static ProcessorPathMappingItem ProcMapping(string id, string deluno, string processor, bool enabled, int priority)
+        => new(id, "proc-1", deluno, processor, enabled, priority, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 
     // ------------------------------------------------------------ fixtures
 

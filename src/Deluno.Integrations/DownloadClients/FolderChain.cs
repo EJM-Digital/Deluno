@@ -1,6 +1,7 @@
 using Deluno.Connections.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
+using Deluno.Platform.Data;
 
 namespace Deluno.Integrations.DownloadClients;
 
@@ -88,7 +89,14 @@ public sealed record LibraryDownloadDestinations(
     string? DownloadsPath,
     string? ProcessorOutputPath,
     string ImportWorkflow,
-    IReadOnlyList<DownloadDestination> Destinations);
+    IReadOnlyList<DownloadDestination> Destinations,
+    ProcessorConnectionDestinations? ProcessorConnection = null);
+
+/// <summary>One path pair of a processor connection. <c>DelunoPath</c> is the path as Deluno sees it; <c>ProcessorPath</c> is the same location as the processor sees it.</summary>
+public sealed record ProcessorDestinationPathMapping(string DelunoPath, string ProcessorPath);
+
+/// <summary>The processor connection a library hands its downloads to, and that connection's enabled path mappings, highest priority first (#1073).</summary>
+public sealed record ProcessorConnectionDestinations(string Id, string Name, IReadOnlyList<ProcessorDestinationPathMapping> PathMappings);
 
 public interface IFolderChainService
 {
@@ -101,7 +109,8 @@ public interface IFolderChainService
 public sealed class FolderChainService(
     ILibrariesRepository libraries,
     IConnectionsRepository connections,
-    IDownloadClientRegistry registry) : IFolderChainService
+    IDownloadClientRegistry registry,
+    IProcessorRepository? processors = null) : IFolderChainService
 {
     public async Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken)
     {
@@ -224,9 +233,19 @@ public sealed class FolderChainService(
                     client.ClientId, client.ClientName, client.Protocol, client.Category,
                     CategoryKind(client.Protocol), client.SaveFolder, client.ClientSaveFolder, client.SavedBy, matches, status, message);
             }).ToArray();
+            ProcessorConnectionDestinations? processorConnection = null;
+            if (report.UsesProcessor && processors is not null && !string.IsNullOrWhiteSpace(library.ProcessorName)
+                && await processors.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken) is { } connection)
+            {
+                var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
+                processorConnection = new(connection.Id, connection.Name,
+                    mappings.Where(mapping => mapping.IsEnabled)
+                        .Select(mapping => new ProcessorDestinationPathMapping(mapping.DelunoPath, mapping.ProcessorPath)).ToArray());
+            }
+
             result.Add(new LibraryDownloadDestinations(
                 library.Id, library.Name, library.MediaType, library.DownloadsPath,
-                report.UsesProcessor ? report.ReadyPath : null, library.ImportWorkflow ?? string.Empty, destinations));
+                report.UsesProcessor ? report.ReadyPath : null, library.ImportWorkflow ?? string.Empty, destinations, processorConnection));
         }
 
         return result;

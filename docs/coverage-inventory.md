@@ -36,6 +36,7 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/integrations/external/manifest` |
 | GET | `/api/integrations/external/queue` |
 | GET | `/api/integrations/external/snapshot` |
+| GET | `/api/integrations/processors/download-destinations` |
 | GET | `/api/integrations/processors/handoffs` |
 | GET | `/api/intelligent-routing/anomalies` |
 | GET | `/api/intelligent-routing/snapshot` |

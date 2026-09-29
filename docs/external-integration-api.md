@@ -653,35 +653,87 @@ This is not Weir-specific: any processor may report it, in whatever path shape m
 
 #### Where each library's downloads land
 
-A processor that has to watch the right folder can ask Deluno where every download client puts each library's finished downloads. This is generic, not specific to any processor, and needs an API key with the `imports` scope.
+A processor that has to watch the right folder can ask Deluno where every download client puts each library's finished downloads, and how its own paths map onto Deluno's. This is generic, not specific to any processor.
+
+**Authorization.** The request must be authenticated, exactly like the rest of `/api/integrations/*`. A signed-in person always passes. An API key needs the `imports` scope (or `all`), the same scope as `GET /api/integrations/processors/handoffs`. That is stricter than `GET /api/integrations/external/manifest`, which accepts any valid key, because this response carries folder paths and a processor connection's path mappings. A key without the scope gets `403` with `{ "message" }`.
 
 ```
 GET /api/integrations/processors/download-destinations?libraryId=library-id
 ```
 
-`libraryId` is optional; without it every library is listed. An unknown `libraryId` answers `404`.
+`libraryId` is optional; without it every library is listed. An unknown `libraryId` answers `404`. Otherwise `200` with:
+
+| Field | JSON type | Meaning |
+| --- | --- | --- |
+| `libraries` | array of library | One entry per library. |
+| `libraries[].libraryId` | string | Deluno's library id. |
+| `libraries[].libraryName` | string | |
+| `libraries[].mediaType` | string | `movies` or `tv`. |
+| `libraries[].downloadsPath` | string or null | The folder the library's downloads finish in, as Deluno sees it. Null when not set. |
+| `libraries[].processorOutputPath` | string or null | The folder the processor leaves finished files in, as Deluno sees it. Null when the library does not use a processor. |
+| `libraries[].importWorkflow` | string | `refine-before-import` (a processor is used) or another import workflow. |
+| `libraries[].destinations` | array of destination | Every download client routed to the library. Empty when none is. |
+| `libraries[].destinations[].downloadClientId` | string | |
+| `libraries[].destinations[].downloadClientName` | string | |
+| `libraries[].destinations[].protocol` | string | `sabnzbd`, `nzbget`, `qbittorrent`, `transmission`, `deluge`, `rtorrent` or `utorrent`. |
+| `libraries[].destinations[].category` | string | The category or label Deluno sends. |
+| `libraries[].destinations[].categoryKind` | string | `category` (SABnzbd, NZBGet, qBittorrent) or `label` (the other torrent clients). |
+| `libraries[].destinations[].saveFolder` | string or null | Where finished downloads land, as Deluno's machine writes it. Null when the client did not say. |
+| `libraries[].destinations[].clientSaveFolder` | string or null | The same folder as the download client writes it. It differs from `saveFolder` behind a download-client path mapping. |
+| `libraries[].destinations[].savedBy` | string | `deluno-per-grab` when Deluno names the library's downloads folder on each grab (Transmission, Deluge); `client-category` when the client's own category folder decides. |
+| `libraries[].destinations[].matchesDownloadsPath` | bool or null | Whether `saveFolder` is the library's `downloadsPath`. Null when either is unknown. |
+| `libraries[].destinations[].status` | string | `ok`, `problem` or `unknown`. |
+| `libraries[].destinations[].message` | string | Why, in plain words. |
+| `libraries[].processorConnection` | object or null | The processor connection the library hands downloads to. Null when the library does not use a processor, or its connection is gone. |
+| `libraries[].processorConnection.id` | string | The connection's id. |
+| `libraries[].processorConnection.name` | string | The connection's name (the library's `processorName`). |
+| `libraries[].processorConnection.pathMappings` | array of pair | The connection's enabled "Path mappings", highest priority first. Empty when it has none, in which case paths are the same on both sides. |
+| `libraries[].processorConnection.pathMappings[].delunoPath` | string | A folder as Deluno sees it. |
+| `libraries[].processorConnection.pathMappings[].processorPath` | string | The same folder as the processor sees it. |
+
+Direction: to turn a Deluno path into the processor's, replace the longest matching `delunoPath` prefix with its `processorPath`; to turn a path the processor reports into Deluno's, do the reverse. This is the same rule Deluno applies to a hand-off's `sourcePath` and to a completion's `outputPath`. `saveFolder`, `downloadsPath` and `processorOutputPath` are all in Deluno's view, so a processor applies `pathMappings` to reach its own view of them.
+
+A worked example: Deluno on Windows, a Deluge reachable at `/downloads`, and a processor in a container.
 
 ```json
 {
-  "libraries": [{
-    "libraryId": "…", "libraryName": "Movies", "mediaType": "movies",
-    "downloadsPath": "C:\\Downloads\\Completed\\Movies",
-    "processorOutputPath": "E:\\Weir\\Ready\\Movies",
-    "importWorkflow": "refine-before-import",
-    "destinations": [{
-      "downloadClientId": "…", "downloadClientName": "Deluge", "protocol": "deluge",
-      "category": "movies", "categoryKind": "label",
-      "saveFolder": "C:\\Downloads\\Completed\\Movies",
-      "clientSaveFolder": "/downloads/Movies",
-      "savedBy": "deluno-per-grab",
-      "matchesDownloadsPath": true,
-      "status": "ok", "message": "…"
-    }]
-  }]
+  "libraries": [
+    {
+      "libraryId": "01a0a3146c8b7bbaa10ebc5750cd0e14",
+      "libraryName": "Movies",
+      "mediaType": "movies",
+      "downloadsPath": "C:\\Downloads\\Completed\\Movies",
+      "processorOutputPath": "E:\\Weir\\Ready\\Movies",
+      "importWorkflow": "refine-before-import",
+      "destinations": [
+        {
+          "downloadClientId": "01a0d018b16f77ea8c2a22f410741161",
+          "downloadClientName": "Deluge (live)",
+          "protocol": "deluge",
+          "category": "Movies",
+          "categoryKind": "label",
+          "saveFolder": "C:\\Downloads\\Completed\\Movies",
+          "clientSaveFolder": "/downloads/Movies",
+          "savedBy": "deluno-per-grab",
+          "matchesDownloadsPath": true,
+          "status": "ok",
+          "message": "Deluno sends each movies download to /downloads/Movies itself, the folder the Movies library and Weir expect, whatever folder Deluge (live) is set to by default."
+        }
+      ],
+      "processorConnection": {
+        "id": "01a0a3146c8b7bbaa10ebc5750cd0e15",
+        "name": "Weir",
+        "pathMappings": [
+          { "delunoPath": "C:\\Downloads\\Completed", "processorPath": "/data/downloads" },
+          { "delunoPath": "E:\\Weir\\Ready", "processorPath": "/data/ready" }
+        ]
+      }
+    }
+  ]
 }
 ```
 
-`categoryKind` is `category` (SABnzbd, NZBGet, qBittorrent) or `label` (Transmission, Deluge, rTorrent, uTorrent). `saveFolder` is the folder as Deluno's machine writes it; `clientSaveFolder` is the same folder as the client writes it (they differ behind a path mapping). `savedBy` is `deluno-per-grab` when Deluno names the library's downloads folder on each grab (Transmission and Deluge, which have no category folders of their own) and `client-category` when the client's own category folder decides. `matchesDownloadsPath` is `null` when the client did not say where it saves. `status` is `ok`, `problem` or `unknown`, with the reason in `message`. `processorOutputPath` is `null` when the library does not use a processor.
+Here the processor watches `/data/downloads/Movies` for finished downloads (`C:\Downloads\Completed\Movies` through the first mapping) and writes clean output to `/data/ready/Movies`.
 
 #### Telling the processor what became of the file
 
