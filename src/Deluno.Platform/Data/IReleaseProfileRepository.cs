@@ -27,4 +27,14 @@ public interface IReleaseProfileRepository
     Task<IReadOnlyList<ReleaseProfileItem>> ListApplicableAsync(
         IReadOnlyList<string>? tagNames,
         CancellationToken cancellationToken);
+
+    /// <summary>#995: "combine" (every matching rule applies) or "first-match" (top matching rule only).</summary>
+    Task<string> GetRuleModeAsync(CancellationToken cancellationToken);
+
+    Task<string> SetRuleModeAsync(string? mode, CancellationToken cancellationToken);
+
+    /// <summary>#995: puts the rules in this order, top rule first; ids left out keep their place after these.</summary>
+    Task<IReadOnlyList<ReleaseProfileItem>> ReorderAsync(
+        IReadOnlyList<string> orderedIds,
+        CancellationToken cancellationToken);
 }

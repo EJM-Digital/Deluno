@@ -69,9 +69,7 @@ public sealed record ProfileAcquisitionRules(
         };
 
     private static string CleanTerms(string? terms)
-        => string.Join(", ", (terms ?? string.Empty)
-            .Split([',', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        => string.Join(", ", ReleaseTermPattern.Split(terms)
             .OrderBy(term => term, StringComparer.OrdinalIgnoreCase));
 }
 

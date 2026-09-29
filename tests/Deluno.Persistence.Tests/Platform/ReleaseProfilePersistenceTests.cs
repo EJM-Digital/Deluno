@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Storage;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Platform.Contracts;
@@ -130,6 +131,114 @@ public sealed class ReleaseProfilePersistenceTests
         Assert.NotNull(reloaded);
         Assert.False(reloaded.Enabled);
         Assert.Equal(["indexer-a", "indexer-b"], reloaded.IndexerIds);
+    }
+
+    private static async Task<SqliteReleaseProfileRepository> NewRepositoryAsync(TestStorage storage)
+    {
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        return new SqliteReleaseProfileRepository(storage.Factory, timeProvider);
+    }
+
+    [Fact]
+    public async Task One_release_rule_can_apply_to_several_tags_and_a_title_with_any_of_them_matches()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await NewRepositoryAsync(storage);
+        var rule = await repository.CreateAsync(
+            new CreateReleaseProfileRequest("Family rule", null, "any", 0, 30, "", "", [], TagNames: ["Kids", " family ", "kids"]),
+            CancellationToken.None);
+
+        Assert.Equal(["Kids", "family"], rule.AppliesToTags);
+        Assert.Equal("Kids", rule.TagName);
+
+        Assert.Single(await repository.ListApplicableAsync(["FAMILY"], CancellationToken.None));
+        Assert.Single(await repository.ListApplicableAsync(["kids", "4K"], CancellationToken.None));
+        Assert.Empty(await repository.ListApplicableAsync(["Sports"], CancellationToken.None));
+
+        var reloaded = await repository.GetAsync(rule.Id, CancellationToken.None);
+        Assert.Equal(["Kids", "family"], reloaded!.AppliesToTags);
+
+        var narrowed = await repository.UpdateAsync(
+            rule.Id,
+            new UpdateReleaseProfileRequest(null, null, null, null, null, null, null, null, TagNames: ["Anime"]),
+            CancellationToken.None);
+        Assert.Equal(["Anime"], narrowed!.AppliesToTags);
+        Assert.Equal("Anime", narrowed.TagName);
+    }
+
+    [Fact]
+    public async Task By_default_every_matching_rule_applies_and_first_match_uses_only_the_top_one()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await NewRepositoryAsync(storage);
+        var fallback = await repository.CreateAsync(new CreateReleaseProfileRequest("Default", "", "any", 0, 0, "", "", []), CancellationToken.None);
+        var kids = await repository.CreateAsync(new CreateReleaseProfileRequest("Kids", null, "any", 0, 0, "", "", [], TagNames: ["kids", "family"]), CancellationToken.None);
+        var anime = await repository.CreateAsync(new CreateReleaseProfileRequest("Anime", "anime", "any", 0, 0, "", "", []), CancellationToken.None);
+
+        // Nothing changes on an install that has never chosen: every matching rule combines.
+        Assert.Equal(ReleaseRuleModes.Combine, await repository.GetRuleModeAsync(CancellationToken.None));
+        Assert.Equal(3, (await repository.ListApplicableAsync(["kids", "anime"], CancellationToken.None)).Count);
+
+        await repository.SetRuleModeAsync("first-match", CancellationToken.None);
+
+        // Kids is above Anime, so a title with both tags uses Kids only.
+        var both = Assert.Single(await repository.ListApplicableAsync(["kids", "anime"], CancellationToken.None));
+        Assert.Equal(kids.Id, both.Id);
+
+        // Drag Anime to the top: now it wins.
+        var reordered = await repository.ReorderAsync([anime.Id, kids.Id, fallback.Id], CancellationToken.None);
+        Assert.Equal([anime.Id, kids.Id, fallback.Id], reordered.Select(item => item.Id).ToArray());
+        Assert.Equal(anime.Id, Assert.Single(await repository.ListApplicableAsync(["kids", "anime"], CancellationToken.None)).Id);
+
+        // A title matching no tagged rule falls to the rule with no tag.
+        Assert.Equal(fallback.Id, Assert.Single(await repository.ListApplicableAsync(["sports"], CancellationToken.None)).Id);
+        Assert.Equal(fallback.Id, Assert.Single(await repository.ListApplicableAsync([], CancellationToken.None)).Id);
+
+        // A switched-off top rule is skipped, not chosen and ignored.
+        await repository.UpdateAsync(anime.Id, new UpdateReleaseProfileRequest(null, null, null, null, null, null, null, null, Enabled: false), CancellationToken.None);
+        Assert.Equal(kids.Id, Assert.Single(await repository.ListApplicableAsync(["kids", "anime"], CancellationToken.None)).Id);
+
+        await repository.SetRuleModeAsync("combine", CancellationToken.None);
+        Assert.Equal(ReleaseRuleModes.Combine, await repository.GetRuleModeAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Ids_left_out_of_a_reorder_keep_their_place_after_the_ones_named()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await NewRepositoryAsync(storage);
+        var a = await repository.CreateAsync(new CreateReleaseProfileRequest("A", "a", "any", 0, 0, "", "", []), CancellationToken.None);
+        var b = await repository.CreateAsync(new CreateReleaseProfileRequest("B", "b", "any", 0, 0, "", "", []), CancellationToken.None);
+        var c = await repository.CreateAsync(new CreateReleaseProfileRequest("C", "c", "any", 0, 0, "", "", []), CancellationToken.None);
+
+        var result = await repository.ReorderAsync([c.Id, "no-such-rule"], CancellationToken.None);
+
+        Assert.Equal([c.Id, a.Id, b.Id], result.Select(item => item.Id).ToArray());
+    }
+
+    [Fact]
+    public async Task Existing_single_tag_rules_become_one_tag_sets_in_their_old_order_when_the_schema_upgrades()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await NewRepositoryAsync(storage);
+        // A row as an older install stored it: only tag_name, no tag set, no order.
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "INSERT INTO release_profiles (id, name, tag_name, preferred_protocol, usenet_delay_minutes, torrent_delay_minutes, must_contain, must_not_contain, preferred_terms_json, created_utc, updated_utc) "
+                + "VALUES ('old1', 'Old', 'Kids', 'any', 0, 0, '', '', '[]', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');";
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        var old = await repository.GetAsync("old1", CancellationToken.None);
+        Assert.Equal(["Kids"], old!.AppliesToTags);
+        Assert.Single(await repository.ListApplicableAsync(["kids"], CancellationToken.None));
+        Assert.Equal(ReleaseRuleModes.Combine, await repository.GetRuleModeAsync(CancellationToken.None));
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
+using Deluno.Quality;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Platform.Data;
@@ -18,7 +19,7 @@ public sealed class SqliteReleaseProfileRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        command.CommandText = SelectSql + " ORDER BY lower(trim(tag_name)) ASC, name COLLATE NOCASE ASC;";
+        command.CommandText = SelectSql + " ORDER BY position ASC, lower(trim(tag_name)) ASC, name COLLATE NOCASE ASC;";
         return await ReadManyAsync(command, cancellationToken);
     }
 
@@ -44,28 +45,89 @@ public sealed class SqliteReleaseProfileRepository(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray() ?? [];
 
+        var all = await ListAsync(cancellationToken);
+        var matching = all
+            .Where(profile => profile.AppliesToTags.Count == 0
+                || profile.AppliesToTags.Any(tag => names.Contains(tag, StringComparer.OrdinalIgnoreCase)))
+            .ToArray();
+
+        if (await GetRuleModeAsync(cancellationToken) != ReleaseRuleModes.FirstMatch)
+        {
+            return matching;
+        }
+
+        // #995: the top rule that matches the title's tags is the only one used;
+        // the rule with no tag is the default and only speaks when no tagged rule
+        // matches. A switched-off rule is skipped, not chosen and then ignored.
+        // The list is already in position order.
+        var winner = matching.FirstOrDefault(profile => profile.Enabled && profile.AppliesToTags.Count > 0)
+            ?? matching.FirstOrDefault(profile => profile.Enabled && profile.AppliesToTags.Count == 0);
+        return winner is null ? [] : [winner];
+    }
+
+    public async Task<string> GetRuleModeAsync(CancellationToken cancellationToken)
+    {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
-
         using var command = connection.CreateCommand();
-        if (names.Length == 0)
-        {
-            command.CommandText = SelectSql + " WHERE trim(tag_name) = '' ORDER BY id;";
-        }
-        else
-        {
-            var parameters = new string[names.Length];
-            for (var index = 0; index < names.Length; index++)
-            {
-                parameters[index] = $"@tag{index}";
-                AddParameter(command, parameters[index], names[index]);
-            }
+        command.CommandText = "SELECT setting_value FROM system_settings WHERE setting_key = @key;";
+        AddParameter(command, "@key", ReleaseRuleModes.SettingKey);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return ReleaseRuleModes.Normalize(value as string);
+    }
 
-            command.CommandText = SelectSql + $" WHERE trim(tag_name) = '' OR lower(trim(tag_name)) IN ({string.Join(", ", parameters)}) ORDER BY lower(trim(tag_name)) ASC, id ASC;";
+    public async Task<string> SetRuleModeAsync(string? mode, CancellationToken cancellationToken)
+    {
+        var normalized = ReleaseRuleModes.Normalize(mode);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO system_settings (setting_key, setting_value, updated_utc)
+            VALUES (@key, @value, @updatedUtc)
+            ON CONFLICT(setting_key) DO UPDATE SET
+                setting_value = excluded.setting_value,
+                updated_utc = excluded.updated_utc;
+            """;
+        AddParameter(command, "@key", ReleaseRuleModes.SettingKey);
+        AddParameter(command, "@value", normalized);
+        AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return normalized;
+    }
+
+    public async Task<IReadOnlyList<ReleaseProfileItem>> ReorderAsync(
+        IReadOnlyList<string> orderedIds,
+        CancellationToken cancellationToken)
+    {
+        var current = await ListAsync(cancellationToken);
+        var known = current.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var next = orderedIds
+            .Where(known.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Concat(current.Select(item => item.Id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        for (var index = 0; index < next.Length; index++)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "UPDATE release_profiles SET position = @position WHERE id = @id;";
+            AddParameter(command, "@position", index);
+            AddParameter(command, "@id", next[index]);
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return await ReadManyAsync(command, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return await ListAsync(cancellationToken);
     }
 
     public async Task<ReleaseProfileItem> CreateAsync(
@@ -73,10 +135,11 @@ public sealed class SqliteReleaseProfileRepository(
         CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
+        var existing = await ListAsync(cancellationToken);
         var item = Normalize(
             Guid.CreateVersion7().ToString("N"),
             request.Name,
-            request.TagName,
+            request.TagNames ?? (request.TagName is null ? null : [request.TagName]),
             request.PreferredProtocol,
             request.UsenetDelayMinutes,
             request.TorrentDelayMinutes,
@@ -87,7 +150,8 @@ public sealed class SqliteReleaseProfileRepository(
             now,
             request.Enabled ?? true,
             request.IndexerIds,
-            request.BypassIfHighestQuality ?? false);
+            request.BypassIfHighestQuality ?? false,
+            existing.Count == 0 ? 0 : existing.Max(profile => profile.Position) + 1);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -99,13 +163,15 @@ public sealed class SqliteReleaseProfileRepository(
                 id, name, tag_name, preferred_protocol, usenet_delay_minutes,
                 torrent_delay_minutes, must_contain, must_not_contain,
                 preferred_terms_json, created_utc, updated_utc,
-                enabled, indexer_ids_json, bypass_if_highest_quality
+                enabled, indexer_ids_json, bypass_if_highest_quality,
+                tag_names, position
             )
             VALUES (
                 @id, @name, @tagName, @preferredProtocol, @usenetDelay,
                 @torrentDelay, @mustContain, @mustNotContain,
                 @preferredTerms, @createdUtc, @updatedUtc,
-                @enabled, @indexerIds, @bypassIfHighestQuality
+                @enabled, @indexerIds, @bypassIfHighestQuality,
+                @tagNames, @position
             );
             """;
         Bind(command, item);
@@ -128,7 +194,7 @@ public sealed class SqliteReleaseProfileRepository(
         var item = Normalize(
             existing.Id,
             request.Name ?? existing.Name,
-            request.TagName ?? existing.TagName,
+            request.TagNames ?? (request.TagName is null ? existing.AppliesToTags : [request.TagName]),
             request.PreferredProtocol ?? existing.PreferredProtocol,
             request.UsenetDelayMinutes ?? existing.UsenetDelayMinutes,
             request.TorrentDelayMinutes ?? existing.TorrentDelayMinutes,
@@ -139,7 +205,8 @@ public sealed class SqliteReleaseProfileRepository(
             now,
             request.Enabled ?? existing.Enabled,
             request.IndexerIds ?? existing.IndexerIds,
-            request.BypassIfHighestQuality ?? existing.BypassIfHighestQuality);
+            request.BypassIfHighestQuality ?? existing.BypassIfHighestQuality,
+            existing.Position);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -150,6 +217,7 @@ public sealed class SqliteReleaseProfileRepository(
             UPDATE release_profiles
             SET name = @name,
                 tag_name = @tagName,
+                tag_names = @tagNames,
                 preferred_protocol = @preferredProtocol,
                 usenet_delay_minutes = @usenetDelay,
                 torrent_delay_minutes = @torrentDelay,
@@ -180,7 +248,7 @@ public sealed class SqliteReleaseProfileRepository(
     private static readonly string SelectSql =
         "SELECT id, name, tag_name, preferred_protocol, usenet_delay_minutes, torrent_delay_minutes, "
         + "must_contain, must_not_contain, preferred_terms_json, created_utc, updated_utc, "
-        + "enabled, indexer_ids_json, bypass_if_highest_quality "
+        + "enabled, indexer_ids_json, bypass_if_highest_quality, tag_names, position "
         + "FROM release_profiles";
 
     private static async Task<IReadOnlyList<ReleaseProfileItem>> ReadManyAsync(
@@ -217,10 +285,17 @@ public sealed class SqliteReleaseProfileRepository(
                 indexerIds = [];
             }
 
+            var tagNames = SplitTags(reader.IsDBNull(14) ? string.Empty : reader.GetString(14));
+            var tagName = reader.GetString(2);
+            if (tagNames.Count == 0 && !string.IsNullOrWhiteSpace(tagName))
+            {
+                tagNames = [tagName.Trim()];
+            }
+
             items.Add(new ReleaseProfileItem(
                 reader.GetString(0),
                 reader.GetString(1),
-                reader.GetString(2),
+                tagName,
                 reader.GetString(3),
                 reader.GetInt32(4),
                 reader.GetInt32(5),
@@ -231,7 +306,9 @@ public sealed class SqliteReleaseProfileRepository(
                 ParseTimestamp(reader.GetString(10)),
                 reader.GetInt32(11) != 0,
                 indexerIds,
-                reader.GetInt32(13) != 0));
+                reader.GetInt32(13) != 0,
+                tagNames,
+                reader.GetInt32(15)));
         }
 
         return items;
@@ -240,7 +317,7 @@ public sealed class SqliteReleaseProfileRepository(
     private static ReleaseProfileItem Normalize(
         string id,
         string? name,
-        string? tagName,
+        IReadOnlyList<string>? tagNames,
         string? preferredProtocol,
         int? usenetDelayMinutes,
         int? torrentDelayMinutes,
@@ -251,11 +328,14 @@ public sealed class SqliteReleaseProfileRepository(
         DateTimeOffset updatedUtc,
         bool enabled,
         IReadOnlyList<string>? indexerIds,
-        bool bypassIfHighestQuality)
-        => new(
+        bool bypassIfHighestQuality,
+        int position)
+    {
+        var tags = NormalizeTagNames(tagNames);
+        return new(
             id,
             string.IsNullOrWhiteSpace(name) ? "Release profile" : name.Trim(),
-            NormalizeTagName(tagName),
+            tags.Count == 0 ? string.Empty : tags[0],
             NormalizeProtocol(preferredProtocol),
             Math.Max(0, usenetDelayMinutes ?? 0),
             Math.Max(0, torrentDelayMinutes ?? 0),
@@ -266,7 +346,10 @@ public sealed class SqliteReleaseProfileRepository(
             updatedUtc,
             enabled,
             NormalizeIndexerIds(indexerIds),
-            bypassIfHighestQuality);
+            bypassIfHighestQuality,
+            tags,
+            position);
+    }
 
     private static IReadOnlyList<string> NormalizeIndexerIds(IReadOnlyList<string>? indexerIds)
         => (indexerIds ?? [])
@@ -278,6 +361,17 @@ public sealed class SqliteReleaseProfileRepository(
 
     private static string NormalizeTagName(string? value) => value?.Trim() ?? string.Empty;
 
+    private static IReadOnlyList<string> NormalizeTagNames(IReadOnlyList<string>? values)
+        => (values ?? [])
+            .SelectMany(value => SplitTags(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static IReadOnlyList<string> SplitTags(string? csv)
+        => (csv ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
     private static string NormalizeProtocol(string? value)
         => value?.Trim().ToLowerInvariant() switch
         {
@@ -287,7 +381,7 @@ public sealed class SqliteReleaseProfileRepository(
         };
 
     private static string NormalizeTerms(string? value)
-        => string.Join(", ", SplitTerms(value));
+        => string.Join(", ", ReleaseTermPattern.Split(value));
 
     private static IReadOnlyList<ReleaseTermScore> NormalizePreferredTerms(IReadOnlyList<ReleaseTermScore>? terms)
         => (terms ?? [])
@@ -298,18 +392,13 @@ public sealed class SqliteReleaseProfileRepository(
             .OrderBy(item => item.Term, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    private static IReadOnlyList<string> SplitTerms(string? value)
-        => (value ?? string.Empty)
-            .Split(['\r', '\n', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(item => item.Length <= 100)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
     private static void Bind(System.Data.Common.DbCommand command, ReleaseProfileItem item)
     {
         AddParameter(command, "@id", item.Id);
         AddParameter(command, "@name", item.Name);
         AddParameter(command, "@tagName", item.TagName);
+        AddParameter(command, "@tagNames", string.Join(", ", item.AppliesToTags));
+        AddParameter(command, "@position", item.Position);
         AddParameter(command, "@preferredProtocol", item.PreferredProtocol);
         AddParameter(command, "@usenetDelay", item.UsenetDelayMinutes);
         AddParameter(command, "@torrentDelay", item.TorrentDelayMinutes);

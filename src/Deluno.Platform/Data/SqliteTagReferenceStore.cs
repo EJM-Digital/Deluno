@@ -272,8 +272,10 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
                 r => new TagRow("library_source_links", column, "librarySource", r.GetString(0), r.GetString(1), $"/settings/libraries?libraryId={Uri.EscapeDataString(r.GetString(3))}", Split(r.GetString(2))));
         }
 
-        await Read("SELECT id, tag_name, name FROM release_profiles WHERE trim(tag_name) <> '';",
-            r => new TagRow("release_profiles", "tag_name", "acquisitionRule", r.GetString(0), r.GetString(2), "/settings/release-rules", [r.GetString(1).Trim()]));
+        // #994: a rule can carry several tags. tag_name keeps the first of them for older readers,
+        // and WriteAsync keeps it in step when a rename rewrites tag_names.
+        await Read("SELECT id, CASE WHEN trim(tag_names) <> '' THEN tag_names ELSE tag_name END, name FROM release_profiles WHERE trim(tag_names) <> '' OR trim(tag_name) <> '';",
+            r => new TagRow("release_profiles", "tag_names", "acquisitionRule", r.GetString(0), r.GetString(2), "/settings/release-rules", Split(r.GetString(1))));
         await Read("SELECT id, name, match_value FROM destination_rules WHERE lower(trim(match_kind)) = 'tag' AND trim(match_value) <> '';",
             r => new TagRow("destination_rules", "match_value", "destinationRule", r.GetString(0), r.GetString(1), "/settings/destination-rules", Split(r.GetString(2))));
         return rows;
@@ -290,11 +292,17 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
         return text.Length == 0 ? "Seeding rule" : $"Seeding rule for {text}";
     }
 
-    private static Task WriteAsync(DbConnection connection, DbTransaction transaction, TagRow row, string value, CancellationToken cancellationToken)
+    private static async Task WriteAsync(DbConnection connection, DbTransaction transaction, TagRow row, string value, CancellationToken cancellationToken)
     {
+        if (row.Table == "release_profiles")
+        {
+            var first = Split(value).FirstOrDefault() ?? string.Empty;
+            await Exec(connection, transaction, "UPDATE release_profiles SET tag_name = @first WHERE id = @id;", cancellationToken, ("@first", first), ("@id", row.Id));
+        }
+
         // Table and column names come from the closed list in ReadRowsAsync, never from input.
         object? stored = row.Table == "sharing_rules" && value.Length == 0 ? null : value;
-        return Exec(connection, transaction, $"UPDATE {row.Table} SET {row.Column} = @value WHERE {row.IdColumn} = @id;", cancellationToken, ("@value", stored), ("@id", row.Id));
+        await Exec(connection, transaction, $"UPDATE {row.Table} SET {row.Column} = @value WHERE {row.IdColumn} = @id;", cancellationToken, ("@value", stored), ("@id", row.Id));
     }
 
     private static async Task<int> Exec(DbConnection connection, DbTransaction? transaction, string sql, CancellationToken cancellationToken, params (string Name, object? Value)[] parameters)

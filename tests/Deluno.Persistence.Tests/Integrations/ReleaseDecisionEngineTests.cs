@@ -780,6 +780,36 @@ public sealed class ReleaseDecisionEngineTests
     }
 
     [Fact]
+    public void Decide_accepts_a_slash_pattern_in_must_contain_and_rejects_when_it_does_not_match()
+    {
+        var pattern = Profile(mustContain: @"/\b(WEB-DL|WEBRip)\b/i");
+
+        var matching = ReleaseDecisionEngine.Decide(GoodInput(releaseProfiles: [pattern]));
+        Assert.NotEqual("rejected", matching.Status);
+
+        var missing = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.BluRay.x264-GRP",
+            releaseProfiles: [pattern]));
+        Assert.Equal("rejected", missing.Status);
+        Assert.Contains(missing.RiskFlags, risk => risk.Contains("missing required term", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Decide_accepts_a_slash_pattern_in_must_not_contain()
+    {
+        var decision = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseName: "Movie.2024.1080p.WEB-DL.HC.x264-GRP",
+            releaseProfiles: [Profile(mustNotContain: @"/\b(HC|KORSUB)\b/i")]));
+
+        Assert.Equal("rejected", decision.Status);
+        Assert.Contains(decision.RiskFlags, risk => risk.Contains("excluded term", StringComparison.OrdinalIgnoreCase));
+
+        var clean = ReleaseDecisionEngine.Decide(GoodInput(
+            releaseProfiles: [Profile(mustNotContain: @"/\b(HC|KORSUB)\b/i")]));
+        Assert.NotEqual("rejected", clean.Status);
+    }
+
+    [Fact]
     public void Decide_rejects_when_a_release_profile_excluded_term_is_present()
     {
         var decision = ReleaseDecisionEngine.Decide(GoodInput(
