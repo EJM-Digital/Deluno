@@ -51,6 +51,7 @@ import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
+import { TitleActionGrid } from "../components/app/title-action-grid";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
@@ -794,7 +795,7 @@ export function MovieDetailPage() {
       <Card className="relative isolate min-w-0 min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         <HeroBackdrop url={movie.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
+          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]">
             {movie.posterUrl ? (
               <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
@@ -957,7 +958,8 @@ export function MovieDetailPage() {
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{movie.metadataProvider ? <SourceMark source={movie.metadataProvider.toLowerCase()} label={movie.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
                 <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
               </div>
-              <Button variant="outline" className="mt-3 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
+              <TitleActionGrid>
+              <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
@@ -968,7 +970,7 @@ export function MovieDetailPage() {
                 onChanged={() => revalidator.revalidate()}
                 disabled={busyAction !== null}
               />
-              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/*
                 Separate from Edit metadata (#784): that drawer covers only
                 descriptive fields, and monitored state, quality profile and
@@ -976,18 +978,19 @@ export function MovieDetailPage() {
                 bulk tools, which meant a single-title change needed the
                 multi-select flow.
               */}
-              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsEditOpen(true)}>Edit movie</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsEditOpen(true)}>Edit movie</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button
                 variant="ghost"
-                className="mt-1 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsRemoveConfirmationOpen(true)}
                 disabled={busyAction !== null}
               >
                 <Trash2 className="h-4 w-4" />
                 Remove from Deluno
               </Button>
+              </TitleActionGrid>
             </aside>
           </div>
         </CardContent>
