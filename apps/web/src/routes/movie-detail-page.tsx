@@ -50,6 +50,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
+import { TitleFolderActions } from "../components/app/title-folder-actions";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
 import { friendlyRuleName } from "../lib/guide-names";
@@ -955,6 +956,13 @@ export function MovieDetailPage() {
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
+              <TitleFolderActions
+                variant="movies"
+                titleId={movie.id}
+                titleName={movie.title}
+                onChanged={() => revalidator.revalidate()}
+                disabled={busyAction !== null}
+              />
               <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/*
                 Separate from Edit metadata (#784): that drawer covers only

@@ -425,6 +425,22 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return Results.Ok(result);
         });
 
+        // One title's own rescan (#997): a separate, labelled button on the
+        // title page, never folded into "Refresh metadata".
+        filesystem.MapPost("/rescan-title", async (
+            [FromBody] TitleRescanRequest request,
+            IFilesystemReconciliationService reconciliationService,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.TitleId))
+            {
+                return Results.BadRequest(new { message = "Choose a title to rescan." });
+            }
+
+            var result = await reconciliationService.RescanTitleAsync(request.MediaType ?? "movies", request.TitleId, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         return endpoints;
     }
 
@@ -905,3 +921,5 @@ public sealed record ImportJobResponse(
     string JobId,
     ImportPreviewResponse Preview,
     Deluno.Jobs.Contracts.JobQueueItem Job);
+
+public sealed record TitleRescanRequest(string? MediaType, string? TitleId);

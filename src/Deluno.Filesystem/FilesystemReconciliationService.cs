@@ -194,6 +194,241 @@ public sealed class FilesystemReconciliationService(
         return new FilesystemReconciliationRepairResult(false, action, "This repair action is not supported for the selected reconciliation issue.");
     }
 
+    /// <summary>
+    /// One title's own rescan (#997): the same question the library-wide file
+    /// check asks, put to a single film or show.
+    ///
+    /// <para>Only one thing is ever changed, and it is the thing the scheduled
+    /// check already changes: a tracked file that is no longer on disk is
+    /// marked missing (Deluno's own note, never the disk). Video files that sit
+    /// in the title's folder without being tracked are only listed, each with
+    /// the id of the existing review repair, so a person decides. Nothing is
+    /// deleted, moved or imported here.</para>
+    /// </summary>
+    public async Task<TitleRescanResult?> RescanTitleAsync(
+        string mediaType,
+        string titleId,
+        CancellationToken cancellationToken)
+    {
+        var isTv = NormalizeMediaType(mediaType) == "tv";
+        string title;
+        string? libraryId;
+        var tracked = new List<(string? EpisodeId, string Path)>();
+
+        if (isTv)
+        {
+            var item = await seriesCatalogRepository.GetByIdAsync(titleId, cancellationToken);
+            if (item is null)
+            {
+                return null;
+            }
+
+            title = item.Title;
+            libraryId = item.LibraryId;
+            foreach (var (episodeId, filePath) in await seriesCatalogRepository.ListEpisodeFilePathsAsync(titleId, cancellationToken))
+            {
+                if (!string.IsNullOrWhiteSpace(filePath))
+                {
+                    tracked.Add((episodeId, filePath));
+                }
+            }
+        }
+        else
+        {
+            var item = await movieCatalogRepository.GetByIdAsync(titleId, cancellationToken);
+            if (item is null)
+            {
+                return null;
+            }
+
+            title = item.Title;
+            libraryId = item.LibraryId;
+            if (!string.IsNullOrWhiteSpace(item.FilePath))
+            {
+                tracked.Add((null, item.FilePath));
+            }
+        }
+
+        var normalizedType = isTv ? "tv" : "movies";
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var library = libraries.FirstOrDefault(item =>
+                string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase))
+            ?? (tracked.Count == 0
+                ? null
+                : libraries.FirstOrDefault(item =>
+                    NormalizeMediaType(item.MediaType) == normalizedType
+                    && !string.IsNullOrWhiteSpace(item.RootPath)
+                    && IsInsideRoot(tracked[0].Path, item.RootPath)));
+
+        if (tracked.Count == 0)
+        {
+            var nothing = new TitleRescanResult(
+                normalizedType, titleId, title, "nothing-tracked", 0, 0, [], [], null,
+                $"{title} has no file on record, so there was nothing to check.");
+            await RecordRescanAsync(nothing, cancellationToken);
+            return nothing;
+        }
+
+        if (library is not null
+            && !string.IsNullOrWhiteSpace(library.RootPath)
+            && !Directory.Exists(Path.GetFullPath(library.RootPath)))
+        {
+            // A drive that has not mounted is not a title with no files.
+            var unreachable = new TitleRescanResult(
+                normalizedType, titleId, title, "library-unreachable", tracked.Count, 0, [], [], null,
+                $"{library.Name} is not reachable at {library.RootPath}, so Deluno changed nothing. Check the drive is mounted and try again.");
+            await RecordRescanAsync(unreachable, cancellationToken);
+            return unreachable;
+        }
+
+        var present = 0;
+        var trackedFullPaths = new HashSet<string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var missing = new List<TitleRescanMissingFile>();
+        foreach (var (episodeId, path) in tracked)
+        {
+            trackedFullPaths.Add(Path.GetFullPath(path));
+            if (File.Exists(path))
+            {
+                present++;
+                continue;
+            }
+
+            var repaired = false;
+            if (library is not null)
+            {
+                var displayTitle = episodeId is null ? title : $"{title} ({Path.GetFileName(path)})";
+                var issueId = EncodeIssueToken(
+                    "missingTrackedFile", normalizedType, library.Id, titleId, episodeId, path, displayTitle);
+                repaired = (await RepairAsync(
+                    new FilesystemReconciliationRepairRequest(issueId, "mark-missing"),
+                    cancellationToken)).Repaired;
+            }
+
+            missing.Add(new TitleRescanMissingFile(Path.GetFileName(path), path, repaired));
+        }
+
+        // Look only in the title's own folder, and never in a library root
+        // itself: a flat library would otherwise list every other title.
+        var untracked = new List<TitleRescanUntrackedFile>();
+        var folder = CommonFolder(tracked.Select(item => item.Path).ToArray());
+        if (folder is not null
+            && library is not null
+            && IsInsideRoot(folder, library.RootPath)
+            && !string.Equals(
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(library.RootPath)),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
+            && Directory.Exists(folder))
+        {
+            foreach (var path in EnumerateFilesSafe(folder).Where(IsVideoFile))
+            {
+                var fullPath = Path.GetFullPath(path);
+                if (trackedFullPaths.Contains(fullPath) || IsDelunoArtifact(fullPath))
+                {
+                    continue;
+                }
+
+                untracked.Add(new TitleRescanUntrackedFile(
+                    Path.GetFileName(fullPath),
+                    fullPath,
+                    GetFileSize(fullPath),
+                    EncodeIssueToken(
+                        "orphanFile", normalizedType, library.Id,
+                        Path.GetFileNameWithoutExtension(fullPath), null, fullPath)));
+            }
+        }
+
+        var outcome = missing.Count > 0 ? "changed" : "ok";
+        var result = new TitleRescanResult(
+            normalizedType, titleId, title, outcome, tracked.Count, present, missing, untracked, folder,
+            DescribeRescan(title, tracked.Count, present, missing, untracked.Count));
+        await RecordRescanAsync(result, cancellationToken);
+        return result;
+    }
+
+    private static string DescribeRescan(
+        string title,
+        int checkedCount,
+        int present,
+        IReadOnlyList<TitleRescanMissingFile> missing,
+        int untrackedCount)
+    {
+        var parts = new List<string>();
+        if (missing.Count == 0)
+        {
+            parts.Add(checkedCount == 1
+                ? "Its file is where Deluno expects it."
+                : $"All {checkedCount} of its files are where Deluno expects them.");
+        }
+        else
+        {
+            parts.Add(present == 0 && checkedCount == 1
+                ? "Its file is no longer on disk, so Deluno marked it missing and stopped wanting it. No files were touched."
+                : $"{missing.Count} of {checkedCount} files are no longer on disk. Deluno marked them missing and stopped wanting them. No files were touched.");
+        }
+
+        if (untrackedCount > 0)
+        {
+            parts.Add(untrackedCount == 1
+                ? "One video file in its folder is not tracked; nothing was imported or deleted."
+                : $"{untrackedCount} video files in its folder are not tracked; nothing was imported or deleted.");
+        }
+
+        return $"Rescanned {title}. {string.Join(' ', parts)}";
+    }
+
+    private Task RecordRescanAsync(TitleRescanResult result, CancellationToken cancellationToken)
+        => activityFeedRepository.RecordActivityAsync(
+            "library.title.rescanned",
+            result.Summary,
+            JsonSerializer.Serialize(new
+            {
+                result.Outcome,
+                result.FilesChecked,
+                result.FilesPresent,
+                Missing = result.Missing.Select(item => item.Path),
+                Untracked = result.Untracked.Select(item => item.Path)
+            }),
+            null,
+            result.MediaType == "tv" ? "series" : "movie",
+            result.TitleId,
+            cancellationToken);
+
+    private static string? CommonFolder(IReadOnlyList<string> filePaths)
+    {
+        string? common = null;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        foreach (var filePath in filePaths)
+        {
+            var dir = Path.GetDirectoryName(Path.GetFullPath(filePath));
+            if (dir is null)
+            {
+                return null;
+            }
+
+            if (common is null)
+            {
+                common = dir;
+                continue;
+            }
+
+            while (common is not null
+                   && !(string.Equals(common, dir, comparison)
+                        || dir.StartsWith(common.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, comparison)))
+            {
+                common = Path.GetDirectoryName(common);
+            }
+
+            if (common is null)
+            {
+                return null;
+            }
+        }
+
+        return common;
+    }
+
     private async IAsyncEnumerable<TrackedFile> StreamTrackedFilesAsync(
         LibraryItem library,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)

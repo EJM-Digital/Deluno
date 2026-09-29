@@ -72,6 +72,7 @@ import { DownloadDispatchDrawer } from "../components/app/download-dispatch-draw
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
+import { TitleFolderActions } from "../components/app/title-folder-actions";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
@@ -1232,6 +1233,13 @@ export function ShowDetailPage() {
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
+              <TitleFolderActions
+                variant="series"
+                titleId={series.id}
+                titleName={series.title}
+                onChanged={() => revalidator.revalidate()}
+                disabled={busyAction !== null}
+              />
               <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
