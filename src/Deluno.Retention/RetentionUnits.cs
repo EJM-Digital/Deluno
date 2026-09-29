@@ -138,13 +138,13 @@ public sealed class RetentionUnitReader(
         {
             if (kind == MediaKind.Series)
             {
-                var page = await series.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
+                var page = await series.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, IncludeUnmonitoredInStatus: true, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
                 ids.UnionWith(page.Items.Select(item => item.Id));
                 token = page.HasMore ? page.NextPageToken : null;
             }
             else
             {
-                var page = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
+                var page = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, IncludeUnmonitoredInStatus: true, PageSize: PageSize, PageToken: token, Filters: filters), cancellationToken);
                 ids.UnionWith(page.Items.Select(item => item.Id));
                 token = page.HasMore ? page.NextPageToken : null;
             }
@@ -170,7 +170,7 @@ public sealed class RetentionUnitReader(
         string? token = null;
         do
         {
-            var page = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token), cancellationToken);
+            var page = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, IncludeUnmonitoredInStatus: true, PageSize: PageSize, PageToken: token), cancellationToken);
             foreach (var item in page.Items)
             {
                 var held = files.TryGetValue(item.Id, out var list) ? list : [];
@@ -221,7 +221,7 @@ public sealed class RetentionUnitReader(
         string? token = null;
         do
         {
-            var page = await series.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, PageSize: PageSize, PageToken: token), cancellationToken);
+            var page = await series.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, IncludeUnmonitoredInStatus: true, PageSize: PageSize, PageToken: token), cancellationToken);
             foreach (var show in page.Items)
             {
                 var held = files.TryGetValue(show.Id, out var list) ? list : [];

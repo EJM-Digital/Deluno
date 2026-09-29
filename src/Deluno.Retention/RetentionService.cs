@@ -254,7 +254,11 @@ public sealed class RetentionService(
     public async Task<RetentionRun> ConfirmAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetUtcNow();
-        var marks = (await repository.ListMarksAsync(rule.Id, cancellationToken))
+        var allMarks = await repository.ListMarksAsync(rule.Id, cancellationToken);
+        // Titles a person added by hand are asked for by name, as CheckAsync does (#1069); without
+        // them a hand-added title fell out of the matches and its mark was cleared on confirm.
+        var manualIds = allMarks.Where(mark => mark.Manual).Select(mark => mark.EntityId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var marks = allMarks
             .Where(mark => mark.State == RetentionMarkStates.Ready && entityIds.Contains(mark.EntityId, StringComparer.OrdinalIgnoreCase))
             .ToArray();
         var items = new List<RetentionRunItem>();
@@ -263,7 +267,7 @@ public sealed class RetentionService(
             return await FinishAsync(rule, RetentionRunKinds.Confirmed, "person", started, 0, items, 0, "Nothing was ready to remove.", cancellationToken);
         }
 
-        var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken);
+        var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, null, manualIds);
         if (evaluation.Problems.Count > 0 || evaluation.UnreachableServers.Count > 0)
         {
             var why = evaluation.Problems.Count > 0 ? string.Join(" ", evaluation.Problems) : string.Join("; ", evaluation.UnreachableServers);

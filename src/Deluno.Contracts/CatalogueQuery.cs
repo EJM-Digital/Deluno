@@ -44,6 +44,11 @@ namespace Deluno.Contracts;
 /// offset: it carries the last row's sort key, so page 400 costs the same as
 /// page 1 and rows inserted mid-scroll do not shift the window.
 /// </param>
+/// <param name="IncludeUnmonitoredInStatus">
+/// A status pill counts monitored titles only (#1048). Retention reads what is
+/// on disk whatever its monitoring, so it sets this to leave the pill's
+/// monitored clause out and keep the status test about the files (#1069).
+/// </param>
 /// <param name="Filters">
 /// The narrowing beyond status and library — quality, size, genre, year,
 /// runtime, rating. Applied in SQL like everything else here, and
@@ -58,7 +63,8 @@ public sealed record CatalogueQuery(
     bool Descending = true,
     int PageSize = 50,
     string? PageToken = null,
-    CatalogueFilters? Filters = null);
+    CatalogueFilters? Filters = null,
+    bool IncludeUnmonitoredInStatus = false);
 
 /// <summary>
 /// What a title *is*. Monitoring is not in here — it is whether Deluno will act

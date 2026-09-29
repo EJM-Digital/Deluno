@@ -579,6 +579,26 @@ public sealed class RetentionRuleTests
     // ------------------------------------------------- by hand (#1008)
 
     [Fact]
+    public async Task Confirming_a_hand_added_title_in_ask_first_mode_removes_it_instead_of_discarding_its_mark()
+    {
+        // Nobody has watched the film, so the steps do not match it; a person added it by hand (#1069).
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653"));
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.watchedBy:anyone:")) with { RemovalMode = RetentionRemovalModes.Ask, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().AddManualAsync(rule, "m1", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+
+        var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
+
+        Assert.Equal(1, confirmed.RemovedCount);
+        Assert.DoesNotContain(confirmed.Items!, item => item.Outcome == RetentionItemOutcomes.Cleared);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task A_title_added_by_hand_is_marked_manual_and_the_rules_steps_no_longer_decide_it()
     {
         // Nobody has watched either film, so the rule's step matches neither.

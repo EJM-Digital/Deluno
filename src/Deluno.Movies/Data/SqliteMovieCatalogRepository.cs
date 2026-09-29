@@ -984,7 +984,8 @@ public sealed class SqliteMovieCatalogRepository(
                 CatalogueUpgrade(),
                 CatalogueWantedIs(WantedStatuses.Covered),
                 CatalogueWantedIs(WantedStatuses.Upcoming),
-                CatalogueWantedIs(WantedStatuses.Downloading)),
+                CatalogueWantedIs(WantedStatuses.Downloading),
+                monitoredOnly: !query.IncludeUnmonitoredInStatus),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them. A title held
             // in two libraries has two files, and matching on either while

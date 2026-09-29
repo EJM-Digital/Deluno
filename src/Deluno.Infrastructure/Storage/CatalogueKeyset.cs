@@ -200,7 +200,8 @@ public static class CatalogueKeyset
         string? coveredExpression = null,
         string? upcomingExpression = null,
         string? downloadingExpression = null,
-        string? airingExpression = null)
+        string? airingExpression = null,
+        bool monitoredOnly = true)
     {
         var rung = CatalogueStatusFilters.Normalize(status) switch
         {
@@ -222,7 +223,12 @@ public static class CatalogueKeyset
             _ => string.Empty
         };
 
-        return string.IsNullOrEmpty(rung) ? string.Empty : $"({alias}.monitored = 1 AND ({rung}))";
+        if (string.IsNullOrEmpty(rung))
+        {
+            return string.Empty;
+        }
+
+        return monitoredOnly ? $"({alias}.monitored = 1 AND ({rung}))" : $"({rung})";
     }
 
     private static string MissingRung(
