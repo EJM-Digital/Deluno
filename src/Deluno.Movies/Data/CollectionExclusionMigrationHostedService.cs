@@ -14,19 +14,30 @@ namespace Deluno.Movies.Data;
 public sealed class CollectionExclusionMigrationHostedService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IUnifiedExclusionRepository unifiedExclusionRepository,
-    ILogger<CollectionExclusionMigrationHostedService> logger)
+    ILogger<CollectionExclusionMigrationHostedService> logger,
+    IBackgroundProblemReporter? problemReporter = null)
     : IHostedService
 {
+    internal const string ProblemKey = "startup:collection-exclusions";
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        // A tidy-up report must never stop the host from starting (#1080); it runs again next start.
+        // This must not stop the host from starting (#1080), but it must not
+        // be silent either: until it finishes, exclusions still sit in the old
+        // per-collection flag, so Health says so. It runs again next start.
         try
         {
             await RunAsync(cancellationToken);
+            problemReporter?.Clear(ProblemKey);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            logger.LogWarning(exception, "This start-up tidy-up did not finish; it will run again on the next start.");
+            logger.LogWarning(exception, "The collection exclusion move did not finish; it will run again on the next start.");
+            problemReporter?.Report(
+                ProblemKey,
+                "Collection exclusions were not moved",
+                "Deluno could not move your excluded collection movies to their new place when it started. They are still excluded in the old way, so check that none has been added back. Deluno tries again each time it starts.",
+                exception.Message);
         }
     }
 

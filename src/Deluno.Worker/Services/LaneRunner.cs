@@ -21,10 +21,12 @@ public sealed class LaneRunner
         CancellationToken cancellationToken,
         Action<JobQueueItem, Exception>? onUnhandledJobFailure = null,
         Action<Exception, TimeSpan>? onTickFailure = null,
-        TimeSpan? maxBackoff = null)
+        TimeSpan? maxBackoff = null,
+        Action<int, Exception?>? onFailureStreak = null)
     {
         var backoffCap = maxBackoff ?? TimeSpan.FromMinutes(1);
         var consecutiveTickFailures = 0;
+        var reportedWorking = false;
         var inFlight = new List<Task>();
         var drainImmediately = true;
         var sleepFor = lane.Interval;
@@ -62,7 +64,14 @@ public sealed class LaneRunner
                 try
                 {
                     result = await tick(availableSlots, cancellationToken);
-                    consecutiveTickFailures = 0;
+                    if (consecutiveTickFailures > 0 || !reportedWorking)
+                    {
+                        // The first good pass of every run also clears a
+                        // "lane stopped" row left by a previous run.
+                        consecutiveTickFailures = 0;
+                        reportedWorking = true;
+                        onFailureStreak?.Invoke(0, null);
+                    }
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
@@ -72,8 +81,15 @@ public sealed class LaneRunner
                     // back off, and try again.
                     consecutiveTickFailures++;
                     var backoff = BackoffFor(consecutiveTickFailures, lane.Interval, backoffCap);
+                    reportedWorking = false;
                     onTickFailure?.Invoke(exception, backoff);
-                    sleepFor = backoff;
+                    onFailureStreak?.Invoke(consecutiveTickFailures, exception);
+
+                    // A wake signal (any job queued while the database is
+                    // struggling) must not cut the backoff short, so wait it
+                    // out without listening to the wake semaphore.
+                    await Task.Delay(backoff, cancellationToken);
+                    drainImmediately = true;
                     continue;
                 }
 

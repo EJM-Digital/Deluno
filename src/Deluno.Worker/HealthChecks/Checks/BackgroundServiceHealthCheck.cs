@@ -23,6 +23,13 @@ public sealed class BackgroundServiceHealthCheck(IBackgroundServiceFailureState 
                 $"Deluno's {failure.DisplayName.ToLowerInvariant()} job stopped after an error at {failure.FailedUtc:u} and is not running. The rest of Deluno carries on.",
                 cause: failure.Reason,
                 fix: "Restart Deluno to start it again. If it stops again, Deluno's logs say why.")),
+            .. state.Problems.Select(problem => HealthCheckOutcome.Problem(
+                $"system:background-problem:{problem.Key}",
+                Category,
+                problem.Title,
+                problem.Message,
+                cause: problem.Reason,
+                fix: "This goes away by itself once it works again. If it stays, restart Deluno; Deluno's logs say why.")),
         ];
         return Task.FromResult(outcomes);
     }
