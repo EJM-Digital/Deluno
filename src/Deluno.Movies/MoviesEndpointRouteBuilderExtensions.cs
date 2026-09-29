@@ -169,6 +169,46 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
         });
 
+        // #1056: stop following collections. The movies they added are not touched.
+        collections.MapDelete("/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCollectionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var removed = await service.RemoveManyAsync([id], cancellationToken);
+            return removed.Count == 0 ? Results.NotFound() : Results.Ok(new { removed = removed.Count });
+        });
+
+        collections.MapPost("/remove", async (
+            HttpContext httpContext,
+            [FromBody] RemoveMovieCollectionsRequest request,
+            IMovieCollectionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            try
+            {
+                var removed = await service.RemoveManyAsync(request.CollectionIds ?? [], cancellationToken);
+                return Results.Ok(new { removed = removed.Count });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["collections"] = [ex.Message] });
+            }
+        });
+
         collections.MapPost("/{id}/refresh", async (
             string id,
             HttpContext httpContext,

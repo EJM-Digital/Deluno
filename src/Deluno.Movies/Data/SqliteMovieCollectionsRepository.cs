@@ -433,6 +433,33 @@ public sealed class SqliteMovieCollectionsRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken)
+    {
+        // Only the collection and its own member list go. movie_entries is never
+        // touched: a member only points at a movie, so the movies stay as they are.
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DatabaseName, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        using (var members = connection.CreateCommand())
+        {
+            members.Transaction = transaction;
+            members.CommandText = "DELETE FROM movie_collection_members WHERE collection_id = @id;";
+            AddParameter(members, "@id", id);
+            await members.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        bool removed;
+        using (var collection = connection.CreateCommand())
+        {
+            collection.Transaction = transaction;
+            collection.CommandText = "DELETE FROM movie_collections WHERE id = @id;";
+            AddParameter(collection, "@id", id);
+            removed = await collection.ExecuteNonQueryAsync(cancellationToken) > 0;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return removed;
+    }
+
     public async Task<bool> SetMemberExcludedAsync(
         string collectionId,
         string providerId,

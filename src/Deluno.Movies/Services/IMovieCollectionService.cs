@@ -18,6 +18,15 @@ public interface IMovieCollectionService
     /// carries a plain sentence) and keeping the stored profile and library names
     /// in step with the ids.
     /// </summary>
+    /// <summary>
+    /// #1056: stops following the given collections. Only the collection and its
+    /// member list go; no movie is deleted, unmonitored or changed. Returns the
+    /// collections that were removed.
+    /// </summary>
+    Task<IReadOnlyList<MovieCollectionItem>> RemoveManyAsync(
+        IReadOnlyList<string> collectionIds,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MovieCollectionItem>> UpdateManyAsync(
         IReadOnlyList<string> collectionIds,
         UpdateMovieCollectionRequest changes,

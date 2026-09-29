@@ -68,6 +68,9 @@ public sealed record UpdateMovieCollectionRequest(
     string? LibraryId = null);
 
 /// <summary>#998: change the same settings on several collections at once, as Radarr's collection editor does.</summary>
+/// <summary>#1056: the collections to stop following.</summary>
+public sealed record RemoveMovieCollectionsRequest(IReadOnlyList<string>? CollectionIds);
+
 public sealed record BulkUpdateMovieCollectionsRequest(
     IReadOnlyList<string>? CollectionIds,
     bool? Monitored = null,

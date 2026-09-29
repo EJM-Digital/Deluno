@@ -99,6 +99,33 @@ public sealed class SourceTagsPersistenceTests
     }
 
     [Fact]
+    public async Task Removing_a_collection_releases_its_tag_and_leaves_every_movie_exactly_as_it_was()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseAsync(storage);
+        var collections = new SqliteMovieCollectionsRepository(storage.Factory, Clock);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, Clock);
+        var movie = await movies.AddAsync(new CreateMovieRequest("Inception", 2010, null, MetadataProvider: "tmdb", MetadataProviderId: "27205"), CancellationToken.None);
+        var metadata = new MetadataCollection("tmdb", "645", "The Nolan Collection", null, null, null,
+            [new MetadataCollectionMovie("27205", "Inception", 2010, null, null, null, null, null)]);
+        var created = await collections.UpsertAsync("movies-main", "Movies", "D:\\Media\\Movies", null, null,
+            new CreateMovieCollectionRequest("645", "movies-main", Tags: "franchise"), metadata, CancellationToken.None);
+        await collections.SaveSnapshotAsync(created.Id, metadata, Clock.GetUtcNow(), CancellationToken.None);
+        Assert.True(await collections.LinkMovieAsync(created.Id, "27205", movie.Id, CancellationToken.None));
+        var before = await movies.GetByIdAsync(movie.Id, CancellationToken.None);
+        var references = new SqliteTagReferenceStore(storage.Factory);
+        Assert.Contains((await references.ListAllUsersAsync(CancellationToken.None))["franchise"], user => user.Id == created.Id);
+
+        Assert.True(await collections.DeleteAsync(created.Id, CancellationToken.None));
+
+        Assert.Null(await collections.GetAsync(created.Id, CancellationToken.None));
+        Assert.Empty(await collections.ListMembersAsync(created.Id, CancellationToken.None));
+        Assert.False((await references.ListAllUsersAsync(CancellationToken.None)).ContainsKey("franchise"));
+        Assert.Equal(before, await movies.GetByIdAsync(movie.Id, CancellationToken.None));
+        Assert.False(await collections.DeleteAsync(created.Id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_seerr_connection_and_the_off_list_setting_count_as_users_of_a_tag_and_follow_a_rename()
     {
         using var storage = TestStorage.Create();

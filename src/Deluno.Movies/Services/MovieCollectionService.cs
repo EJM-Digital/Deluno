@@ -303,6 +303,42 @@ public sealed class MovieCollectionService(
         }
     }
 
+    public async Task<IReadOnlyList<MovieCollectionItem>> RemoveManyAsync(
+        IReadOnlyList<string> collectionIds,
+        CancellationToken cancellationToken)
+    {
+        if (collectionIds.Count == 0)
+        {
+            throw new ArgumentException("Choose at least one collection.");
+        }
+
+        var removed = new List<MovieCollectionItem>();
+        foreach (var id in collectionIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var item = await collectionsRepository.GetAsync(id, cancellationToken);
+            if (item is not null && await collectionsRepository.DeleteAsync(id, cancellationToken))
+            {
+                removed.Add(item);
+            }
+        }
+
+        if (removed.Count > 0 && activityFeedRepository is not null)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "collection.removed",
+                removed.Count == 1
+                    ? $"You stopped following the movie collection {removed[0].Name}. Its movies were left exactly as they are."
+                    : $"You stopped following {removed.Count} movie collections ({string.Join(", ", removed.Select(item => item.Name))}). Their movies were left exactly as they are.",
+                null,
+                null,
+                "movie-collection",
+                removed.Count == 1 ? removed[0].Id : null,
+                cancellationToken);
+        }
+
+        return removed;
+    }
+
     public async Task<IReadOnlyList<MovieCollectionItem>> UpdateManyAsync(
         IReadOnlyList<string> collectionIds,
         UpdateMovieCollectionRequest changes,

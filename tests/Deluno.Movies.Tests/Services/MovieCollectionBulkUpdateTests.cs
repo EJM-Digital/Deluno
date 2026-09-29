@@ -56,6 +56,25 @@ public sealed class MovieCollectionBulkUpdateTests
     }
 
     [Fact]
+    public async Task Removing_collections_deletes_only_the_collections_says_so_in_Activity_and_never_touches_a_movie()
+    {
+        var (service, repo, activity) = Build();
+        repo.Setup(r => r.GetAsync("a", It.IsAny<CancellationToken>())).ReturnsAsync(Item("a"));
+        repo.Setup(r => r.GetAsync("b", It.IsAny<CancellationToken>())).ReturnsAsync(Item("b"));
+        repo.Setup(r => r.GetAsync("gone", It.IsAny<CancellationToken>())).ReturnsAsync((MovieCollectionItem?)null);
+        repo.Setup(r => r.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var removed = await service.RemoveManyAsync(["a", "b", "a", "gone"], CancellationToken.None);
+
+        Assert.Equal(["a", "b"], removed.Select(item => item.Id));
+        repo.Verify(r => r.DeleteAsync("a", It.IsAny<CancellationToken>()), Times.Once);
+        repo.Verify(r => r.DeleteAsync("gone", It.IsAny<CancellationToken>()), Times.Never);
+        activity.Verify(a => a.RecordActivityAsync("collection.removed", It.Is<string>(m => m.Contains("2 movie collections") && m.Contains("left exactly as they are")),
+            It.IsAny<string?>(), It.IsAny<string?>(), "movie-collection", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.RemoveManyAsync([], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Refuses_an_unknown_profile_library_or_availability_and_changes_nothing()
     {
         var (service, repo, _) = Build();

@@ -1,10 +1,11 @@
-import { Check, Film, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
+import { Check, Film, LoaderCircle, Plus, RefreshCcw, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
@@ -53,6 +54,7 @@ export function CollectionsPage() {
   const [tags, setTags] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [removing, setRemoving] = useState<MovieCollectionItem[] | null>(null);
 
   const missing = collections.reduce((total, collection) => total + collection.missingCount, 0);
   const monitoredCount = collections.filter((collection) => collection.monitored).length;
@@ -134,6 +136,28 @@ export function CollectionsPage() {
     }
   }
 
+  async function removeCollections() {
+    if (!removing || busy) return;
+    const ids = removing.map((item) => item.id);
+    setBusy("remove");
+    try {
+      const response = await authedFetch("/api/movie-collections/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionIds: ids })
+      });
+      if (!response.ok) throw new Error(await bulkErrorText(response, "Collections could not be removed."));
+      toast.success(ids.length === 1 ? `Stopped following ${removing[0].name}. Its movies were left as they are.` : `Stopped following ${ids.length} collections. Their movies were left as they are.`);
+      setSelected((current) => current.filter((id) => !ids.includes(id)));
+      setRemoving(null);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Collections could not be removed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function applyBulk(changes: BulkCollectionChanges) {
     if (!selected.length || busy) return;
     setBusy("bulk");
@@ -208,6 +232,9 @@ export function CollectionsPage() {
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(true)} disabled={busy === "bulk"}>Monitor</Button>
               <Button size="sm" variant="outline" onClick={() => setSelectedMonitoring(false)} disabled={busy === "bulk"}>Stop monitoring</Button>
+              <Button size="sm" variant="outline" onClick={() => setRemoving(collections.filter((item) => selected.includes(item.id)))} disabled={busy !== null}>
+                Stop following {selected.length} selected
+              </Button>
             </div>
           </div>
           <CollectionBulkEditor
@@ -289,9 +316,14 @@ export function CollectionsPage() {
                     <SwitchRow label="Monitor" checked={collection.monitored} onCheckedChange={(value) => updateCollection(collection, { monitored: value })} disabled={isBusy || isRefreshing} />
                     <SwitchRow label="Add missing" checked={collection.monitorMovies} onCheckedChange={(value) => updateCollection(collection, { monitorMovies: value })} disabled={isBusy || isRefreshing} />
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => refreshCollection(collection)} disabled={isBusy || isRefreshing}>
-                    {isRefreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}Refresh
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setRemoving([collection])} disabled={isBusy || isRefreshing}>
+                      <Trash2 className="h-3.5 w-3.5" />Stop following<span className="sr-only"> {collection.name}</span>
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => refreshCollection(collection)} disabled={isBusy || isRefreshing}>
+                      {isRefreshing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCcw className="h-3.5 w-3.5" />}Refresh
+                    </Button>
+                  </div>
                 </div>
                 {collection.lastSyncError ? <p className="border-t border-destructive/20 bg-destructive/5 px-4 py-2 text-xs text-destructive">Last refresh: {collection.lastSyncError}</p> : null}
               </Card>
@@ -299,7 +331,37 @@ export function CollectionsPage() {
           })}
         </div>
       )}
+
+      <RemoveCollectionsConfirm
+        collections={removing}
+        busy={busy === "remove"}
+        onCancel={() => setRemoving(null)}
+        onConfirm={removeCollections}
+      />
     </div>
+  );
+}
+
+/** #1056: the plain confirmation before a collection is unfollowed. Movies are never touched. */
+export function RemoveCollectionsConfirm({ collections, busy, onCancel, onConfirm }: {
+  collections: MovieCollectionItem[] | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const names = collections?.map((item) => item.name) ?? [];
+  const title = names.length === 1 ? `Stop following ${names[0]}?` : `Stop following ${names.length} collections?`;
+  return (
+    <ConfirmDialog
+      open={collections !== null && collections.length > 0}
+      onOpenChange={(open) => { if (!open) onCancel(); }}
+      title={title}
+      description={`${names.length === 1 ? "Deluno will stop tracking this collection." : `Deluno will stop tracking ${names.join(", ")}.`} Your movies stay exactly as they are: none is deleted, unmonitored or changed, and any tags they already have are kept. You can follow the collection again later.`}
+      confirmLabel="Stop following"
+      confirmVariant="destructive"
+      busy={busy}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -340,7 +402,7 @@ const AVAILABILITY_OPTIONS = [
   { value: "released", label: "When it is released" }
 ];
 
-async function bulkErrorText(response: Response): Promise<string> {
+async function bulkErrorText(response: Response, fallback = "Collections could not be updated."): Promise<string> {
   try {
     const body = await response.json() as { errors?: Record<string, string[]> };
     const first = Object.values(body.errors ?? {})[0]?.[0];
@@ -348,7 +410,7 @@ async function bulkErrorText(response: Response): Promise<string> {
   } catch {
     // fall through to the plain sentence
   }
-  return "Collections could not be updated.";
+  return fallback;
 }
 
 /**
