@@ -395,23 +395,23 @@ public sealed class TvdbFirstMetadataTests : IDisposable
             .ReturnsAsync([Season((null, 1, 1), (null, 1, 2), (null, 1, 3))]);
 
         // An episode already imported as S01E03 has no place in TheTVDB's list.
-        var stranded = await MetadataCatalogueChoice.GetAsync(
+        var stranded = (await MetadataCatalogueChoice.ChooseAsync(
             provider.Object,
             "1",
             [new(1, 1, true), new(1, 3, true)],
-            CancellationToken.None);
+            CancellationToken.None)).Seasons;
         Assert.Equal("tmdb", MetadataCatalogueChoice.SourceName(stranded));
 
         // When every existing episode is present, TheTVDB's numbering is used.
-        var aligned = await MetadataCatalogueChoice.GetAsync(
+        var aligned = (await MetadataCatalogueChoice.ChooseAsync(
             provider.Object,
             "1",
             [new(1, 1, true), new(1, 2, false)],
-            CancellationToken.None);
+            CancellationToken.None)).Seasons;
         Assert.Equal("tvdb", MetadataCatalogueChoice.SourceName(aligned));
 
         // A brand-new show has nothing to strand.
-        var fresh = await MetadataCatalogueChoice.GetAsync(provider.Object, "1", [], CancellationToken.None);
+        var fresh = (await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", [], CancellationToken.None)).Seasons;
         Assert.Equal("tvdb", MetadataCatalogueChoice.SourceName(fresh));
     }
 

@@ -34,13 +34,6 @@ public sealed record MetadataCatalogueChoiceResult(
 /// </summary>
 public static class MetadataCatalogueChoice
 {
-    public static async Task<IReadOnlyList<MetadataSeason>> GetAsync(
-        IMetadataProvider provider,
-        string providerId,
-        IReadOnlyCollection<MetadataEpisodeIdentity> existingEpisodes,
-        CancellationToken cancellationToken)
-        => (await ChooseAsync(provider, providerId, existingEpisodes, cancellationToken)).Seasons;
-
     public static async Task<MetadataCatalogueChoiceResult> ChooseAsync(
         IMetadataProvider provider,
         string providerId,

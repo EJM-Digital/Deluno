@@ -39,13 +39,19 @@ public sealed class EpisodeGroupRefreshService(
                 // on TMDb's numbering keeps TMDb's orderings, so no episode is
                 // handed another episode's absolute or DVD number.
                 var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(item.Id, cancellationToken);
-                var catalogue = await MetadataCatalogueChoice.GetAsync(
+                var choice = await MetadataCatalogueChoice.ChooseAsync(
                     metadataProvider,
                     item.MetadataProviderId!,
-                    (inventory?.Episodes ?? [])
-                        .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
-                        .ToArray(),
+                    SeriesCatalogueChoice.ExistingEpisodes(inventory),
                     cancellationToken);
+                if (choice.Hold != MetadataCatalogueHold.None)
+                {
+                    // The show sits on TheTVDB's numbering and TheTVDB cannot be
+                    // reached or does not agree: leave its orderings as they are.
+                    continue;
+                }
+
+                var catalogue = choice.Seasons;
                 groups = await metadataProvider.GetSeriesEpisodeGroupsAsync(
                     item.MetadataProviderId!,
                     MetadataCatalogueChoice.SourceName(catalogue) == "tvdb"

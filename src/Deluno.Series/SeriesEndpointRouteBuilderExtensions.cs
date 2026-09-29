@@ -3778,30 +3778,14 @@ public static class SeriesEndpointRouteBuilderExtensions
             var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 providerId,
-                (inventory?.Episodes ?? [])
-                    .Select(episode => new MetadataEpisodeIdentity(
-                        episode.SeasonNumber,
-                        episode.EpisodeNumber,
-                        episode.HasFile,
-                        episode.Title,
-                        episode.AirDateUtc,
-                        episode.CatalogueSource))
-                    .ToArray(),
+                SeriesCatalogueChoice.ExistingEpisodes(inventory),
                 cancellationToken);
             if (choice.Hold != MetadataCatalogueHold.None)
             {
                 // The show's numbering came from TheTVDB. Its episodes stay as
                 // they are and the next refresh tries TheTVDB again.
-                await activityFeedRepository.RecordActivityAsync(
-                    "metadata.series.catalogue.held",
-                    choice.Hold == MetadataCatalogueHold.TvdbUnavailable
-                        ? $"TheTVDB did not answer for {seriesTitle}, so its episode list was left as it is. Deluno will try again at the next refresh."
-                        : $"TheTVDB's episode list for {seriesTitle} does not match the episodes Deluno already has, so it was not used and the list was left as it is. Check the TheTVDB link on the title.",
-                    null,
-                    null,
-                    "series",
-                    seriesId,
-                    cancellationToken);
+                await SeriesCatalogueChoice.RecordHoldAsync(
+                    activityFeedRepository, choice.Hold, seriesId, seriesTitle, null, cancellationToken);
                 return SeriesCatalogueSyncResult.None;
             }
 
@@ -4140,13 +4124,28 @@ public static class SeriesEndpointRouteBuilderExtensions
         try
         {
             var existing = await repository.GetInventoryDetailAsync(item.Id, cancellationToken);
-            seasons = await MetadataCatalogueChoice.GetAsync(
+            var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 lookup.Result.ProviderId,
-                (existing?.Episodes ?? [])
-                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
-                    .ToArray(),
+                SeriesCatalogueChoice.ExistingEpisodes(existing),
                 cancellationToken);
+            if (choice.Hold != MetadataCatalogueHold.None)
+            {
+                return new SeriesMetadataLinkPlan(
+                    MetadataProviderRecordStatus.Unavailable,
+                    null,
+                    null,
+                    lookup.Provider,
+                    IntegrationFailureFactory.FromLegacy(
+                        "metadata",
+                        lookup.Provider,
+                        lookup.Provider,
+                        "metadata.provider.catalogue",
+                        "connectivity",
+                        SeriesCatalogueChoice.HoldMessage(choice.Hold, item.Title)));
+            }
+
+            seasons = choice.Seasons;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {

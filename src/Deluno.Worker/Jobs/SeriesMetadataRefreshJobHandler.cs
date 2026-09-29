@@ -5,6 +5,7 @@ using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Series.Contracts;
 using Deluno.Series.Data;
+using Deluno.Series.Services;
 
 namespace Deluno.Worker.Jobs;
 
@@ -76,7 +77,7 @@ public sealed class SeriesMetadataRefreshJobHandler(
         // Re-syncing the catalogue on the schedule is how an episode announced
         // after the show was added ever becomes known. Without it the inventory
         // is only as current as the day someone last pressed Refresh.
-        var catalogue = await SyncSeriesCatalogueAsync(series.Id, match.ProviderId, cancellationToken);
+        var catalogue = await SyncSeriesCatalogueAsync(series.Id, series.Title, match.ProviderId, job.Id, cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
             "metadata.series.refreshed",
@@ -144,7 +145,9 @@ public sealed class SeriesMetadataRefreshJobHandler(
     /// </summary>
     private async Task<SeriesCatalogueSyncResult> SyncSeriesCatalogueAsync(
         string seriesId,
+        string seriesTitle,
         string? providerId,
+        string? jobId,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(providerId))
@@ -158,13 +161,21 @@ public sealed class SeriesMetadataRefreshJobHandler(
             // TheTVDB's list when it lines up with the episodes this show
             // already has, TMDb's when it would strand any of them.
             var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, cancellationToken);
-            seasons = await MetadataCatalogueChoice.GetAsync(
+            var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 providerId,
-                (inventory?.Episodes ?? [])
-                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
-                    .ToArray(),
+                SeriesCatalogueChoice.ExistingEpisodes(inventory),
                 cancellationToken);
+            if (choice.Hold != MetadataCatalogueHold.None)
+            {
+                // A show numbered by TheTVDB is never re-synced from TMDb's
+                // list: its episodes stay and the next refresh tries again.
+                await SeriesCatalogueChoice.RecordHoldAsync(
+                    activityFeedRepository, choice.Hold, seriesId, seriesTitle, jobId, cancellationToken);
+                return SeriesCatalogueSyncResult.None;
+            }
+
+            seasons = choice.Seasons;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
