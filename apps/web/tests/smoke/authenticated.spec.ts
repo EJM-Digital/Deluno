@@ -88,9 +88,13 @@ test.describe("authenticated app smoke", () => {
   ]) {
     test(`loads ${path} with a signed-in user`, async ({ page }) => {
       await page.goto(path);
+      // The page has to have drawn before "no error" means anything, and the
+      // first paint of a lazily loaded route is what a busy machine slows
+      // down (#1057), so wait for the content first and only then look for
+      // an error, instead of checking for absence against a blank page.
+      await expect(page.locator("body")).toContainText(/Deluno|Overview|Movies|Settings|System|Calendar|Activity|Indexers|API/, { timeout: 15_000 });
       await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
       await expect(page.getByText("This area could not load")).toHaveCount(0);
-      await expect(page.locator("body")).toContainText(/Deluno|Overview|Movies|Settings|System|Calendar|Activity|Indexers|API/);
     });
   }
 

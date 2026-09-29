@@ -86,7 +86,12 @@ export default defineConfig({
       command: "npm run build && node scripts/serve-smoke-preview.mjs",
       url: smokeWebUrl,
       reuseExistingServer: false,
-      timeout: 60_000,
+      // This command runs a full production `vite build` before it serves, and
+      // the gate runs the backend tests and lint beside it. 60 s was enough on
+      // an idle machine and is not under that load (#1057): the whole run
+      // aborted with "Timed out waiting 60000ms from config.webServer". It is
+      // the same budget the backend server beside it already has.
+      timeout: 180_000,
       env: {
         ...process.env,
         DELUNO_WEB_PORT: String(smokeWebPort),

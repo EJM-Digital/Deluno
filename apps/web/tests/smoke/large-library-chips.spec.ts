@@ -127,6 +127,10 @@ test.describe("large library status chips at scale (#934)", () => {
   let headers: Record<string, string>;
 
   test.beforeAll(async ({ request }) => {
+    // The seeding request below is given 120 s; the hook must be given at
+    // least that, or a busy machine ends the whole file on the hook's own
+    // 30 s default while the host is still inserting (#1057).
+    test.setTimeout(150_000);
     const login = await request.post("/api/auth/login", {
       data: { username: "e2e-test-user", password: "e2e-test-password-123" }
     });
@@ -174,6 +178,7 @@ test.describe("large library status chips at scale (#934)", () => {
   // activity-feed rows behind — noise the very next spec would have to
   // explain, not the improvement being proven here.
   test.afterAll(async ({ request }) => {
+    test.setTimeout(150_000);
     if (!headers) return;
     const unseedResponse = await request.post("/api/testing/movies/unseed-large-library", {
       headers,
@@ -204,7 +209,12 @@ test.describe("large library status chips at scale (#934)", () => {
       // and every seeded title in a bucket was added a moment after the one
       // before it, so the top of the shelf is the highest index, not "00000".
       const firstTitle = page.locator(`p[title^="${TITLE_PREFIX} ${bucket} "]`).first();
-      await expect(firstTitle).toBeVisible({ timeout: 2_000 });
+      //
+      // This is a correctness wait, not a stopwatch: a hard 2 s bar failed
+      // whenever the gate ran other suites beside it (#1057). The latency
+      // is still logged below, and the ghost window itself is proved without
+      // relying on wall-clock speed in chip-switch-no-ghosts.spec.ts.
+      await expect(firstTitle).toBeVisible({ timeout: 15_000 });
       timings[bucket] = Date.now() - started;
 
       // The chip's own printed count is the API's facet total for this

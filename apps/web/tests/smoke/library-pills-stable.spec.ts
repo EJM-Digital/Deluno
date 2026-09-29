@@ -89,6 +89,10 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
   let headers: Record<string, string>;
 
   test.beforeAll(async ({ request }) => {
+    // The seeding request below is given 120 s; the hook must be given at
+    // least that, or a busy machine ends the whole file on the hook's own
+    // 30 s default while the host is still inserting (#1057).
+    test.setTimeout(150_000);
     const login = await request.post("/api/auth/login", {
       data: { username: "e2e-test-user", password: "e2e-test-password-123" }
     });
@@ -114,6 +118,7 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
   });
 
   test.afterAll(async ({ request }) => {
+    test.setTimeout(150_000);
     if (!headers) return;
     const unseed = await request.post("/api/testing/movies/unseed-large-library", { headers, timeout: 120_000 });
     expect(unseed.ok(), `Cleaning up failed: HTTP ${unseed.status()}`).toBe(true);
@@ -122,13 +127,22 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
   for (const width of [1669, 1920]) {
     test(`the search box is the same width on Movies and TV Shows at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
+      // The search box shares its row with the pills, whose numbers arrive
+      // with the first page. Measuring before they land compares a half-drawn
+      // toolbar with a finished one (#1057), so wait for the numbers first.
+      const settledSearchBox = async () => {
+        await expect(page.getByRole("button", { name: /^All\s+\d+/ }).first()).toBeVisible({ timeout: 15_000 });
+        return page.getByPlaceholder(/^Search /).first().boundingBox();
+      };
       await authenticateAndNavigate(page, "/movies");
-      const movies = await page.getByPlaceholder(/^Search /).first().boundingBox();
+      const movies = await settledSearchBox();
       await authenticateAndNavigate(page, "/tv");
-      const tv = await page.getByPlaceholder(/^Search /).first().boundingBox();
+      const tv = await settledSearchBox();
       expect(movies).not.toBeNull();
       expect(tv).not.toBeNull();
-      expect(tv!.width, "TV Shows draws the search box at a different width from Movies").toBeCloseTo(movies!.width, 0);
+      // Sub-pixel layout rounding is not a different width; a real defect is
+      // tens of pixels.
+      expect(Math.abs(tv!.width - movies!.width), "TV Shows draws the search box at a different width from Movies").toBeLessThan(1);
     });
   }
 
@@ -186,7 +200,16 @@ test.describe("library pills partition the shelf and never move it (#1048)", () 
         await click.locator.click();
         const response = await responsePromise;
         const body = (await response.json()) as CataloguePageResponse;
-        await page.waitForTimeout(400);
+        // Wait for the shelf to show this pill's rows, not for a fixed time:
+        // the response arriving is not the page having painted it, and on a
+        // busy machine the gap between the two is what made this flaky (#1057).
+        await expect(click.locator).toHaveAttribute("aria-pressed", "true");
+        if (click.bucket) {
+          await expect(page.locator(`p[title^="${TITLE_PREFIX} ${click.bucket} "]`).first()).toBeVisible({ timeout: 15_000 });
+        } else {
+          await expect(page.locator(`p[title^="${TITLE_PREFIX}"]`).first()).toBeVisible({ timeout: 15_000 });
+        }
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 
         const after = await boxes(page);
         expect(after.search, `${click.name}: the search bar moved or resized`).toEqual(before.search);

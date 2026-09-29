@@ -33,9 +33,17 @@ test.describe("library status chips (#934)", () => {
     }
 
     try {
+      // Wait for the page's own list response, then for the paint. A bare 5 s
+      // expect after a reload timed out when the gate ran other suites beside
+      // this one (#1057): the first fetch after a reload is the slowest one.
+      const listed = page.waitForResponse(
+        (response) => response.url().includes("/api/movies/page") && response.request().method() === "GET",
+        { timeout: 20_000 }
+      );
       await page.reload();
-      await expect(page.getByText(titleA, { exact: true })).toBeVisible();
-      await expect(page.getByText(titleB, { exact: true })).toBeVisible();
+      await listed;
+      await expect(page.getByText(titleA, { exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(titleB, { exact: true })).toBeVisible({ timeout: 15_000 });
 
       // Slow the next page fetch down. If the grid only clears once a
       // response lands, both titles are still on screen well past 200ms; if
