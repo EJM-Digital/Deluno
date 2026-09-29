@@ -494,6 +494,30 @@ public sealed class SqliteJobStore(
         return requeued;
     }
 
+    public async Task<JobQueueItem?> GetAsync(string jobId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(jobId)) return null;
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT
+                id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
+                idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
+            FROM job_queue
+            WHERE id = @id;
+            """;
+        AddParameter(command, "@id", jobId);
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadJob(reader) : null;
+    }
+
     public async Task<JobQueueItem?> DismissFailedAsync(string jobId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(jobId)) return null;

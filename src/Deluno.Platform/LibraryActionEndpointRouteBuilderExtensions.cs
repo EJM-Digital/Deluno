@@ -324,7 +324,7 @@ public static class LibraryActionEndpointRouteBuilderExtensions
             cancellationToken);
     }
 
-    private static LibraryAutomationPlanItem ToPlanItem(LibraryItem library)
+    public static LibraryAutomationPlanItem ToPlanItem(LibraryItem library)
     {
         return new LibraryAutomationPlanItem(
             LibraryId: library.Id,

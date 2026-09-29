@@ -63,6 +63,8 @@ GET /api/backups/settings
 GET /api/backups/{id}/download
 GET /api/blocked-releases
 GET /api/calendar/feed.ics
+GET /api/command/
+GET /api/command/{id}
 GET /api/companion-tools/
 GET /api/companion-tools/{id}/login
 GET /api/connections/
@@ -288,6 +290,7 @@ POST /api/blocked-releases
 POST /api/blocked-releases/cleanup-all
 POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
+POST /api/command/
 POST /api/companion-tools/install
 POST /api/connections/
 POST /api/custom-formats/
