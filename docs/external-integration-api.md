@@ -539,6 +539,37 @@ Pass its `id` back as `handoffId` in every processor event. `sourcePath` remains
 
 Supported statuses are `accepted`, `started`, `completed`, and `failed`. Completed events must include `outputPath`; failed events should include a user-readable `message`.
 
+#### Replies and limits
+
+What the endpoint answers, in the order Deluno decides. A processor built
+against this table gets exactly these; each row is held by a test
+(`ProcessorCallbackContractTests` and `AProcessorIsNotTakenAtItsWordTests`).
+
+| Status | When | Body |
+|---|---|---|
+| `202` | The report was accepted: the hand-off was updated and, for a completion (or a partial-success failure that names files), the import was queued. | `{ "status", "handoffId", "activityId", "importJobId" }`. `importJobId` is `null` unless an import was queued. |
+| `202` | A completion repeated for a hand-off already completed with the same `outputPath`, or a `rejected` failure repeated for a hand-off already rejected. Nothing new is done. | `{ "status", "handoffId", "alreadyHandled": true, ... }` |
+| `202` | A `failed` report with `disposition: "rejected"`: Deluno refused the release, told the client to forget it and searched again. | `{ "status": "rejected", "handoffId", "activityId", "blockedReleaseId", "searchJobId" }` |
+| `400` | The report is malformed: a `status` other than the four above; `completed` with no `outputPath`; `failed` with no `message`; `outputFiles` with no `outputPath`; `outputFiles` over the limits below. | A validation problem: `{ "errors": { "<field>": [ "<what to fix>" ] } }` |
+| `400` | `libraryId` is missing or names no library. Deluno will not guess an import destination. | Validation problem on `libraryId`. |
+| `400` | A completed (or partial) `outputPath` is outside the library's configured clean output folder; or `sourcePath` does not match the hand-off; or the file is recognisably another download's. Nothing was queued. | Validation problem on `outputPath` or `sourcePath`. |
+| `401` | No credentials. | none |
+| `403` | The key lacks the `imports` scope. | `{ "message": "This API key does not include the required scope: imports." }` |
+| `409` | The library is set to standard import, so it accepts no processor events. | `{ "message" }` |
+| `409` | No waiting hand-off matches `handoffId` (or the exact `sourcePath` Deluno recorded). Deluno never creates a hand-off from a callback. | `{ "message" }` |
+| `409` | The hand-off is already closed: a second, different completion for one already completed (a hand-off is completed once, naming every output), or a report after Deluno or a person stopped waiting. | `{ "message", "handoffId", "status" }` |
+| `409` | A `rejected` failure Deluno could not act on (it could not identify the release or record the refusal). Nothing was done, so the processor should keep the original. | `{ "message", "handoffId" }` |
+| `429` | Over the API rate limit (see Rate Limits). | `{ "error", "retryAfterSeconds" }` |
+
+**Size limits.** One report may list at most 1000 files in `outputFiles`, and
+no single path in it may be longer than 4096 characters. A report over either
+is a `400` on `outputFiles`, checked before Deluno looks for any file, and
+nothing is queued. A hand-off bigger than 1000 files (a whole show in one
+folder) should be sent as its folder in `outputPath` with `outputFiles`
+listing only what belongs in the library, or split into more hand-offs.
+Every other text field is bounded only by the web server's request-size limit.
+`outputFiles` is optional, so a processor that leaves it out is unaffected.
+
 #### Reporting every output file
 
 A hand-off gets one completion report, sent once every file in it is finished — not one report per file. `outputFiles` lists every file the processor produced for the hand-off, alongside `outputPath`:

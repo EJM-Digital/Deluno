@@ -1394,6 +1394,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             errors["outputPath"] = ["OutputFiles was reported without an OutputPath to find them in."];
         }
 
+        // How much one report may say (#1023), before Deluno looks for any of it.
+        foreach (var (field, messages) in ProcessorEventLimits.Check(request.OutputFiles))
+        {
+            errors[field] = messages;
+        }
+
         return errors;
     }
 
