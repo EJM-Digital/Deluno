@@ -91,6 +91,10 @@ public static class ServiceManager
 
         RunSc(scArgs);
         RunSc($"description {ServiceName} \"Deluno media acquisition and management server\"");
+        foreach (var failureArgs in FailureActionArguments(ServiceName))
+        {
+            RunSc(failureArgs);
+        }
 
         if (!string.IsNullOrEmpty(username))
         {
@@ -101,6 +105,19 @@ public static class ServiceManager
         // Start immediately
         RunSc($"start {ServiceName}");
     }
+
+    /// <summary>
+    /// The sc.exe calls that make Windows start Deluno again after it stops
+    /// itself (#1080): when a critical background service gives up, the host
+    /// exits with a non-zero code, and without failure actions the installed
+    /// service would stay stopped. <c>failureflag 1</c> makes the service
+    /// control manager treat a stop with a non-zero exit code as a failure too.
+    /// </summary>
+    internal static IReadOnlyList<string> FailureActionArguments(string serviceName) =>
+    [
+        $"failure {serviceName} reset= 86400 actions= restart/60000/restart/60000/restart/60000",
+        $"failureflag {serviceName} 1"
+    ];
 
     private static void RemoveService()
     {
