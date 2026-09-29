@@ -141,7 +141,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
     <>
       <Button
         variant="outline"
-        className="mt-1 w-full"
+        className="w-full"
         onClick={() => void rescan()}
         disabled={disabled || isBusy}
         aria-label={`Rescan the folder for ${titleName}`}
@@ -151,7 +151,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
       </Button>
       <Button
         variant="outline"
-        className="mt-1 w-full"
+        className="w-full"
         onClick={() => void previewRename()}
         disabled={disabled || isBusy}
         aria-label={`Preview the folder rename for ${titleName}`}

@@ -73,6 +73,7 @@ import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
+import { TitleActionGrid } from "../components/app/title-action-grid";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
@@ -1124,7 +1125,7 @@ export function ShowDetailPage() {
       <Card className="relative isolate min-w-0 min-h-[19rem] overflow-hidden border-primary/25 bg-card">
         <HeroBackdrop url={series.backdropUrl} />
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
-          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem]">
+          <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]">
             {series.posterUrl ? (
               <img src={series.posterUrl} alt={`${series.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
@@ -1240,7 +1241,8 @@ export function ShowDetailPage() {
                 ) : null}
               </div>
               {metaText("TvDbId") ? <TvdbAttribution className="mt-2" /> : null}
-              <Button variant="outline" className="mt-3 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
+              <TitleActionGrid>
+              <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata
               </Button>
@@ -1251,18 +1253,19 @@ export function ShowDetailPage() {
                 onChanged={() => revalidator.revalidate()}
                 disabled={busyAction !== null}
               />
-              <Button variant="outline" className="mt-1 w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
               {/* Destructive, so it sits with the other "manage this title" controls
                   rather than beside the two searches in the toolbar. */}
               <Button
                 variant="ghost"
-                className="mt-1 w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsRemoveConfirmationOpen(true)}
                 disabled={busyAction !== null}
               >
                 <Trash2 className="h-4 w-4" />
                 Remove from Deluno
               </Button>
+              </TitleActionGrid>
             </aside>
           </div>
         </CardContent>
