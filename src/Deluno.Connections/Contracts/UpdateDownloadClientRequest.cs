@@ -43,4 +43,6 @@ public sealed record UpdateDownloadClientRequest(
     bool ClearShareInactiveSeedingTimeLimitMinutes = false,
     /// <summary>#811 (qBittorrent only): save path sent at add time. Null leaves the saved value unchanged; combine with ClearLocation to clear it.</summary>
     string? Location = null,
-    bool ClearLocation = false);
+    bool ClearLocation = false,
+    /// <summary>#999 (qBittorrent only): default, original, subfolder or no-subfolder. Null leaves the saved value unchanged.</summary>
+    string? ContentLayout = null);

@@ -174,7 +174,7 @@ public sealed class SqliteConnectionsRepository(
                 remove_completed, remove_failed,
                 skip_hash_check, sequential_download, first_last_piece_prio,
                 share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes,
-                location
+                location, content_layout
             FROM download_clients
             ORDER BY priority ASC, name ASC;
             """;
@@ -215,7 +215,8 @@ public sealed class SqliteConnectionsRepository(
                 ShareRatioLimit: reader.IsDBNull(30) ? null : reader.GetDouble(30),
                 ShareSeedingTimeLimitMinutes: reader.IsDBNull(31) ? null : reader.GetInt32(31),
                 ShareInactiveSeedingTimeLimitMinutes: reader.IsDBNull(32) ? null : reader.GetInt32(32),
-                Location: reader.IsDBNull(33) ? null : reader.GetString(33))
+                Location: reader.IsDBNull(33) ? null : reader.GetString(33),
+                ContentLayout: ContentLayouts.Normalize(reader.IsDBNull(34) ? null : reader.GetString(34)))
             {
                 LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
             });
@@ -718,7 +719,8 @@ public sealed class SqliteConnectionsRepository(
             ShareRatioLimit: request.ShareRatioLimit,
             ShareSeedingTimeLimitMinutes: request.ShareSeedingTimeLimitMinutes,
             ShareInactiveSeedingTimeLimitMinutes: request.ShareInactiveSeedingTimeLimitMinutes,
-            Location: NormalizePath(request.Location));
+            Location: NormalizePath(request.Location),
+            ContentLayout: ContentLayouts.Normalize(request.ContentLayout));
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
@@ -735,7 +737,7 @@ public sealed class SqliteConnectionsRepository(
                 remove_completed, remove_failed,
                 skip_hash_check, sequential_download, first_last_piece_prio,
                 share_ratio_limit, share_seeding_time_limit_minutes, share_inactive_seeding_time_limit_minutes,
-                location
+                location, content_layout
             )
             VALUES (
                 @id, @name, @protocol, @host, @port, @username, @secret, @endpointUrl,
@@ -745,7 +747,7 @@ public sealed class SqliteConnectionsRepository(
                 @removeCompleted, @removeFailed,
                 @skipHashCheck, @sequentialDownload, @firstLastPiecePrio,
                 @shareRatioLimit, @shareSeedingTimeLimitMinutes, @shareInactiveSeedingTimeLimitMinutes,
-                @location
+                @location, @contentLayout
             );
             """;
 
@@ -784,6 +786,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@shareSeedingTimeLimitMinutes", item.ShareSeedingTimeLimitMinutes);
         AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", item.ShareInactiveSeedingTimeLimitMinutes);
         AddParameter(command, "@location", item.Location);
+        AddParameter(command, "@contentLayout", item.ContentLayout);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return item;
@@ -954,6 +957,7 @@ public sealed class SqliteConnectionsRepository(
         var newShareRatioLimit = request.ClearShareRatioLimit ? null : request.ShareRatioLimit ?? existing.ShareRatioLimit;
         var newShareSeedingTimeLimitMinutes = request.ClearShareSeedingTimeLimitMinutes ? null : request.ShareSeedingTimeLimitMinutes ?? existing.ShareSeedingTimeLimitMinutes;
         var newShareInactiveSeedingTimeLimitMinutes = request.ClearShareInactiveSeedingTimeLimitMinutes ? null : request.ShareInactiveSeedingTimeLimitMinutes ?? existing.ShareInactiveSeedingTimeLimitMinutes;
+        var newContentLayout = request.ContentLayout is null ? existing.ContentLayout : ContentLayouts.Normalize(request.ContentLayout);
         var newLocation = request.ClearLocation ? null : request.Location is not null ? NormalizePath(request.Location) : existing.Location;
 
         var newHealth = newEnabled && !existing.IsEnabled ? "untested" : existing.HealthStatus;
@@ -991,7 +995,8 @@ public sealed class SqliteConnectionsRepository(
                 share_ratio_limit = @shareRatioLimit,
                 share_seeding_time_limit_minutes = @shareSeedingTimeLimitMinutes,
                 share_inactive_seeding_time_limit_minutes = @shareInactiveSeedingTimeLimitMinutes,
-                location = @location
+                location = @location,
+                content_layout = @contentLayout
             WHERE id = @id;
             """;
 
@@ -1029,6 +1034,7 @@ public sealed class SqliteConnectionsRepository(
         AddParameter(command, "@shareSeedingTimeLimitMinutes", newShareSeedingTimeLimitMinutes);
         AddParameter(command, "@shareInactiveSeedingTimeLimitMinutes", newShareInactiveSeedingTimeLimitMinutes);
         AddParameter(command, "@location", newLocation);
+        AddParameter(command, "@contentLayout", newContentLayout);
 
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
 
@@ -1061,6 +1067,7 @@ public sealed class SqliteConnectionsRepository(
             ShareSeedingTimeLimitMinutes = newShareSeedingTimeLimitMinutes,
             ShareInactiveSeedingTimeLimitMinutes = newShareInactiveSeedingTimeLimitMinutes,
             Location         = newLocation,
+            ContentLayout    = newContentLayout,
             UpdatedUtc       = now
         };
     }

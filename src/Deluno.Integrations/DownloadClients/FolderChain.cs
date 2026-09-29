@@ -104,6 +104,11 @@ public sealed class FolderChainService(
                 check.SavePath,
                 mappings.Where(mapping => string.Equals(mapping.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)));
             links.Add(FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
+            if (ContentLayoutLink(client, category) is { } layoutLink)
+            {
+                links.Add(layoutLink);
+            }
+
             chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
         }
 
@@ -119,6 +124,20 @@ public sealed class FolderChainService(
             chains,
             LibraryLinks(library, usesProcessor, kind, chains.Count));
     }
+
+    /// <summary>
+    /// #999: qBittorrent's "no subfolder" content layout drops a multi-file
+    /// download's files straight into the category folder. Deluno finds a
+    /// download by its own folder, so a season pack's files would sit loose
+    /// beside every other download's. Only that choice earns a link; the
+    /// others keep each download in its own place.
+    /// </summary>
+    public static FolderChainLink? ContentLayoutLink(Deluno.Connections.Contracts.DownloadClientItem client, string category)
+        => string.Equals(client.Protocol, "qbittorrent", StringComparison.OrdinalIgnoreCase)
+           && Deluno.Connections.Contracts.ContentLayouts.Normalize(client.ContentLayout) == Deluno.Connections.Contracts.ContentLayouts.NoSubfolder
+            ? new("layout", FolderChainStatuses.Problem,
+                $"{client.Name} is set to put files straight into the {category} folder with no subfolder. A download with several files, such as a season pack, will land loose beside every other download, and Deluno cannot tell them apart. Choose \"Keep the torrent's own layout\" or \"Always create a subfolder\" in {client.Name}'s settings.")
+            : null;
 
     private static FolderChainLink FolderLink(string clientName, string category, string? clientFolder, LibraryItem library, string kind, bool usesProcessor)
     {

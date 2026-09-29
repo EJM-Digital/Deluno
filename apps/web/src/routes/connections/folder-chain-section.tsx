@@ -57,7 +57,7 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
         <ul className="grid gap-[var(--grid-gap)]" aria-label="Folder check">
           {report.clients.map((client) =>
             client.links.map((link) => (
-              <ChainLine key={`${client.clientId}-${link.step}`} link={link} title={`${client.clientName} · ${link.step === "category" ? `category ${client.category}` : "folder"}`} />
+              <ChainLine key={`${client.clientId}-${link.step}`} link={link} title={`${client.clientName} · ${link.step === "category" ? `category ${client.category}` : link.step === "layout" ? "file layout" : "folder"}`} />
             ))
           )}
           {report.libraryLinks.map((link) => (
