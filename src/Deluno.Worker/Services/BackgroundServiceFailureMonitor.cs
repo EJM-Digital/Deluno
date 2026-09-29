@@ -15,10 +15,56 @@ public sealed record FailedBackgroundService(
     string Reason,
     DateTimeOffset FailedUtc);
 
+/// <summary>A background job that is still running but keeps failing, or a start-up tidy-up that did not finish (#1080).</summary>
+public sealed record BackgroundProblem(
+    string Key,
+    string Title,
+    string Message,
+    string Reason,
+    DateTimeOffset SinceUtc);
+
 /// <summary>What Health reads to say a background service has stopped (#1080).</summary>
 public interface IBackgroundServiceFailureState
 {
     IReadOnlyList<FailedBackgroundService> Failures { get; }
+
+    /// <summary>Jobs that are failing repeatedly without having stopped.</summary>
+    IReadOnlyList<BackgroundProblem> Problems { get; }
+}
+
+/// <summary>
+/// Which services are critical and how hard Deluno tries to keep them alive (#1080).
+///
+/// <para><b>Critical services</b> are the two whose death would leave Deluno
+/// looking healthy while doing nothing, or unable to say so: the job worker
+/// (<c>DelunoHeartbeatWorker</c>, which runs every lane) and the health check
+/// service (<c>HealthCheckHostedService</c>, the only thing that can put a
+/// problem on Health). If one ends, it is restarted in this process with a
+/// growing pause, up to <see cref="MaxRestarts"/> times in a row. If it cannot
+/// be kept running the host is stopped with a failing exit code, so Docker or
+/// the Windows service restarts Deluno. Every other background service is not
+/// critical: its failure is logged and shown on Health, and the rest carries on.</para>
+/// </summary>
+public sealed class BackgroundServiceSafetyOptions
+{
+    /// <summary>The type names of the critical services.</summary>
+    public ISet<string> CriticalServiceTypeNames { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "DelunoHeartbeatWorker",
+        "HealthCheckHostedService"
+    };
+
+    /// <summary>Restarts in a row before Deluno gives up and stops the host.</summary>
+    public int MaxRestarts { get; set; } = 5;
+
+    /// <summary>The pause before the first restart; it doubles each time.</summary>
+    public TimeSpan RestartBackoff { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>A service that then runs this long is trusted again, and its restart count starts over.</summary>
+    public TimeSpan StableAfter { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Sets a failing process exit code when giving up, so an orchestrator restarts Deluno.</summary>
+    public bool SetExitCodeWhenGivingUp { get; set; } = true;
 }
 
 /// <summary>
@@ -43,10 +89,34 @@ public sealed class BackgroundServiceFailureMonitor(
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime lifetime,
     TimeProvider timeProvider,
-    ILogger<BackgroundServiceFailureMonitor> logger)
-    : IHostedLifecycleService, IBackgroundServiceFailureState
+    ILogger<BackgroundServiceFailureMonitor> logger,
+    BackgroundServiceSafetyOptions? options = null)
+    : IHostedLifecycleService, IBackgroundServiceFailureState, IBackgroundProblemReporter
 {
+    private readonly BackgroundServiceSafetyOptions _options = options ?? new BackgroundServiceSafetyOptions();
     private readonly ConcurrentDictionary<string, FailedBackgroundService> _failures = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, BackgroundProblem> _problems = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<BackgroundProblem> Problems
+        => [.. _problems.Values.OrderBy(problem => problem.SinceUtc)];
+
+    public void Report(string key, string title, string message, string reason)
+    {
+        var isNew = !_problems.TryGetValue(key, out var existing);
+        _problems[key] = new BackgroundProblem(key, title, message, reason, existing?.SinceUtc ?? timeProvider.GetUtcNow());
+        if (isNew)
+        {
+            _ = RequestHealthRunAsync(key);
+        }
+    }
+
+    public void Clear(string key)
+    {
+        if (_problems.TryRemove(key, out _))
+        {
+            _ = RequestHealthRunAsync(key);
+        }
+    }
 
     public IReadOnlyList<FailedBackgroundService> Failures
         => [.. _failures.Values.OrderBy(failure => failure.FailedUtc)];
@@ -77,23 +147,106 @@ public sealed class BackgroundServiceFailureMonitor(
 
     internal async Task WatchAsync(BackgroundService service)
     {
-        var task = service.ExecuteTask;
-        if (task is null)
-        {
-            return;
-        }
+        var type = service.GetType();
+        var critical = _options.CriticalServiceTypeNames.Contains(type.Name);
+        var restarts = 0;
 
+        while (true)
+        {
+            var task = service.ExecuteTask;
+            if (task is null)
+            {
+                return;
+            }
+
+            var startedUtc = timeProvider.GetUtcNow();
+            Exception? failure = null;
+            try
+            {
+                await task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+
+            if (lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!critical)
+            {
+                if (failure is not null)
+                {
+                    await RecordAsync(type, failure).ConfigureAwait(false);
+                }
+
+                return;
+            }
+
+            // A critical service must not end while Deluno is running, even
+            // quietly. Restart it here; if it will not stay up, stop the host
+            // so Docker or the Windows service starts Deluno again.
+            failure ??= new InvalidOperationException($"{type.Name} ended without being asked to stop.");
+            if (timeProvider.GetUtcNow() - startedUtc >= _options.StableAfter)
+            {
+                restarts = 0;
+            }
+
+            if (restarts >= _options.MaxRestarts)
+            {
+                await RecordAsync(type, failure).ConfigureAwait(false);
+                logger.LogCritical(failure, "Critical background service {Service} could not be kept running after {Restarts} restarts; stopping Deluno so it is started again.", type.Name, restarts);
+                if (_options.SetExitCodeWhenGivingUp)
+                {
+                    Environment.ExitCode = 1;
+                }
+
+                lifetime.StopApplication();
+                return;
+            }
+
+            restarts++;
+            var pause = TimeSpan.FromTicks(_options.RestartBackoff.Ticks * (1L << Math.Min(restarts - 1, 10)));
+            logger.LogError(failure, "Critical background service {Service} stopped after an error; restarting it in {Pause} (attempt {Attempt} of {Max}).", type.Name, pause, restarts, _options.MaxRestarts);
+            try
+            {
+                await Task.Delay(pause, timeProvider, lifetime.ApplicationStopping).ConfigureAwait(false);
+                await service.StartAsync(lifetime.ApplicationStopping).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception startFailure)
+            {
+                // It threw before its first await. ExecuteTask still points at
+                // the previous run, so the next pass would see the same failure;
+                // that is fine, it is counted against the restart limit.
+                logger.LogError(startFailure, "Restarting {Service} failed.", type.Name);
+            }
+        }
+    }
+
+    private async Task RequestHealthRunAsync(string reason)
+    {
         try
         {
-            await task.ConfigureAwait(false);
+            using var scope = scopeFactory.CreateScope();
+            var health = scope.ServiceProvider.GetService<IHealthCheckRepository>();
+            if (health is not null)
+            {
+                await health.RequestImmediateRunAsync(HealthCheckCategories.System, CancellationToken.None).ConfigureAwait(false);
+            }
         }
-        catch (OperationCanceledException) when (lifetime.ApplicationStopping.IsCancellationRequested)
+        catch (Exception requestFailure)
         {
-            return;
-        }
-        catch (Exception exception)
-        {
-            await RecordAsync(service.GetType(), exception).ConfigureAwait(false);
+            logger.LogDebug(requestFailure, "Could not ask for an immediate health check after {Reason} changed.", reason);
         }
     }
 

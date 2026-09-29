@@ -194,13 +194,31 @@ public sealed class DelunoHeartbeatWorker(
         await jobQueueRepository.HeartbeatAsync(_workerId, cancellationToken);
     }
 
-    private async Task RunLaneAsync(JobLane lane, CancellationToken stoppingToken)
+    private Task RunLaneAsync(JobLane lane, CancellationToken stoppingToken)
     {
         if (!lane.Enabled)
         {
             logger.LogInformation("Worker {WorkerId} lane {LaneName} disabled; not starting.", _workerId, lane.Name);
-            return;
+            return Task.CompletedTask;
         }
+
+        // A lane that dies is reported to Health and started again, and one
+        // whose passes keep failing is shown on Health too (#1080).
+        var supervisor = new LaneSupervisor(logger, ResolveProblemReporter());
+        return supervisor.SuperviseAsync(
+            lane.Name,
+            token => RunLaneOnceAsync(lane, supervisor, token),
+            stoppingToken);
+    }
+
+    private IBackgroundProblemReporter? ResolveProblemReporter()
+    {
+        using var scope = scopeFactory.CreateScope();
+        return scope.ServiceProvider.GetService<IBackgroundProblemReporter>();
+    }
+
+    private async Task RunLaneOnceAsync(JobLane lane, LaneSupervisor supervisor, CancellationToken stoppingToken)
+    {
 
         // Stagger lane starts so lanes on 1/2/3/5-second timers do not all land
         // on the same second and queue behind one SQLite writer. Applied once at
@@ -230,7 +248,8 @@ public sealed class DelunoHeartbeatWorker(
                 "Worker {WorkerId} lane {LaneName} could not finish a pass; it will try again in {Backoff}.",
                 _workerId,
                 lane.Name,
-                backoff));
+                backoff),
+            onFailureStreak: (count, lastError) => supervisor.OnFailureStreak(lane.Name, count, lastError));
     }
 
     private async Task<LaneTickResult> RunLaneTickAsync(

@@ -242,6 +242,75 @@ public sealed class LaneRunnerTests
     }
 
     [Fact]
+    public async Task A_wake_signal_does_not_cut_a_failure_backoff_short()
+    {
+        var tickTimes = new ConcurrentQueue<DateTime>();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(900));
+        var wake = new SemaphoreSlim(0, 1);
+
+        var runnerTask = new LaneRunner().RunAsync(
+            TestLane(1),
+            wake,
+            (_, _) =>
+            {
+                tickTimes.Enqueue(DateTime.UtcNow);
+                throw new InvalidOperationException("database is locked");
+            },
+            (_, _) => Task.CompletedTask,
+            cancellation.Token,
+            maxBackoff: TimeSpan.FromMilliseconds(300));
+
+        // Something is queued the whole time the database is struggling.
+        while (!cancellation.IsCancellationRequested)
+        {
+            try { wake.Release(); } catch (SemaphoreFullException) { }
+            await Task.Delay(5);
+        }
+
+        await runnerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var times = tickTimes.ToArray();
+        Assert.True(times.Length >= 2);
+        for (var i = 1; i < times.Length; i++)
+        {
+            Assert.True(times[i] - times[i - 1] >= TimeSpan.FromMilliseconds(250), $"retry {i} came after {(times[i] - times[i - 1]).TotalMilliseconds}ms");
+        }
+    }
+
+    [Fact]
+    public async Task A_run_of_failed_passes_is_reported_with_its_count_and_cleared_by_a_good_pass()
+    {
+        var streaks = new ConcurrentQueue<(int Count, string? Error)>();
+        var ticks = 0;
+        var recovered = NewSignal();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var runnerTask = new LaneRunner().RunAsync(
+            TestLane(1),
+            new SemaphoreSlim(0, 1),
+            (_, _) =>
+            {
+                if (Interlocked.Increment(ref ticks) <= 3)
+                {
+                    throw new InvalidOperationException($"locked {ticks}");
+                }
+
+                recovered.TrySetResult();
+                return Task.FromResult(LaneTickResult.Empty(TimeSpan.FromMilliseconds(20)));
+            },
+            (_, _) => Task.CompletedTask,
+            cancellation.Token,
+            maxBackoff: TimeSpan.FromMilliseconds(30),
+            onFailureStreak: (count, error) => streaks.Enqueue((count, error?.Message)));
+
+        await recovered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        cancellation.Cancel();
+        await runnerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal([(1, "locked 1"), (2, "locked 2"), (3, "locked 3"), (0, (string?)null)], streaks.ToArray());
+    }
+
+    [Fact]
     public void Backoff_doubles_per_failure_and_is_capped()
     {
         var interval = TimeSpan.FromSeconds(5);

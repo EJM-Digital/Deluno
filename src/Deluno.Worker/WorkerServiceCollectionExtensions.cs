@@ -23,7 +23,9 @@ public static class WorkerServiceCollectionExtensions
         services.Configure<Microsoft.Extensions.Hosting.HostOptions>(options =>
             options.BackgroundServiceExceptionBehavior = Microsoft.Extensions.Hosting.BackgroundServiceExceptionBehavior.Ignore);
         Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(services, TimeProvider.System);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<BackgroundServiceSafetyOptions>(services);
         services.AddSingleton<BackgroundServiceFailureMonitor>();
+        services.AddSingleton<Deluno.Contracts.IBackgroundProblemReporter>(provider => provider.GetRequiredService<BackgroundServiceFailureMonitor>());
         services.AddSingleton<IBackgroundServiceFailureState>(provider => provider.GetRequiredService<BackgroundServiceFailureMonitor>());
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(provider => provider.GetRequiredService<BackgroundServiceFailureMonitor>());
         return services;
