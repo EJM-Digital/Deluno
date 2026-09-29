@@ -260,6 +260,7 @@ GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
 GET /api/trackers
+GET /api/trackers/definitions/notice
 GET /api/trackers/definitions/update-check
 GET /api/trakt/status
 GET /api/updates/preferences
