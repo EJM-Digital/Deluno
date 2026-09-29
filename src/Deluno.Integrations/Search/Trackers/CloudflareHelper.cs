@@ -18,6 +18,46 @@ namespace Deluno.Integrations.Search.Trackers;
 public sealed class CloudflareHelperCapabilityException(string message) : TrackerException(message);
 
 /// <summary>
+/// The Cloudflare helper itself did not answer (#1027): nothing is listening
+/// at its address, or it took too long. This is a setup problem with the
+/// helper, not the tracker or its mirrors being down, so the search does not
+/// try another mirror through the same helper and Health does not call the
+/// indexer unreachable.
+/// </summary>
+public sealed class CloudflareHelperUnavailableException(string trackerHost, string helperAddress, Exception inner)
+    : TrackerException(
+        $"{trackerHost} is behind a Cloudflare check, and the Cloudflare helper at {helperAddress} did not answer. Start it, or fix its address in Settings.",
+        inner)
+{
+    public string HelperAddress { get; } = helperAddress;
+}
+
+/// <summary>
+/// Whether a Cloudflare helper answers at an address: the one check behind
+/// the Settings test button and the Health row (#1027).
+/// </summary>
+public static class CloudflareHelperProbe
+{
+    public static async Task<(bool Healthy, string Message)> CheckAsync(HttpClient http, Uri address, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var response = await http.GetAsync(address, timeout.Token);
+            var body = await response.Content.ReadAsStringAsync(timeout.Token);
+            return response.IsSuccessStatusCode
+                ? (true, body.Contains("FlareSolverr is ready", StringComparison.OrdinalIgnoreCase) ? $"FlareSolverr answered at {address.Authority}." : $"A helper answered at {address.Authority}.")
+                : (false, $"{address.Authority} answered HTTP {(int)response.StatusCode}.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return (false, $"Nothing answered at {address.Authority}: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
 /// A page fetched through a Cloudflare helper (#628): what it returned, and
 /// what later requests need to be let through without the helper. The
 /// clearance cookie only holds with the User-Agent that earned it.
@@ -114,6 +154,22 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
             return null;
         }
 
+        try
+        {
+            return await SolveAsync(url, formData, proxy, baseUrl, current, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            // The helper, not the tracker: nothing is listening at its address, or it did not answer in time (#1027).
+            throw new CloudflareHelperUnavailableException(url.Host, HelperAddress(baseUrl), exception);
+        }
+    }
+
+    private static string HelperAddress(string baseUrl)
+        => Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var uri) ? uri.GetLeftPart(UriPartial.Authority) : baseUrl.Trim();
+
+    private async Task<CloudflareSolution?> SolveAsync(Uri url, IReadOnlyDictionary<string, string>? formData, CloudflareHelperProxy? proxy, string baseUrl, PlatformSettingsSnapshot current, CancellationToken cancellationToken)
+    {
         // #1029: Byparr answers the same /v1 shape as FlareSolverr but its
         // source says it only supports GET -- sessions.create/destroy,
         // postData and a per-request proxy all do nothing, silently. Deluno

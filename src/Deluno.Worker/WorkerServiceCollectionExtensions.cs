@@ -89,6 +89,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, MediaServerRefreshHealthCheck>();
         services.AddScoped<IHealthCheck, DownloadHardlinkHealthCheck>();
         services.AddScoped<IHealthCheck, ClientScriptFailureHealthCheck>();
+        services.AddScoped<IHealthCheck, CloudflareHelperHealthCheck>();
         services.AddScoped<IHealthCheck, AllowedHostsHealthCheck>();
         services.AddScoped<IHealthCheck, TagRoutingHealthCheck>();
         services.AddScoped<IHealthCheck, LocalNetworkAuthHealthCheck>();

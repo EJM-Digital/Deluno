@@ -68,6 +68,27 @@ public sealed class TrackerIndexersTests
     }
 
     /// <summary>
+    /// #1027: the Cloudflare helper not answering is a helper setup problem,
+    /// reported as "configuration" and naming the helper, never as the
+    /// tracker being unreachable.
+    /// </summary>
+    [Fact]
+    public async Task Testing_a_tracker_whose_cloudflare_helper_does_not_answer_reports_configuration_not_connectivity()
+    {
+        var engine = new Mock<ITrackerEngine>();
+        engine.Setup(instance => instance.SearchAsync(It.IsAny<TrackerConnection>(), It.IsAny<TrackerQuery>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new CloudflareHelperUnavailableException("1337x.to", "http://127.0.0.1:8191", new HttpRequestException("refused")));
+        var indexers = new TrackerIndexers(Catalog, engine.Object);
+        var indexer = CreateIndexer("indexer-1", "1337x", definitionId: "1337x");
+
+        var (status, message, category) = await indexers.TestAsync(indexer, CancellationToken.None);
+
+        Assert.Equal("degraded", status);
+        Assert.Equal("configuration", category);
+        Assert.Contains("Cloudflare helper at http://127.0.0.1:8191 did not answer", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A genuinely unreachable tracker (Deluno's own request refused, timed
     /// out, or otherwise never answered) stays "connectivity", never
     /// "blocked" - the two need different fixes (#971).

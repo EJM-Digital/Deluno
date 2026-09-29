@@ -163,8 +163,29 @@ public sealed class FlareSolverrCloudflareHelperTests
         Assert.Empty(recorder.Requests);
     }
 
-    private static (FlareSolverrCloudflareHelper Helper, RecordingHandler Handler) CreateHelper(
-        RecordingHandler handler, int timeoutSeconds, string? helperUrl = "http://127.0.0.1:8191")
+    [Fact]
+    public async Task A_helper_that_refuses_the_connection_says_the_helper_did_not_answer_not_the_tracker()
+    {
+        var (helper, _) = CreateHelper(new RefusingHandler(), timeoutSeconds: 60);
+
+        var failure = await Assert.ThrowsAsync<CloudflareHelperUnavailableException>(() => helper.FetchAsync(TargetUrl, CancellationToken.None));
+
+        Assert.Equal(
+            "tracker.example.test is behind a Cloudflare check, and the Cloudflare helper at http://127.0.0.1:8191 did not answer. Start it, or fix its address in Settings.",
+            failure.Message);
+        Assert.IsType<HttpRequestException>(failure.InnerException);
+    }
+
+    private sealed class RefusingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => throw new HttpRequestException(
+                "No connection could be made because the target machine actively refused it.",
+                new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused));
+    }
+
+    private static (FlareSolverrCloudflareHelper Helper, HttpMessageHandler Handler) CreateHelper(
+        HttpMessageHandler handler, int timeoutSeconds, string? helperUrl = "http://127.0.0.1:8191")
     {
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(instance => instance.GetAsync(It.IsAny<CancellationToken>()))
