@@ -1540,6 +1540,11 @@ function processorOutputDetails(check: HealthCheckResultItem): ProcessorOutputIt
   }
 }
 
+/** A one-time note (for example after an upgrade): cleared by hand, since no check ever re-creates it. */
+export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolean {
+  return check.id.startsWith("notice:");
+}
+
 /** Where a tag warning (#1043) points: the connection's page, or the titles it strands. */
 function tagCheckLink(check: HealthCheckResultItem): string | null {
   if (!check.id.startsWith("tags:") || !check.detailsJson) return null;
@@ -1594,6 +1599,20 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
       onChanged();
     } catch {
       // The list simply keeps showing the problem; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function clearNotice(check: HealthCheckResultItem) {
+    setBusyId(check.id);
+    try {
+      const response = await authedFetch(`/api/system/health/notices/${encodeURIComponent(check.id)}`, { method: "DELETE" });
+      if (response.ok) {
+        onChanged();
+      }
+    } catch {
+      // The note simply stays; nothing silently succeeded.
     } finally {
       setBusyId(null);
     }
@@ -1700,6 +1719,20 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           Delete
                         </Button>
                       </div>
+                    ) : isHealthNotice(check) ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[length:var(--type-caption)]"
+                        aria-label={`Clear: ${check.name}`}
+                        disabled={busyId === check.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void clearNotice(check);
+                        }}
+                      >
+                        Clear
+                      </Button>
                     ) : check.status !== "ok" ? (
                       <div className="flex gap-1.5">
                         {tagLink ? (

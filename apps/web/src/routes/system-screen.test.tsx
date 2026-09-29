@@ -95,3 +95,42 @@ describe("Activity timeline page size (#871)", () => {
     expect(revalidateMock).toHaveBeenCalled();
   });
 });
+
+/** #1073: a one-time note on the Health screen is cleared by hand, from the screen. */
+describe("Health notes are clearable (#1073)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
+    loaderData.monitoring = null;
+  });
+
+  it("a notice row has a Clear button that deletes it and refreshes; an ordinary row does not", async () => {
+    loaderData.healthChecks = {
+      checks: [
+        { id: "notice:download-folders", category: "notice", name: "Downloads now go to the library's downloads folder", status: "problem", message: "Moved.", cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null },
+        { id: "indexer:1", category: "indexer", name: "An indexer", status: "problem", message: "Down.", cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null }
+      ],
+      summary: { problemCount: 2 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "DELETE" ? {} : []));
+
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: /^Clear:/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Clear: Downloads now go to the library's downloads folder" }));
+
+    await waitFor(() =>
+      expect(authedFetchMock).toHaveBeenCalledWith(
+        "/api/system/health/notices/notice%3Adownload-folders",
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+});
