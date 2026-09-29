@@ -25,7 +25,8 @@ public sealed record BundledComponentStatus(
     bool Installed,
     bool Reachable,
     string DefaultHost,
-    int DefaultPort);
+    int DefaultPort,
+    bool HasCredentials = false);
 
 public interface IBundledComponentDetection
 {
@@ -199,8 +200,10 @@ public static class BundledComponentsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoBundledComponentsEndpoints(this IEndpointRouteBuilder api)
     {
-        api.MapGet("/system/bundled-components", async (IBundledComponentDetection detection, CancellationToken cancellationToken)
-                => Results.Ok(await detection.DetectAsync(cancellationToken)))
+        api.MapGet("/system/bundled-components", async (IBundledComponentDetection detection, IBundledComponentCredentialStore credentials, CancellationToken cancellationToken)
+                => Results.Ok((await detection.DetectAsync(cancellationToken))
+                    .Select(status => status with { HasCredentials = credentials.Has(status.Kind) })
+                    .ToArray()))
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         return api;

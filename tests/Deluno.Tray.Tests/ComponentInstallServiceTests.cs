@@ -11,6 +11,14 @@ namespace Deluno.Tray.Tests;
 /// </summary>
 public sealed class ComponentInstallServiceTests
 {
+    static ComponentInstallServiceTests()
+    {
+        // A started client is remembered in a file under LocalAppData; keep the
+        // fixture clients out of the real profile.
+        Environment.SetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA",
+            Path.Combine(Path.GetTempPath(), "deluno-install-tests-" + Guid.NewGuid().ToString("N")));
+    }
+
     private static readonly BundledComponentSpec Spec = new(
         DisplayName: "Test Client",
         Category: BundledComponentSpec.DownloadClientCategory,
