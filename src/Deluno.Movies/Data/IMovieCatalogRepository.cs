@@ -355,6 +355,19 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         IReadOnlyDictionary<string, string>? movedFilePathsByMovieId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every file path the catalogue tracks for one movie: its main file, every subtitle file and
+    /// the scanned copy. Used to tell which files in a folder Deluno knows about (#1078).
+    /// </summary>
+    Task<IReadOnlyList<string>> ListTrackedFilePathsAsync(string movieId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// After a movie's own folder moved, rewrites every tracked path under the old folder (the main
+    /// file, subtitles, other files) to the same place under the new folder. Returns how many paths
+    /// were rewritten (#1078).
+    /// </summary>
+    Task<int> RelocateTrackedFilePathsAsync(string movieId, string oldFolder, string newFolder, CancellationToken cancellationToken);
+
     /// <summary>Delete a movie and all its related data</summary>
     Task<bool> DeleteAsync(string movieId, CancellationToken cancellationToken);
 

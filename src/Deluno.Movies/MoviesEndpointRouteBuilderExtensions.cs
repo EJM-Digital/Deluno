@@ -2923,6 +2923,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             var failedMovieIds = new HashSet<string>(StringComparer.Ordinal);
             var moveFailureTitles = new List<string>();
             var moveFailureReasons = new List<string>();
+            var untrackedTravelled = new List<string>();
             var movieSettings = await platformSettingsRepository.GetAsync(cancellationToken);
             foreach (var movieId in request.MovieIds)
             {
@@ -2987,7 +2988,25 @@ public static class MoviesEndpointRouteBuilderExtensions
                         {
                             Directory.CreateDirectory(destinationParent);
                         }
+
+                        // #1078: what Deluno tracks moves with the folder and every tracked path
+                        // is rewritten; anything else in the folder travels too, and is noted.
+                        var trackedBefore = (await repository.ListTrackedFilePathsAsync(movie.Id, cancellationToken))
+                            .Select(path => Path.GetFullPath(path))
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        var untrackedHere = Directory
+                            .EnumerateFiles(plan.SourceDirectory, "*", SearchOption.AllDirectories)
+                            .Where(path => !trackedBefore.Contains(Path.GetFullPath(path)))
+                            .Select(path => Path.GetRelativePath(plan.SourceDirectory, path))
+                            .ToArray();
+
                         Directory.Move(plan.SourceDirectory, plan.DestinationDirectory);
+                        await repository.RelocateTrackedFilePathsAsync(
+                            movie.Id, plan.SourceDirectory, plan.DestinationDirectory, cancellationToken);
+                        if (untrackedHere.Length > 0)
+                        {
+                            untrackedTravelled.Add($"{movie.Title}: {string.Join(", ", untrackedHere.Take(5))}{(untrackedHere.Length > 5 ? $" and {untrackedHere.Length - 5} more" : "")}");
+                        }
                     }
                     else
                     {
@@ -3025,6 +3044,18 @@ public static class MoviesEndpointRouteBuilderExtensions
 
                 // #1024: a rule can depend on the library or its folder.
                 await autoTagging.ApplyEditedAsync(MediaKind.Movie, idsToReassign, cancellationToken);
+            }
+
+            if (untrackedTravelled.Count > 0)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "library.movie.untracked-files-moved",
+                    $"Files Deluno was not tracking moved with their folder to {toLibrary.Name}: {string.Join("; ", untrackedTravelled)}.",
+                    JsonSerializer.Serialize(new { untrackedTravelled }),
+                    null,
+                    "library",
+                    request.ToLibraryId,
+                    cancellationToken);
             }
 
             await activityFeedRepository.RecordActivityAsync(
