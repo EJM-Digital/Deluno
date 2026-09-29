@@ -119,6 +119,7 @@ GET /api/integrations/external/snapshot
 GET /api/integrations/outbound-throttle
 GET /api/integrations/processors/connections
 GET /api/integrations/processors/connections/{id}/path-mappings
+GET /api/integrations/processors/download-destinations
 GET /api/integrations/processors/handoffs
 GET /api/intelligent-routing/anomalies
 GET /api/intelligent-routing/snapshot
