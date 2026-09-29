@@ -129,38 +129,64 @@ public static class ComponentConfig
 
 /// <summary>
 /// The one elevated step for a per-machine .msi (#1052, #1061). It is run as an
-/// inline PowerShell command (nothing on disk to swap): it makes a folder only
-/// administrators can write (<c>%ProgramData%\Deluno\installer</c>, ACL set before
-/// anything is copied in), copies the downloaded .msi there, refuses to run it
-/// unless its SHA-256 is the one the tray verified, runs msiexec on the protected
-/// copy, and -- for a package that installs a Windows service Deluno does not want
-/// (Transmission's MSI registers an auto-start service, run as LocalService and
-/// bound to every address) -- stops and disables that service in the same prompt.
+/// inline PowerShell command (nothing on disk to swap). Any user can create folders
+/// under <c>C:\ProgramData</c>, so the step never trusts what is already there: it
+/// refuses a folder (or any parent up to <c>%ProgramData%</c>) that is a junction or
+/// symbolic link, takes ownership of <c>%ProgramData%\Deluno\installer</c> and locks it
+/// to SYSTEM and Administrators, then makes a brand-new folder with a random name,
+/// locks that the same way before anything goes in, copies the downloaded .msi into
+/// it, refuses to run it unless its SHA-256 is the one the tray verified, runs msiexec
+/// from that folder, and deletes the folder afterwards. For a package that installs a
+/// Windows service Deluno does not want (Transmission's MSI registers an auto-start
+/// service, run as LocalService and bound to every address) it stops and disables
+/// that service in the same prompt.
 /// </summary>
 public static class ElevatedInstallScript
 {
     /// <summary>Exit code the script returns when the copy does not match the verified hash.</summary>
     public const int HashMismatchExitCode = 4001;
 
+    /// <summary>Exit code when the install folder could not be locked down.</summary>
+    public const int FolderExitCode = 4002;
+
+    /// <summary>Exit code when the install folder, or a parent of it, is a junction or symbolic link.</summary>
+    public const int ReparsePointExitCode = 4003;
+
     public static string Build(string installerPath, string sha256, string? silentArgs, string? serviceName)
     {
         var lines = new List<string>
         {
             "$ErrorActionPreference = 'Stop'",
-            "$dir = Join-Path $env:ProgramData 'Deluno\\installer'",
-            "New-Item -ItemType Directory -Force -Path $dir | Out-Null",
-            // SYSTEM and Administrators full control, Users read only, nothing inherited.
-            "& icacls.exe $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null",
-            "if ($LASTEXITCODE -ne 0) { exit 4002 }",
+            "$code = 0",
+            "$fresh = $null",
+            "function Test-Link($p) { (Test-Path -LiteralPath $p) -and (((Get-Item -LiteralPath $p -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) }",
+            // Take the folder over, drop every entry it had, and leave only SYSTEM and Administrators (owner: Administrators).
+            "function Lock-Folder($p) { & icacls.exe $p /setowner '*S-1-5-32-544' | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'owner' }; & icacls.exe $p /reset | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'reset' }; & icacls.exe $p /inheritance:r | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'inherit' }; & icacls.exe $p /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'grant' } }",
+            "try {",
+            "$programData = $env:ProgramData",
+            "$parent = Join-Path $programData 'Deluno'",
+            "$root = Join-Path $parent 'installer'",
+            $"foreach ($p in @($programData, $parent, $root)) {{ if (Test-Link $p) {{ $code = {ReparsePointExitCode}; throw 'link' }} }}",
+            "if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }",
+            "if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root | Out-Null }",
+            $"foreach ($p in @($parent, $root)) {{ if (Test-Link $p) {{ $code = {ReparsePointExitCode}; throw 'link' }} }}",
+            "Lock-Folder $root",
             "$name = [guid]::NewGuid().ToString('N')",
-            "$copy = Join-Path $dir ($name + '.msi')",
-            "$log = Join-Path $dir ($name + '.log')",
+            "$fresh = Join-Path $root $name",
+            "New-Item -ItemType Directory -Path $fresh | Out-Null",
+            $"if (Test-Link $fresh) {{ $code = {ReparsePointExitCode}; throw 'link' }}",
+            "Lock-Folder $fresh",
+            "$copy = Join-Path $fresh ($name + '.msi')",
+            "$log = Join-Path $fresh ($name + '.log')",
             $"Copy-Item -LiteralPath {Quote(installerPath)} -Destination $copy",
-            $"if ((Get-FileHash -Algorithm SHA256 -LiteralPath $copy).Hash -ne {Quote(sha256)}) {{ Remove-Item -LiteralPath $copy -Force; exit {HashMismatchExitCode} }}",
+            $"if ((Get-FileHash -Algorithm SHA256 -LiteralPath $copy).Hash -ne {Quote(sha256)}) {{ $code = {HashMismatchExitCode}; throw 'hash' }}",
             $"$arguments = '/i \"' + $copy + '\" ALLUSERS=1 ' + {Quote(silentArgs ?? string.Empty)} + ' /l*v \"' + $log + '\"'",
             "$process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru",
-            "Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue",
-            "if ($process.ExitCode -ne 0) { exit $process.ExitCode }"
+            "$code = $process.ExitCode",
+            "} catch { if ($code -eq 0) { $code = " + FolderExitCode + " } } finally {",
+            "if ($fresh) { Remove-Item -LiteralPath $fresh -Recurse -Force -ErrorAction SilentlyContinue }",
+            "}",
+            "if ($code -ne 0) { exit $code }"
         };
         if (!string.IsNullOrWhiteSpace(serviceName))
         {

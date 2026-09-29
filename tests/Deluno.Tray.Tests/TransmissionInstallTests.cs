@@ -46,7 +46,7 @@ public sealed partial class ComponentSetupTests
         var lines = script.Split("\n");
 
         var msi = Array.FindIndex(lines, l => l.Contains("Start-Process -FilePath 'msiexec.exe'", StringComparison.Ordinal));
-        var check = Array.FindIndex(lines, l => l.StartsWith("if ($process.ExitCode -ne 0) { exit $process.ExitCode }", StringComparison.Ordinal));
+        var check = Array.FindIndex(lines, l => l.StartsWith("if ($code -ne 0) { exit $code }", StringComparison.Ordinal));
         var stop = Array.FindIndex(lines, l => l.Contains("Stop-Service -Name 'Transmission'", StringComparison.Ordinal));
         Assert.True(msi >= 0 && check > msi && stop > check, "install, then check the result, then stop the service");
         Assert.Contains("ALLUSERS=1", script);
