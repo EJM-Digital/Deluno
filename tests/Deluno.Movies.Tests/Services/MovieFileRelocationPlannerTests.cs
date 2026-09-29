@@ -3,68 +3,88 @@ using Deluno.Movies.Services;
 namespace Deluno.Movies.Tests.Services;
 
 /// <summary>
-/// #787: bulk library reassignment can move files, not only re-point the
-/// record. These pin the planning decision - which folder moves where - kept
-/// separate from the actual disk IO precisely so it can be tested without a
-/// filesystem.
+/// #787 / #1078: bulk library reassignment can move files. These pin the
+/// planning decision - which folder or file moves where - kept separate from
+/// the disk IO so it can be tested without a filesystem. Only a title's own
+/// folder, or a single flat file, ever moves.
 /// </summary>
 public sealed class MovieFileRelocationPlannerTests
 {
+    private static readonly string FromRoot = Path.Combine(Path.GetTempPath(), "library", "movies-main");
+    private static readonly string ToRoot = Path.Combine(Path.GetTempPath(), "library", "movies-4k");
+    private static readonly string[] Roots = [FromRoot, ToRoot];
+
+    private static Task<MovieFileRelocationOutcome> Plan(string filePath, bool shared = false) =>
+        MovieFileRelocationPlanner.PlanAsync(
+            filePath, FromRoot, ToRoot, Roots,
+            (_, _) => Task.FromResult(shared),
+            "Dune Part Two (2024)",
+            CancellationToken.None);
+
     [Fact]
-    public void Plan_moves_the_whole_title_folder_when_the_file_sits_under_the_source_root()
+    public async Task Moves_the_whole_title_folder_when_it_is_the_titles_own()
     {
-        var fromRoot = Path.Combine(Path.GetTempPath(), "library", "movies-main");
-        var toRoot = Path.Combine(Path.GetTempPath(), "library", "movies-4k");
-        var filePath = Path.Combine(fromRoot, "Dune Part Two (2024)", "Dune.Part.Two.2024.mkv");
+        var outcome = await Plan(Path.Combine(FromRoot, "Dune Part Two (2024)", "Dune.Part.Two.2024.mkv"));
 
-        var plan = MovieFileRelocationPlanner.Plan(filePath, fromRoot, toRoot);
-
-        Assert.NotNull(plan);
-        Assert.True(plan!.MovesWholeFolder);
-        Assert.Equal(Path.Combine(fromRoot, "Dune Part Two (2024)"), plan.SourceDirectory);
-        Assert.Equal(Path.Combine(toRoot, "Dune Part Two (2024)"), plan.DestinationDirectory);
+        Assert.NotNull(outcome.Plan);
+        Assert.True(outcome.Plan!.MovesWholeFolder);
+        Assert.Equal(Path.Combine(FromRoot, "Dune Part Two (2024)"), outcome.Plan.SourceDirectory);
+        Assert.Equal(Path.Combine(ToRoot, "Dune Part Two (2024)"), outcome.Plan.DestinationDirectory);
     }
 
     [Fact]
-    public void Plan_preserves_nested_subfolders_under_the_root()
+    public async Task Preserves_nested_subfolders_under_the_root()
     {
-        var fromRoot = Path.Combine(Path.GetTempPath(), "library", "movies-main");
-        var toRoot = Path.Combine(Path.GetTempPath(), "library", "movies-4k");
-        var filePath = Path.Combine(fromRoot, "Collections", "Dune Part Two (2024)", "Dune.Part.Two.2024.mkv");
+        var outcome = await Plan(Path.Combine(FromRoot, "Collections", "Dune Part Two (2024)", "Dune.mkv"));
 
-        var plan = MovieFileRelocationPlanner.Plan(filePath, fromRoot, toRoot);
-
-        Assert.NotNull(plan);
-        Assert.True(plan!.MovesWholeFolder);
-        Assert.Equal(Path.Combine(toRoot, "Collections", "Dune Part Two (2024)"), plan.DestinationDirectory);
+        Assert.True(outcome.Plan!.MovesWholeFolder);
+        Assert.Equal(Path.Combine(ToRoot, "Collections", "Dune Part Two (2024)"), outcome.Plan.DestinationDirectory);
     }
 
     [Fact]
-    public void Plan_falls_back_to_moving_only_the_file_when_it_is_not_under_the_source_root()
+    public async Task A_file_straight_in_the_library_root_moves_alone_into_a_new_title_folder_and_never_the_library_folder()
     {
-        // A manually-relocated file, or a stale library root: nothing here
-        // proves the whole containing folder belongs to this title, so only
-        // the tracked file relocates rather than risking someone else's files
-        // dragged along with it.
-        var fromRoot = Path.Combine(Path.GetTempPath(), "library", "movies-main");
-        var toRoot = Path.Combine(Path.GetTempPath(), "library", "movies-4k");
-        var filePath = Path.Combine(Path.GetTempPath(), "elsewhere", "Dune Part Two (2024)", "Dune.Part.Two.2024.mkv");
+        // #1078: the relative folder is ".", which used to move the whole
+        // library folder with every other title in it.
+        var outcome = await Plan(Path.Combine(FromRoot, "Dune.Part.Two.2024.mkv"));
 
-        var plan = MovieFileRelocationPlanner.Plan(filePath, fromRoot, toRoot);
-
-        Assert.NotNull(plan);
-        Assert.False(plan!.MovesWholeFolder);
-        Assert.Equal(toRoot, plan.DestinationDirectory);
+        Assert.NotNull(outcome.Plan);
+        Assert.False(outcome.Plan!.MovesWholeFolder);
+        Assert.Equal(FromRoot, outcome.Plan.SourceDirectory);
+        Assert.Equal(Path.Combine(ToRoot, "Dune Part Two (2024)"), outcome.Plan.DestinationDirectory);
     }
 
     [Fact]
-    public void Plan_returns_null_for_a_bare_filename_with_no_containing_directory()
+    public async Task A_folder_that_also_holds_other_titles_files_is_refused_with_a_reason()
     {
-        var plan = MovieFileRelocationPlanner.Plan(
-            filePath: "movie.mkv",
-            fromLibraryRootPath: Path.Combine(Path.GetTempPath(), "library", "movies-main"),
-            toLibraryRootPath: Path.Combine(Path.GetTempPath(), "library", "movies-4k"));
+        var outcome = await Plan(Path.Combine(FromRoot, "Action", "Dune.mkv"), shared: true);
 
-        Assert.Null(plan);
+        Assert.True(outcome.IsRefused);
+        Assert.Contains("other titles", outcome.RefusalReason);
+    }
+
+    [Fact]
+    public async Task A_path_outside_every_library_is_refused()
+    {
+        var outcome = await Plan(Path.Combine(Path.GetTempPath(), "elsewhere", "Dune Part Two (2024)", "Dune.mkv"));
+
+        Assert.True(outcome.IsRefused);
+        Assert.False(string.IsNullOrWhiteSpace(outcome.RefusalReason));
+    }
+
+    [Fact]
+    public async Task A_file_straight_in_a_different_library_root_than_the_source_is_refused()
+    {
+        var outcome = await Plan(Path.Combine(ToRoot, "Dune.mkv"));
+
+        Assert.True(outcome.IsRefused);
+    }
+
+    [Fact]
+    public async Task A_bare_filename_is_refused()
+    {
+        var outcome = await Plan("movie.mkv");
+
+        Assert.True(outcome.IsRefused);
     }
 }

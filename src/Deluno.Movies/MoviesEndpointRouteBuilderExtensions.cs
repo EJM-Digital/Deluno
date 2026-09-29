@@ -2859,6 +2859,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] BulkReassignLibraryRequest request,
             IMovieCatalogRepository repository,
             ILibrariesRepository librariesRepository,
+            IPlatformSettingsRepository platformSettingsRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IAutoTaggingService autoTagging,
@@ -2921,6 +2922,8 @@ public static class MoviesEndpointRouteBuilderExtensions
             var movedFilePaths = new Dictionary<string, string>(StringComparer.Ordinal);
             var failedMovieIds = new HashSet<string>(StringComparer.Ordinal);
             var moveFailureTitles = new List<string>();
+            var moveFailureReasons = new List<string>();
+            var movieSettings = await platformSettingsRepository.GetAsync(cancellationToken);
             foreach (var movieId in request.MovieIds)
             {
                 var movie = await repository.GetByIdAsync(movieId, cancellationToken);
@@ -2939,11 +2942,33 @@ public static class MoviesEndpointRouteBuilderExtensions
                     // #787 exists to close. The decision itself lives in
                     // MovieFileRelocationPlanner so it can be tested without a
                     // filesystem; only the actual move happens here.
-                    var plan = MovieFileRelocationPlanner.Plan(filePath, fromLibrary.RootPath, toLibrary.RootPath);
+                    // #1078: only the title's own folder, or a flat file on its
+                    // own into a new title folder, ever moves. The shared
+                    // guard decides, at this moment, so it re-checks.
+                    var movieRoots = libraries.Select(library => library.RootPath).ToArray();
+                    var flatFolderName = NamingTemplateRenderer.RenderSegment(
+                        movieSettings.MovieFolderFormat,
+                        movie.Title,
+                        movie.ReleaseYear,
+                        movie.ImdbId,
+                        genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                        decision: new NamingDecision(OriginalTitle: movie.OriginalTitle),
+                        replaceIllegalCharacters: movieSettings.ReplaceIllegalCharacters,
+                        colonReplacementMode: movieSettings.ColonReplacementMode);
+                    var outcome = await MovieFileRelocationPlanner.PlanAsync(
+                        filePath,
+                        fromLibrary.RootPath,
+                        toLibrary.RootPath,
+                        movieRoots,
+                        (folder, ct) => repository.OtherMoviesHaveFilesUnderAsync(movie.Id, folder, ct),
+                        flatFolderName,
+                        cancellationToken);
+                    var plan = outcome.Plan;
                     if (plan is null)
                     {
                         failedMovieIds.Add(movieId);
                         moveFailureTitles.Add(movie.Title);
+                        moveFailureReasons.Add($"{movie.Title}: {outcome.RefusalReason}");
                         continue;
                     }
 
@@ -2951,6 +2976,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     {
                         failedMovieIds.Add(movieId);
                         moveFailureTitles.Add(movie.Title);
+                        moveFailureReasons.Add($"{movie.Title}: a folder with that name already exists in {toLibrary.Name}, so nothing was moved.");
                         continue;
                     }
 
@@ -3006,13 +3032,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 moveFailureTitles.Count == 0
                     ? $"{count} movie{(count == 1 ? "" : "s")} moved from {fromLibrary.Name} to {toLibrary.Name}."
                     : $"{count} movie{(count == 1 ? "" : "s")} moved to {toLibrary.Name}; {moveFailureTitles.Count} file{(moveFailureTitles.Count == 1 ? "" : "s")} could not be moved and stayed in {fromLibrary.Name}.",
-                JsonSerializer.Serialize(new { filesMoved = movedFilePaths.Count, moveFailureTitles }),
+                JsonSerializer.Serialize(new { filesMoved = movedFilePaths.Count, moveFailureTitles, moveFailureReasons }),
                 null,
                 "library",
                 request.ToLibraryId,
                 cancellationToken);
 
-            return Results.Ok(new { reassigned = count, filesMoved = movedFilePaths.Count, moveFailures = moveFailureTitles });
+            return Results.Ok(new { reassigned = count, filesMoved = movedFilePaths.Count, moveFailures = moveFailureTitles, moveFailureReasons });
         });
 
         movies.MapPost("/bulk/tags", async (
