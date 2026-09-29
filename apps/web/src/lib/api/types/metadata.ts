@@ -17,6 +17,8 @@ export interface MetadataSearchResult {
   externalUrl: string | null;
   /** TheTVDB's id for a show it described; its presence means TheTVDB's terms require attribution on screen (#989). */
   tvDbId?: string | null;
+  /** "tvdb" when TheTVDB described this result (its data, TMDb id kept as identity); otherwise TMDb. */
+  dataSource?: string | null;
   /**
    * The catalogue entry this result would land on, when Deluno already holds
    * it. Set by the server on `/api/metadata/search` and nowhere else.

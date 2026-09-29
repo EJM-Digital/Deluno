@@ -134,7 +134,9 @@ public sealed record MetadataSearchResult(
     /// <summary>The language <see cref="LocalizedTitle"/> is in, as saved in Settings (for example <c>fr</c> or <c>pt-BR</c>).</summary>
     string? LocalizedLanguage = null,
     /// <summary>Where the translation came from: <c>tvdb</c> or <c>tmdb</c>.</summary>
-    string? LocalizedSource = null)
+    string? LocalizedSource = null,
+    /// <summary>Whose description of the title this is: <c>tvdb</c> when TheTVDB supplied it (its hit, laid over the TMDb identity), otherwise null for TMDb. The row label reads this; <see cref="Provider"/> stays the identity Deluno stores.</summary>
+    string? DataSource = null)
 {
     /// <summary>
     /// The catalogue entry Deluno would land on if this result were added, when

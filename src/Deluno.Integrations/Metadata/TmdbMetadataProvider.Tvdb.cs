@@ -300,6 +300,7 @@ public sealed partial class TmdbMetadataProvider
             ImdbId = Prefer(tmdb.ImdbId, tvdb.ImdbId),
             OriginalLanguage = tmdb.OriginalLanguage,
             TvDbId = tvdb.TvdbId,
+            DataSource = "tvdb",
             AlternateTitles = alternates.Length > 0 ? alternates : tmdb.AlternateTitles
         };
     }

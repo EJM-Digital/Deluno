@@ -230,6 +230,8 @@ export interface SeriesListItem {
   genres: string | null;
   externalUrl: string | null;
   metadataJson: string | null;
+  /** TheTVDB id of the show, read from the stored metadata; the same value the show page displays. */
+  tvDbId?: string | null;
   metadataUpdatedUtc: string | null;
   createdUtc: string;
   updatedUtc: string;
