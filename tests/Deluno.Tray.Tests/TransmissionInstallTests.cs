@@ -42,16 +42,16 @@ public sealed partial class ComponentSetupTests
     [Fact]
     public void The_service_script_installs_then_stops_and_disables_the_service_only_when_the_install_worked()
     {
-        var script = ServiceInstallScript.Build("C:\\t\\tr.msi", "/qn ADDLOCAL=CommonLibs,Daemon,WebUi", "C:\\t\\tr.msi.log", "Transmission");
-        var lines = script.Split("\r\n");
+        var script = ElevatedInstallScript.Build("C:\\t\\tr.msi", "ABC123", "/qn ADDLOCAL=CommonLibs,Daemon,WebUi", "Transmission");
+        var lines = script.Split("\n");
 
-        var msi = Array.FindIndex(lines, l => l.StartsWith("msiexec.exe /i \"C:\\t\\tr.msi\"", StringComparison.Ordinal));
-        var check = Array.FindIndex(lines, l => l.StartsWith("if not \"%RC%\"==\"0\" exit /b %RC%", StringComparison.Ordinal));
+        var msi = Array.FindIndex(lines, l => l.Contains("Start-Process -FilePath 'msiexec.exe'", StringComparison.Ordinal));
+        var check = Array.FindIndex(lines, l => l.StartsWith("if ($process.ExitCode -ne 0) { exit $process.ExitCode }", StringComparison.Ordinal));
         var stop = Array.FindIndex(lines, l => l.Contains("Stop-Service -Name 'Transmission'", StringComparison.Ordinal));
         Assert.True(msi >= 0 && check > msi && stop > check, "install, then check the result, then stop the service");
-        Assert.Contains("ALLUSERS=1", lines[msi]);
-        Assert.Contains("ADDLOCAL=CommonLibs,Daemon,WebUi", lines[msi]);
-        Assert.Contains("Set-Service -Name 'Transmission' -StartupType Disabled", lines[stop]);
+        Assert.Contains("ALLUSERS=1", script);
+        Assert.Contains("ADDLOCAL=CommonLibs,Daemon,WebUi", script);
+        Assert.Contains("Set-Service -Name 'Transmission' -StartupType Disabled", script);
     }
 
     [Fact]
@@ -69,8 +69,9 @@ public sealed partial class ComponentSetupTests
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         Assert.Equal(1, runner.ElevatedCalls);
         Assert.Equal(0, runner.PlainCalls);
-        Assert.Equal("cmd.exe", runner.LastPath);
-        Assert.Contains(".install.cmd", runner.LastArguments);
+        Assert.Equal("powershell.exe", runner.LastPath);
+        Assert.Contains("-EncodedCommand", runner.LastArguments);
+        Assert.False(File.Exists(download + ".install.cmd"), "no script file is left in the user's temp folder to be swapped");
     }
 
 }

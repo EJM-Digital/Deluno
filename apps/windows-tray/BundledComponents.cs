@@ -25,7 +25,9 @@ public sealed record BundledComponentPrerequisite(
     [property: JsonPropertyName("mustBeSigned")] bool MustBeSigned,
     [property: JsonPropertyName("silentArgs")] string? SilentArgs,
     [property: JsonPropertyName("skipRegistryKeyPath")] string SkipRegistryKeyPath,
-    [property: JsonPropertyName("skipRegistryValueName")] string SkipRegistryValueName);
+    [property: JsonPropertyName("skipRegistryValueName")] string SkipRegistryValueName,
+    /// <summary>The publisher name the installer's signing certificate must carry (a piece of its subject), so a file signed by anyone else is refused.</summary>
+    [property: JsonPropertyName("expectedPublisher")] string? ExpectedPublisher = null);
 
 /// <summary>
 /// The six components the installer's picker can offer (#640): five download
@@ -85,7 +87,9 @@ public sealed record BundledComponentSpec(
     /// <summary>Start the post-install command with no console window (a console-mode server such as NZBGet's <c>-s</c> or the Transmission daemon).</summary>
     [property: JsonPropertyName("startHidden")] bool StartHidden = false,
     /// <summary>A Windows service the component's own package installs and starts that Deluno does not want (Transmission's MSI registers an auto-start service bound to every address). It is stopped and disabled in the same elevated step as the install, and Deluno runs the daemon itself, bound to this computer only.</summary>
-    [property: JsonPropertyName("disableServiceAfterInstall")] string? DisableServiceAfterInstall = null)
+    [property: JsonPropertyName("disableServiceAfterInstall")] string? DisableServiceAfterInstall = null,
+    /// <summary>The publisher name the installer's signing certificate must carry (a piece of its subject) when it is verified by signature rather than a pinned checksum.</summary>
+    [property: JsonPropertyName("expectedPublisher")] string? ExpectedPublisher = null)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]

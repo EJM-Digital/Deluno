@@ -34,6 +34,20 @@ public sealed class BundledComponentCredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_removed_sign_in_is_gone_and_the_others_stay()
+    {
+        var store = new FileBundledComponentCredentialStore(FileBundledComponentCredentialStore.PathFor(_root), new ReversingProtector());
+        store.Save("qbittorrent", new BundledComponentCredentials("deluno", "one"));
+        store.Save("nzbget", new BundledComponentCredentials("deluno", "two"));
+
+        store.Remove("qbittorrent");
+        store.Remove("never-saved");
+
+        Assert.False(store.Has("qbittorrent"));
+        Assert.Equal("two", store.TryGet("nzbget")!.Password);
+    }
+
+    [Fact]
     public void Another_kind_has_no_sign_in_and_a_second_save_replaces_the_first()
     {
         var store = new FileBundledComponentCredentialStore(FileBundledComponentCredentialStore.PathFor(_root), new ReversingProtector());

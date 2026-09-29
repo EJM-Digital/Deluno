@@ -46,6 +46,12 @@ public interface IAuthenticodeVerifier
 {
     /// <summary>Whether the file at <paramref name="path"/> carries a valid Authenticode signature.</summary>
     bool IsSigned(string path);
+
+    /// <summary>
+    /// Whether the file is signed with a certificate that chains to a trusted root and whose
+    /// subject names <paramref name="publisher"/> (any signed file when no publisher is given).
+    /// </summary>
+    bool IsSignedBy(string path, string? publisher) => IsSigned(path);
 }
 
 public interface IProcessRunner
@@ -219,7 +225,26 @@ public sealed class ComponentInstallService(
                 $"Could not download {spec.DisplayName}'s installer.");
         }
 
-        var verification = VerifyWithSignature(spec, path, expectedSha256);
+        // The file is hashed before and after the checks, and that hash is what the run must
+        // still match: a file swapped while it was being checked, or after, is refused (#1061).
+        string verifiedSha256;
+        var verification = default(string);
+        try
+        {
+            var before = Sha256Of(path);
+            verification = VerifyWithSignature(spec, path, expectedSha256);
+            verifiedSha256 = Sha256Of(path);
+            if (verification is null && !string.Equals(before, verifiedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                verification = $"{spec.DisplayName}'s installer changed while it was being checked. Deluno did not run it.";
+            }
+        }
+        catch (IOException)
+        {
+            verifiedSha256 = string.Empty;
+            verification = $"{spec.DisplayName}'s installer could not be read to check it. Deluno did not run it.";
+        }
+
         if (verification is not null)
         {
             TryDelete(path);
@@ -237,33 +262,34 @@ public sealed class ComponentInstallService(
         }
 
         int? exitCode;
-        var scriptPath = default(string);
         if (IsMsi(path))
         {
-            // A per-machine .msi needs administrator rights to install quietly.
-            var logPath = path + ".log";
-            if (!string.IsNullOrWhiteSpace(spec.DisableServiceAfterInstall))
-            {
-                scriptPath = path + ".install.cmd";
-                File.WriteAllText(scriptPath, ServiceInstallScript.Build(path, spec.SilentArgs, logPath, spec.DisableServiceAfterInstall));
-                exitCode = await _processes.RunElevatedAsync("cmd.exe", $"/c \"\"{scriptPath}\"\"", TimeSpan.FromMinutes(5), cancellationToken);
-            }
-            else
-            {
-                var (msiPath, msiArguments) = BuildInstallCommand(path, spec.SilentArgs);
-                exitCode = await _processes.RunElevatedAsync(msiPath, msiArguments, TimeSpan.FromMinutes(5), cancellationToken);
-            }
+            // A per-machine .msi needs administrator rights to install quietly. It runs from a
+            // copy in a folder only administrators can write, re-hashed inside the elevated
+            // step; no script file is written, so nothing user-writable is run as admin (#1061).
+            var script = ElevatedInstallScript.Build(path, verifiedSha256, spec.SilentArgs, spec.DisableServiceAfterInstall);
+            exitCode = await _processes.RunElevatedAsync("powershell.exe", ElevatedInstallScript.PowerShellArguments(script), TimeSpan.FromMinutes(5), cancellationToken);
         }
         else
         {
+            // Not elevated by Deluno, but the file still must be the one that was checked.
+            if (!StillHasHash(path, verifiedSha256))
+            {
+                TryDelete(path);
+                return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                    $"{spec.DisplayName}'s installer changed after it was checked. Deluno did not run it.");
+            }
+
             var (runPath, runArguments) = BuildInstallCommand(path, spec.SilentArgs);
             exitCode = await _processes.RunAsync(runPath, runArguments, TimeSpan.FromMinutes(5), cancellationToken);
         }
 
         TryDelete(path);
-        if (scriptPath is not null)
+
+        if (exitCode == ElevatedInstallScript.HashMismatchExitCode)
         {
-            TryDelete(scriptPath);
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"{spec.DisplayName}'s installer changed after it was checked. Deluno did not run it.");
         }
 
         if (exitCode is null or not 0)
@@ -318,7 +344,10 @@ public sealed class ComponentInstallService(
                 {
                     try
                     {
-                        _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(string.Empty, key));
+                        // Keeps the user name seeded into SABnzbd's own sign-in; the "password" Deluno's
+                        // connection uses is the API key, which replaces the generated web password.
+                        var seededUser = _credentials.Value.TryGet(spec.Kind)?.Username ?? string.Empty;
+                        _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(seededUser, key));
                     }
                     catch
                     {
@@ -331,6 +360,16 @@ public sealed class ComponentInstallService(
 
             if (DateTime.UtcNow >= deadline)
             {
+                // The seeded web sign-in is not an API key; the connection must not use it as one.
+                try
+                {
+                    _credentials.Value.Remove(spec.Kind);
+                }
+                catch
+                {
+                    // Best effort.
+                }
+
                 return;
             }
 
@@ -519,7 +558,7 @@ public sealed class ComponentInstallService(
                 $"The downloaded file for {prerequisite.Name} is only {length} bytes -- far smaller than expected ({prerequisite.MinimumBytes}). Deluno did not run it.");
         }
 
-        if (prerequisite.MustBeSigned && !_signatures.IsSigned(path))
+        if (prerequisite.MustBeSigned && !_signatures.IsSignedBy(path, prerequisite.ExpectedPublisher))
         {
             TryDelete(path);
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
@@ -566,12 +605,24 @@ public sealed class ComponentInstallService(
 
         if (spec.MustBeSigned)
         {
-            return _signatures.IsSigned(path)
+            return _signatures.IsSignedBy(path, spec.ExpectedPublisher)
                 ? null
                 : $"{spec.DisplayName}'s installer is not Authenticode-signed and carries no pinned checksum. Deluno did not run it.";
         }
 
         return $"{spec.DisplayName}'s installer carries no pinned checksum and the manifest does not require a signature. Deluno did not run it.";
+    }
+
+    private static bool StillHasHash(string path, string sha256)
+    {
+        try
+        {
+            return string.Equals(Sha256Of(path), sha256, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private static string Sha256Of(string path)
@@ -676,6 +727,46 @@ public sealed class HttpComponentDownloader : IComponentDownloader
 /// </summary>
 public sealed class WindowsAuthenticodeVerifier : IAuthenticodeVerifier
 {
+    public bool IsSignedBy(string path, string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher))
+        {
+            return IsSigned(path);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        try
+        {
+#pragma warning disable SYSLIB0057
+            using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
+#pragma warning restore SYSLIB0057
+            using var chain = new X509Chain();
+            chain.ChainPolicy.RevocationMode = X509RevocationMode.Online;
+            chain.ChainPolicy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
+            chain.ChainPolicy.UrlRetrievalTimeout = TimeSpan.FromSeconds(15);
+            chain.ChainPolicy.ApplicationPolicy.Add(new System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.3")); // code signing
+            if (!chain.Build(certificate))
+            {
+                // A signing certificate is valid for the time it signed; an offline revocation server is not a bad file.
+                var onlyOffline = chain.ChainStatus.All(status => status.Status is X509ChainStatusFlags.RevocationStatusUnknown or X509ChainStatusFlags.OfflineRevocation);
+                if (!onlyOffline)
+                {
+                    return false;
+                }
+            }
+
+            return certificate.Subject.Contains(publisher, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public bool IsSigned(string path)
     {
         if (!OperatingSystem.IsWindows())
