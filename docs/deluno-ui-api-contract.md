@@ -229,6 +229,8 @@ Implemented CRUD surfaces:
 - `PUT /api/quality-profiles/order`
 - `GET|PUT /api/quality-model`
 - `GET|POST|PUT|DELETE /api/tags`
+- `GET|POST|PUT|DELETE /api/auto-tag-rules` (#1024: rules are tags plus conditions; same-kind conditions are OR-ed, different kinds AND-ed, each negatable; `removeAutomatically` takes the tags back)
+- `POST /api/auto-tag-rules/run` (#1024: runs every rule over the titles already in the library, on request only)
 - `GET|POST|PUT|DELETE /api/intake-sources`
 - `POST /api/intake-sources/{id}/sync`
 - `GET /api/intake-sources/{id}/diagnostics?pageSize=n&pageToken=…`

@@ -11,7 +11,8 @@ public sealed class MoviesCatalogRefreshJobHandler(
     IMetadataProvider metadataProvider,
     IMovieCatalogRepository movieCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
-    IJobScheduler jobScheduler) : IJobHandler
+    IJobScheduler jobScheduler,
+    IAutoTaggingService? autoTagging = null) : IJobHandler
 {
     public string JobType => "movies.catalog.refresh";
 
@@ -21,7 +22,7 @@ public sealed class MoviesCatalogRefreshJobHandler(
     // Refresh.
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
-        var message = await new MoviesMetadataRefreshJobHandler(metadataProvider, movieCatalogRepository, activityFeedRepository)
+        var message = await new MoviesMetadataRefreshJobHandler(metadataProvider, movieCatalogRepository, activityFeedRepository, autoTagging)
             .HandleAsync(job, cancellationToken);
 
         // The add endpoint's own targeted search rides along on this job's

@@ -79,6 +79,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] UpdateSeriesNumberingRequest request,
             ISeriesCatalogRepository repository,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -96,6 +97,12 @@ public static class SeriesEndpointRouteBuilderExtensions
             try
             {
                 var numbering = await repository.UpdateNumberingAsync(id, request, cancellationToken);
+                if (numbering is not null)
+                {
+                    // #1024: a rule can depend on the series type (anime, daily, standard).
+                    await autoTagging.ApplyAsync(MediaKind.Series, id, AutoTagTrigger.Edited, null, null, cancellationToken);
+                }
+
                 return numbering is null ? Results.NotFound() : Results.Ok(numbering);
             }
             catch (ArgumentException exception)
@@ -646,6 +653,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             ISeriesCatalogRepository repository,
             TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -696,6 +704,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                 cancellationToken);
             foreach (var seriesId in seriesIds)
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+
+            // #1024: a rule can depend on whether a show is monitored.
+            await autoTagging.ApplyEditedAsync(MediaKind.Series, seriesIds, cancellationToken);
 
             return Results.Ok(new { updated });
         });
@@ -2721,6 +2732,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] BulkQualityProfileRequest request,
             ISeriesCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2752,6 +2764,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 {
                     updated++;
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
+                    // #1024: a rule can depend on the quality profile.
+                    await autoTagging.ApplyAsync(MediaKind.Series, id, AutoTagTrigger.Edited, null, null, cancellationToken);
                 }
             }
 
@@ -2797,6 +2811,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             [FromBody] BulkReassignLibraryRequest request,
             ISeriesCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2825,8 +2840,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                 request.SeriesIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
 
             if (count > 0)
+            {
                 foreach (var seriesId in request.SeriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesId, cancellationToken);
+
+                // #1024: a rule can depend on the library or its folder.
+                await autoTagging.ApplyEditedAsync(MediaKind.Series, request.SeriesIds, cancellationToken);
+            }
 
             return Results.Ok(new { reassigned = count });
         });
@@ -2838,6 +2858,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IPlatformSettingsRepository platformSettingsRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2885,6 +2906,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 var finalAssignments = MediaTagBulkOperations.Apply(mode, currentAssignments, assignments);
                 await tagStore.ReplaceAsync(MediaKind.Series, seriesItem.Id, finalAssignments, cancellationToken);
                 updated++;
+                // #1024: a rule can look for a tag the show now carries (or no longer carries).
+                await autoTagging.ApplyAsync(MediaKind.Series, seriesItem.Id, AutoTagTrigger.Edited, null, null, cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", seriesItem.Id, cancellationToken);
             }
 
@@ -3467,6 +3490,7 @@ public static class SeriesEndpointRouteBuilderExtensions
             IOutboundNotificationService notificationService,
             INotificationService notificationPreferences,
             ITitleTagService titleTagService,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3593,6 +3617,18 @@ public static class SeriesEndpointRouteBuilderExtensions
                     });
                 }
             }
+
+            // #1024: auto-tagging rules run now, before the "added" notification and before
+            // anything routes by tag. The libraries are passed because the wanted state
+            // that would say where the show is going is only just written.
+            var isNewTitle = item.CreatedUtc >= requestStartedUtc;
+            await autoTagging.ApplyAsync(
+                MediaKind.Series,
+                item.Id,
+                isNewTitle ? AutoTagTrigger.Added : AutoTagTrigger.Edited,
+                isNewTitle ? new AutoTagAddFacts(false, false, null) : null,
+                LibraryMembership.Targets(libraries, "tv", request.LibraryId, already).Select(library => library.Id).ToArray(),
+                cancellationToken);
 
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(

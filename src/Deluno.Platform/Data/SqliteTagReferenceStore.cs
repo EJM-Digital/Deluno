@@ -281,6 +281,13 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
             r => new TagRow("release_profiles", "tag_names", "acquisitionRule", r.GetString(0), r.GetString(2), "/settings/release-rules", Split(r.GetString(1))));
         await Read("SELECT id, name, match_value FROM destination_rules WHERE lower(trim(match_kind)) = 'tag' AND trim(match_value) <> '';",
             r => new TagRow("destination_rules", "match_value", "destinationRule", r.GetString(0), r.GetString(1), "/settings/destination-rules", Split(r.GetString(2))));
+
+        // #1024: an auto-tagging rule gives tags, and a "has this tag" condition names one;
+        // both follow a rename and both stop the tag being deleted.
+        await Read("SELECT id, name, tags FROM auto_tag_rules WHERE trim(tags) <> '';",
+            r => new TagRow("auto_tag_rules", "tags", "autoTagRule", r.GetString(0), r.GetString(1), "/settings/auto-tagging", Split(r.GetString(2))));
+        await Read("SELECT s.id, r.name || ' (looks for this tag)', s.value FROM auto_tag_specifications s JOIN auto_tag_rules r ON r.id = s.rule_id WHERE s.spec_type = 'tag' AND trim(s.value) <> '';",
+            r => new TagRow("auto_tag_specifications", "value", "autoTagRule", r.GetString(0), r.GetString(1), "/settings/auto-tagging", [r.GetString(2).Trim()]));
         return rows;
     }
 

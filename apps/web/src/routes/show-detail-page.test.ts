@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SeriesSearchHistoryItem } from "../lib/api";
-import { ALL_NUMBERING_SCHEME_OPTIONS, explainNumberingScheme, filterSearchHistoryByEpisode } from "./show-detail-page";
+import type { SeriesEpisodeInventoryItem, SeriesSearchHistoryItem } from "../lib/api";
+import { ALL_NUMBERING_SCHEME_OPTIONS, explainNumberingScheme, filterSearchHistoryByEpisode, formatEpisodeCode } from "./show-detail-page";
 
 function search(overrides: Partial<SeriesSearchHistoryItem> = {}): SeriesSearchHistoryItem {
   return {
@@ -69,5 +69,22 @@ describe("episode ordering switcher (#863)", () => {
   it("falls back to the aired-order explanation for an unrecognised or missing scheme", () => {
     expect(explainNumberingScheme(undefined)).toEqual(explainNumberingScheme("standard"));
     expect(explainNumberingScheme("something-new")).toEqual(explainNumberingScheme("standard"));
+  });
+});
+
+describe("formatEpisodeCode (#1024)", () => {
+  const episode = { seasonNumber: 1, episodeNumber: 5, absoluteNumber: 105 } as SeriesEpisodeInventoryItem;
+
+  it("keeps the plain code unless absolute numbers are chosen", () => {
+    expect(formatEpisodeCode(episode)).toBe("S01E05");
+    expect(formatEpisodeCode(episode, false)).toBe("S01E05");
+  });
+
+  it("adds the absolute number beside the code when chosen", () => {
+    expect(formatEpisodeCode(episode, true)).toBe("S01E05 (105)");
+  });
+
+  it("keeps the plain code for an episode with no absolute number", () => {
+    expect(formatEpisodeCode({ ...episode, absoluteNumber: null }, true)).toBe("S01E05");
   });
 });

@@ -541,6 +541,100 @@ public static class PlatformEndpointRouteBuilderExtensions
             return item is null ? Results.NotFound() : Results.Ok(item);
         });
 
+        // #1024: auto-tagging rules. Nothing exists on a new install; the person adds rules here.
+        var autoTagRules = write.MapGroup("/api/auto-tag-rules");
+
+        autoTagRules.MapGet(string.Empty, async (IAutoTagRuleStore store, CancellationToken cancellationToken) =>
+            Results.Ok(await store.ListAsync(cancellationToken)));
+
+        autoTagRules.MapPost(string.Empty, async (
+            HttpContext httpContext,
+            SaveAutoTagRuleRequest request,
+            IAutoTagRuleStore store,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = AutoTagRuleValidator.Validate(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var created = await store.CreateAsync(request, cancellationToken);
+            return Results.Created($"/api/auto-tag-rules/{created.Id}", created);
+        });
+
+        autoTagRules.MapPut("{id}", async (
+            string id,
+            HttpContext httpContext,
+            SaveAutoTagRuleRequest request,
+            IAutoTagRuleStore store,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var errors = AutoTagRuleValidator.Validate(request);
+            if (errors.Count > 0)
+            {
+                return Results.ValidationProblem(errors);
+            }
+
+            var updated = await store.UpdateAsync(id, request, cancellationToken);
+            return updated is null ? Results.NotFound() : Results.Ok(updated);
+        });
+
+        autoTagRules.MapDelete("{id}", async (
+            string id,
+            HttpContext httpContext,
+            IAutoTagRuleStore store,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            return await store.DeleteAsync(id, cancellationToken) ? Results.NoContent() : Results.NotFound();
+        });
+
+        // Runs every enabled rule over the titles already in the library, so a new rule
+        // does not have to wait for each title's next refresh. Only when the person asks.
+        autoTagRules.MapPost("/run", async (
+            HttpContext httpContext,
+            IAutoTaggingService autoTagging,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var changed = await autoTagging.ApplyToAllAsync(null, cancellationToken);
+            await activityFeedRepository.RecordActivityAsync(
+                "tags.auto",
+                changed == 0
+                    ? "Auto-tagging checked every title against the rules and had nothing to change."
+                    : $"Auto-tagging checked every title against the rules and changed the tags on {changed} {(changed == 1 ? "title" : "titles")}.",
+                null,
+                null,
+                "tag",
+                null,
+                cancellationToken);
+            return Results.Ok(new { changedTitles = changed });
+        });
+
         tags.MapDelete("{id}", async (
             string id,
             HttpContext httpContext,

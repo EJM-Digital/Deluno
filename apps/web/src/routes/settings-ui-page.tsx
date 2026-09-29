@@ -50,6 +50,7 @@ interface UiForm {
   longDateFormat: string;
   timeFormat: string;
   showRelativeDates: boolean;
+  showAbsoluteEpisodeNumbers: boolean;
   timezone: string;
 }
 
@@ -104,6 +105,7 @@ export function SettingsUiPage() {
         longDateFormat: form.longDateFormat,
         timeFormat: form.timeFormat,
         showRelativeDates: form.showRelativeDates,
+        showAbsoluteEpisodeNumbers: form.showAbsoluteEpisodeNumbers,
         timezone: form.timezone
       });
       setSavedForm(form);
@@ -259,6 +261,16 @@ export function SettingsUiPage() {
               <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Use relative labels where they improve scanning</span>
             </div>
           </Field>
+          <Field label="Anime episode numbers" help="For anime, write each episode with its absolute number beside the season and episode, like S01E05 (105). Other shows are unchanged.">
+            <div className="flex min-h-[var(--control-height)] items-center gap-3">
+              <Switch
+                aria-label="Show absolute numbers for anime"
+                checked={form.showAbsoluteEpisodeNumbers}
+                onCheckedChange={(checked) => setForm((current) => ({ ...current, showAbsoluteEpisodeNumbers: checked }))}
+              />
+              <span className="text-[length:var(--type-body-sm)] text-muted-foreground">Show absolute numbers for anime</span>
+            </div>
+          </Field>
           {/*
             #860: a show's air date/time is stored the network's real
             broadcast instant where a source has one; this is the zone
@@ -342,6 +354,7 @@ function formFrom(settings: PlatformSettingsSnapshot): UiForm {
     longDateFormat: settings.longDateFormat,
     timeFormat: settings.timeFormat,
     showRelativeDates: settings.showRelativeDates,
+    showAbsoluteEpisodeNumbers: settings.showAbsoluteEpisodeNumbers === true,
     timezone: settings.timezone
   };
 }

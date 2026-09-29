@@ -11,7 +11,8 @@ public sealed class SeriesCatalogRefreshJobHandler(
     IMetadataProvider metadataProvider,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
-    IJobScheduler jobScheduler) : IJobHandler
+    IJobScheduler jobScheduler,
+    IAutoTaggingService? autoTagging = null) : IJobHandler
 {
     public string JobType => "series.catalog.refresh";
 
@@ -22,7 +23,7 @@ public sealed class SeriesCatalogRefreshJobHandler(
     // the same per-series refresh the scheduled metadata job uses.
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
-        var message = await new SeriesMetadataRefreshJobHandler(metadataProvider, seriesCatalogRepository, activityFeedRepository)
+        var message = await new SeriesMetadataRefreshJobHandler(metadataProvider, seriesCatalogRepository, activityFeedRepository, autoTagging)
             .HandleAsync(job, cancellationToken);
 
         // The add endpoint's own targeted search rides along on this job's

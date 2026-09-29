@@ -231,6 +231,14 @@ export const settingsCommands: CommandItem[] = [
     to: "/settings/tags"
   },
   {
+    id: "settings.auto-tagging",
+    label: "Media Management · Auto-tagging",
+    keywords: ["library", "tags", "rules", "automatic", "genre", "anime", "label"],
+    group: "navigation",
+    icon: Tag,
+    to: "/settings/auto-tagging"
+  },
+  {
     id: "settings.automation",
     label: "Automation & Recovery",
     keywords: ["search", "retries", "failed downloads", "upgrades", "scheduling", "recovery"],

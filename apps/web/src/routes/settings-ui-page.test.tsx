@@ -52,3 +52,27 @@ describe("interface settings apply the saved theme (#736)", () => {
     expect(setTheme).toHaveBeenCalledWith("dark");
   });
 });
+
+describe("absolute episode numbers for anime (#1024)", () => {
+  afterEach(() => {
+    mutate.mockReset();
+  });
+
+  it("is off until chosen, and saves the choice", async () => {
+    mutate.mockResolvedValueOnce({ ...settings, showAbsoluteEpisodeNumbers: true });
+
+    render(
+      <MemoryRouter>
+        <SettingsUiPage />
+      </MemoryRouter>
+    );
+
+    const toggle = screen.getByRole("switch", { name: "Show absolute numbers for anime" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save interface settings" }));
+
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalled());
+    expect(mutate.mock.calls[0]?.[0]).toMatchObject({ showAbsoluteEpisodeNumbers: true });
+  });
+});

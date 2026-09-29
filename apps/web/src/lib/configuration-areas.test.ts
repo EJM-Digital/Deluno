@@ -16,7 +16,8 @@ const AREA_TABS: Record<string, string[]> = {
     "/settings/destination-rules",
     "/settings/metadata",
     "/settings/subtitles",
-    "/settings/tags"
+    "/settings/tags",
+    "/settings/auto-tagging"
   ],
   "quality-and-release": ["/settings/profiles", "/settings/quality", "/settings/custom-formats", "/settings/policy-sets"],
   "find-and-download": ["/indexers/indexers", "/indexers/scoreboard", "/indexers/download-clients", "/indexers/library-routing", "/indexers/subtitle-providers"],

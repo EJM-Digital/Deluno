@@ -271,7 +271,9 @@ public sealed record PlatformSettingsSnapshot(
     // title that has left every import list it came from is given OffListTag
     // (Sonarr's ListSyncTag). The tag is the user's own choice, blank until chosen.
     bool TagTitlesOffEveryList = false,
-    string OffListTag = "");
+    string OffListTag = "",
+    // #1024: show an anime episode's absolute number beside its season and episode. Off until chosen.
+    bool ShowAbsoluteEpisodeNumbers = false);
 
 /// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
 public static class UnmatchedImportPolicies

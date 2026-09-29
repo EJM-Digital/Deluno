@@ -805,6 +805,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             TitleRemovalService titleRemoval,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -845,6 +846,9 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             foreach (var movieId in movieIds)
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
+            // #1024: a rule can depend on whether a title is monitored.
+            await autoTagging.ApplyEditedAsync(MediaKind.Movie, movieIds, cancellationToken);
 
             return Results.Ok(new { updated });
         });
@@ -1962,6 +1966,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IOutboundNotificationService notificationService,
             INotificationService notificationPreferences,
             ITitleTagService titleTagService,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2073,6 +2078,18 @@ public static class MoviesEndpointRouteBuilderExtensions
                     });
                 }
             }
+
+            // #1024: auto-tagging rules run now, before the "added" notification and before
+            // anything routes by tag. The libraries are passed because the wanted state
+            // that would say where the film is going is only just written.
+            var isNewTitle = movie.CreatedUtc >= requestStartedUtc;
+            await autoTagging.ApplyAsync(
+                MediaKind.Movie,
+                movie.Id,
+                isNewTitle ? AutoTagTrigger.Added : AutoTagTrigger.Edited,
+                isNewTitle ? new AutoTagAddFacts(false, false, null) : null,
+                LibraryMembership.Targets(libraries, "movies", request.LibraryId, already).Select(library => library.Id).ToArray(),
+                cancellationToken);
 
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(
@@ -2723,6 +2740,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] BulkQualityProfileRequest request,
             IMovieCatalogRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2754,6 +2772,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 {
                     updated++;
                     await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
+                    // #1024: a rule can depend on the quality profile.
+                    await autoTagging.ApplyAsync(MediaKind.Movie, id, AutoTagTrigger.Edited, null, null, cancellationToken);
                 }
             }
 
@@ -2801,6 +2821,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2835,8 +2856,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                     request.MovieIds, request.FromLibraryId, request.ToLibraryId, cancellationToken);
 
                 if (reassignedOnly > 0)
+                {
                     foreach (var movieId in request.MovieIds.Distinct(StringComparer.OrdinalIgnoreCase))
                         await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
+                    // #1024: a rule can depend on the library or its folder.
+                    await autoTagging.ApplyEditedAsync(MediaKind.Movie, request.MovieIds, cancellationToken);
+                }
 
                 return Results.Ok(new { reassigned = reassignedOnly, filesMoved = 0, moveFailures = Array.Empty<string>() });
             }
@@ -2927,8 +2953,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                     idsToReassign, request.FromLibraryId, request.ToLibraryId, movedFilePaths, cancellationToken);
 
             if (count > 0)
+            {
                 foreach (var movieId in idsToReassign.Distinct(StringComparer.OrdinalIgnoreCase))
                     await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movieId, cancellationToken);
+
+                // #1024: a rule can depend on the library or its folder.
+                await autoTagging.ApplyEditedAsync(MediaKind.Movie, idsToReassign, cancellationToken);
+            }
 
             await activityFeedRepository.RecordActivityAsync(
                 "library.movie.reassigned",
@@ -2951,6 +2982,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMediaTagStore tagStore,
             IPlatformSettingsRepository platformSettingsRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -2998,6 +3030,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                 var finalAssignments = MediaTagBulkOperations.Apply(mode, currentAssignments, assignments);
                 await tagStore.ReplaceAsync(MediaKind.Movie, movie.Id, finalAssignments, cancellationToken);
                 updated++;
+                // #1024: a rule can look for a tag the title now carries (or no longer carries).
+                await autoTagging.ApplyAsync(MediaKind.Movie, movie.Id, AutoTagTrigger.Edited, null, null, cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", movie.Id, cancellationToken);
             }
 

@@ -570,6 +570,13 @@ export const router = createBrowserRouter([
             })
           },
           {
+            path: "auto-tagging",
+            lazy: withSkeleton(async () => {
+              const module = await import("./routes/settings-auto-tagging-page");
+              return { loader: module.settingsAutoTaggingLoader, Component: module.SettingsAutoTaggingPage };
+            })
+          },
+          {
             path: "tags",
             lazy: withSkeleton(async () => {
               const module = await import("./routes/settings-tags-page");

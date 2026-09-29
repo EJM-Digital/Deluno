@@ -3,6 +3,7 @@
  /hubs/deluno
  /hubs/deluno/negotiate
 DELETE /api/api-keys/{id}
+DELETE /api/auto-tag-rules/{id}
 DELETE /api/backups/{id}
 DELETE /api/blocked-releases/{id}
 DELETE /api/connections/{id}
@@ -59,6 +60,7 @@ GET /api/activity/display-settings
 GET /api/api-keys/
 GET /api/api-keys/scope-templates
 GET /api/auth/bootstrap-status
+GET /api/auto-tag-rules/
 GET /api/automation/summary
 GET /api/backups/
 GET /api/backups/settings
@@ -289,6 +291,8 @@ POST /api/api-keys/
 POST /api/auth/bootstrap
 POST /api/auth/login
 POST /api/auth/logout
+POST /api/auto-tag-rules/
+POST /api/auto-tag-rules/run
 POST /api/automation/catalogue/bulk
 POST /api/automation/series/{seriesId}/episodes/bulk
 POST /api/backups/
@@ -521,6 +525,7 @@ POST /api/v1/release-preferences/plans
 POST /api/v1/release-preferences/preview
 PUT /api/activity/display-settings
 PUT /api/auth/password
+PUT /api/auto-tag-rules/{id}
 PUT /api/backups/settings
 PUT /api/custom-formats/{id}
 PUT /api/destination-rules/{id}

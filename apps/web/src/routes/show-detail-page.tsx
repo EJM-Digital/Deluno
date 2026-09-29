@@ -227,6 +227,7 @@ export function ShowDetailPage() {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const { preferences, certificationCountry } = useDisplayPreferences();
+  const showAbsolute = preferences.showAbsoluteEpisodeNumbers && (inventory.numbering?.seriesType ?? series.seriesType) === "anime";
 
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [isRemoveConfirmationOpen, setIsRemoveConfirmationOpen] = useState(false);
@@ -1558,7 +1559,7 @@ export function ShowDetailPage() {
                         onClick={() => setOpenEpisodeId(episode.episodeId)}
                         selected={openEpisodeId === episode.episodeId}
                       >
-                        <ListNameCell name={formatEpisodeCode(episode)} sub={episode.title ?? "Episode title pending"} />
+                        <ListNameCell name={formatEpisodeCode(episode, showAbsolute)} sub={episode.title ?? "Episode title pending"} />
                         <ListCell primary={episode.airDateUtc ? formatAirDateTime(episode.airDateUtc, preferences) : "—"} />
                         <ListCell primary={episode.lastSearchUtc ? formatPreferenceDateTime(episode.lastSearchUtc, preferences) : "Never"} />
                         <ListCell>
@@ -2010,7 +2011,7 @@ export function ShowDetailPage() {
         onOpenChange={(next) => {
           if (!next) setOpenEpisodeId(null);
         }}
-        title={openEpisode ? `${formatEpisodeCode(openEpisode)} · ${openEpisode.title ?? "Episode title pending"}` : "Episode"}
+        title={openEpisode ? `${formatEpisodeCode(openEpisode, showAbsolute)} · ${openEpisode.title ?? "Episode title pending"}` : "Episode"}
         description={openEpisode ? formatSeasonLabel(openEpisode.seasonNumber) : undefined}
         footer={
           <DrawerFooter
@@ -2518,8 +2519,14 @@ export function filterSearchHistoryByEpisode(
   return episodeId ? searches.filter((item) => item.episodeId === episodeId) : searches;
 }
 
-function formatEpisodeCode(episode: SeriesEpisodeInventoryItem) {
-  return `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`;
+/**
+ * S01E05, or S01E05 (105) for an anime episode when the person chose absolute
+ * numbers in Interface settings (#1024). An episode with no absolute number
+ * keeps the plain code.
+ */
+export function formatEpisodeCode(episode: SeriesEpisodeInventoryItem, showAbsolute = false) {
+  const code = `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`;
+  return showAbsolute && episode.absoluteNumber ? `${code} (${episode.absoluteNumber})` : code;
 }
 
 function formatSeasonLabel(seasonNumber: number) {

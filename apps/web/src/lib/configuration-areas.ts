@@ -39,7 +39,8 @@ const MEDIA_MANAGEMENT_PATHS = [
   "/settings/destination-rules",
   "/settings/metadata",
   "/settings/subtitles",
-  "/settings/tags"
+  "/settings/tags",
+  "/settings/auto-tagging"
 ];
 
 const PREFERENCES_PATHS = ["/settings/general", "/settings/ui", "/settings/notifications", "/settings/migration"];

@@ -46,7 +46,8 @@ public sealed class SeerrAcquisitionService(
     IActivityFeedRepository activityFeedRepository,
     ISeerrAcquisitionsRepository acquisitions,
     ILogger<SeerrAcquisitionService> logger,
-    ITitleTagService? titleTagService = null)
+    ITitleTagService? titleTagService = null,
+    IAutoTaggingService? autoTagging = null)
     : ISeerrAcquisitionService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -102,6 +103,29 @@ public sealed class SeerrAcquisitionService(
             if (existingEntityId is not null && titleTagService is not null)
             {
                 routingTags.AddRange(await titleTagService.ListNamesAsync(tagKind, existingEntityId, cancellationToken));
+            }
+
+            // #1024: the tags the auto-tagging rules would give this title are known before it
+            // exists, so a tag rule can send a request to a library just like a tag from the
+            // connection can.
+            if (autoTagging is not null)
+            {
+                routingTags.AddRange(await autoTagging.PredictAsync(
+                    AutoTagFactsBuilder.ForNewTitle(
+                        tagKind,
+                        metadata.Title,
+                        metadata.Year,
+                        metadata.Genres,
+                        metadata.OriginalLanguage,
+                        metadata.Certification,
+                        mediaType == "tv" ? metadata.Network : metadata.Studio,
+                        metadata.RuntimeMinutes,
+                        metadata.Keywords ?? [],
+                        metadata.Status,
+                        metadata.Collection,
+                        routingTags,
+                        new AutoTagAddFacts(is4k, true, null)),
+                    cancellationToken));
             }
 
             var routing = libraryRoutingResolver.Resolve(
@@ -199,6 +223,19 @@ public sealed class SeerrAcquisitionService(
             if (titleTagService is not null && givenTags.Count > 0)
             {
                 newlyTagged = await titleTagService.GiveAsync(tagKind, entityId, givenTags, cancellationToken);
+            }
+
+            // #1024: the rules again, now the title exists and its library is known, so a rule
+            // that looks at the library or the quality profile can act too.
+            if (autoTagging is not null)
+            {
+                await autoTagging.ApplyAsync(
+                    tagKind,
+                    entityId,
+                    isNewlyAdded ? AutoTagTrigger.Added : AutoTagTrigger.Edited,
+                    isNewlyAdded ? new AutoTagAddFacts(is4k, true, null) : null,
+                    [library.Id],
+                    cancellationToken);
             }
 
             var searchRequested = await jobQueueRepository.RequestLibrarySearchAsync(

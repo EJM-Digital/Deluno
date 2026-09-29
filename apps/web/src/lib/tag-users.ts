@@ -12,7 +12,8 @@ const KIND_LABELS: Record<string, string> = {
   seerrConnection: "Seerr connection",
   list: "List",
   collection: "Collection",
-  listSetting: "List setting"
+  listSetting: "List setting",
+  autoTagRule: "Auto-tagging rule"
 };
 
 export function tagUserKindLabel(kind: string): string {
@@ -30,7 +31,8 @@ const KIND_NOUNS: Record<string, [string, string]> = {
   seerrConnection: ["Seerr connection", "Seerr connections"],
   list: ["list", "lists"],
   collection: ["collection", "collections"],
-  listSetting: ["list setting", "list settings"]
+  listSetting: ["list setting", "list settings"],
+  autoTagRule: ["auto-tagging rule", "auto-tagging rules"]
 };
 
 /** "3 titles and 1 download client": what still uses a tag, in plain words. */
