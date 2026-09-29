@@ -1,5 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate, ensureBootstrapped, fallbackCredentials } from "../helpers/auth-helper";
+
+// The guide saves its draft to the shared smoke backend as fields change, so a
+// test that reads the draft must serve its own or it sees another test's values.
+async function serveEmptySetupDraft(page: Page) {
+  const draft = {
+    mode: "simple", mediaIntent: "both", movieRootPath: "", seriesRootPath: "", downloadsPath: "",
+    qualityPreset: "", formatGoal: "", indexerName: "", indexerProtocol: "torznab", indexerUrl: "",
+    clientName: "", clientProtocol: "qbittorrent", clientHost: "", clientPort: "8080",
+    metadataProviderMode: "direct", metadataBrokerUrl: "", backupEnabled: true,
+    firstTitleType: "movies", firstTitle: "", firstTitleYear: "", firstTitleMonitored: true,
+    updatedUtc: new Date(0).toISOString()
+  };
+  await page.route("**/api/setup/draft", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(draft) });
+  });
+}
 
 test.describe("first-run and auth screens", () => {
   test("setup entry is usable whether the install is fresh or already bootstrapped", async ({ page }) => {
@@ -70,17 +86,7 @@ test.describe("first-run and auth screens", () => {
   });
 
   test("guided setup outcomes are keyboard reachable", async ({ page }) => {
-    const draft = {
-      mode: "simple", mediaIntent: "both", movieRootPath: "", seriesRootPath: "", downloadsPath: "",
-      qualityPreset: "", formatGoal: "", indexerName: "", indexerProtocol: "torznab", indexerUrl: "",
-      clientName: "", clientProtocol: "qbittorrent", clientHost: "", clientPort: "8080",
-      metadataProviderMode: "direct", metadataBrokerUrl: "", backupEnabled: true,
-      firstTitleType: "movies", firstTitle: "", firstTitleYear: "", firstTitleMonitored: true,
-      updatedUtc: new Date(0).toISOString()
-    };
-    await page.route("**/api/setup/draft", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(draft) });
-    });
+    await serveEmptySetupDraft(page);
     await authenticateAndNavigate(page, "/setup-guide");
 
     const folders = page.getByRole("button", { name: /Folders/ });
@@ -92,17 +98,7 @@ test.describe("first-run and auth screens", () => {
   });
 
   test("guided setup explains an incomplete search-source test", async ({ page }) => {
-    const draft = {
-      mode: "simple", mediaIntent: "both", movieRootPath: "", seriesRootPath: "", downloadsPath: "",
-      qualityPreset: "", formatGoal: "", indexerName: "", indexerProtocol: "torznab", indexerUrl: "",
-      clientName: "", clientProtocol: "qbittorrent", clientHost: "", clientPort: "8080",
-      metadataProviderMode: "direct", metadataBrokerUrl: "", backupEnabled: true,
-      firstTitleType: "movies", firstTitle: "", firstTitleYear: "", firstTitleMonitored: true,
-      updatedUtc: new Date(0).toISOString()
-    };
-    await page.route("**/api/setup/draft", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(draft) });
-    });
+    await serveEmptySetupDraft(page);
     await page.route("**/api/indexers", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
@@ -117,6 +113,10 @@ test.describe("first-run and auth screens", () => {
   });
 
   test("guided setup requires an external download app address before testing", async ({ page }) => {
+    await serveEmptySetupDraft(page);
+    await page.route("**/api/download-clients", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+    });
     await authenticateAndNavigate(page, "/setup-guide");
     await page.getByRole("button", { name: /Find & Download/ }).click();
     await page.getByRole("button", { name: "Test download client" }).click();
@@ -125,6 +125,7 @@ test.describe("first-run and auth screens", () => {
   });
 
   test("guided setup does not mark the baseline ready without tested acquisition services", async ({ page }) => {
+    await serveEmptySetupDraft(page);
     await page.route("**/api/indexers", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
