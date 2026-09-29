@@ -40,12 +40,13 @@ Each entry carries:
   `scripts/lab/rig-software.json` pins qBittorrent and SABnzbd: staged once,
   hashed once, and refused later if it ever stops matching. qBittorrent and
   SABnzbd reuse those exact already-vetted values.
-- `mustBeSigned` — for a component with no pinned hash (Transmission, Deluge,
-  NZBGet: their official Windows builds change often enough that pinning one
-  version would mean shipping an installer that goes stale), the downloaded
-  file's own Authenticode signature is checked instead. A file with neither a
-  matching pinned hash nor a valid signature is refused; nothing is ever run
-  unverified.
+- `mustBeSigned` — for a component with no pinned hash (Transmission and
+  SABnzbd, whose official Windows builds are signed), the exact file that
+  will be run has its own Authenticode signature checked and the publisher
+  name must match exactly. Deluge and NZBGet are unsigned by their vendors,
+  so they are accepted only by the checksum the vendor publishes. A file with
+  neither a matching checksum nor a valid signature is refused; nothing is
+  ever run unverified.
 - `defaultPort` — the same defaults already shown in the connections screen
   (`apps/web/src/routes/connections/presets.ts` `CLIENT_PRESETS`) and in
   Weir's own documentation (port 9347).
@@ -71,8 +72,7 @@ hash rather than one this repository would have to keep refreshing by hand.
 2. **Download.** Only a ticked, not-already-installed component is fetched,
    from the official source named in the manifest (or resolved live for
    Weir), to a temp file.
-3. **Verify.** Pinned SHA-256, or a required Authenticode signature. Anything
-   that fails either check, or is implausibly small, is deleted and never run.
+3. **Verify.** Pinned SHA-256 (the vendor's published checksum for unsigned Deluge and NZBGet), or a valid Authenticode signature checked on the exact file that will run. The download is placed in a brand-new folder under `%ProgramFiles%` that only administrators can create, links are refused, and the folder is deleted afterwards. Anything that fails either check, or is implausibly small, is deleted and never run.
 4. **Run.** Each ticked component's own installer runs as its own process
    (`Process.Start`, `UseShellExecute = true`), with the silent arguments the
    manifest names where the vendor documents one — never merged into Deluno's
@@ -154,9 +154,9 @@ Weir. Live proof, on a clean Windows VM or machine:
 
 Read from the real packages and source, not guessed:
 
-- **qBittorrent 5.2.1** will not start its Web UI without a user name and password ("Credentials are not set"). The seed carries `WebUI\Username` and `WebUI\Password_PBKDF2` for a generated password. The hash is qBittorrent's own format (`src/base/utils/password.cpp`, release-5.2.1): PBKDF2-HMAC-SHA512, 100000 iterations, 16-byte salt, 64-byte key, written as `"@ByteArray(<base64 salt>:<base64 key>)"`. The plain password is kept protected in `<data root>\secrets\component-credentials.json` (DPAPI, machine scope, so the tray and a Deluno running as a service can both use it) and handed to the screen by `GET /api/system/bundled-components/{kind}/credentials`, so "Use qBittorrent" opens with the sign-in filled in and tested. It is stored only when the config was actually written, never for a config that already existed.
-- **NZBGet (Windows 21.1)**: `-D` is not a daemon switch on Windows; it hands the process to the service dispatcher and crashes when run by hand. Deluno starts `nzbget.exe -s -o ControlIP=127.0.0.1` with no console window. Its config is built from the `nzbget.conf.template` the installer ships (ControlIP 127.0.0.1, a generated user and password instead of the public default) and written to `%ProgramData%\NZBGet\nzbget.conf`.
-- **Transmission 4.1.1 MSI** has six features; only `QtClient` is in a default install. `transmission-daemon.exe` is in `Daemon`, so the install passes `ADDLOCAL=CommonLibs,Daemon,WebUi`. The package also registers an auto-start LocalService service bound to every address; the same elevated step (one prompt) stops and disables it. Deluno runs `transmission-daemon.exe -f -g %LocalAppData%\Deluno\components\transmission -r 127.0.0.1` with no window, as the signed-in person, config seeded to bind the RPC to 127.0.0.1:9091.
-- **Decided by James, 30 Sep 2026: each app keeps its own security defaults.** The installer installs only the apps that were ticked and adds only what Deluno needs to connect to them. It never switches a protection off and never gives an app a password it does not need: where an app's own default is no password, the installer does not add one. Where an app refuses to start without a sign-in (qBittorrent), the generated one is used only for that. Deluno's own API never hands out the credentials it has stored for an app, so the line above about the credentials route is being reworked: the screen connects the app for you and does not reveal the password. Older installs get no Health warning and no "Turn them on" button: setting an app up is the person's responsibility. The installer's own safety stays: downloaded installers have their signatures checked and run from a locked folder.
+- **qBittorrent 5.2.1** will not start its Web UI without a user name and password ("Credentials are not set"). This is the only thing the installer adds to qBittorrent: the seed carries `WebUIUsername` and `WebUIPassword_PBKDF2` for a generated password (PBKDF2-HMAC-SHA512, 100000 iterations, 16-byte salt, 64-byte key, qBittorrent's own `@ByteArray(<salt>:<key>)` format). The plain password is kept protected in `<data root>secretscomponent-credentials.json` (DPAPI, machine scope) for the tray and a service-run Deluno, and only when the config was actually written, never for one that already existed. It is never readable through Deluno's API by an API key; the screen connects the app for you without revealing it. Every other qBittorrent setting stays at the app's own default.
+- **NZBGet (Windows 21.1)**: `-D` is not a daemon switch on Windows; it hands the process to the service dispatcher and crashes when run by hand. Deluno starts `nzbget.exe -s -o ControlIP=127.0.0.1` with no console window. The installer adds nothing to NZBGet's own config: no generated user or password, the app keeps its defaults.
+- **Transmission 4.1.1 MSI** has six features; only `QtClient` is in a default install. `transmission-daemon.exe` is in `Daemon`, so the install passes `ADDLOCAL=CommonLibs,Daemon,WebUi`. The package also registers an auto-start LocalService service bound to every address; the same elevated step (one prompt) stops and disables it. Deluno runs `transmission-daemon.exe -f -g %LocalAppData%\Deluno\components\transmission -r 127.0.0.1` with no window, as the signed-in person. The installer adds nothing to its settings; the app keeps its own defaults.
+- **Decided by James, 30 Sep 2026: each app keeps its own security defaults.** The installer installs only the apps that were ticked and adds only what Deluno needs to connect to them. Only qBittorrent gets anything (the Web UI login it refuses to start without); Transmission, Deluge, SABnzbd and NZBGet get nothing added. It never switches a protection off and never gives an app a password it does not need. Deluno's API never hands out stored credentials, to an API key or anything else. Older installs get no Health warning and no "Turn them on" button: setting an app up is the person's responsibility.
 - **After a restart** the tray (the one thing that already starts at sign-in) starts again every download client Deluno started at install, if its port is not answering (`ComponentAutoStarter`, `%LocalAppData%\Deluno\config\started-components.json`, log in `logs\component-startup.log`).
-- **Local only**: every start command and seeded config binds 127.0.0.1 (SABnzbd `--server 127.0.0.1:8080`, deluge-web `--interface 127.0.0.1`, qBittorrent `WebUI\Address=127.0.0.1`, NZBGet `ControlIP`, Transmission `rpc-bind-address`). `LocalOnlyTests` fails if any start argument or seeded config carries `0.0.0.0`, `::` or `*`. The torrent clients' peer ports (Transmission 51413, qBittorrent, Deluge) still listen on every address; that is BitTorrent, not a Web UI.
+- **Local only**: every start command (and qBittorrent's seeded `WebUIAddress`) binds 127.0.0.1 (SABnzbd `--server 127.0.0.1:8080`, deluge-web `--interface 127.0.0.1`, qBittorrent `WebUI\Address=127.0.0.1`, NZBGet `ControlIP`, Transmission `rpc-bind-address`). `LocalOnlyTests` fails if any start argument or seeded config carries `0.0.0.0`, `::` or `*`. The torrent clients' peer ports (Transmission 51413, qBittorrent, Deluge) still listen on every address; that is BitTorrent, not a Web UI.
