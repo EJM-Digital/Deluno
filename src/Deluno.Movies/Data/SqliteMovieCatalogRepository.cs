@@ -2801,7 +2801,7 @@ public sealed class SqliteMovieCatalogRepository(
                          > CAST(strftime('%Y', 'now') AS INTEGER) THEN 'upcoming'
                     ELSE 'missing'
                 END,
-                wanted_reason = 'The file was deleted, so Deluno will look for this movie again.',
+                wanted_reason = 'The file was deleted, so Deluno stopped wanting this movie.',
                 missing_since_utc = COALESCE(missing_since_utc, @now),
                 updated_utc = @now
             WHERE movie_id = @movieId AND file_path = @filePath;
@@ -2809,7 +2809,21 @@ public sealed class SqliteMovieCatalogRepository(
         AddParameter(command, "@movieId", movieId);
         AddParameter(command, "@filePath", filePath);
         AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var cleared = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (!cleared)
+        {
+            return false;
+        }
+
+        // One rule for a file deleted from disk, whoever noticed (#931, #1065):
+        // the title has no file and is unmonitored, so no search picks it up.
+        // It shows under Unmonitored and its status says it has no file.
+        using var unmonitor = connection.CreateCommand();
+        unmonitor.CommandText = "UPDATE movie_entries SET monitored = 0, updated_utc = @now WHERE id = @movieId;";
+        AddParameter(unmonitor, "@movieId", movieId);
+        AddParameter(unmonitor, "@now", timeProvider.GetUtcNow().ToString("O"));
+        await unmonitor.ExecuteNonQueryAsync(cancellationToken);
+        return true;
     }
 
     public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)

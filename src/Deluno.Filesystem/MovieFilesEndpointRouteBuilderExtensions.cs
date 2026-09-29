@@ -294,7 +294,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             await activityFeedRepository.RecordActivityAsync(
                 "library.movie.file-deleted",
                 wasPrimary
-                    ? $"{movie.Title}'s file was deleted from disk."
+                    ? $"{movie.Title}'s file was deleted from disk, so Deluno stopped wanting it."
                     : $"A file was deleted from {movie.Title}'s folder.",
                 null,
                 null,

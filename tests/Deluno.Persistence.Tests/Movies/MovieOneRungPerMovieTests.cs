@@ -202,7 +202,7 @@ public sealed class MovieOneRungPerMovieTests
     }
 
     [Fact]
-    public async Task Deleting_a_movies_file_leaves_it_missing_or_upcoming_never_covered()
+    public async Task Deleting_a_movies_file_leaves_it_with_no_file_unmonitored_and_never_covered()
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage);
@@ -217,6 +217,19 @@ public sealed class MovieOneRungPerMovieTests
 
         Assert.Equal("missing", await StatusAsync(connection, released));
         Assert.Equal("upcoming", await StatusAsync(connection, future));
+
+        // The one rule for a deleted file: no file, unmonitored (so it sits under
+        // the Unmonitored pill and no search picks it up), nothing queued.
+        foreach (var id in new[] { released, future })
+        {
+            var after = await movies.GetByIdAsync(id, CancellationToken.None);
+            Assert.False(after!.HasFile);
+            Assert.False(after.Monitored, "a movie whose file was deleted must be unmonitored");
+        }
+
+        await using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM movie_wanted_state WHERE last_search_utc IS NOT NULL OR next_eligible_search_utc IS NOT NULL;";
+        Assert.Equal(0L, Convert.ToInt64(await count.ExecuteScalarAsync()));
     }
 
     private static MediaWantedDecisionInput Input(bool upgradeUntilCutoff, bool upgradeUnknown, string? current)
