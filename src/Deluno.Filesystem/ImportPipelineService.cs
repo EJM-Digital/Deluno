@@ -2580,6 +2580,23 @@ public sealed partial class ImportPipelineService(
     /// so in Activity when it does. Everything that decides lives in the policy;
     /// this only supplies the facts and keeps the count.
     /// </summary>
+    /// <summary>Smallest size Force Import will accept for a file it could not read; anything below (or of unknown size) stays stopped.</summary>
+    public const long ForceImportMinimumBytes = 100L * 1024 * 1024;
+
+    public static bool LooksLikeASampleWithoutProbing(string? sourcePath, long? sizeBytes)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath) || sizeBytes is not > 0 || sizeBytes < ForceImportMinimumBytes)
+        {
+            return true;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(sourcePath);
+        var folder = Path.GetFileName(Path.GetDirectoryName(sourcePath) ?? string.Empty);
+        return SampleTokenPattern().IsMatch(name)
+            || SampleTokenPattern().IsMatch(folder)
+            || name.Contains("trailer", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<bool> TryForceImportAsync(
         ImportExecuteRequest request,
         ImportPreviewResponse preview,
@@ -2592,6 +2609,15 @@ public sealed partial class ImportPipelineService(
             || string.IsNullOrWhiteSpace(request.DispatchId)
             || !ForceImportPolicy.IsSafeToForce(reasonCode))
         {
+            return false;
+        }
+
+        // The probe could not read the file, so its no-video and likely-sample verdicts never ran. Forcing
+        // must not import a sample just because the file could not be read: what can be told without
+        // reading it (a sample-looking name, a file too small to be a feature or episode) still stops it (#1072).
+        if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes))
+        {
+            logger.LogWarning("Force Import left {Source} stopped: it could not be read and looks like a sample.", preview.SourcePath);
             return false;
         }
 

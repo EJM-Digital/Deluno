@@ -119,6 +119,18 @@ public sealed class OrphanedDownloadFoldersTests
         => Assert.Equal(expected, OrphanedDownloads.MatchesGlob(pattern, name));
 
     [Fact]
+    public void A_glob_that_takes_too_long_to_match_skips_the_name_instead_of_failing_the_scan()
+    {
+        var pattern = "*a*a*a*a*a*a*a*a*a*a*a*b";
+        var name = new string('a', 80);
+        var entries = new[] { Entry($@"{Tv}{name}", age: TimeSpan.FromDays(5)) };
+        var scans = new[] { new DownloadFolderScan("library-tv", "TV", Tv, entries) };
+
+        // Skipping only ever keeps a folder off the delete list.
+        Assert.Empty(OrphanedDownloads.Find(scans, [], [Grabbed], [], Now, excludePatterns: [pattern]));
+    }
+
+    [Fact]
     public void The_skip_list_is_read_from_commas_semicolons_and_new_lines()
         => Assert.Equal(["*.nfo", "Thumbs.db", ".DS_Store"], OrphanedDownloads.ParseExcludePatterns("*.nfo,\nThumbs.db ; .DS_Store\r\n*.NFO"));
 

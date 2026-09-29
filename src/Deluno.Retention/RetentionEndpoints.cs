@@ -105,6 +105,12 @@ public static class RetentionModule
                 await service.ForgetDoneAsync(saved.Id, cancellationToken);
             }
 
+            // Marks made while it only logged, tagged or unmonitored were promised a day for that, not for deleting.
+            if (before is not null && saved.ExpiryAction == RetentionExpiryActions.Delete && before.ExpiryAction != RetentionExpiryActions.Delete)
+            {
+                await service.RestartWaitForDeleteAsync(saved, cancellationToken);
+            }
+
             // Turning a rule off or changing its servers changes what the collections hold.
             await collections.TrySyncAsync(cancellationToken);
             return Results.Ok(saved);

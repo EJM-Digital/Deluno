@@ -7073,7 +7073,9 @@ public sealed class ImportPipelineServiceTests
             : 0;
     }
 
-    private static async Task<ForceImportScene> ForceImportSceneAsync(IMediaProbeService probe, bool forceImport, int maxTries = 3)
+    private static async Task<ForceImportScene> ForceImportSceneAsync(
+        IMediaProbeService probe, bool forceImport, int maxTries = 3,
+        string fileName = "Silent.Hill.2020.1080p.WEB-DL.x264-DELUNO.mkv", long sizeBytes = 120L * 1024 * 1024)
     {
         var storage = TestStorage.Create();
         var timeProvider = new FixedTimeProvider(DateTimeOffset.UtcNow);
@@ -7082,8 +7084,14 @@ public sealed class ImportPipelineServiceTests
         var movieRootPath = Path.Combine(storage.DataRoot, "movies");
         Directory.CreateDirectory(downloadsPath);
         Directory.CreateDirectory(movieRootPath);
-        var sourcePath = Path.Combine(downloadsPath, "Silent.Hill.2020.1080p.WEB-DL.x264-DELUNO.mkv");
-        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x21, 4096).ToArray());
+        var sourcePath = Path.Combine(downloadsPath, fileName);
+        await using (var stream = new FileStream(sourcePath, FileMode.Create, FileAccess.Write))
+        {
+            // Big enough to pass the size floor Force Import keeps for a file it could not read (sparse where the file system allows).
+            await stream.WriteAsync(Enumerable.Repeat((byte)0x21, 4096).ToArray());
+            stream.SetLength(sizeBytes);
+        }
+
         File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
 
         var platform = CreatePlatformRepository(storage, timeProvider);
@@ -7157,6 +7165,47 @@ public sealed class ImportPipelineServiceTests
         var activity = await scene.JobStore.ListActivityAsync(50, null, null, CancellationToken.None);
         Assert.DoesNotContain(activity, entry => entry.Category == "filesystem.import.forced");
     }
+
+    /// <summary>
+    /// #1072: an unreadable file never got the no-video and likely-sample checks, so Force Import keeps what
+    /// it can tell without reading: a sample-looking name, or a file too small to be a feature or episode.
+    /// </summary>
+    [Theory]
+    [InlineData("Silent.Hill.2020.1080p.sample.mkv", 120L * 1024 * 1024)]
+    [InlineData("Silent.Hill.2020.1080p.WEB-DL.x264-DELUNO.mkv", 30L * 1024 * 1024)]
+    public async Task Force_import_never_imports_an_unreadable_file_that_looks_like_a_sample(string fileName, long sizeBytes)
+    {
+        using var scene = await ForceImportSceneAsync(new UnreadableProbeService(), forceImport: true, fileName: fileName, sizeBytes: sizeBytes);
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            Assert.False((await scene.ImportAsync("dispatch-1")).Succeeded);
+        }
+
+        Assert.Equal(0, scene.ImportedFileCount);
+        var activity = await scene.JobStore.ListActivityAsync(50, null, null, CancellationToken.None);
+        Assert.DoesNotContain(activity, entry => entry.Category == "filesystem.import.forced");
+    }
+
+    [Theory]
+    [InlineData("/tv/Show/Show.S01E01.720p.mkv", 500L * 1024 * 1024, false)]
+    [InlineData("/dl/Movie.2020/Sample/movie-sample.mkv", 500L * 1024 * 1024, true)]
+    [InlineData("/dl/Movie.2020/Movie.2020-trailer.mkv", 500L * 1024 * 1024, true)]
+    [InlineData("/dl/Movie.2020/Movie.2020.mkv", null, true)]
+    [InlineData("/dl/Movie.2020/Movie.2020.mkv", 1024L, true)]
+    public void A_file_that_could_not_be_read_is_told_to_be_a_sample_only_by_what_can_be_seen_outside_it(string path, long? size, bool sample)
+        => Assert.Equal(sample, ImportPipelineService.LooksLikeASampleWithoutProbing(path, size));
+
+    /// <summary>#1072: ffprobe's own operating-system errors are "could not be reached", never "bad release".</summary>
+    [Theory]
+    [InlineData("/mnt/nas/a.mkv: Input/output error", true)]
+    [InlineData("a.mkv: Permission denied", true)]
+    [InlineData("The process cannot access the file because it is being used by another process.", true)]
+    [InlineData("a.mkv: Invalid data found when processing input", false)]
+    [InlineData("moov atom not found", false)]
+    [InlineData("", false)]
+    public void Probe_errors_that_are_about_reaching_the_file_are_told_from_errors_about_the_file(string error, bool unreachable)
+        => Assert.Equal(unreachable, FfprobeMediaProbeService.LooksLikeTheFileCouldNotBeReached(error));
 
     /// <summary>#1013: it fills a gap only. It never puts an unchecked file on top of one already there.</summary>
     [Fact]
