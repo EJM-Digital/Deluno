@@ -86,6 +86,8 @@ public sealed record UpdatePlatformSettingsRequest(
     string? Timezone = null,
     bool? LeftoverDownloadCleanupEnabled = null,
     int? LeftoverDownloadCleanupAgeHours = null,
+    string? LeftoverExcludePatterns = null,
+    int? LeftoverMinAgeHours = null,
     string? SeasonFolderFormat = null,
     string? SpecialsFolderFormat = null,
     string? MultiEpisodeStyle = null,

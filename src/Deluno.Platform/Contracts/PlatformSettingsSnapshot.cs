@@ -186,6 +186,12 @@ public sealed record PlatformSettingsSnapshot(
     // LeftoverDownloadCleanupService is met, once turned on.
     bool LeftoverDownloadCleanupEnabled = false,
     int LeftoverDownloadCleanupAgeHours = 24,
+    // #1001: file names (globs such as *.nfo or Thumbs.db, separated by commas or
+    // new lines) that are never counted as leftovers, and how long an entry must
+    // have sat before it counts at all. 2 hours is the fixed grace it always had,
+    // so an existing install behaves exactly as before.
+    string LeftoverExcludePatterns = "",
+    int LeftoverMinAgeHours = 2,
     // #762: per-season (and specials, season 0) subfolders under the series
     // folder, the way Sonarr's Season Folder Format and Specials Folder
     // Format split one combined series folder. Blank means no subfolder --

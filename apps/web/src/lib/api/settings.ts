@@ -115,6 +115,10 @@ export interface PlatformSettingsPatch {
   leftoverDownloadCleanupEnabled?: boolean;
   /** #932: how long a leftover must have sat before the task deletes it. Only matters once the switch above is on. */
   leftoverDownloadCleanupAgeHours?: number;
+  /** #1001: names (globs such as *.nfo) never counted as leftovers. */
+  leftoverExcludePatterns?: string;
+  /** #1001: hours an entry must sit unclaimed before it is listed at all. */
+  leftoverMinAgeHours?: number;
   /** #762: blank clears the subfolder. */
   seasonFolderFormat?: string;
   specialsFolderFormat?: string;

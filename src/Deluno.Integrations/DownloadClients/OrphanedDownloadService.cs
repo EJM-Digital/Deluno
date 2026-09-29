@@ -87,7 +87,12 @@ public sealed class OrphanedDownloadService(
             claimed,
             dispatches.Select(dispatch => dispatch.ReleaseName),
             await keptDownloadsRepository.ListAsync(cancellationToken),
-            timeProvider.GetUtcNow());
+            timeProvider.GetUtcNow(),
+            // #1001: the person's skip list and how long an entry must have
+            // sat. Untouched settings are no skip list and the 2 hours this
+            // always used.
+            OrphanedDownloads.ParseExcludePatterns(settings.LeftoverExcludePatterns),
+            TimeSpan.FromHours(Math.Max(1, settings.LeftoverMinAgeHours)));
 
         // Sized only once found: a completed folder can hold hundreds of
         // seeding torrents, and walking every one of them to report none is

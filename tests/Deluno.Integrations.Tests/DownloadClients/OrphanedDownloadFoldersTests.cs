@@ -69,6 +69,59 @@ public sealed class OrphanedDownloadFoldersTests
         Assert.False(OrphanedDownloads.WasGrabbed("Other.2020.1080p", grabbed));
     }
 
+    /// <summary>#1001: names on the skip list are never counted, however old.</summary>
+    [Fact]
+    public void A_name_on_the_skip_list_is_never_counted_as_a_leftover()
+    {
+        var entries = new[]
+        {
+            Entry($@"{Tv}\Show.S01E01.nfo"),
+            Entry($@"{Tv}\THUMBS.DB"),
+            Entry($@"{Tv}\Left.Behind.S01E01")
+        };
+
+        var found = OrphanedDownloads.Find(
+            [new DownloadFolderScan("library-tv", "TV", Tv, entries)],
+            [], [Grabbed], [], Now,
+            excludePatterns: OrphanedDownloads.ParseExcludePatterns("*.nfo, Thumbs.db"));
+
+        Assert.Equal("Left.Behind.S01E01", Assert.Single(found).Name);
+    }
+
+    [Fact]
+    public void An_empty_skip_list_and_no_min_age_behave_exactly_as_before()
+    {
+        var entries = new[] { Entry($@"{Tv}\Show.S01E01.nfo"), Entry($@"{Tv}\Just.Finished", age: TimeSpan.FromMinutes(90)) };
+
+        var found = OrphanedDownloads.Find([new DownloadFolderScan("library-tv", "TV", Tv, entries)], [], [Grabbed], [], Now);
+
+        Assert.Equal("Show.S01E01.nfo", Assert.Single(found).Name);
+    }
+
+    [Fact]
+    public void The_min_age_is_configurable()
+    {
+        var entries = new[] { Entry($@"{Tv}\Recent.Enough", age: TimeSpan.FromHours(3)) };
+        var scans = new[] { new DownloadFolderScan("library-tv", "TV", Tv, entries) };
+
+        Assert.Single(OrphanedDownloads.Find(scans, [], [Grabbed], [], Now, minAge: TimeSpan.FromHours(2)));
+        Assert.Empty(OrphanedDownloads.Find(scans, [], [Grabbed], [], Now, minAge: TimeSpan.FromHours(6)));
+    }
+
+    [Theory]
+    [InlineData("*.nfo", "movie.NFO", true)]
+    [InlineData("Thumbs.db", "Thumbs.db", true)]
+    [InlineData("Thumbs.db", "Thumbsxdb", false)]
+    [InlineData("Sample?", "Sample1", true)]
+    [InlineData("Sample?", "Sample12", false)]
+    [InlineData("a+b", "a+b", true)]
+    public void A_glob_matches_the_whole_name_ignoring_case(string pattern, string name, bool expected)
+        => Assert.Equal(expected, OrphanedDownloads.MatchesGlob(pattern, name));
+
+    [Fact]
+    public void The_skip_list_is_read_from_commas_semicolons_and_new_lines()
+        => Assert.Equal(["*.nfo", "Thumbs.db", ".DS_Store"], OrphanedDownloads.ParseExcludePatterns("*.nfo,\nThumbs.db ; .DS_Store\r\n*.NFO"));
+
     private static IReadOnlyList<OrphanedDownloadItem> Find(
         IReadOnlyList<DownloadFolderEntry> entries,
         IReadOnlyList<string> claimed,
