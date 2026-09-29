@@ -26,6 +26,19 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             ["mode"] = "addurl", ["apikey"] = apiKey, ["name"] = request.DownloadUrl,
             ["cat"] = DownloadClientHelpers.ResolveCategory(client, request), ["output"] = "json"
         };
+        // #1000: the release's own name as SABnzbd's job name. Without it
+        // SABnzbd guesses one from the fetch URL or the file the indexer
+        // serves (often an opaque id), so its queue and its finished-download
+        // folder read as gibberish and the queue match by name gets weaker.
+        // addurl's documented `nzbname` ("Name of the job, if empty the NZB
+        // filename is used") overrides the guess. Radarr and Sonarr never
+        // needed it because they fetch the NZB themselves and upload it under
+        // the release title (SabnzbdProxy.DownloadNzb, addfile).
+        if (!string.IsNullOrWhiteSpace(request.ReleaseName))
+        {
+            query["nzbname"] = request.ReleaseName.Trim();
+        }
+
         // #663: SABnzbd's addurl priority is the small discrete enum documented
         // at sabnzbd.org/wiki (Low/Normal/High), not NZBGet's continuous scale —
         // Deluno's request only says which side of normal it wants, so that is
