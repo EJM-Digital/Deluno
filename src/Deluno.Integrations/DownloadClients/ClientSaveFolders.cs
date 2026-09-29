@@ -15,7 +15,55 @@ namespace Deluno.Integrations.DownloadClients;
 public static class ClientSaveFolders
 {
     /// <summary>How a library's folder was reached: as this host writes it, and as the client must be told.</summary>
-    public sealed record Resolved(string HostFolder, string ClientFolder);
+    /// <param name="ClientFolder">Null when the client is on another machine and no path mapping covers the folder: Deluno cannot name a folder that client can resolve, so it names none.</param>
+    public sealed record Resolved(string HostFolder, string? ClientFolder);
+
+    public const string NeedsMappingMessage =
+        "Deluno can't name this folder for a client on another machine without a path mapping. Add one for the library's downloads folder, and Deluno will send each download there.";
+
+    /// <summary>True when the client runs on this machine: localhost, a loopback or local address, or this computer's own name.</summary>
+    public static bool IsSameMachine(DownloadClientItem client)
+    {
+        var host = client.Host?.Trim();
+        if (string.IsNullOrWhiteSpace(host) && Uri.TryCreate(client.EndpointUrl, UriKind.Absolute, out var endpoint))
+        {
+            host = endpoint.Host;
+        }
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        host = host.Trim('[', ']');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || host.Equals(Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+            || host.Equals(System.Net.Dns.GetHostName(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!System.Net.IPAddress.TryParse(host, out var address))
+        {
+            return false;
+        }
+
+        if (System.Net.IPAddress.IsLoopback(address))
+        {
+            return true;
+        }
+
+        try
+        {
+            return System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+                .Any(unicast => unicast.Address.Equals(address));
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The one downloads folder the libraries routed to this client for this
@@ -52,7 +100,17 @@ public static class ClientSaveFolders
         }
 
         var host = distinct[0].TrimEnd('/', '\\');
-        return new Resolved(host, ToClientPath(host, mappings));
+        var clientFolder = ToClientPath(host, mappings);
+        var mapped = !string.Equals(clientFolder, host, StringComparison.Ordinal) || IsCovered(host, mappings);
+        return new Resolved(host, mapped || IsSameMachine(client) ? clientFolder : null);
+    }
+
+    private static bool IsCovered(string hostFolder, IEnumerable<DownloadClientPathMappingItem> mappings)
+    {
+        var key = Key(hostFolder);
+        return mappings.Any(item => item.IsEnabled && !string.IsNullOrWhiteSpace(item.LocalPath) && !string.IsNullOrWhiteSpace(item.RemotePath)
+            && (key.Equals(Key(item.LocalPath), StringComparison.OrdinalIgnoreCase)
+                || key.StartsWith(Key(item.LocalPath) + "/", StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>The category a library's link to a client uses: its own, else the client's for that kind of media.</summary>

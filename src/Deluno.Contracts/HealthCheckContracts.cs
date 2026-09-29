@@ -31,6 +31,9 @@ public static class HealthCheckCategories
     public const string System = "system";
     public const string Grab = "grab";
 
+    /// <summary>A one-time note (an upgrade changed something), never re-run by a check and cleared by hand.</summary>
+    public const string Notice = "notice";
+
     /// <summary>Tags that leave a connection with no titles, or titles with no indexer or client (#1043).</summary>
     public const string Tags = "tags";
 

@@ -124,7 +124,44 @@ public sealed class FolderChainService(
 
     private TimeSpan Timeout => stepTimeout ?? DefaultStepTimeout;
 
-    public async Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken)
+    /// <summary>How long a client's answer is kept for the destinations list, so a processor polling it does not hit the client each time (#1073).</summary>
+    internal static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(60);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, DownloadClientCategoryCheckResult Result)> CategoryCache = new();
+
+    /// <summary>Forgets every kept answer (by tests).</summary>
+    internal static void ClearCategoryCache() => CategoryCache.Clear();
+
+    private static string CacheKey(Deluno.Connections.Contracts.DownloadClientItem client, string category)
+        => $"{client.Id}|{client.Host}|{client.Port}|{client.EndpointUrl}|{category}".ToLowerInvariant();
+
+    /// <summary>
+    /// One client's category answer within the step timeout, for a caller that has no
+    /// per-step link to put a timeout in: a client that does not answer comes back as unreachable.
+    /// </summary>
+    internal static async Task<DownloadClientCategoryCheckResult> CheckCategoryBoundedAsync(
+        IDownloadClient implementation,
+        Deluno.Connections.Contracts.DownloadClientItem client,
+        string category,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await WithTimeoutAsync(token => implementation.CheckCategoryAsync(client, category, token), timeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new DownloadClientCategoryCheckResult(
+                client.Id, client.Name, category, DownloadClientCategoryStatuses.Unreachable,
+                $"{client.Name} did not answer in time, so Deluno could not check its {category} folder.", Supported: true, Found: false);
+        }
+    }
+
+    public Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken)
+        => CheckCoreAsync(libraryId, useCache: false, cancellationToken);
+
+    private async Task<FolderChainReport?> CheckCoreAsync(string libraryId, bool useCache, CancellationToken cancellationToken)
     {
         var library = (await libraries.ListLibrariesAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
@@ -159,21 +196,33 @@ public sealed class FolderChainService(
             }
 
             DownloadClientCategoryCheckResult check;
-            try
+            var cacheKey = CacheKey(client, category);
+            if (useCache && CategoryCache.TryGetValue(cacheKey, out var kept) && DateTimeOffset.UtcNow - kept.At < CacheFor)
             {
-                check = await WithTimeoutAsync(token => implementation.CheckCategoryAsync(client, category, token), Timeout, cancellationToken);
+                check = kept.Result;
             }
-            catch (TimeoutException)
+            else
             {
-                links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} did not answer within {(int)Timeout.TotalSeconds} seconds, so its {category} folder could not be checked. Check that {client.Name} is running and reachable, then check again."));
-                chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
-                continue;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} could not be checked: {ex.Message}"));
-                chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
-                continue;
+                try
+                {
+                    check = await WithTimeoutAsync(token => implementation.CheckCategoryAsync(client, category, token), Timeout, cancellationToken);
+                    if (useCache)
+                    {
+                        CategoryCache[cacheKey] = (DateTimeOffset.UtcNow, check);
+                    }
+                }
+                catch (TimeoutException)
+                {
+                    links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} did not answer within {(int)Timeout.TotalSeconds} seconds, so its {category} folder could not be checked. Check that {client.Name} is running and reachable, then check again."));
+                    chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
+                    continue;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} could not be checked: {ex.Message}"));
+                    chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
+                    continue;
+                }
             }
 
             var clientMappings = mappings.Where(mapping => string.Equals(mapping.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -197,21 +246,35 @@ public sealed class FolderChainService(
 
             // The client's path as this host sees it, through any mapping for a
             // client in Docker or on another machine.
-            var clientFolder = perGrab?.HostFolder ?? DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
-            links.Add(perGrab is not null
-                ? new("folder", FolderChainStatuses.Ok,
-                    $"Deluno sends each {kind} download to {perGrab.ClientFolder} itself, the folder the {library.Name} library expects, whatever folder {client.Name} is set to by default.",
-                    perGrab.HostFolder)
-                : FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
+            // A client on another machine with no path mapping for the folder cannot be
+            // told a path it can resolve, so Deluno names none: the client's own folder
+            // applies, and the check says why (#1073).
+            var named = perGrab?.ClientFolder is not null ? perGrab : null;
+            var clientFolder = named?.HostFolder ?? DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
+            if (named is not null)
+            {
+                links.Add(new("folder", FolderChainStatuses.Ok,
+                    $"Deluno sends each {kind} download to {named.ClientFolder} itself, the folder the {library.Name} library expects, whatever folder {client.Name} is set to by default.",
+                    named.HostFolder));
+            }
+            else if (perGrab is not null)
+            {
+                links.Add(new("folder", FolderChainStatuses.Problem, ClientSaveFolders.NeedsMappingMessage, perGrab.HostFolder));
+            }
+            else
+            {
+                links.Add(FolderLink(client.Name, category, clientFolder, library, kind, usesProcessor));
+            }
+
             if (ContentLayoutLink(client, category) is { } layoutLink)
             {
                 links.Add(layoutLink);
             }
 
             chains.Add(new(client.Id, client.Name, client.Protocol, category, links,
-                perGrab is not null ? FolderChainSavedBy.DelunoPerGrab : FolderChainSavedBy.ClientCategory,
+                named is not null ? FolderChainSavedBy.DelunoPerGrab : FolderChainSavedBy.ClientCategory,
                 clientFolder,
-                perGrab?.ClientFolder ?? check.SavePath));
+                named?.ClientFolder ?? check.SavePath));
         }
 
         return new FolderChainReport(
@@ -255,10 +318,16 @@ public sealed class FolderChainService(
             return null;
         }
 
+        // Libraries are checked side by side, each client answer is kept for a minute,
+        // and each step has the one step timeout (#1073, #1079), so a processor polling
+        // this never makes unbounded live calls.
+        var reports = await Task.WhenAll(selected.Select(library => CheckCoreAsync(library.Id, useCache: true, cancellationToken)));
+
         var result = new List<LibraryDownloadDestinations>();
-        foreach (var library in selected)
+        for (var index = 0; index < selected.Length; index++)
         {
-            var report = await CheckAsync(library.Id, cancellationToken);
+            var library = selected[index];
+            var report = reports[index];
             if (report is null)
             {
                 continue;

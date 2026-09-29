@@ -216,7 +216,7 @@ public sealed class DownloadClientGrabService(
             var mappings = await connectionsRepository.ListDownloadClientPathMappingsAsync(client.Id, cancellationToken);
             var folder = await ClientSaveFolders.ResolveAsync(
                 librariesRepository, client, request.MediaType, DownloadClientHelpers.ResolveCategory(client, request), mappings, cancellationToken);
-            return folder is null ? request : request with { SaveFolder = folder.ClientFolder };
+            return folder?.ClientFolder is { } clientFolder ? request with { SaveFolder = clientFolder } : request;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

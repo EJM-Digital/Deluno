@@ -76,6 +76,28 @@ public static class HealthCheckEndpointRouteBuilderExtensions
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
 
+        // A one-time note ("notice:...") is cleared by hand: no check re-creates it (#1073).
+        write.MapDelete("/notices/{id}", async (
+            string id,
+            HttpContext httpContext,
+            IHealthCheckRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!id.StartsWith("notice:", StringComparison.OrdinalIgnoreCase) || await repository.GetAsync(id, cancellationToken) is null)
+            {
+                return Results.NotFound();
+            }
+
+            await repository.RemoveAsync(id, cancellationToken);
+            return Results.NoContent();
+        });
+
         return endpoints;
     }
 }

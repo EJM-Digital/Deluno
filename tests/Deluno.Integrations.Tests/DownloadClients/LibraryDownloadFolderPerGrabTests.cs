@@ -26,6 +26,9 @@ public sealed class LibraryDownloadFolderPerGrabTests
 {
     private const string LibraryFolder = @"C:\Downloads\Completed\Movies";
 
+    // The client answers are kept for a minute; every test starts with none kept.
+    public LibraryDownloadFolderPerGrabTests() => FolderChainService.ClearCategoryCache();
+
     // ------------------------------------------------------------ adapters
 
     [Fact]
@@ -266,6 +269,146 @@ public sealed class LibraryDownloadFolderPerGrabTests
         Assert.Equal("/p", pair.GetProperty("processorPath").GetString());
     }
 
+    // ------------------------------------------------------------ a client on another machine (#1073)
+
+    [Fact]
+    public async Task A_client_on_another_machine_with_no_path_mapping_is_told_no_folder()
+    {
+        var (request, _) = await GrabThroughService([Library("lib-1", LibraryFolder)], perGrabClient: true, mappings: [], host: "192.168.1.51");
+
+        Assert.Null(request?.SaveFolder);
+    }
+
+    [Fact]
+    public async Task A_client_on_another_machine_with_a_path_mapping_is_told_the_mapped_folder()
+    {
+        var (request, _) = await GrabThroughService(
+            [Library("lib-1", LibraryFolder)], perGrabClient: true, mappings: [Mapping("/downloads", @"C:\Downloads\Completed")], host: "192.168.1.51");
+
+        Assert.Equal("/downloads/Movies", request?.SaveFolder);
+    }
+
+    [Theory]
+    [InlineData("localhost")]
+    [InlineData("127.0.0.1")]
+    [InlineData("::1")]
+    public void The_same_machine_is_recognised(string host)
+        => Assert.True(ClientSaveFolders.IsSameMachine(Client("deluge", host)));
+
+    [Fact]
+    public void Another_machine_is_not_the_same_machine()
+        => Assert.False(ClientSaveFolders.IsSameMachine(Client("deluge", "192.168.1.51")));
+
+    [Fact]
+    public async Task The_folder_check_says_plainly_why_no_folder_is_named_for_a_remote_client_without_a_mapping()
+    {
+        var service = ChainService([Library("lib-1", LibraryFolder)], perGrabClient: true, clientReportsFolder: @"C:\Somewhere\Else", host: "192.168.1.51");
+
+        var report = await service.CheckAsync("lib-1", CancellationToken.None);
+
+        var chain = Assert.Single(report!.Clients);
+        Assert.Equal(FolderChainSavedBy.ClientCategory, chain.SavedBy);
+        var folder = chain.Links.Single(link => link.Step == "folder");
+        Assert.Equal(FolderChainStatuses.Problem, folder.Status);
+        Assert.Contains("can't name this folder for a client on another machine without a path mapping", folder.Message);
+    }
+
+    // ------------------------------------------------------------ the destinations list stays bounded (#1073)
+
+    [Fact]
+    public async Task The_destinations_list_asks_each_client_once_a_minute_however_often_it_is_polled()
+    {
+        FolderChainService.ClearCategoryCache();
+        var fake = FakeClient(perGrab: true, reportedFolder: LibraryFolder);
+        var service = ChainService([Library("lib-1", LibraryFolder), Library("lib-2", LibraryFolder)], true, null, fake: fake);
+
+        await service.ListDestinationsAsync(null, CancellationToken.None);
+        await service.ListDestinationsAsync(null, CancellationToken.None);
+
+        fake.Verify(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtMost(2));
+        fake.Verify(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce());
+    }
+
+    [Fact]
+    public async Task A_client_that_never_answers_is_given_up_on_and_reported_as_unknown()
+    {
+        var fake = FakeClient(perGrab: true, reportedFolder: null);
+        fake.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(async (DownloadClientItem _, string _, CancellationToken token) =>
+            {
+                await Task.Delay(System.Threading.Timeout.Infinite, token);
+                return null!;
+            });
+        var service = new FolderChainService(
+            Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []), Registry(fake.Object), null, TimeSpan.FromMilliseconds(200));
+
+        var started = DateTimeOffset.UtcNow;
+        var listed = await service.ListDestinationsAsync(null, CancellationToken.None);
+
+        Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromSeconds(5));
+        var destination = Assert.Single(Assert.Single(listed!).Destinations);
+        Assert.Equal(FolderChainStatuses.Unknown, destination.Status);
+    }
+
+    // ------------------------------------------------------------ the upgrade note (#1073)
+
+    [Fact]
+    public async Task After_an_upgrade_a_library_whose_client_used_to_save_elsewhere_gets_one_Activity_line_and_a_Health_note()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), "deluno-notice-" + Guid.NewGuid().ToString("n"), "done");
+        var activity = new Mock<IActivityFeedRepository>();
+        var health = new Mock<IHealthCheckRepository>();
+        try
+        {
+            var wrote = await DownloadFolderChangeNoticeService.RunOnceAsync(
+                Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []),
+                Registry(FakeClient(true, @"C:\Somewhere\Else").Object), activity.Object, health.Object, marker, CancellationToken.None);
+
+            Assert.True(wrote);
+            activity.Verify(instance => instance.RecordActivityAsync(
+                "downloads.folder-changed", It.Is<string>(text => text.Contains(@"C:\Somewhere\Else") && text.Contains(LibraryFolder) && text.Contains("point it at")),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+            health.Verify(instance => instance.UpsertResultsAsync(
+                It.Is<IReadOnlyList<HealthCheckOutcome>>(items => items.Count == 1 && items[0].Id == DownloadFolderChangeNoticeService.HealthId
+                    && items[0].Status == HealthCheckStatuses.Problem && items[0].Category == HealthCheckCategories.Notice),
+                It.IsAny<CancellationToken>()), Times.Once);
+
+            // Once only: the marker stops a second start saying it again.
+            Assert.False(await DownloadFolderChangeNoticeService.RunOnceAsync(
+                Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []),
+                Registry(FakeClient(true, @"C:\Somewhere\Else").Object), activity.Object, health.Object, marker, CancellationToken.None));
+            activity.Verify(instance => instance.RecordActivityAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(marker)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task No_note_is_written_when_the_client_already_saved_into_the_librarys_folder()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), "deluno-notice-" + Guid.NewGuid().ToString("n"), "done");
+        var activity = new Mock<IActivityFeedRepository>();
+        var health = new Mock<IHealthCheckRepository>();
+        try
+        {
+            var wrote = await DownloadFolderChangeNoticeService.RunOnceAsync(
+                Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []),
+                Registry(FakeClient(true, LibraryFolder).Object), activity.Object, health.Object, marker, CancellationToken.None);
+
+            Assert.False(wrote);
+            activity.VerifyNoOtherCalls();
+            health.VerifyNoOtherCalls();
+            Assert.True(File.Exists(marker));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(marker)!, recursive: true);
+        }
+    }
+
     private static IProcessorRepository Processors(ProcessorConnectionItem connection, IReadOnlyList<ProcessorPathMappingItem> mappings)
     {
         var repository = new Mock<IProcessorRepository>();
@@ -282,9 +425,9 @@ public sealed class LibraryDownloadFolderPerGrabTests
     private static DownloadClientGrabRequest Request()
         => new("Big.Buck.Bunny.2008.1080p.WEB-DL.x264-DELUNO", "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "movies", "movies", "Fixture indexer");
 
-    private static DownloadClientItem Client(string protocol)
+    private static DownloadClientItem Client(string protocol, string host = "localhost")
         => new(
-            "client-1", protocol == "deluge" ? "Deluge" : "Transmission", protocol, "localhost", 8112, null, null, "http://localhost:8112/", false, null,
+            "client-1", protocol == "deluge" ? "Deluge" : "Transmission", protocol, host, 8112, null, null, "http://" + host + ":8112/", false, null,
             "movies", "tv", null, 1, true, "healthy", null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static DownloadClientPathMappingItem Mapping(string remote, string local)
@@ -315,10 +458,10 @@ public sealed class LibraryDownloadFolderPerGrabTests
         return repository.Object;
     }
 
-    private static IConnectionsRepository Connections(string protocol, IReadOnlyList<DownloadClientPathMappingItem> mappings)
+    private static IConnectionsRepository Connections(string protocol, IReadOnlyList<DownloadClientPathMappingItem> mappings, string host = "localhost")
     {
         var repository = new Mock<IConnectionsRepository>();
-        repository.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Client(protocol)]);
+        repository.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Client(protocol, host)]);
         repository.Setup(instance => instance.ListDownloadClientPathMappingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(mappings);
         return repository.Object;
     }
@@ -342,7 +485,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
     }
 
     private static async Task<(DownloadClientGrabRequest? Request, Mock<IDownloadClient> Client)> GrabThroughService(
-        IReadOnlyList<LibraryItem> libraries, bool perGrabClient, IReadOnlyList<DownloadClientPathMappingItem> mappings)
+        IReadOnlyList<LibraryItem> libraries, bool perGrabClient, IReadOnlyList<DownloadClientPathMappingItem> mappings, string host = "localhost")
     {
         var fake = FakeClient(perGrabClient, reportedFolder: null);
         DownloadClientGrabRequest? seen = null;
@@ -351,7 +494,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
             .ReturnsAsync(new DownloadClientGrabResult("client-1", "Big.Buck.Bunny", true, "sent", "Sent.") { ExternalId = "abc" });
 
         var service = new DownloadClientGrabService(
-            Connections("deluge", mappings),
+            Connections("deluge", mappings, host),
             Registry(fake.Object),
             new PassThrough(),
             Mock.Of<IDownloadDispatchesRepository>(),
@@ -367,8 +510,8 @@ public sealed class LibraryDownloadFolderPerGrabTests
         return (seen, fake);
     }
 
-    private static FolderChainService ChainService(IReadOnlyList<LibraryItem> libraries, bool perGrabClient, string? clientReportsFolder)
-        => new(Libraries(libraries), Connections("deluge", []), Registry(FakeClient(perGrabClient, clientReportsFolder).Object));
+    private static FolderChainService ChainService(IReadOnlyList<LibraryItem> libraries, bool perGrabClient, string? clientReportsFolder, string host = "localhost", IReadOnlyList<DownloadClientPathMappingItem>? mappings = null, Mock<IDownloadClient>? fake = null)
+        => new(Libraries(libraries), Connections("deluge", mappings ?? [], host), Registry((fake ?? FakeClient(perGrabClient, clientReportsFolder)).Object));
 
     private static Task<FolderChainReport?> Chain(IReadOnlyList<LibraryItem> libraries, bool perGrabClient, string? clientReportsFolder)
         => ChainService(libraries, perGrabClient, clientReportsFolder).CheckAsync(libraries[0].Id, CancellationToken.None);
