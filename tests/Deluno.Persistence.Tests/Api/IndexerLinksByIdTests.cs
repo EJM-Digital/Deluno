@@ -102,6 +102,50 @@ public sealed class IndexerLinksByIdTests
         _ = dispatches;
     }
 
+    [Fact]
+    public async Task An_upgrade_that_renames_an_indexer_from_its_address_still_links_the_history_filed_under_its_old_name()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var connections = app.Services.GetRequiredService<IConnectionsRepository>();
+        var factory = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var library = await CreateLibraryAsync(app);
+        var indexer = await CreateIndexerAsync(app, connections, "NZBgeek");
+        await app.Services.GetRequiredService<IJobQueueRepository>().RecordDownloadDispatchAsync(
+            library.Id, "movies", "movie", "title-one", Release, "NZBgeek", "client-1", "qBittorrent", "sent", null,
+            cancellationToken: CancellationToken.None);
+
+        // Put the databases back the way an install from before ids were kept has them: history under the
+        // typed name with no id, and migration 133 not yet run.
+        await ExecuteAsync(factory, DelunoDatabaseNames.Jobs, "UPDATE download_dispatches SET indexer_id = NULL;");
+        await ExecuteAsync(factory, DelunoDatabaseNames.Platform, "DELETE FROM schema_migrations WHERE version >= 133; DROP TABLE IF EXISTS indexer_previous_names;");
+
+        // What start-up does: note the names, run the rename, then link history.
+        await IndexerIdentity.RememberNamesBeforeRenameAsync(factory, CancellationToken.None);
+        await using (var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            await using var transaction = await connection.BeginTransactionAsync();
+            await new Deluno.Platform.Migrations.V0133ConnectionNamesFollowTheirAddress().UpAsync(connection, transaction, CancellationToken.None);
+            await transaction.CommitAsync();
+        }
+
+        var renamed = (await connections.ListIndexersAsync(CancellationToken.None)).Single(item => item.Id == indexer.Id);
+        Assert.NotEqual("NZBgeek", renamed.Name);
+        var linked = await IndexerIdentity.BackfillAsync(factory, CancellationToken.None);
+
+        Assert.Equal(1, linked);
+        var link = await app.Services.GetRequiredService<IJobQueueRepository>()
+            .FindDispatchLinkForDownloadAsync("client-1", "no-hash", Release, CancellationToken.None);
+        Assert.Equal(indexer.Id, link!.IndexerId);
+    }
+
+    private static async Task ExecuteAsync(IDelunoDatabaseConnectionFactory factory, string database, string sql)
+    {
+        await using var connection = await factory.OpenConnectionAsync(database, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static IndexerQueryLogEntry Query(string indexerId, string indexerName)
         => new(indexerId, indexerName, "Wanted Film", "2000", "movies", "search", "matched", 120, 4, DateTimeOffset.UtcNow);
 

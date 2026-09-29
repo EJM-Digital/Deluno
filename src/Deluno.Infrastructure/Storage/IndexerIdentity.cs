@@ -55,6 +55,7 @@ public static class IndexerIdentity
         CancellationToken cancellationToken)
     {
         var indexers = new List<(string Id, string Name)>();
+        var previousNames = new List<(string Id, string Name)>();
         await using (var platform = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken))
         {
             using var read = platform.CreateCommand();
@@ -64,7 +65,22 @@ public static class IndexerIdentity
             {
                 indexers.Add((reader.GetString(0), reader.GetString(1)));
             }
+
+            reader.Close();
+            if (await TableExistsAsync(platform, PreviousNamesTable, cancellationToken))
+            {
+                using var older = platform.CreateCommand();
+                older.CommandText = $"SELECT p.indexer_id, p.old_name FROM {PreviousNamesTable} p JOIN indexer_sources i ON i.id = p.indexer_id ORDER BY i.created_utc DESC;";
+                using var olderReader = await older.ExecuteReaderAsync(cancellationToken);
+                while (await olderReader.ReadAsync(cancellationToken))
+                {
+                    previousNames.Add((olderReader.GetString(0), olderReader.GetString(1)));
+                }
+            }
         }
+
+        // The name an indexer had before it was named from its address (#1076) still finds its old history.
+        indexers.AddRange(previousNames);
 
         if (indexers.Count == 0)
         {
@@ -95,6 +111,56 @@ public static class IndexerIdentity
         }
 
         return linked;
+    }
+
+    private const string PreviousNamesTable = "indexer_previous_names";
+
+    /// <summary>
+    /// #1076: the upgrade that names indexers from their address (migration 133)
+    /// runs before the history backfill above, and the backfill matches history
+    /// by name. Called just before the platform migrations run, this keeps each
+    /// indexer's name as it is now, so history filed under the old name still
+    /// links to its indexer afterwards. It does nothing once migration 133 has run.
+    /// </summary>
+    public static async Task RememberNamesBeforeRenameAsync(
+        IDelunoDatabaseConnectionFactory databaseConnectionFactory,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        if (!await TableExistsAsync(connection, "schema_migrations", cancellationToken)
+            || !await TableExistsAsync(connection, "indexer_sources", cancellationToken))
+        {
+            return;
+        }
+
+        using (var check = connection.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM schema_migrations WHERE version >= 133;";
+            if (Convert.ToInt64(await check.ExecuteScalarAsync(cancellationToken)) > 0)
+            {
+                return;
+            }
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            CREATE TABLE IF NOT EXISTS {PreviousNamesTable} (
+                indexer_id TEXT PRIMARY KEY,
+                old_name TEXT NOT NULL
+            );
+            INSERT OR IGNORE INTO {PreviousNamesTable} (indexer_id, old_name)
+            SELECT id, name FROM indexer_sources WHERE name IS NOT NULL AND TRIM(name) <> '';
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<bool> TableExistsAsync(System.Data.Common.DbConnection connection, string table, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = @name;";
+        AddParameter(command, "@name", table);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
     }
 
     private static readonly (string Database, string Table, string IdColumn, string NameColumn)[] Targets =
