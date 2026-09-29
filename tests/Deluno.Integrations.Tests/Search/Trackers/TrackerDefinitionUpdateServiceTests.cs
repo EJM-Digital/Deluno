@@ -215,6 +215,22 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task The_same_set_of_rejected_files_is_reported_once_and_again_only_when_the_set_changes()
+    {
+        var (service, _, activity, source, _, _) = Build();
+        source.Definitions.Add(new RemoteTrackerDefinition("broken", "not: [valid"));
+
+        await service.UpdateNowAsync(CancellationToken.None);
+        await service.UpdateNowAsync(CancellationToken.None);
+        Assert.Equal(1, activity.Recorded.Count(item => item.Category == "trackers.definitions.rejected"));
+
+        source.Definitions.Add(new RemoteTrackerDefinition("alsobroken", "also: [bad"));
+        await service.UpdateNowAsync(CancellationToken.None);
+        await service.UpdateNowAsync(CancellationToken.None);
+        Assert.Equal(2, activity.Recorded.Count(item => item.Category == "trackers.definitions.rejected"));
+    }
+
+    [Fact]
     public async Task A_bad_file_beside_good_ones_does_not_stop_the_good_ones()
     {
         var (service, _, _, source, catalog, _) = Build();

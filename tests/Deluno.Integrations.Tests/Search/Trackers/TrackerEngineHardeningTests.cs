@@ -189,6 +189,33 @@ public sealed class TrackerEngineHardeningTests
         Assert.DoesNotContain(reached, uri => uri.Host == "credentials-thief.example");
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.TemporaryRedirect)]
+    [InlineData(HttpStatusCode.PermanentRedirect)]
+    public async Task A_sign_in_redirected_with_307_or_308_between_the_trackers_own_mirrors_is_re_sent_with_its_body(HttpStatusCode status)
+    {
+        var loginBodies = new List<string>();
+        var (engine, connection) = Connect(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/login.php")
+            {
+                Assert.Equal(HttpMethod.Post, request.Method);
+                loginBodies.Add(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                return request.RequestUri.Host == "tracker.example"
+                    ? Redirect(status, "https://mirror.example/login.php")
+                    : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("ok") };
+            }
+
+            return Ok("<html></html>"u8.ToArray());
+        });
+
+        await engine.SearchAsync(connection, new TrackerQuery("dune"), CancellationToken.None);
+
+        Assert.Equal(2, loginBodies.Count);
+        Assert.Contains("hunter2", loginBodies[1]);
+        Assert.Equal(loginBodies[0], loginBodies[1]);
+    }
+
     [Fact]
     public async Task A_page_larger_than_the_cap_is_refused()
     {

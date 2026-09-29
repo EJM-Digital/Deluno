@@ -127,9 +127,22 @@ public sealed class TrackerDefinitionUpdateService(
 
             var updated = added.Concat(changed).ToList();
 
-            if (rejected.Count > 0)
+            // Said once per set of rejected files, not on every run: a definition Deluno
+            // cannot run stays rejected, and repeating the line each pass is noise.
+            rejected.Sort(StringComparer.OrdinalIgnoreCase);
+            var rejectedMarker = Path.Combine(directory, "definitions-rejected.txt");
+            var rejectedKey = string.Join("\n", rejected);
+            var previousRejectedKey = File.Exists(rejectedMarker) ? await File.ReadAllTextAsync(rejectedMarker, cancellationToken) : string.Empty;
+            if (rejected.Count == 0)
             {
-                rejected.Sort(StringComparer.OrdinalIgnoreCase);
+                if (File.Exists(rejectedMarker))
+                {
+                    File.Delete(rejectedMarker);
+                }
+            }
+            else if (!string.Equals(previousRejectedKey, rejectedKey, StringComparison.Ordinal))
+            {
+                await File.WriteAllTextAsync(rejectedMarker, rejectedKey, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "trackers.definitions.rejected",
                     $"Deluno kept its current copy of {rejected.Count} tracker definition{(rejected.Count == 1 ? "" : "s")} ({string.Join(", ", rejected)}) because the downloaded file was not valid.",
