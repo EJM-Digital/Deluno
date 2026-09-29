@@ -409,6 +409,17 @@ const UNMONITORED_DOT = "bg-[hsl(var(--mark-unmonitored))]";
 
 const paintVar = (token: string) => `hsl(var(${token}))`;
 
+/**
+ * The subtitle strip's two neutral tones, shared by the card bar and the legend
+ * swatch so they cannot drift apart (#1049): the held part in the full neutral,
+ * the part still to come in the same neutral turned down. Never a status colour.
+ */
+const subtitleFillColour = (token: string) => paintVar(token);
+const subtitleTrackColour = (token: string) => `hsl(var(${token}) / 0.3)`;
+
+/** How full each legend swatch is drawn: complete all the way, partial about half, none empty. */
+const SUBTITLE_SWATCH_FILL: Record<string, number> = { covered: 100, upgrade: 50, missing: 0 };
+
 export interface TitleBarsInput {
   type: MediaType;
   monitored?: boolean;
@@ -583,9 +594,9 @@ export function TitleBars({
       {subsWanted ? (
         <TwoToneBar
           fill={subPct}
-          fillColour={paintVar(neutral.surface)}
+          fillColour={subtitleFillColour(neutral.surface)}
           onFill={paintVar(neutral.label)}
-          trackColour={paintVar(neutral.surface)}
+          trackColour={subtitleTrackColour(neutral.surface)}
           onTrack={paintVar(neutral.label)}
           lead={design.leads === "none" ? undefined : "SUBS"}
           label={showSubtitleText ? subWord : undefined}
@@ -919,9 +930,16 @@ export function TitleMarkBarLegend({ className, type: _type }: { className?: str
           */}
           <span
             aria-hidden
-            className="h-1 w-4 shrink-0 overflow-hidden rounded-full"
-            style={{ backgroundColor: "hsl(var(--mark-idle))" }}
-          />
+            data-subtitle-swatch={segment.mark}
+            className="relative h-1 w-4 shrink-0 overflow-hidden rounded-full"
+            style={{ backgroundColor: subtitleTrackColour("--mark-idle") }}
+          >
+            <span
+              aria-hidden
+              className="absolute inset-y-0 left-0 block"
+              style={{ width: `${SUBTITLE_SWATCH_FILL[segment.mark] ?? 0}%`, backgroundColor: subtitleFillColour("--mark-idle") }}
+            />
+          </span>
           {/*
             The ladder's own word, not a synonym.
             the owner: *"users need to also be able to distinguish between done and

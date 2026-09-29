@@ -446,8 +446,8 @@ export function SettingsDestinationRulesPage() {
                 <Field label="Genres" optional help="Comma-separated.">
                   <Input value={testForm.genres} onChange={(event) => setTestForm((current) => ({ ...current, genres: event.target.value }))} />
                 </Field>
-                <Field label="Tags" optional help="Comma-separated.">
-                  <Input value={testForm.tags} onChange={(event) => setTestForm((current) => ({ ...current, tags: event.target.value }))} />
+                <Field label="Tags" optional>
+                  <TagPicker label="Tags to test with" value={testForm.tags} onChange={(tags) => setTestForm((current) => ({ ...current, tags }))} warnUnused={false} />
                 </Field>
               </FieldRow>
             </DrawerSection>

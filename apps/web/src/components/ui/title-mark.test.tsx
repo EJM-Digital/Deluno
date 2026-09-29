@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { EpisodeProgressBar, MarkStrip, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkDot, TitleMarkTopBar, TitleMarkChip, TitleMarkLabel } from "./title-mark";
+import { EpisodeProgressBar, MarkStrip, TitleBars, TitleMarkBar, TitleMarkBarLegend, TitleMarkCorner, TitleMarkDot, TitleMarkTopBar, TitleMarkChip, TitleMarkLabel } from "./title-mark";
 import { markWords, TITLE_BAR_SEGMENTS, TITLE_MARK_LADDER, TITLE_MARK_PAINT, TITLE_MARK_PRESENTATION, UNMONITORED_PAINT } from "../../lib/status-tones";
 import { quickFiltersFor } from "../app/library-control-rail";
 import railSource from "../app/library-control-rail.tsx?raw";
@@ -135,6 +135,41 @@ describe("the subtitle bar's legend", () => {
       expect(strip.style.backgroundColor).not.toContain(TITLE_MARK_PAINT.upgrade.surface);
       expect(strip.style.backgroundColor).not.toContain(TITLE_MARK_PAINT.missing.surface);
     }
+  });
+
+  it("draws complete, partial and none the way the card strip draws them (#1049)", () => {
+    const { container } = render(<TitleMarkBarLegend type="show" />);
+    const drawn = swatches(container).map((strip) => {
+      const fill = strip.querySelector<HTMLElement>("span[aria-hidden]");
+      return { track: strip.style.backgroundColor, fill: fill?.style.backgroundColor ?? "", width: fill?.style.width ?? "" };
+    });
+    // Three different pictures: full, part, empty.
+    expect(drawn.map((d) => d.width)).toEqual(["100%", "50%", "0%"]);
+    expect(new Set(drawn.map((d) => d.width)).size).toBe(3);
+    // Never a status colour.
+    for (const d of drawn) {
+      for (const colour of [d.track, d.fill]) {
+        expect(colour).toContain("--mark-idle");
+        for (const paint of [TITLE_MARK_PAINT.covered, TITLE_MARK_PAINT.upgrade, TITLE_MARK_PAINT.missing]) {
+          expect(colour).not.toContain(paint.surface);
+        }
+      }
+    }
+
+    // The card strip, in each state, paints with the same two tones.
+    const states = [
+      { subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 2 },
+      { subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 },
+      { subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 0 }
+    ];
+    states.forEach((state, index) => {
+      const { container: card } = render(<TitleBars item={{ type: "movie", monitored: true, hasFile: true, ...state }} showMediaText={false} showSubtitleText />);
+      const bar = Array.from(card.querySelectorAll<HTMLElement>("[role='img']")).find((el) => el.className.includes("bottom-0"))!;
+      const cardFill = bar.querySelector<HTMLElement>("span[aria-hidden='true']")!;
+      expect(bar.style.background).toBe(drawn[index].track);
+      expect(cardFill.style.background).toBe(drawn[index].fill);
+      expect(cardFill.style.width).toBe(drawn[index].width);
+    });
   });
 
   it("names nothing a poster cannot draw", () => {
