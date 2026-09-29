@@ -114,7 +114,7 @@ public sealed partial class ComponentSetupTests
         Assert.Contains("icacls.exe", script);
         Assert.Contains("/inheritance:r", script);
         Assert.Contains($"'{expected}'", script);
-        Assert.Contains($"exit {ElevatedInstallScript.HashMismatchExitCode}", script);
+        Assert.Contains($"$code = {ElevatedInstallScript.HashMismatchExitCode}", script);
         // The ACL is set before the file is copied in, and the hash is checked before msiexec runs.
         Assert.True(script.IndexOf("icacls.exe", StringComparison.Ordinal) < script.IndexOf("Copy-Item", StringComparison.Ordinal));
         Assert.True(script.IndexOf("Get-FileHash", StringComparison.Ordinal) < script.IndexOf("msiexec.exe", StringComparison.Ordinal));
@@ -133,6 +133,98 @@ public sealed partial class ComponentSetupTests
         var result = await service.InstallAsync(spec, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+    }
+
+    [Fact]
+    public void The_elevated_script_makes_a_fresh_locked_folder_before_copying_and_deletes_it_after()
+    {
+        var script = ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null);
+
+        int At(string text, int from = 0) => script.IndexOf(text, from, StringComparison.Ordinal);
+        var linkChecks = At("Test-Link $p");
+        var makeFresh = At("New-Item -ItemType Directory -Path $fresh");
+        var lockFresh = At("Lock-Folder $fresh");
+        var copy = At("Copy-Item");
+        var hash = At("Get-FileHash");
+        var run = At("msiexec.exe");
+        var cleanup = At("Remove-Item -LiteralPath $fresh -Recurse");
+
+        Assert.Contains("[guid]::NewGuid()", script);
+        Assert.Contains("/setowner '*S-1-5-32-544'", script);
+        Assert.Contains("/inheritance:r", script);
+        Assert.Contains("'*S-1-5-18:(OI)(CI)F'", script);
+        Assert.DoesNotContain("New-Item -ItemType Directory -Force", script);
+        Assert.True(linkChecks >= 0 && linkChecks < makeFresh);
+        Assert.True(makeFresh < lockFresh);
+        Assert.True(lockFresh < copy);
+        Assert.True(copy < hash);
+        Assert.True(hash < run);
+        Assert.True(run < cleanup);
+        // msiexec runs on the copy in the fresh folder, not on the download.
+        Assert.Contains("'/i \"' + $copy", script);
+        Assert.DoesNotContain("'/i \"C:", script);
+    }
+
+    [Fact]
+    public void The_elevated_script_checks_ProgramData_and_every_folder_below_it_for_links()
+    {
+        var script = ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null);
+
+        Assert.Contains("@($programData, $parent, $root)", script);
+        Assert.Contains("FileAttributes]::ReparsePoint", script);
+        Assert.Contains($"$code = {ElevatedInstallScript.ReparsePointExitCode}", script);
+    }
+
+    [Fact]
+    public async Task The_elevated_script_refuses_to_run_when_the_installer_folder_is_a_junction()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var programData = Path.Combine(Path.GetTempPath(), "deluno-pd-" + Guid.NewGuid().ToString("N"));
+        var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-elsewhere-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(programData, "Deluno"));
+        Directory.CreateDirectory(elsewhere);
+        var junction = Path.Combine(programData, "Deluno", "installer");
+        try
+        {
+            RunPowerShell($"New-Item -ItemType Junction -Path '{junction}' -Target '{elsewhere}' | Out-Null", null);
+
+            var download = WriteTempFile(new byte[20], ".msi");
+            var script = ElevatedInstallScript.Build(download, "ABCD", "/qn", null);
+            var exit = RunPowerShell(script, programData);
+
+            Assert.Equal(ElevatedInstallScript.ReparsePointExitCode, exit);
+            // Nothing was made inside the junction's target.
+            Assert.Empty(Directory.GetFileSystemEntries(elsewhere));
+        }
+        finally
+        {
+            try { Directory.Delete(junction); } catch { }
+            try { Directory.Delete(programData, true); } catch { }
+            try { Directory.Delete(elsewhere, true); } catch { }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private static int RunPowerShell(string script, string? programData)
+    {
+        var info = new System.Diagnostics.ProcessStartInfo("powershell.exe", ElevatedInstallScript.PowerShellArguments(script))
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        if (programData is not null)
+        {
+            info.Environment["ProgramData"] = programData;
+        }
+
+        using var process = System.Diagnostics.Process.Start(info)!;
+        process.WaitForExit(60000);
+        return process.ExitCode;
     }
 
     [Fact]
