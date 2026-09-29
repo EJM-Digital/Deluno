@@ -89,6 +89,13 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
                 continue;
             }
 
+            if (row.RawValue is not null)
+            {
+                // #1066: a retention rule's steps are JSON; only the tag conditions change.
+                await WriteAsync(connection, transaction, row, RetentionStepTags.Rename(row.RawValue, previous, next), cancellationToken);
+                continue;
+            }
+
             var updated = row.Tags
                 .Select(tag => string.Equals(tag, previous, StringComparison.OrdinalIgnoreCase) ? next : tag)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
@@ -229,7 +236,8 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
         string Link,
         IReadOnlyList<string> Tags,
         bool HasOtherSharingMatch = false,
-        string IdColumn = "id");
+        string IdColumn = "id",
+        string? RawValue = null);
 
     private static async Task<List<TagRow>> ReadRowsAsync(DbConnection connection, DbTransaction? transaction, CancellationToken cancellationToken)
     {
@@ -288,6 +296,14 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
             r => new TagRow("auto_tag_rules", "tags", "autoTagRule", r.GetString(0), r.GetString(1), "/settings/auto-tagging", Split(r.GetString(2))));
         await Read("SELECT s.id, r.name || ' (looks for this tag)', s.value FROM auto_tag_specifications s JOIN auto_tag_rules r ON r.id = s.rule_id WHERE s.spec_type = 'tag' AND trim(s.value) <> '';",
             r => new TagRow("auto_tag_specifications", "value", "autoTagRule", r.GetString(0), r.GetString(1), "/settings/auto-tagging", [r.GetString(2).Trim()]));
+
+        // #1066: a retention rule's "tag" conditions and the tag its "tag" action gives are uses too,
+        // so a rename follows into the rule and a delete is refused while a rule depends on the tag.
+        await Read("SELECT id, name, steps_json FROM retention_rules WHERE trim(coalesce(steps_json, '')) <> '';",
+            r => new TagRow("retention_rules", "steps_json", "retentionRule", r.GetString(0), r.GetString(1), "/search-cycles/retention",
+                RetentionStepTags.Extract(r.GetString(2)), RawValue: r.GetString(2)));
+        await Read("SELECT id, name || ' (gives this tag)', expiry_tag FROM retention_rules WHERE trim(coalesce(expiry_tag, '')) <> '';",
+            r => new TagRow("retention_rules", "expiry_tag", "retentionRule", r.GetString(0), r.GetString(1), "/search-cycles/retention", [r.GetString(2).Trim()]));
         return rows;
     }
 
