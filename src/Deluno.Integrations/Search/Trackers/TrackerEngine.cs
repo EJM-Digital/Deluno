@@ -453,7 +453,10 @@ public sealed partial class TrackerEngine : ITrackerEngine
         await session.PaceAsync(timeProvider, cancellationToken);
         var uri = request.Uri;
         var method = request.Method;
-        var content = request.Content;
+        // The body is read once and a fresh copy is built for every hop: sending a
+        // message disposes its content, and a 307 or 308 must re-send the same body.
+        var body = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(cancellationToken);
+        var bodyHeaders = request.Content?.Headers.ToList();
         var headers = request.Headers;
 
         for (var hop = 0; ; hop++)
@@ -469,7 +472,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
 
             if (!session.IsOwnHost(uri))
             {
-                if (signIn || content is not null)
+                if (signIn || body is not null)
                 {
                     throw new TrackerException($"Deluno will not send a sign-in or form to {uri.Host}, which is not one of this tracker's own addresses.");
                 }
@@ -480,6 +483,17 @@ public sealed partial class TrackerEngine : ITrackerEngine
                 }
 
                 headers = [];
+            }
+
+            HttpContent? content = null;
+            if (body is not null)
+            {
+                content = new ByteArrayContent(body);
+                content.Headers.Clear();
+                foreach (var header in bodyHeaders!)
+                {
+                    content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
             }
 
             using var message = new HttpRequestMessage(method, uri) { Content = content };
@@ -514,10 +528,10 @@ public sealed partial class TrackerEngine : ITrackerEngine
                     && method != HttpMethod.Get && method != HttpMethod.Head)
                 {
                     method = HttpMethod.Get;
-                    content = null;
+                    body = null;
                 }
 
-                if (!session.IsOwnHost(next) && (signIn || content is not null))
+                if (!session.IsOwnHost(next) && (signIn || body is not null))
                 {
                     throw new TrackerException($"{uri.Host} tried to send the sign-in on to {next.Host}, which is not one of this tracker's own addresses. Deluno stopped.");
                 }
