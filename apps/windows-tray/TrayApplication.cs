@@ -25,6 +25,7 @@ public sealed class TrayApplication : ApplicationContext
     private readonly ToolStripMenuItem _allowLanItem;
     private readonly ToolStripMenuItem _letAnyAddressInItem;
     private readonly DelunoServer _server;
+    private readonly HostRestartSupervisor _supervisor;
     private TrayState _state = TrayState.Starting;
 
     public TrayApplication()
@@ -66,6 +67,30 @@ public sealed class TrayApplication : ApplicationContext
         };
         _notify.DoubleClick += OnOpen;
 
+        _supervisor = new HostRestartSupervisor(
+            _ => _server.StartAsync(),
+            new HostRestartReporter
+            {
+                Restarting = (attempt, max, pause) => InvokeOnUiThread(() =>
+                {
+                    SetState(TrayState.Starting);
+                    _notify.Text = Truncate($"Deluno stopped - starting again (try {attempt} of {max})");
+                    _notify.ShowBalloonTip(10000, "Deluno stopped by itself", HostRestartReporter.RestartingMessage(attempt, max, pause), ToolTipIcon.Warning);
+                }),
+                Recovered = () => InvokeOnUiThread(() =>
+                {
+                    SetState(TrayState.Running);
+                    _notify.ShowBalloonTip(10000, "Deluno is running again", "Deluno stopped by itself and has been started again.", ToolTipIcon.Info);
+                }),
+                AttemptFailed = (_, ex) => TryWriteStartupLog(ex),
+                GaveUp = max => InvokeOnUiThread(() =>
+                {
+                    SetState(TrayState.Error);
+                    _notify.Text = Truncate("Deluno stopped - choose Restart");
+                    _notify.ShowBalloonTip(30000, "Deluno stopped", HostRestartReporter.GaveUpMessage(max), ToolTipIcon.Error);
+                })
+            });
+        _server.StoppedUnexpectedly += () => _ = _supervisor.HandleUnexpectedStopAsync();
         SetState(TrayState.Starting);
         _ = StartServerAsync();
         _ = StartInstalledComponentsAsync();
@@ -104,6 +129,8 @@ public sealed class TrayApplication : ApplicationContext
             // A client that could not be started again is still startable by hand.
         }
     }
+
+    private static string Truncate(string text) => text.Length > 63 ? text.Substring(0, 60) + "..." : text;
 
     private void SetState(TrayState state)
     {
@@ -149,6 +176,7 @@ public sealed class TrayApplication : ApplicationContext
         {
             SetState(TrayState.Starting);
             await _server.StartAsync();
+            _supervisor.NoteStarted();
             InvokeOnUiThread(() =>
             {
                 SetState(TrayState.Running);
@@ -239,6 +267,7 @@ public sealed class TrayApplication : ApplicationContext
         settings.Save();
 
         _letAnyAddressInItem.Enabled = false;
+        _supervisor.Cancel();
         await _server.StopAsync();
         await StartServerAsync();
         InvokeOnUiThread(() =>
@@ -291,12 +320,14 @@ public sealed class TrayApplication : ApplicationContext
     private async void OnRestart(object? sender, EventArgs e)
     {
         _restartItem.Enabled = false;
+        _supervisor.Cancel();
         await _server.StopAsync();
         await StartServerAsync();
     }
 
     private async void OnStartStop(object? sender, EventArgs e)
     {
+        _supervisor.Cancel();
         if (_state is TrayState.Stopped)
         {
             await StartServerAsync();
@@ -317,6 +348,7 @@ public sealed class TrayApplication : ApplicationContext
         }
 
         SetState(TrayState.Updating);
+        _supervisor.Cancel();
         await _server.StopAsync();
         ServiceManager.Apply(dialog.SelectedMode, dialog.ServiceUsername, dialog.ServicePassword);
         Application.Exit();
@@ -324,6 +356,7 @@ public sealed class TrayApplication : ApplicationContext
 
     private void OnQuit(object? sender, EventArgs e)
     {
+        _supervisor.Cancel();
         _server.StopAsync().GetAwaiter().GetResult();
         _notify.Visible = false;
         Application.Exit();

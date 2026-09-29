@@ -19,6 +19,7 @@ using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
+using Deluno.Worker.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using UserAuthorization = Deluno.Security.UserAuthorization;
@@ -29,6 +30,10 @@ public sealed class DelunoServer : IDisposable
 {
     private WebApplication? _app;
     private CancellationTokenSource? _cts;
+    private volatile bool _stopRequested;
+
+    /// <summary>Raised when the web host stopped and nobody asked it to (a critical background service gave up, #1080).</summary>
+    public event Action? StoppedUnexpectedly;
     public int? ListeningPort { get; private set; }
     public IReadOnlyList<string> ReachableUrls { get; private set; } = Array.Empty<string>();
     public LanAccessStatus? LanAccess { get; private set; }
@@ -41,6 +46,15 @@ public sealed class DelunoServer : IDisposable
 
     public async Task StartAsync()
     {
+        _stopRequested = false;
+        if (_app is not null)
+        {
+            // A host that stopped by itself is still held here; let it go before starting a new one.
+            try { await _app.DisposeAsync(); } catch { /* already stopped */ }
+            _app = null;
+        }
+
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var settings = AppSettings.Load();
         var port = PortOverride ?? settings.Port;
@@ -81,6 +95,9 @@ public sealed class DelunoServer : IDisposable
             options.KnownProxies.Clear();
         });
 
+        // The tray restarts the host itself (HostRestartSupervisor), so giving up
+        // must not leave a failing exit code behind for the tray process.
+        builder.Services.AddSingleton(new BackgroundServiceSafetyOptions { SetExitCodeWhenGivingUp = false });
         builder.Services.AddSingleton<IUpdateOrchestrator, VelopackUpdateOrchestrator>();
         Firewall = new WindowsFirewallLanAccess(port);
         builder.Services.AddSingleton<ILanAccess>(Firewall);
@@ -205,6 +222,15 @@ public sealed class DelunoServer : IDisposable
 
         await _app.StartAsync(_cts.Token);
 
+        var startedApp = _app;
+        startedApp.Lifetime.ApplicationStopped.Register(() =>
+        {
+            if (!_stopRequested && ReferenceEquals(_app, startedApp))
+            {
+                StoppedUnexpectedly?.Invoke();
+            }
+        });
+
         ListeningPort = port;
         ReachableUrls = NetworkAccess.GetReachableUrls(port);
         await EnsureFirewallRuleAndLogAsync(port, settings.DataRoot, _cts.Token).ConfigureAwait(false);
@@ -254,6 +280,7 @@ public sealed class DelunoServer : IDisposable
     public async Task StopAsync()
     {
         if (_app is null) return;
+        _stopRequested = true;
         await _cts!.CancelAsync();
         await _app.StopAsync();
         _app = null;
