@@ -114,6 +114,46 @@ public sealed class FolderChainTests
     }
 
     [Fact]
+    public async Task A_client_that_honours_its_token_and_is_cancelled_by_the_timeout_is_reported_as_not_answering_not_a_500()
+    {
+        var client = new FakeClient { HangHonouringToken = true };
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            Use(services, client);
+            services.RemoveAll<IFolderChainService>();
+            services.AddScoped<IFolderChainService>(provider => new FolderChainService(
+                provider.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>(),
+                provider.GetRequiredService<IConnectionsRepository>(),
+                provider.GetRequiredService<IDownloadClientRegistry>(),
+                stepTimeout: TimeSpan.FromMilliseconds(300)));
+        });
+        var scene = await SceneAsync(app, processor: false);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var category = report.GetProperty("clients")[0].GetProperty("links")[0];
+        Assert.Equal("unknown", category.GetProperty("status").GetString());
+        Assert.Contains("did not answer within", category.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Only_the_callers_own_cancellation_propagates_from_a_step()
+    {
+        using var caller = new CancellationTokenSource();
+        var work = FolderChainService.WithTimeoutAsync<int>(
+            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; },
+            TimeSpan.FromMinutes(1),
+            caller.Token);
+        caller.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => work);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => FolderChainService.WithTimeoutAsync<int>(
+            async token => { await Task.Delay(TimeSpan.FromMinutes(2), token); return 1; },
+            TimeSpan.FromMilliseconds(50),
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_client_that_throws_is_reported_in_plain_words_not_as_a_failed_check()
     {
         var client = new FakeClient { Throw = true };
@@ -199,6 +239,8 @@ public sealed class FolderChainTests
 
         public bool Hang { get; set; }
 
+        public bool HangHonouringToken { get; set; }
+
         public bool Throw { get; set; }
 
         public async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
@@ -206,6 +248,8 @@ public sealed class FolderChainTests
             if (Throw) throw new InvalidOperationException("boom");
             // Ignores the token on purpose: the check must not depend on the client honouring it.
             if (Hang) await Task.Delay(TimeSpan.FromMinutes(2), CancellationToken.None);
+            // Honours the token, like a real HTTP client: throws TaskCanceledException when the step timeout fires.
+            if (HangHonouringToken) await Task.Delay(TimeSpan.FromMinutes(2), cancellationToken);
             return Result!;
         }
 
