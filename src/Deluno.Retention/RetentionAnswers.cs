@@ -172,7 +172,14 @@ public sealed class RetentionFieldAnswers(
 
                 var names = matches.SelectMany(match => match.Item.AudioLanguages!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                 // What is typed is read as the same languages a server's tags are: "fr", "fre" and "French" agree.
-                var wanted = string.Join('|', Values(value).Select(entry => MediaServerLanguages.Name(entry) ?? entry));
+                // A language Deluno cannot name is undecided: it could be any of the tags it could not name either.
+                var typed = Values(value);
+                if (op is not ("set" or "unset") && typed.Any(entry => MediaServerLanguages.Name(entry) is null))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: Deluno does not know “{typed.First(entry => MediaServerLanguages.Name(entry) is null)}” as a language.");
+                }
+
+                var wanted = string.Join('|', typed.Select(entry => MediaServerLanguages.Name(entry)!));
                 return Holds(TextList(op, wanted, names), $"{Lead(field, op, wanted)}: {(names.Length == 0 ? "none" : string.Join(", ", names))}");
             }
 
@@ -196,6 +203,12 @@ public sealed class RetentionFieldAnswers(
 
                 // Specials only count against specials; a numbered season counts itself and every earlier one.
                 bool Through(MediaServerItem episode) => season == 0 ? episode.SeasonNumber == 0 : episode.SeasonNumber is > 0 && episode.SeasonNumber <= season;
+                // No episode listed up to this season means the server has not said, not that nobody watched.
+                if (matches.Any(match => !match.ShowEpisodes!.Any(Through)))
+                {
+                    return RetentionAnswer.CannotSay($"{field.Label}: {where} lists no episodes up to this season.");
+                }
+
                 var when = matches
                     .SelectMany(match => match.ShowEpisodes!.Where(Through))
                     .SelectMany(episode => episode.Viewers.Where(viewer => viewer.Played).Select(viewer => viewer.LastPlayedUtc))

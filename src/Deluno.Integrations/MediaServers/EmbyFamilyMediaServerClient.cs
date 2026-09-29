@@ -608,13 +608,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         if (item.TryGetProperty("MediaSources", out var sources) && sources.ValueKind == JsonValueKind.Array && sources.GetArrayLength() > 0)
         {
             var source = sources[0];
-            if (source.TryGetProperty("MediaStreams", out var allStreams) && allStreams.ValueKind == JsonValueKind.Array)
-            {
-                audioLanguages = MediaServerLanguages.OfAudioTracks(allStreams.EnumerateArray()
-                    .Where(entry => String(entry, "Type") == "Audio")
-                    .Select(entry => String(entry, "Language"))
-                    .ToArray());
-            }
+            audioLanguages = AudioLanguagesOfAllVersions(sources);
 
             var stream = source.TryGetProperty("MediaStreams", out var streams) && streams.ValueKind == JsonValueKind.Array
                 ? streams.EnumerateArray().FirstOrDefault(entry => String(entry, "Type") == "Video")
@@ -659,6 +653,26 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             AudioLanguages = audioLanguages,
             Runtime = Long(item, "RunTimeTicks") is > 0 and var ticks ? TimeSpan.FromTicks(ticks) : null
         };
+    }
+
+    /// <summary>
+    /// The audio languages across every version of the item (#1003). A version
+    /// with no stream list makes the answer unknown, not "none".
+    /// </summary>
+    internal static IReadOnlyList<string>? AudioLanguagesOfAllVersions(JsonElement sources)
+    {
+        var tags = new List<string?>();
+        foreach (var version in sources.EnumerateArray())
+        {
+            if (!version.TryGetProperty("MediaStreams", out var streams) || streams.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            tags.AddRange(streams.EnumerateArray().Where(entry => String(entry, "Type") == "Audio").Select(entry => String(entry, "Language")));
+        }
+
+        return MediaServerLanguages.OfAudioTracks(tags);
     }
 
     private static string? ProviderId(JsonElement providers, string name)

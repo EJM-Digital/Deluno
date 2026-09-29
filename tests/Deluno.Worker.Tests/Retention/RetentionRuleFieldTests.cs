@@ -62,6 +62,65 @@ public sealed class RetentionRuleFieldTests
         Assert.Equal(["English", "Japanese"], MediaServerLanguages.OfAudioTracks(["eng", "jpn", "en"]));
     }
 
+    [Theory]
+    [InlineData("tgl", "Tagalog")]
+    [InlineData("fil", "Tagalog")]
+    [InlineData("fas", "Persian")]
+    [InlineData("cat", "Catalan")]
+    public void Languages_beyond_the_common_few_are_named_from_a_full_enough_table(string tag, string name)
+    {
+        Assert.Equal(name, MediaServerLanguages.Name(tag));
+        Assert.Equal(name, MediaServerLanguages.Name(name));
+    }
+
+    [Theory]
+    [InlineData("xyz")]
+    [InlineData("tlh")]
+    [InlineData("unknown")]
+    [InlineData("unk")]
+    [InlineData("undefined")]
+    [InlineData("mis")]
+    [InlineData("qaa")]
+    [InlineData("qtz")]
+    [InlineData("QAB")]
+    [InlineData("na")]
+    [InlineData("Not applicable")]
+    [InlineData("zxx")]
+    [InlineData("und")]
+    public void A_tag_that_names_no_known_language_is_not_a_language(string tag)
+    {
+        Assert.Null(MediaServerLanguages.Name(tag));
+        // One such track makes the whole file's list unknown, never a shorter list.
+        Assert.Null(MediaServerLanguages.OfAudioTracks(["eng", tag]));
+    }
+
+    [Fact]
+    public void A_does_not_include_delete_rule_never_matches_a_file_whose_languages_are_uncertain()
+    {
+        // Audio tagged English and "tgl" while the rule says "does not include Tagalog": the tag is
+        // known now, but an unnamed tag must have left the list unknown, so nothing is decided.
+        Assert.Null(Ask(Movie(), "server.audioLanguages", "notin", "French", Item() with { AudioLanguages = MediaServerLanguages.OfAudioTracks(["eng", "xyz"]) }).Holds);
+        Assert.Null(Ask(Movie(), "server.audioLanguages", "notin", "French", Item() with { AudioLanguages = MediaServerLanguages.OfAudioTracks(["eng", "unknown"]) }).Holds);
+        Assert.True(Ask(Movie(), "server.audioLanguages", "notin", "French", Item() with { AudioLanguages = MediaServerLanguages.OfAudioTracks(["eng", "jpn"]) }).Holds);
+    }
+
+    [Fact]
+    public void A_language_typed_in_a_rule_that_deluno_does_not_know_is_undecided_and_refused_on_save()
+    {
+        Assert.Null(Ask(Movie(), "server.audioLanguages", "notin", "Klingon", Item() with { AudioLanguages = ["English"] }).Holds);
+
+        var rule = new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [RetentionStep.KeepOnly("server.audioLanguages:notin:Klingon")], ["server-1"], false);
+        Assert.Contains(RetentionEvaluator.Validate(rule, [Server]), problem => problem.Contains("not a language Deluno knows", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Viewed_through_season_is_undecided_when_the_server_lists_no_episode_that_far()
+    {
+        var (show, _) = ThreeSeasons(Now.AddDays(-60), Now.AddDays(-30), Now.AddDays(-1));
+
+        Assert.Null(Ask(SeasonUnit(2), "server.viewedThroughSeason", "unset", null, [show, ServerEpisode("only3", 3, 1, [])]).Holds);
+    }
+
     // -------------------------------------------------- #1006 one named person
     [Fact]
     public void One_persons_views_count_only_their_own_finished_plays()
