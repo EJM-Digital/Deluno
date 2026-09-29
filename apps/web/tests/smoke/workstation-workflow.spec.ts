@@ -861,11 +861,11 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/lists");
     await page.getByRole("button", { name: "New list" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New import list" });
-    await drawer.getByLabel("Name", { exact: true }).fill("Weekend movies");
     await drawer.getByLabel("Provider").selectOption("url-list");
     await drawer.getByLabel("List URL").fill("https://example.com/weekend-movies.txt");
     await drawer.getByRole("button", { name: "Add list" }).click();
-    await expect(page.getByRole("dialog", { name: "Weekend movies" })).toBeVisible();
+    // #1076: a list is named for its provider and the list it reads.
+    await expect(page.getByRole("dialog", { name: /Url-list: weekend-movies.txt/ })).toBeVisible();
     await page.getByTitle("Preview without adding titles").click();
 
     await expect(page.getByText("Preview ready. Nothing was added or searched.")).toBeVisible();
@@ -898,11 +898,10 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/lists");
     await page.getByRole("button", { name: "New list" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New import list" });
-    await drawer.getByLabel("Name", { exact: true }).fill("Approved movies");
     await drawer.getByLabel("Provider").selectOption("url-list");
     await drawer.getByLabel("List URL").fill("https://example.com/approved.txt");
     await drawer.getByRole("button", { name: "Add list" }).click();
-    await expect(page.getByRole("dialog", { name: "Approved movies" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: /Url-list: approved.txt/ })).toBeVisible();
     await page.getByTitle("Preview without adding titles").click();
 
     await page.getByRole("checkbox", { name: "Dune (2021)" }).uncheck();
