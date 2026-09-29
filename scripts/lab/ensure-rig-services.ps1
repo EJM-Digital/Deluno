@@ -288,6 +288,8 @@ $body = {
 
             & sc.exe failure $spec.Name reset= 86400 `
                 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+            # A host that stops itself exits non-zero; failureflag makes that count as a failure.
+            & sc.exe failureflag $spec.Name 1 | Out-Null
 
             Restart-Service -Name $spec.Name -Force
         }
