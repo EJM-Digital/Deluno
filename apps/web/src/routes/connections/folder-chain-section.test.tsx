@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fetchJson = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", () => ({ fetchJson }));
 
-const { FolderChainSection } = await import("./folder-chain-section");
+const { FolderChainSection, CHECK_TIMEOUT_MS } = await import("./folder-chain-section");
 
 const mismatch = {
   libraryId: "tv",
@@ -37,7 +37,7 @@ describe("the folder check (#616)", () => {
     expect(screen.getByText("Doesn't match")).toBeTruthy();
     expect(screen.getByText(/but the TV library and Weir expect C:\\Downloads\\Completed\\TV/)).toBeTruthy();
     expect(screen.getByText("Ready folder")).toBeTruthy();
-    expect(fetchJson).toHaveBeenCalledWith("/api/libraries/tv/folder-chain");
+    expect(fetchJson).toHaveBeenCalledWith("/api/libraries/tv/folder-chain", expect.anything());
   });
 
   it("checks again on request", async () => {
@@ -57,5 +57,31 @@ describe("the folder check (#616)", () => {
     render(<FolderChainSection libraryId="tv" />);
 
     expect((await screen.findByRole("alert")).textContent).toContain("could not reach");
+  });
+
+  it("stops checking, and says so, when the request never settles (#1079)", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchJson.mockReturnValue(new Promise(() => {}));
+
+      render(<FolderChainSection libraryId="tv" />);
+      expect(screen.getByText("Checking…")).toBeTruthy();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(CHECK_TIMEOUT_MS + 100); });
+
+      expect(screen.queryByText("Checking…")).toBeNull();
+      expect(screen.getByRole("alert").textContent).toContain("took too long");
+      expect((screen.getByRole("button", { name: "Check again" }) as HTMLButtonElement).disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says a plain sentence when the request is aborted", async () => {
+    fetchJson.mockRejectedValue(Object.assign(new Error("The operation was aborted."), { name: "AbortError" }));
+
+    render(<FolderChainSection libraryId="tv" />);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("took too long");
   });
 });

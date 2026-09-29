@@ -87,6 +87,46 @@ public sealed class FolderChainTests
         Assert.Equal("Fake has no category named movies.", category.GetProperty("message").GetString());
     }
 
+    [Fact]
+    public async Task A_client_that_never_answers_is_reported_as_not_answering_and_the_check_still_finishes()
+    {
+        var client = new FakeClient { Hang = true };
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            Use(services, client);
+            services.RemoveAll<IFolderChainService>();
+            services.AddScoped<IFolderChainService>(provider => new FolderChainService(
+                provider.GetRequiredService<Deluno.Libraries.Data.ILibrariesRepository>(),
+                provider.GetRequiredService<IConnectionsRepository>(),
+                provider.GetRequiredService<IDownloadClientRegistry>(),
+                stepTimeout: TimeSpan.FromMilliseconds(300)));
+        });
+        var scene = await SceneAsync(app, processor: false);
+
+        var started = DateTimeOffset.UtcNow;
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromSeconds(5));
+        Assert.False(report.GetProperty("allMatch").GetBoolean());
+        var category = report.GetProperty("clients")[0].GetProperty("links")[0];
+        Assert.Equal("unknown", category.GetProperty("status").GetString());
+        Assert.Contains("did not answer", category.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task A_client_that_throws_is_reported_in_plain_words_not_as_a_failed_check()
+    {
+        var client = new FakeClient { Throw = true };
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => Use(services, client));
+        var scene = await SceneAsync(app, processor: false);
+
+        var report = await ChainAsync(app, scene.LibraryId);
+
+        var category = report.GetProperty("clients")[0].GetProperty("links")[0];
+        Assert.Equal("unknown", category.GetProperty("status").GetString());
+        Assert.Contains("could not be checked", category.GetProperty("message").GetString());
+    }
+
     private sealed record Scene(string LibraryId, string Downloads);
 
     private static IEnumerable<string?> Steps(JsonElement report)
@@ -157,8 +197,17 @@ public sealed class FolderChainTests
 
         public DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, true, true, "none");
 
-        public Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
-            => Task.FromResult(Result!);
+        public bool Hang { get; set; }
+
+        public bool Throw { get; set; }
+
+        public async Task<DownloadClientCategoryCheckResult> CheckCategoryAsync(DownloadClientItem client, string category, CancellationToken cancellationToken)
+        {
+            if (Throw) throw new InvalidOperationException("boom");
+            // Ignores the token on purpose: the check must not depend on the client honouring it.
+            if (Hang) await Task.Delay(TimeSpan.FromMinutes(2), CancellationToken.None);
+            return Result!;
+        }
 
         public Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
 

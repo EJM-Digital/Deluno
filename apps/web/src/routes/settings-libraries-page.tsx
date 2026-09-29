@@ -31,6 +31,8 @@ import { authedFetch } from "../lib/use-auth";
 import { formatSearchInterval } from "../lib/search-interval-format";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { ExistingMediaImportDialog } from "../components/app/existing-media-import-dialog";
+import { downloadsPathProblem } from "../lib/library-paths";
+import { FolderChainSection } from "./connections/folder-chain-section";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 interface LoaderData {
@@ -43,6 +45,8 @@ interface LibraryForm {
   name: string;
   mediaType: "movies" | "tv";
   rootPath: string;
+  /** Where finished downloads for this library arrive. Empty means "use the download client's own folder". */
+  downloadsPath: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -81,7 +85,8 @@ export function SettingsLibrariesPage() {
   const [initialForm, setInitialForm] = useState<LibraryForm>(() => emptyForm("movies", settings));
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [errors, setErrors] = useState<{ name?: string; rootPath?: string }>({});
+  const [errors, setErrors] = useState<{ name?: string; rootPath?: string; downloadsPath?: string }>({});
+  const [folderCheckKey, setFolderCheckKey] = useState(0);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -158,6 +163,8 @@ export function SettingsLibrariesPage() {
     const nextErrors: typeof errors = {};
     if (!form.name.trim()) nextErrors.name = "Give this library a name.";
     if (!form.rootPath.trim()) nextErrors.rootPath = "Choose a folder for this library.";
+    const downloadsProblem = downloadsPathProblem(form.downloadsPath);
+    if (downloadsProblem) nextErrors.downloadsPath = downloadsProblem;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
@@ -174,6 +181,7 @@ export function SettingsLibrariesPage() {
             mediaType: form.mediaType,
             purpose: "Main library",
             rootPath: form.rootPath.trim(),
+            downloadsPath: form.downloadsPath.trim() || null,
             qualityProfileId: null,
             // New libraries stay idle until their search behaviour is attached
             // explicitly from Automation & Recovery.
@@ -190,8 +198,14 @@ export function SettingsLibrariesPage() {
       } else {
         const id = mode.id;
         const before = initialForm;
-        if (form.name !== before.name || form.rootPath !== before.rootPath) {
-          await putJson(`/api/libraries/${id}`, { name: form.name.trim(), rootPath: form.rootPath.trim() }, "Library details could not be saved.");
+        if (form.name !== before.name || form.rootPath !== before.rootPath || form.downloadsPath !== before.downloadsPath) {
+          // The downloads folder is always sent: the server writes exactly what
+          // it is given, so leaving it out would clear it.
+          await putJson(
+            `/api/libraries/${id}`,
+            { name: form.name.trim(), rootPath: form.rootPath.trim(), downloadsPath: form.downloadsPath.trim() || null },
+            "Library details could not be saved."
+          );
         }
         // Subtitles are not written from here any more. They are one screen for
         // every library — Subtitles → Languages — and a second write path for
@@ -211,6 +225,8 @@ export function SettingsLibrariesPage() {
       } else {
         setSaveState("saved");
         setSaveMessage("Saved just now");
+        // The folders just changed, so the folder check is asked again.
+        setFolderCheckKey((value) => value + 1);
       }
       revalidator.revalidate();
     } catch (error) {
@@ -404,6 +420,22 @@ export function SettingsLibrariesPage() {
                   stacked
                 />
               </Field>
+              <Field
+                label="Downloads folder"
+                help="Where finished downloads for this library arrive; your download clients and any processor must use this folder. Leave it empty to use the folder each download client reports."
+                error={errors.downloadsPath}
+              >
+                <PathInput
+                  value={form.downloadsPath}
+                  onChange={(downloadsPath) => {
+                    setErrors((current) => ({ ...current, downloadsPath: undefined }));
+                    setForm((current) => ({ ...current, downloadsPath }));
+                  }}
+                  browseTitle={`Choose ${typeLabel.toLowerCase()} downloads folder`}
+                  showAdvanced={false}
+                  stacked
+                />
+              </Field>
             </div>
           </section>
 
@@ -418,6 +450,11 @@ export function SettingsLibrariesPage() {
             would be the same setting in two places, which is the defect this
             codebase keeps paying for.
           */}
+          {mode.kind === "edit" && editing ? (
+            <section className="border-b border-hairline py-6">
+              <FolderChainSection libraryId={editing.id} refreshKey={folderCheckKey} />
+            </section>
+          ) : null}
           {mode.kind === "edit" && editing ? (
             <section className="grid gap-3 border-b border-hairline py-6">
               <div>
@@ -497,6 +534,7 @@ function emptyForm(mediaType: "movies" | "tv", settings: PlatformSettingsSnapsho
     name: "",
     mediaType,
     rootPath: defaultRoot(mediaType, settings),
+    downloadsPath: "",
   };
 }
 
@@ -505,6 +543,7 @@ function formFromLibrary(library: LibraryItem): LibraryForm {
     name: library.name,
     mediaType: library.mediaType === "tv" ? "tv" : "movies",
     rootPath: library.rootPath,
+    downloadsPath: library.downloadsPath ?? "",
   };
 }
 
@@ -513,7 +552,7 @@ function sameForm(a: LibraryForm, b: LibraryForm) {
     a.name === b.name &&
     a.mediaType === b.mediaType &&
     a.rootPath === b.rootPath &&
-    true
+    a.downloadsPath === b.downloadsPath
   );
 }
 
@@ -539,6 +578,6 @@ function automationPayload(library: LibraryItem, settings: Pick<LibraryItem, "au
 
 async function putJson(url: string, body: unknown, failure: string) {
   const response = await authedFetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(failure);
+  if (!response.ok) throw new Error(await readErrorText(response, failure));
   return response;
 }
