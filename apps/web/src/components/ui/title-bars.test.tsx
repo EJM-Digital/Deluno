@@ -59,7 +59,7 @@ describe("the film card's bars", () => {
   it("says the quality on the top bar and the subtitle count on the bottom", () => {
     const [top, bottom] = bars(film());
     expect(top.textContent).toContain("Bluray-1080p");
-    expect(bottom.textContent).toContain("complete");
+    expect(bottom.textContent).toContain("Complete");
     expect(bottom.textContent).toContain("SUBS");
   });
 
@@ -82,17 +82,17 @@ describe("the subtitle strip says the legend's words in a neutral tone (#1048)",
   it("never says Missing, whatever the title's state", () => {
     for (const status of ["upcoming", "downloading", "missing"]) {
       const [, bottom] = bars(film({ wantedStatus: status, hasFile: false, subtitleLanguagesHeld: 0 }));
-      expect(bottom.textContent).toContain("none");
+      expect(bottom.textContent).toContain("None");
       expect(bottom.textContent).not.toContain("Missing");
-      expect(bottom.getAttribute("aria-label")).toBe("Subtitles none");
+      expect(bottom.getAttribute("aria-label")).toBe("Subtitles None");
       expect(bottom.style.background).toContain("--mark-idle");
       expect(bottom.style.background).not.toContain("missing");
     }
   });
 
   it("says partial and complete", () => {
-    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 }))[1].textContent).toContain("partial");
-    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 2 }))[1].textContent).toContain("complete");
+    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 1 }))[1].textContent).toContain("Partial");
+    expect(bars(film({ subtitleLanguagesWanted: 2, subtitleLanguagesHeld: 2 }))[1].textContent).toContain("Complete");
   });
 
   it("is not drawn at all when no subtitles are wanted", () => {
@@ -138,7 +138,7 @@ describe("the TV card uses the approved coverage composition", () => {
     expect(top.textContent).toContain("3 / 8");
     expect(top.textContent).not.toContain("EPS");
     expect(bottom.textContent).toContain("SUBS");
-    expect(bottom.textContent).toContain("partial");
+    expect(bottom.textContent).toContain("Partial");
     expect(top.style.background).toContain(TITLE_MARK_PAINT.missing.surface);
     expect(fillOf(top).style.background).toContain(TITLE_MARK_PAINT.upgrade.surface);
     expect(bottom.style.background).toContain("--mark-idle");

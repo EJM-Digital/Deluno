@@ -588,12 +588,12 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
     // Subtitle words, not status words (#1048): the legend used to repeat the
     // status pills (Quality met / Upgradable / Missing) in the same colours, so
     // it read as a second row of the same filters. It reads as subtitles now.
-    label: "complete",
+    label: "Complete",
     hint: "Made for this file, so the timing is right. Deluno has stopped looking."
   },
   {
     mark: "upgrade",
-    label: "partial",
+    label: "Partial",
     // **Ready**, and it took two goes to get here. "Held" first — the word the
     // store uses for itself, leaked onto the screen. Then "Have", which is the
     // app's own voice but reads oddly as a label: a verb sitting next to an
@@ -607,7 +607,7 @@ export const TITLE_BAR_SEGMENTS: readonly { mark: TitleMark; label: string; hint
   },
   {
     mark: "missing",
-    label: "none",
+    label: "None",
     hint: "A language you asked for is not here yet. Deluno looks for it on the library's own cycle."
   }
 ] as const;
@@ -644,8 +644,8 @@ export function markWords(
  * The word the card's subtitle strip says (#1048): the legend's own wording,
  * never a status word. Neutral in tone: red is only for "something is needed".
  */
-export function subtitleStripWord(held: number, wanted: number): "complete" | "partial" | "none" {
-  const segment = (mark: TitleMark) => TITLE_BAR_SEGMENTS.find((s) => s.mark === mark)!.label as "complete" | "partial" | "none";
+export function subtitleStripWord(held: number, wanted: number): "Complete" | "Partial" | "None" {
+  const segment = (mark: TitleMark) => TITLE_BAR_SEGMENTS.find((s) => s.mark === mark)!.label as "Complete" | "Partial" | "None";
   if (wanted > 0 && held >= wanted) return segment("covered");
   return held > 0 ? segment("upgrade") : segment("missing");
 }
