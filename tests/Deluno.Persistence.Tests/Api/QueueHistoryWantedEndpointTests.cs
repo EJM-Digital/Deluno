@@ -74,6 +74,38 @@ public sealed class QueueHistoryWantedEndpointTests
     }
 
     [Fact]
+    public async Task A_single_removal_of_a_download_Deluno_did_not_send_is_a_409()
+    {
+        var telemetry = new RecordingTelemetry { ForeignItemId = "hand-added" };
+        await using var app = await StartAsync(telemetry);
+
+        var response = await app.Client.DeleteAsync("/api/queue/client-1/hand-added");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("Deluno did not send", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task One_download_Deluno_did_not_send_refuses_the_whole_bulk_call_and_removes_nothing()
+    {
+        var telemetry = new RecordingTelemetry { ForeignItemId = "hand-added" };
+        await using var app = await StartAsync(telemetry);
+
+        var response = await SendDeleteAsync(app.Client, "/api/queue/bulk", new
+        {
+            items = new[]
+            {
+                new { clientId = "client-1", queueItemId = "hash-abc" },
+                new { clientId = "client-1", queueItemId = "hand-added" }
+            }
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("Deluno did not send", await response.Content.ReadAsStringAsync());
+        Assert.Empty(telemetry.Removals);
+    }
+
+    [Fact]
     public async Task Bulk_removal_needs_at_least_one_complete_item()
     {
         var telemetry = new RecordingTelemetry();
@@ -323,6 +355,14 @@ public sealed class QueueHistoryWantedEndpointTests
     {
         public bool Succeed { get; init; } = true;
 
+        /// <summary>A queue item id Deluno "did not send"; the shared ownership check refuses it.</summary>
+        public string? ForeignItemId { get; init; }
+
+        public Task<DownloadOwnership> CheckOwnershipAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+            => Task.FromResult(queueItemId == ForeignItemId
+                ? new DownloadOwnership(false, $"Deluno did not send the download \"{queueItemId}\".")
+                : new DownloadOwnership(true, null));
+
         public List<(string ClientId, string QueueItemId, bool RemoveFromClient, bool Blocklist, bool SkipRedownload)> Removals { get; } = [];
 
         public Task<QueueRemovalResult> RemoveWithOptionsAsync(
@@ -333,6 +373,15 @@ public sealed class QueueHistoryWantedEndpointTests
             bool skipRedownload,
             CancellationToken cancellationToken)
         {
+            if (queueItemId == ForeignItemId)
+            {
+                return Task.FromResult(new QueueRemovalResult(
+                    clientId, queueItemId, "removed", false, $"Deluno did not send the download \"{queueItemId}\".", false, false, null, null)
+                {
+                    Refused = true
+                });
+            }
+
             Removals.Add((clientId, queueItemId, removeFromClient, blocklist, skipRedownload));
             return Task.FromResult(new QueueRemovalResult(
                 clientId, queueItemId, "removed", Succeed, Succeed ? "ok" : "That did not work.", blocklist, false, null, null));

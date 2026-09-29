@@ -239,6 +239,61 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(expectSearch, activity.Message.Contains("started a new search", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// #1062/#933: a download Deluno never sent is refused by every removal
+    /// path (the Queue's reasons, the API's flags, the raw action) and the
+    /// client is never asked to do anything.
+    /// </summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("sabnzbd")]
+    public async Task A_download_Deluno_did_not_send_is_refused_by_every_removal_path_and_the_client_is_never_called(string protocol)
+    {
+        using var world = await World.CreateAsync(protocol, TitleKind.Movie);
+        const string foreign = "hand-added-hash";
+
+        var byReason = await world.RemoveForeignAsync(foreign, QueueRemovalReasons.Failed);
+        var byFlags = await world.RemoveForeignAsync(foreign, true, true, false);
+        var byAction = await world.ActForeignAsync(foreign, DownloadClientActions.DeleteWithData);
+
+        foreach (var result in new[] { byReason, byFlags })
+        {
+            Assert.False(result.Succeeded);
+            Assert.True(result.Refused);
+            Assert.Contains("Deluno did not send", result.Message);
+            Assert.Contains(foreign, result.Message);
+        }
+
+        Assert.False(byAction.Succeeded);
+        Assert.True(byAction.Refused);
+        Assert.Null(world.Client.LastAction);
+        Assert.Empty(await world.Blocklist.ListAsync(CancellationToken.None));
+        Assert.Empty(await world.Jobs.ListAsync(10, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_shared_ownership_check_says_yes_for_a_dispatch_and_no_for_anything_else()
+    {
+        using var world = await World.CreateAsync("qbittorrent");
+
+        Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned);
+        Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
+    }
+
+    [Fact]
+    public async Task Delunos_own_download_deletes_its_data_only_when_removeFromClient_is_set()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+
+        var kept = await world.RemoveAsync(false, false, false);
+        Assert.True(kept.Succeeded);
+        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+
+        var deleted = await world.RemoveAsync(true, false, false);
+        Assert.True(deleted.Succeeded);
+        Assert.Equal(DownloadClientActions.DeleteWithData, world.Client.LastAction);
+    }
+
     [Fact]
     public async Task An_unrecognised_reason_is_refused_rather_than_guessed()
     {
@@ -477,6 +532,18 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public Task<QueueRemovalResult> RemoveAsync(bool removeFromClient, bool blocklist, bool skipRedownload)
             => _service.RemoveWithOptionsAsync(ClientId, QueueItemId, removeFromClient, blocklist, skipRedownload, CancellationToken.None);
+
+        public Task<QueueRemovalResult> RemoveForeignAsync(string queueItemId, string reason)
+            => _service.RemoveWithReasonAsync(ClientId, queueItemId, reason, CancellationToken.None);
+
+        public Task<QueueRemovalResult> RemoveForeignAsync(string queueItemId, bool removeFromClient, bool blocklist, bool skipRedownload)
+            => _service.RemoveWithOptionsAsync(ClientId, queueItemId, removeFromClient, blocklist, skipRedownload, CancellationToken.None);
+
+        public Task<DownloadClientActionResult> ActForeignAsync(string queueItemId, string action)
+            => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId), CancellationToken.None);
+
+        public Task<DownloadOwnership> CheckOwnershipAsync(string queueItemId)
+            => _service.CheckOwnershipAsync(ClientId, queueItemId, CancellationToken.None);
 
         public void Dispose() => _storage.Dispose();
     }

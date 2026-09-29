@@ -83,6 +83,15 @@ public interface IDownloadClientTelemetryService
         => throw new NotSupportedException("This telemetry service does not remove by flags.");
 
     /// <summary>
+    /// The one ownership guard (#1062, #933): whether Deluno itself sent this
+    /// download. Every path that reorders, force-starts or removes a download
+    /// asks it, so a download added by hand or by another tool is never
+    /// touched, and the message says so in plain words.
+    /// </summary>
+    Task<DownloadOwnership> CheckOwnershipAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+        => Task.FromResult(new DownloadOwnership(true, null));
+
+    /// <summary>
     /// Clears a client's own queue-level warnings (#813) — SABnzbd's
     /// mode=warnings&amp;name=clear — so it does not keep reporting one Deluno
     /// already showed and the person handled. False for a client whose

@@ -90,7 +90,8 @@ public static class QueueHistoryWantedEndpoints
 
             var result = await telemetry.RemoveWithOptionsAsync(
                 clientId, queueItemId, removeFromClient, blocklist, skipRedownload, cancellationToken);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+            return result.Refused ? Results.Conflict(result)
+                : result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
         queue.MapDelete("/bulk", async (
@@ -123,6 +124,18 @@ public static class QueueHistoryWantedEndpoints
                 {
                     ["items"] = ["Remove at most 200 downloads in one call."]
                 });
+            }
+
+            // #1062/#933: one download Deluno did not send refuses the whole
+            // call before anything is removed, through the same ownership
+            // guard as every other removal path.
+            foreach (var item in items)
+            {
+                var ownership = await telemetry.CheckOwnershipAsync(item.ClientId!, item.QueueItemId!, cancellationToken);
+                if (!ownership.Owned)
+                {
+                    return Results.Conflict(new { message = ownership.Message, clientId = item.ClientId, queueItemId = item.QueueItemId });
+                }
             }
 
             var results = new List<QueueRemovalResult>(items.Count);

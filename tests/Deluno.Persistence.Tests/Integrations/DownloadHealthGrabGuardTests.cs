@@ -38,7 +38,7 @@ public sealed class DownloadHealthGrabGuardTests
         var librariesRepository = new SqliteLibrariesRepository(storage.Factory, time);
         var service = new DownloadClientTelemetryService(
             settingsRepository, healthRepository, librariesRepository, connectionsRepository, null!,
-            new DownloadClientRegistry([]), time, new PassThroughResiliencePolicy(), null!, null!, null!,
+            new DownloadClientRegistry([]), time, new PassThroughResiliencePolicy(), null!, new Deluno.Persistence.Tests.Support.NullDownloadDispatchesRepository(), null!,
             new DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance);
 
         var result = await service.ExecuteActionAsync(
@@ -48,7 +48,9 @@ public sealed class DownloadHealthGrabGuardTests
 
         Assert.False(result.Succeeded);
         Assert.DoesNotContain("Allow removing client queue entries", result.Message, StringComparison.Ordinal);
-        Assert.Contains("not a supported download client protocol", result.Message, StringComparison.OrdinalIgnoreCase);
+        // #1062: the only thing that stops removal now is ownership, never a setting.
+        Assert.True(result.Refused);
+        Assert.Contains("Deluno did not send", result.Message, StringComparison.Ordinal);
     }
 
     /// <summary>A resilience policy that just runs the operation once, for tests that do not care about retries.</summary>

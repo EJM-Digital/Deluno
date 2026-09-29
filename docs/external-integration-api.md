@@ -446,7 +446,10 @@ client's own id for the download, as the Queue screen does.
 Removing never stops wanting the title (only the Queue's "I don't want it"
 does). Activity says what was done: "An outside program removed "X" from the
 Queue: removed from qBittorrent and deleted its files, blocklisted the release,
-started a new search." `200` with the result (`succeeded`, `message`,
+started a new search." A download Deluno did not send (added by hand or by another
+tool) is never removed and its data never deleted: `409` naming the download and
+saying Deluno did not send it, for the single call and, with nothing removed at
+all, for a bulk call that names one. `200` with the result (`succeeded`, `message`,
 `blocklisted`, `searchStarted`, `entityId`, `mediaType`); `400` with the same
 shape when it could not be done; `403` without the `queue` scope.
 
