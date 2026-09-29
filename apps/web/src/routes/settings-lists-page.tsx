@@ -118,6 +118,8 @@ interface ListForm {
   seriesType: string;
   /** TV only (#850): forces a season subfolder on or off, or "" to follow the global Media Management format. */
   seasonFolder: "" | "true" | "false";
+  /** #1015: tags every title this list adds gets, comma separated. */
+  tags: string;
 }
 
 type DrawerMode = { kind: "closed" } | { kind: "create" } | { kind: "edit"; id: string };
@@ -788,6 +790,9 @@ export function SettingsListsPage() {
               </FieldRow>
             </>
           )}
+          <Field label="Tags for titles this list adds" optional help="Each new title this list adds gets these tags straight away, so a destination rule, a download client or a notification can act on it. Titles already in your library are left alone.">
+            <TagPicker label="Tags for titles this list adds" value={form.tags} onChange={(tags) => setForm((current) => ({ ...current, tags }))} warnUnused={false} />
+          </Field>
         </DrawerSection>
 
         {editing ? (
@@ -952,7 +957,8 @@ function emptyForm(libraries: LibraryItem[]): ListForm {
     minimumAvailability: "announced",
     monitorMode: "movie",
     seriesType: "standard",
-    seasonFolder: ""
+    seasonFolder: "",
+    tags: ""
   };
 }
 
@@ -977,7 +983,8 @@ function formFrom(item: IntakeSourceItem): ListForm {
     minimumAvailability: item.minimumAvailability ?? "announced",
     monitorMode: item.monitorMode ?? (item.mediaType === "tv" ? "all" : "movie"),
     seriesType: item.seriesType ?? "standard",
-    seasonFolder: item.seasonFolder === true ? "true" : item.seasonFolder === false ? "false" : ""
+    seasonFolder: item.seasonFolder === true ? "true" : item.seasonFolder === false ? "false" : "",
+    tags: item.tags ?? ""
   };
 }
 
@@ -1001,7 +1008,8 @@ function toPayload(form: ListForm) {
     minimumAvailability: form.mediaType === "movies" ? form.minimumAvailability : "announced",
     monitorMode: form.monitorMode,
     seriesType: form.mediaType === "tv" ? form.seriesType : null,
-    seasonFolder: form.mediaType === "tv" && form.seasonFolder !== "" ? form.seasonFolder === "true" : null
+    seasonFolder: form.mediaType === "tv" && form.seasonFolder !== "" ? form.seasonFolder === "true" : null,
+    tags: form.tags.trim()
   };
 }
 

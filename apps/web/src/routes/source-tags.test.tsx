@@ -75,5 +75,7 @@ describe("Tags page names for the new tag users (#1046)", () => {
     expect(tagUserKindLabel("seerrConnection")).toBe("Seerr connection");
     expect(tagUserKindLabel("collection")).toBe("Collection");
     expect(tagUserKindLabel("listSetting")).toBe("List setting");
+    // #1015: a list that tags the titles it adds.
+    expect(tagUserKindLabel("list")).toBe("List");
   });
 });

@@ -259,6 +259,9 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
                 r => new TagRow("seerr_servers", column, "seerrConnection", r.GetString(0), r.GetString(1), "/indexers/media-servers", Split(r.GetString(2))));
         }
 
+        // #1015: a list gives tags to every title it adds, so a rename follows and a delete is refused.
+        await Read("SELECT id, name, tags FROM intake_sources WHERE trim(tags) <> '';",
+            r => new TagRow("intake_sources", "tags", "list", r.GetString(0), r.GetString(1), "/settings/lists", Split(r.GetString(2))));
         await Read("SELECT setting_key, setting_value FROM system_settings WHERE setting_key = 'lists.offListTag' AND trim(setting_value) <> '';",
             r => new TagRow("system_settings", "setting_value", "listSetting", r.GetString(0), "Titles no longer on any list", "/settings/lists", [r.GetString(1).Trim()], IdColumn: "setting_key"));
         await Read("SELECT id, name, tags FROM notification_webhooks WHERE trim(tags) <> '';",

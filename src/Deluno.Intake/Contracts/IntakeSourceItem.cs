@@ -31,4 +31,6 @@ public sealed record IntakeSourceItem(
     /// <summary>See <see cref="CreateIntakeSourceRequest.SeriesType"/> (#850). TV-only; null for movie sources.</summary>
     string? SeriesType = null,
     /// <summary>See <see cref="CreateIntakeSourceRequest.SeasonFolder"/> (#850).</summary>
-    bool? SeasonFolder = null);
+    bool? SeasonFolder = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.Tags"/> (#1015).</summary>
+    string Tags = "");

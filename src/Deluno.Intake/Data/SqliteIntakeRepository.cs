@@ -37,7 +37,7 @@ public sealed class SqliteIntakeRepository(
                 s.allowed_certifications, s.audience, s.sync_interval_hours,
                 s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
                 s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc, s.minimum_availability,
-                s.monitor_mode, s.series_type, s.season_folder
+                s.monitor_mode, s.series_type, s.season_folder, s.tags
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
             LEFT JOIN quality_profiles q ON q.id = s.quality_profile_id
@@ -446,7 +446,8 @@ public sealed class SqliteIntakeRepository(
             MinimumAvailability: NormalizeIntakeMinimumAvailability(request.MinimumAvailability),
             MonitorMode: IntakeMonitorModes.Normalize(mediaType, request.MonitorMode),
             SeriesType: mediaType == "tv" ? NormalizeName(request.SeriesType) : null,
-            SeasonFolder: mediaType == "tv" ? request.SeasonFolder : null);
+            SeasonFolder: mediaType == "tv" ? request.SeasonFolder : null,
+            Tags: NormalizeCsv(request.Tags));
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -456,14 +457,14 @@ public sealed class SqliteIntakeRepository(
                 required_genres, minimum_rating, minimum_year, maximum_age_days,
                 allowed_certifications, audience, sync_interval_hours, last_sync_utc, last_sync_status, last_sync_summary,
                 search_on_add, is_enabled, created_utc, updated_utc, minimum_availability,
-                monitor_mode, series_type, season_folder
+                monitor_mode, series_type, season_folder, tags
             )
             VALUES (
                 @id, @name, @provider, @feedUrl, @mediaType, @libraryId, @qualityProfileId,
                 @requiredGenres, @minimumRating, @minimumYear, @maximumAgeDays,
                 @allowedCertifications, @audience, @syncIntervalHours, @lastSyncUtc, @lastSyncStatus, @lastSyncSummary,
                 @searchOnAdd, @isEnabled, @createdUtc, @updatedUtc, @minimumAvailability,
-                @monitorMode, @seriesType, @seasonFolder
+                @monitorMode, @seriesType, @seasonFolder, @tags
             );
             """;
 
@@ -492,6 +493,7 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@monitorMode", item.MonitorMode);
         AddParameter(command, "@seriesType", item.SeriesType);
         AddParameter(command, "@seasonFolder", item.SeasonFolder is bool seasonFolder ? (seasonFolder ? 1 : 0) : null);
+        AddParameter(command, "@tags", item.Tags);
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return (await GetIntakeSourceAsync(connection, item.Id, cancellationToken))!;
@@ -538,7 +540,8 @@ public sealed class SqliteIntakeRepository(
                 minimum_availability = @minimumAvailability,
                 monitor_mode = @monitorMode,
                 series_type = @seriesType,
-                season_folder = @seasonFolder
+                season_folder = @seasonFolder,
+                tags = @tags
             WHERE id = @id;
             """;
 
@@ -564,6 +567,7 @@ public sealed class SqliteIntakeRepository(
         AddParameter(command, "@monitorMode", IntakeMonitorModes.Normalize(mediaType, request.MonitorMode));
         AddParameter(command, "@seriesType", mediaType == "tv" ? NormalizeName(request.SeriesType) : null);
         AddParameter(command, "@seasonFolder", mediaType == "tv" && request.SeasonFolder is bool seasonFolder ? (seasonFolder ? 1 : 0) : null);
+        AddParameter(command, "@tags", request.Tags is null ? current.Tags : NormalizeCsv(request.Tags));
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         return await GetIntakeSourceAsync(connection, id, cancellationToken);
@@ -635,7 +639,7 @@ public sealed class SqliteIntakeRepository(
                 s.allowed_certifications, s.audience, s.sync_interval_hours,
                 s.last_sync_utc, s.last_sync_status, s.last_sync_summary,
                 s.search_on_add, s.is_enabled, s.created_utc, s.updated_utc, s.minimum_availability,
-                s.monitor_mode, s.series_type, s.season_folder
+                s.monitor_mode, s.series_type, s.season_folder, s.tags
             FROM intake_sources s
             LEFT JOIN libraries l ON l.id = s.library_id
             LEFT JOIN quality_profiles q ON q.id = s.quality_profile_id
@@ -708,7 +712,8 @@ public sealed class SqliteIntakeRepository(
             MinimumAvailability: NormalizeIntakeMinimumAvailability(reader.IsDBNull(23) ? null : reader.GetString(23)),
             MonitorMode: IntakeMonitorModes.Normalize(reader.GetString(4), reader.IsDBNull(24) ? null : reader.GetString(24)),
             SeriesType: reader.IsDBNull(25) ? null : reader.GetString(25),
-            SeasonFolder: reader.IsDBNull(26) ? null : reader.GetInt64(26) == 1);
+            SeasonFolder: reader.IsDBNull(26) ? null : reader.GetInt64(26) == 1,
+            Tags: reader.IsDBNull(27) ? string.Empty : reader.GetString(27));
     }
 
     private static IntakeListExclusionItem ReadIntakeListExclusion(System.Data.Common.DbDataReader reader)

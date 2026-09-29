@@ -10,6 +10,7 @@ const KIND_LABELS: Record<string, string> = {
   acquisitionRule: "Release rule",
   destinationRule: "Destination rule",
   seerrConnection: "Seerr connection",
+  list: "List",
   collection: "Collection",
   listSetting: "List setting"
 };
@@ -27,6 +28,7 @@ const KIND_NOUNS: Record<string, [string, string]> = {
   acquisitionRule: ["release rule", "release rules"],
   destinationRule: ["destination rule", "destination rules"],
   seerrConnection: ["Seerr connection", "Seerr connections"],
+  list: ["list", "lists"],
   collection: ["collection", "collections"],
   listSetting: ["list setting", "list settings"]
 };

@@ -350,6 +350,8 @@ export interface IntakeSourceItem {
   seriesType?: "standard" | "daily" | "anime" | string | null;
   /** TV only (#850): true/false forces a season subfolder on or off; null/unset follows the global Media Management format. */
   seasonFolder?: boolean | null;
+  /** #1015: comma-separated tag names given to every title this list adds. */
+  tags?: string;
 }
 
 export interface IntakeListExclusionItem {
