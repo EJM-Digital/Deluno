@@ -31,3 +31,20 @@ public sealed record FilesystemReconciliationRepairResult(
     bool Repaired,
     string Action,
     string Message);
+
+public sealed record TitleRescanMissingFile(string FileName, string Path, bool MarkedMissing);
+
+public sealed record TitleRescanUntrackedFile(string FileName, string Path, long? SizeBytes, string IssueId);
+
+/// <param name="Outcome">ok | changed | nothing-tracked | library-unreachable</param>
+public sealed record TitleRescanResult(
+    string MediaType,
+    string TitleId,
+    string Title,
+    string Outcome,
+    int FilesChecked,
+    int FilesPresent,
+    IReadOnlyList<TitleRescanMissingFile> Missing,
+    IReadOnlyList<TitleRescanUntrackedFile> Untracked,
+    string? Folder,
+    string Summary);

@@ -2891,6 +2891,53 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated, tags = normalizedTags, mode = mode.ToString().ToLowerInvariant() });
         });
 
+        // One show's own rename preview (#997). Read-only, and it plans the
+        // folder exactly as /bulk/rename-apply will.
+        series.MapGet("/{id}/rename-preview", async (
+            string id,
+            HttpContext httpContext,
+            ISeriesCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var seriesItem = await repository.GetByIdAsync(id, cancellationToken);
+            if (seriesItem is null)
+            {
+                return Results.NotFound();
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var proposedName = NamingTemplateRenderer.RenderSegment(
+                settings.SeriesFolderFormat,
+                seriesItem.Title,
+                seriesItem.StartYear,
+                seriesItem.ImdbId,
+                tvDbId: ReadMetadataText(seriesItem.MetadataJson, "TvDbId", "tvdbId", "tvdb_id"),
+                network: ReadMetadataText(seriesItem.MetadataJson, "Network", "network"),
+                genre: seriesItem.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                decision: new NamingDecision(OriginalTitle: seriesItem.OriginalTitle),
+                replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+                colonReplacementMode: settings.ColonReplacementMode);
+
+            var episodeFiles = await repository.ListEpisodeFilePathsAsync(id, cancellationToken);
+            var plan = SeriesFolderRelocationPlanner.Plan(
+                episodeFiles.Select(file => file.FilePath).ToArray(),
+                proposedName);
+            return Results.Ok(RenamePreviewOutcome.Describe(
+                plan is null ? null : Path.GetFileName(plan.SourceDirectory),
+                proposedName,
+                hasFolder: plan is not null,
+                destinationExists: plan is not null
+                    && !string.Equals(plan.SourceDirectory, plan.DestinationDirectory, StringComparison.OrdinalIgnoreCase)
+                    && Directory.Exists(plan.DestinationDirectory)));
+        });
+
         series.MapPost("/bulk/rename-preview", async (
             HttpContext httpContext,
             [FromBody] BulkRenamePreviewRequest request,

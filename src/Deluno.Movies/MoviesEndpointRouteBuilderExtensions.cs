@@ -2970,6 +2970,52 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(new { updated, tags = normalizedTags, mode = mode.ToString().ToLowerInvariant() });
         });
 
+        /*
+          One title's own rename preview (#997). Read-only: it says which
+          folder Deluno would rename and to what, or why it would leave it
+          alone, and touches nothing. Applying is the same explicit action the
+          bulk tools use (/bulk/rename-apply), so what is shown here is what
+          that will do.
+        */
+        movies.MapGet("/{id}/rename-preview", async (
+            string id,
+            HttpContext httpContext,
+            IMovieCatalogRepository repository,
+            IPlatformSettingsRepository platformSettingsRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var movie = await repository.GetByIdAsync(id, cancellationToken);
+            if (movie is null)
+            {
+                return Results.NotFound();
+            }
+
+            var settings = await platformSettingsRepository.GetAsync(cancellationToken);
+            var proposedName = NamingTemplateRenderer.RenderSegment(
+                settings.MovieFolderFormat,
+                movie.Title,
+                movie.ReleaseYear,
+                movie.ImdbId,
+                genre: movie.Genres?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(),
+                decision: new NamingDecision(OriginalTitle: movie.OriginalTitle),
+                replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
+                colonReplacementMode: settings.ColonReplacementMode);
+
+            var sourceDir = movie.FilePath is { Length: > 0 } filePath ? Path.GetDirectoryName(filePath) : null;
+            var parentDir = sourceDir is null ? null : Path.GetDirectoryName(sourceDir);
+            return Results.Ok(RenamePreviewOutcome.Describe(
+                sourceDir is null ? null : Path.GetFileName(sourceDir),
+                proposedName,
+                hasFolder: sourceDir is not null && parentDir is not null,
+                destinationExists: parentDir is not null && Directory.Exists(Path.Combine(parentDir, proposedName))));
+        });
+
         movies.MapPost("/bulk/rename-preview", async (
             HttpContext httpContext,
             [FromBody] BulkRenamePreviewRequest request,
