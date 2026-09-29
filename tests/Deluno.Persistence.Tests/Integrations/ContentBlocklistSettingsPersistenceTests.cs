@@ -96,7 +96,7 @@ public sealed class ContentBlocklistSettingsPersistenceTests
         using var _ = storage;
 
         var legacyOn = new PlatformSettingsSnapshot(
-            AppInstanceName: "test", MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
+            MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
             IncompleteDownloadsPath: null, AutoStartJobs: false, EnableNotifications: false, RenameOnImport: false,
             UseHardlinks: false, CleanupEmptyFolders: false, MovieFolderFormat: "",
             SeriesFolderFormat: "", MovieFileFormat: "", EpisodeFileFormat: "", HostBindAddress: "", HostPort: 0,
@@ -121,7 +121,7 @@ public sealed class ContentBlocklistSettingsPersistenceTests
         using var _ = storage;
 
         var legacyOff = new PlatformSettingsSnapshot(
-            AppInstanceName: "test", MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
+            MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
             IncompleteDownloadsPath: null, AutoStartJobs: false, EnableNotifications: false, RenameOnImport: false,
             UseHardlinks: false, CleanupEmptyFolders: false, MovieFolderFormat: "",
             SeriesFolderFormat: "", MovieFileFormat: "", EpisodeFileFormat: "", HostBindAddress: "", HostPort: 0,

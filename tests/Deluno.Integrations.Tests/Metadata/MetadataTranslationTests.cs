@@ -289,7 +289,6 @@ public sealed class MetadataTranslationTests : IDisposable
 
     private static PlatformSettingsSnapshot Snapshot(string mode, string brokerUrl, string language)
         => new(
-            AppInstanceName: "Deluno Test",
             MovieRootPath: null,
             SeriesRootPath: null,
             DownloadsPath: null,

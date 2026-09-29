@@ -204,7 +204,6 @@ public sealed class ADownloadWithALostHardlinkIsFlaggedOnTransfersTests
     }
 
     private static PlatformSettingsSnapshot DefaultSettings() => new(
-        AppInstanceName: "Deluno",
         MovieRootPath: null,
         SeriesRootPath: null,
         DownloadsPath: null,

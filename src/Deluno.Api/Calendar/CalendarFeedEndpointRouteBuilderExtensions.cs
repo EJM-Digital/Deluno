@@ -78,7 +78,7 @@ public static class CalendarFeedEndpointRouteBuilderExtensions
                 cancellationToken);
 
             var settings = await platformSettingsRepository.GetAsync(cancellationToken);
-            var name = string.IsNullOrWhiteSpace(settings.AppInstanceName) ? "Deluno" : settings.AppInstanceName;
+            var name = Deluno.Contracts.DelunoHostName.Current;
             var body = CalendarFeedBuilder.Build(episodes, movies, now, name);
 
             httpContext.Response.Headers.CacheControl = "no-store";

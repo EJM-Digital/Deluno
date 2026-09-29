@@ -152,7 +152,6 @@ public sealed class SqlitePlatformSettingsRepository(
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        await UpsertSettingAsync(connection, transaction, "app.instanceName", NormalizeName(request.AppInstanceName) ?? "Deluno", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "jobs.autoStart", request.AutoStartJobs ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "notifications.enabled", request.EnableNotifications ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "media.renameOnImport", request.RenameOnImport ? "true" : "false", updatedUtc, cancellationToken);
@@ -567,7 +566,6 @@ public sealed class SqlitePlatformSettingsRepository(
         var brokerUrl = NormalizeMetadataBrokerUrl(GetValue(settings, "metadata.brokerUrl")) ?? ManagedMetadataBrokerUrl;
 
         return new PlatformSettingsSnapshot(
-            AppInstanceName: GetValue(settings, "app.instanceName") ?? "Deluno",
             MovieRootPath: GetValue(roots, "movies"),
             SeriesRootPath: GetValue(roots, "series"),
             DownloadsPath: GetValue(roots, "downloads"),

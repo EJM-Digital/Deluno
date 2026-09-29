@@ -136,6 +136,18 @@ public sealed class NotificationProviderPayloadTests
     }
 
     [Fact]
+    public async Task Generic_payload_carries_the_machines_hostname()
+    {
+        using var storage = TestStorage.Create();
+        var (service, handler) = await CreateServiceAsync(storage, NotificationProviders.Generic, "https://example.test/hook", null);
+
+        await service.DispatchAsync("import.completed", "Imported", "Akira", null, CancellationToken.None);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(handler.LastRequestBody!);
+        Assert.Equal(Environment.MachineName, doc.RootElement.GetProperty("instanceName").GetString());
+    }
+
+    [Fact]
     public async Task Generic_payload_carries_the_titles_tag_names_and_a_title_less_event_has_none()
     {
         using var storage = TestStorage.Create();

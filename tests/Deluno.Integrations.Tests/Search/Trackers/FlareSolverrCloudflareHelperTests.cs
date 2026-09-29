@@ -190,7 +190,6 @@ public sealed class FlareSolverrCloudflareHelperTests
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(instance => instance.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettingsSnapshot(
-                AppInstanceName: "Test",
                 MovieRootPath: null,
                 SeriesRootPath: null,
                 DownloadsPath: null,

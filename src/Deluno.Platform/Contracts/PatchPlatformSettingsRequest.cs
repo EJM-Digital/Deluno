@@ -6,7 +6,6 @@ namespace Deluno.Platform.Contracts;
 /// should be cleared.
 /// </summary>
 public sealed record PatchPlatformSettingsRequest(
-    string? AppInstanceName = null,
     string? MovieRootPath = null,
     string? SeriesRootPath = null,
     string? DownloadsPath = null,

@@ -370,7 +370,6 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
     }
 
     private static PlatformSettingsSnapshot Settings(bool checkEnabled) => new(
-        AppInstanceName: "Deluno",
         MovieRootPath: null,
         SeriesRootPath: null,
         DownloadsPath: null,

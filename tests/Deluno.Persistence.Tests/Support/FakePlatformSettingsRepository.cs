@@ -19,7 +19,6 @@ public sealed class FakePlatformSettingsRepository(PlatformSettingsSnapshot snap
     public static PlatformSettingsSnapshot Default(
         bool setPermissionsOnImport = false, string? folderChmod = null, string? chownGroup = null)
         => new(
-            AppInstanceName: "Deluno",
             MovieRootPath: null,
             SeriesRootPath: null,
             DownloadsPath: null,

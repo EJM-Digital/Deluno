@@ -3,7 +3,6 @@ using Deluno.Contracts;
 namespace Deluno.Platform.Contracts;
 
 public sealed record PlatformSettingsSnapshot(
-    string AppInstanceName,
     string? MovieRootPath,
     string? SeriesRootPath,
     string? DownloadsPath,

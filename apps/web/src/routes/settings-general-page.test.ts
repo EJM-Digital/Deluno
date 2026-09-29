@@ -15,6 +15,11 @@ import { resolve } from "node:path";
 describe("general settings page", () => {
   const source = readFileSync(resolve(__dirname, "settings-general-page.tsx"), "utf8");
 
+  it("has no Instance name field and never sends one (#1075: the name is the machine's hostname)", () => {
+    expect(source).not.toMatch(/Instance name/);
+    expect(source).not.toMatch(/appInstanceName/);
+  });
+
   it("no longer offers editable bind address, port or URL base fields", () => {
     expect(source).not.toMatch(/label="Bind address"/);
     expect(source).not.toMatch(/label="Port"/);

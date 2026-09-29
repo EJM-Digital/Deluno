@@ -40,7 +40,6 @@ interface LoaderData {
 export const settingsGeneralLoader = settingsOverviewLoader;
 
 interface GeneralForm {
-  appInstanceName: string;
   cloudflareHelperUrl: string;
   cloudflareHelperTimeoutSeconds: string;
   cloudflareHelperKind: string;
@@ -101,7 +100,6 @@ export function SettingsGeneralPage() {
     setSaveState("saving");
     try {
       await settingsMutation.mutate({
-        appInstanceName: form.appInstanceName.trim(),
         cloudflareHelperUrl: form.cloudflareHelperUrl.trim(),
         cloudflareHelperTimeoutSeconds: form.cloudflareHelperTimeoutSeconds.trim() ? Number(form.cloudflareHelperTimeoutSeconds) : 60,
         cloudflareHelperKind: form.cloudflareHelperKind
@@ -119,19 +117,6 @@ export function SettingsGeneralPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar tabs={systemSettingsNavItems} />
 
-
-      <ListCard title="Instance" count="How this installation names itself">
-        <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
-          <Field label="Instance name" help="Shown in the topbar and in notifications, so you can tell two installations apart." error={settingsMutation.fieldErrors.appInstanceName}>
-            <Input
-              value={form.appInstanceName}
-              onChange={(event) => setForm((current) => ({ ...current, appInstanceName: event.target.value }))}
-              placeholder="Home server"
-              className="max-w-[24rem]"
-            />
-          </Field>
-        </div>
-      </ListCard>
 
       <ReachabilityCard />
 
@@ -176,7 +161,6 @@ function same<T>(a: T, b: T) {
 
 function formFrom(settings: PlatformSettingsSnapshot): GeneralForm {
   return {
-    appInstanceName: settings.appInstanceName,
     cloudflareHelperUrl: settings.cloudflareHelperUrl ?? "",
     cloudflareHelperTimeoutSeconds: String(settings.cloudflareHelperTimeoutSeconds ?? 60),
     cloudflareHelperKind: settings.cloudflareHelperKind ?? "auto"

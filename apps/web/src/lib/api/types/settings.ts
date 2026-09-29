@@ -20,7 +20,6 @@ export interface DownloadCleanupPreview {
 }
 
 export interface PlatformSettingsSnapshot {
-  appInstanceName: string;
   movieRootPath: string | null;
   seriesRootPath: string | null;
   downloadsPath: string | null;
@@ -353,7 +352,6 @@ export interface UpdateLocalNetworkAuthRequest {
 }
 
 export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
-  appInstanceName: "Deluno",
   movieRootPath: null,
   seriesRootPath: null,
   downloadsPath: null,

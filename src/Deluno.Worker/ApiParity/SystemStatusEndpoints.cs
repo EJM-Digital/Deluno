@@ -96,7 +96,7 @@ public static class SystemStatusEndpoints
 
             return Results.Ok(new SystemStatusResponse(
                 AppName: "Deluno",
-                InstanceName: settings.AppInstanceName,
+                InstanceName: Deluno.Contracts.DelunoHostName.Current,
                 Version: DelunoVersion.Running,
                 BuildTime: string.IsNullOrEmpty(assemblyPath)
                     ? info.ProcessStartUtc

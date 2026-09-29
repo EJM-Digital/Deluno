@@ -2224,7 +2224,6 @@ async function recordSetupCompleted(result: SetupCompletion) {
 async function saveSettings(settings: PlatformSettingsSnapshot, form: GuideForm, automation: AutomationChoices) {
   const automationSettings = buildAutomationSettingsPayload(automation);
   const payload = {
-    appInstanceName: settings.appInstanceName || "Deluno",
     movieRootPath: form.movieRootPath.trim() || settings.movieRootPath,
     seriesRootPath: form.seriesRootPath.trim() || settings.seriesRootPath,
     downloadsPath: settings.downloadsPath,

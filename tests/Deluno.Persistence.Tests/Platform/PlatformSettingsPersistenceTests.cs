@@ -33,7 +33,6 @@ public sealed class PlatformSettingsPersistenceTests
 
         var saved = await repository.SaveAsync(
             new UpdatePlatformSettingsRequest(
-                AppInstanceName: "Deluno Test",
                 MovieRootPath: @"D:\Media\Movies",
                 SeriesRootPath: @"D:\Media\TV",
                 DownloadsPath: @"D:\Downloads\Complete",
@@ -73,7 +72,6 @@ public sealed class PlatformSettingsPersistenceTests
 
         var loaded = await repository.GetAsync(CancellationToken.None);
 
-        Assert.Equal("Deluno Test", saved.AppInstanceName);
         Assert.Equal(@"D:\Media\Movies", loaded.MovieRootPath);
         Assert.Equal(@"D:\Media\TV", loaded.SeriesRootPath);
         Assert.True(loaded.AutoStartJobs);
@@ -289,7 +287,7 @@ public sealed class PlatformSettingsPersistenceTests
 
     private static UpdatePlatformSettingsRequest MinimalRequest(int historyRetentionDays)
         => new(
-            AppInstanceName: null, MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
+            MovieRootPath: null, SeriesRootPath: null, DownloadsPath: null,
             IncompleteDownloadsPath: null, AutoStartJobs: false, EnableNotifications: false, RenameOnImport: false,
             UseHardlinks: false, CleanupEmptyFolders: false,
             MovieFolderFormat: null, SeriesFolderFormat: null, MovieFileFormat: null, EpisodeFileFormat: null,
@@ -1211,7 +1209,7 @@ public sealed class PlatformSettingsPersistenceTests
         await repository.SaveAsync(
             PlatformSettingsPatchMerger.Apply(
                 staleSnapshot,
-                new PatchPlatformSettingsRequest(AppInstanceName: "Changed in General")),
+                new PatchPlatformSettingsRequest(MetadataLanguage: "fr")),
             CancellationToken.None);
 
         // The second save represents a different settings page. Its PATCH
@@ -1224,7 +1222,7 @@ public sealed class PlatformSettingsPersistenceTests
             CancellationToken.None);
 
         var loaded = await repository.GetAsync(CancellationToken.None);
-        Assert.Equal("Changed in General", loaded.AppInstanceName);
+        Assert.Equal("fr", loaded.MetadataLanguage);
         Assert.Equal("dark", loaded.UiTheme);
     }
 }

@@ -7501,7 +7501,6 @@ public sealed class ImportPipelineServiceTests
     {
         await platform.SaveAsync(
             new UpdatePlatformSettingsRequest(
-                AppInstanceName: "Deluno",
                 MovieRootPath: movieRootPath,
                 SeriesRootPath: seriesRootPath,
                 DownloadsPath: downloadsPath,

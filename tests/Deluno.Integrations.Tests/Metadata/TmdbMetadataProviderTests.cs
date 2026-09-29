@@ -31,7 +31,6 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettingsSnapshot(
-                AppInstanceName: "Deluno Test",
                 MovieRootPath: null,
                 SeriesRootPath: null,
                 DownloadsPath: null,
@@ -1636,7 +1635,6 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         string language = "en",
         string certificationCountry = "US")
         => new(
-            AppInstanceName: "Deluno Test",
             MovieRootPath: null,
             SeriesRootPath: null,
             DownloadsPath: null,

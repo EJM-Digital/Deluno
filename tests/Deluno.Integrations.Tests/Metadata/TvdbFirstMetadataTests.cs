@@ -479,7 +479,6 @@ public sealed class TvdbFirstMetadataTests : IDisposable
 
     private static PlatformSettingsSnapshot Snapshot(string mode, string brokerUrl)
         => new(
-            AppInstanceName: "Deluno Test",
             MovieRootPath: null,
             SeriesRootPath: null,
             DownloadsPath: null,

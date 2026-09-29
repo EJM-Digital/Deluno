@@ -1,5 +1,4 @@
 export interface PlatformSettingsPatch {
-  appInstanceName?: string;
   movieRootPath?: string;
   seriesRootPath?: string;
   downloadsPath?: string;

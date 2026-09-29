@@ -101,7 +101,7 @@ test.describe("dashboard workflow", () => {
   test("explains unsaved changes before changing a settings menu", async ({ page }) => {
     await authenticateAndNavigate(page, "/settings/general");
 
-    await page.getByRole("textbox", { name: "Instance name" }).fill("Unsaved navigation check");
+    await page.getByRole("textbox", { name: "Helper address" }).fill("http://127.0.0.1:8191");
     await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
 
     await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Interface", exact: true }).click();

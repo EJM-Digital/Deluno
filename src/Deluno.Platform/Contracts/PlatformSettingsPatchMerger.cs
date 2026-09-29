@@ -6,7 +6,6 @@ public static class PlatformSettingsPatchMerger
         PlatformSettingsSnapshot current,
         PatchPlatformSettingsRequest patch)
         => new(
-            AppInstanceName: patch.AppInstanceName ?? current.AppInstanceName,
             MovieRootPath: patch.MovieRootPath ?? current.MovieRootPath,
             SeriesRootPath: patch.SeriesRootPath ?? current.SeriesRootPath,
             DownloadsPath: patch.DownloadsPath ?? current.DownloadsPath,

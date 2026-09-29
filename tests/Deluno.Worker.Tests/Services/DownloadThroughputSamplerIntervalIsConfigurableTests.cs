@@ -52,7 +52,6 @@ public sealed class DownloadThroughputSamplerIntervalIsConfigurableTests
         var settings = new Mock<IPlatformSettingsRepository>();
         settings.Setup(repository => repository.GetAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformSettingsSnapshot(
-                AppInstanceName: "Deluno",
                 MovieRootPath: null,
                 SeriesRootPath: null,
                 DownloadsPath: null,

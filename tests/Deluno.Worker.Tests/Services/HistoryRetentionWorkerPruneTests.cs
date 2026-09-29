@@ -75,7 +75,6 @@ public sealed class HistoryRetentionWorkerPruneTests
     }
 
     private static PlatformSettingsSnapshot DefaultSettings(int historyRetentionDays) => new(
-        AppInstanceName: "Deluno",
         MovieRootPath: null,
         SeriesRootPath: null,
         DownloadsPath: null,
