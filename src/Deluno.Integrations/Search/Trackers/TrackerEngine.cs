@@ -123,8 +123,9 @@ public sealed partial class TrackerEngine : ITrackerEngine
     {
         CookieContainer = cookies,
         UseCookies = true,
-        AllowAutoRedirect = true,
-        MaxAutomaticRedirections = 8,
+        // Redirects are followed by SendOnceAsync itself so it can refuse to carry
+        // credentials or the definition's headers to a host the tracker does not own (#1064).
+        AllowAutoRedirect = false,
         AutomaticDecompression = DecompressionMethods.All,
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
         ConnectTimeout = TimeSpan.FromSeconds(10),
@@ -414,9 +415,9 @@ public sealed partial class TrackerEngine : ITrackerEngine
     /// the clearance runs out. Cloudflare can still recognise a connection that
     /// is not a browser, and then the page the helper fetched is used.
     /// </summary>
-    private async Task<TrackerPage> SendAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken)
+    private async Task<TrackerPage> SendAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken, int maxBytes = MaxPageBytes, bool signIn = false)
     {
-        var page = await SendOnceAsync(session, request, cancellationToken);
+        var page = await SendOnceAsync(session, request, cancellationToken, maxBytes, signIn);
         if (!IsCloudflare(page) || cloudflareHelper is null || request.Method != HttpMethod.Get)
         {
             return page;
@@ -430,7 +431,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         }
 
         session.AcceptClearance(solved.Cookies, solved.UserAgent);
-        var retried = await SendOnceAsync(session, request, cancellationToken);
+        var retried = await SendOnceAsync(session, request, cancellationToken, maxBytes, signIn);
         if (!IsCloudflare(retried))
         {
             return retried;
@@ -439,33 +440,128 @@ public sealed partial class TrackerEngine : ITrackerEngine
         return new TrackerPage(solved.Status, solved.Url, solved.Html, Encoding.UTF8.GetBytes(solved.Html), null, "text/html");
     }
 
-    private async Task<TrackerPage> SendOnceAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken)
+    /// <summary>The biggest page Deluno reads from a tracker (#1064).</summary>
+    internal const int MaxPageBytes = 10 * 1024 * 1024;
+
+    /// <summary>The biggest .torrent Deluno reads from a tracker (#1064).</summary>
+    internal const int MaxTorrentBytes = 5 * 1024 * 1024;
+
+    private const int MaxRedirects = 8;
+
+    private async Task<TrackerPage> SendOnceAsync(TrackerSession session, TrackerRequest request, CancellationToken cancellationToken, int maxBytes = MaxPageBytes, bool signIn = false)
     {
         await session.PaceAsync(timeProvider, cancellationToken);
-        using var message = new HttpRequestMessage(request.Method, request.Uri) { Content = request.Content };
-        // The helper's own when it cleared a Cloudflare check: the clearance holds for that one only.
-        message.Headers.TryAddWithoutValidation("User-Agent", session.UserAgent ?? session.ConfiguredUserAgent ?? BrowserUserAgent);
-        message.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7");
-        message.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.8");
-        foreach (var (name, value) in request.Headers)
+        var uri = request.Uri;
+        var method = request.Method;
+        var content = request.Content;
+        var headers = request.Headers;
+
+        for (var hop = 0; ; hop++)
         {
-            message.Headers.Remove(name);
-            if (!message.Headers.TryAddWithoutValidation(name, value))
+            // The definition's headers and any sign-in or form body go only to the
+            // tracker's own hosts (#1064). A download link the page names on another
+            // host is fetched bare, and never at an address inside this computer's
+            // network; a sign-in never leaves the tracker at all.
+            if (uri.Scheme is not ("http" or "https"))
             {
-                message.Content?.Headers.TryAddWithoutValidation(name, value);
+                throw new TrackerException($"{uri.Host} is not a web address Deluno will fetch from a tracker.");
             }
+
+            if (!session.IsOwnHost(uri))
+            {
+                if (signIn || content is not null)
+                {
+                    throw new TrackerException($"Deluno will not send a sign-in or form to {uri.Host}, which is not one of this tracker's own addresses.");
+                }
+
+                if (TrackerHostGuard.IsInternal(uri))
+                {
+                    throw new TrackerException($"Deluno will not fetch {uri.Host} for a tracker: it is an address inside this network.");
+                }
+
+                headers = [];
+            }
+
+            using var message = new HttpRequestMessage(method, uri) { Content = content };
+            // The helper's own when it cleared a Cloudflare check: the clearance holds for that one only.
+            message.Headers.TryAddWithoutValidation("User-Agent", session.UserAgent ?? session.ConfiguredUserAgent ?? BrowserUserAgent);
+            message.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7");
+            message.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.8");
+            foreach (var (name, value) in headers)
+            {
+                message.Headers.Remove(name);
+                if (!message.Headers.TryAddWithoutValidation(name, value))
+                {
+                    message.Content?.Headers.TryAddWithoutValidation(name, value);
+                }
+            }
+
+            using var response = await session.Http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            var location = response.Headers.Location;
+            var status = response.StatusCode;
+            if (status is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther
+                    or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect
+                && location is not null
+                && !location.OriginalString.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (hop >= MaxRedirects)
+                {
+                    throw new TrackerException($"{uri.Host} redirected too many times.");
+                }
+
+                var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+                if (status is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther
+                    && method != HttpMethod.Get && method != HttpMethod.Head)
+                {
+                    method = HttpMethod.Get;
+                    content = null;
+                }
+
+                if (!session.IsOwnHost(next) && (signIn || content is not null))
+                {
+                    throw new TrackerException($"{uri.Host} tried to send the sign-in on to {next.Host}, which is not one of this tracker's own addresses. Deluno stopped.");
+                }
+
+                uri = next;
+                continue;
+            }
+
+            var bytes = await ReadCappedAsync(response, maxBytes, cancellationToken);
+            var encoding = ResponseEncoding(response.Content.Headers.ContentType?.CharSet, bytes, session.Encoding);
+            return new TrackerPage(
+                status,
+                response.RequestMessage?.RequestUri ?? uri,
+                encoding.GetString(bytes),
+                bytes,
+                location?.OriginalString,
+                response.Content.Headers.ContentType?.MediaType);
+        }
+    }
+
+    /// <summary>The response body, refused past <paramref name="maxBytes"/> so a hostile or broken site cannot fill memory (#1064).</summary>
+    internal static async Task<byte[]> ReadCappedAsync(HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken)
+    {
+        var host = response.RequestMessage?.RequestUri?.Host ?? "The tracker";
+        if (response.Content.Headers.ContentLength is { } declared && declared > maxBytes)
+        {
+            throw new TrackerException($"{host} sent more than {maxBytes / (1024 * 1024)} MB, which Deluno will not read.");
         }
 
-        using var response = await session.Http.SendAsync(message, HttpCompletionOption.ResponseContentRead, cancellationToken);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        var encoding = ResponseEncoding(response.Content.Headers.ContentType?.CharSet, bytes, session.Encoding);
-        return new TrackerPage(
-            response.StatusCode,
-            response.RequestMessage?.RequestUri ?? request.Uri,
-            encoding.GetString(bytes),
-            bytes,
-            response.Headers.Location?.OriginalString,
-            response.Content.Headers.ContentType?.MediaType);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                throw new TrackerException($"{host} sent more than {maxBytes / (1024 * 1024)} MB, which Deluno will not read.");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
     }
 
     private async Task<TrackerGrab?> FetchTorrentAsync(
@@ -476,7 +572,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         IReadOnlyDictionary<string, object?> variables,
         CancellationToken cancellationToken)
     {
-        var page = await SendAsync(session, BuildRequest(definition, null, target, [], null, headers, variables), cancellationToken);
+        var page = await SendAsync(session, BuildRequest(definition, null, target, [], null, headers, variables), cancellationToken, MaxTorrentBytes);
         if (page.Location is { } location && location.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
         {
             return new TrackerGrab(location, null, target.AbsoluteUri);
@@ -545,20 +641,20 @@ public sealed partial class TrackerEngine : ITrackerEngine
             case "get":
             {
                 var inputs = login.Inputs.Select(input => new KeyValuePair<string, string>(input.Key, TrackerTemplate.Render(input.Value, variables))).ToArray();
-                result = await SendAsync(session, BuildRequest(definition, "get", loginUri, inputs, null, headers, []), cancellationToken);
+                result = await SendAsync(session, BuildRequest(definition, "get", loginUri, inputs, null, headers, []), cancellationToken, signIn: true);
                 break;
             }
 
             case "oneurl":
             {
                 var oneUrl = TrackerTemplate.Render(login.Inputs.FirstOrDefault(input => input.Key == "oneurl").Value, variables);
-                result = await SendAsync(session, BuildRequest(definition, "get", new Uri(site, (login.Path ?? string.Empty) + oneUrl), [], null, headers, []), cancellationToken);
+                result = await SendAsync(session, BuildRequest(definition, "get", new Uri(site, (login.Path ?? string.Empty) + oneUrl), [], null, headers, []), cancellationToken, signIn: true);
                 break;
             }
 
             case "form":
             {
-                var landing = await SendAsync(session, BuildRequest(definition, "get", loginUri, [], null, headers, []), cancellationToken);
+                var landing = await SendAsync(session, BuildRequest(definition, "get", loginUri, [], null, headers, []), cancellationToken, signIn: true);
                 FailOnBlockedOrError(landing);
                 var root = new HtmlParser().ParseDocument(landing.Body).DocumentElement;
                 var form = root.QuerySelector(login.Form ?? "form")
@@ -594,14 +690,14 @@ public sealed partial class TrackerEngine : ITrackerEngine
                 }
 
                 var formHeaders = headers.Append(new("Referer", landing.FinalUri.AbsoluteUri)).ToArray();
-                result = await SendAsync(session, BuildRequest(definition, "post", submitUri, pairs.ToArray(), null, formHeaders, []), cancellationToken);
+                result = await SendAsync(session, BuildRequest(definition, "post", submitUri, pairs.ToArray(), null, formHeaders, []), cancellationToken, signIn: true);
                 break;
             }
 
             default:
             {
                 var inputs = login.Inputs.Select(input => new KeyValuePair<string, string>(input.Key, TrackerTemplate.Render(input.Value, variables))).ToArray();
-                result = await SendAsync(session, BuildRequest(definition, "post", loginUri, inputs, null, headers, []), cancellationToken);
+                result = await SendAsync(session, BuildRequest(definition, "post", loginUri, inputs, null, headers, []), cancellationToken, signIn: true);
                 break;
             }
         }
@@ -630,7 +726,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         if (login.Test is { } test)
         {
             var testUri = new Uri(site, TrackerTemplate.Render(test.Path ?? string.Empty, variables));
-            var page = await SendAsync(session, BuildRequest(definition, "get", testUri, [], null, headers, []), cancellationToken);
+            var page = await SendAsync(session, BuildRequest(definition, "get", testUri, [], null, headers, []), cancellationToken, signIn: true);
             if (NeedsSignIn(definition, testUri, page))
             {
                 throw new TrackerException(login.Method == "cookie"
@@ -841,6 +937,7 @@ internal sealed class TrackerSession
     private readonly SemaphoreSlim paceLock = new(1, 1);
     private readonly TimeSpan delay;
     private readonly IReadOnlyList<string> links;
+    private readonly string[] ownHosts;
     private DateTimeOffset lastRequest = DateTimeOffset.MinValue;
 
     public TrackerSession(TrackerConnection connection, string fingerprint, Func<CookieContainer, IWebProxy?, HttpMessageHandler> handlerFactory)
@@ -883,7 +980,18 @@ internal sealed class TrackerSession
             .Select(link => link.TrimEnd('/') + "/")
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        ownHosts = links.Concat(connection.Definition.LegacyLinks)
+            .Select(link => Uri.TryCreate(link, UriKind.Absolute, out var parsed) ? parsed.Host : null)
+            .Where(host => !string.IsNullOrEmpty(host))
+            .Select(host => host!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
+
+    /// <summary>Whether <paramref name="uri"/> is one of this tracker's own hosts (its address, the definition's mirrors) or a sub-domain of one (#1064).</summary>
+    public bool IsOwnHost(Uri uri)
+        => ownHosts.Any(host => uri.Host.Equals(host, StringComparison.OrdinalIgnoreCase)
+                                || uri.Host.EndsWith('.' + host, StringComparison.OrdinalIgnoreCase));
 
     public string FingerprintValue { get; }
 
@@ -991,4 +1099,46 @@ internal sealed class TrackerSession
         => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(
             connection.Definition.Id + "|" + connection.BaseUrl + "|" + (connection.Proxy?.Id ?? string.Empty) + "|" + (connection.HelperUrl ?? string.Empty) + "|"
             + string.Join("|", connection.Settings.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + "=" + pair.Value)))));
+}
+
+/// <summary>Addresses inside this computer or its network, which a tracker page must never make Deluno fetch (#1064).</summary>
+internal static class TrackerHostGuard
+{
+    public static bool IsInternal(Uri uri)
+    {
+        var host = uri.Host.Trim('[', ']');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
+            || !host.Contains('.') && !host.Contains(':'))
+        {
+            return true;
+        }
+
+        if (!IPAddress.TryParse(host, out var address))
+        {
+            return false;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+        {
+            return true;
+        }
+
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+        {
+            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || (address.GetAddressBytes()[0] & 0xFE) == 0xFC;
+        }
+
+        var b = address.GetAddressBytes();
+        return b[0] == 10 || b[0] == 127 || b[0] == 0
+               || b[0] == 172 && b[1] is >= 16 and <= 31
+               || b[0] == 192 && b[1] == 168
+               || b[0] == 169 && b[1] == 254
+               || b[0] == 100 && b[1] is >= 64 and <= 127;
+    }
 }

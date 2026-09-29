@@ -293,6 +293,72 @@ public sealed class ProcessorConnectionServiceTests
         Assert.False(seen[1].Headers.Contains("X-Webhook-Secret"));
     }
 
+    /// <summary>#1064: the same host and port on another scheme is not the processor's own address.</summary>
+    [Fact]
+    public async Task The_credential_is_not_sent_over_a_different_scheme_on_the_same_host_and_port()
+    {
+        var seen = new List<HttpRequestMessage>();
+        var handler = new StubHandler(request =>
+        {
+            seen.Add(request);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+        var connection = WithHealthCheck("http://processor.example:9347/ready") with { SubmissionUrl = "https://processor.example:9347/intake" };
+
+        await service.TestAsync(connection, CancellationToken.None);
+
+        Assert.False(seen[0].Headers.Contains("X-Webhook-Secret"), "an http health address must not receive the secret meant for the https hand-off address");
+    }
+
+    /// <summary>#1064: a redirect off the processor's own address never takes the secret with it.</summary>
+    [Fact]
+    public async Task A_redirect_to_another_host_is_followed_without_the_credential()
+    {
+        var seen = new List<HttpRequestMessage>();
+        var handler = new StubHandler(request =>
+        {
+            seen.Add(request);
+            if (request.RequestUri!.Host == "127.0.0.1")
+            {
+                var redirect = new HttpResponseMessage(HttpStatusCode.Found);
+                redirect.Headers.Location = new Uri("https://elsewhere.example/ready");
+                return redirect;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+        var connection = WithHealthCheck("http://127.0.0.1:9347/ready") with { HealthCheckUrl = "http://127.0.0.1:9347/ready" };
+
+        var result = await service.TestAsync(connection, CancellationToken.None);
+
+        Assert.Equal(2, seen.Count);
+        Assert.True(seen[0].Headers.Contains("X-Webhook-Secret"));
+        Assert.False(seen[1].Headers.Contains("X-Webhook-Secret"));
+        Assert.Equal("healthy", result.Status);
+    }
+
+    /// <summary>#1064: a redirect back onto the processor's own address keeps the credential; a loop is cut off.</summary>
+    [Fact]
+    public async Task A_redirect_loop_ends_instead_of_running_forever()
+    {
+        var count = 0;
+        var handler = new StubHandler(request =>
+        {
+            count++;
+            var redirect = new HttpResponseMessage(HttpStatusCode.Found);
+            redirect.Headers.Location = new Uri("http://127.0.0.1:9347/ready");
+            return redirect;
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.TestAsync(WithHealthCheck("http://127.0.0.1:9347/ready"), CancellationToken.None);
+
+        Assert.True(count <= 7);
+        Assert.Equal("degraded", result.Status);
+    }
+
     [Fact]
     public async Task TestAsync_without_a_health_check_address_is_unchanged_a_HEAD_to_the_hand_off_address()
     {

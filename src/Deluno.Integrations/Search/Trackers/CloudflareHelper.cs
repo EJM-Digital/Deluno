@@ -40,6 +40,11 @@ public static class CloudflareHelperProbe
 {
     public static async Task<(bool Healthy, string Message)> CheckAsync(HttpClient http, Uri address, CancellationToken cancellationToken)
     {
+        if (address.Scheme is not ("http" or "https"))
+        {
+            return (false, "A Cloudflare helper's address must start with http:// or https://.");
+        }
+
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -150,6 +155,12 @@ public sealed class FlareSolverrCloudflareHelper(IHttpClientFactory httpClientFa
         var current = await settings.GetAsync(cancellationToken);
         var baseUrl = string.IsNullOrWhiteSpace(helperUrl) ? current.CloudflareHelperUrl : helperUrl;
         if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            return null;
+        }
+
+        // An address that is not http(s) is no helper (#1064): treated as none set.
+        if (!Uri.TryCreate(baseUrl.Trim(), UriKind.Absolute, out var helperUri) || helperUri.Scheme is not ("http" or "https"))
         {
             return null;
         }

@@ -25,14 +25,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             // With a health-check address the processor can be asked a real question:
             // GET it, and a 2xx answer means it is up. Without one, all Deluno can do is
             // knock on the hand-off address, which only accepts submissions.
-            using var request = new HttpRequestMessage(healthUrl is null ? HttpMethod.Head : HttpMethod.Get, healthUrl ?? connection.SubmissionUrl);
-            if (healthUrl is null || SameHost(healthUrl, connection.SubmissionUrl))
-            {
-                // The credential goes only to the processor's own host.
-                ApplyAuthentication(request, connection);
-            }
-
-            using var response = await httpClientFactory.CreateClient("processor-connections").SendAsync(request, cancellationToken);
+            using var response = await SendCheckAsync(connection, healthUrl, cancellationToken);
             var latency = (int)Math.Round(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             var statusCode = (int)response.StatusCode;
 
@@ -83,9 +76,48 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         }
     }
 
-    private static bool SameHost(string first, string second)
+    private const int MaxCheckRedirects = 5;
+
+    /// <summary>
+    /// The connection check, following redirects by hand so the credential (and
+    /// its custom header) only ever goes to the exact address the processor was
+    /// handed off to: same scheme, host and port. Any other address, whether the
+    /// health-check address itself or where a redirect leads, is asked bare (#1064).
+    /// </summary>
+    private async Task<HttpResponseMessage> SendCheckAsync(ProcessorConnectionItem connection, string? healthUrl, CancellationToken cancellationToken)
+    {
+        var method = healthUrl is null ? HttpMethod.Head : HttpMethod.Get;
+        var url = healthUrl ?? connection.SubmissionUrl;
+        var client = httpClientFactory.CreateClient("processor-health");
+        for (var hop = 0; ; hop++)
+        {
+            using var request = new HttpRequestMessage(method, url);
+            if (SameOrigin(url, connection.SubmissionUrl))
+            {
+                ApplyAuthentication(request, connection);
+            }
+
+            var response = await client.SendAsync(request, cancellationToken);
+            if ((int)response.StatusCode is 301 or 302 or 303 or 307 or 308
+                && response.Headers.Location is { } location
+                && hop < MaxCheckRedirects
+                && Uri.TryCreate(new Uri(url), location, out var next)
+                && next.Scheme is "http" or "https")
+            {
+                response.Dispose();
+                url = next.AbsoluteUri;
+                continue;
+            }
+
+            return response;
+        }
+    }
+
+    /// <summary>Same scheme, host and port (#1064).</summary>
+    internal static bool SameOrigin(string first, string second)
         => Uri.TryCreate(first, UriKind.Absolute, out var a)
            && Uri.TryCreate(second, UriKind.Absolute, out var b)
+           && string.Equals(a.Scheme, b.Scheme, StringComparison.OrdinalIgnoreCase)
            && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
            && a.Port == b.Port;
 
