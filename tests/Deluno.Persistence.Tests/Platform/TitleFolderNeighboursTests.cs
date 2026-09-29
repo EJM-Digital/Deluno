@@ -56,6 +56,23 @@ public sealed class TitleFolderNeighboursTests
         Assert.False(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, null, "s-wire", "/tv/The Wire", default));
     }
 
+    [Theory]
+    [InlineData("/Films/Édith Piaf (2007)")]
+    [InlineData("/films/édith piaf (2007)")]
+    [InlineData(@"\FILMS\ÉDITH PIAF (2007)\")]
+    public async Task A_neighbour_in_a_folder_with_an_uppercase_non_ASCII_letter_is_found_whatever_the_case(string folder)
+    {
+        using var storage = await SeedAsync();
+        await Run(storage, DelunoDatabaseNames.Movies,
+            "INSERT INTO movie_wanted_state VALUES ('m-edith', '/Films/Édith Piaf (2007)/Edith.mkv');");
+        await Run(storage, DelunoDatabaseNames.Series,
+            "INSERT INTO episode_entries VALUES ('s-emile', 1, '/tv/Émile/e1.mkv');");
+
+        Assert.True(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", null, folder, default));
+        Assert.True(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-me", null, "/tv/éMILE", default));
+        Assert.False(await TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(storage.Factory, "m-edith", null, folder, default));
+    }
+
     [Fact]
     public async Task A_unc_folder_is_matched_and_a_show_without_a_file_is_ignored()
     {
