@@ -51,6 +51,8 @@ public sealed class OutboundNotificationService(
         {
             if (!webhook.IsEnabled
                 || !IsMatchingEvent(webhook.EventFilters, eventCategory)
+                // A health warning goes only to a connection that asked for them (#1016).
+                || (!webhook.IncludeHealthWarnings && eventCategory.EndsWith(HealthCheckCategories.OutboundWarningSuffix, StringComparison.Ordinal))
                 // Tags only filter events about a title (#1036). null means the
                 // event names no title (health, library paused, app update...),
                 // so every connection gets it, tagged or not.

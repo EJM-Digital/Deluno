@@ -45,6 +45,34 @@ public sealed class HealthCheckRunnerTests
     }
 
     [Fact]
+    public async Task An_advisory_tier_problem_is_announced_with_the_advisory_suffix_but_recorded_plainly_in_activity()
+    {
+        var repository = new Mock<IHealthCheckRepository>();
+        repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<HealthCheckResultItem>());
+        repository.Setup(repo => repo.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<HealthCheckOutcome> outcomes, CancellationToken _) => outcomes
+                .Select(outcome => new HealthCheckTransitionResult(
+                    new HealthCheckResultItem(outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix, outcome.DetailsJson, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null),
+                    HealthCheckTransition.Started))
+                .ToArray());
+
+        var activity = new Mock<IActivityFeedRepository>();
+        var notifications = new Mock<IOutboundNotificationService>();
+        var realtime = new Mock<IRealtimeEventPublisher>();
+        var check = FakeCheck(HealthCheckCategories.Metadata, [HealthCheckOutcome.Problem("metadata:1", HealthCheckCategories.Metadata, "Metadata", "Slow.", "cause", "fix")]);
+
+        var runner = new HealthCheckRunner([check], repository.Object, activity.Object, notifications.Object, realtime.Object, NullLogger<HealthCheckRunner>.Instance);
+        await runner.RunAllAsync(CancellationToken.None);
+
+        activity.Verify(feed => feed.RecordActivityAsync(
+            "health.problem", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), "health-check", "metadata:1", It.IsAny<CancellationToken>()),
+            Times.Once);
+        notifications.Verify(service => service.DispatchAsync(
+            "health.problem" + HealthCheckCategories.OutboundWarningSuffix, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task An_unchanged_result_is_stored_but_not_announced_again()
     {
         var repository = new Mock<IHealthCheckRepository>();

@@ -39,6 +39,21 @@ public static class HealthCheckCategories
 
     /// <summary>A remote path mapping's local side, and a client's reported save path translated through it (#868).</summary>
     public const string RemotePathMapping = "remote-path";
+
+    /// <summary>Appended to the outbound category of an advisory-tier health event (#1016).</summary>
+    public const string OutboundWarningSuffix = ".advisory";
+
+    /// <summary>
+    /// The advisory tier (#1016): a problem here does not stop Deluno grabbing
+    /// or importing, so it is a "warning" rather than an error. A connection
+    /// hears about these only when its Include health warnings switch is on,
+    /// as Radarr and Sonarr's IncludeHealthWarnings does.
+    /// </summary>
+    public static bool IsWarningTier(string category)
+        => string.Equals(category, Metadata, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(category, SubtitleProvider, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(category, Seerr, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(category, Tags, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
