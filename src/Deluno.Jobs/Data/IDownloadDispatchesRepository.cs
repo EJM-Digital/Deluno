@@ -119,6 +119,15 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Like <see cref="FindDispatchByHashAsync"/> but counts archived dispatches
+    /// too. An archived dispatch is still proof Deluno sent that download (#1062).
+    /// </summary>
+    Task<DownloadDispatchItem?> FindAnyDispatchByHashAsync(
+        string clientId,
+        string hash,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Find the most recent grabbed-but-undetected dispatch matching a release name for a client.
     /// </summary>
     Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(

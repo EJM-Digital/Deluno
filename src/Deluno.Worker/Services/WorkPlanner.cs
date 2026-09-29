@@ -1477,7 +1477,7 @@ public sealed class WorkPlanner(
         {
             var actionResult = await downloadClientTelemetryService.ExecuteActionAsync(
                 item.ClientId,
-                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id),
+                new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, item.Id, dispatch?.DispatchId),
                 cancellationToken);
             removedFromClient = actionResult.Succeeded;
         }
@@ -1520,7 +1520,9 @@ public sealed class WorkPlanner(
 
         await activityFeedRepository.RecordActivityAsync(
             DownloadIntegrityFailedCategory,
-            $"{item.Title} finished in {item.ClientName}, but {reason} Deluno removed it, blocklisted the release and is searching for another copy.",
+            removedFromClient
+                ? $"{item.Title} finished in {item.ClientName}, but {reason} Deluno removed it, blocklisted the release and is searching for another copy."
+                : $"{item.Title} finished in {item.ClientName}, but {reason} Deluno blocklisted the release and is searching for another copy. It could not remove the download from {item.ClientName}, so remove it there.",
             JsonSerializer.Serialize(new
             {
                 item.ClientId,

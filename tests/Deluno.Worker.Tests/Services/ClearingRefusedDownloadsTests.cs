@@ -184,6 +184,27 @@ public sealed class ClearingRefusedDownloadsTests
     }
 
     /// <summary>
+    /// #1062: a download Deluno never sent is left alone, and said so plainly
+    /// rather than reported as the client being unavailable.
+    /// </summary>
+    [Fact]
+    public async Task A_download_Deluno_never_sent_is_left_alone_and_is_not_reported_as_the_client_being_down()
+    {
+        var blocklist = Blocklist(Refused("hash-1"));
+        var clients = new Mock<IDownloadClientTelemetryService>();
+        clients.Setup(service => service.ExecuteActionAsync(
+                It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) =>
+                new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Deluno did not send it.") { Refused = true });
+
+        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing())
+            .CleanUpOneAsync("block-1", CancellationToken.None);
+
+        Assert.Equal(RefusedDownloadCleanupOutcomes.NotSentByDeluno, outcome);
+        blocklist.Verify(list => list.MarkCleanedUpAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
     /// #882/#883/#885, cleanup sheet D1/D2/D4: a release the client itself
     /// reported as failed (missing articles, an encrypted archive, a damaged
     /// unpack) is removed from the client with its data once the user's own

@@ -280,6 +280,39 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
     }
 
+    /// <summary>#1062: Deluno archives a dispatch as it finishes with it; the download can still be in the client and is still Deluno's.</summary>
+    [Fact]
+    public async Task A_download_whose_dispatch_is_archived_is_still_Delunos_own_and_can_be_cleaned_up()
+    {
+        using var world = await World.CreateAsync("qbittorrent", TitleKind.Movie);
+        await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
+
+        Assert.True((await world.CheckOwnershipAsync(QueueItemId)).Owned);
+        var forgotten = await world.ActAsync(QueueItemId, DownloadClientActions.Forget, null);
+
+        Assert.True(forgotten.Succeeded);
+        Assert.False(forgotten.Refused);
+        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+        Assert.False((await world.CheckOwnershipAsync("someone-elses")).Owned);
+    }
+
+    /// <summary>#1062: a forced re-download names its own dispatch, even when the client id is not recorded yet.</summary>
+    [Fact]
+    public async Task A_forced_redownload_can_forget_an_item_by_naming_Delunos_own_dispatch_but_not_a_foreign_one()
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+        await world.Dispatches.ArchiveDispatchAsync(world.DispatchId, "finished", CancellationToken.None);
+
+        var own = await world.ActAsync("id-the-client-gave-later", DownloadClientActions.Forget, world.DispatchId);
+        Assert.True(own.Succeeded);
+        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
+
+        world.Client.LastAction = null;
+        var foreign = await world.ActAsync("hand-added", DownloadClientActions.Forget, "no-such-dispatch");
+        Assert.True(foreign.Refused);
+        Assert.Null(world.Client.LastAction);
+    }
+
     [Fact]
     public async Task Delunos_own_download_deletes_its_data_only_when_removeFromClient_is_set()
     {
@@ -309,7 +342,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
     {
         public string Protocol => protocol;
 
-        public string? LastAction { get; private set; }
+        public string? LastAction { get; set; }
 
         public string? LastQueueItemId { get; private set; }
 
@@ -386,8 +419,12 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             SqliteBlockedReleaseRepository blocklist,
             SqliteMovieCatalogRepository? movies,
             SqliteSeriesCatalogRepository? series,
-            string? seriesId)
+            string? seriesId,
+            SqliteDownloadDispatchesRepository dispatches,
+            string dispatchId)
         {
+            Dispatches = dispatches;
+            DispatchId = dispatchId;
             _storage = storage;
             _service = service;
             Client = fakeClient;
@@ -401,6 +438,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
             Series = series;
             SeriesId = seriesId;
         }
+
+        public SqliteDownloadDispatchesRepository Dispatches { get; }
+
+        public string DispatchId { get; }
 
         public FakeClient Client { get; }
 
@@ -524,7 +565,7 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
                 blocklist,
                 titleUnmonitorService: titleUnmonitorService);
 
-            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId);
+            return new World(storage, service, client, fakeClient, entityId, mediaType, jobs, blocklist, movies, series, seriesId, dispatches, dispatchId);
         }
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)
@@ -541,6 +582,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public Task<DownloadClientActionResult> ActForeignAsync(string queueItemId, string action)
             => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId), CancellationToken.None);
+
+        public Task<DownloadClientActionResult> ActAsync(string queueItemId, string action, string? dispatchId)
+            => _service.ExecuteActionAsync(ClientId, new DownloadClientActionRequest(action, queueItemId, dispatchId), CancellationToken.None);
 
         public Task<DownloadOwnership> CheckOwnershipAsync(string queueItemId)
             => _service.CheckOwnershipAsync(ClientId, queueItemId, CancellationToken.None);

@@ -816,6 +816,33 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
     }
 
+    public async Task<DownloadDispatchItem?> FindAnyDispatchByHashAsync(
+        string clientId,
+        string hash,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                {DispatchColumns}
+            FROM download_dispatches
+            WHERE download_client_id = @clientId
+              AND torrent_hash_or_item_id = @hash
+            ORDER BY created_utc DESC
+            LIMIT 1
+            """;
+
+        AddParameter(command, "@clientId", clientId);
+        AddParameter(command, "@hash", hash);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
+    }
+
     public async Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
         string clientId,
         string releaseName,
