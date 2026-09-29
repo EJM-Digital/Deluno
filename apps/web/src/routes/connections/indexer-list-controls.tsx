@@ -186,6 +186,7 @@ export function IndexerBulkBar({
   onPause,
   onRemove,
   onChangeScope,
+  onTags,
   onClear
 }: {
   count: number;
@@ -194,6 +195,7 @@ export function IndexerBulkBar({
   onPause: () => void;
   onRemove: () => void;
   onChangeScope: (scope: IndexerBulkScope) => void;
+  onTags?: () => void;
   onClear: () => void;
 }) {
   if (count === 0) return null;
@@ -215,6 +217,7 @@ export function IndexerBulkBar({
         placeholder="Used for…"
         options={[{ value: "movies", label: "Movies" }, { value: "tv", label: "TV" }, { value: "both", label: "Movies · TV" }]}
       />
+      {onTags ? <Button type="button" variant="outline" size="sm" aria-label="Change tags on the selected indexers" disabled={busy} onClick={onTags}>Tags</Button> : null}
       <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={onRemove}>Remove</Button>
       <span className="flex-1" />
       <Button type="button" variant="ghost" size="sm" onClick={onClear}>Clear selection</Button>
