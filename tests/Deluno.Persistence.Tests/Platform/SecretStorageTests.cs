@@ -21,7 +21,6 @@ public sealed class SecretStorageTests
 
         await repository.SaveAsync(
             new UpdatePlatformSettingsRequest(
-                AppInstanceName: "Deluno",
                 MovieRootPath: null,
                 SeriesRootPath: null,
                 DownloadsPath: null,

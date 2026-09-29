@@ -94,7 +94,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var manifest = new ExternalIntegrationManifest(
                 Product: "Deluno",
                 Version: Deluno.Contracts.DelunoApiVersion.Current,
-                InstanceName: settings.AppInstanceName,
+                InstanceName: Deluno.Contracts.DelunoHostName.Current,
                 Capabilities:
                 [
                     "movies",
@@ -189,7 +189,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var queue = await jobs.ListAsync(50, cancellationToken);
 
             return Results.Ok(new ExternalHealthResponse(
-                InstanceName: settings.AppInstanceName,
+                InstanceName: Deluno.Contracts.DelunoHostName.Current,
                 Status: "online",
                 LibraryCount: libraries.Count,
                 EnabledIndexerCount: indexers.Count(item => item.IsEnabled),
@@ -234,7 +234,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             return Results.Ok(new
             {
                 generatedUtc = DateTimeOffset.UtcNow,
-                instance = new { settings.AppInstanceName },
+                instance = new { AppInstanceName = Deluno.Contracts.DelunoHostName.Current },
                 health = new
                 {
                     status = unhealthyIndexers.Length + unhealthyClients.Length == 0 ? "healthy" : "degraded",

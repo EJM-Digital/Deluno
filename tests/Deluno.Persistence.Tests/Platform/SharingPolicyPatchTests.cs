@@ -167,7 +167,7 @@ public sealed class SharingPolicyPatchTests
         using var _ = storage;
 
         await PatchAsync(repository, new PatchPlatformSettingsRequest(SharingCompletionAction: SharingPolicy.CompletionStop));
-        await PatchAsync(repository, new PatchPlatformSettingsRequest(AppInstanceName: "Renamed"));
+        await PatchAsync(repository, new PatchPlatformSettingsRequest(UiTheme: "dark"));
 
         var settings = await repository.GetAsync(CancellationToken.None);
         Assert.Equal(SharingPolicy.CompletionStop, settings.SharingCompletionAction);

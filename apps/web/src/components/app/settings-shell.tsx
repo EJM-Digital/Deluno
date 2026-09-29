@@ -309,7 +309,7 @@ export const settingsPageMeta = [
   {
     match: (path: string) => path.startsWith("/settings/general"),
     title: "General",
-    description: "Instance name, network address, port, and reverse-proxy routing.",
+    description: "Network address, port, and reverse-proxy routing.",
     chrome: "none"
   },
   {

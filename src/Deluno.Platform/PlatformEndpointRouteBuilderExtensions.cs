@@ -798,11 +798,6 @@ public static class PlatformEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(request.AppInstanceName))
-        {
-            errors["appInstanceName"] = ["A library name is required."];
-        }
-
         if (request.HostPort <= 0)
         {
             errors["hostPort"] = ["Choose a valid port number."];

@@ -484,6 +484,7 @@ public sealed class OutboundNotificationService(
 
         var payload = new
         {
+            instanceName = Deluno.Contracts.DelunoHostName.Current,
             eventCategory,
             title,
             message,

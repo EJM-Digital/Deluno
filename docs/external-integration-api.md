@@ -149,7 +149,7 @@ Response shape:
 {
   "product": "Deluno",
   "version": "v1",
-  "instanceName": "Deluno",
+  "instanceName": "DELUNO-PC",
   "capabilities": [
     "movies",
     "tv",
@@ -380,7 +380,7 @@ Commands are remembered in memory for the last 100 asked since Deluno started.
 `GET /api/system/status` (`read` scope) is what a dashboard such as Homepage
 or Homarr asks. Its first block carries the field names of Radarr's and
 Sonarr's `GET /api/v3/system/status` (checked against `SystemResource` in
-Radarr.Api.V3): `appName`, `instanceName`, `version` (for example
+Radarr.Api.V3): `appName`, `instanceName` (the machine's hostname, not a setting), `version` (for example
 `1.0.0-rc.23`), `buildTime`, `isDebug`, `isProduction`, `isUserInteractive`,
 `startupPath`, `appData`, `osName`, `osVersion`, `isNetCore`, `isLinux`,
 `isOsx`, `isWindows`, `isDocker`, `branch` (the update channel),

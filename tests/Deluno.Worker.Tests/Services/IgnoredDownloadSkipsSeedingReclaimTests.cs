@@ -182,7 +182,6 @@ public sealed class IgnoredDownloadSkipsSeedingReclaimTests
     }
 
     private static PlatformSettingsSnapshot DefaultSettings() => new(
-        AppInstanceName: "Deluno",
         MovieRootPath: null,
         SeriesRootPath: null,
         DownloadsPath: null,
