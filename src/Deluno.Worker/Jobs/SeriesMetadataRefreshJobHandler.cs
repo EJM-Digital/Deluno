@@ -146,7 +146,16 @@ public sealed class SeriesMetadataRefreshJobHandler(
         IReadOnlyList<MetadataSeason> seasons;
         try
         {
-            seasons = await metadataProvider.GetSeriesCatalogueAsync(providerId, cancellationToken);
+            // TheTVDB's list when it lines up with the episodes this show
+            // already has, TMDb's when it would strand any of them.
+            var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, cancellationToken);
+            seasons = await MetadataCatalogueChoice.GetAsync(
+                metadataProvider,
+                providerId,
+                (inventory?.Episodes ?? [])
+                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
+                    .ToArray(),
+                cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -160,11 +169,16 @@ public sealed class SeriesMetadataRefreshJobHandler(
                 episode.EpisodeNumber,
                 episode.Title,
                 episode.Overview,
-                episode.AirDateUtc))
+                episode.AirDateUtc,
+                episode.AbsoluteNumber))
             .ToArray();
 
         return episodes.Length == 0
             ? SeriesCatalogueSyncResult.None
-            : await seriesCatalogRepository.SyncEpisodeCatalogueAsync(seriesId, episodes, "tmdb", cancellationToken);
+            : await seriesCatalogRepository.SyncEpisodeCatalogueAsync(
+                seriesId,
+                episodes,
+                MetadataCatalogueChoice.SourceName(seasons),
+                cancellationToken);
     }
 }

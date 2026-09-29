@@ -36,6 +36,18 @@ public interface IMetadataProvider
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same catalogue with the source chosen by the caller. A show whose
+    /// episodes already exist on TMDb's numbering asks for
+    /// <see cref="MetadataCatalogueSource.TmdbOnly"/> when TheTVDB's aired
+    /// numbering would not line up with them.
+    /// </summary>
+    Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
+        string providerId,
+        MetadataCatalogueSource source,
+        CancellationToken cancellationToken)
+        => GetSeriesCatalogueAsync(providerId, cancellationToken);
+
+    /// <summary>
     /// Every alternate episode ordering TMDb's episode_groups endpoint
     /// publishes for a series (#863) - aired order is not included, since it
     /// is simply <see cref="GetSeriesCatalogueAsync"/>'s own plain
@@ -45,6 +57,17 @@ public interface IMetadataProvider
     Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
         string providerId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same orderings with the source chosen by the caller. Orderings are
+    /// keyed by the aired numbering of the provider they came from, so a show
+    /// still on TMDb's numbering asks for TMDb's orderings only.
+    /// </summary>
+    Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
+        string providerId,
+        MetadataCatalogueSource source,
+        CancellationToken cancellationToken)
+        => GetSeriesEpisodeGroupsAsync(providerId, cancellationToken);
 
     /// <summary>
     /// When a movie reached cinemas, digital and physical release. Returns

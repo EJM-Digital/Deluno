@@ -33,7 +33,25 @@ public sealed class EpisodeGroupRefreshService(
             IReadOnlyList<MetadataEpisodeGroup> groups;
             try
             {
-                groups = await metadataProvider.GetSeriesEpisodeGroupsAsync(item.MetadataProviderId!, cancellationToken);
+                // An ordering is keyed by the aired numbering of the provider it
+                // came from. TheTVDB's are used only for a show whose episodes
+                // sit on TheTVDB's numbering (or line up with it); a show still
+                // on TMDb's numbering keeps TMDb's orderings, so no episode is
+                // handed another episode's absolute or DVD number.
+                var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(item.Id, cancellationToken);
+                var catalogue = await MetadataCatalogueChoice.GetAsync(
+                    metadataProvider,
+                    item.MetadataProviderId!,
+                    (inventory?.Episodes ?? [])
+                        .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
+                        .ToArray(),
+                    cancellationToken);
+                groups = await metadataProvider.GetSeriesEpisodeGroupsAsync(
+                    item.MetadataProviderId!,
+                    MetadataCatalogueChoice.SourceName(catalogue) == "tvdb"
+                        ? MetadataCatalogueSource.Preferred
+                        : MetadataCatalogueSource.TmdbOnly,
+                    cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

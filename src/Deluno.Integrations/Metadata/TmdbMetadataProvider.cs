@@ -15,7 +15,7 @@ using Microsoft.Extensions.Options;
 
 namespace Deluno.Integrations.Metadata;
 
-public sealed class TmdbMetadataProvider(
+public sealed partial class TmdbMetadataProvider(
     HttpClient httpClient,
     IConfiguration configuration,
     IPlatformSettingsRepository platformRepository,
@@ -161,7 +161,7 @@ public sealed class TmdbMetadataProvider(
             "metadata.tmdb.reachability",
             cancellationToken);
 
-    public Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
+    private Task<IReadOnlyList<MetadataSearchResult>> SearchTmdbAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
         => !string.IsNullOrWhiteSpace(request.IdSource)
@@ -335,7 +335,7 @@ public sealed class TmdbMetadataProvider(
         return staleFallback is null ? [] : await LocalizeArtworkAsync(staleFallback, cancellationToken);
     }
 
-    public async Task<MetadataProviderRecordLookup> ResolveProviderRecordAsync(
+    private async Task<MetadataProviderRecordLookup> ResolveTmdbProviderRecordAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken)
     {
@@ -1222,7 +1222,8 @@ public sealed class TmdbMetadataProvider(
             requiresDirectFallback ? await GetApiKeyAsync(cancellationToken) : null,
             requiresDirectFallback ? await GetOmdbApiKeyAsync(cancellationToken) : null,
             NormalizeLanguage(settings.MetadataLanguage),
-            NormalizeCountry(settings.MetadataCertificationCountry));
+            NormalizeCountry(settings.MetadataCertificationCountry),
+            requiresDirectFallback && (await GetTvdbCredentialsAsync(cancellationToken)).Key is not null);
     }
 
     /// <summary>
@@ -1318,10 +1319,14 @@ public sealed class TmdbMetadataProvider(
             new MetadataSourceStatus(
                 "tvdb",
                 "TVDb",
-                "Future TV-specific enrichment",
-                false,
-                "planned",
-                "Reserved for future TV metadata fallback and episode-specific enrichment."),
+                "TV first: series details, artwork, episode numbering",
+                config.TvdbDirectKey || (brokerConfigured && config.ProviderMode is "broker" or "hybrid"),
+                config.TvdbDirectKey || config.ProviderMode is "broker" or "hybrid" ? "primary-tv" : "unavailable",
+                config.TvdbDirectKey
+                    ? "A TheTVDB key is set on this installation; TV titles are matched against TheTVDB first, with TMDb filling any gaps."
+                    : brokerConfigured && config.ProviderMode is "broker" or "hybrid"
+                        ? "TV titles are matched against TheTVDB through Deluno's managed metadata service, with TMDb filling any gaps."
+                        : "No TheTVDB key is set, so TV titles use TMDb only."),
             new MetadataSourceStatus(
                 "fanart",
                 "Fanart.tv",
@@ -1688,7 +1693,7 @@ public sealed class TmdbMetadataProvider(
     /// between a library that mirrors your disk and one that knows what episodes
     /// exist, so it is worth a direct call rather than nothing.
     /// </summary>
-    public async Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
+    private async Task<IReadOnlyList<MetadataSeason>> GetTmdbSeriesCatalogueAsync(
         string providerId,
         CancellationToken cancellationToken)
     {
@@ -1729,7 +1734,7 @@ public sealed class TmdbMetadataProvider(
     /// Every alternate ordering (aired/DVD/absolute/story-arc) TMDb's
     /// episode_groups endpoint publishes for this series (#863).
     /// </summary>
-    public async Task<IReadOnlyList<MetadataEpisodeGroup>> GetSeriesEpisodeGroupsAsync(
+    private async Task<IReadOnlyList<MetadataEpisodeGroup>> GetTmdbSeriesEpisodeGroupsAsync(
         string providerId,
         CancellationToken cancellationToken)
     {
@@ -3103,7 +3108,8 @@ public sealed class TmdbMetadataProvider(
         string? TmdbApiKey,
         string? OmdbApiKey,
         string? Language = null,
-        string CertificationCountry = "US");
+        string CertificationCountry = "US",
+        bool TvdbDirectKey = false);
 
     private sealed record MetadataBrokerSearchResponse(
         string Provider,
@@ -3137,7 +3143,9 @@ public sealed class TmdbMetadataProvider(
 
     private sealed record TmdbExternalIds(
         [property: JsonPropertyName("imdb_id")] string? ImdbId,
-        [property: JsonPropertyName("tvdb_id")] string? TvDbId = null);
+        // TMDb sends this as a JSON number; a plain string property refused the
+        // whole record, so a direct-mode TV lookup came back empty.
+        [property: JsonPropertyName("tvdb_id"), JsonConverter(typeof(NumberOrStringConverter))] string? TvDbId = null);
 
     private sealed record TmdbDetailItem(
         [property: JsonPropertyName("id")] int Id,

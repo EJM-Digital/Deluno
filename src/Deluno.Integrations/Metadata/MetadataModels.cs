@@ -215,7 +215,31 @@ public sealed record MetadataEpisode(
     int EpisodeNumber,
     string? Title,
     string? Overview,
-    DateTimeOffset? AirDateUtc);
+    DateTimeOffset? AirDateUtc,
+    /// <summary>
+    /// The absolute (whole-series) episode number, which anime release names
+    /// are numbered by. TheTVDB keeps one for every aired episode; TMDb does
+    /// not, so it stays null for a TMDb-sourced episode.
+    /// </summary>
+    int? AbsoluteNumber = null,
+    /// <summary>
+    /// Which provider's numbering this episode is on: <c>tvdb</c>, or null for
+    /// TMDb (the numbering every catalogue was built on before TheTVDB).
+    /// </summary>
+    string? Source = null);
+
+/// <summary>Which provider a series catalogue should come from.</summary>
+public enum MetadataCatalogueSource
+{
+    /// <summary>TheTVDB first, TMDb for anything TheTVDB does not have.</summary>
+    Preferred,
+
+    /// <summary>
+    /// TMDb only. Used for a show that already has episodes on TMDb's
+    /// numbering, so switching source never leaves its files stranded.
+    /// </summary>
+    TmdbOnly
+}
 
 /// <summary>
 /// TMDb's own numbering codes for an episode group (#863), from the
