@@ -73,7 +73,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
             {
                 System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden
                     => new ProcessorConnectionTestResult(connection.Id, false, "degraded", "Processor endpoint is reachable but rejected the configured credential.", statusCode, latency),
-                _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"Deluno could reach the processor, but its hand-off address only accepts submissions and answered the connection check with HTTP {statusCode}, so Deluno could not confirm it is working. Add a health-check address to this connection to test it properly; until then Deluno will validate it when the first hand-off is submitted.", statusCode, latency)
+                _ => new ProcessorConnectionTestResult(connection.Id, true, "degraded", $"Deluno could reach the processor, but its hand-off address only accepts submissions and answered the connection check with HTTP {statusCode}, so Deluno could not confirm it is working. Add a health-check address to this connection (Edit, under Processor connections) to test it properly; until then Deluno will validate it when the first hand-off is submitted.", statusCode, latency)
             };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested && (exception is HttpRequestException or TaskCanceledException))
