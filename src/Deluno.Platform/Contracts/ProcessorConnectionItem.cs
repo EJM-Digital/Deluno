@@ -19,7 +19,13 @@ public sealed record ProcessorConnectionItem(
     string? LastHealthMessage,
     DateTimeOffset? LastHealthTestUtc,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset UpdatedUtc)
+    DateTimeOffset UpdatedUtc,
+    /// <summary>
+    /// Optional address Deluno asks (GET) to prove the processor is up: a 2xx answer is healthy,
+    /// 401/403 a rejected credential, anything else a failure. Empty means the test can only
+    /// confirm that something answers at <see cref="SubmissionUrl"/> (#1055).
+    /// </summary>
+    string? HealthCheckUrl = null)
 {
     public bool SecretConfigured => !string.IsNullOrWhiteSpace(Secret);
 }
@@ -30,7 +36,8 @@ public sealed record CreateProcessorConnectionRequest(
     string? SubmissionUrl,
     string? AuthHeaderName,
     string? Secret,
-    bool IsEnabled);
+    bool IsEnabled,
+    string? HealthCheckUrl = null);
 
 public sealed record UpdateProcessorConnectionRequest(
     string? Name,
@@ -38,7 +45,8 @@ public sealed record UpdateProcessorConnectionRequest(
     string? SubmissionUrl,
     string? AuthHeaderName,
     string? Secret,
-    bool IsEnabled);
+    bool IsEnabled,
+    string? HealthCheckUrl = null);
 
 public sealed record ProcessorConnectionTestResult(
     string ConnectionId,

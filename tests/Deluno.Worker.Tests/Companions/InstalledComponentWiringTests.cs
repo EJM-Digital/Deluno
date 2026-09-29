@@ -167,6 +167,29 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Contains("it refused the sign-in", Assert.Single(_activity), StringComparison.Ordinal);
     }
 
+    /// <summary>#1055: the summary line never says everything passed when something did not.</summary>
+    [Fact]
+    public async Task The_activity_names_what_passed_and_what_did_not_with_the_reason()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<ICompanionTool>();
+        weir.SetupGet(item => item.Id).Returns(CompanionToolIds.Weir);
+        weir.SetupGet(item => item.Name).Returns("Weir");
+        weir.Setup(item => item.IsInstalled()).Returns(true);
+        weir.Setup(item => item.RunAsync(It.IsAny<CompanionRunContext>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new CompanionStepException("Weir is installed and added to Deluno, but its test did not pass: the processor answered its health check with HTTP 503."));
+
+        await NewWirer(weir: weir.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+
+        Assert.Equal(2, _activity.Count);
+        Assert.Contains(_activity, line => line.Contains("HTTP 503", StringComparison.Ordinal));
+        var summary = Assert.Single(_activity, line => line.StartsWith("Connected", StringComparison.Ordinal));
+        Assert.Contains("qBittorrent", summary, StringComparison.Ordinal);
+        Assert.Contains("Weir did not pass its test", summary, StringComparison.Ordinal);
+        Assert.DoesNotContain("Each connection was tested and passed", summary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task An_unexpected_error_leaves_the_app_for_the_next_pass()
     {

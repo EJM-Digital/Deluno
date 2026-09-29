@@ -194,7 +194,9 @@ public sealed class ProcessorConnectionServiceTests
         Assert.True(result.IsReachable);
         Assert.Equal("degraded", result.Status);
         Assert.Equal(expected, result.StatusCode);
-        Assert.Contains("reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+        // It says what was and was not checked, and how to get a real check.
+        Assert.Contains("could not confirm it is working", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("health-check address", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -211,6 +213,103 @@ public sealed class ProcessorConnectionServiceTests
         Assert.False(result.IsReachable);
         Assert.Equal("unreachable", result.Status);
         Assert.Null(result.StatusCode);
+    }
+
+    private static ProcessorConnectionItem WithHealthCheck(string healthUrl, string? secret = "hook-secret")
+        => new(
+            "connection-1", "Weir", "generic-webhook", "http://127.0.0.1:9347/api/v1/intake/webhook/deluno",
+            "X-Webhook-Secret", secret, true, "unknown", null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, healthUrl);
+
+    /// <summary>#1055: the run-6 failure. Weir's hand-off route is POST-only; its /ready answers 200 when it is up.</summary>
+    [Fact]
+    public async Task TestAsync_with_a_health_check_address_asks_it_with_GET_and_a_2xx_answer_is_healthy()
+    {
+        var seen = new List<HttpRequestMessage>();
+        var handler = new StubHandler(request =>
+        {
+            seen.Add(request);
+            // The hand-off route would answer 405 to anything but a POST.
+            return request.RequestUri!.AbsolutePath == "/ready"
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                : new HttpResponseMessage(HttpStatusCode.MethodNotAllowed);
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.TestAsync(WithHealthCheck("http://127.0.0.1:9347/ready"), CancellationToken.None);
+
+        Assert.Equal("healthy", result.Status);
+        Assert.True(result.IsReachable);
+        Assert.Equal(200, result.StatusCode);
+        var request = Assert.Single(seen);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("/ready", request.RequestUri!.AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, false)]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    [InlineData(HttpStatusCode.NotFound, true)]
+    public async Task TestAsync_with_a_health_check_address_says_in_plain_words_when_it_is_not_healthy(HttpStatusCode status, bool reachable)
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(status));
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.TestAsync(WithHealthCheck("http://127.0.0.1:9347/ready"), CancellationToken.None);
+
+        Assert.Equal("degraded", result.Status);
+        Assert.Equal(reachable, result.IsReachable);
+        Assert.Contains(((int)status).ToString(), result.Message, StringComparison.Ordinal);
+        Assert.Contains("health check", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TestAsync_with_a_health_check_address_that_does_not_answer_is_unreachable()
+    {
+        var handler = new StubHandler(_ => throw new HttpRequestException("refused"));
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        var result = await service.TestAsync(WithHealthCheck("http://127.0.0.1:9347/ready"), CancellationToken.None);
+
+        Assert.Equal("unreachable", result.Status);
+        Assert.False(result.IsReachable);
+    }
+
+    [Fact]
+    public async Task The_credential_is_sent_to_the_processors_own_host_only()
+    {
+        var seen = new List<HttpRequestMessage>();
+        var handler = new StubHandler(request =>
+        {
+            seen.Add(request);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+
+        await service.TestAsync(WithHealthCheck("http://127.0.0.1:9347/ready"), CancellationToken.None);
+        await service.TestAsync(WithHealthCheck("https://status.other.example/ready"), CancellationToken.None);
+
+        Assert.True(seen[0].Headers.Contains("X-Webhook-Secret"));
+        Assert.False(seen[1].Headers.Contains("X-Webhook-Secret"));
+    }
+
+    [Fact]
+    public async Task TestAsync_without_a_health_check_address_is_unchanged_a_HEAD_to_the_hand_off_address()
+    {
+        HttpRequestMessage? seen = null;
+        var handler = new StubHandler(request =>
+        {
+            seen = request;
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        var service = new ProcessorConnectionService(new StubHttpClientFactory(new HttpClient(handler)));
+        var connection = WithHealthCheck("http://unused.invalid/ready") with { HealthCheckUrl = null };
+
+        var result = await service.TestAsync(connection, CancellationToken.None);
+
+        Assert.Equal(HttpMethod.Head, seen!.Method);
+        Assert.Equal("healthy", result.Status);
+        Assert.Contains("cannot check more than this", result.Message, StringComparison.Ordinal);
     }
 
     private sealed class StubHttpClientFactory(HttpClient client) : IHttpClientFactory

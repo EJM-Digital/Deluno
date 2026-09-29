@@ -12,17 +12,33 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// unhealthy since before the last restart still shows up here rather than
 /// only in the Connections screen.
 /// </summary>
-public sealed class DownloadClientHealthCheck(IConnectionsRepository connections) : IHealthCheck
+public sealed class DownloadClientHealthCheck(IConnectionsRepository connections, TimeProvider timeProvider) : IHealthCheck
 {
+    /// <summary>
+    /// How long a client that has never been tested is left alone (#1055). One that was
+    /// added seconds ago is being tested by whatever added it (the installer's
+    /// connecting pass tests each client, up to ten tries), and reading it in that gap
+    /// reported "Not tested yet" for a client that was healthy a moment later.
+    /// </summary>
+    public static readonly TimeSpan NewClientGrace = TimeSpan.FromMinutes(5);
+
     public string Category => HealthCheckCategories.DownloadClient;
 
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
         var clients = await connections.ListDownloadClientsAsync(cancellationToken);
         var outcomes = new List<HealthCheckOutcome>(clients.Count);
+        var now = timeProvider.GetUtcNow();
 
         foreach (var client in clients.Where(item => item.IsEnabled))
         {
+            if (client.LastHealthTestUtc is null
+                && !string.Equals(client.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase)
+                && now - client.CreatedUtc < NewClientGrace)
+            {
+                continue;
+            }
+
             var id = $"download-client:{client.Id}";
             var name = $"{client.Name} (download client)";
 

@@ -1454,6 +1454,8 @@ export interface ProcessorConnectionItem {
   provider: "fileflows-webhook" | "generic-webhook" | string;
   submissionUrl: string;
   authHeaderName: string;
+  /** Optional address Deluno asks (GET) to prove the processor is up (#1055). */
+  healthCheckUrl?: string | null;
   secretConfigured: boolean;
   isEnabled: boolean;
   healthStatus: "unknown" | "healthy" | "degraded" | "unreachable" | string;

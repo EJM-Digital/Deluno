@@ -59,6 +59,7 @@ public sealed class InstalledComponentWirer(
         }
 
         var connected = new List<string>();
+        var failed = new List<string>();
         Exception? unexpected = null;
         foreach (var entry in pending)
         {
@@ -84,6 +85,7 @@ public sealed class InstalledComponentWirer(
             }
             else
             {
+                failed.Add(outcome.Name);
                 await activity.RecordActivityAsync(
                     ActivityCategory,
                     $"{outcome.Name} was installed and added to Deluno, but its connection test did not pass: {outcome.Problem} The connection is kept; fix it, then test it again from its own screen.",
@@ -95,7 +97,10 @@ public sealed class InstalledComponentWirer(
         {
             await activity.RecordActivityAsync(
                 ActivityCategory,
-                $"Connected {Join(connected)} to Deluno after installing {(connected.Count == 1 ? "it" : "them")}. Each connection was tested and passed.",
+                // Only what passed is claimed as passed; whatever did not is named beside it (and has its own line with the reason).
+                failed.Count == 0
+                    ? $"Connected {Join(connected)} to Deluno after installing {(connected.Count == 1 ? "it" : "them")}. Each connection was tested and passed."
+                    : $"Connected {Join(connected)} to Deluno after installing {(connected.Count == 1 ? "it" : "them")}, and {(connected.Count == 1 ? "its test" : "their tests")} passed. {Join(failed)} did not pass its test; the reason is in its own line.",
                 null, null, null, null, cancellationToken);
         }
 
