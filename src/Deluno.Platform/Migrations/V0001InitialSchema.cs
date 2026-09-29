@@ -137,7 +137,8 @@ public static class PlatformDatabaseMigrations
         new V0129ProcessorHealthCheckUrl(),
         new V0130RetentionActions(),
         new V0131RemoveInstanceNameSetting(),
-        new V0132ProcessorLinksById()
+        new V0132ProcessorLinksById(),
+        new V0133ConnectionNamesFollowTheirAddress()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

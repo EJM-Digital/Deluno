@@ -76,6 +76,48 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         }
     }
 
+    public async Task<string?> GetMachineNameAsync(
+        string submissionUrl,
+        string? authHeaderName,
+        string? secret,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(submissionUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(4));
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, "/api/v1/intake/capabilities"));
+            if (!string.IsNullOrWhiteSpace(secret))
+            {
+                var header = string.IsNullOrWhiteSpace(authHeaderName) ? "Authorization" : authHeaderName.Trim();
+                request.Headers.TryAddWithoutValidation(header, header.Equals("Authorization", StringComparison.OrdinalIgnoreCase) ? $"Bearer {secret}" : secret);
+            }
+
+            using var response = await httpClientFactory.CreateClient("processor-health").SendAsync(request, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(timeout.Token), cancellationToken: timeout.Token);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                   && document.RootElement.TryGetProperty("machine_name", out var value)
+                   && value.ValueKind == JsonValueKind.String
+                   && !string.IsNullOrWhiteSpace(value.GetString())
+                ? value.GetString()!.Trim()
+                : null;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or JsonException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     private const int MaxCheckRedirects = 5;
 
     /// <summary>

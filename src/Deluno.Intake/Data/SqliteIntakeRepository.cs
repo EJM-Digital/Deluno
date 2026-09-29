@@ -421,7 +421,7 @@ public sealed class SqliteIntakeRepository(
         var mediaType = NormalizeMediaType(request.MediaType);
         var item = new IntakeSourceItem(
             Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New list source",
+            Name: string.Empty,
             Provider: NormalizeName(request.Provider) ?? "manual",
             FeedUrl: NormalizeName(request.FeedUrl) ?? string.Empty,
             MediaType: mediaType,
@@ -448,6 +448,15 @@ public sealed class SqliteIntakeRepository(
             SeriesType: mediaType == "tv" ? NormalizeName(request.SeriesType) : null,
             SeasonFolder: mediaType == "tv" ? request.SeasonFolder : null,
             Tags: NormalizeCsv(request.Tags));
+
+        item = item with
+        {
+            Name = ConnectionNames.Unique(
+                ConnectionNames.ImportList(item.Provider, item.FeedUrl),
+                null,
+                item.Id,
+                await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", item.Id, cancellationToken))
+        };
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -547,7 +556,10 @@ public sealed class SqliteIntakeRepository(
 
         var mediaType = NormalizeMediaType(request.MediaType);
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", NormalizeName(request.Name) ?? current.Name);
+        var updatedProvider = NormalizeName(request.Provider) ?? current.Provider;
+        var updatedFeed = NormalizeName(request.FeedUrl) ?? current.FeedUrl;
+        AddParameter(command, "@name", ConnectionNames.Unique(ConnectionNames.ImportList(updatedProvider, updatedFeed), null, id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "intake_sources", id, cancellationToken)));
         AddParameter(command, "@provider", NormalizeName(request.Provider) ?? current.Provider);
         AddParameter(command, "@feedUrl", NormalizeName(request.FeedUrl) ?? current.FeedUrl);
         AddParameter(command, "@mediaType", mediaType);

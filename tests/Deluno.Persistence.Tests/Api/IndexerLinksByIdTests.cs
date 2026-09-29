@@ -26,7 +26,7 @@ public sealed class IndexerLinksByIdTests
     {
         await using var app = await ApplicationTestHost.StartAsync();
         var connections = app.Services.GetRequiredService<IConnectionsRepository>();
-        var indexer = await CreateIndexerAsync(connections, "Fixture");
+        var indexer = await CreateIndexerAsync(app, connections, "Fixture");
         var library = await CreateLibraryAsync(app);
 
         var added = await app.Client.PostAsJsonAsync("/api/movies", new { title = "Wanted Film", releaseYear = 2011, monitored = true });
@@ -46,10 +46,7 @@ public sealed class IndexerLinksByIdTests
         Assert.Equal(indexer.Id, link!.IndexerId);
 
         // Rename it, and go on using it.
-        await connections.UpdateIndexerAsync(
-            indexer.Id,
-            new UpdateIndexerRequest("A better name", null, null, null, null, null, null, null, null, null),
-            CancellationToken.None);
+        await RenameAsync(app, indexer.Id, "A better name");
         await stats.RecordBatchAsync([Query(indexer.Id, "A better name")], CancellationToken.None);
         await app.Services.GetRequiredService<IJobQueueRepository>().RecordDownloadDispatchAsync(
             library.Id, "movies", "movie", "title-two", "Another.Film.2012.1080p.WEB-DL-DELUNO", "A better name", "client-1", "qBittorrent", "sent", null,
@@ -91,7 +88,7 @@ public sealed class IndexerLinksByIdTests
         await queue.RecordDownloadDispatchAsync(
             library.Id, "movies", "movie", "title-two", "Other.Film.2013.1080p.WEB-DL-DELUNO", "Stranger", "client-1", "qBittorrent", "sent", null,
             cancellationToken: CancellationToken.None);
-        var indexer = await CreateIndexerAsync(connections, "later INDEXER");
+        var indexer = await CreateIndexerAsync(app, connections, "later INDEXER");
 
         var linked = await IndexerIdentity.BackfillAsync(app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>(), CancellationToken.None);
 
@@ -108,10 +105,19 @@ public sealed class IndexerLinksByIdTests
     private static IndexerQueryLogEntry Query(string indexerId, string indexerName)
         => new(indexerId, indexerName, "Wanted Film", "2000", "movies", "search", "matched", 120, 4, DateTimeOffset.UtcNow);
 
-    private static Task<IndexerItem> CreateIndexerAsync(IConnectionsRepository connections, string name)
-        => connections.CreateIndexerAsync(
+    // #1076: a name is worked out from the address now; these tests are about rows an older install wrote under a typed one.
+    private static async Task<IndexerItem> CreateIndexerAsync(ApplicationTestHost app, IConnectionsRepository connections, string name)
+    {
+        var created = await connections.CreateIndexerAsync(
             new CreateIndexerRequest(name, "torznab", "public", "http://indexer.invalid/api", null, 25, "2000", "", "both", IsEnabled: true),
             CancellationToken.None);
+        await RenameAsync(app, created.Id, name);
+        return created with { Name = name };
+    }
+
+    private static Task RenameAsync(ApplicationTestHost app, string id, string name)
+        => LegacyConnectionNames.SetAsync(app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>(), "indexer_sources", id, name);
+
 
     private static async Task<LibraryItem> CreateLibraryAsync(ApplicationTestHost app)
         => await app.Services.GetRequiredService<ILibrariesRepository>().CreateLibraryAsync(

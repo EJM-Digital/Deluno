@@ -372,11 +372,6 @@ public static class IntakeEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            errors["name"] = ["Give this list source a name."];
-        }
-
         if (string.IsNullOrWhiteSpace(provider))
         {
             errors["provider"] = ["Choose a provider."];

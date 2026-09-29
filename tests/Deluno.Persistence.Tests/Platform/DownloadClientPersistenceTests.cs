@@ -172,7 +172,7 @@ public sealed class DownloadClientPersistenceTests
 
         var created = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
 
-        Assert.Equal("qBittorrent", created.Name);
+        Assert.Equal($"qBittorrent on {Deluno.Contracts.DelunoHostName.Current}", created.Name);
         Assert.Equal("qbittorrent", created.Protocol);
         Assert.Equal("localhost", created.Host);
         Assert.Equal(8080, created.Port);
@@ -381,7 +381,7 @@ public sealed class DownloadClientPersistenceTests
             CancellationToken.None);
 
         Assert.NotNull(updated);
-        Assert.Equal("Updated Client", updated.Name);
+        Assert.Equal("qBittorrent on 192.168.1.100", updated.Name);
         Assert.Equal("192.168.1.100", updated.Host);
         Assert.Equal(9090, updated.Port);
         Assert.Equal("radarr-movies", updated.MoviesCategory);

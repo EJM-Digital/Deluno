@@ -143,7 +143,7 @@ public sealed class ManualSearchEndpointTests
         var raw = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, raw);
         var body = JsonSerializer.Deserialize<JsonElement>(raw);
-        Assert.Equal("Fake", body.GetProperty("downloadClientName").GetString());
+        Assert.Equal($"qBittorrent on {Deluno.Contracts.DelunoHostName.Current}", body.GetProperty("downloadClientName").GetString());
         Assert.Equal(client.Id, grabService.LastClientId);
         Assert.True(body.GetProperty("succeeded").GetBoolean());
     }
@@ -207,7 +207,7 @@ public sealed class ManualSearchEndpointTests
         var searchRow = items.SingleOrDefault(item => item.GetProperty("eventType").GetString() == "search"
             && item.GetProperty("indexerId").GetString() == indexer.Id);
         Assert.NotEqual(default, searchRow);
-        Assert.Equal("Fixture torznab", searchRow.GetProperty("indexerName").GetString());
+        Assert.Equal(Deluno.Contracts.DelunoHostName.Current, searchRow.GetProperty("indexerName").GetString());
         Assert.Equal("matched", searchRow.GetProperty("outcome").GetString());
     }
 

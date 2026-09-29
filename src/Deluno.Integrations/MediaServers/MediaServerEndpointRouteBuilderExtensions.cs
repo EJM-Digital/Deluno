@@ -275,11 +275,6 @@ public static class MediaServerEndpointRouteBuilderExtensions
             errors["kind"] = ["Choose Plex, Jellyfin or Emby."];
         }
 
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            errors["name"] = ["Give this server a name."];
-        }
-
         if (!Uri.TryCreate(request.BaseUrl?.Trim(), UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {

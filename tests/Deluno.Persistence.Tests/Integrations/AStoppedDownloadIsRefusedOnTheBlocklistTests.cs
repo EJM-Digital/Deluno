@@ -43,7 +43,7 @@ public sealed class AStoppedDownloadIsRefusedOnTheBlocklistTests
         // #800: Deluno decided this on its own, from a health strike, not a
         // person clicking Refuse.
         Assert.Equal(BlockedReleaseOrigins.Automatic, refused.Origin);
-        Assert.Equal("External qBittorrent showed it stalled or in error for an hour, so Deluno stopped waiting for it and will not pick it again.", refused.Reason);
+        Assert.Equal($"qBittorrent on {Deluno.Contracts.DelunoHostName.Current} showed it stalled or in error for an hour, so Deluno stopped waiting for it and will not pick it again.", refused.Reason);
         var keys = await world.Blocklist.ListKeysAsync(CancellationToken.None);
         Assert.Contains(BlockedReleaseKeys.For(Release, "Fixture"), keys);
         // #874: a stall holds the release from every indexer too, not only

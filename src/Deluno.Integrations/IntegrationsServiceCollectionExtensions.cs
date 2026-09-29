@@ -47,6 +47,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Search.Trackers.ITrackerEngine, Search.Trackers.TrackerEngine>();
         services.AddSingleton<Search.Trackers.TrackerIndexers>();
         services.AddSingleton<Deluno.Connections.Contracts.ITrackerIndexerTester>(provider => provider.GetRequiredService<Search.Trackers.TrackerIndexers>());
+        services.AddSingleton<Deluno.Connections.Contracts.ITrackerDefinitionNames, Search.Trackers.TrackerDefinitionNames>();
         services.AddScoped<IAcquisitionDecisionPipeline, AcquisitionDecisionPipeline>();
         services.AddHttpClient("indexers", client =>
         {

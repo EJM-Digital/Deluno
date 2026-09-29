@@ -1,0 +1,251 @@
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
+using Deluno.Contracts;
+using Deluno.Infrastructure.Storage;
+using Deluno.Infrastructure.Storage.Migrations;
+using Deluno.Intake.Contracts;
+using Deluno.Intake.Data;
+using Deluno.Notifications.Contracts;
+using Deluno.Notifications.Data;
+using Deluno.Persistence.Tests.Support;
+using Deluno.Platform.Contracts;
+using Deluno.Platform.Data;
+using Deluno.Platform.Migrations;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace Deluno.Persistence.Tests.Platform;
+
+/// <summary>
+/// #1076: a connection's name is worked out ("qBittorrent on RIG", "nzbgeek.info",
+/// "Trakt: my-list"), never typed. Two of a kind on one host tell themselves apart by
+/// port, then a suffix; this machine's own address is its hostname; an API client's
+/// name is ignored; and renaming changes nothing anything is linked by.
+/// </summary>
+public sealed class ConnectionNamesTests
+{
+    private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-30T02:00:00Z");
+    private static readonly string Machine = DelunoHostName.Current;
+
+    private static async Task<(TestStorage Storage, FixedTimeProvider Clock)> StartAsync()
+    {
+        var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(Now);
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        return (storage, clock);
+    }
+
+    private static CreateDownloadClientRequest Client(string? name, string protocol, string host, int port)
+        => new(name, protocol, host, port, null, null, null, null, null, null, 1, true);
+
+    private static UpdateDownloadClientRequest ClientUpdate(string? name = null, string? host = null)
+        => new(name, null, host, null, null, null, null, null, null, null, null, null);
+
+    private static CreateIndexerRequest Indexer(string? name, string baseUrl, string? definitionId = null)
+        => new(name, "newznab", "public", baseUrl, "key", 10, "2000,5000", null, "both", true) { DefinitionId = definitionId };
+
+    [Fact]
+    public void A_name_is_the_app_and_the_host_and_a_machines_own_address_is_its_hostname()
+    {
+        Assert.Equal("Plex on nas.lan", ConnectionNames.AppOnHost("Plex", "http://nas.lan:32400/web"));
+        Assert.Equal("Plex on nas.lan", ConnectionNames.AppOnHost("Plex", "nas.lan"));
+        Assert.Equal(32400, ConnectionNames.PortOf("http://nas.lan:32400"));
+        Assert.Null(ConnectionNames.PortOf("https://nas.lan"));
+        foreach (var local in new[] { "localhost", "127.0.0.1", "http://127.0.0.1:8080", "::1", "http://[::1]:8080/", "http://LOCALHOST:8096" })
+        {
+            Assert.Equal($"Jellyfin on {Machine}", ConnectionNames.AppOnHost("Jellyfin", local));
+        }
+
+        Assert.Equal("Seerr", ConnectionNames.AppOnHost("Seerr", null));
+        Assert.Equal("nzbgeek.info", ConnectionNames.SiteName("https://api.nzbgeek.info/api"));
+        Assert.Equal("1337x.to", ConnectionNames.SiteName("https://www.1337x.to/"));
+        Assert.Equal("Trakt: my-list", ConnectionNames.ImportList("trakt", "https://trakt.tv/users/me/lists/my-list"));
+        Assert.Equal("qBittorrent", ConnectionNames.DownloadClientApp("qbittorrent"));
+    }
+
+    [Fact]
+    public void A_clash_takes_the_port_then_a_short_suffix()
+    {
+        Assert.Equal("qBittorrent on RIG", ConnectionNames.Unique("qBittorrent on RIG", 8080, "id1", []));
+        Assert.Equal("qBittorrent on RIG:8081", ConnectionNames.Unique("qBittorrent on RIG", 8081, "id2", ["qbittorrent on rig"]));
+        var third = ConnectionNames.Unique("qBittorrent on RIG", 8081, "abcdef12", ["qBittorrent on RIG", "qBittorrent on RIG:8081"]);
+        Assert.Equal("qBittorrent on RIG:8081 (ef12)", third);
+        Assert.Equal("Discord on discord.com (2)", ConnectionNames.Unique("Discord on discord.com", null, "", ["Discord on discord.com"]));
+
+        var all = ConnectionNames.AssignAll([("a", "qBittorrent on RIG", 8080), ("b", "qBittorrent on RIG", 8081), ("c", "SABnzbd on RIG", 8085)]);
+        Assert.Equal("qBittorrent on RIG:8080", all["a"]);
+        Assert.Equal("qBittorrent on RIG:8081", all["b"]);
+        Assert.Equal("SABnzbd on RIG", all["c"]);
+    }
+
+    [Fact]
+    public async Task A_download_client_is_named_after_its_app_and_host_and_a_typed_name_is_ignored()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var first = await repository.CreateDownloadClientAsync(Client("My favourite client", "qbittorrent", "192.168.1.51", 8080), CancellationToken.None);
+        var second = await repository.CreateDownloadClientAsync(Client("Another", "qbittorrent", "192.168.1.51", 8081), CancellationToken.None);
+        var local = await repository.CreateDownloadClientAsync(Client(null, "sabnzbd", "localhost", 8085), CancellationToken.None);
+        var loopback = await repository.CreateDownloadClientAsync(Client(null, "nzbget", "127.0.0.1", 6789), CancellationToken.None);
+
+        Assert.Equal("qBittorrent on 192.168.1.51", first.Name);
+        Assert.Equal("qBittorrent on 192.168.1.51:8081", second.Name);
+        Assert.Equal($"SABnzbd on {Machine}", local.Name);
+        Assert.Equal($"NZBGet on {Machine}", loopback.Name);
+
+        // Saving with a name from an API client neither fails nor renames it.
+        var saved = await repository.UpdateDownloadClientAsync(first.Id, ClientUpdate(name: "Renamed by a script"), CancellationToken.None);
+        Assert.Equal("qBittorrent on 192.168.1.51", saved!.Name);
+        Assert.Equal("qBittorrent on 192.168.1.51:8081", (await repository.UpdateDownloadClientAsync(second.Id, ClientUpdate(), CancellationToken.None))!.Name);
+
+        // Moving it to another host renames it.
+        var moved = await repository.UpdateDownloadClientAsync(first.Id, ClientUpdate(host: "rig.lan"), CancellationToken.None);
+        Assert.Equal("qBittorrent on rig.lan", moved!.Name);
+    }
+
+    [Fact]
+    public async Task An_indexer_is_named_after_its_site_or_its_definition()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(
+            storage.Factory, clock, TestSecretProtection.Create(storage), new FakeDefinitionNames());
+
+        var geek = await repository.CreateIndexerAsync(Indexer("Anything typed", "https://api.nzbgeek.info"), CancellationToken.None);
+        var again = await repository.CreateIndexerAsync(Indexer(null, "https://api.nzbgeek.info"), CancellationToken.None);
+        var tracker = await repository.CreateIndexerAsync(Indexer(null, "https://1337x.to", "1337x"), CancellationToken.None);
+
+        Assert.Equal("nzbgeek.info", geek.Name);
+        Assert.NotEqual(geek.Name, again.Name);
+        Assert.StartsWith("nzbgeek.info (", again.Name);
+        Assert.Equal("1337x", tracker.Name);
+
+        var renamedByApi = await repository.UpdateIndexerAsync(
+            geek.Id, new UpdateIndexerRequest("Nope", null, null, null, null, null, null, null, null, null), CancellationToken.None);
+        Assert.Equal("nzbgeek.info", renamedByApi!.Name);
+    }
+
+    [Fact]
+    public async Task A_media_server_and_a_seerr_server_are_named_after_their_app_and_host()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var protector = TestSecretProtection.Create(storage);
+        var servers = new SqliteMediaServerRepository(storage.Factory, clock, protector);
+        var seerr = new SqliteSeerrRepository(storage.Factory, clock, protector);
+
+        var plex = await servers.SaveAsync(null, new SaveMediaServerRequest("plex", "Living room", "http://nas.lan:32400", "token", true), CancellationToken.None);
+        var jelly = await servers.SaveAsync(null, new SaveMediaServerRequest("jellyfin", null, "http://localhost:8096", "token", true), CancellationToken.None);
+        var jelly2 = await servers.SaveAsync(null, new SaveMediaServerRequest("jellyfin", null, "http://127.0.0.1:8097", "token", true), CancellationToken.None);
+        Assert.Equal("Plex on nas.lan", plex!.Name);
+        Assert.Equal($"Jellyfin on {Machine}", jelly!.Name);
+        Assert.Equal($"Jellyfin on {Machine}:8097", jelly2!.Name);
+        Assert.Equal("Plex on nas.lan", (await servers.SaveAsync(plex.Id, new SaveMediaServerRequest("plex", "Changed", "http://nas.lan:32400", null, true), CancellationToken.None))!.Name);
+
+        var request = await seerr.SaveAsync(null, new SaveSeerrRequest("Requests", "http://request.lan:5055", "key", true), CancellationToken.None);
+        Assert.Equal("Seerr on request.lan", request!.Name);
+    }
+
+    [Fact]
+    public async Task A_notification_connection_is_named_after_its_provider_and_host()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteNotificationRepository(storage.Factory, clock);
+
+        var discord = await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Home", "https://discord.com/api/webhooks/1/x", "all", true, NotificationProviders.Discord), CancellationToken.None);
+        var second = await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("Home", "https://discord.com/api/webhooks/2/y", "all", true, NotificationProviders.Discord), CancellationToken.None);
+        var local = await repository.CreateNotificationWebhookAsync(
+            new CreateNotificationWebhookRequest("HA", "http://localhost:8123/hook", "all", true), CancellationToken.None);
+
+        Assert.Equal("Discord on discord.com", discord.Name);
+        Assert.NotEqual(discord.Name, second.Name);
+        Assert.StartsWith("Discord on discord.com (", second.Name);
+        Assert.Equal($"Webhook on {Machine}", local.Name);
+
+        var updated = await repository.UpdateNotificationWebhookAsync(
+            discord.Id, new UpdateNotificationWebhookRequest("Zzz", "https://discord.com/api/webhooks/1/x", "all", true), CancellationToken.None);
+        Assert.Equal("Discord on discord.com", updated!.Name);
+    }
+
+    [Fact]
+    public async Task A_processor_uses_the_machine_name_it_publishes_else_the_host_of_its_address()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var processors = new SqliteProcessorRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var published = await processors.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Weir", "generic-webhook", "http://192.168.1.60:8181/hook", null, null, true) { MachineName = "MEDIA-BOX" },
+            CancellationToken.None);
+        var fallback = await processors.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("Weir", "fileflows-webhook", "http://ff.lan:5000/hook", null, null, true), CancellationToken.None);
+        var local = await processors.CreateProcessorConnectionAsync(
+            new CreateProcessorConnectionRequest("x", "generic-webhook", "http://127.0.0.1:8181/hook", null, null, true), CancellationToken.None);
+
+        Assert.Equal("Processor on MEDIA-BOX", published.Name);
+        Assert.Equal("FileFlows on ff.lan", fallback.Name);
+        Assert.Equal($"Processor on {Machine}", local.Name);
+
+        // Saving without a new machine name, at the same address, keeps the name it had.
+        var saved = await processors.UpdateProcessorConnectionAsync(
+            published.Id, new UpdateProcessorConnectionRequest("A different name", null, null, null, null, true), CancellationToken.None);
+        Assert.Equal("Processor on MEDIA-BOX", saved!.Name);
+    }
+
+    [Fact]
+    public async Task An_import_list_is_named_after_its_provider_and_list()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteIntakeRepository(storage.Factory, clock);
+
+        var list = await repository.CreateIntakeSourceAsync(
+            new CreateIntakeSourceRequest("Weekend movies", "trakt", "https://trakt.tv/users/me/lists/my-list", "movie", null, null, null, null, null, null, null, null, 6, true, true),
+            CancellationToken.None);
+        Assert.Equal("Trakt: my-list", list.Name);
+
+        var updated = await repository.UpdateIntakeSourceAsync(
+            list.Id,
+            new UpdateIntakeSourceRequest("Renamed", "trakt", "https://trakt.tv/users/me/lists/other", "movie", null, null, null, null, null, null, null, null, 6, true, true),
+            CancellationToken.None);
+        Assert.Equal("Trakt: other", updated!.Name);
+    }
+
+    [Fact]
+    public async Task The_upgrade_gives_existing_connections_the_name_they_would_get_today()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var one = await repository.CreateDownloadClientAsync(Client(null, "qbittorrent", "localhost", 8080), CancellationToken.None);
+        var two = await repository.CreateDownloadClientAsync(Client(null, "qbittorrent", "127.0.0.1", 8081), CancellationToken.None);
+        var sab = await repository.CreateDownloadClientAsync(Client(null, "sabnzbd", "192.168.1.51", 8085), CancellationToken.None);
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            await using var stale = connection.CreateCommand();
+            stale.CommandText = "UPDATE download_clients SET name = 'Old typed name ' || id;";
+            await stale.ExecuteNonQueryAsync();
+
+            await using var transaction = await connection.BeginTransactionAsync();
+            await new V0133ConnectionNamesFollowTheirAddress().UpAsync(connection, transaction, CancellationToken.None);
+            await transaction.CommitAsync();
+        }
+
+        var names = (await repository.ListDownloadClientsAsync(CancellationToken.None)).ToDictionary(item => item.Id, item => item.Name);
+        Assert.Equal($"qBittorrent on {Machine}:8080", names[one.Id]);
+        Assert.Equal($"qBittorrent on {Machine}:8081", names[two.Id]);
+        Assert.Equal("SABnzbd on 192.168.1.51", names[sab.Id]);
+    }
+
+    private sealed class FakeDefinitionNames : ITrackerDefinitionNames
+    {
+        public string? DisplayName(string definitionId) => definitionId == "1337x" ? "1337x" : null;
+    }
+}

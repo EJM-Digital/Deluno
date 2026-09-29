@@ -37,6 +37,7 @@ public sealed class DeletingSomethingEndsWhatItWasDoingTests
         var connection = await processors.CreateProcessorConnectionAsync(
             new CreateProcessorConnectionRequest("Weir", "weir", "http://127.0.0.1:9347/submit", null, null, IsEnabled: true),
             CancellationToken.None);
+        await LegacyConnectionNames.SetAsync(app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>(), "processor_connections", connection.Id, "Weir");
         var handoff = await processors.EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest("library-1", "movies", "sabnzbd", "nzo-1", Release, @"C:\Downloads\Tears", "Weir"),
             CancellationToken.None);

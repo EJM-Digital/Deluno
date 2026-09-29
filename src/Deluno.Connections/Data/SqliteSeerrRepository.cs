@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Deluno.Connections.Contracts;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Security;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -124,7 +125,10 @@ public sealed class SqliteSeerrRepository(
               WHERE id = @id;
               """;
         AddParameter(command, "@id", rowId);
-        AddParameter(command, "@name", request.Name?.Trim());
+        AddParameter(command, "@name", ConnectionNames.Unique(
+            ConnectionNames.AppOnHost("Seerr", request.BaseUrl),
+            ConnectionNames.PortOf(request.BaseUrl), rowId,
+            await ConnectionNameRows.OtherNamesAsync(connection, "seerr_servers", rowId, cancellationToken)));
         AddParameter(command, "@baseUrl", NormalizeBaseUrl(request.BaseUrl));
         AddParameter(command, "@apiKey", string.IsNullOrWhiteSpace(key) ? null : secretProtector.Protect(KeyPurpose, key));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);

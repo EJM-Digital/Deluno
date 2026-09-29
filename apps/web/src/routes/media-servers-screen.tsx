@@ -195,11 +195,9 @@ export function MediaServersPage() {
   }
 
   function chooseKind(value: string) {
-    const next = kindOf(value);
     setForm((current) => ({
       ...current,
-      kind: value,
-      name: !current.name.trim() || KINDS.some((item) => item.label === current.name) ? next.label : current.name
+      kind: value
     }));
   }
 
@@ -422,9 +420,6 @@ export function MediaServersPage() {
       >
         <DrawerSection title="Basics">
           <FieldRow>
-            <Field label="Name" error={errors.name}>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} autoComplete="off" />
-            </Field>
             <Field label="Server" error={errors.kind}>
               <Select value={form.kind} disabled={Boolean(editing)} onChange={(event) => chooseKind(event.target.value)} options={KINDS.map((item) => ({ value: item.value, label: item.label }))} />
             </Field>

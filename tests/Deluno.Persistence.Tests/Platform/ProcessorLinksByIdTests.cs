@@ -38,11 +38,11 @@ public sealed class ProcessorLinksByIdTests
         var library = await libraries.CreateLibraryAsync(
             new CreateLibraryRequest(
                 "Movies", "movies", "General", "/media/movies", "/downloads/movies", null,
-                "refine-before-import", "weir", "/processed/movies", 360, "block",
+                "refine-before-import", weir.Name, "/processed/movies", 360, "block",
                 true, true, true, 360, 24, 25),
             CancellationToken.None);
         Assert.Equal(weir.Id, library.ProcessorConnectionId);
-        Assert.Equal("Weir", library.ProcessorName);
+        Assert.Equal(weir.Name, library.ProcessorName);
 
         var handoff = await processors.EnsureProcessorHandoffAsync(
             new CreateProcessorHandoffRequest(
@@ -57,13 +57,20 @@ public sealed class ProcessorLinksByIdTests
                 Now, ProcessorOutcomeDeliveries.Pending, 0, null, Now, false, null, Now, weir.Id),
             CancellationToken.None);
 
-        await processors.UpdateProcessorConnectionAsync(
-            weir.Id,
-            new UpdateProcessorConnectionRequest("Media cleaner", "generic-webhook", "https://weir.example.test/hook", "X-Api-Key", null, IsEnabled: true),
-            CancellationToken.None);
+        // A name is worked out from the address now, so the rename is done straight in the table, as an older install's typed name would be.
+        await using (var db = await storage.Factory.OpenConnectionAsync(Deluno.Infrastructure.Storage.DelunoDatabaseNames.Platform, CancellationToken.None))
+        {
+            await using var rename = db.CreateCommand();
+            rename.CommandText = "UPDATE processor_connections SET name = 'Media cleaner' WHERE id = @id;";
+            var parameter = rename.CreateParameter();
+            parameter.ParameterName = "@id";
+            parameter.Value = weir.Id;
+            rename.Parameters.Add(parameter);
+            await rename.ExecuteNonQueryAsync();
+        }
 
         // Nothing looks the old name up any more, and the old name finds nothing.
-        Assert.Null(await processors.FindProcessorConnectionByNameAsync("Weir", CancellationToken.None));
+        Assert.Null(await processors.FindProcessorConnectionByNameAsync(weir.Name, CancellationToken.None));
 
         var reloaded = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
         Assert.Equal(weir.Id, reloaded.ProcessorConnectionId);
@@ -107,7 +114,7 @@ public sealed class ProcessorLinksByIdTests
             new CreateLibraryRequest("Movies", "movies", "General", "/media/movies", null, null, "refine-before-import", null, "/processed", 360, "block", true, true, true, 360, 24, 25,
                 ProcessorConnectionId: first.Id),
             CancellationToken.None);
-        Assert.Equal("First", library.ProcessorName);
+        Assert.Equal(first.Name, library.ProcessorName);
 
         var updated = await libraries.UpdateLibraryWorkflowAsync(
             library.Id,
@@ -115,7 +122,7 @@ public sealed class ProcessorLinksByIdTests
             CancellationToken.None);
 
         Assert.Equal(second.Id, updated!.ProcessorConnectionId);
-        Assert.Equal("Second", updated.ProcessorName);
+        Assert.Equal(second.Name, updated.ProcessorName);
     }
 
     [Fact]

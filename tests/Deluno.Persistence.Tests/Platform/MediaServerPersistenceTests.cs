@@ -31,7 +31,7 @@ public sealed class MediaServerPersistenceTests
         }
 
         var renamed = await repository.SaveAsync(created.Id, new SaveMediaServerRequest("jellyfin", "Jellyfin on the rig", "http://192.168.1.51:8096", "", true), CancellationToken.None);
-        Assert.Equal("Jellyfin on the rig", renamed!.Name);
+        Assert.Equal("Jellyfin on 192.168.1.51", renamed!.Name);
         Assert.Equal("api-key-1", renamed.Token);
 
         // Leaving soon on home (#521): off by default, and a save that does not say keeps it.

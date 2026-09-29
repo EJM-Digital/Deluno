@@ -57,13 +57,13 @@ public sealed class ProcessorConnectionPersistenceTests
                 IsEnabled: false),
             CancellationToken.None);
         Assert.NotNull(updated);
-        Assert.Equal("FileFlows primary", updated!.Name);
+        Assert.Equal("Processor on fileflows.example.test", updated!.Name);
         Assert.Equal("generic-webhook", updated.Provider);
         Assert.Equal("X-Api-Key", updated.AuthHeaderName);
         Assert.Equal("secret-token", updated.Secret);
         Assert.False(updated.IsEnabled);
 
-        Assert.Equal(updated.Id, (await repository.FindProcessorConnectionByNameAsync("fileflows primary", CancellationToken.None))!.Id);
+        Assert.Equal(updated.Id, (await repository.FindProcessorConnectionByNameAsync("Processor on fileflows.example.test", CancellationToken.None))!.Id);
         Assert.True(await repository.DeleteProcessorConnectionAsync(created.Id, CancellationToken.None));
         Assert.Empty(await repository.ListProcessorConnectionsAsync(CancellationToken.None));
     }

@@ -53,7 +53,6 @@ export function TrackerFields({
           setForm((current) => ({
             ...current,
             definitionId: tracker.id,
-            name: current.name.trim() ? current.name : tracker.name,
             baseUrl: tracker.links[0] ?? "",
             scope: tracker.movies && !tracker.tv ? "movies" : tracker.tv && !tracker.movies ? "tv" : "both",
             trackerSettings: Object.fromEntries(tracker.settings.filter((setting) => !setting.secret && setting.default != null && isEditable(setting)).map((setting) => [setting.name, setting.default!])),

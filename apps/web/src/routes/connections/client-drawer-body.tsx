@@ -95,7 +95,6 @@ export function ClientDrawerBody({
       port: String(next.defaultPort),
       moviesCategory: next.defaultMoviesCategory,
       tvCategory: next.defaultTvCategory,
-      name: current.name.trim() && !CLIENT_PRESETS.some((item) => item.label === current.name) ? current.name : next.label,
       // #980: switching to a preset that has a URL base of its own (rTorrent's
       // /RPC2) pre-fills it, the way the port and categories already do. Only
       // when the field is still blank, so picking a preset never overwrites a
@@ -108,9 +107,6 @@ export function ClientDrawerBody({
     <>
       <DrawerSection title="Basics">
         <FieldRow>
-          <Field label="Name" error={errors.name}>
-            <Input value={form.name} onChange={(event) => { clearError("name"); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder={preset?.label ?? "Download client"} autoComplete="off" />
-          </Field>
           <Field label="Client" help={unusableProtocol ? "Deluno cannot send downloads to this kind of client. Pick the one you actually run." : editing ? undefined : preset?.setupHint}>
             <Select value={form.protocol} disabled={Boolean(editing) && !unusableProtocol} onChange={(event) => choosePreset(event.target.value)} options={clientOptions} />
           </Field>

@@ -216,7 +216,7 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
         var body = await response.Content.ReadFromJsonAsync<DiscoverResponse>();
 
         var section = Assert.Single(body!.Lists);
-        Assert.Equal("Trakt Popular", section.SourceName);
+        Assert.Equal("Trakt: list", section.SourceName);
         Assert.Equal(2, section.Items.Count);
         Assert.Contains(section.Items, item => item.Title == "Already Held Movie" && item.InLibrary);
         Assert.Contains(section.Items, item => item.Title == "Would Add Movie" && !item.InLibrary && !item.Excluded);

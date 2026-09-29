@@ -783,6 +783,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         integrations.MapPost("/processors/connections", async (
             HttpContext httpContext,
             [FromBody] CreateProcessorConnectionRequest request,
+            IProcessorConnectionService processorConnections,
             IProcessorRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -790,13 +791,15 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (denied is not null) return denied;
             var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName, request.HealthCheckUrl);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            return Results.Ok(await repository.CreateProcessorConnectionAsync(request, cancellationToken));
+            var machineName = await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? string.Empty, request.AuthHeaderName, request.Secret, cancellationToken);
+            return Results.Ok(await repository.CreateProcessorConnectionAsync(request with { MachineName = machineName }, cancellationToken));
         });
 
         integrations.MapPut("/processors/connections/{id}", async (
             string id,
             HttpContext httpContext,
             [FromBody] UpdateProcessorConnectionRequest request,
+            IProcessorConnectionService processorConnections,
             IProcessorRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -804,7 +807,9 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             if (denied is not null) return denied;
             var errors = ValidateProcessorConnection(request.Name, request.SubmissionUrl, request.AuthHeaderName, request.HealthCheckUrl);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var updated = await repository.UpdateProcessorConnectionAsync(id, request, cancellationToken);
+            var current = await repository.GetProcessorConnectionAsync(id, cancellationToken);
+            var machineName = current is null ? null : await processorConnections.GetMachineNameAsync(request.SubmissionUrl ?? current.SubmissionUrl, request.AuthHeaderName ?? current.AuthHeaderName, string.IsNullOrWhiteSpace(request.Secret) ? current.Secret : request.Secret, cancellationToken);
+            var updated = await repository.UpdateProcessorConnectionAsync(id, request with { MachineName = machineName }, cancellationToken);
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         });
 
@@ -1467,11 +1472,6 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
         string? healthCheckUrl = null)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            errors["name"] = ["Give this processor connection a name."];
-        }
-
         if (!Uri.TryCreate(submissionUrl?.Trim(), UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {

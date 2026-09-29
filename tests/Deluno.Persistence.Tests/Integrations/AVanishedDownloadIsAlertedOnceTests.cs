@@ -89,7 +89,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         await world.PollWithOtherItemInQueueAsync();
 
         var call = Assert.Single(world.RecoveryHandler.VanishedCalls);
-        Assert.Equal((Release, "movies", world.ClientId, "qBittorrent", Release, "movie-sintel"), (call.Title, call.MediaType, call.ClientId, call.ClientName, call.ReleaseName, call.EntityId));
+        Assert.Equal((Release, "movies", world.ClientId, $"qBittorrent on {Deluno.Contracts.DelunoHostName.Current}", Release, "movie-sintel"), (call.Title, call.MediaType, call.ClientId, call.ClientName, call.ReleaseName, call.EntityId));
         Assert.Contains(world.DispatchId, call.DetailsJson);
     }
 
