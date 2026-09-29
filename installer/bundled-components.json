@@ -154,10 +154,20 @@
     "defaultPort": 6789,
     "uninstallDisplayNameHint": "NZBGet",
     "postInstallCommand": "%ProgramFiles%\\NZBGet\\nzbget.exe",
-    "postInstallArgs": "-D",
+    "postInstallArgs": "-s -o ControlIP=127.0.0.1",
     "readinessUrl": "http://127.0.0.1:6789/jsonrpc",
     "readinessTimeoutSeconds": 30,
-    "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. The clean-VM refusal ('not Authenticode-signed and carries no pinned checksum') was wrong to treat as a dead end: nzbget's release does publish a checksum file per version, named nzbget-<version>.sig.txt (e.g. nzbget-21.1.sig.txt, fetched and confirmed over HTTPS from github.com/nzbget/nzbget/releases -- not a SHA256SUMS.txt, so it needs its own name pattern the same way the installer asset itself does), just not the plain 'hash  filename' shape GithubLatestRelease.ParseChecksum already reads for Weir/Deluge. It is instead a JSONP body, `nzbget_signatures({ \"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"<hash>\", ... });`, so ParseChecksum now also recognises that shape. mustBeSigned still stays on as a fallback for the rare release that omits the file. '-D' runs NZBGet as a background daemon; its default nzbget.conf already opens the control (Web UI/API) port 6789 on loopback with no extra flags."
+    "credentialsUsername": "deluno",
+    "configFilePath": "%ProgramData%\\NZBGet\\nzbget.conf",
+    "configTemplateSourcePath": "%ProgramFiles%\\NZBGet\\nzbget.conf.template",
+    "configReplacements": {
+      "MainDir=${AppDir}\\downloads": "MainDir=%ProgramData%\\NZBGet",
+      "ControlIP=0.0.0.0": "ControlIP=127.0.0.1",
+      "ControlUsername=nzbget": "ControlUsername={{username}}",
+      "ControlPassword=tegbzn6789": "ControlPassword={{password}}"
+    },
+    "startHidden": true,
+    "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. The clean-VM refusal ('not Authenticode-signed and carries no pinned checksum') was wrong to treat as a dead end: nzbget's release does publish a checksum file per version, named nzbget-<version>.sig.txt (e.g. nzbget-21.1.sig.txt, fetched and confirmed over HTTPS from github.com/nzbget/nzbget/releases -- not a SHA256SUMS.txt, so it needs its own name pattern the same way the installer asset itself does), just not the plain 'hash  filename' shape GithubLatestRelease.ParseChecksum already reads for Weir/Deluge. It is instead a JSONP body, `nzbget_signatures({ \"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"<hash>\", ... });`, so ParseChecksum now also recognises that shape. mustBeSigned still stays on as a fallback for the rare release that omits the file. Started as '-s' (server mode) with no console window (startHidden), not '-D': in NZBGet's Windows build (daemon/main/nzbget.cpp, v21.1) '-D' is not a daemon switch at all -- it hands the process to the Windows service dispatcher, which only works when the Service Control Manager launched it (installed with '-install'), and started by hand it crashes with an access violation (0xC0000005) before it listens. '-s' is NZBGet's own console-mode server; run with no console it answers on 6789 (checked: started with CreateNoWindow it listened on 127.0.0.1 and answered the JSON-RPC version call with 21.1). NZBGet's default config binds ControlIP=0.0.0.0 and ships a public default password, so its config is built from the nzbget.conf.template the installer ships, with ControlIP=127.0.0.1 (#1053) and a generated user name and password kept in Deluno's secret store (#1050); with no config of its own NZBGet writes one to %ProgramData%\\NZBGet (the same folder, with MainDir there). '-o ControlIP=127.0.0.1' on the command line keeps it local even when a config already existed. After a restart Deluno starts it again at sign-in (ComponentAutoStarter), the same way for every client Deluno started."
   },
 
   "weir": {
