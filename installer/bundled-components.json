@@ -108,10 +108,10 @@
     "preStartCommand": "%ProgramFiles%\\Deluge\\deluged.exe",
     "preStartArgs": null,
     "postInstallCommand": "%ProgramFiles%\\Deluge\\deluge-web.exe",
-    "postInstallArgs": "--port 8112",
+    "postInstallArgs": "--interface 127.0.0.1 --port 8112",
     "readinessUrl": "http://127.0.0.1:8112/json",
     "readinessTimeoutSeconds": 45,
-    "note": "deluge-torrent/deluge publishes no GitHub Releases (tags only), so the old https://download.deluge-torrent.org/windows/ page URL was never an installer -- it downloaded that page itself, far short of minimumBytes. The real Windows builds are versioned files in a plain directory listing at ftp.osuosl.org (the same host download.deluge-torrent.org serves from), each with its own '<file>.sha256' next to it in the same 'hash  filename' shape as a GitHub SHA256SUMS.txt line, resolved the same way #640/#968 already resolve Weir's latest release, just from a directory listing instead of the GitHub API. Both the 64-bit ('win64') and libtorrent<2.0 compatibility ('win64-lt2.0') builds are published; the pattern picks the plain win64 build. deluged (the torrent daemon) is started untracked ahead of deluge-web (the Web UI/API Deluno talks to on 8112); deluge-web comes up and answers even before a host is added in it, but full transfers need deluged already reachable -- unverified without a real VM."
+    "note": "deluge-torrent/deluge publishes no GitHub Releases (tags only), so the old https://download.deluge-torrent.org/windows/ page URL was never an installer -- it downloaded that page itself, far short of minimumBytes. The real Windows builds are versioned files in a plain directory listing at ftp.osuosl.org (the same host download.deluge-torrent.org serves from), each with its own '<file>.sha256' next to it in the same 'hash  filename' shape as a GitHub SHA256SUMS.txt line, resolved the same way #640/#968 already resolve Weir's latest release, just from a directory listing instead of the GitHub API. Both the 64-bit ('win64') and libtorrent<2.0 compatibility ('win64-lt2.0') builds are published; the pattern picks the plain win64 build. deluged (the torrent daemon) is started untracked ahead of deluge-web (the Web UI/API Deluno talks to on 8112); deluge-web comes up and answers even before a host is added in it, but full transfers need deluged already reachable -- unverified without a real VM. deluge-web is bound to this computer with '--interface 127.0.0.1' (its own option in deluge/ui/web/web.py at 2.2.0; its default is 0.0.0.0), and deluged only listens locally unless allow_remote is switched on (#1053)."
   },
 
   "sabnzbd": {
@@ -130,12 +130,12 @@
     "defaultPort": 8080,
     "uninstallDisplayNameHint": "SABnzbd",
     "configFilePath": "%AppData%\\SABnzbd\\sabnzbd.ini",
-    "configFileContent": "[misc]\nhost = 0.0.0.0\nport = 8080\nhost_whitelist = \nenable_https = 0\napi_key = \nusername = \npassword = \n\n[categories]\n",
+    "configFileContent": "[misc]\nhost = 127.0.0.1\nport = 8080\nhost_whitelist = \nenable_https = 0\napi_key = \nusername = \npassword = \n\n[categories]\n",
     "postInstallCommand": "%ProgramFiles%\\SABnzbd\\SABnzbd.exe",
-    "postInstallArgs": "--server 0.0.0.0:8080 --browser 0",
+    "postInstallArgs": "--server 127.0.0.1:8080 --browser 0",
     "readinessUrl": "http://127.0.0.1:8080/api?mode=version&output=json",
     "readinessTimeoutSeconds": 45,
-    "note": "Keeps SABnzbd's own default port 8080; qBittorrent moves to 8081 instead so the two never clash. The seeded ini and --browser 0 are meant to skip SABnzbd's first-run setup wizard (which otherwise opens a browser and waits for answers no unattended install can give) and to blank the host whitelist so a loopback API call is accepted -- unverified without a real VM; #968 stays open if a live run still shows the wizard."
+    "note": "Keeps SABnzbd's own default port 8080; qBittorrent moves to 8081 instead so the two never clash. The seeded ini and --browser 0 are meant to skip SABnzbd's first-run setup wizard (which otherwise opens a browser and waits for answers no unattended install can give) and to blank the host whitelist so a loopback API call is accepted -- unverified without a real VM; #968 stays open if a live run still shows the wizard. Listens on 127.0.0.1 only (--server 127.0.0.1:8080 and host = 127.0.0.1 in the seeded ini, #1053)."
   },
 
   "nzbget": {
@@ -157,10 +157,6 @@
     "silentArgs": "/S",
     "defaultPort": 6789,
     "uninstallDisplayNameHint": "NZBGet",
-    "postInstallCommand": "%ProgramFiles%\\NZBGet\\nzbget.exe",
-    "postInstallArgs": "-s -o ControlIP=127.0.0.1",
-    "readinessUrl": "http://127.0.0.1:6789/jsonrpc",
-    "readinessTimeoutSeconds": 30,
     "credentialsUsername": "deluno",
     "configFilePath": "%ProgramData%\\NZBGet\\nzbget.conf",
     "configTemplateSourcePath": "%ProgramFiles%\\NZBGet\\nzbget.conf.template",
@@ -171,6 +167,10 @@
       "ControlPassword=tegbzn6789": "ControlPassword={{password}}"
     },
     "startHidden": true,
+    "postInstallCommand": "%ProgramFiles%\\NZBGet\\nzbget.exe",
+    "postInstallArgs": "-s -o ControlIP=127.0.0.1",
+    "readinessUrl": "http://127.0.0.1:6789/jsonrpc",
+    "readinessTimeoutSeconds": 30,
     "note": "The old url was the GitHub releases *page* (https://github.com/nzbget/nzbget/releases/latest), not an asset -- it downloaded ~214KB of HTML, nowhere near minimumBytes. NZBGet does publish real GitHub Releases, unlike Deluge, so this resolves the same way Weir does: latest release, asset name matched by pattern since it embeds the version (nzbget-21.1-bin-windows-setup.exe), excluding the '-debug-' build. The clean-VM refusal ('not Authenticode-signed and carries no pinned checksum') was wrong to treat as a dead end: nzbget's release does publish a checksum file per version, named nzbget-<version>.sig.txt (e.g. nzbget-21.1.sig.txt, fetched and confirmed over HTTPS from github.com/nzbget/nzbget/releases -- not a SHA256SUMS.txt, so it needs its own name pattern the same way the installer asset itself does), just not the plain 'hash  filename' shape GithubLatestRelease.ParseChecksum already reads for Weir/Deluge. It is instead a JSONP body, `nzbget_signatures({ \"SHA256(nzbget-21.1-bin-windows-setup.exe)\" : \"<hash>\", ... });`, so ParseChecksum now also recognises that shape. mustBeSigned still stays on as a fallback for the rare release that omits the file. Started as '-s' (server mode) with no console window (startHidden), not '-D': in NZBGet's Windows build (daemon/main/nzbget.cpp, v21.1) '-D' is not a daemon switch at all -- it hands the process to the Windows service dispatcher, which only works when the Service Control Manager launched it (installed with '-install'), and started by hand it crashes with an access violation (0xC0000005) before it listens. '-s' is NZBGet's own console-mode server; run with no console it answers on 6789 (checked: started with CreateNoWindow it listened on 127.0.0.1 and answered the JSON-RPC version call with 21.1). NZBGet's default config binds ControlIP=0.0.0.0 and ships a public default password, so its config is built from the nzbget.conf.template the installer ships, with ControlIP=127.0.0.1 (#1053) and a generated user name and password kept in Deluno's secret store (#1050); with no config of its own NZBGet writes one to %ProgramData%\\NZBGet (the same folder, with MainDir there). '-o ControlIP=127.0.0.1' on the command line keeps it local even when a config already existed. After a restart Deluno starts it again at sign-in (ComponentAutoStarter), the same way for every client Deluno started."
   },
 
