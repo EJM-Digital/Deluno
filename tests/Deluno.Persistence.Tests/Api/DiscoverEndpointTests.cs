@@ -93,6 +93,7 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
                     services.AddSingleton(mediaDecisionService);
                     services.AddSingleton<IIntakeListPreviewService>(_intakePreview);
                     services.AddSingleton<IMetadataProvider>(new RecordingMetadataProvider(PopularCards));
+                    services.AddSingleton<IAutoTaggingService>(new NoRulesAutoTagging());
                     services.AddSingleton<IJobScheduler>(_jobScheduler);
                 })
                 .Configure(app =>
@@ -347,4 +348,16 @@ public sealed class DiscoverEndpointTests : IAsyncDisposable
                 NextAttemptUtc: null));
         }
     }
+}
+
+/// <summary>The Discover tests carry no auto-tagging rules (#1024), so the rules service answers "no change".</summary>
+internal sealed class NoRulesAutoTagging : IAutoTaggingService
+{
+    public Task<AutoTagOutcome> ApplyAsync(MediaKind kind, string mediaId, AutoTagTrigger trigger, AutoTagAddFacts? add, IReadOnlyList<string>? libraryIds, CancellationToken cancellationToken) =>
+        Task.FromResult(AutoTagOutcome.None);
+
+    public Task<IReadOnlyList<string>> PredictAsync(AutoTagFacts facts, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+
+    public Task<int> ApplyToAllAsync(MediaKind? kind, CancellationToken cancellationToken) => Task.FromResult(0);
 }
