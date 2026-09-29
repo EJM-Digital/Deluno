@@ -109,6 +109,33 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
+    public void Every_component_has_a_pinned_or_vendor_published_hash_or_a_signature_rule_its_real_installer_meets()
+    {
+        // Facts checked against the real installers (30 Sep 2026): qBittorrent 5.2.1, Deluge and NZBGet are NotSigned;
+        // Transmission 4.1.1 is signed by SignPath Foundation; SABnzbd 5.0.4 is signed by SignPath Foundation; VC++ redist by Microsoft.
+        foreach (var spec in BundledComponents.Load())
+        {
+            var hashed = !string.IsNullOrWhiteSpace(spec.Sha256)
+                || !string.IsNullOrWhiteSpace(spec.GithubChecksumAsset)
+                || !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern)
+                || !string.IsNullOrWhiteSpace(spec.ChecksumSuffix);
+            var signedRule = spec.MustBeSigned && !string.IsNullOrWhiteSpace(spec.ExpectedPublisher);
+            Assert.True(hashed || signedRule, spec.Kind + " has neither a hash nor a publisher rule");
+        }
+
+        foreach (var unsigned in new[] { "qbittorrent", "deluge", "nzbget" })
+        {
+            Assert.False(Load(unsigned).MustBeSigned, unsigned + "'s real installer is not signed, so requiring a signature would block it");
+        }
+
+        Assert.Equal("SignPath Foundation", Load("transmission").ExpectedPublisher);
+        Assert.True(Load("transmission").MustBeSigned);
+        Assert.False(string.IsNullOrWhiteSpace(Load("sabnzbd").Sha256));
+        Assert.False(string.IsNullOrWhiteSpace(Load("deluge").ChecksumSuffix));
+        Assert.False(string.IsNullOrWhiteSpace(Load("nzbget").GithubChecksumAssetPattern));
+    }
+
+    [Fact]
     public void A_signature_from_the_wrong_publisher_is_refused()
     {
         var verifier = new PublisherOnlyVerifier("Somebody Else");
