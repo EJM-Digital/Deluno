@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Deluno.Infrastructure.Storage;
+using Deluno.Jobs.Data;
 using Deluno.Notifications;
 using Deluno.Notifications.Contracts;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,7 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     private readonly IOutboundNotificationService _outboundNotificationService;
     private readonly IReleaseNotesProvider _releaseNotesProvider;
     private readonly TimeProvider _timeProvider;
+    private readonly IActivityFeedRepository? _activityFeed;
     private bool _versionCheckedThisRun;
 
     public DefaultUpdateOrchestrator(
@@ -35,8 +37,10 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
         INotificationService notificationService,
         IOutboundNotificationService outboundNotificationService,
         IReleaseNotesProvider? releaseNotesProvider = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IActivityFeedRepository? activityFeed = null)
     {
+        _activityFeed = activityFeed;
         _currentVersion = DelunoVersion.Running;
         _installKind = IsRunningInDocker() ? UpdateInstallKinds.Docker : UpdateInstallKinds.Manual;
         var dataRoot = Path.GetFullPath(storageOptions.Value.DataRoot);
@@ -228,6 +232,20 @@ public sealed class DefaultUpdateOrchestrator : IUpdateOrchestrator
     {
         try
         {
+            // Activity says a new version is running whether or not anyone asked
+            // to be told; only the outbound message is opt-in (#1017).
+            if (_activityFeed is not null)
+            {
+                await _activityFeed.RecordActivityAsync(
+                    "app.update",
+                    $"Deluno updated and is now running version {_currentVersion}.",
+                    JsonSerializer.Serialize(new { version = _currentVersion, appliedAtUtc }),
+                    null,
+                    "system",
+                    "app-update",
+                    cancellationToken);
+            }
+
             var preferences = await _notificationService.GetPreferencesAsync(cancellationToken);
             if (!preferences.UpdateEnabled)
             {
