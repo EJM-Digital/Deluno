@@ -37,6 +37,15 @@ public sealed record DownloadClientGrabRequest(
     /// to a client that did not need one is worse than sending none.
     /// </summary>
     public string? Password { get; init; }
+
+    /// <summary>
+    /// The folder, written the way the client sees it, this grab must be saved
+    /// into (#1073). Filled in by the grab service from the library's downloads
+    /// folder for a client that has no category folders of its own (Transmission,
+    /// Deluge); never read from a caller, so an API body cannot set it.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? SaveFolder { get; init; }
 }
 
 public sealed record DownloadClientGrabResult(

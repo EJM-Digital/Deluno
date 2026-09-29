@@ -13,6 +13,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     public override string Protocol => "transmission";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "basic", SupportsQueueReorder: true);
 
+    public bool SetsSaveFolderPerGrab => true;
+
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
@@ -36,13 +38,25 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
 
             // Transmission has no folder per label, so a label alone put films and
             // TV in one folder that no processor watched (#629). Each grab names
-            // its own: Transmission's download folder plus the category, the way
-            // Radarr and Sonarr do it.
-            var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
-            if (CategoryFolder(session.Arguments?.DownloadDir, label) is { } folder)
+            // its own. #1073: the library's own downloads folder when Deluno has
+            // one to name; otherwise Transmission's download folder plus the
+            // category, the way Radarr and Sonarr do it.
+            if (!string.IsNullOrWhiteSpace(request.SaveFolder))
             {
-                arguments["download-dir"] = folder;
+                arguments["download-dir"] = request.SaveFolder;
             }
+            else
+            {
+                var session = await SendAsync(client, baseUri, new TransmissionRequest("session-get", new() { ["fields"] = new[] { "download-dir" } }), cancellationToken);
+                if (CategoryFolder(session.Arguments?.DownloadDir, label) is { } folder)
+                {
+                    arguments["download-dir"] = folder;
+                }
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(request.SaveFolder))
+        {
+            arguments["download-dir"] = request.SaveFolder;
         }
 
         var response = await SendAsync(client, baseUri, new TransmissionRequest("torrent-add", arguments), cancellationToken);

@@ -13,6 +13,14 @@ public interface IDownloadClient
 
     DownloadClientTelemetryCapabilities Capabilities { get; }
 
+    /// <summary>
+    /// True for a client with no category folders of its own that takes the
+    /// save folder on each add (Transmission's download-dir, Deluge's
+    /// download_location). The grab service then names the library's downloads
+    /// folder on every grab (#1073).
+    /// </summary>
+    bool SetsSaveFolderPerGrab => false;
+
     Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

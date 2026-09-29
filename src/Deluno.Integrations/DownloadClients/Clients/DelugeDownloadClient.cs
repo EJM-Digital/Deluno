@@ -11,6 +11,8 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     public override string Protocol => "deluge";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "password", SupportsQueueReorder: true);
 
+    public bool SetsSaveFolderPerGrab => true;
+
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
@@ -21,6 +23,17 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         // .torrent itself and cannot take a magnet, so a magnet sent there was
         // lost (#606).
         var options = new Dictionary<string, object> { ["add_paused"] = client.AddPaused };
+        // #1073: Deluge's label has no folder unless someone set one by hand, so
+        // the library's downloads folder is named on the add itself. It downloads
+        // there and, when Deluge's own "move completed" is on, moves to the same
+        // place rather than to whatever folder Deluge was set to.
+        if (!string.IsNullOrWhiteSpace(request.SaveFolder))
+        {
+            options["download_location"] = request.SaveFolder;
+            options["move_completed"] = true;
+            options["move_completed_path"] = request.SaveFolder;
+        }
+
         var add = request.TorrentFile is { } file
             ? new DelugeRequest("core.add_torrent_file", [SafeFileName(request.ReleaseName) + ".torrent", Convert.ToBase64String(file), options], 2)
             : request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase)
@@ -70,6 +83,11 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         }
 
         await TryLabelAsync(http, baseUri, added.Result, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        if (!string.IsNullOrWhiteSpace(request.SaveFolder))
+        {
+            await TryPinFolderAsync(http, baseUri, added.Result, request.SaveFolder, cancellationToken);
+        }
+
         // The torrent id Deluge returns is its hash and its queue id, so the
         // import can find this grab by it (#617).
         return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release sent to Deluge." : "Torrent file sent to Deluge.") with { ExternalId = added.Result };
@@ -387,6 +405,27 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException)
         {
             // No Label plugin: the torrent is added, just unlabelled.
+        }
+    }
+
+    /// <summary>
+    /// Deluge's Label plugin copies the label's own "move completed to" onto a
+    /// torrent when the label is set, over what the add said. Said again after
+    /// the label, the library's folder is the one that stays (#1073).
+    /// </summary>
+    private static async Task TryPinFolderAsync(HttpClient http, Uri baseUri, string torrentId, string folder, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await DownloadClientHelpers.PostJsonAsync<DelugeResponse<object>>(
+                http,
+                new Uri(baseUri, "json"),
+                new DelugeRequest("core.set_torrent_options", [new[] { torrentId }, new Dictionary<string, object> { ["move_completed"] = true, ["move_completed_path"] = folder }], 13),
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException)
+        {
+            // The add already carried the folder; only the label override is unguarded.
         }
     }
 

@@ -651,6 +651,38 @@ This is not Weir-specific: any processor may report it, in whatever path shape m
 
 `POST /api/integrations/processors/handoffs/{id}/import-original` imports the untouched download for a hand-off the processor did not finish.
 
+#### Where each library's downloads land
+
+A processor that has to watch the right folder can ask Deluno where every download client puts each library's finished downloads. This is generic, not specific to any processor, and needs an API key with the `imports` scope.
+
+```
+GET /api/integrations/processors/download-destinations?libraryId=library-id
+```
+
+`libraryId` is optional; without it every library is listed. An unknown `libraryId` answers `404`.
+
+```json
+{
+  "libraries": [{
+    "libraryId": "…", "libraryName": "Movies", "mediaType": "movies",
+    "downloadsPath": "C:\\Downloads\\Completed\\Movies",
+    "processorOutputPath": "E:\\Weir\\Ready\\Movies",
+    "importWorkflow": "refine-before-import",
+    "destinations": [{
+      "downloadClientId": "…", "downloadClientName": "Deluge", "protocol": "deluge",
+      "category": "movies", "categoryKind": "label",
+      "saveFolder": "C:\\Downloads\\Completed\\Movies",
+      "clientSaveFolder": "/downloads/Movies",
+      "savedBy": "deluno-per-grab",
+      "matchesDownloadsPath": true,
+      "status": "ok", "message": "…"
+    }]
+  }]
+}
+```
+
+`categoryKind` is `category` (SABnzbd, NZBGet, qBittorrent) or `label` (Transmission, Deluge, rTorrent, uTorrent). `saveFolder` is the folder as Deluno's machine writes it; `clientSaveFolder` is the same folder as the client writes it (they differ behind a path mapping). `savedBy` is `deluno-per-grab` when Deluno names the library's downloads folder on each grab (Transmission and Deluge, which have no category folders of their own) and `client-category` when the client's own category folder decides. `matchesDownloadsPath` is `null` when the client did not say where it saves. `status` is `ok`, `problem` or `unknown`, with the reason in `message`. `processorOutputPath` is `null` when the library does not use a processor.
+
 #### Telling the processor what became of the file
 
 If `…/intake/capabilities` lists `handoff-outcome`, Deluno tells the processor what became of each file it handed back, so the processor can let go of its copy:
