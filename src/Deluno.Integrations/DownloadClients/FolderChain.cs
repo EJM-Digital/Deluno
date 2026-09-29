@@ -232,7 +232,7 @@ public sealed class FolderChainService(
             // set to. Where libraries sharing a category disagree it names none,
             // and the client's own folder is checked below as before.
             var perGrab = implementation.SetsSaveFolderPerGrab
-                ? await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken)
+                ? await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken, _ => Task.FromResult<string?>(check.SavePath))
                 : null;
             links.Add(new(
                 "category",

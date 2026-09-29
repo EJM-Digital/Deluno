@@ -295,6 +295,53 @@ public sealed class LibraryDownloadFolderPerGrabTests
     public void The_same_machine_is_recognised(string host)
         => Assert.True(ClientSaveFolders.IsSameMachine(Client("deluge", host)));
 
+    [Theory]
+    [InlineData(@"C:\Downloads\Movies", "/downloads/movies", false)] // Linux client in Docker Desktop / WSL2 on localhost
+    [InlineData("/data/Movies", @"D:\torrents", false)] // container Deluno, Windows client
+    [InlineData(@"C:\Downloads\Movies", @"D:\torrents\movies", true)]
+    [InlineData("/data/Movies", "/var/lib/transmission/movies", true)]
+    [InlineData(@"C:\Downloads\Movies", null, true)] // client did not say: trusted as before
+    [InlineData(@"C:\Downloads\Movies", "Downloads", true)] // a relative name says nothing about style
+    public void A_same_machine_client_is_trusted_only_when_it_reports_the_same_path_style(string host, string? reported, bool expected)
+        => Assert.Equal(expected, ClientSaveFolders.CanShareHostFolder(true, false, host, reported));
+
+    [Fact]
+    public void A_client_on_another_machine_or_a_Deluno_in_a_container_needs_a_mapping()
+    {
+        Assert.False(ClientSaveFolders.CanShareHostFolder(false, false, "/data", "/data"));
+        Assert.False(ClientSaveFolders.CanShareHostFolder(true, true, "/data", "/data"));
+    }
+
+    [Fact]
+    public async Task A_localhost_client_that_reports_a_posix_folder_is_told_no_windows_folder()
+    {
+        var (request, _) = await GrabThroughService([Library("lib-1", @"C:\Downloads\Completed\Movies")], perGrabClient: true, mappings: [], reportedFolder: "/downloads/movies");
+        Assert.Null(request?.SaveFolder);
+
+        var (mapped, _) = await GrabThroughService(
+            [Library("lib-1", @"C:\Downloads\Completed\Movies")], perGrabClient: true, mappings: [Mapping("/downloads", @"C:\Downloads\Completed")], reportedFolder: "/downloads/movies");
+        Assert.Equal("/downloads/Movies", mapped?.SaveFolder);
+    }
+
+    [Fact]
+    public async Task The_upgrade_note_waits_for_a_client_that_did_not_answer_and_leaves_no_marker()
+    {
+        var marker = Path.Combine(Path.GetTempPath(), "deluno-notice-" + Guid.NewGuid().ToString("n"), "done");
+        var activity = new Mock<IActivityFeedRepository>();
+        var health = new Mock<IHealthCheckRepository>();
+        var client = FakeClient(true, null);
+        client.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientCategoryCheckResult("client-1", "Deluge", "movies", DownloadClientCategoryStatuses.Unreachable, "Down.", true, false));
+        var wrote = await DownloadFolderChangeNoticeService.RunOnceAsync(
+            Libraries([Library("lib-1", LibraryFolder)]), Connections("deluge", []),
+            Registry(client.Object), activity.Object, health.Object, marker, CancellationToken.None);
+
+        Assert.False(wrote);
+        Assert.False(File.Exists(marker));
+        activity.VerifyNoOtherCalls();
+        health.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public void Another_machine_is_not_the_same_machine()
         => Assert.False(ClientSaveFolders.IsSameMachine(Client("deluge", "192.168.1.51")));
@@ -485,9 +532,9 @@ public sealed class LibraryDownloadFolderPerGrabTests
     }
 
     private static async Task<(DownloadClientGrabRequest? Request, Mock<IDownloadClient> Client)> GrabThroughService(
-        IReadOnlyList<LibraryItem> libraries, bool perGrabClient, IReadOnlyList<DownloadClientPathMappingItem> mappings, string host = "localhost")
+        IReadOnlyList<LibraryItem> libraries, bool perGrabClient, IReadOnlyList<DownloadClientPathMappingItem> mappings, string host = "localhost", string? reportedFolder = null)
     {
-        var fake = FakeClient(perGrabClient, reportedFolder: null);
+        var fake = FakeClient(perGrabClient, reportedFolder);
         DownloadClientGrabRequest? seen = null;
         fake.Setup(instance => instance.GrabAsync(It.IsAny<DownloadClientItem>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
             .Callback((DownloadClientItem _, DownloadClientGrabRequest request, CancellationToken _) => seen = request)
