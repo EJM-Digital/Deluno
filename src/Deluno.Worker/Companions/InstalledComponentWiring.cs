@@ -198,6 +198,8 @@ public sealed class InstalledComponentWiringService(
     IServiceProvider services,
     ILogger<InstalledComponentWiringService> logger) : BackgroundService
 {
+    private bool _healthAddressChecked;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -219,7 +221,14 @@ public sealed class InstalledComponentWiringService(
         try
         {
             using var scope = scopes.CreateScope();
-            var wirer = scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
+            if (!_healthAddressChecked)
+            {
+                // Once per start: gives an older Weir connection the address that lets it test healthy (#1055).
+                await scope.ServiceProvider.GetRequiredService<WeirHealthAddressBackfill>().RunAsync(cancellationToken);
+                _healthAddressChecked = true;
+            }
+
+            var wirer =scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
             if (!wirer.HasWork() || OwnAddress() is not { } baseUrl)
             {
                 return;

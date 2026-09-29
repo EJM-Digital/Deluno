@@ -346,13 +346,29 @@ public sealed class WeirCompanion(
         var managerId = manager.GetProperty("id").GetInt32();
         var secret = await PostAsync(http, $"/api/v1/media-managers/connections/{managerId}/webhook-secret", csrf => new { csrf_token = csrf }, cancellationToken);
 
+        await AddProcessorConnectionAsync(
+            baseUrl,
+            secret.GetProperty("webhook_url_path").GetString()!,
+            secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
+            secret.GetProperty("webhook_secret").GetString(),
+            cancellationToken);
+
+        context.Progress.Report("done", $"{Name} is installed, running and connected both ways. Choose it as the processor on a library that should be cleaned before import.");
+    }
+
+    /// <summary>
+    /// Adds Weir as a processor connection with Weir's own health address, tests it, and says
+    /// so when the test does not come back healthy. The connection is kept either way.
+    /// </summary>
+    public async Task<ProcessorConnectionItem> AddProcessorConnectionAsync(string baseUrl, string webhookUrlPath, string? headerName, string? webhookSecret, CancellationToken cancellationToken)
+    {
         var connection = await processors.CreateProcessorConnectionAsync(
             new CreateProcessorConnectionRequest(
                 Name,
                 "generic-webhook",
-                $"{baseUrl}{secret.GetProperty("webhook_url_path").GetString()}",
-                secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
-                secret.GetProperty("webhook_secret").GetString(),
+                $"{baseUrl}{webhookUrlPath}",
+                headerName,
+                webhookSecret,
                 true,
                 // Weir publishes GET /ready ({"ready": true} once its database is open) at
                 // its root. Its hand-off route only takes POST, so this is how Deluno asks
@@ -366,7 +382,7 @@ public sealed class WeirCompanion(
             throw new CompanionStepException($"{Name} is installed and added to Deluno, but its test did not pass: {test.Message}");
         }
 
-        context.Progress.Report("done", $"{Name} is installed, running and connected both ways. Choose it as the processor on a library that should be cleaned before import.");
+        return connection;
     }
 
     private async Task<CompanionArtifact> LatestReleaseAsync(CompanionRunContext context, CancellationToken cancellationToken)

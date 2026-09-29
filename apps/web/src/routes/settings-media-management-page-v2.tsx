@@ -710,7 +710,7 @@ interface CallbackForm {
   secret: string;
   isEnabled: boolean;
 }
-type ProcessingDrawer = { kind: "closed" } | { kind: "library"; id: string } | { kind: "callback" };
+type ProcessingDrawer = { kind: "closed" } | { kind: "library"; id: string } | { kind: "callback"; editId?: string };
 
 function ProcessingWorkflowPage() {
   const { libraries, processorConnections } = useLoaderData() as LoaderData;
@@ -722,6 +722,7 @@ function ProcessingWorkflowPage() {
   const [workflow, setWorkflow] = useState<WorkflowForm>(() => emptyWorkflow());
   const [workflowInitial, setWorkflowInitial] = useState<WorkflowForm>(() => emptyWorkflow());
   const [callback, setCallback] = useState<CallbackForm>(emptyCallback);
+  const [callbackInitial, setCallbackInitial] = useState<CallbackForm>(emptyCallback);
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -743,7 +744,9 @@ function ProcessingWorkflowPage() {
     drawer.kind === "library"
       ? JSON.stringify(workflow) !== JSON.stringify(workflowInitial)
       : drawer.kind === "callback"
-        ? Boolean(callback.name.trim() || callback.submissionUrl.trim() || callback.secret.trim())
+        ? drawer.editId
+          ? JSON.stringify(callback) !== JSON.stringify(callbackInitial)
+          : Boolean(callback.name.trim() || callback.submissionUrl.trim() || callback.secret.trim())
         : false;
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
@@ -768,6 +771,21 @@ function ProcessingWorkflowPage() {
     openLibrary(library);
     navigate("/settings/processing", { replace: true });
   }, [drawer.kind, libraries, location.search, navigate]);
+  function openEditCallback(connection: ProcessorConnectionItem) {
+    const form: CallbackForm = {
+      name: connection.name,
+      provider: connection.provider,
+      submissionUrl: connection.submissionUrl,
+      healthCheckUrl: connection.healthCheckUrl ?? "",
+      authHeaderName: connection.authHeaderName,
+      secret: "",
+      isEnabled: connection.isEnabled
+    };
+    setDrawer({ kind: "callback", editId: connection.id });
+    setCallback(form);
+    setCallbackInitial(form);
+    setSaveState(undefined);
+  }
   function openCallback() {
     setDrawer({ kind: "callback" });
     setCallback(emptyCallback());
@@ -823,10 +841,12 @@ function ProcessingWorkflowPage() {
         setWorkflowInitial(workflow);
         setMessage("Saved just now");
       } else if (drawer.kind === "callback") {
-        const response = await authedFetch("/api/integrations/processors/connections", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(callback) });
+        const editing = drawer.editId;
+        const response = await authedFetch(editing ? `/api/integrations/processors/connections/${editing}` : "/api/integrations/processors/connections", { method: editing ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(callback) });
         if (!response.ok) throw new Error("Processor connection could not be saved.");
         setCallback(emptyCallback());
-        setMessage("Processor connected");
+        setCallbackInitial(emptyCallback());
+        setMessage(editing ? "Processor saved" : "Processor connected");
         closeDrawer();
       }
       setSaveState("saved");
@@ -953,7 +973,7 @@ function ProcessingWorkflowPage() {
           <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Notifies", width: "minmax(0,1.4fr)" }, { label: "Health", width: LIST_TRACK.status, mobile: true }, { label: "", width: "150px", srOnly: true, mobile: true }]} chevron={false}>
             {processorConnections.map((connection) => (
               <ListRow key={connection.id}>
-                <ListNameCell name={connection.name} sub={connection.secretConfigured ? "Token saved" : "No token"} />
+                <ListNameCell name={connection.name} sub={processorSub(connection)} />
                 <ListCell primary={connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Generic processor notification"} />
                 <ListCell mono primary={connection.submissionUrl || "—"} />
                 <ListCell mobile>
@@ -964,6 +984,9 @@ function ProcessingWorkflowPage() {
                     <Button type="button" variant="outline" size="sm" className="h-7 px-2" disabled={busy !== null} onClick={() => void testCallback(connection)}>
                       {busy === `test:${connection.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
                       Test
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 px-2" aria-label={`Edit ${connection.name}`} disabled={busy !== null} onClick={() => openEditCallback(connection)}>
+                      Edit
                     </Button>
                     <Button type="button" variant="outline" size="sm" className="h-7 px-2" aria-expanded={mappingConnectionId === connection.id} disabled={busy !== null} onClick={() => toggleMappings(connection)}>
                       Path mappings
@@ -1017,10 +1040,10 @@ function ProcessingWorkflowPage() {
         onOpenChange={(open) => {
           if (!open) requestClose();
         }}
-        title={drawer.kind === "callback" ? "Connect a processor" : "How to handle finished downloads"}
+        title={drawer.kind === "callback" ? (drawer.editId ? "Edit processor connection" : "Connect a processor") : "How to handle finished downloads"}
         description={drawer.kind === "callback" ? "Deluno sends the processor a job, then the processor reports back when the cleaned file is ready." : `${editingLibrary?.name ?? "Library"} · ${editingLibrary?.rootPath ?? ""}`}
         onSubmit={handleSubmit}
-        footer={<DrawerFooter state={footerState} message={message} saveLabel={drawer.kind === "callback" ? "Connect processor" : "Save workflow"} onCancel={requestClose} disabled={busy !== null || (drawer.kind === "library" && !workflowReady)} />}
+        footer={<DrawerFooter state={footerState} message={message} saveLabel={drawer.kind === "callback" ? (drawer.editId ? "Save processor" : "Connect processor") : "Save workflow"} onCancel={requestClose} disabled={busy !== null || (drawer.kind === "library" && !workflowReady)} />}
       >
         {drawer.kind === "library" ? (
           <>
@@ -1174,6 +1197,11 @@ function workflowFrom(library: LibraryItem): WorkflowForm {
     cleanupMode: library.cleanupMode ?? "keep-source",
     removeEmptySourceFolders: library.removeEmptySourceFolders ?? false
   };
+}
+/** The line under a processor's name; says so when there is no health-check address to test it with (#1055). */
+export function processorSub(connection: Pick<ProcessorConnectionItem, "secretConfigured" | "healthCheckUrl" | "healthStatus">): string {
+  const token = connection.secretConfigured ? "Token saved" : "No token";
+  return !connection.healthCheckUrl && connection.healthStatus === "degraded" ? `${token} · Add a health check address (Edit) to test it fully` : token;
 }
 function emptyCallback(): CallbackForm {
   return { name: "", provider: "generic-webhook", submissionUrl: "", healthCheckUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true };

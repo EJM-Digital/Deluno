@@ -24,3 +24,22 @@ describe("import policy page", () => {
     expect(source).toMatch(/set per library/);
   });
 });
+
+/** #1055: a processor connection's health-check address is editable from its drawer, and the row points at it. */
+describe("processor connection health-check address", () => {
+  const source = readFileSync(resolve(__dirname, "settings-media-management-page-v2.tsx"), "utf8");
+
+  it("has an Edit button per connection that opens the drawer and saves with PUT", () => {
+    expect(source).toMatch(/aria-label=\{`Edit \$\{connection\.name\}`\}/);
+    expect(source).toMatch(/method: editing \? "PUT" : "POST"/);
+    expect(source).toMatch(/healthCheckUrl: connection\.healthCheckUrl \?\? ""/);
+    expect(source).toMatch(/label="Health check address"/);
+  });
+
+  it("tells a degraded connection with no address where to add one", async () => {
+    const { processorSub } = await import("./settings-media-management-page-v2");
+    expect(processorSub({ secretConfigured: true, healthCheckUrl: null, healthStatus: "degraded" })).toMatch(/Add a health check address \(Edit\)/);
+    expect(processorSub({ secretConfigured: true, healthCheckUrl: "http://x/ready", healthStatus: "healthy" })).toBe("Token saved");
+    expect(processorSub({ secretConfigured: false, healthCheckUrl: null, healthStatus: "healthy" })).toBe("No token");
+  });
+});
