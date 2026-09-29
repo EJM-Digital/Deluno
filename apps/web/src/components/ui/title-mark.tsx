@@ -893,7 +893,7 @@ export function titleBarGradient(settledPercent: number, heldPercent: number): s
  * filter immediately after Upcoming, behind a divider, so this component can
  * stay a subtitle-only legend.
  */
-export function TitleMarkBarLegend({ className, type }: { className?: string; type?: MediaType }) {
+export function TitleMarkBarLegend({ className, type: _type }: { className?: string; type?: MediaType }) {
   return (
     <div className={cn("flex shrink-0 items-center gap-2.5 whitespace-nowrap", className)}>
       <span
@@ -911,18 +911,17 @@ export function TitleMarkBarLegend({ className, type }: { className?: string; ty
           className="flex items-center gap-1.5 text-[length:var(--library-toolbar-size)] font-medium text-muted-foreground"
         >
           {/*
-            Colour is never the only carrier (#318): the word is always beside
-            it.
-
-            The sheen is on, and it did not used to be: the argument was that
-            the subtitle bar is a flat gradient, so a glinting swatch would show
-            a treatment the bar never wears. That was true when gold here was
-            the semantic colour. It is the leaf now — the same surface the state
-            bar is painted with — so a reader sees one gold in one treatment
-            wherever "Deluno has finished" is being said, which is the whole
-            point of a legend.
+            Neutral swatches, not the mark colours. The subtitle bar on a card
+            is painted in a neutral tone (#1048), never red — red means something
+            is needed, but a language that has not arrived is not an alarm. The
+            legend matches the card by using neutral colours for all three
+            segments, separated only by their words.
           */}
-          <MarkStrip mark={segment.mark} type={type} sheen />
+          <span
+            aria-hidden
+            className="h-1 w-4 shrink-0 overflow-hidden rounded-full"
+            style={{ backgroundColor: "hsl(var(--mark-idle))" }}
+          />
           {/*
             The ladder's own word, not a synonym.
             the owner: *"users need to also be able to distinguish between done and
