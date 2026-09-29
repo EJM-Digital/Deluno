@@ -96,6 +96,8 @@ public static class PlatformSettingsPatchMerger
             Timezone: patch.Timezone ?? current.Timezone,
             LeftoverDownloadCleanupEnabled: patch.LeftoverDownloadCleanupEnabled ?? current.LeftoverDownloadCleanupEnabled,
             LeftoverDownloadCleanupAgeHours: patch.LeftoverDownloadCleanupAgeHours ?? current.LeftoverDownloadCleanupAgeHours,
+            LeftoverExcludePatterns: patch.LeftoverExcludePatterns ?? current.LeftoverExcludePatterns,
+            LeftoverMinAgeHours: patch.LeftoverMinAgeHours ?? current.LeftoverMinAgeHours,
             SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,

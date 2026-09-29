@@ -486,6 +486,28 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(72, updated.LeftoverDownloadCleanupAgeHours);
     }
 
+    /// <summary>#1001: an untouched install has no skip list and the 2-hour minimum age leftovers always had.</summary>
+    [Fact]
+    public async Task LeftoverExcludeList_and_min_age_default_to_what_leftovers_always_did_and_are_configurable()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal(string.Empty, defaults.LeftoverExcludePatterns);
+        Assert.Equal(2, defaults.LeftoverMinAgeHours);
+
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(defaults, new PatchPlatformSettingsRequest(LeftoverExcludePatterns: "*.nfo, Thumbs.db", LeftoverMinAgeHours: 12)),
+            CancellationToken.None);
+
+        var updated = await repository.GetAsync(CancellationToken.None);
+        Assert.Equal("*.nfo, Thumbs.db", updated.LeftoverExcludePatterns);
+        Assert.Equal(12, updated.LeftoverMinAgeHours);
+        // Nothing else was switched on by saving them.
+        Assert.False(updated.LeftoverDownloadCleanupEnabled);
+    }
+
     /// <summary>#759: Smart Replace by default, and an unrecognised value normalizes back to it rather than being stored verbatim.</summary>
     [Fact]
     public async Task ColonReplacementMode_defaults_to_smart_replace_and_normalizes_an_unknown_value()

@@ -53,8 +53,12 @@ public static partial class OrphanedDownloads
         IEnumerable<string> claimedPaths,
         IEnumerable<string> grabbedReleaseNames,
         IEnumerable<string> kept,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IEnumerable<string>? excludePatterns = null,
+        TimeSpan? minAge = null)
     {
+        var grace = minAge ?? Grace;
+        var skip = (excludePatterns ?? []).Select(GlobToRegex).OfType<Regex>().ToArray();
         var claimed = claimedPaths
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(Key)
@@ -76,15 +80,16 @@ public static partial class OrphanedDownloads
             foreach (var entry in scan.Entries)
             {
                 var key = Key(entry.Path);
-                if (now - entry.LastWrittenUtc < Grace
+                // From the normalised key, so a Windows path names the same entry on Linux.
+                var name = key[(key.LastIndexOf('/') + 1)..];
+                if (now - entry.LastWrittenUtc < grace
                     || keptKeys.Contains(key)
+                    || skip.Any(pattern => pattern.IsMatch(name))
                     || claimedHere.Any(path => Related(key, path)))
                 {
                     continue;
                 }
 
-                // From the normalised key, so a Windows path names the same entry on Linux.
-                var name = key[(key.LastIndexOf('/') + 1)..];
                 found.Add(new OrphanedDownloadItem(
                     entry.Path,
                     name,
@@ -100,6 +105,42 @@ public static partial class OrphanedDownloads
             .OrderBy(item => item.LibraryName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    /// <summary>
+    /// The skip list as typed: names or globs (<c>*.nfo</c>, <c>Thumbs.db</c>,
+    /// <c>Sample?</c>) separated by commas, semicolons or new lines (#1001).
+    /// </summary>
+    public static IReadOnlyList<string> ParseExcludePatterns(string? text)
+        => (text ?? string.Empty)
+            .Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(pattern => pattern.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    /// <summary>
+    /// A glob (<c>*</c> any run, <c>?</c> one character) matched against a
+    /// whole name, ignoring case. Every other character is literal, so a
+    /// pattern can never be a regular expression that misbehaves.
+    /// </summary>
+    public static bool MatchesGlob(string pattern, string name)
+        => GlobToRegex(pattern)?.IsMatch(name) ?? false;
+
+    private static Regex? GlobToRegex(string pattern)
+    {
+        pattern = pattern.Trim();
+        if (pattern.Length == 0)
+        {
+            return null;
+        }
+
+        var body = string.Concat(pattern.Select(character => character switch
+        {
+            '*' => ".*",
+            '?' => ".",
+            _ => Regex.Escape(character.ToString())
+        }));
+        return new Regex("^" + body + "$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
     }
 
     /// <summary>A path compared case-insensitively, with either slash and no trailing one.</summary>

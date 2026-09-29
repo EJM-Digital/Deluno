@@ -22,6 +22,7 @@ import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
 import { SegmentedControl } from "../components/ui/segmented-control";
+import { Textarea } from "../components/ui/textarea";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { NamingFormatField, NamingPatternEditor, previewNamingFormat, sanitizeIllegalCharacters, type ColonReplacementMode, type NamingFormatKind } from "../components/app/naming-format-field";
@@ -423,6 +424,8 @@ function ImportPolicyPage() {
         chownGroup: form.chownGroup,
         leftoverDownloadCleanupEnabled: form.leftoverDownloadCleanupEnabled,
         leftoverDownloadCleanupAgeHours: form.leftoverDownloadCleanupAgeHours,
+        leftoverExcludePatterns: form.leftoverExcludePatterns,
+        leftoverMinAgeHours: form.leftoverMinAgeHours,
         unmatchedImportPolicy: form.unmatchedImportPolicy,
         unmatchedImportGiveUpDays: form.unmatchedImportGiveUpDays
       });
@@ -542,6 +545,20 @@ function ImportPolicyFields({
           <p className="text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">Leftover downloads</p>
           <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">A leftover is a download-folder file nothing is using any more — no client, import or hand-off, and not still the other name of a library file. Off for a new install; the leftovers list on Queue always offers Keep/Remove by hand either way.</p>
         </div>
+        <Field label="Never count these as leftovers" help="Names to skip, one per line or separated by commas. * matches any run of characters and ? one character, so *.nfo skips every .nfo and Thumbs.db skips that file. Checked against each file or folder name at the top of the download folder. Empty by default.">
+          <Textarea
+            rows={2}
+            value={form.leftoverExcludePatterns}
+            placeholder="*.nfo, Thumbs.db"
+            onChange={(event) => onFormChange((current) => ({ ...current, leftoverExcludePatterns: event.target.value }))}
+          />
+        </Field>
+        <Field label="Count as a leftover after" help="How long something must sit unclaimed in a download folder before it is listed at all. A download that has only just finished can appear a moment before its client lists it, so this is 2 hours unless you change it.">
+          <div className="flex items-center gap-2">
+            <Input type="number" min={1} max={8760} value={form.leftoverMinAgeHours} onChange={(event) => onFormChange((current) => ({ ...current, leftoverMinAgeHours: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+            <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">hours</span>
+          </div>
+        </Field>
         <SwitchRow label="Delete leftover download files automatically" description="Deluno checks for these on its own schedule and writes every deletion to Activity, saying why it counted as a leftover." checked={form.leftoverDownloadCleanupEnabled} onCheckedChange={(checked) => onFormChange((current) => ({ ...current, leftoverDownloadCleanupEnabled: checked }))} />
         {form.leftoverDownloadCleanupEnabled ? (
           <Field label="After" help="How long a leftover must have sat, untouched, before Deluno deletes it.">
