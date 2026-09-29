@@ -130,7 +130,7 @@ function OverviewRow({
               className="text-left"
             >
               <p className="line-clamp-1 font-display text-[length:var(--type-title-sm)] font-semibold text-foreground">
-                {item.title}
+                {item.localizedTitle ?? item.title}
               </p>
             </button>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[length:var(--type-body-sm)] text-muted-foreground">

@@ -10,6 +10,7 @@ import {
   lookupTvdbCatalogue,
   lookupTvdbEpisodeGroups,
   lookupTvdbSeries,
+  lookupTvdbTranslation,
   mapTvdbSeries,
   matchTvdbRoute,
   parseTvdbSearch,
@@ -318,4 +319,18 @@ test("a TVDB 404 is a plain not_found, and a busy TVDB is a retryable 503", asyn
 test("catalogue and order answers use their own cache lifetimes", () => {
   assert.equal(TVDB_CATALOGUE_TTL_SECONDS, 60 * 60 * 6);
   assert.equal(TVDB_ORDERS_TTL_SECONDS, 60 * 60 * 24);
+});
+
+test("routes and serves one series' translation, and says not found when there is none", async () => {
+  assert.deepEqual(matchTvdbRoute("/metadata/tvdb/tv/81100/translations/fra"), { kind: "tvdb-translation", id: "81100", language: "fra" });
+  assert.equal(matchTvdbRoute("/metadata/tvdb/tv/81100/translations/fr"), null);
+
+  const tvdb = stubTvdb({ "/v4/series/81100/translations/fra": { data: { name: "Une série", overview: "Résumé." } } });
+  const env = { TVDB_API_KEY: "k", METADATA_CACHE: memoryKv() };
+  const found = await lookupTvdbTranslation("81100", "fra", env, tvdb.fetch);
+  assert.equal(found.title, "Une série");
+  assert.equal(found.overview, "Résumé.");
+  assert.equal(found.attribution, TVDB_ATTRIBUTION);
+
+  await assert.rejects(() => lookupTvdbTranslation("81100", "deu", env, tvdb.fetch), (error) => error.status === 404);
 });

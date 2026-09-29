@@ -12,6 +12,7 @@ import {
   pickCertification,
   pickContentRating,
   pickTrailerUrl,
+  lookupTranslations,
   matchRoute,
   buildPersonImdbResolverUrl,
   parseLookup
@@ -293,6 +294,9 @@ test("routes the catalogue and release-date endpoints, and nothing else", () => 
   assert.deepEqual(matchRoute("/metadata/movie/78/release-dates"), { kind: "release-dates", id: "78" });
   assert.deepEqual(matchRoute("/metadata/movie/645/collection"), { kind: "collection", id: "645" });
   assert.deepEqual(matchRoute("/person/6384/imdb"), { kind: "person-imdb", id: "6384" });
+  assert.deepEqual(matchRoute("/metadata/movie/78/translations"), { kind: "translations", mediaKind: "movie", id: "78" });
+  assert.deepEqual(matchRoute("/metadata/tv/1396/translations"), { kind: "translations", mediaKind: "tv", id: "1396" });
+  assert.equal(matchRoute("/metadata/tv/1396/translations/fr"), null);
   assert.equal(matchRoute("/metadata/tv/abc/catalogue"), null);
   assert.equal(matchRoute("/metadata/tv/1396/catalogue/extra"), null);
   assert.equal(matchRoute("/metadata/anything"), null);
@@ -442,4 +446,27 @@ test("bills the whole cast, and folds each crew member into one credit", () => {
 
   // The single director field the catalogue sorts on is unchanged.
   assert.equal(detail.director, "Denis Villeneuve");
+});
+
+test("lists each language's title, overview and tagline once per title, leaving out empty ones", async () => {
+  const tmdb = stubTmdb({
+    "/3/movie/603/translations": {
+      translations: [
+        { iso_639_1: "fr", iso_3166_1: "FR", data: { title: "Matrix", overview: "Un pirate.", tagline: "Bienvenue." } },
+        { iso_639_1: "pt", iso_3166_1: "BR", data: { title: "Matrix", overview: "", tagline: "" } },
+        { iso_639_1: "de", iso_3166_1: "DE", data: { title: "", overview: "  ", tagline: "" } }
+      ]
+    },
+    "/3/tv/1396/translations": {
+      translations: [{ iso_639_1: "es", iso_3166_1: "ES", data: { name: "Breaking Bad", overview: "Un profesor." } }]
+    }
+  });
+
+  const movie = await lookupTranslations("movie", "603", "key", tmdb.fetch);
+  assert.deepEqual(movie.translations.map((entry) => entry.language + "-" + entry.region), ["fr-FR", "pt-BR"]);
+  assert.equal(movie.translations[0].tagline, "Bienvenue.");
+  assert.equal(movie.translations[1].overview, null);
+
+  const show = await lookupTranslations("tv", "1396", "key", tmdb.fetch);
+  assert.equal(show.translations[0].title, "Breaking Bad");
 });

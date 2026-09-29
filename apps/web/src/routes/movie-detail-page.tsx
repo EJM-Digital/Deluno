@@ -816,7 +816,7 @@ export function MovieDetailPage() {
                 on their centres.
               */}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{movie.title}</h1>
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{metaText("LocalizedTitle") ?? movie.title}</h1>
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
                   James: *"instead of having a big button for monitor/unmonitored
@@ -847,7 +847,12 @@ export function MovieDetailPage() {
                     : movie.monitored ? <ShieldCheck className="h-7 w-7" /> : <ShieldOff className="h-7 w-7" />}
                 </button>
               </div>
-              {movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
+              {metaText("LocalizedTitle") ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Original title {movie.originalTitle ?? movie.title}
+                  {movie.originalTitle && movie.originalTitle !== movie.title ? ` · Deluno name ${movie.title}` : ""}
+                </p>
+              ) : movie.originalTitle && movie.originalTitle !== movie.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {movie.originalTitle}</p> : null}
               {alternateTitles.length ? (
                 <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
                   Alternate titles: {alternateTitles.join(", ")}

@@ -5,6 +5,9 @@ const CACHE_TTL_SECONDS = 60 * 60 * 12;
 // sooner than a search result. Six hours means a new episode shows up the same
 // day without asking TMDb for a season list on every refresh.
 const CATALOGUE_TTL_SECONDS = 60 * 60 * 6;
+// A title's translations change rarely and one answer carries every language,
+// so it is kept a week and shared by every install whatever language it asks for.
+const TRANSLATIONS_TTL_SECONDS = 60 * 60 * 24 * 7;
 const RATE_WINDOW_SECONDS = 60;
 const RATE_LIMIT_PER_WINDOW = 30;
 const MAX_RESULTS = 6;
@@ -158,6 +161,11 @@ export function matchRoute(pathname) {
     return { kind: "collection", id: collection[1] };
   }
 
+  const translations = /^\/metadata\/(movie|tv)\/(\d{1,12})\/translations$/.exec(pathname);
+  if (translations) {
+    return { kind: "translations", mediaKind: translations[1], id: translations[2] };
+  }
+
   const personImdb = /^\/person\/(\d{1,12})\/imdb$/.exec(pathname);
   if (personImdb) {
     return { kind: "person-imdb", id: personImdb[1] };
@@ -229,7 +237,9 @@ async function serveCatalogueRoute(route, env) {
     ? `catalogue:v1:${route.id}`
     : route.kind === "release-dates"
       ? `release-dates:v1:${route.id}`
-      : `collection:v1:${route.id}`;
+      : route.kind === "translations"
+        ? `translations:v1:${route.mediaKind}:${route.id}`
+        : `collection:v1:${route.id}`;
   const cached = await env.METADATA_CACHE.get(key, "json");
   if (cached) {
     return json(cached, 200, { "Cache-Control": "public, max-age=600" });
@@ -240,9 +250,14 @@ async function serveCatalogueRoute(route, env) {
       ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY)
       : route.kind === "release-dates"
         ? await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY)
-        : await lookupMovieCollection(route.id, env.TMDB_API_KEY);
+        : route.kind === "translations"
+          ? await lookupTranslations(route.mediaKind, route.id, env.TMDB_API_KEY)
+          : await lookupMovieCollection(route.id, env.TMDB_API_KEY);
 
-    await env.METADATA_CACHE.put(key, JSON.stringify(payload), { expirationTtl: CATALOGUE_TTL_SECONDS });
+    await env.METADATA_CACHE.put(
+      key,
+      JSON.stringify(payload),
+      { expirationTtl: route.kind === "translations" ? TRANSLATIONS_TTL_SECONDS : CATALOGUE_TTL_SECONDS });
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
@@ -258,6 +273,28 @@ async function serveCatalogueRoute(route, env) {
 
     return json({ error: "provider_unavailable", message: "Metadata is temporarily unavailable." }, 503);
   }
+}
+
+/**
+ * Every language TMDb has a translated title, overview or tagline for, in one
+ * compact list. The app picks the language it wants, so the cache is per title,
+ * not per title and language. Entries with nothing to show are left out.
+ */
+export async function lookupTranslations(mediaKind, providerId, apiKey, request = fetch) {
+  const endpoint = new URL(`https://api.themoviedb.org/3/${mediaKind === "tv" ? "tv" : "movie"}/${providerId}/translations`);
+  endpoint.searchParams.set("api_key", apiKey);
+  const body = await getJson(endpoint, request);
+  const clean = (value) => (typeof value === "string" && value.trim() ? value.trim() : null);
+  const translations = (Array.isArray(body.translations) ? body.translations : [])
+    .map((entry) => ({
+      language: clean(entry?.iso_639_1),
+      region: clean(entry?.iso_3166_1),
+      title: clean(entry?.data?.title) ?? clean(entry?.data?.name),
+      overview: clean(entry?.data?.overview),
+      tagline: clean(entry?.data?.tagline)
+    }))
+    .filter((entry) => entry.language && (entry.title || entry.overview || entry.tagline));
+  return { provider: "tmdb", providerId: String(providerId), translations };
 }
 
 export async function lookupSeriesCatalogue(providerId, apiKey, request = fetch) {

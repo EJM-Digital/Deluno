@@ -128,7 +128,7 @@ export function SettingsMetadataPage() {
       <ListCard title="Title details" count="Language and ratings region">
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <FieldRow>
-            <Field label="Details language" help="Preferred language for titles, descriptions, and release information." error={settingsMutation.fieldErrors.metadataLanguage}>
+            <Field label="Details language" help="Titles, descriptions and taglines are shown in this language when a translation exists. The original title is always kept, and searches still match every name a title is known by. English leaves everything as it is." error={settingsMutation.fieldErrors.metadataLanguage}>
               <PresetField
                 value={form.language}
                 onChange={(value) => setForm((current) => ({ ...current, language: value }))}
@@ -149,8 +149,8 @@ export function SettingsMetadataPage() {
           </FieldRow>
           {metadataPreferencesIgnored(metadataStatus) && (
             <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
-              These apply when Deluno looks titles up on TMDb directly. This install uses Deluno's managed metadata
-              service, which does not take a language or region, so changing them has no effect here.
+              The ratings region applies when Deluno looks titles up on TMDb directly. This install uses Deluno's managed
+              metadata service, which does not take a region, so changing it has no effect here. The language does apply.
             </p>
           )}
         </div>

@@ -23,6 +23,15 @@ describe("UI adapters", () => {
     expect(adaptSeriesItems([])).toEqual([]);
   });
 
+  it("carries the title in the chosen language beside the plain title, and nothing when none was chosen (#1018)", () => {
+    const base = { id: "movie-2", title: "The Matrix", releaseYear: 1999, posterUrl: null, backdropUrl: null, hasFile: false, monitored: true, ratings: [], genres: "", createdUtc: "2024-01-01T00:00:00Z" };
+    const french = { ...base, metadataJson: '{"LocalizedTitle":"Matrice","LocalizedLanguage":"fr"}' } as unknown as MovieListItem;
+    const plain = { ...base, metadataJson: "{}" } as unknown as MovieListItem;
+
+    expect(adaptMovieItems([french])[0]).toMatchObject({ title: "The Matrix", localizedTitle: "Matrice" });
+    expect(adaptMovieItems([plain])[0].localizedTitle).toBeNull();
+  });
+
   it("reads alternate titles out of the stored metadata blob and stays safe when it has none (#861)", () => {
     expect(readAlternateTitles('{"AlternateTitles":["哪吒之魔童闹海","Nezha 2"]}')).toEqual(["哪吒之魔童闹海", "Nezha 2"]);
     expect(readAlternateTitles('{"alternateTitles":["Le Fabuleux Destin d\'Amélie Poulain"]}')).toEqual(["Le Fabuleux Destin d'Amélie Poulain"]);

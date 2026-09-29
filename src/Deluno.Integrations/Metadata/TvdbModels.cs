@@ -59,3 +59,6 @@ internal sealed record TvdbEpisode(
     string? Overview,
     string? AirDate,
     int? AbsoluteNumber);
+
+/// <summary>A series' name and overview in one language, from TheTVDB or the gateway's translation route (#1018).</summary>
+internal sealed record TvdbTranslation(string? Title, string? Overview);
