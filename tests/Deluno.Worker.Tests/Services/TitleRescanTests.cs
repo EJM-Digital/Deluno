@@ -117,6 +117,38 @@ public sealed class TitleRescanTests : IDisposable
         rig.Movies.Verify(m => m.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("lost+found")]
+    [InlineData("$RECYCLE.BIN")]
+    [InlineData("System Volume Information")]
+    [InlineData(".Trash-1000")]
+    public async Task A_mount_holding_only_system_folders_is_still_treated_as_empty_and_unreachable(string systemFolder)
+    {
+        var mount = Directory.CreateDirectory(Path.Combine(_root, "mount-" + Guid.NewGuid().ToString("N"))).FullName;
+        Directory.CreateDirectory(Path.Combine(mount, systemFolder));
+        var gone = Path.Combine(mount, "Arrival (2016)", "Arrival.mkv");
+        var rig = new Rig(this, gone, rootOverride: mount);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.Equal("library-unreachable", result!.Outcome);
+        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_mount_with_a_real_folder_beside_the_system_ones_is_mounted()
+    {
+        var mount = Directory.CreateDirectory(Path.Combine(_root, "mount-real")).FullName;
+        Directory.CreateDirectory(Path.Combine(mount, "lost+found"));
+        Directory.CreateDirectory(Path.Combine(mount, "Other Movie (2001)"));
+        var gone = Path.Combine(mount, "Arrival (2016)", "Arrival.mkv");
+        var rig = new Rig(this, gone, rootOverride: mount);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.NotEqual("library-unreachable", result!.Outcome);
+    }
+
     [Fact]
     public async Task An_unknown_library_says_nothing_was_changed_and_marks_nothing()
     {

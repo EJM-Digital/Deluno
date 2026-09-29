@@ -52,6 +52,22 @@ describe("TitleFolderActions", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
+  it("confirms that an unmounted or unknown library changed nothing", async () => {
+    for (const [outcome, line] of [["library-unreachable", /Mount the drive/], ["library-unknown", /Put the title back in a library/]] as const) {
+      fetchMock.mockImplementation(() => json({
+        outcome, title: "Arrival", filesChecked: 0, filesPresent: 0, missing: [], untracked: [], summary: "Deluno changed nothing."
+      }));
+      const { unmount } = render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Rescan the folder for Arrival" }));
+      await userEvent.click(screen.getByRole("button", { name: "Rescan now" }));
+
+      await waitFor(() => expect(screen.getByText(/no file was marked missing/)).toBeTruthy());
+      expect(screen.getByText(line)).toBeTruthy();
+      unmount();
+    }
+  });
+
   it("previews a rename without changing anything, and only then offers to rename", async () => {
     fetchMock.mockImplementation(() => json({
       outcome: "will-rename", currentFolder: "Arrival", proposedFolder: "Arrival (2016)", willChange: true,
