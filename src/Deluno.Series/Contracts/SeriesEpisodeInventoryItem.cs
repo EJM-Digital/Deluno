@@ -23,4 +23,5 @@ public sealed record SeriesEpisodeInventoryItem(
     int? SceneSeasonNumber = null,
     int? SceneEpisodeNumber = null,
     DateOnly? AirDate = null,
-    string? NumberingSource = null);
+    string? NumberingSource = null,
+    string? CatalogueSource = null);

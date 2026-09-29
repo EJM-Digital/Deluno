@@ -573,6 +573,36 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     /// <summary>
+    /// #1063: episodes arriving from a fallback source (TMDb) follow the preset
+    /// like any others, specials stay unmonitored, and the inventory says which
+    /// source each episode's numbering came from.
+    /// </summary>
+    [Fact]
+    public async Task Fallback_source_episodes_follow_the_preset_and_the_inventory_names_the_source()
+    {
+        var now = DateTimeOffset.Parse("2026-09-29T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.UpdateMonitorNewEpisodesAsync(seriesId, monitorNewEpisodes: false, CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(0, 1, "Special", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-28))
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+
+        var detail = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.All(detail!.Episodes, episode =>
+        {
+            Assert.False(episode.Monitored);
+            Assert.Equal("tmdb", episode.CatalogueSource);
+        });
+    }
+
+    /// <summary>
     /// #848: a series added from a list with monitor mode "Future" only
     /// monitors episodes that have not aired yet at the time its episode
     /// catalogue is first populated — the show it was added over is not
