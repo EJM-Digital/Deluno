@@ -33,7 +33,8 @@ import {
 import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useLatestRequest } from "../../hooks/use-latest-request";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
-import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
+import { parseTagList } from "./tag-picker";
+import { createInitialLibraryForm, metadataCreatePayload, parseIdPrefixedSearch, readRememberedAddTags, rememberAddTags,useLibraryCreate, type CreateFormDraft } from "../../hooks/use-library-create";
 import { authedFetch } from "../../lib/use-auth";
 import { describeRequestFailure } from "../../lib/search-reasons";
 import { toast } from "../shell/toaster";
@@ -235,6 +236,13 @@ export function LibraryView({
   // Opened from elsewhere with a title to look for, such as a film on a media
   // server that Deluno does not manage yet (#494): start with that title.
   const addTitle = searchParams.get("add") === "true" ? searchParams.get("title") : null;
+  // #1038: the tag picker starts with the tags last used for this library.
+  useEffect(() => {
+    if (!showCreate) return;
+    const remembered = readRememberedAddTags(addIntoLibraryId);
+    setCreateForm((current) => (current.tags === remembered ? current : { ...current, tags: remembered }));
+  }, [showCreate, addIntoLibraryId, setCreateForm]);
+
   useEffect(() => {
     if (addTitle) setCreateForm((current) => (current.title ? current : { ...current, title: addTitle }));
   }, [addTitle, setCreateForm]);
@@ -779,6 +787,7 @@ export function LibraryView({
       monitorPreset: createForm.monitorPreset,
       searchForMissingNow: createForm.searchForMissingNow,
       searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
+      tags: createForm.tags,
       metadata: createForm.metadata
     };
   }
@@ -792,6 +801,7 @@ export function LibraryView({
       monitorPreset: createForm.monitorPreset,
       searchForMissingNow: createForm.searchForMissingNow,
       searchForCutoffUnmetNow: createForm.searchForCutoffUnmetNow,
+      tags: createForm.tags,
       metadata: result
     };
   }
@@ -810,6 +820,7 @@ export function LibraryView({
               monitored: draft.monitored,
               searchForMissingNow: draft.searchForMissingNow,
               searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
+              tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }
@@ -823,11 +834,13 @@ export function LibraryView({
               listMonitorMode: draft.monitored && draft.monitorPreset !== "all" ? draft.monitorPreset : null,
               searchForMissingNow: draft.searchForMissingNow,
               searchForCutoffUnmetNow: draft.searchForCutoffUnmetNow,
+              tags: parseTagList(draft.tags),
               libraryId: addIntoLibraryId,
               ...metadataCreatePayload(resolvedMetadata)
             }
       )
     });
+    if (response.ok) rememberAddTags(addIntoLibraryId, draft.tags);
     if (!response.ok) {
       const problem = await readValidationProblem(response);
       throw new Error(problem?.title ?? `Could not add ${singular}.`);

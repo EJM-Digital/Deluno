@@ -19,4 +19,6 @@ public sealed record CreateMovieRequest(
     /// <summary>Search for this film right away if it comes out missing (#793), regardless of Monitored.</summary>
     bool SearchForMissingNow = false,
     /// <summary>Search for this film right away if it comes out cutoff-unmet (#793), regardless of Monitored.</summary>
-    bool SearchForCutoffUnmetNow = false);
+    bool SearchForCutoffUnmetNow = false,
+    /// <summary>Tag names picked in the add dialog (#1038); written with the title before routing and the added notification.</summary>
+    IReadOnlyList<string>? Tags = null);
