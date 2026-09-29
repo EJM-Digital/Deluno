@@ -54,9 +54,10 @@ public static class SearchEndpointRouteBuilderExtensions
             IHttpClientFactory httpClientFactory,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Url) || !Uri.TryCreate(request.Url.Trim(), UriKind.Absolute, out var address))
+            if (string.IsNullOrWhiteSpace(request.Url) || !Uri.TryCreate(request.Url.Trim(), UriKind.Absolute, out var address)
+                || address.Scheme is not ("http" or "https"))
             {
-                return Results.Ok(new { healthy = false, message = "Enter the helper's address, such as http://127.0.0.1:8191." });
+                return Results.Ok(new { healthy = false, message = "Enter the helper's web address starting with http:// or https://, such as http://127.0.0.1:8191." });
             }
 
             var http = httpClientFactory.CreateClient(Trackers.FlareSolverrCloudflareHelper.HttpClientName);

@@ -1,4 +1,5 @@
 import { matchTvdbRoute, serveTvdbRoute } from "./tvdb.js";
+import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
 // A catalogue changes when a broadcaster announces an episode, so it expires
@@ -95,10 +96,15 @@ export default {
       return serveCatalogueRoute(route, env);
     }
 
-    const key = buildCacheKey(lookup.value);
-    const cached = await env.METADATA_CACHE.get(key, "json");
+    const key = await boundCacheKey(buildCacheKey(lookup.value));
+    const cached = await readCache(env.METADATA_CACHE, key);
     if (cached) {
       return json(cached, 200, { "Cache-Control": "public, max-age=300" });
+    }
+
+    const remembered = await readCachedError(env.METADATA_CACHE, key);
+    if (remembered) {
+      return json(remembered.body, remembered.status, remembered.headers ?? {});
     }
 
     try {
@@ -109,29 +115,26 @@ export default {
         resultCount: results.length,
         results
       };
-      await env.METADATA_CACHE.put(key, JSON.stringify(response), { expirationTtl: CACHE_TTL_SECONDS });
+      await writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS);
       return json(response, 200, { "Cache-Control": "public, max-age=300" });
     } catch (error) {
       const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
+      let failure;
       // A 404 is meaningful only when Deluno asked for one exact identity.
       // Preserve it so the app can keep the title and offer a calm remap or
       // acknowledgement. Fuzzy searches still treat an upstream error as an
       // unavailable provider, never as evidence that a title was deleted.
       if (providerStatus === 404 && lookup.value.providerId) {
-        return json(
-          { error: "provider_record_missing", provider: "tmdb", providerId: lookup.value.providerId },
-          404);
-      }
-      if (providerStatus === 429) {
-        return json(
-          { error: "provider_busy", message: "Title matching is busy. Please try again shortly." },
-          503,
-          { "Retry-After": "60" });
+        failure = { status: 404, body: { error: "provider_record_missing", provider: "tmdb", providerId: lookup.value.providerId }, headers: {} };
+      } else if (providerStatus === 429) {
+        failure = { status: 503, body: { error: "provider_busy", message: "Title matching is busy. Please try again shortly." }, headers: { "Retry-After": "60" } };
+      } else {
+        failure = { status: 503, body: { error: "provider_unavailable", message: "Title matching is temporarily unavailable." }, headers: {} };
       }
 
-      return json(
-        { error: "provider_unavailable", message: "Title matching is temporarily unavailable." },
-        503);
+      // Remembered briefly so a stream of distinct failing lookups cannot all reach TMDb (#1064).
+      await cacheError(env.METADATA_CACHE, key, failure);
+      return json(failure.body, failure.status, failure.headers);
     }
   }
 };
@@ -240,9 +243,14 @@ async function serveCatalogueRoute(route, env) {
       : route.kind === "translations"
         ? `translations:v1:${route.mediaKind}:${route.id}`
         : `collection:v1:${route.id}`;
-  const cached = await env.METADATA_CACHE.get(key, "json");
+  const cached = await readCache(env.METADATA_CACHE, key);
   if (cached) {
     return json(cached, 200, { "Cache-Control": "public, max-age=600" });
+  }
+
+  const remembered = await readCachedError(env.METADATA_CACHE, key);
+  if (remembered) {
+    return json(remembered.body, remembered.status, remembered.headers ?? {});
   }
 
   try {
@@ -254,24 +262,25 @@ async function serveCatalogueRoute(route, env) {
           ? await lookupTranslations(route.mediaKind, route.id, env.TMDB_API_KEY)
           : await lookupMovieCollection(route.id, env.TMDB_API_KEY);
 
-    await env.METADATA_CACHE.put(
+    await writeCache(
+      env.METADATA_CACHE,
       key,
-      JSON.stringify(payload),
-      { expirationTtl: route.kind === "translations" ? TRANSLATIONS_TTL_SECONDS : CATALOGUE_TTL_SECONDS });
+      payload,
+      route.kind === "translations" ? TRANSLATIONS_TTL_SECONDS : CATALOGUE_TTL_SECONDS);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
+    let failure;
     if (providerStatus === 404) {
-      return json({ error: "not_found" }, 404);
-    }
-    if (providerStatus === 429) {
-      return json(
-        { error: "provider_busy", message: "Metadata is busy. Please try again shortly." },
-        503,
-        { "Retry-After": "60" });
+      failure = { status: 404, body: { error: "not_found" }, headers: {} };
+    } else if (providerStatus === 429) {
+      failure = { status: 503, body: { error: "provider_busy", message: "Metadata is busy. Please try again shortly." }, headers: { "Retry-After": "60" } };
+    } else {
+      failure = { status: 503, body: { error: "provider_unavailable", message: "Metadata is temporarily unavailable." }, headers: {} };
     }
 
-    return json({ error: "provider_unavailable", message: "Metadata is temporarily unavailable." }, 503);
+    await cacheError(env.METADATA_CACHE, key, failure);
+    return json(failure.body, failure.status, failure.headers);
   }
 }
 

@@ -172,6 +172,75 @@ public sealed class TrackerDefinitionUpdateServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_downloaded_file_that_does_not_parse_never_replaces_a_good_one_and_is_named_in_Activity()
+    {
+        var (service, _, activity, source, catalog, _) = Build();
+        var trackersDir = Path.Combine(dataRoot, "trackers");
+        Directory.CreateDirectory(trackersDir);
+        var good = ValidYaml("existingtracker");
+        await File.WriteAllTextAsync(Path.Combine(trackersDir, "existingtracker.yml"), good);
+        catalog.Reload();
+        source.Definitions.Add(new RemoteTrackerDefinition("existingtracker", "id: existingtracker\nname: [unclosed"));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Equal(good, await File.ReadAllTextAsync(Path.Combine(trackersDir, "existingtracker.yml")));
+        Assert.Empty(state.UpdatedTrackerIds);
+        Assert.NotNull(catalog.Find("existingtracker"));
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Equal("trackers.definitions.rejected", recorded.Category);
+        Assert.Contains("existingtracker", recorded.Message);
+        Assert.Empty(Directory.GetFiles(trackersDir, "*.tmp"));
+    }
+
+    [Theory]
+    [InlineData("a definition with another id inside", "id: someoneelse")]
+    [InlineData("a definition whose address is not a web address", "links-not-web")]
+    [InlineData("a definition the engine cannot run", "unknown-filter")]
+    public async Task A_definition_that_parses_but_is_not_sound_is_not_written(string _, string flaw)
+    {
+        var (service, _, _, source, _, _) = Build();
+        var yaml = flaw switch
+        {
+            "id: someoneelse" => ValidYaml("newtracker").Replace("id: newtracker", "id: someoneelse"),
+            "links-not-web" => ValidYaml("newtracker").Replace("https://example.invalid/", "file:///etc/passwd"),
+            _ => ValidYaml("newtracker").Replace("selector: a.name", "selector: a.name\n              filters:\n                - name: nosuchfilter")
+        };
+        source.Definitions.Add(new RemoteTrackerDefinition("newtracker", yaml));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Empty(state.UpdatedTrackerIds);
+        Assert.False(File.Exists(Path.Combine(dataRoot, "trackers", "newtracker.yml")));
+    }
+
+    [Fact]
+    public async Task A_bad_file_beside_good_ones_does_not_stop_the_good_ones()
+    {
+        var (service, _, _, source, catalog, _) = Build();
+        source.Definitions.Add(new RemoteTrackerDefinition("broken", "not: [valid"));
+        source.Definitions.Add(new RemoteTrackerDefinition("newtracker", ValidYaml("newtracker")));
+
+        var state = await service.UpdateNowAsync(CancellationToken.None);
+
+        Assert.Equal(["newtracker"], state.UpdatedTrackerIds);
+        Assert.NotNull(catalog.Find("newtracker"));
+    }
+
+    [Fact]
+    public void An_unreadable_definition_file_does_not_break_the_catalogue()
+    {
+        var trackersDir = Path.Combine(dataRoot, "trackers");
+        Directory.CreateDirectory(trackersDir);
+        File.WriteAllText(Path.Combine(trackersDir, "fine.yml"), ValidYaml("fine"));
+        // Held open with no sharing: reading it throws an IOException.
+        using var locked = new FileStream(Path.Combine(trackersDir, "locked.yml"), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        var catalog = new TrackerDefinitionCatalog(trackersDir, NullLogger<TrackerDefinitionCatalog>.Instance);
+
+        Assert.NotNull(catalog.Find("fine"));
+    }
+
+    [Fact]
     public async Task A_source_failure_is_recorded_without_touching_any_definition()
     {
         var (service, store, activity, source, _, _) = Build();

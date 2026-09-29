@@ -1,3 +1,5 @@
+import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
+
 // TheTVDB v4 served through the gateway exactly like TMDb: the API key (and the
 // optional subscriber PIN) live only in this Worker's secrets, so a Deluno
 // install never holds them.
@@ -303,9 +305,16 @@ export async function lookupTvdbRemote(imdbId, env, request = fetch) {
 }
 
 /** Every episode of one season type, following TheTVDB's own pagination. */
-async function fetchEpisodes(env, id, seasonType, request, language) {
+async function fetchEpisodes(env, id, seasonType, request, language, budget = null) {
   const episodes = [];
   for (let page = 0; page < MAX_PAGES; page++) {
+    // One request may make only so many upstream pages in all: each costs a
+    // token read and a fetch, and a Worker's subrequest limit is small (#1064).
+    if (budget && budget.pagesLeft-- <= 0) {
+      const spent = new TvdbRequestError(503);
+      spent.budgetSpent = true;
+      throw spent;
+    }
     const path = language
       ? `/series/${id}/episodes/${seasonType}/${language}`
       : `/series/${id}/episodes/${seasonType}`;
@@ -376,8 +385,13 @@ export async function lookupTvdbCatalogue(id, env, request = fetch) {
  * groups (type 3 = DVD, type 2 = absolute) so Deluno reads both one way.
  * Episodes are matched back to the aired list by TheTVDB's episode id.
  */
+export const MAX_EPISODE_GROUP_PAGES = 20;
+
 export async function lookupTvdbEpisodeGroups(id, env, request = fetch) {
-  const aired = (await fetchEpisodes(env, id, "official", request, null)).filter(isEpisode);
+  // Shared by the aired list and both alternate orders, so the whole route stays
+  // under the Worker's subrequest limit however long the series is.
+  const budget = { pagesLeft: MAX_EPISODE_GROUP_PAGES };
+  const aired = (await fetchEpisodes(env, id, "official", request, null, budget)).filter(isEpisode);
   const airedById = new Map(aired.map((episode) => [episode.id, episode]));
   const groups = [];
 
@@ -388,9 +402,12 @@ export async function lookupTvdbEpisodeGroups(id, env, request = fetch) {
   for (const order of orders) {
     let episodes;
     try {
-      episodes = (await fetchEpisodes(env, id, order.seasonType, request, null)).filter(isEpisode);
+      episodes = (await fetchEpisodes(env, id, order.seasonType, request, null, budget)).filter(isEpisode);
     } catch (error) {
       if (error instanceof TvdbRequestError && error.status === 404) continue;
+      // Out of budget partway through an alternate order: a partial order is worse
+      // than none, so leave it out and keep what was completed.
+      if (error?.budgetSpent) break;
       throw error;
     }
     const mapped = episodes
@@ -460,23 +477,34 @@ export async function serveTvdbRoute(route, url, env, cache, json, request = fet
       load = () => lookupTvdbRemote(route.id, env, request);
   }
 
-  const cached = await cache.get(key, "json");
+  key = await boundCacheKey(key);
+  const cached = await readCache(cache, key);
   if (cached) {
     return json(cached, 200, { "Cache-Control": "public, max-age=600" });
   }
 
+  // A failure seen a moment ago for this same key is answered again without
+  // asking TheTVDB (#1064).
+  const remembered = await readCachedError(cache, key);
+  if (remembered) {
+    return json(remembered.body, remembered.status, remembered.headers ?? {});
+  }
+
   try {
     const payload = await load();
-    await cache.put(key, JSON.stringify(payload), { expirationTtl: ttl });
+    await writeCache(cache, key, payload, ttl);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
     const status = error instanceof TvdbRequestError ? error.status : 502;
+    let failure;
     if (status === 404) {
-      return json({ error: "not_found" }, 404);
+      failure = { status: 404, body: { error: "not_found" }, headers: {} };
+    } else if (status === 429) {
+      failure = { status: 503, body: { error: "provider_busy", message: "TV metadata is busy. Please try again shortly." }, headers: { "Retry-After": "60" } };
+    } else {
+      failure = { status: 503, body: { error: "provider_unavailable", message: "TV metadata is temporarily unavailable." }, headers: {} };
     }
-    if (status === 429) {
-      return json({ error: "provider_busy", message: "TV metadata is busy. Please try again shortly." }, 503, { "Retry-After": "60" });
-    }
-    return json({ error: "provider_unavailable", message: "TV metadata is temporarily unavailable." }, 503);
+    await cacheError(cache, key, failure);
+    return json(failure.body, failure.status, failure.headers);
   }
 }

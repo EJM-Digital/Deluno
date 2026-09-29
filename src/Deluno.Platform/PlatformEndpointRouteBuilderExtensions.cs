@@ -835,7 +835,13 @@ public static class PlatformEndpointRouteBuilderExtensions
             errors["libraryFreeSpacePausePercent"] = ["Choose a percentage between 1 and 50."];
         }
 
-        if (request.CloudflareHelperTimeoutSeconds is { } helperTimeout && (helperTimeout < 1 || helperTimeout > 180))
+        if (!string.IsNullOrWhiteSpace(request.CloudflareHelperUrl) &&
+            (!Uri.TryCreate(request.CloudflareHelperUrl.Trim(), UriKind.Absolute, out var helperAddress) || helperAddress.Scheme is not ("http" or "https")))
+        {
+            errors["cloudflareHelperUrl"] = ["Enter the helper's web address starting with http:// or https://, such as http://127.0.0.1:8191."];
+        }
+
+        if (request.CloudflareHelperTimeoutSeconds is { } helperTimeout &&(helperTimeout < 1 || helperTimeout > 180))
         {
             errors["cloudflareHelperTimeoutSeconds"] = ["Choose a timeout between 1 and 180 seconds."];
         }

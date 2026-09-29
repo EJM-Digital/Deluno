@@ -171,7 +171,19 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
         {
             foreach (var file in Directory.EnumerateFiles(overrideDirectory, "*.yml"))
             {
-                sources[Path.GetFileNameWithoutExtension(file)] = (File.ReadAllText(file), TrackerDefinitionOrigins.DataFolder);
+                string text;
+                try
+                {
+                    text = File.ReadAllText(file);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // One unreadable file must not take the whole catalogue down (#1064).
+                    logger.LogWarning("Tracker definition file {File} could not be read and is skipped: {Reason}", file, exception.Message);
+                    continue;
+                }
+
+                sources[Path.GetFileNameWithoutExtension(file)] = (text, TrackerDefinitionOrigins.DataFolder);
             }
         }
 

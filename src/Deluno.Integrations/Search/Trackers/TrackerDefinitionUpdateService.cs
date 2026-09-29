@@ -80,6 +80,7 @@ public sealed class TrackerDefinitionUpdateService(
             // "updated" as far as the state this job persists is concerned.
             var added = new List<string>();
             var changed = new List<string>();
+            var rejected = new List<string>();
             foreach (var definition in remote)
             {
                 if (string.IsNullOrWhiteSpace(definition.Id) || string.IsNullOrWhiteSpace(definition.Yaml))
@@ -90,6 +91,16 @@ public sealed class TrackerDefinitionUpdateService(
                 // A site Deluno keeps its own definition for is not replaced by the repository's.
                 if (KeptOwn.Value.Contains(definition.Id))
                 {
+                    continue;
+                }
+
+                // Parsed and checked before it goes anywhere near the data folder (#1064):
+                // a definition that will not parse, will not run, names another id or
+                // points at something that is not a web address never replaces a good one.
+                if (Reject(definition.Id, definition.Yaml) is { } reason)
+                {
+                    logger.LogWarning("Tracker definition {Id} from the remote source was not used: {Reason}", definition.Id, reason);
+                    rejected.Add(definition.Id);
                     continue;
                 }
 
@@ -107,11 +118,27 @@ public sealed class TrackerDefinitionUpdateService(
                     continue;
                 }
 
-                await File.WriteAllTextAsync(path, definition.Yaml, cancellationToken);
+                // Written beside, then moved into place, so an interrupted write never leaves half a file.
+                var partial = path + ".tmp";
+                await File.WriteAllTextAsync(partial, definition.Yaml, cancellationToken);
+                File.Move(partial, path, overwrite: true);
                 (isNew ? added : changed).Add(definition.Id);
             }
 
             var updated = added.Concat(changed).ToList();
+
+            if (rejected.Count > 0)
+            {
+                rejected.Sort(StringComparer.OrdinalIgnoreCase);
+                await activityFeedRepository.RecordActivityAsync(
+                    "trackers.definitions.rejected",
+                    $"Deluno kept its current copy of {rejected.Count} tracker definition{(rejected.Count == 1 ? "" : "s")} ({string.Join(", ", rejected)}) because the downloaded file was not valid.",
+                    JsonSerializer.Serialize(new { rejectedTrackerIds = rejected }),
+                    null,
+                    "trackers",
+                    null,
+                    cancellationToken);
+            }
 
             if (updated.Count > 0)
             {
@@ -147,6 +174,53 @@ public sealed class TrackerDefinitionUpdateService(
                 checkedUtc,
                 cancellationToken);
         }
+    }
+
+    /// <summary>The biggest definition file Deluno will take from the remote source.</summary>
+    internal const int MaxDefinitionBytes = 1024 * 1024;
+
+    /// <summary>Why a downloaded definition must not be used, or null when it is sound (#1064).</summary>
+    internal static string? Reject(string id, string yaml)
+    {
+        if (yaml.Length > MaxDefinitionBytes)
+        {
+            return "It is larger than a definition should be.";
+        }
+
+        if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || id.Contains('.'))
+        {
+            return "Its id is not a plain name.";
+        }
+
+        TrackerDefinition parsed;
+        try
+        {
+            parsed = TrackerDefinition.Parse(yaml);
+        }
+        catch (Exception exception)
+        {
+            return "It could not be read: " + exception.Message;
+        }
+
+        if (!string.Equals(parsed.Id, id, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Its own id does not match the name it was published under.";
+        }
+
+        if (parsed.Links.Count == 0 && parsed.LegacyLinks.Count == 0)
+        {
+            return "It has no site address.";
+        }
+
+        foreach (var link in parsed.Links.Concat(parsed.LegacyLinks))
+        {
+            if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            {
+                return $"Its address '{link}' is not a web address.";
+            }
+        }
+
+        return TrackerDefinitionValidator.Unsupported(parsed);
     }
 
     /// <summary>The Activity sentence naming which definitions were added and which were only changed (#754/#756).</summary>
