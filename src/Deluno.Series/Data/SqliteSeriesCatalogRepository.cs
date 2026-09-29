@@ -1506,7 +1506,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 // so picking Continuing showed the whole shelf while the facet
                 // beside it — computed a few lines down with this same
                 // expression already present — correctly counted zero (#934).
-                CatalogueWantedIs(WantedStatuses.Airing)),
+                CatalogueWantedIs(WantedStatuses.Airing),
+                monitoredOnly: !query.IncludeUnmonitoredInStatus),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.

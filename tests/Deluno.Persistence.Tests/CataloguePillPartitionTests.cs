@@ -70,6 +70,34 @@ public sealed class CataloguePillPartitionTests
     }
 
     [Fact]
+    public async Task Retention_reads_titles_on_disk_whatever_their_monitoring_while_the_pill_stays_monitored_only()
+    {
+        // #1069: the Downloaded pill is monitored-only (#1048), but retention asks by files.
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(Now);
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+        var monitoredId = (await movies.AddAsync(new CreateMovieRequest("Monitored with file", 2001, null, true), CancellationToken.None)).Id;
+        var unmonitoredId = (await movies.AddAsync(new CreateMovieRequest("Unmonitored with file", 2002, null, false), CancellationToken.None)).Id;
+        var noFileId = (await movies.AddAsync(new CreateMovieRequest("Unmonitored no file", 2003, null, false), CancellationToken.None)).Id;
+        foreach (var id in new[] { monitoredId, unmonitoredId })
+        {
+            await movies.EnsureWantedStateAsync(id, "lib-a", WantedStatuses.Covered, "x", true, "WEB 1080p", "WEB 2160p", true, CancellationToken.None);
+        }
+
+        await movies.EnsureWantedStateAsync(noFileId, "lib-a", WantedStatuses.Missing, "x", false, null, "WEB 2160p", false, CancellationToken.None);
+
+        var pill = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded), CancellationToken.None);
+        Assert.Equal([monitoredId], pill.Items.Select(item => item.Id).ToArray());
+
+        var retention = await movies.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Downloaded, IncludeUnmonitoredInStatus: true), CancellationToken.None);
+        Assert.Equal(new[] { monitoredId, unmonitoredId }.Order(), retention.Items.Select(item => item.Id).Order());
+    }
+
+    [Fact]
     public async Task Shows_partition_into_pills_in_one_library_and_across_two()
     {
         using var storage = TestStorage.Create();
