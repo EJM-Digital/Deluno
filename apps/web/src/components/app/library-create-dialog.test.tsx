@@ -186,6 +186,19 @@ describe.each([
     expect(screen.getAllByText("Click to select")).toHaveLength(1);
   });
 
+  it("labels a row by who described it: TheTVDB where it did, otherwise TMDb", () => {
+    renderDialog(
+      [
+        result({ title: "From TheTVDB", mediaType, dataSource: "tvdb" }),
+        result({ title: "From TMDb", mediaType, providerId: "273481", imdbId: "tt3397884" })
+      ],
+      variant
+    );
+
+    expect(screen.getByTitle("Select From TheTVDB")).toHaveTextContent("TheTVDB");
+    expect(screen.getByTitle("Select From TMDb")).toHaveTextContent("· TMDb");
+  });
+
   it("opens a held title instead of selecting it for a second add", async () => {
     const user = userEvent.setup();
     const { onSelectResult, onOpenHeldResult } = renderDialog(

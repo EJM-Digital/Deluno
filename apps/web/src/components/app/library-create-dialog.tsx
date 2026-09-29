@@ -104,7 +104,7 @@ export function LibraryCreateDialog({
                       {result.posterUrl ? <img src={result.posterUrl} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-muted object-cover" /> : <div className="flex h-24 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-[length:var(--type-caption)] text-muted-foreground">No art</div>}
                       <span className="min-w-0 self-center">
                         <span className="block truncate text-sm font-semibold text-foreground">{result.title}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · TMDb</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{result.year ?? "Unknown year"} · {result.dataSource === "tvdb" ? "TheTVDB" : "TMDb"}</span>
                         {result.rating ? <span className="mt-2 block text-xs tabular-nums text-primary">{result.rating.toFixed(1)} rating</span> : null}
                         {isHeld
                           ? <span className="mt-1 inline-flex items-center gap-1 text-[length:var(--type-micro)] font-semibold text-success">Already in your library — open it<ArrowUpRight className="h-3 w-3" /></span>

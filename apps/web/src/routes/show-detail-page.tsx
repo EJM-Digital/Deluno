@@ -1236,8 +1236,8 @@ export function ShowDetailPage() {
               <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
                 <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
-                {metaText("TvDbId") ? (
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">TheTVDB</span><span className="font-mono text-xs font-medium text-foreground">{metaText("TvDbId")}</span></div>
+                {(series.tvDbId ?? metaText("TvDbId")) ? (
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">TheTVDB</span><span className="font-mono text-xs font-medium text-foreground">{series.tvDbId ?? metaText("TvDbId")}</span></div>
                 ) : null}
               </div>
               {metaText("TvDbId") ? <TvdbAttribution className="mt-2" /> : null}

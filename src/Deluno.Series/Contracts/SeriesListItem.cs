@@ -135,4 +135,8 @@ public sealed record SeriesListItem(
     /// own fetch, not the paged grid.
     /// </summary>
     IReadOnlyList<string>? SubtitleLanguagesOverride = null,
-    string? SubtitleModeOverride = null);
+    string? SubtitleModeOverride = null)
+{
+    /// <summary>TheTVDB's id for the show, read from the stored metadata so the API and the show page answer from one source.</summary>
+    public string? TvDbId => SeriesMetadataJson.ReadTvDbId(MetadataJson);
+}

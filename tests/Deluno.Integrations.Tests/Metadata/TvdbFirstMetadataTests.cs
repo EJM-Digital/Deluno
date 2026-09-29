@@ -323,6 +323,8 @@ public sealed class TvdbFirstMetadataTests : IDisposable
         Assert.All(results, result => Assert.Equal("tmdb", result.Provider));
         Assert.Equal("From TheTVDB", results[0].Overview);
         Assert.Equal("81200", results[0].TvDbId);
+        Assert.Equal("tvdb", results[0].DataSource);
+        Assert.Null(results[1].DataSource);
         Assert.Equal(7.5, results[0].Rating);
         Assert.Null(results[1].TvDbId);
     }

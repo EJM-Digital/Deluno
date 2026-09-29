@@ -68,6 +68,43 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     /// <summary>
+    /// Specials a TheTVDB refresh adds arrive unmonitored, whatever the show's
+    /// monitor preset, so Deluno never hunts episodes nobody asked for; the
+    /// regular episodes that refresh adds follow the preset (#989).
+    /// </summary>
+    [Fact]
+    public async Task Specials_a_TheTVDB_refresh_adds_are_unmonitored_and_new_episodes_follow_the_preset()
+    {
+        var now = DateTimeOffset.Parse("2026-09-29T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "Pilot", null, now.AddDays(-40)),
+                new CatalogueEpisodeItem(0, 1, "Behind the Story #1", null, now.AddDays(-40)),
+                new CatalogueEpisodeItem(0, 2, "Inside the Series", null, now.AddDays(-30))
+            ],
+            source: "tvdb",
+            CancellationToken.None);
+
+        var detail = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.All(detail!.Episodes.Where(e => e.SeasonNumber == 0), e => Assert.False(e.Monitored));
+        Assert.True(detail.Episodes.Single(e => e.SeasonNumber == 1).Monitored);
+
+        await repository.UpdateMonitorNewEpisodesAsync(seriesId, false, CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(1, 2, "Next", null, now.AddDays(-20)), new CatalogueEpisodeItem(0, 3, "Extra", null, now.AddDays(-10))],
+            source: "tvdb",
+            CancellationToken.None);
+        var after = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.False(after!.Episodes.Single(e => e.SeasonNumber == 1 && e.EpisodeNumber == 2).Monitored);
+        Assert.False(after.Episodes.Single(e => e.SeasonNumber == 0 && e.EpisodeNumber == 3).Monitored);
+    }
+
+    /// <summary>
     /// An imported episode records the quality it holds.
     ///
     /// <para>On the rig, Breaking Bad S01E03 imported a WEB 1080p file and its
