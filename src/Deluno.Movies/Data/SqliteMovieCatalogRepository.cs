@@ -2842,29 +2842,12 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<bool> OtherMoviesHaveFilesUnderAsync(
+    public Task<bool> OtherMoviesHaveFilesUnderAsync(
         string movieId,
         string directory,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Movies,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT 1 FROM movie_wanted_state
-            WHERE movie_id <> @movieId AND file_path IS NOT NULL
-              AND (instr(file_path, @slash) = 1 OR instr(file_path, @backslash) = 1)
-            LIMIT 1;
-            """;
-        var trimmed = directory.TrimEnd('/', '\\');
-        AddParameter(command, "@movieId", movieId);
-        AddParameter(command, "@slash", trimmed + "/");
-        AddParameter(command, "@backslash", trimmed + "\\");
-        return await command.ExecuteScalarAsync(cancellationToken) is not null;
-    }
+        CancellationToken cancellationToken) =>
+        Deluno.Platform.TitleFolderNeighbours.OtherTitleHasFilesUnderAsync(
+            databaseConnectionFactory, movieId, null, directory, cancellationToken);
 
     public async Task<bool> UpdateReleaseDatesAsync(
         string movieId,
