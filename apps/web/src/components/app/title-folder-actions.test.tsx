@@ -33,10 +33,23 @@ describe("TitleFolderActions", () => {
     render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
 
     await userEvent.click(screen.getByRole("button", { name: "Rescan the folder for Arrival" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rescan now" }));
 
     await waitFor(() => expect(screen.getByText(/where Deluno expects it/)).toBeTruthy());
     expect(fetchMock.mock.calls[0][0]).toBe("/api/filesystem/rescan-title");
     expect(screen.getByText("Arrival.extended.mkv")).toBeTruthy();
+  });
+
+  it("asks first, in plain words, and does nothing until confirmed", async () => {
+    fetchMock.mockImplementation(() => json({ outcome: "ok", title: "Arrival", filesChecked: 0, filesPresent: 0, missing: [], untracked: [], summary: "Rescanned." }));
+    render(<TitleFolderActions variant="movies" titleId="m1" titleName="Arrival" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Rescan the folder for Arrival" }));
+
+    expect(screen.getByText(/any that are gone are marked missing and it stops wanting them\. Nothing is deleted\./)).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Rescan now" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 
   it("previews a rename without changing anything, and only then offers to rename", async () => {

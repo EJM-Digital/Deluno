@@ -21,6 +21,7 @@ import { useState } from "react";
 import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { toast } from "../shell/toaster";
 
 export interface TitleRescanResult {
@@ -60,7 +61,10 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
   const [panel, setPanel] = useState<Panel>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
 
+  const [confirmRescan, setConfirmRescan] = useState(false);
+
   async function rescan() {
+    setConfirmRescan(false);
     setBusy("rescan");
     try {
       const response = await authedFetch("/api/filesystem/rescan-title", {
@@ -139,10 +143,19 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
 
   return (
     <>
+      <ConfirmDialog
+        open={confirmRescan}
+        onOpenChange={setConfirmRescan}
+        title={`Rescan the folder for ${titleName}?`}
+        description="Deluno will check this title's files; any that are gone are marked missing and it stops wanting them. Nothing is deleted."
+        confirmLabel="Rescan now"
+        confirmVariant="default"
+        onConfirm={() => void rescan()}
+      />
       <Button
         variant="outline"
         className="w-full"
-        onClick={() => void rescan()}
+        onClick={() => setConfirmRescan(true)}
         disabled={disabled || isBusy}
         aria-label={`Rescan the folder for ${titleName}`}
       >
