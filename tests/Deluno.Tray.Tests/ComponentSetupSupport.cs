@@ -37,7 +37,7 @@ public sealed partial class ComponentSetupTests
         var service = new ComponentInstallService(
             new FakePrograms(), new FakePorts(), new FixedDownloader(download), new AlwaysSigned(), new ElevatedRecordingRunner(),
             starter ?? new RecordingStarter(), new ReadyChecker(), writer, templates: new FixedTemplate(template),
-            credentialStore: store, startedComponents: registry ?? new FakeRegistry());
+            credentialStore: store, startedComponents: registry ?? new FakeRegistry(), installedRecord: new Deluno.Api.Network.NoInstalledComponentRecord(), credentialCaptureWait: TimeSpan.Zero);
 
         var spec = real with
         {

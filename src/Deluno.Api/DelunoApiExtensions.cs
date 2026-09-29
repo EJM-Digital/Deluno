@@ -38,6 +38,8 @@ public static class DelunoApiExtensions
         services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();
         services.TryAddSingleton<IBundledComponentCredentialStore>(sp => BundledComponentCredentialStores.CreateForDataRoot(
             sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["Storage:DataRoot"] ?? "data"));
+        services.TryAddSingleton<IInstalledComponentRecord>(sp => new FileInstalledComponentRecord(FileInstalledComponentRecord.PathFor(
+            sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["Storage:DataRoot"] ?? "data")));
         services.AddSingleton<IIndexerHistoryEventStore, SqliteIndexerHistoryEventStore>();
         services.AddSingleton<IIndexerHistoryService, IndexerHistoryService>();
         services.AddSingleton<Deluno.Contracts.IIndexerAuthFailureRecorder, IndexerHistoryAuthFailureRecorder>();
