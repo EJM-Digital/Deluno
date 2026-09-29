@@ -200,6 +200,7 @@ GET /api/retention/keeps
 GET /api/retention/leaving-soon
 GET /api/retention/rules
 GET /api/retention/rules/{id}/runs
+GET /api/retention/rules/{id}/titles
 GET /api/retention/runs/{runId}
 GET /api/retention/seerr-cleanups
 GET /api/retention/titles/{entityId}
@@ -445,10 +446,12 @@ POST /api/recycle-bin/{id}/restore
 POST /api/release-profiles/
 POST /api/releases/explain
 POST /api/retention/keeps
+POST /api/retention/leaving-soon/postpone
 POST /api/retention/leaving-soon/remove
 POST /api/retention/rules
 POST /api/retention/rules/trial
 POST /api/retention/rules/{id}/check
+POST /api/retention/rules/{id}/titles
 POST /api/search
 POST /api/search/grab
 POST /api/seerr-servers/
