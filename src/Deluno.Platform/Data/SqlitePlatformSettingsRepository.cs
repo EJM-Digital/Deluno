@@ -305,6 +305,8 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "lists.tagTitlesOffEveryList", request.TagTitlesOffEveryList == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "lists.offListTag", (request.OffListTag ?? string.Empty).Trim(), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "ui.showAbsoluteEpisodeNumbers", request.ShowAbsoluteEpisodeNumbers == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "search.pauseWhenQueueLong.enabled", request.PauseSearchWhenQueueLongEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "search.pauseWhenQueueLong.threshold", Math.Clamp(request.PauseSearchWhenQueueLongThreshold ?? 20, 1, 10_000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -692,7 +694,9 @@ public sealed class SqlitePlatformSettingsRepository(
             DownloadHealthDangerousFileEnabled: string.Equals(GetValue(settings, "download-health.dangerousFile.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             TagTitlesOffEveryList: string.Equals(GetValue(settings, "lists.tagTitlesOffEveryList"), "true", StringComparison.OrdinalIgnoreCase),
             OffListTag: (GetValue(settings, "lists.offListTag") ?? string.Empty).Trim(),
-            ShowAbsoluteEpisodeNumbers: string.Equals(GetValue(settings, "ui.showAbsoluteEpisodeNumbers"), "true", StringComparison.OrdinalIgnoreCase));
+            ShowAbsoluteEpisodeNumbers: string.Equals(GetValue(settings, "ui.showAbsoluteEpisodeNumbers"), "true", StringComparison.OrdinalIgnoreCase),
+            PauseSearchWhenQueueLongEnabled: string.Equals(GetValue(settings, "search.pauseWhenQueueLong.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            PauseSearchWhenQueueLongThreshold: ReadPositiveInt(GetValue(settings, "search.pauseWhenQueueLong.threshold"), 20, 1, 10_000));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

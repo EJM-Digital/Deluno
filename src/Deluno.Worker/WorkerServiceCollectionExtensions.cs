@@ -96,6 +96,7 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, TagRoutingHealthCheck>();
         services.AddScoped<IHealthCheck, LocalNetworkAuthHealthCheck>();
         services.AddScoped<IHealthCheck, DangerousFileCheckHealthCheck>();
+        services.AddScoped<IHealthCheck, SearchQueuePauseHealthCheck>();
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.SystemTime, client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.Proxy, client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<HealthCheckRunner>();

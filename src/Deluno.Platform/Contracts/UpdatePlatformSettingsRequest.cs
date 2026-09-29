@@ -108,4 +108,6 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? DownloadHealthDangerousFileEnabled = null,
     bool? TagTitlesOffEveryList = null,
     string? OffListTag = null,
-    bool? ShowAbsoluteEpisodeNumbers = null);
+    bool? ShowAbsoluteEpisodeNumbers = null,
+    bool? PauseSearchWhenQueueLongEnabled = null,
+    int? PauseSearchWhenQueueLongThreshold = null);

@@ -34,7 +34,8 @@ public abstract class LibrarySearchJobHandler(
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
-    IPlatformSettingsRepository? platformSettingsRepository = null) : IJobHandler
+    IPlatformSettingsRepository? platformSettingsRepository = null,
+    ISearchQueuePauseGate? queuePauseGate = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -57,6 +58,12 @@ public abstract class LibrarySearchJobHandler(
         }
 
         var now = timeProvider.GetUtcNow();
+        var pausedMessage = await TryPauseForLongQueueAsync(job, payload, cancellationToken);
+        if (pausedMessage is not null)
+        {
+            return pausedMessage;
+        }
+
         if (IsTargeted(payload))
         {
             await ReleaseStaleDownloadingMarkAsync(payload, now, cancellationToken);
@@ -97,6 +104,52 @@ public abstract class LibrarySearchJobHandler(
         }
 
         return await SearchSeriesAsync(job, payload, searchStatus, scopeFilters, routing, customFormats, profileRules, preferencePlan, configuredSources, configuredClients, now, cancellationToken);
+    }
+
+    /// <summary>
+    /// #1002: the optional "pause automatic searching while many downloads are
+    /// waiting" switch. Only the routine schedule is ever held: a search a
+    /// person started, one aimed at a single title, and the follow-up to a
+    /// refusal always run. The Activity line is written once when a pause
+    /// starts, once when it ends, and once when the queue cannot be read (in
+    /// which case searching carries on rather than pausing blind).
+    /// </summary>
+    private async Task<string?> TryPauseForLongQueueAsync(
+        JobQueueItem job,
+        JobPayloads.LibrarySearchPayload payload,
+        CancellationToken cancellationToken)
+    {
+        if (queuePauseGate is null
+            || IsTargeted(payload)
+            || !string.Equals(payload.TriggeredBy, "schedule", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var mediaType = payload.MediaType ?? "movies";
+        var decision = await queuePauseGate.EvaluateAsync(mediaType, cancellationToken);
+        var announcement = queuePauseGate.TakeAnnouncement(mediaType, decision);
+        if (announcement is not null)
+        {
+            var message = announcement.Kind switch
+            {
+                SearchQueuePauseAnnouncementKinds.Paused => SearchQueuePauseGate.PausedMessage(mediaType, decision),
+                SearchQueuePauseAnnouncementKinds.Resumed => SearchQueuePauseGate.ResumedMessage(mediaType),
+                _ => SearchQueuePauseGate.UnreadableMessage(mediaType, decision)
+            };
+            await activityFeedRepository.RecordActivityAsync(
+                "library.search.queuePause",
+                message,
+                null,
+                job.Id,
+                "library",
+                payload.LibraryId,
+                cancellationToken);
+        }
+
+        return decision.Paused
+            ? $"Held {payload.LibraryName}'s automatic search: {decision.Waiting} downloads are waiting."
+            : null;
     }
 
     private async Task<string> SearchMoviesAsync(

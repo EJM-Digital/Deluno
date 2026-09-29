@@ -118,5 +118,7 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthDangerousFileEnabled: patch.DownloadHealthDangerousFileEnabled ?? current.DownloadHealthDangerousFileEnabled,
             TagTitlesOffEveryList: patch.TagTitlesOffEveryList ?? current.TagTitlesOffEveryList,
             OffListTag: patch.OffListTag?.Trim() ?? current.OffListTag,
-            ShowAbsoluteEpisodeNumbers: patch.ShowAbsoluteEpisodeNumbers ?? current.ShowAbsoluteEpisodeNumbers);
+            ShowAbsoluteEpisodeNumbers: patch.ShowAbsoluteEpisodeNumbers ?? current.ShowAbsoluteEpisodeNumbers,
+            PauseSearchWhenQueueLongEnabled: patch.PauseSearchWhenQueueLongEnabled ?? current.PauseSearchWhenQueueLongEnabled,
+            PauseSearchWhenQueueLongThreshold: patch.PauseSearchWhenQueueLongThreshold ?? current.PauseSearchWhenQueueLongThreshold);
 }

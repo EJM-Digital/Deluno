@@ -96,6 +96,7 @@ type AutomationChoiceKey =
   | "leftoverCleanup"
   | "leftoverDownloadCleanup"
   | "forceImport"
+  | "pauseSearchWhenQueueLong"
   | "dangerousFileCheck";
 
 export type AutomationChoices = Record<AutomationChoiceKey, boolean | null>;
@@ -111,6 +112,7 @@ const AUTOMATION_UNANSWERED: AutomationChoices = {
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
   forceImport: null,
+  pauseSearchWhenQueueLong: null,
   dangerousFileCheck: null
 };
 
@@ -164,6 +166,11 @@ export const AUTOMATION_QUESTIONS: { key: AutomationChoiceKey; question: string;
     key: "forceImport",
     question: "Import a download anyway when Deluno could not read the file to check it?",
     help: "Only after the import has already stopped once, and only for a file Deluno could not read (a share that dropped, a lock, a slow disk) - never one it read and found wrong, and never onto a file you already have. If off, that download stays stopped for you to look at."
+  },
+  {
+    key: "pauseSearchWhenQueueLong",
+    question: "Pause automatic searching while many downloads are waiting?",
+    help: "If off, Deluno keeps searching however long the download queue is. If on, it pauses above 20 waiting downloads (changeable in Search cycles) and restarts by itself. Searches you start yourself always run."
   },
   {
     key: "dangerousFileCheck",
@@ -279,7 +286,9 @@ export function buildAutomationSettingsPayload(automation: AutomationChoices) {
     leftoverDownloadCleanupEnabled: automation.leftoverDownloadCleanup === true,
     // #1013: the tries keep their own default of 3 (Settings -> Media
     // Management) whichever way this question is answered.
-    forceImportEnabled: automation.forceImport === true
+    forceImportEnabled: automation.forceImport === true,
+    // #1002: the pause limit keeps its own default of 20 (Search cycles).
+    pauseSearchWhenQueueLongEnabled: automation.pauseSearchWhenQueueLong === true
   };
 }
 

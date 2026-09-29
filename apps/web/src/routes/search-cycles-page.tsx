@@ -189,6 +189,10 @@ interface CleanupForm {
   // default (#936).
   maxSearchesPerHourEnabled: boolean;
   maxSearchesPerHour: string;
+  // #1002: hold the automatic search cycles while many downloads are
+  // waiting. Off by default (#936); searches you start are never held.
+  pauseSearchWhenQueueLongEnabled: boolean;
+  pauseSearchWhenQueueLongThreshold: string;
   // #818: zero seeders, or the tracker itself saying unregistered, past a
   // grace period since the download was added. Off by default (#936).
   deadTorrentEnabled: boolean;
@@ -426,6 +430,8 @@ export function SearchCyclesPage() {
             downloadHealthMinPeersMinutes: Math.max(1, Math.min(1440, Number(cleanup.minPeersMinutes || 30))),
             maxSearchesPerHourEnabled: cleanup.maxSearchesPerHourEnabled,
             maxSearchesPerHour: Math.max(1, Math.min(100_000, Number(cleanup.maxSearchesPerHour || 200))),
+            pauseSearchWhenQueueLongEnabled: cleanup.pauseSearchWhenQueueLongEnabled,
+            pauseSearchWhenQueueLongThreshold: Math.max(1, Math.min(10_000, Number(cleanup.pauseSearchWhenQueueLongThreshold || 20))),
             downloadHealthDeadTorrentEnabled: cleanup.deadTorrentEnabled,
             downloadHealthDeadTorrentGraceMinutes: Math.max(0, Math.min(1440, Number(cleanup.deadTorrentGraceMinutes || 60))),
             downloadIntegrityCheckEnabled: cleanup.downloadIntegrityCheckEnabled,
@@ -739,6 +745,30 @@ export function SearchCyclesPage() {
 
           <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
             <SwitchRow
+              label="Pause automatic searching while downloads pile up"
+              description="Skip the routine film and TV searches while more than this many of your downloads are still waiting, and start again by yourself when the queue shrinks. Deluno says so in Activity and on Health. Searches you start yourself always run. Off until you turn it on."
+              checked={cleanup.pauseSearchWhenQueueLongEnabled}
+              onCheckedChange={(checked) => setCleanup((current) => ({ ...current, pauseSearchWhenQueueLongEnabled: checked }))}
+            />
+            <Field label="Pause above this many waiting" className="max-w-[12rem] sm:pl-[var(--grid-gap)]">
+              <PresetField
+                inputType="number"
+                value={cleanup.pauseSearchWhenQueueLongThreshold}
+                onChange={(value) => setCleanup((current) => ({ ...current, pauseSearchWhenQueueLongThreshold: value }))}
+                disabled={!cleanup.pauseSearchWhenQueueLongEnabled}
+                options={[
+                  { value: "10", label: "10" },
+                  { value: "20", label: "20" },
+                  { value: "50", label: "50" }
+                ]}
+                customLabel="Custom"
+                customPlaceholder="1–10000"
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-[var(--grid-gap)] border-t border-hairline pt-[var(--grid-gap)] sm:grid-cols-[auto_1fr] sm:items-start">
+            <SwitchRow
               label="Download integrity check"
               description="Before a finished download reaches a processor or the library, open the file and check its resolution, runtime and playability against what its name and Deluno's own records claim. A file that fails is removed from its client, deleted, blocklisted and searched for again. Off until you turn it on."
               checked={cleanup.downloadIntegrityCheckEnabled}
@@ -1018,6 +1048,8 @@ function cleanupFrom(settings: PlatformSettingsSnapshot): CleanupForm {
     minPeersMinutes: String(settings.downloadHealthMinPeersMinutes ?? 30),
     maxSearchesPerHourEnabled: settings.maxSearchesPerHourEnabled,
     maxSearchesPerHour: String(settings.maxSearchesPerHour ?? 200),
+    pauseSearchWhenQueueLongEnabled: settings.pauseSearchWhenQueueLongEnabled ?? false,
+    pauseSearchWhenQueueLongThreshold: String(settings.pauseSearchWhenQueueLongThreshold ?? 20),
     deadTorrentEnabled: settings.downloadHealthDeadTorrentEnabled,
     deadTorrentGraceMinutes: String(settings.downloadHealthDeadTorrentGraceMinutes ?? 60),
     downloadIntegrityCheckEnabled: settings.downloadIntegrityCheckEnabled,

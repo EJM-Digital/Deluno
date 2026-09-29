@@ -139,6 +139,9 @@ export interface PlatformSettingsSnapshot {
   /** #829: a single hourly search-call ceiling across every indexer combined. Off by default (#936). */
   maxSearchesPerHourEnabled: boolean;
   maxSearchesPerHour: number;
+  /** #1002: pause the automatic search cycles while more than this many of Deluno's own downloads are waiting. Off by default (#936). */
+  pauseSearchWhenQueueLongEnabled: boolean;
+  pauseSearchWhenQueueLongThreshold: number;
   /** #818: zero seeders, or the tracker itself saying unregistered, past a grace period since the download was added. Off by default. */
   downloadHealthDeadTorrentEnabled: boolean;
   downloadHealthDeadTorrentGraceMinutes: number;
@@ -433,6 +436,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   historyRetentionDays: 365,
   maxSearchesPerHourEnabled: false,
   maxSearchesPerHour: 200,
+  pauseSearchWhenQueueLongEnabled: false,
+  pauseSearchWhenQueueLongThreshold: 20,
   downloadHealthDeadTorrentEnabled: false,
   downloadHealthDeadTorrentGraceMinutes: 60,
   downloadIntegrityCheckEnabled: false,
