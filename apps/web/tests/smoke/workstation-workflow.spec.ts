@@ -256,7 +256,7 @@ test.describe("dashboard workflow", () => {
     const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const api = await playwrightRequest.newContext({
-      baseURL: process.env.DELUNO_API_ORIGIN ?? "http://127.0.0.1:5199",
+      baseURL: process.env.DELUNO_API_ORIGIN ?? `http://127.0.0.1:${process.env.DELUNO_SMOKE_API_PORT ?? 5199}`,
       extraHTTPHeaders: headers
     });
     const scenarios = [

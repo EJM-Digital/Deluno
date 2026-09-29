@@ -132,7 +132,7 @@ test.describe("first-run and auth screens", () => {
       await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
     });
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /^\d+ Start/ }).click();
+    await page.getByRole("button", { name: /^(?:\d+ )?Start\b/ }).click();
 
     await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
     // Untested connections no longer block the baseline (#246) — the guide
@@ -169,14 +169,17 @@ test.describe("first-run and auth screens", () => {
 
   test("guided setup keeps Start disabled until the Updates question is answered (#936)", async ({ page }) => {
     await authenticateAndNavigate(page, "/setup-guide");
-    await page.getByRole("button", { name: /^\d+ Updates/ }).click();
+    // The step's badge is its number until an earlier test's saved progress
+    // (a fire-and-forget PUT on the shared database) marks it done, when it
+    // becomes a tick; the name must not depend on which (#1057).
+    await page.getByRole("button", { name: /^(?:\d+ )?Updates\b/ }).click();
 
     await expect(page.getByRole("heading", { name: "Updates", exact: true })).toBeVisible();
     await expect(page.getByText("Update Deluno automatically?")).toBeVisible();
     await expect(page.getByRole("radio", { name: "Update Deluno automatically? Yes" })).toHaveAttribute("aria-checked", "false");
     await expect(page.getByRole("radio", { name: "Update Deluno automatically? No" })).toHaveAttribute("aria-checked", "false");
 
-    await page.getByRole("button", { name: /^\d+ Start/ }).click();
+    await page.getByRole("button", { name: /^(?:\d+ )?Start\b/ }).click();
     await expect(page.getByRole("button", { name: "Create baseline" })).toBeDisabled();
   });
 
