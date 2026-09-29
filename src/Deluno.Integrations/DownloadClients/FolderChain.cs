@@ -110,8 +110,20 @@ public sealed class FolderChainService(
     ILibrariesRepository libraries,
     IConnectionsRepository connections,
     IDownloadClientRegistry registry,
-    IProcessorRepository? processors = null) : IFolderChainService
+    IProcessorRepository? processors = null,
+    TimeSpan? stepTimeout = null) : IFolderChainService
 {
+    /// <summary>
+    /// #1079: how long one client, or one folder, gets to answer. A client that
+    /// never replies, or a network share that has gone away, used to hold the
+    /// whole check (and the screen's "Checking...") for as long as the slowest
+    /// of them took, one after another. Each now gets this long, all at once,
+    /// and the link says it did not answer.
+    /// </summary>
+    public static readonly TimeSpan DefaultStepTimeout = TimeSpan.FromSeconds(8);
+
+    private TimeSpan Timeout => stepTimeout ?? DefaultStepTimeout;
+
     public async Task<FolderChainReport?> CheckAsync(string libraryId, CancellationToken cancellationToken)
     {
         var library = (await libraries.ListLibrariesAsync(cancellationToken))
@@ -146,7 +158,24 @@ public sealed class FolderChainService(
                 continue;
             }
 
-            var check = await implementation.CheckCategoryAsync(client, category, cancellationToken);
+            DownloadClientCategoryCheckResult check;
+            try
+            {
+                check = await WithTimeoutAsync(token => implementation.CheckCategoryAsync(client, category, token), Timeout, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} did not answer within {(int)Timeout.TotalSeconds} seconds, so its {category} folder could not be checked. Check that {client.Name} is running and reachable, then check again."));
+                chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
+                continue;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} could not be checked: {ex.Message}"));
+                chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
+                continue;
+            }
+
             var clientMappings = mappings.Where(mapping => string.Equals(mapping.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
             // #1073: Transmission and Deluge have no category folders, so Deluno
             // names the library's downloads folder on every grab. Where it does,
@@ -195,7 +224,24 @@ public sealed class FolderChainService(
             usesProcessor ? library.ProcessorOutputPath : null,
             library.RootPath,
             chains,
-            LibraryLinks(library, usesProcessor, kind, chains.Count));
+            await LibraryLinksAsync(library, usesProcessor, kind, chains.Count, Timeout, cancellationToken));
+    }
+
+    /// <summary>Runs work but stops waiting for it after the timeout, even when the work ignores its token.</summary>
+    internal static async Task<T> WithTimeoutAsync<T>(Func<CancellationToken, Task<T>> work, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        linked.CancelAfter(timeout);
+        var task = Task.Run(() => work(linked.Token), CancellationToken.None);
+        var finished = await Task.WhenAny(task, Task.Delay(timeout, cancellationToken));
+        if (finished == task)
+        {
+            return await task;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = task.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+        throw new TimeoutException();
     }
 
     public async Task<IReadOnlyList<LibraryDownloadDestinations>?> ListDestinationsAsync(string? libraryId, CancellationToken cancellationToken)
@@ -291,7 +337,7 @@ public sealed class FolderChainService(
                 clientFolder);
     }
 
-    private static IReadOnlyList<FolderChainLink> LibraryLinks(LibraryItem library, bool usesProcessor, string kind, int clientCount)
+    private static async Task<IReadOnlyList<FolderChainLink>> LibraryLinksAsync(LibraryItem library, bool usesProcessor, string kind, int clientCount, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var links = new List<FolderChainLink>();
         if (clientCount == 0)
@@ -301,28 +347,40 @@ public sealed class FolderChainService(
 
         links.Add(string.IsNullOrWhiteSpace(library.DownloadsPath)
             ? new("downloads", FolderChainStatuses.Unknown, $"The {library.Name} library has no downloads folder set: the folder its download clients finish {kind} into.")
-            : FolderExists("downloads", library.DownloadsPath, $"{kind} finish downloading into"));
+            : await FolderExistsAsync("downloads", library.DownloadsPath, $"{kind} finish downloading into", timeout, cancellationToken));
 
         if (usesProcessor)
         {
             var processor = library.ProcessorName ?? "The processor";
             links.Add(string.IsNullOrWhiteSpace(library.ProcessorOutputPath)
                 ? new("ready", FolderChainStatuses.Problem, $"{processor} has no ready folder set for the {library.Name} library, so Deluno has nowhere to import its files from.")
-                : FolderExists("ready", library.ProcessorOutputPath, $"{processor} leaves finished files in"));
+                : await FolderExistsAsync("ready", library.ProcessorOutputPath, $"{processor} leaves finished files in", timeout, cancellationToken));
         }
 
-        links.Add(FolderExists("library", library.RootPath, $"the {library.Name} library lives in"));
+        links.Add(await FolderExistsAsync("library", library.RootPath, $"the {library.Name} library lives in", timeout, cancellationToken));
         return links;
     }
 
-    private static FolderChainLink FolderExists(string step, string path, string role)
+    internal static async Task<FolderChainLink> FolderExistsAsync(string step, string path, string role, TimeSpan timeout, CancellationToken cancellationToken)
     {
         if (!ClientPaths.IsFullClientPath(path))
         {
             return new(step, FolderChainStatuses.Problem, $"{path} is not a full path, so it cannot be the folder {role}. Write it as a full path, such as C:\\Downloads\\Completed or \\\\nas\\media.", path);
         }
 
-        return Directory.Exists(path)
+        // A share on a machine that is off can hold Directory.Exists for a
+        // minute or more; the wait is bounded so the check always finishes.
+        bool exists;
+        try
+        {
+            exists = await WithTimeoutAsync(_ => Task.FromResult(Directory.Exists(path)), timeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            return new(step, FolderChainStatuses.Unknown, $"{path} is the folder {role}, but it did not answer within {(int)timeout.TotalSeconds} seconds. If it is on another machine, check that machine is on and reachable.", path);
+        }
+
+        return exists
             ? new(step, FolderChainStatuses.Ok, $"{path} is the folder {role}, and Deluno can reach it.", path)
             : new(step, FolderChainStatuses.Problem, $"{path} is the folder {role}, but Deluno cannot reach it from here.", path);
     }

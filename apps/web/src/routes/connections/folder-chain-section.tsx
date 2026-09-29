@@ -17,6 +17,10 @@ export type FolderChainReport = {
   libraryLinks: FolderChainLink[];
 };
 
+/** Longer than the server's own per-client and per-folder limits add up to for a normal setup. */
+export const CHECK_TIMEOUT_MS = 45_000;
+const CHECK_TIMED_OUT = "The folder check took too long and was stopped. A download client or a network folder may not be answering. Check that they are running, then check again.";
+
 const LABEL: Record<string, string> = { ok: "Matches", problem: "Doesn't match", unknown: "Can't tell" };
 const TONE: Record<string, "ok" | "bad" | "warn"> = { ok: "ok", problem: "bad", unknown: "warn" };
 
@@ -37,11 +41,28 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
     let active = true;
     setBusy(true);
     setFailed(null);
-    void fetchJson<FolderChainReport>(`/api/libraries/${libraryId}/folder-chain`)
+    // #1079: the check always finishes. Whatever the request does (a client
+    // that never answers, a dropped connection, a promise that never settles),
+    // it is abandoned after CHECK_TIMEOUT_MS and the section says so.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error(CHECK_TIMED_OUT));
+      }, CHECK_TIMEOUT_MS);
+    });
+    void Promise.race([fetchJson<FolderChainReport>(`/api/libraries/${libraryId}/folder-chain`, { signal: controller.signal }), timedOut])
       .then((next) => { if (active) setReport(next); })
-      .catch((error) => { if (active) setFailed(error instanceof Error ? error.message : "The folders could not be checked."); })
-      .finally(() => { if (active) setBusy(false); });
-    return () => { active = false; };
+      .catch((error) => {
+        if (!active) return;
+        setFailed(error instanceof Error && error.name !== "AbortError" && error.message ? error.message : CHECK_TIMED_OUT);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (active) setBusy(false);
+      });
+    return () => { active = false; clearTimeout(timer); controller.abort(); };
   }, [libraryId, refreshKey, nonce]);
 
   const aside = busy ? "Checking…" : report ? (report.allMatch ? "Everything matches" : "Something doesn't match") : undefined;

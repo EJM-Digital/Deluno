@@ -708,6 +708,27 @@ test.describe("library editing", () => {
     }
   });
 
+  // #1079: a library's downloads folder could only be set through the API.
+  test("a library's downloads folder is set from the library drawer and kept when only the name changes", async ({ page }) => {
+    const { name, library } = await seedLibrary(page);
+    const downloads = path.join(seededRoot, "downloads");
+    mkdirSync(downloads, { recursive: true });
+    try {
+      await page.goto("/settings/libraries");
+      await page.getByText(name, { exact: true }).click();
+      await page.getByLabel("Downloads folder").fill(downloads);
+      await page.getByRole("button", { name: "Save library" }).click();
+      await expect.poll(async () => (await libraries(page)).find((item) => item.id === library.id)?.downloadsPath).toBe(downloads);
+      await expect(page.getByRole("list", { name: "Folder check" })).toBeVisible();
+
+      await page.getByLabel("Library name").fill(`${name}-b`);
+      await page.getByRole("button", { name: "Save library" }).click();
+      await expect.poll(async () => (await libraries(page)).find((item) => item.id === library.id)).toMatchObject({ name: `${name}-b`, downloadsPath: downloads });
+    } finally {
+      await page.request.delete(`/api/libraries/${library.id}`, { headers: authHeaders() });
+    }
+  });
+
   // #589: the link went to /settings/automation, whose redirect dropped the
   // library it named, so it opened the whole Automation page instead.
   test("a library's link to its searches opens that library's schedule", async ({ page }, testInfo) => {
