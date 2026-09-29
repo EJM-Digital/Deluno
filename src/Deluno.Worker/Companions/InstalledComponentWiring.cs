@@ -73,7 +73,7 @@ public sealed class InstalledComponentWirer(
                     ? await WireWeirAsync(delunoBaseUrl, cancellationToken)
                     : await WireClientAsync(kind, entry, attempts, delay, cancellationToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 // Something unexpected (the database not ready yet): not marked, so the next pass tries again.
                 unexpected = exception;
@@ -284,19 +284,27 @@ public sealed class InstalledComponentWiringService(
 {
     private bool _healthAddressChecked;
 
+    /// <summary>Wait before the first pass, so the web server is answering.</summary>
+    internal TimeSpan StartDelay { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Wait between passes.</summary>
+    internal TimeSpan TickInterval { get; init; } = TimeSpan.FromSeconds(30);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+            await Task.Delay(StartDelay, stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
                 await TickAsync(stoppingToken);
-                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                await Task.Delay(TickInterval, stoppingToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+            // Normal shutdown. A request that timed out inside a pass is not a shutdown (#1080):
+            // TickAsync logs it and the loop carries on, so a starved machine cannot end it for good.
         }
     }
 
@@ -320,7 +328,7 @@ public sealed class InstalledComponentWiringService(
 
             await wirer.RunOnceAsync(baseUrl, 10, TimeSpan.FromSeconds(3), cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(exception, "Connecting the apps the installer added did not finish; it will be tried again.");
         }
