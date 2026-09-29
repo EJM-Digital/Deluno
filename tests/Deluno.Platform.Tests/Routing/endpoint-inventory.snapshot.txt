@@ -76,6 +76,7 @@ GET /api/decisions
 GET /api/destination-rules/
 GET /api/diagnostics/secrets-backend
 GET /api/discover/
+GET /api/diskspace
 GET /api/download-clients/
 GET /api/download-clients/orphans
 GET /api/download-clients/path-mappings
@@ -151,6 +152,7 @@ GET /api/movies/controls
 GET /api/movies/duplicates
 GET /api/movies/genres
 GET /api/movies/import-recovery
+GET /api/movies/lookup/imdb
 GET /api/movies/page
 GET /api/movies/search-history
 GET /api/movies/wanted
