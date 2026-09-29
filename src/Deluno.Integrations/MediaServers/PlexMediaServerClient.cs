@@ -812,17 +812,65 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
     /// </summary>
     internal static IReadOnlyList<string>? PlexAudioLanguages(JsonElement entry)
     {
-        if (!entry.TryGetProperty("Media", out var media) || media.ValueKind != JsonValueKind.Array || media.GetArrayLength() == 0 ||
-            !media[0].TryGetProperty("Part", out var parts) || parts.ValueKind != JsonValueKind.Array || parts.GetArrayLength() == 0 ||
-            !parts[0].TryGetProperty("Stream", out var streams) || streams.ValueKind != JsonValueKind.Array)
+        if (!entry.TryGetProperty("Media", out var media) || media.ValueKind != JsonValueKind.Array || media.GetArrayLength() == 0)
         {
             return null;
         }
 
-        return MediaServerLanguages.OfAudioTracks(streams.EnumerateArray()
-            .Where(stream => Long(stream, "streamType") == 2)
-            .Select(stream => String(stream, "languageCode") ?? String(stream, "language"))
-            .ToArray());
+        // Every version and every part of it: a second version may hold the
+        // track the first lacks, and a version whose streams are missing makes the
+        // whole answer unknown.
+        var tags = new List<string?>();
+        foreach (var version in media.EnumerateArray())
+        {
+            if (!version.TryGetProperty("Part", out var parts) || parts.ValueKind != JsonValueKind.Array || parts.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            foreach (var part in parts.EnumerateArray())
+            {
+                if (!part.TryGetProperty("Stream", out var streams) || streams.ValueKind != JsonValueKind.Array)
+                {
+                    return null;
+                }
+
+                tags.AddRange(streams.EnumerateArray()
+                    .Where(stream => Long(stream, "streamType") == 2)
+                    .Select(stream => String(stream, "languageCode") ?? String(stream, "language")));
+            }
+        }
+
+        return MediaServerLanguages.OfAudioTracks(tags);
+    }
+
+    /// <summary>
+    /// Whether a collection is smart: true, "true", "1" or 1; false, "false", "0"
+    /// or 0 (or no flag, which Plex leaves off an ordinary one). Anything else is null: not known.
+    /// </summary>
+    internal static bool? SmartFlag(JsonElement entry)
+    {
+        if (!entry.TryGetProperty("smart", out var value))
+        {
+            return false;
+        }
+
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.True:
+                return true;
+            case JsonValueKind.False:
+                return false;
+            case JsonValueKind.Number when value.TryGetInt32(out var number):
+                return number == 1 ? true : number == 0 ? false : null;
+            case JsonValueKind.String:
+                var text = value.GetString()?.Trim();
+                return text is not null && (text == "1" || text.Equals("true", StringComparison.OrdinalIgnoreCase))
+                    ? true
+                    : text is not null && (text == "0" || text.Equals("false", StringComparison.OrdinalIgnoreCase)) ? false : null;
+            default:
+                return null;
+        }
     }
 
     /// <summary>
@@ -869,6 +917,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         CancellationToken cancellationToken)
     {
         var members = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var unreadable = false;
         foreach (var section in sectionKeys)
         {
             var smart = new List<(string Key, string Title)>();
@@ -877,14 +926,21 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                 $"/library/sections/{Uri.EscapeDataString(section)}/collections?includeGuids=0",
                 entry =>
                 {
-                    var flag = entry.TryGetProperty("smart", out var value) && (value.ValueKind == JsonValueKind.True || (value.ValueKind == JsonValueKind.String && value.GetString() == "1") || (value.ValueKind == JsonValueKind.Number && value.GetInt32() == 1));
-                    if (flag && String(entry, "ratingKey") is { Length: > 0 } key)
+                    var flag = SmartFlag(entry);
+                    if (flag is null)
+                    {
+                        // A collection whose kind cannot be read might be a smart one.
+                        unreadable = true;
+                        return;
+                    }
+
+                    if (flag == true && String(entry, "ratingKey") is { Length: > 0 } key)
                     {
                         smart.Add((key, String(entry, "title") ?? "Smart collection"));
                     }
                 },
                 cancellationToken);
-            if (listed is not null)
+            if (listed is not null || unreadable)
             {
                 return null;
             }

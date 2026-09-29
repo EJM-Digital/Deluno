@@ -126,6 +126,12 @@ public sealed class RetentionEvaluator(
                 problems.Add($"“{field.Label}” comes from Seerr. Connect a Seerr server under Media Servers first.");
             }
 
+            if (field.Id == "server.audioLanguages" && NeedsValue(op!) &&
+                (value ?? string.Empty).Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault(entry => MediaServerLanguages.Name(entry) is null) is { } unknown)
+            {
+                problems.Add($"“{unknown}” is not a language Deluno knows. Use its English name, such as English or French.");
+            }
+
             if (NeedsValue(op!) && string.IsNullOrWhiteSpace(value))
             {
                 problems.Add($"“{field.Label}” needs a value to compare with.");
