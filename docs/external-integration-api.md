@@ -328,6 +328,53 @@ Responses:
 The manifest advertises this as the `external-redownload` capability. A tool
 should offer the action only when it is present.
 
+### Commands (one address for actions)
+
+Radarr and Sonarr take every action through `POST /api/v3/command` with a
+command name. Deluno has the same door: `POST /api/command` (also reachable as
+`/api/v1/command`). Checked against Radarr's `CommandController`: it answers
+`201 Created`, names are matched without regard to case, `GET` lists commands
+and `GET /{id}` reads one. Where Deluno differs: the `id` is text, an unknown
+name is a `400` that lists the names Deluno runs, and there is no cancel.
+
+```http
+POST /api/command
+X-Api-Key: <key>
+Content-Type: application/json
+
+{ "name": "RssSync" }
+```
+
+| Command (aliases) | What it does | Key scope |
+|---|---|---|
+| `RssSync` | Checks every list or feed that is switched on, now | `write` |
+| `Backup` | Makes a backup now | `system` |
+| `CheckForUpdate` (`ApplicationUpdate`) | Asks whether a newer Deluno exists | `system` |
+| `RefreshMonitoredDownloads` | Asks the download clients about every download Deluno is waiting on | `queue` |
+| `RefreshMovie` | Refreshes film details. Body `movieIds` (or `movieId`); with none, every film | `write` |
+| `RefreshSeries` | Refreshes show details. Body `seriesIds` (or `seriesId`); with none, every show | `write` |
+| `MissingMoviesSearch` | Starts a search in every film library | `write` |
+| `MissingEpisodeSearch` (`MissingSeriesSearch`) | Starts a search in every TV library | `write` |
+
+Each command hands over to the service the screen already uses, and writes an
+Activity line ("An outside program asked Deluno to run RssSync. ...").
+
+The `201` body is the command: `id`, `name`, `commandName`, `message`, `body`
+(what you sent), `priority`, `status` (`queued`, `started`, `completed`,
+`failed`), `result` (`unknown`, `successful`, `unsuccessful`), `queued`,
+`started`, `ended`, `duration`, `exception`, `trigger` (`manual`),
+`stateChangeTime`, `sendUpdatesToClient`, `updateScheduledTask` and Deluno's
+`jobIds`. A command that only queues work (feeds, refreshes) reports `queued`
+and then follows its jobs when read again; one that does its work at once
+(backup, update check, download check) answers `completed` immediately.
+Commands are remembered in memory for the last 100 asked since Deluno started.
+
+| Status | Meaning |
+|---|---|
+| `201` | The command was accepted (its own `status` may still be `failed`, with `exception` saying why). |
+| `400` | No `name`, or a name Deluno does not run. |
+| `403` | The key lacks the scope in the table. |
+
 ## Refine Before Import
 
 When a Deluno library is configured for **Refine before import**, an external processor can clean the completed download without bypassing Deluno's destination resolver, import mover, rename rules, or metadata refresh. The normal path is processor-agnostic: the processor writes below the library's configured processed-output root using the completed download's final source-folder name, and Deluno matches that stable path component to its durable hand-off.

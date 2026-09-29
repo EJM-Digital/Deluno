@@ -340,21 +340,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
 
             foreach (var library in selected)
             {
-                await jobs.RequestLibrarySearchAsync(new LibraryAutomationPlanItem(
-                    LibraryId: library.Id,
-                    LibraryName: library.Name,
-                    MediaType: library.MediaType,
-                    AutoSearchEnabled: library.AutoSearchEnabled,
-                    MissingSearchEnabled: library.MissingSearchEnabled,
-                    UpgradeSearchEnabled: library.UpgradeSearchEnabled,
-                    SearchIntervalMinutes: library.SearchIntervalMinutes,
-                    RetryDelayHours: library.RetryDelayHours,
-                    MaxItemsPerRun: library.MaxItemsPerRun,
-                    MaxMissingItemsPerRun: library.MaxMissingItemsPerRun,
-                    MaxUpgradeItemsPerRun: library.MaxUpgradeItemsPerRun,
-                    SearchWindowDays: library.SearchWindowDays,
-                    SearchWindowStartHour: library.SearchWindowStartHour,
-                    SearchWindowEndHour: library.SearchWindowEndHour), cancellationToken);
+                await jobs.RequestLibrarySearchAsync(
+                    LibraryActionEndpointRouteBuilderExtensions.ToPlanItem(library), cancellationToken);
             }
 
             await activityFeed.RecordActivityAsync(

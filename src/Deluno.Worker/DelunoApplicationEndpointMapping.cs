@@ -30,6 +30,7 @@ using Deluno.Quality;
 using Deluno.Realtime;
 using Deluno.Security;
 using Deluno.Security.Hardening;
+using Deluno.Worker.ApiParity;
 using Deluno.Worker.Automation;
 using Deluno.Series;
 using Deluno.Movies.Testing;
@@ -91,6 +92,7 @@ public static class DelunoApplicationEndpointMapping
         endpoints.MapDelunoTrakt();
         endpoints.MapDelunoExternalFileChanged();
         endpoints.MapDelunoExternalRedownload();
+        endpoints.MapDelunoCommandEndpoints();
         endpoints.MapDelunoMediaLibraryMembership();
         endpoints.MapDelunoRetention();
         endpoints.MapDelunoCompanions();

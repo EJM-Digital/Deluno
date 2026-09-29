@@ -15,6 +15,9 @@ public interface IJobQueueRepository
     /// </summary>
     Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken);
 
+    /// <summary>One job by id, whatever state it is in, or null when there is none.</summary>
+    Task<JobQueueItem?> GetAsync(string jobId, CancellationToken cancellationToken);
+
     Task<int> RetryFailedAsync(CancellationToken cancellationToken);
 
     /// <summary>
