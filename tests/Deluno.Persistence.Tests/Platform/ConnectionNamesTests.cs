@@ -199,6 +199,37 @@ public sealed class ConnectionNamesTests
         Assert.Equal("Processor on MEDIA-BOX", saved!.Name);
     }
 
+    [Theory]
+    [InlineData("http://localhost:9117/api/v2.0/indexers/1337x/results/torznab/", "1337x")]
+    [InlineData("http://192.168.1.5:9117/api/v2.0/indexers/yts/results/torznab", "yts")]
+    [InlineData("http://jackett:9117/api/v2.0/indexers/all/results/torznab/", null)]
+    [InlineData("http://localhost:9696/12/api", "Prowlarr indexer 12")]
+    [InlineData("http://prowlarr.lan:9696/7/api/", "Prowlarr indexer 7")]
+    [InlineData("https://api.nzbgeek.info", null)]
+    public void An_indexer_behind_jackett_or_prowlarr_is_named_after_its_tracker_not_the_shared_host(string address, string? tracker)
+    {
+        Assert.Equal(tracker, ConnectionNames.AggregatedTrackerOf(address));
+        Assert.Equal(tracker ?? ConnectionNames.SiteName(address), ConnectionNames.SiteName(address));
+    }
+
+    [Fact]
+    public async Task Indexers_served_by_one_jackett_and_one_prowlarr_each_get_their_own_tracker_name()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+
+        var one = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9117/api/v2.0/indexers/1337x/results/torznab/"), CancellationToken.None);
+        var two = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9117/api/v2.0/indexers/eztv/results/torznab/"), CancellationToken.None);
+        var three = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9696/4/api"), CancellationToken.None);
+        var four = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9696/9/api"), CancellationToken.None);
+
+        Assert.Equal("1337x", one.Name);
+        Assert.Equal("eztv", two.Name);
+        Assert.Equal("Prowlarr indexer 4", three.Name);
+        Assert.Equal("Prowlarr indexer 9", four.Name);
+    }
+
     [Fact]
     public async Task An_import_list_is_named_after_its_provider_and_list()
     {

@@ -58,6 +58,14 @@ public static class ConnectionNames
             return fallback;
         }
 
+        // Behind Jackett or Prowlarr the host is the aggregator's, shared by every
+        // indexer it serves; the tracker is in the path.
+        var tracker = AggregatedTrackerOf(baseUrl);
+        if (tracker is not null)
+        {
+            return tracker;
+        }
+
         if (IsLoopback(host))
         {
             return DelunoHostName.Current;
@@ -72,6 +80,38 @@ public static class ConnectionNames
         }
 
         return host;
+    }
+
+    /// <summary>
+    /// The tracker an indexer address inside Jackett ("/api/v2.0/indexers/1337x/results/torznab")
+    /// or Prowlarr ("/12/api") points at: the Jackett indexer id, or "Prowlarr indexer 12".
+    /// Null for an address that is not one (or Jackett's "all" aggregate).
+    /// </summary>
+    public static string? AggregatedTrackerOf(string? baseUrl)
+    {
+        if (!TryParse(baseUrl, out var uri))
+        {
+            return null;
+        }
+
+        var parts = uri.Segments.Select(part => Uri.UnescapeDataString(part.Trim('/'))).Where(part => part.Length > 0).ToArray();
+        for (var index = 0; index + 1 < parts.Length; index++)
+        {
+            if (parts[index].Equals("indexers", StringComparison.OrdinalIgnoreCase)
+                && !parts[index + 1].Equals("all", StringComparison.OrdinalIgnoreCase)
+                && index + 2 < parts.Length
+                && parts[index + 2].Equals("results", StringComparison.OrdinalIgnoreCase))
+            {
+                return parts[index + 1];
+            }
+        }
+
+        if (parts.Length >= 2 && parts[0].All(char.IsDigit) && parts[1].Equals("api", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Prowlarr indexer {parts[0]}";
+        }
+
+        return null;
     }
 
     /// <summary>An import list: its provider and the list it reads ("Trakt: my-list").</summary>
