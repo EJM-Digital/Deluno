@@ -71,7 +71,28 @@ public sealed class RetentionService(
     public const string WaitingConfirmationEvent = "retention.waiting-confirmation";
     public const string FailedEvent = "retention.failed";
 
-    public async Task<RetentionRun> CheckAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
+    // One at a time per rule: a scheduled check, "Run now" and a confirmation must not act on the same
+    // marks together, or an action (unmonitor, tag) would be done and written to Activity twice (#1072).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> RuleGates = new(StringComparer.OrdinalIgnoreCase);
+
+    private static async Task<T> OneAtATimeAsync<T>(string ruleId, Func<Task<T>> work, CancellationToken cancellationToken)
+    {
+        var gate = RuleGates.GetOrAdd(ruleId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            return await work();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public Task<RetentionRun> CheckAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
+        => OneAtATimeAsync(rule.Id, () => CheckCoreAsync(rule, trigger, cancellationToken), cancellationToken);
+
+    private async Task<RetentionRun> CheckCoreAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetUtcNow();
         await repository.MarkCheckedAsync(rule.Id, started, cancellationToken);
@@ -137,6 +158,12 @@ public sealed class RetentionService(
                 var holding = mark with { State = RetentionMarkStates.Held, StateReason = candidate.Message, UpdatedUtc = started };
                 await repository.UpsertMarkAsync(holding, cancellationToken);
                 marks[mark.EntityId] = holding;
+                if (mark.State != RetentionMarkStates.Held)
+                {
+                    // Said once, when it starts being held, so Activity shows it and a steady hold is not repeated every check.
+                    items.Add(Item(mark, RetentionItemOutcomes.Held, $"Held: {candidate.Message}"));
+                }
+
                 continue;
             }
 
@@ -252,7 +279,10 @@ public sealed class RetentionService(
     }
 
     /// <summary>A person confirms Ready to remove titles. The rule is asked again first.</summary>
-    public async Task<RetentionRun> ConfirmAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
+    public Task<RetentionRun> ConfirmAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
+        => OneAtATimeAsync(rule.Id, () => ConfirmCoreAsync(rule, entityIds, cancellationToken), cancellationToken);
+
+    private async Task<RetentionRun> ConfirmCoreAsync(RetentionRule rule, IReadOnlyList<string> entityIds, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetUtcNow();
         var allMarks = await repository.ListMarksAsync(rule.Id, cancellationToken);
@@ -469,6 +499,43 @@ public sealed class RetentionService(
 
         return moved;
     }
+
+    /// <summary>
+    /// A rule's action was switched to delete: marks made under the old action (log, tag, unmonitor) must
+    /// not remove anything on the day they were promised for. Their wait starts again from now, and a mark
+    /// already Ready (confirmed for the old action) goes back to waiting, so nothing is ever removed early (#1072).
+    /// </summary>
+    public Task<int> RestartWaitForDeleteAsync(RetentionRule rule, CancellationToken cancellationToken)
+        => OneAtATimeAsync(rule.Id, async () =>
+        {
+            var now = timeProvider.GetUtcNow();
+            var restarted = 0;
+            foreach (var mark in (await repository.ListMarksAsync(rule.Id, cancellationToken)).Where(mark => mark.State != RetentionMarkStates.Done))
+            {
+                var next = mark with
+                {
+                    RemoveAfterUtc = now.AddDays(rule.WaitDays),
+                    State = mark.State == RetentionMarkStates.Held ? RetentionMarkStates.Held : RetentionMarkStates.Leaving,
+                    UpdatedUtc = now
+                };
+                await repository.UpsertMarkAsync(next, cancellationToken);
+                restarted++;
+            }
+
+            if (restarted > 0)
+            {
+                await activity.RecordActivityAsync(
+                    "retention.restarted",
+                    $"Retention rule “{rule.Name}” now deletes, so the wait for {Titles(restarted)} already leaving soon starts again from today: nothing is removed before {Day(now.AddDays(rule.WaitDays))}.",
+                    JsonSerializer.Serialize(new { RuleId = rule.Id, Count = restarted }),
+                    null,
+                    "retention-rule",
+                    rule.Id,
+                    cancellationToken);
+            }
+
+            return restarted;
+        }, cancellationToken);
 
     /// <summary>Forgets what a rule did on a title's day, so a changed action is done afresh, after a new wait.</summary>
     public async Task ForgetDoneAsync(string ruleId, CancellationToken cancellationToken)

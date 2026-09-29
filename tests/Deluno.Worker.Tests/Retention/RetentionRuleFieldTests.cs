@@ -394,6 +394,25 @@ public sealed class RetentionRuleFieldTests
     }
 
     [Fact]
+    public void Missing_episodes_are_unknown_while_a_monitored_episode_without_a_file_has_no_air_date()
+    {
+        var math = new RetentionEpisodeMath(
+        [
+            Episode("a", 1, 1, Now.AddDays(-30), true),
+            Episode("b", 1, 2, null, false),
+            Episode("c", 2, 1, Now.AddDays(-30), true),
+            // Not monitored, so it does not count either way.
+            Episode("d", 2, 2, null, false, monitored: false),
+            Episode("e", 3, 1, Now.AddDays(-2), false)
+        ], Now);
+
+        Assert.Null(math.Missing(null));
+        Assert.Null(math.Missing(1));
+        Assert.Equal(0, math.Missing(2));
+        Assert.Equal(1, math.Missing(3));
+    }
+
+    [Fact]
     public void A_season_is_monitored_while_any_of_its_episodes_is()
     {
         var math = new RetentionEpisodeMath([Episode("a", 1, 1, Now.AddDays(-9), true, monitored: false), Episode("b", 1, 2, Now.AddDays(-8), true, monitored: true), Episode("c", 2, 1, Now.AddDays(-2), true, monitored: false)], Now);

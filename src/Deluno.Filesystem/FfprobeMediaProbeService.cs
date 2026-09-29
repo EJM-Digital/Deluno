@@ -22,6 +22,19 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
             return Unavailable(MissingFfprobe);
         }
 
+        // A file Deluno cannot even open (a share that dropped, a lock, a permission problem) is not a
+        // bad release: say so here, before ffprobe turns the same OS error into "failed" (#1072).
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var first = new byte[1];
+            _ = await stream.ReadAsync(first, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Unreadable(exception.Message);
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = executable,
@@ -67,6 +80,11 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
 
             if (process.ExitCode != 0)
             {
+                if (LooksLikeTheFileCouldNotBeReached(error))
+                {
+                    return Unreadable(error.Trim());
+                }
+
                 return Failed(string.IsNullOrWhiteSpace(error) ? $"ffprobe exited with code {process.ExitCode}." : error.Trim());
             }
 
@@ -131,7 +149,7 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
         {
             throw;
         }
-        catch (IOException exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // Deluno could not get at the file — a share dropped mid-read, a
             // lock, a disk error. That says nothing about the release, and
@@ -161,6 +179,22 @@ public sealed class FfprobeMediaProbeService : IMediaProbeService
     /// </summary>
     private const string MissingFfprobe =
         "ffprobe is missing from this install, so streams could not be read. It ships in tools\\ffmpeg beside Deluno — reinstall, or point DELUNO_FFMPEG_DIR at a copy.";
+
+    /// <summary>
+    /// ffprobe's own words for "the operating system would not give me the file" (a dropped share, a
+    /// lock, a permission problem), as opposed to "I read it and it is broken" (which stays
+    /// <c>failed</c>: "Invalid data found", "moov atom not found" and the like).
+    /// </summary>
+    public static bool LooksLikeTheFileCouldNotBeReached(string? ffprobeError)
+        => !string.IsNullOrWhiteSpace(ffprobeError) && UnreachableMarkers.Any(marker => ffprobeError.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    private static readonly string[] UnreachableMarkers =
+    [
+        "Input/output error", "Permission denied", "Access is denied", "being used by another process",
+        "Stale file handle", "Connection reset", "Connection timed out", "Host is down", "Network is unreachable",
+        "network path", "network name is no longer available", "Resource temporarily unavailable",
+        "Device or resource busy", "Transport endpoint is not connected", "No such file or directory"
+    ];
 
     private static MediaProbeInfo Unavailable(string message)
         => new("unavailable", "ffprobe", message, null, null, null, [], [], []);

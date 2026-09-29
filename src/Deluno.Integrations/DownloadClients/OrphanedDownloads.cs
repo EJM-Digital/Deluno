@@ -84,7 +84,7 @@ public static partial class OrphanedDownloads
                 var name = key[(key.LastIndexOf('/') + 1)..];
                 if (now - entry.LastWrittenUtc < grace
                     || keptKeys.Contains(key)
-                    || skip.Any(pattern => pattern.IsMatch(name))
+                    || skip.Any(pattern => Skips(pattern, name))
                     || claimedHere.Any(path => Related(key, path)))
                 {
                     continue;
@@ -124,7 +124,24 @@ public static partial class OrphanedDownloads
     /// pattern can never be a regular expression that misbehaves.
     /// </summary>
     public static bool MatchesGlob(string pattern, string name)
-        => GlobToRegex(pattern)?.IsMatch(name) ?? false;
+        => GlobToRegex(pattern) is { } regex && Skips(regex, name);
+
+    /// <summary>
+    /// A pattern that takes too long to match (something like <c>*a*a*a*a*b</c> against a long name) counts
+    /// as a match, so the name is skipped. Skipping only ever keeps a folder off the delete list, so an
+    /// awkward pattern can never make the scan fail or a folder more likely to be removed (#1072).
+    /// </summary>
+    private static bool Skips(Regex pattern, string name)
+    {
+        try
+        {
+            return pattern.IsMatch(name);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return true;
+        }
+    }
 
     private static Regex? GlobToRegex(string pattern)
     {
