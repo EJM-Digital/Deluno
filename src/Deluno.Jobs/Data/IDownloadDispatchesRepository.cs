@@ -128,6 +128,25 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The newest dispatch (archived or not) for this client and release name
+    /// that never recorded the client's own id for it. Used to give such a
+    /// dispatch the id once the client shows the item (#1062).
+    /// </summary>
+    Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
+        string clientId,
+        string releaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records the client's own id on a dispatch that has none. Never
+    /// overwrites an id that is already there.
+    /// </summary>
+    Task RecordClientItemIdAsync(
+        string dispatchId,
+        string clientItemId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Find the most recent grabbed-but-undetected dispatch matching a release name for a client.
     /// </summary>
     Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(

@@ -128,6 +128,18 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         CancellationToken cancellationToken) =>
         Task.FromResult<DownloadDispatchItem?>(null);
 
+    public Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
+        string clientId,
+        string releaseName,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<DownloadDispatchItem?>(null);
+
+    public Task RecordClientItemIdAsync(
+        string dispatchId,
+        string clientItemId,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
         string clientId,
         string releaseName,

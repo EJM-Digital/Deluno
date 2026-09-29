@@ -843,6 +843,56 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
     }
 
+    public async Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
+        string clientId,
+        string releaseName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT
+                {DispatchColumns}
+            FROM download_dispatches
+            WHERE download_client_id = @clientId
+              AND release_name = @releaseName COLLATE NOCASE
+              AND (torrent_hash_or_item_id IS NULL OR torrent_hash_or_item_id = '')
+            ORDER BY created_utc DESC
+            LIMIT 1
+            """;
+
+        AddParameter(command, "@clientId", clientId);
+        AddParameter(command, "@releaseName", releaseName);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
+    }
+
+    public async Task RecordClientItemIdAsync(
+        string dispatchId,
+        string clientItemId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE download_dispatches
+            SET torrent_hash_or_item_id = @clientItemId
+            WHERE id = @dispatchId
+              AND (torrent_hash_or_item_id IS NULL OR torrent_hash_or_item_id = '')
+            """;
+
+        AddParameter(command, "@dispatchId", dispatchId);
+        AddParameter(command, "@clientItemId", clientItemId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
         string clientId,
         string releaseName,

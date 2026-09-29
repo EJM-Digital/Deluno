@@ -228,15 +228,33 @@ public sealed class RefusedDownloadCleanupService(
 
         try
         {
-            var result = await downloadClients.ExecuteActionAsync(
-                clientId,
-                new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId),
-                cancellationToken);
+            var forget = new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId);
+            var result = await downloadClients.ExecuteActionAsync(clientId, forget, cancellationToken);
+
+            if (result.Refused &&
+                await downloadClients.AdoptClientItemIdAsync(clientId, queueItemId, release.ReleaseName, cancellationToken))
+            {
+                // Deluno did send this release, but the client never handed
+                // back its id, so the dispatch had none. The blocked row names
+                // the release and the id; the dispatch now carries it too.
+                result = await downloadClients.ExecuteActionAsync(clientId, forget, cancellationToken);
+            }
 
             if (result.Refused)
             {
                 // Deluno never sent this download (added by hand, or by another
-                // tool), so it is not Deluno's to remove. Not the client's fault.
+                // tool), so it is not Deluno's to remove. That is settled, not
+                // "awaiting cleanup" for ever: the row is closed and the
+                // Activity feed says why nothing was removed.
+                await blockedReleases.MarkCleanedUpAsync(release.Id, cancellationToken);
+                await activityFeedRepository.RecordActivityAsync(
+                    "download.cleanup.left-alone",
+                    $"{release.ReleaseName} is still in {release.DownloadClientName ?? "its download client"}. Deluno did not send that download, so it left it there. The release stays blocked.",
+                    null,
+                    null,
+                    string.Equals(release.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie",
+                    release.EntityId,
+                    cancellationToken);
                 return RefusedDownloadCleanupOutcomes.NotSentByDeluno;
             }
 

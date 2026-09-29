@@ -399,7 +399,7 @@ public sealed class TitleRemovalService(
                 {
                     var result = await downloadClientTelemetry.ExecuteActionAsync(
                         dispatch.DownloadClientId,
-                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId, dispatch.Id),
+                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
                         cancellationToken);
                     if (result.Succeeded)
                     {
@@ -566,7 +566,7 @@ public sealed class TitleRemovalService(
 
                     var result = await downloadClientTelemetry.ExecuteActionAsync(
                         dispatch.DownloadClientId,
-                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId, dispatch.Id),
+                        new DownloadClientActionRequest(DownloadClientActions.DeleteWithData, dispatch.TorrentHashOrItemId),
                         cancellationToken);
                     if (result.Succeeded)
                     {

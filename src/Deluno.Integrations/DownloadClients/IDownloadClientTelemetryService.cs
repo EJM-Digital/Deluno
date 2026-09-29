@@ -1,3 +1,5 @@
+using Deluno.Jobs.Contracts;
+
 namespace Deluno.Integrations.DownloadClients;
 
 public interface IDownloadClientTelemetryService
@@ -18,6 +20,34 @@ public interface IDownloadClientTelemetryService
         string clientId,
         DownloadClientActionRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same action, for a caller that already holds the dispatch Deluno
+    /// recorded for this download (a forced re-download, an archived or
+    /// still-id-less dispatch). Server-side only: the dispatch is trusted only
+    /// when it is for this client and matches the item - by its recorded id, or
+    /// (when it never got one) by the release name the client is showing under
+    /// that id - never because a caller said so (#1062).
+    /// </summary>
+    Task<DownloadClientActionResult> ExecuteActionForDispatchAsync(
+        string clientId,
+        DownloadClientActionRequest request,
+        DownloadDispatchItem dispatch,
+        CancellationToken cancellationToken)
+        => ExecuteActionAsync(clientId, request, cancellationToken);
+
+    /// <summary>
+    /// A Deluno download can be sent before the client hands back its id, and
+    /// then never record one. Gives the newest such dispatch for this release
+    /// the client's id, so the download stays Deluno's own. False when there is
+    /// no such dispatch.
+    /// </summary>
+    Task<bool> AdoptClientItemIdAsync(
+        string clientId,
+        string queueItemId,
+        string releaseName,
+        CancellationToken cancellationToken)
+        => Task.FromResult(false);
 
     Task<DownloadCleanupPreview?> PreviewCleanupAsync(
         string clientId,
