@@ -4962,8 +4962,11 @@ public sealed class SqliteSeriesCatalogRepository(
                         title = excluded.title,
                         overview = excluded.overview,
                         air_date_utc = excluded.air_date_utc,
+                        -- A refresh that has no absolute number (TMDb's list has none) must
+                        -- not blank one an earlier TheTVDB or scene-map refresh learned.
                         absolute_number = CASE WHEN episode_entries.numbering_source = 'owner'
-                            THEN episode_entries.absolute_number ELSE excluded.absolute_number END,
+                            THEN episode_entries.absolute_number
+                            ELSE COALESCE(excluded.absolute_number, episode_entries.absolute_number) END,
                         scene_season_number = CASE WHEN episode_entries.numbering_source = 'owner'
                             THEN episode_entries.scene_season_number ELSE excluded.scene_season_number END,
                         scene_episode_number = CASE WHEN episode_entries.numbering_source = 'owner'

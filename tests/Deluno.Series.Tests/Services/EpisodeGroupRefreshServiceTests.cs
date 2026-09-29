@@ -31,7 +31,7 @@ public sealed class EpisodeGroupRefreshServiceTests
             .ReturnsAsync(2);
 
         var provider = new Mock<IMetadataProvider>();
-        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<CancellationToken>()))
+        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 new MetadataEpisodeGroup(TmdbEpisodeGroupTypes.Dvd, "group-dvd", "DVD Order",
                 [
@@ -51,8 +51,8 @@ public sealed class EpisodeGroupRefreshServiceTests
         Assert.Equal(2, summary.EpisodesUpdated);
 
         // The non-TMDb title is never asked at all.
-        provider.Verify(p => p.GetSeriesEpisodeGroupsAsync("2", It.IsAny<CancellationToken>()), Times.Never);
-        provider.Verify(p => p.GetSeriesEpisodeGroupsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        provider.Verify(p => p.GetSeriesEpisodeGroupsAsync("2", It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()), Times.Never);
+        provider.Verify(p => p.GetSeriesEpisodeGroupsAsync(It.IsAny<string>(), It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()), Times.Once);
 
         repository.Verify(repo => repo.ApplyEpisodeGroupsAsync(
             "show-1",
@@ -75,7 +75,7 @@ public sealed class EpisodeGroupRefreshServiceTests
         repository.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([show]);
 
         var provider = new Mock<IMetadataProvider>();
-        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<CancellationToken>()))
+        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<MetadataEpisodeGroup>());
 
         var service = new EpisodeGroupRefreshService(repository.Object, provider.Object, NullLogger<EpisodeGroupRefreshService>.Instance);
@@ -112,9 +112,9 @@ public sealed class EpisodeGroupRefreshServiceTests
             .ReturnsAsync(1);
 
         var provider = new Mock<IMetadataProvider>();
-        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<CancellationToken>()))
+        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("1", It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("unreachable"));
-        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("2", It.IsAny<CancellationToken>()))
+        provider.Setup(p => p.GetSeriesEpisodeGroupsAsync("2", It.IsAny<MetadataCatalogueSource>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([new MetadataEpisodeGroup(TmdbEpisodeGroupTypes.Absolute, "group-abs", "Absolute", [new MetadataEpisodeGroupEpisode(1, 1, 1, 1)])]);
 
         var service = new EpisodeGroupRefreshService(repository.Object, provider.Object, NullLogger<EpisodeGroupRefreshService>.Instance);

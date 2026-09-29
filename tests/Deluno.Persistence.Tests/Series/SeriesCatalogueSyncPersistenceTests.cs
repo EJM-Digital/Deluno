@@ -40,6 +40,34 @@ public sealed class SeriesCatalogueSyncPersistenceTests
     }
 
     /// <summary>
+    /// TheTVDB's absolute number is stored (#989), and a later refresh from a
+    /// list with no absolute numbers (TMDb's) does not blank it.
+    /// </summary>
+    [Fact]
+    public async Task An_absolute_number_from_TheTVDB_survives_a_refresh_that_has_none()
+    {
+        var now = DateTimeOffset.Parse("2026-09-29T03:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(2, 1, "Return", null, now.AddDays(-40), AbsoluteNumber: 26)],
+            source: "tvdb",
+            CancellationToken.None);
+        var first = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.Equal(26, Assert.Single(first!.Episodes).AbsoluteNumber);
+
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [new CatalogueEpisodeItem(2, 1, "Return", null, now.AddDays(-40))],
+            source: "tmdb",
+            CancellationToken.None);
+        var second = await repository.GetInventoryDetailAsync(seriesId, CancellationToken.None);
+        Assert.Equal(26, Assert.Single(second!.Episodes).AbsoluteNumber);
+    }
+
+    /// <summary>
     /// An imported episode records the quality it holds.
     ///
     /// <para>On the rig, Breaking Bad S01E03 imported a WEB 1080p file and its

@@ -3719,7 +3719,14 @@ public static class SeriesEndpointRouteBuilderExtensions
         IReadOnlyList<MetadataSeason> seasons;
         try
         {
-            seasons = await metadataProvider.GetSeriesCatalogueAsync(providerId, cancellationToken);
+            var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
+            seasons = await MetadataCatalogueChoice.GetAsync(
+                metadataProvider,
+                providerId,
+                (inventory?.Episodes ?? [])
+                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
+                    .ToArray(),
+                cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -3735,7 +3742,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                 episode.EpisodeNumber,
                 episode.Title,
                 episode.Overview,
-                episode.AirDateUtc))
+                episode.AirDateUtc,
+                episode.AbsoluteNumber))
             .ToArray();
 
         if (episodes.Length == 0)
@@ -3743,7 +3751,11 @@ public static class SeriesEndpointRouteBuilderExtensions
             return SeriesCatalogueSyncResult.None;
         }
 
-        var result = await repository.SyncEpisodeCatalogueAsync(seriesId, episodes, "tmdb", cancellationToken);
+        var result = await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            episodes,
+            MetadataCatalogueChoice.SourceName(seasons),
+            cancellationToken);
 
         if (result.AddedCount > 0)
         {
@@ -4026,7 +4038,14 @@ public static class SeriesEndpointRouteBuilderExtensions
         IReadOnlyList<MetadataSeason> seasons;
         try
         {
-            seasons = await metadataProvider.GetSeriesCatalogueAsync(lookup.Result.ProviderId, cancellationToken);
+            var existing = await repository.GetInventoryDetailAsync(item.Id, cancellationToken);
+            seasons = await MetadataCatalogueChoice.GetAsync(
+                metadataProvider,
+                lookup.Result.ProviderId,
+                (existing?.Episodes ?? [])
+                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
+                    .ToArray(),
+                cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
