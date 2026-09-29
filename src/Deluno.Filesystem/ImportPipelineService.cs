@@ -81,7 +81,12 @@ public sealed partial class ImportPipelineService(
     Deluno.Integrations.Seerr.ISeerrClient? seerrClient = null,
     // #990: the imported title's own tags, so a tagged notification
     // connection fires for import.completed/upgrade events scoped to it.
-    IMediaTagStore? mediaTagStore = null)
+    IMediaTagStore? mediaTagStore = null,
+    // #1013: counts how often one download's import has been stopped for a
+    // reason Force Import may go past, and how often it has been forced.
+    // Null in every test that does not exercise Force Import, which then
+    // never forces anything.
+    IForceImportAttemptsRepository? forceImportAttempts = null)
     : IImportPipelineService
 {
     private readonly TimeSpan _settleWindow = settleWindow ?? ImportFileReadiness.SettleWindow;
@@ -276,15 +281,27 @@ public sealed partial class ImportPipelineService(
 
         if (preview.MediaProbe is { Status: "unreadable" })
         {
-            var message = preview.MediaProbe.Message ?? "Deluno could not read this file to check it.";
-            await RecordImportFailureAsync(
+            // #1013: Force Import. Off unless the person turned it on, never for
+            // the first stop, never past a reason off ForceImportPolicy's closed
+            // list, and never onto a file the library already has.
+            var forcedPast = await TryForceImportAsync(
                 request,
-                request.Preview,
+                preview,
+                settings,
                 ImportFailurePolicy.MediaProbeUnreadable,
-                message,
-                "Check the file is reachable — a share that dropped, a lock, or a disk error. The release itself is not suspected.",
                 cancellationToken);
-            return Failed(StatusCodes.Status400BadRequest, message);
+            if (!forcedPast)
+            {
+                var message = preview.MediaProbe.Message ?? "Deluno could not read this file to check it.";
+                await RecordImportFailureAsync(
+                    request,
+                    request.Preview,
+                    ImportFailurePolicy.MediaProbeUnreadable,
+                    message,
+                    "Check the file is reachable — a share that dropped, a lock, or a disk error. The release itself is not suspected.",
+                    cancellationToken);
+                return Failed(StatusCodes.Status400BadRequest, message);
+            }
         }
 
         if (preview.MediaProbe is { Status: "failed" })
@@ -2555,6 +2572,75 @@ public sealed partial class ImportPipelineService(
             !string.Equals(item.Id, dispatch.Id, StringComparison.Ordinal) &&
             string.Equals(item.ReleaseName, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(item.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Force Import (#1013): whether to import past a stop that
+    /// <see cref="ForceImportPolicy"/> lists as minor and known-safe, and says
+    /// so in Activity when it does. Everything that decides lives in the policy;
+    /// this only supplies the facts and keeps the count.
+    /// </summary>
+    private async Task<bool> TryForceImportAsync(
+        ImportExecuteRequest request,
+        ImportPreviewResponse preview,
+        PlatformSettingsSnapshot settings,
+        string reasonCode,
+        CancellationToken cancellationToken)
+    {
+        if (forceImportAttempts is null
+            || !settings.ForceImportEnabled
+            || string.IsNullOrWhiteSpace(request.DispatchId)
+            || !ForceImportPolicy.IsSafeToForce(reasonCode))
+        {
+            return false;
+        }
+
+        try
+        {
+            var attempts = await forceImportAttempts.NoteBlockedAsync(request.DispatchId, cancellationToken);
+            var replacesAFile = request.Overwrite
+                || request.ForceReplacement
+                || !string.IsNullOrWhiteSpace(request.ExpectedExistingPath)
+                || request.ReplacementTargets is { Count: > 0 }
+                || File.Exists(preview.DestinationPath);
+            var decision = ForceImportPolicy.Decide(
+                reasonCode,
+                settings.ForceImportEnabled,
+                attempts.Blocked,
+                attempts.Forced,
+                settings.ForceImportMaxTries,
+                replacesAFile);
+            if (!decision.Force)
+            {
+                return false;
+            }
+
+            var tryNumber = await forceImportAttempts.NoteForcedAsync(request.DispatchId, cancellationToken);
+            var maxTries = ForceImportPolicy.ClampMaxTries(settings.ForceImportMaxTries);
+            var title = TitleForActivity(request.Preview);
+            await activityFeedRepository.RecordActivityAsync(
+                "filesystem.import.forced",
+                $"{title} was imported without Deluno being able to check the file first, because Force Import is on and the import had already stopped once. {ForceImportPolicy.Describe(reasonCode)} This was forced try {tryNumber} of {maxTries}. If the file turns out to be damaged, remove it from the title's page and search again.",
+                JsonSerializer.Serialize(new
+                {
+                    Reason = reasonCode,
+                    Try = tryNumber,
+                    MaxTries = maxTries,
+                    request.DispatchId,
+                    request.Preview.SourcePath
+                }),
+                null,
+                NormalizeMediaType(request.Preview.MediaType) == "tv" ? "series" : "movie",
+                null,
+                cancellationToken);
+            return true;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Never forces on a guess: a count that cannot be kept is no force.
+            logger.LogWarning(exception, "Force Import could not decide for dispatch {DispatchId}; the import stays stopped.", request.DispatchId);
+            return false;
+        }
     }
 
     private async Task RecordImportFailureAsync(

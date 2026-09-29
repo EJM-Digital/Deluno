@@ -508,6 +508,34 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.False(updated.LeftoverDownloadCleanupEnabled);
     }
 
+    /// <summary>#1013: Force Import is off on a fresh (or upgraded) install, with 3 tries, and both are configurable.</summary>
+    [Fact]
+    public async Task ForceImport_defaults_to_off_with_three_tries_and_is_configurable()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var defaults = await repository.GetAsync(CancellationToken.None);
+        Assert.False(defaults.ForceImportEnabled);
+        Assert.Equal(3, defaults.ForceImportMaxTries);
+
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(defaults, new PatchPlatformSettingsRequest(ForceImportEnabled: true, ForceImportMaxTries: 7)),
+            CancellationToken.None);
+
+        var updated = await repository.GetAsync(CancellationToken.None);
+        Assert.True(updated.ForceImportEnabled);
+        Assert.Equal(7, updated.ForceImportMaxTries);
+
+        // A patch that mentions neither leaves both as they were.
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(updated, new PatchPlatformSettingsRequest(LeftoverMinAgeHours: 5)),
+            CancellationToken.None);
+        var untouched = await repository.GetAsync(CancellationToken.None);
+        Assert.True(untouched.ForceImportEnabled);
+        Assert.Equal(7, untouched.ForceImportMaxTries);
+    }
+
     /// <summary>#759: Smart Replace by default, and an unrecognised value normalizes back to it rather than being stored verbatim.</summary>
     [Fact]
     public async Task ColonReplacementMode_defaults_to_smart_replace_and_normalizes_an_unknown_value()

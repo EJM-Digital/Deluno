@@ -259,6 +259,9 @@ public sealed class SqlitePlatformSettingsRepository(
         // A missing key reads as no skip list and the 2 hours it always had.
         await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.excludePatterns", (request.LeftoverExcludePatterns ?? string.Empty).Trim(), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "downloads.leftoverCleanup.minAgeHours", Math.Clamp(request.LeftoverMinAgeHours ?? 2, 1, 8760).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        // #1013: off unless the key says "true"; a missing key reads as off.
+        await UpsertSettingAsync(connection, transaction, "imports.forceImport.enabled", request.ForceImportEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "imports.forceImport.maxTries", Math.Clamp(request.ForceImportMaxTries ?? 3, 1, 25).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #762: blank means no season/specials subfolder, the same "off"
         // value a brand-new install already reads for every other naming
         // format below.
@@ -664,6 +667,8 @@ public sealed class SqlitePlatformSettingsRepository(
             LeftoverDownloadCleanupAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.ageHours"), 24, 1, 8760),
             LeftoverExcludePatterns: GetValue(settings, "downloads.leftoverCleanup.excludePatterns") ?? string.Empty,
             LeftoverMinAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.minAgeHours"), 2, 1, 8760),
+            ForceImportEnabled: string.Equals(GetValue(settings, "imports.forceImport.enabled"), "true", StringComparison.OrdinalIgnoreCase),
+            ForceImportMaxTries: ReadPositiveInt(GetValue(settings, "imports.forceImport.maxTries"), 3, 1, 25),
             SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
             SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
             MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),

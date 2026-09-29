@@ -98,6 +98,8 @@ public sealed record PatchPlatformSettingsRequest(
     int? LeftoverDownloadCleanupAgeHours = null,
     string? LeftoverExcludePatterns = null,
     int? LeftoverMinAgeHours = null,
+    bool? ForceImportEnabled = null,
+    int? ForceImportMaxTries = null,
     // #762: blank clears the subfolder, matching how a movie/series folder
     // format already works.
     string? SeasonFolderFormat = null,

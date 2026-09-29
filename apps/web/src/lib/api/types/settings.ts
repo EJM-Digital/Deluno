@@ -178,6 +178,10 @@ export interface PlatformSettingsSnapshot {
   leftoverExcludePatterns: string;
   /** #1001: hours a download-folder entry must sit unclaimed before it is listed at all (2, as it always was). */
   leftoverMinAgeHours: number;
+  /** #1013: off by default. Imports past the one minor reason on ForceImportPolicy's closed list (a file Deluno could not read to check), after the first stop. */
+  forceImportEnabled: boolean;
+  /** #1013: forced tries per download (default 3, 1-25). */
+  forceImportMaxTries: number;
   /** #762: per-season and specials (season 0) subfolders under the series folder. Blank means no subfolder, matching a movie/series folder format's own blank behaviour. */
   seasonFolderFormat: string;
   specialsFolderFormat: string;
@@ -445,6 +449,8 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   leftoverDownloadCleanupAgeHours: 24,
   leftoverExcludePatterns: "",
   leftoverMinAgeHours: 2,
+  forceImportEnabled: false,
+  forceImportMaxTries: 3,
   seasonFolderFormat: "",
   specialsFolderFormat: "",
   multiEpisodeStyle: "range",
