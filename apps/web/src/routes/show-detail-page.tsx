@@ -78,6 +78,7 @@ import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
 import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
+import { TvdbAttribution } from "../components/app/tvdb-attribution";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
@@ -1228,7 +1229,11 @@ export function ShowDetailPage() {
               <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
                 <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
                 <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
+                {metaText("TvDbId") ? (
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">TheTVDB</span><span className="font-mono text-xs font-medium text-foreground">{metaText("TvDbId")}</span></div>
+                ) : null}
               </div>
+              {metaText("TvDbId") ? <TvdbAttribution className="mt-2" /> : null}
               <Button variant="outline" className="mt-3 w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Refresh metadata

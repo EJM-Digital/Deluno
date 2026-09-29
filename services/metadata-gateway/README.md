@@ -37,3 +37,16 @@ download history, credentials from Deluno users, or a library inventory.
 
 Use a Cloudflare custom domain only after the Worker proves healthy; it is a
 routing change and does not alter Deluno's broker contract.
+
+## TheTVDB (TV first)
+
+The gateway also serves TheTVDB v4 under `/metadata/tvdb/...` (routes, cache
+lifetimes and the terms they follow are in `docs/metadata-broker-contract.md`).
+It needs two Worker secrets, set the same way as `TMDB_API_KEY`:
+
+- `TVDB_API_KEY` - required for the TVDB routes (they answer 503 without it).
+- `TVDB_PIN` - only for a subscriber-supported key; leave unset for a licensed key.
+
+Every TVDB payload carries an `attribution` object; Deluno must show it.
+Code is in `src/tvdb.js`, tests in `test/tvdb.test.js` (run by the CI metadata
+gateway check).

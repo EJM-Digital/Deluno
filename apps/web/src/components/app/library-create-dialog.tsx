@@ -11,6 +11,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { TagPicker } from "./tag-picker";
+import { TvdbAttribution } from "./tvdb-attribution";
 
 type LibraryCreateDialogProps = {
   open: boolean;
@@ -90,6 +91,7 @@ export function LibraryCreateDialog({
             {metadataResults.length > 0 ? (
               <div className="mt-5">
                 <p className="text-sm font-semibold text-foreground">Choose one or more matches to prefill (this does not add yet)</p>
+                {variant === "shows" && metadataResults.some((result) => result.tvDbId) ? <TvdbAttribution className="mt-1" /> : null}
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {metadataResults.slice(0, 6).map((result) => {
                     const isSelected = selectedMetadataResults.some((selected) => sameMetadataResult(selected, result));
