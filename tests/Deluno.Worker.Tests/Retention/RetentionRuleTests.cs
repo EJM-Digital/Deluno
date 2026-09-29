@@ -1225,6 +1225,29 @@ public sealed class RetentionRuleTests
     }
 
     [Fact]
+    public async Task A_check_cannot_run_between_saving_a_rule_as_delete_and_restarting_its_wait()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 3, ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "old" });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(4);
+
+        // The save is slow; a scheduled check of the same rule arrives while it is still saving.
+        var saving = new TaskCompletionSource();
+        _store.BeforeSave = () => saving.Task;
+        var save = Service().SaveEditedRuleAsync(rule.Id, new SaveRetentionRuleRequest(rule.Name, rule.Level, true, rule.Steps, rule.MediaServerIds, false, ExpiryAction: RetentionExpiryActions.Delete), CancellationToken.None);
+        var check = Service().CheckAsync(rule with { ExpiryAction = RetentionExpiryActions.Delete, ExpiryTag = null }, "schedule", CancellationToken.None);
+        await Task.Delay(100);
+        Assert.False(check.IsCompleted);
+        saving.SetResult();
+        await save;
+        await check;
+
+        // The wait was restarted first, so the promised day (passed) did not remove anything.
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(Now.AddDays(7), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
+    }
+
+    [Fact]
     public async Task Checks_of_one_rule_run_one_at_a_time()
     {
         var rule = await WatchedFilmRuleAsync(rule => rule);
@@ -1325,6 +1348,19 @@ public sealed class RetentionRuleTests
 
         Assert.True(RetentionService.EpisodePlayTouches(unit, EpisodePlay("1396", null, null)));
         Assert.True(RetentionService.EpisodePlayTouches(unit, EpisodePlay(null, 1, 1, showTvdb: null)));
+    }
+
+    [Theory]
+    [InlineData("653", null, null, true)]      // the same film by TMDb
+    [InlineData("9999", null, null, false)]    // a different film by the same kind of id
+    [InlineData("9999", "tt0013442", null, true)] // TMDb differs but IMDb agrees: shares an id
+    [InlineData(null, null, null, true)]       // no ids at all and a different path: cannot tell, so wait
+    public void A_film_playing_on_another_server_is_held_unless_its_ids_say_it_is_a_different_film(string? tmdb, string? imdb, string? tvdb, bool held)
+    {
+        var unit = new RetentionUnit(RetentionLevels.Movie, "x", "m1", null, null, "t", "Nosferatu", 1922, "tt0013442", "653", null, null, [], []);
+        var play = new MediaServerPlay(["other-1"], ["/elsewhere/Nosferatu.mkv"], IsMovie: true, TmdbId: tmdb, ImdbId: imdb, TvdbId: tvdb);
+
+        Assert.Equal(held, RetentionService.MoviePlayTouches(unit, play));
     }
 
     [Fact]

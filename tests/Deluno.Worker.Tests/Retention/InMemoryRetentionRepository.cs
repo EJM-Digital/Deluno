@@ -20,8 +20,16 @@ internal sealed class InMemoryRetentionRepository : IRetentionRepository
     public Task<RetentionRule?> GetRuleAsync(string id, CancellationToken cancellationToken)
         => Task.FromResult(_rules.GetValueOrDefault(id));
 
-    public Task<RetentionRule?> SaveRuleAsync(string? id, SaveRetentionRuleRequest request, CancellationToken cancellationToken)
-        => throw new NotSupportedException();
+    public Func<Task>? BeforeSave { get; set; }
+
+    public async Task<RetentionRule?> SaveRuleAsync(string? id, SaveRetentionRuleRequest request, CancellationToken cancellationToken)
+    {
+        if (BeforeSave is not null) await BeforeSave();
+        if (id is null || !_rules.TryGetValue(id, out var existing)) return null;
+        var saved = existing with { ExpiryAction = request.ExpiryAction ?? existing.ExpiryAction, ExpiryTag = request.ExpiryTag };
+        _rules[id] = saved;
+        return saved;
+    }
 
     public Task<bool> DeleteRuleAsync(string id, CancellationToken cancellationToken)
         => Task.FromResult(_rules.Remove(id));
