@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Deluno.Tray.Tests;
 
-/// <summary>#1061: what the installer seeds must keep every client's protections on, and the elevated step must not run a file someone could swap.</summary>
+/// <summary>#1061: what the installer seeds never switches an app's own protection off or adds a password an app would not have, and the elevated step must not run a file someone could swap.</summary>
 public sealed partial class ComponentSetupTests
 {
     private static string Seeded(string kind)
@@ -17,56 +17,80 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public void Seeded_qBittorrent_keeps_every_protection_on()
+    public void Seeded_qBittorrent_adds_only_the_sign_in_it_needs_and_writes_no_protection()
     {
         var ini = Seeded("qbittorrent");
 
-        Assert.Contains("WebUI\\LocalHostAuth=true", ini);
-        Assert.Contains("WebUI\\CSRFProtection=true", ini);
-        Assert.Contains("WebUI\\HostHeaderValidation=true", ini);
-        Assert.Contains("WebUI\\AuthSubnetWhitelistEnabled=false", ini);
-        Assert.DoesNotContain("AuthSubnetWhitelist=", ini);
-        Assert.DoesNotContain("LocalHostAuth=false", ini);
-        Assert.DoesNotContain("CSRFProtection=false", ini);
-        Assert.DoesNotContain("HostHeaderValidation=false", ini);
-        // Host-header validation only bites when the allowed names are listed; the default is "*".
-        Assert.Contains("WebUI\\ServerDomains=localhost;127.0.0.1", ini);
+        // qBittorrent 5.x refuses to start its Web UI without credentials, so these two are added.
+        Assert.Contains("WebUI\\Username=deluno", ini);
+        Assert.Contains("WebUI\\Password_PBKDF2=", ini);
         Assert.Contains("WebUI\\Address=127.0.0.1", ini);
+        // Every protection stays at qBittorrent's own default: Deluno never writes one, on or off.
+        foreach (var setting in new[] { "LocalHostAuth", "CSRFProtection", "HostHeaderValidation", "AuthSubnetWhitelist", "ServerDomains", "ClickjackingProtection", "SecureCookie" })
+        {
+            Assert.DoesNotContain(setting, ini);
+        }
     }
 
     [Fact]
-    public void Seeded_Transmission_requires_a_generated_sign_in()
+    public void Seeded_Transmission_keeps_its_own_defaults_and_adds_no_password()
     {
         using var json = JsonDocument.Parse(Seeded("transmission"));
         var root = json.RootElement;
 
-        Assert.True(root.GetProperty("rpc-authentication-required").GetBoolean());
-        Assert.Equal("deluno", root.GetProperty("rpc-username").GetString());
-        Assert.Equal("Pa55w0rdGenerated", root.GetProperty("rpc-password").GetString());
+        Assert.False(root.TryGetProperty("rpc-password", out _));
+        Assert.False(root.TryGetProperty("rpc-username", out _));
+        Assert.False(root.GetProperty("rpc-authentication-required").GetBoolean());
         Assert.True(root.GetProperty("rpc-whitelist-enabled").GetBoolean());
         Assert.Equal("127.0.0.1", root.GetProperty("rpc-bind-address").GetString());
+        Assert.Null(Load("transmission").CredentialsUsername);
     }
 
     [Fact]
-    public void Seeded_SABnzbd_has_a_generated_sign_in_and_a_host_whitelist()
+    public void Seeded_SABnzbd_adds_no_password_or_host_whitelist_and_no_protection_is_turned_off()
     {
         var ini = Seeded("sabnzbd");
 
-        Assert.Contains("username = deluno", ini);
-        Assert.Contains("password = Pa55w0rdGenerated", ini);
-        Assert.Contains("host_whitelist = 127.0.0.1,localhost", ini);
+        Assert.DoesNotContain("username", ini);
+        Assert.DoesNotContain("password", ini);
+        Assert.DoesNotContain("host_whitelist", ini);
         Assert.Contains("host = 127.0.0.1", ini);
-        Assert.DoesNotContain("username = \n", ini);
-        Assert.DoesNotContain("password = \n", ini);
+        Assert.Null(Load("sabnzbd").CredentialsUsername);
     }
 
     [Fact]
-    public void Every_download_client_that_seeds_a_sign_in_names_the_user_that_gets_a_generated_password()
+    public void No_seeded_config_switches_a_protection_off()
     {
         foreach (var kind in new[] { "qbittorrent", "transmission", "sabnzbd", "nzbget", "deluge" })
         {
-            Assert.False(string.IsNullOrWhiteSpace(Load(kind).CredentialsUsername), kind);
+            var spec = Load(kind);
+            if (spec.ConfigFileContent is null)
+            {
+                continue;
+            }
+
+            var text = Seeded(kind);
+            Assert.DoesNotContain("LocalHostAuth=false", text);
+            Assert.DoesNotContain("CSRFProtection=false", text);
+            Assert.DoesNotContain("HostHeaderValidation=false", text);
+            Assert.DoesNotContain("\"rpc-whitelist-enabled\": false", text);
         }
+    }
+
+    [Fact]
+    public void A_password_is_generated_only_where_the_app_cannot_start_or_would_ship_a_public_one()
+    {
+        foreach (var spec in BundledComponents.Load())
+        {
+            var seedsAPassword = spec.ConfigFileContent is not null
+                && (spec.ConfigFileContent.Contains("{{password}}", StringComparison.Ordinal) || spec.ConfigFileContent.Contains("{{qbittorrentPbkdf2}}", StringComparison.Ordinal));
+            if (seedsAPassword) { Assert.False(string.IsNullOrWhiteSpace(spec.CredentialsUsername), spec.Kind); }
+        }
+
+        // qBittorrent 5.x will not start its Web UI without one; Transmission and SABnzbd keep their own defaults.
+        Assert.False(string.IsNullOrWhiteSpace(Load("qbittorrent").CredentialsUsername));
+        Assert.True(string.IsNullOrWhiteSpace(Load("transmission").CredentialsUsername));
+        Assert.True(string.IsNullOrWhiteSpace(Load("sabnzbd").CredentialsUsername));
     }
 
     [Fact]
@@ -110,7 +134,8 @@ public sealed partial class ComponentSetupTests
         var arguments = runner.LastArguments!;
         var encoded = arguments[(arguments.IndexOf("-EncodedCommand ", StringComparison.Ordinal) + "-EncodedCommand ".Length)..];
         var script = Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
-        Assert.Contains("ProgramData", script);
+        Assert.Contains("ProgramFiles", script);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $copy", script);
         Assert.Contains("icacls.exe", script);
         Assert.Contains("/inheritance:r", script);
         Assert.Contains($"'{expected}'", script);
@@ -166,11 +191,13 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public void The_elevated_script_checks_ProgramData_and_every_folder_below_it_for_links()
+    public void The_elevated_script_uses_a_folder_no_user_can_be_the_parent_of_and_checks_it_for_links()
     {
         var script = ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null);
 
-        Assert.Contains("@($programData, $parent, $root)", script);
+        Assert.Contains("$parent = $env:ProgramFiles", script);
+        Assert.DoesNotContain("ProgramData", script);
+        Assert.Contains("@($parent, $root)", script);
         Assert.Contains("FileAttributes]::ReparsePoint", script);
         Assert.Contains($"$code = {ElevatedInstallScript.ReparsePointExitCode}", script);
     }
@@ -185,16 +212,16 @@ public sealed partial class ComponentSetupTests
 
         var programData = Path.Combine(Path.GetTempPath(), "deluno-pd-" + Guid.NewGuid().ToString("N"));
         var elsewhere = Path.Combine(Path.GetTempPath(), "deluno-elsewhere-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(programData, "Deluno"));
+        Directory.CreateDirectory(programData);
         Directory.CreateDirectory(elsewhere);
-        var junction = Path.Combine(programData, "Deluno", "installer");
+        var junction = Path.Combine(programData, "Deluno installer");
         try
         {
-            RunPowerShell($"New-Item -ItemType Junction -Path '{junction}' -Target '{elsewhere}' | Out-Null", null);
+            RunPowerShell($"New-Item -ItemType Junction -Path '{junction}' -Target '{elsewhere}' | Out-Null");
 
             var download = WriteTempFile(new byte[20], ".msi");
-            var script = ElevatedInstallScript.Build(download, "ABCD", "/qn", null);
-            var exit = RunPowerShell(script, programData);
+            var script = ElevatedInstallScript.Build(download, "ABCD", "/qn", null, baseFolder: programData);
+            var exit = RunPowerShell(script);
 
             Assert.Equal(ElevatedInstallScript.ReparsePointExitCode, exit);
             // Nothing was made inside the junction's target.
@@ -210,21 +237,45 @@ public sealed partial class ComponentSetupTests
         await Task.CompletedTask;
     }
 
-    private static int RunPowerShell(string script, string? programData)
+    private static int RunPowerShell(string script)
     {
         var info = new System.Diagnostics.ProcessStartInfo("powershell.exe", ElevatedInstallScript.PowerShellArguments(script))
         {
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        if (programData is not null)
-        {
-            info.Environment["ProgramData"] = programData;
-        }
-
         using var process = System.Diagnostics.Process.Start(info)!;
         process.WaitForExit(60000);
         return process.ExitCode;
+    }
+
+    [Fact]
+    public void A_signature_accepted_download_is_checked_again_on_the_locked_copy_before_it_runs()
+    {
+        var script = ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null, "SignPath Foundation", requireSignature: true);
+
+        int At(string text) => script.IndexOf(text, StringComparison.Ordinal);
+        Assert.True(At("Get-FileHash") < At("Get-AuthenticodeSignature -LiteralPath $copy"));
+        Assert.True(At("Get-AuthenticodeSignature") < At("msiexec.exe"));
+        Assert.Contains("$sig.Status -ne 'Valid'", script);
+        Assert.Contains("[regex]::Escape('SignPath Foundation')", script);
+        Assert.Contains($"$code = {ElevatedInstallScript.SignatureExitCode}", script);
+        Assert.DoesNotContain("Get-AuthenticodeSignature", ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null));
+    }
+
+    [Fact]
+    public async Task A_signature_failure_inside_the_locked_folder_is_reported_as_a_refused_installer()
+    {
+        var download = WriteTempFile(new byte[20], ".msi");
+        var spec = Load("transmission") with { Sha256 = null, MustBeSigned = true, MinimumBytes = 1, Prerequisite = null, PostInstallCommand = null, ReadinessUrl = null };
+        var runner = new FixedExitRunner(ElevatedInstallScript.SignatureExitCode);
+        var service = new ComponentInstallService(
+            new FakePrograms(), new FakePorts(), new FixedDownloader(download), new PublisherOnlyVerifier(spec.ExpectedPublisher!), runner,
+            configWriter: new FakeConfigWriter(true), credentialStore: new RecordingCredentialStore(), startedComponents: new FakeRegistry());
+
+        var result = await service.InstallAsync(spec, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
     }
 
     [Fact]

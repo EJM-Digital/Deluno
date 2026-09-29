@@ -50,7 +50,7 @@ public sealed partial class ComponentSetupTests
 
         var saved = store.Saved["sabnzbd"];
         Assert.Equal("27e9b9b2630c4cc9a83437755424919d", saved.Password);
-        Assert.Equal("deluno", saved.Username); // the user name seeded into SABnzbd's own sign-in is kept beside the key
+        Assert.Equal(string.Empty, saved.Username);
     }
 
     [Fact]

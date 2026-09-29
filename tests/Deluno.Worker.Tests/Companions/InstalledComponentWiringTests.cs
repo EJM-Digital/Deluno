@@ -84,14 +84,14 @@ public sealed class InstalledComponentWiringTests : IDisposable
     [Fact]
     public async Task The_installers_plain_sign_in_is_kept_while_the_connection_does_not_test_healthy()
     {
-        _record.MarkInstalled("transmission", "localhost", 9091);
-        _saved["transmission"] = new BundledComponentCredentials("deluno", "tr-secret");
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
         _testStatus = "unreachable";
         _testMessage = "No answer.";
 
         await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
 
-        Assert.Equal("tr-secret", _saved["transmission"].Password);
+        Assert.Equal("qb-secret", _saved["qbittorrent"].Password);
         Assert.Equal("deluno", Assert.Single(_created).Username);
     }
 

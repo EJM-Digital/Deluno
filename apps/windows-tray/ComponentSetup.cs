@@ -129,13 +129,16 @@ public static class ComponentConfig
 
 /// <summary>
 /// The one elevated step for a per-machine .msi (#1052, #1061). It is run as an
-/// inline PowerShell command (nothing on disk to swap). Any user can create folders
-/// under <c>C:\ProgramData</c>, so the step never trusts what is already there: it
-/// refuses a folder (or any parent up to <c>%ProgramData%</c>) that is a junction or
-/// symbolic link, takes ownership of <c>%ProgramData%\Deluno\installer</c> and locks it
+/// inline PowerShell command (nothing on disk to swap). Only administrators can create
+/// a folder under <c>%ProgramFiles%</c>, so no parent of the install folder can belong
+/// to a user (<c>%ProgramData%\Deluno</c> is Deluno's own data folder and is never used
+/// or locked). The step still refuses a folder that is a junction or symbolic link,
+/// takes ownership of <c>%ProgramFiles%\Deluno installer</c> and locks it
 /// to SYSTEM and Administrators, then makes a brand-new folder with a random name,
 /// locks that the same way before anything goes in, copies the downloaded .msi into
-/// it, refuses to run it unless its SHA-256 is the one the tray verified, runs msiexec
+/// it, refuses to run it unless its SHA-256 is the one the tray verified (and, when the
+/// download was accepted by signature rather than a pinned checksum, unless that very
+/// copy carries a valid signature from the expected publisher), runs msiexec
 /// from that folder, and deletes the folder afterwards. For a package that installs a
 /// Windows service Deluno does not want (Transmission's MSI registers an auto-start
 /// service, run as LocalService and bound to every address) it stops and disables
@@ -152,7 +155,10 @@ public static class ElevatedInstallScript
     /// <summary>Exit code when the install folder, or a parent of it, is a junction or symbolic link.</summary>
     public const int ReparsePointExitCode = 4003;
 
-    public static string Build(string installerPath, string sha256, string? silentArgs, string? serviceName)
+    /// <summary>Exit code when the copy about to run does not carry a valid signature from the expected publisher.</summary>
+    public const int SignatureExitCode = 4004;
+
+    public static string Build(string installerPath, string sha256, string? silentArgs, string? serviceName, string? publisher = null, bool requireSignature = false, string? baseFolder = null)
     {
         var lines = new List<string>
         {
@@ -163,11 +169,11 @@ public static class ElevatedInstallScript
             // Take the folder over, drop every entry it had, and leave only SYSTEM and Administrators (owner: Administrators).
             "function Lock-Folder($p) { & icacls.exe $p /setowner '*S-1-5-32-544' | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'owner' }; & icacls.exe $p /reset | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'reset' }; & icacls.exe $p /inheritance:r | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'inherit' }; & icacls.exe $p /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'grant' } }",
             "try {",
-            "$programData = $env:ProgramData",
-            "$parent = Join-Path $programData 'Deluno'",
-            "$root = Join-Path $parent 'installer'",
-            $"foreach ($p in @($programData, $parent, $root)) {{ if (Test-Link $p) {{ $code = {ReparsePointExitCode}; throw 'link' }} }}",
-            "if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }",
+            // Under Program Files only administrators can create a folder, so nothing a user made can be a parent of the
+            // install folder. (%ProgramData%\Deluno is Deluno's own data folder and is left alone.)
+            baseFolder is null ? "$parent = $env:ProgramFiles" : $"$parent = {Quote(baseFolder)}",
+            "$root = Join-Path $parent 'Deluno installer'",
+            $"foreach ($p in @($parent, $root)) {{ if (Test-Link $p) {{ $code = {ReparsePointExitCode}; throw 'link' }} }}",
             "if (-not (Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Path $root | Out-Null }",
             $"foreach ($p in @($parent, $root)) {{ if (Test-Link $p) {{ $code = {ReparsePointExitCode}; throw 'link' }} }}",
             "Lock-Folder $root",
@@ -180,6 +186,22 @@ public static class ElevatedInstallScript
             "$log = Join-Path $fresh ($name + '.log')",
             $"Copy-Item -LiteralPath {Quote(installerPath)} -Destination $copy",
             $"if ((Get-FileHash -Algorithm SHA256 -LiteralPath $copy).Hash -ne {Quote(sha256)}) {{ $code = {HashMismatchExitCode}; throw 'hash' }}",
+        };
+        if (requireSignature)
+        {
+            // The copy in the locked folder is the file msiexec runs, so it is the file whose signature is checked
+            // (one Get-AuthenticodeSignature call: status and signer come from the same verification).
+            lines.Add("$sig = Get-AuthenticodeSignature -LiteralPath $copy");
+            lines.Add($"if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate) {{ $code = {SignatureExitCode}; throw 'signature' }}");
+            if (!string.IsNullOrWhiteSpace(publisher))
+            {
+                // Windows PowerShell 5.1: match the whole CN or O value of the signer's subject, never a piece of it.
+                lines.Add($"if ($sig.SignerCertificate.Subject -notmatch ('(^|,\\s*)(CN|O)=\"?' + [regex]::Escape({Quote(publisher.Trim())}) + '\"?(,|$)')) {{ $code = {SignatureExitCode}; throw 'publisher' }}");
+            }
+        }
+
+        lines.AddRange(new[]
+        {
             $"$arguments = '/i \"' + $copy + '\" ALLUSERS=1 ' + {Quote(silentArgs ?? string.Empty)} + ' /l*v \"' + $log + '\"'",
             "$process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru",
             "$code = $process.ExitCode",
@@ -187,7 +209,7 @@ public static class ElevatedInstallScript
             "if ($fresh) { Remove-Item -LiteralPath $fresh -Recurse -Force -ErrorAction SilentlyContinue }",
             "}",
             "if ($code -ne 0) { exit $code }"
-        };
+        });
         if (!string.IsNullOrWhiteSpace(serviceName))
         {
             lines.Add($"Stop-Service -Name {Quote(serviceName)} -ErrorAction SilentlyContinue");

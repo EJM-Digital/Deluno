@@ -35,7 +35,7 @@ public sealed class InstalledComponentWirer(
     private static readonly IReadOnlyDictionary<string, ClientRecipe> Clients = new Dictionary<string, ClientRecipe>(StringComparer.OrdinalIgnoreCase)
     {
         ["qbittorrent"] = new("qBittorrent", "qbittorrent", "deluno-movies", "deluno-tv", true),
-        ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", true),
+        ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", false),
         ["deluge"] = new("Deluge", "deluge", "deluno-movies", "deluno-tv", true),
         ["sabnzbd"] = new("SABnzbd", "sabnzbd", "Movies", "TV", true),
         ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", true)

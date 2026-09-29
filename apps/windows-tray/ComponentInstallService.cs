@@ -268,7 +268,10 @@ public sealed class ComponentInstallService(
             // A per-machine .msi needs administrator rights to install quietly. It runs from a
             // copy in a folder only administrators can write, re-hashed inside the elevated
             // step; no script file is written, so nothing user-writable is run as admin (#1061).
-            var script = ElevatedInstallScript.Build(path, verifiedSha256, spec.SilentArgs, spec.DisableServiceAfterInstall);
+            // With no pinned checksum the signature is the only gate, and it is checked again on the copy
+            // that is actually run, inside the locked folder (#1061).
+            var signedBy = string.IsNullOrWhiteSpace(expectedSha256) && spec.MustBeSigned ? spec.ExpectedPublisher : null;
+            var script = ElevatedInstallScript.Build(path, verifiedSha256, spec.SilentArgs, spec.DisableServiceAfterInstall, signedBy, requireSignature: string.IsNullOrWhiteSpace(expectedSha256) && spec.MustBeSigned);
             exitCode = await _processes.RunElevatedAsync("powershell.exe", ElevatedInstallScript.PowerShellArguments(script), TimeSpan.FromMinutes(5), cancellationToken);
         }
         else
@@ -286,6 +289,12 @@ public sealed class ComponentInstallService(
         }
 
         TryDelete(path);
+
+        if (exitCode == ElevatedInstallScript.SignatureExitCode)
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"{spec.DisplayName}'s installer was not validly signed by the expected publisher when Deluno was about to run it. Deluno did not run it.");
+        }
 
         if (exitCode == ElevatedInstallScript.HashMismatchExitCode)
         {
@@ -351,8 +360,8 @@ public sealed class ComponentInstallService(
                 {
                     try
                     {
-                        // Keeps the user name seeded into SABnzbd's own sign-in; the "password" Deluno's
-                        // connection uses is the API key, which replaces the generated web password.
+                        // SABnzbd keeps its own sign-in defaults; the "password" Deluno's
+                        // connection uses is its own API key, and there is no user name.
                         var seededUser = _credentials.Value.TryGet(spec.Kind)?.Username ?? string.Empty;
                         _credentials.Value.Save(spec.Kind, new BundledComponentCredentials(seededUser, key));
                     }
@@ -739,18 +748,26 @@ public sealed class WindowsAuthenticodeVerifier : IAuthenticodeVerifier
 {
     public bool IsSignedBy(string path, string? publisher)
     {
-        if (!IsSigned(path))
+        if (!OperatingSystem.IsWindows() || !File.Exists(path))
         {
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(publisher))
-        {
-            return true;
-        }
-
         try
         {
+            // One handle, opened so nothing can write to the file, is what is verified AND
+            // where the publisher is read from: the two cannot be looking at different bytes.
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (!WinTrust.Verify(path, stream.SafeFileHandle.DangerousGetHandle()))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(publisher))
+            {
+                return true;
+            }
+
 #pragma warning disable SYSLIB0057 // CreateFromSignedFile predates the X509CertificateLoader API; no direct replacement exists for reading an embedded Authenticode signature.
             using var certificate = new X509Certificate2(X509Certificate.CreateFromSignedFile(path));
 #pragma warning restore SYSLIB0057
@@ -846,14 +863,14 @@ internal static class WinTrust
     [DllImport("wintrust.dll", ExactSpelling = true, SetLastError = false)]
     private static extern int WinVerifyTrust(IntPtr hwnd, [MarshalAs(UnmanagedType.LPStruct)] Guid action, IntPtr data);
 
-    public static bool Verify(string path)
+    public static bool Verify(string path, IntPtr fileHandle = default)
     {
         var filePathPtr = Marshal.StringToHGlobalUni(path);
         var fileInfoPtr = IntPtr.Zero;
         var dataPtr = IntPtr.Zero;
         try
         {
-            var fileInfo = new WinTrustFileInfo { cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>(), pcwszFilePath = filePathPtr };
+            var fileInfo = new WinTrustFileInfo { cbStruct = (uint)Marshal.SizeOf<WinTrustFileInfo>(), pcwszFilePath = filePathPtr, hFile = fileHandle };
             fileInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
             Marshal.StructureToPtr(fileInfo, fileInfoPtr, false);
             var data = new WinTrustData
