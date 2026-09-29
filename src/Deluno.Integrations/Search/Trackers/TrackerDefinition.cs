@@ -28,6 +28,9 @@ public sealed class TrackerDefinition
     public double? RequestDelaySeconds { get; init; }
     public IReadOnlyList<string> Links { get; init; } = [];
     public IReadOnlyList<string> LegacyLinks { get; init; } = [];
+
+    /// <summary>SHA-1 fingerprints of a certificate no authority signed that this site is known to serve.</summary>
+    public IReadOnlyList<string> Certificates { get; init; } = [];
     public TrackerCaps Caps { get; init; } = new();
     public IReadOnlyList<TrackerSetting> Settings { get; init; } = [];
     public TrackerLogin? Login { get; init; }
@@ -61,6 +64,7 @@ public sealed class TrackerDefinition
             RequestDelaySeconds = Yaml.Double(root, "requestDelay"),
             Links = Yaml.StringList(root, "links"),
             LegacyLinks = Yaml.StringList(root, "legacylinks"),
+            Certificates = Yaml.StringList(root, "certificates"),
             Caps = TrackerCaps.From(Yaml.Mapping(root, "caps")),
             Settings = Yaml.Sequence(root, "settings").OfType<YamlMappingNode>().Select(TrackerSetting.From).ToArray(),
             Login = Yaml.Mapping(root, "login") is { } login ? TrackerLogin.From(login) : null,
@@ -140,7 +144,22 @@ public sealed class TrackerSetting
     public IReadOnlyList<KeyValuePair<string, string>> Options { get; init; } = [];
 
     /// <summary>Settings that hold a secret and are never shown back or logged.</summary>
-    public bool IsSecret => Type is "password" || Name is "apikey" or "cookie" or "passkey" or "rsskey" or "pin" or "2facode";
+    public bool IsSecret => Type is "password" || Name is "apikey" or "cookie" or "passkey" or "rsskey" or "pin" or "2facode" || (Type == "text" && LooksLikeSecretName(Name));
+
+    /// <summary>
+    /// The bundled definitions (#986) name their secret fields many ways
+    /// (staffpass, csrf_token, alt2fatoken, torrent_pass, authkey): anything
+    /// named like a password, token, key, secret, cookie or two-factor code
+    /// is kept encrypted and never shown back, even when the definition
+    /// types it as plain text.
+    /// </summary>
+    private static bool LooksLikeSecretName(string name)
+        => name.Contains("pass", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("token", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("cookie", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("2fa", StringComparison.OrdinalIgnoreCase)
+           || name.EndsWith("key", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Settings that only explain something and store nothing.</summary>
     public bool IsInformational => Type.StartsWith("info", StringComparison.OrdinalIgnoreCase);
@@ -358,6 +377,9 @@ public sealed class TrackerDownload
     public TrackerDownloadBefore? Before { get; init; }
     public TrackerSelector? InfoHash { get; init; }
     public TrackerSelector? InfoHashTitle { get; init; }
+
+    /// <summary>Read the hash from the "before" page rather than the details page (set on the infohash block itself).</summary>
+    public bool InfoHashUseBeforeResponse { get; init; }
     public IReadOnlyList<KeyValuePair<string, IReadOnlyList<string>>> Headers { get; init; } = [];
 
     internal static TrackerDownload From(YamlMappingNode node)
@@ -376,6 +398,7 @@ public sealed class TrackerDownload
                 Yaml.String(before, "queryseparator")),
             InfoHash = infohash is not null && Yaml.Mapping(infohash, "hash") is { } hash ? TrackerSelector.From(hash) : null,
             InfoHashTitle = infohash is not null && Yaml.Mapping(infohash, "title") is { } title ? TrackerSelector.From(title) : null,
+            InfoHashUseBeforeResponse = infohash is not null && (Yaml.Bool(infohash, "usebeforeresponse") ?? false),
             Headers = Yaml.HeaderPairs(Yaml.Mapping(node, "headers"))
         };
     }

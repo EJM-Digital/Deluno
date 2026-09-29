@@ -28,9 +28,9 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
             }
         }
 
-        // The starter set (#606): a film, a TV and general trackers, each
-        // written from scratch from the site's own API or pages.
-        Assert.Equal(9, count);
+        // Only the two Deluno-written sites kept over the built-in list (#986):
+        // EZTV's IMDb-id API and TorrentDownloads' RSS feed.
+        Assert.Equal(2, count);
         Assert.Empty(failures);
     }
 
@@ -38,7 +38,7 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
     public void The_engine_can_run_every_built_in_definition()
     {
         var catalog = new TrackerDefinitionCatalog(overrideDirectory: null, NullLogger<TrackerDefinitionCatalog>.Instance);
-        var all = catalog.List();
+        var all = catalog.List().Where(summary => summary.Origin == TrackerDefinitionOrigins.Deluno).ToArray();
         var unsupported = all.Where(summary => summary.Unsupported is not null).ToArray();
         foreach (var summary in unsupported)
         {
@@ -47,21 +47,14 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
 
         // None of the starter set needs a captcha or anything else the engine lacks.
         Assert.Empty(unsupported);
-        Assert.NotNull(catalog.Find("yts"));
         Assert.NotNull(catalog.Find("eztv"));
-        Assert.NotNull(catalog.Find("thepiratebay"));
-        Assert.NotNull(catalog.Find("limetorrents"));
-        Assert.NotNull(catalog.Find("1337x"));
-        Assert.NotNull(catalog.Find("nyaasi"));
-        Assert.NotNull(catalog.Find("rutor"));
-        Assert.NotNull(catalog.Find("internetarchive"));
         Assert.NotNull(catalog.Find("torrentdownloads"));
     }
 
     /// <summary>
-    /// #606: the starter set is written from scratch, not copied from an
-    /// indexer manager's Cardigann definitions — Deluno carries no licence
-    /// file that would allow bundling GPL content. A definition that still
+    /// #606: Deluno's own nine are written from scratch, not copied from an
+    /// indexer manager's Cardigann definitions. (The bundled snapshot of Prowlarr's
+    /// definitions, #986, is a separate folder with its own NOTICE.) A definition that still
     /// carried a Jackett issue-number comment, or named Prowlarr or Jackett
     /// as its source, would be exactly that mistake happening again.
     /// </summary>
@@ -69,8 +62,10 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
     public void No_built_in_definition_carries_Jackett_or_Prowlarr_provenance()
     {
         var offenders = new List<string>();
-        foreach (var (id, yaml) in TrackerDefinitionCatalog.BuiltIn())
+        foreach (var (id, rawYaml) in TrackerDefinitionCatalog.BuiltIn())
         {
+            // The one-line comment saying why the file is kept over the built-in list names it.
+            var yaml = string.Join('\n', rawYaml.Split('\n').Where(line => !line.StartsWith("# KEPT", StringComparison.Ordinal)));
             if (System.Text.RegularExpressions.Regex.IsMatch(yaml, @"#\s*#\d{3,6}", System.Text.RegularExpressions.RegexOptions.None)
                 || yaml.Contains("Jackett", StringComparison.OrdinalIgnoreCase)
                 || yaml.Contains("Prowlarr", StringComparison.OrdinalIgnoreCase)
@@ -89,13 +84,13 @@ public sealed class TrackerDefinitionCatalogTests(ITestOutputHelper output)
         var directory = Directory.CreateTempSubdirectory("deluno-trackers-");
         try
         {
-            var yaml = TrackerDefinitionCatalog.BuiltIn().Single(pair => pair.Id == "yts").Yaml
-                .Replace("name: YTS", "name: YTS (updated)", StringComparison.Ordinal);
-            File.WriteAllText(Path.Combine(directory.FullName, "yts.yml"), yaml);
+            var yaml = TrackerDefinitionCatalog.BuiltIn().Single(pair => pair.Id == "eztv").Yaml
+                .Replace("name: EZTV", "name: EZTV (updated)", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(directory.FullName, "eztv.yml"), yaml);
 
             var catalog = new TrackerDefinitionCatalog(directory.FullName, NullLogger<TrackerDefinitionCatalog>.Instance);
 
-            Assert.Equal("YTS (updated)", catalog.Find("yts")!.Name);
+            Assert.Equal("EZTV (updated)", catalog.Find("eztv")!.Name);
         }
         finally
         {

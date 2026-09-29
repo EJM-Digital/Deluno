@@ -1,6 +1,6 @@
 # Tracker definitions
 
-Deluno searches torrent trackers itself (#606): no Prowlarr, no Jackett.
+Deluno searches torrent trackers itself (#606, #986): no Prowlarr, no Jackett.
 Each tracker is described by one small YAML file — a *definition* — that
 tells Deluno's tracker engine how to search the site, read its results, and
 turn a release into a magnet or a `.torrent`. This page documents the fields
@@ -9,9 +9,21 @@ without a Deluno release.
 
 ## Where definitions live
 
-- **Built in**: `src/Deluno.Integrations/Search/Trackers/Definitions/*.yml`,
-  compiled into Deluno as embedded resources. This is the starter set Deluno
-  ships (see below).
+- **The built-in site list (#986)**: a snapshot of Prowlarr's public tracker
+  definitions (`Definitions/Prowlarr/*.yml`, Cardigann schema version 11, from
+  the Prowlarr/Indexers repository), 568 sites: 81 public, 60 semi-private and
+  427 private, embedded in Deluno so every site is usable at once, with no
+  download step. They are read as they are; Deluno did not write them. Their
+  origin and terms (synced from Jackett, GPL-2.0; the Prowlarr repository has no
+  licence file of its own) are in `Definitions/Prowlarr/NOTICE.md`, served at
+  `/api/trackers/definitions/notice` and linked from the tracker picker and
+  Settings, General, Tracker definitions. Deluno's own engine (not Prowlarr's
+  or Jackett's code) runs them.
+- **Two Deluno-written files kept**: `src/Deluno.Integrations/Search/Trackers/Definitions/*.yml`
+  are `eztv` and `torrentdownloads`, kept over the list's file of the same id
+  because each does something the list's file cannot (see below). One of
+  these wins over a built-in list file with the same id, and an update never
+  replaces it.
 - **User-supplied**: the `trackers` folder under Deluno's data directory
   (the `DataRoot` setting; `data/trackers` by default). Drop a `<id>.yml`
   file there and it replaces the built-in definition of the same id, or adds
@@ -21,8 +33,9 @@ without a Deluno release.
   needs no Deluno release" true.
 
 A definition that fails to parse, or that uses something the engine cannot
-do (see **What the engine does not do**, below), is left out of the list a
-person can pick from; it never crashes Deluno.
+do (see **What the engine supports and what it does not**, below), is listed
+on the picker as not supported, with the reason in words, and cannot be
+chosen; it never crashes Deluno.
 
 ## Writing a definition
 
@@ -157,34 +170,102 @@ places accept a small template language: `{{ .Keywords }}`,
 functions `and`, `or`, `not`, `eq`, `ne`, `join`, `re_replace`, `len`,
 `print`.
 
-## What the engine does not do
+## What the engine supports and what it does not (#986)
+
+Measured against the 568 definitions in the built-in snapshot (the
+repository's `definitions/v11` folder on 28 September 2026); a test asserts
+these counts:
+
+- **Loaded and runnable: 523 of 568.** Each is offered in the Add indexer list.
+  Every definition's templates parse, every filter it names exists, every CSS
+  selector it uses is understood, and a search request builds for each of them
+  (checked against every one of the 523 with a stand-in site).
+- **Listed but not usable yet: 45**, all private sites whose sign-in shows a
+  captcha picture that has to be read by a person (52pt, btschool, carpt,
+  chdbits, ...). They are listed at the bottom of the picker with that reason
+  in words, never hidden. Nothing else stops any definition from loading.
+- A file that cannot be read at all is listed the same way ("Deluno could not
+  read this definition file") instead of silently dropping out.
+
+What is implemented, from the definitions themselves:
+
+- **Templates**: `{{ .Keywords }}`, `.Query.*` (IMDBID, IMDBIDShort, TMDBID,
+  TVDBID, Season, Ep, Year, Type, Q...), `.Categories`, `.Config.*`,
+  `.Result.*`, `.True`/`.False`, `.Today.Year`, `.DownloadUri.*`; `if`/`else
+  if`/`else`/`end`, `range`; the functions `and`, `or`, `not`, `eq`, `ne`, `join`,
+  `re_replace`, `len`, `print`. Those are all the actions and functions the
+  568 definitions use (checked by counting them).
+- **Filters**: querystring, dateparse, timeparse, regexp, re_replace, split,
+  replace, trim, prepend, append, tolower, toupper, urldecode, urlencode,
+  htmldecode, htmlencode, timeago, reltime, fuzzytime, validfilename,
+  diacritics, validate, jsonjoinarray, hexdump, strdump; row filters andmatch
+  and strdump; keyword and preprocessing filters.
+- **Sign-in**: `form`, `post`, `get`, `oneurl`, `cookie` (a cookie copied from a
+  browser, with the browser's User-Agent when the definition asks for one),
+  hidden form fields and `selectorinputs`, error selectors, a test page that
+  proves the session, and signing in again when the session runs out. Not
+  supported: a `captcha` block.
+- **Results**: HTML, XML and JSON (nested arrays, `multiple`, `count`,
+  `case`, `default`, `optional`, `remove`, date headers, rows split over
+  two lines).
+- **Downloads**: a magnet, a .torrent, a details page with selectors, a
+  "before" request (resolved against the site, not the release page), a hash
+  read from a page and turned into a magnet.
+- **Self-signed certificates**: a definition's `certificates` fingerprint is
+  trusted for that site only.
+- **Cloudflare**: through the existing helper (FlareSolverr or Byparr), the
+  same one Deluno's kept files use.
+- **Passwords and keys**: any setting named like a password, token, key,
+  cookie or two-factor code is stored encrypted and never shown back.
+
+What the site list does not contain: **Usenet**. Prowlarr's YAML set
+has no Usenet indexers (Newznab indexers are added by address and API key,
+which Deluno already has as the Newznab indexer kind).
 
 `TrackerDefinitionValidator` checks a definition when it loads and marks it
 unsupported, with a plain-English reason, rather than letting it fail on
 first use, when it: has no search path; signs in with a method Deluno does
 not implement; needs a captcha solved by hand; uses a template the engine
-cannot parse; or uses a filter or row filter the engine does not have. An
-unsupported definition still shows on the tracker picker, disabled, with
-the reason as its tooltip.
+cannot parse; or uses a filter or row filter the engine does not have.
 
-## The starter set
+## Updating (off by default)
 
-Deluno ships a small set of public trackers, each written from that site's
-own public API or pages — never copied from an indexer manager's
-definitions, because Deluno carries no licence file that would allow it:
+Once the list is downloaded, the picker's "Check for newer site files" button
+and Settings, General, Tracker definitions fetch newer copies from the
+Prowlarr/Indexers repository (`definitions/v11`), once on request or on a
+schedule. The schedule is off on a new install and on an existing one. A
+changed file is written to the data folder's `trackers` directory, and
+Activity names each definition that was added or updated. A failed check
+(no internet, GitHub down) changes nothing and tries again on its own
+schedule.
 
-| id | Site | Built from |
-|---|---|---|
-| `yts` | YTS | Its public JSON API (`api/v2/list_movies.json`) |
-| `eztv` | EZTV | Its public JSON API (`api/get-torrents`), which only answers by IMDb id |
-| `thepiratebay` | The Pirate Bay | The `apibay.org` public JSON API |
-| `limetorrents` | LimeTorrents | Its own search results page (HTML) |
-| `1337x` | 1337x | Its own search results page (HTML); usually needs a Cloudflare helper |
-| `nyaasi` | Nyaa.si | Its own search results page (HTML) |
-| `rutor` | Rutor | Its own search results page (HTML) |
-| `torrentdownloads` | TorrentDownloads | Its own search results page (HTML) |
-| `internetarchive` | Internet Archive | Its own public `advancedsearch.php` JSON API; every item's torrent lives at a fixed, predictable address |
+## Deluno's own sites, and what became of them (#986)
 
-Adding another public tracker is writing one more file in this format from
-that site's own API or pages, dropping it in the data folder's `trackers`
-directory (or contributing it to the built-in set), and nothing else.
+Deluno used to ship nine hand-written public sites. Each was compared with the
+list's definition of the same site (same id in all nine cases), using the
+pages and API answers Deluno had recorded for its own file:
+
+| id | List file | Result | Why |
+|---|---|---|---|
+| `yts` | `yts` | dropped | Same JSON API; the list's file read the recorded answer identically |
+| `thepiratebay` | `thepiratebay` | dropped | Same `apibay.org` API, identical results |
+| `limetorrents` | `limetorrents` | dropped | Same page, identical results |
+| `1337x` | `1337x` | dropped | The list's file also handles the Cloudflare helper, download fallbacks and uploader filter |
+| `nyaasi` | `nyaasi` | dropped | Identical results, plus the sort and compatibility settings |
+| `rutor` | `rutor` | dropped | Same page; the list's file reads the hash and the .torrent link |
+| `internetarchive` | `internetarchive` | dropped | Same `advancedsearch.php` API, more settings |
+| `eztv` | `eztv` | **kept** | Ours uses EZTV's JSON API by IMDb id, exact for a film or show; the list's file only searches by keyword on the HTML site, behind Cloudflare, with no IMDb-id mode |
+| `torrentdownloads` | `torrentdownloads` | **kept** | Ours reads the site's RSS search feed, which carries the info hash, so no details page is fetched per grab; the list's file scrapes HTML and needs one |
+
+An indexer saved against one of the seven dropped ids keeps that id and its
+settings and now runs from the list's file (the id map is
+`TrackerSiteMapping.Retired`). After an upgrade, one Activity line names the
+indexers that moved ("Deluno now runs your ... indexers from the built-in
+tracker site list instead of its own site files. Their settings were kept.").
+An indexer that cannot be matched (its site is not in the list, or a setting
+saved for it does not exist in the site's file) is left exactly as it is and
+shows on Health in plain words; it clears when the indexer is fixed or
+removed. Nothing is ever deleted.
+
+Adding another tracker is writing one more file in this format, dropping it in
+the data folder's `trackers` directory, and nothing else.

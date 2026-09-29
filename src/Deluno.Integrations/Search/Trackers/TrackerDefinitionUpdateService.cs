@@ -25,6 +25,15 @@ public sealed class TrackerDefinitionUpdateService(
     TimeProvider timeProvider,
     ILogger<TrackerDefinitionUpdateService> logger) : ITrackerDefinitionUpdateService
 {
+    private static readonly Lazy<IReadOnlyDictionary<string, string>> Bundled = new(() =>
+        TrackerDefinitionCatalog.Bundled().ToDictionary(item => item.Id, item => item.Yaml, StringComparer.OrdinalIgnoreCase));
+
+    private static readonly Lazy<IReadOnlySet<string>> KeptOwn = new(() =>
+        TrackerDefinitionCatalog.BuiltIn().Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase));
+
+    private static bool Same(string left, string right)
+        => string.Equals(left.ReplaceLineEndings("\n").Trim(), right.ReplaceLineEndings("\n").Trim(), StringComparison.Ordinal);
+
     public Task<TrackerDefinitionUpdateState> GetAsync(CancellationToken cancellationToken)
         => store.GetAsync(cancellationToken);
 
@@ -78,10 +87,22 @@ public sealed class TrackerDefinitionUpdateService(
                     continue;
                 }
 
+                // A site Deluno keeps its own definition for is not replaced by the repository's.
+                if (KeptOwn.Value.Contains(definition.Id))
+                {
+                    continue;
+                }
+
                 var path = Path.Combine(directory, $"{definition.Id}.yml");
                 var isNew = !File.Exists(path);
                 var existing = isNew ? null : await File.ReadAllTextAsync(path, cancellationToken);
                 if (string.Equals(existing, definition.Yaml, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                // A copy already in the built-in snapshot needs no second copy on disk.
+                if (isNew && Bundled.Value.TryGetValue(definition.Id, out var bundled) && Same(bundled, definition.Yaml))
                 {
                     continue;
                 }

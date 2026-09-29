@@ -24,6 +24,24 @@ public sealed class TrackerDefinitionUpdateEndpointTests
         Assert.Equal("disabled", state.GetProperty("status").GetString());
     }
 
+    /// <summary>#986: hundreds of bundled sites are offered on a fresh install, each saying where it came from, and the notice is readable.</summary>
+    [Fact]
+    public async Task A_new_install_lists_the_bundled_sites_and_serves_their_notice()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+
+        var trackers = await app.Client.GetFromJsonAsync<JsonElement>("/api/trackers");
+        Assert.True(trackers.GetArrayLength() >= 560);
+        var uindex = trackers.EnumerateArray().Single(item => item.GetProperty("id").GetString() == "uindex");
+        Assert.Equal("bundled", uindex.GetProperty("origin").GetString());
+        Assert.Equal(JsonValueKind.Null, uindex.GetProperty("unsupported").ValueKind);
+        var yts = trackers.EnumerateArray().Single(item => item.GetProperty("id").GetString() == "eztv");
+        Assert.Equal("deluno", yts.GetProperty("origin").GetString());
+
+        var notice = await app.Client.GetStringAsync("/api/trackers/definitions/notice");
+        Assert.Contains("Prowlarr/Indexers", notice, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Turning_the_job_on_and_off_is_saved()
     {

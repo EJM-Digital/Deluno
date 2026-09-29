@@ -1,3 +1,4 @@
+# KEPT over the built-in Prowlarr file of the same id (#986): this one reads the site's RSS search feed, which carries the info hash, so no second page is fetched; the built-in file scrapes the HTML and needs a details page per grab.
 # Deluno's own definition (#606), written from TorrentDownloads' own search
 # RSS feed (rss.xml?type=search), not copied from any indexer manager. Each
 # item carries its size, seeders, leechers and info hash, so a release is

@@ -21,5 +21,8 @@
   <ItemGroup>
     <!-- Tracker definitions (#606), read by TrackerDefinitionCatalog. -->
     <EmbeddedResource Include="Search\Trackers\Definitions\*.yml" LogicalName="Deluno.Trackers.%(Filename)%(Extension)" />
+    <!-- The bundled snapshot of Prowlarr's public tracker definitions (#986), with its notice. -->
+    <EmbeddedResource Include="Search\Trackers\Definitions\Prowlarr\*.yml" LogicalName="Deluno.Cardigann.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Search\Trackers\Definitions\Prowlarr\NOTICE.md" LogicalName="Deluno.Cardigann.NOTICE.md" />
   </ItemGroup>
 </Project>

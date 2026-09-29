@@ -316,9 +316,11 @@ function TrackerDefinitionsCard() {
     <ListCard title="Tracker definitions" count="Keeps native tracker definitions current on their own">
       <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
         <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
-          Deluno's built-in tracker definitions only change when a new release ships. Turning this on fetches updated
-          definitions from Deluno's remote source on the schedule below, and writes them the same way a hand-dropped
-          file in the data folder's trackers directory already overrides one. Off by default.
+          Deluno comes with hundreds of tracker sites, taken from the public Prowlarr repository on GitHub. Turning this
+          on checks that repository for newer site files on the schedule below and writes them to the data folder's
+          trackers directory. Off by default; "Check for newer site files" when adding an indexer does the same once,
+          on request.{" "}
+          <a className="font-medium text-primary hover:underline" href="/api/trackers/definitions/notice" target="_blank" rel="noreferrer">Where the definitions come from and under what terms</a>.
         </p>
         <div className="flex items-center justify-between gap-3">
           <div className="grid gap-0.5">

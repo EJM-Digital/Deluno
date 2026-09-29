@@ -19,7 +19,21 @@ public sealed record TrackerDefinitionSummary(
     string? LoginMethod,
     IReadOnlyList<TrackerSettingSummary> Settings,
     bool MayNeedCloudflareHelp,
-    string? Unsupported);
+    string? Unsupported,
+    string Origin = TrackerDefinitionOrigins.Deluno);
+
+/// <summary>Where a definition the catalog offers came from, for the picker.</summary>
+public static class TrackerDefinitionOrigins
+{
+    /// <summary>Written by Deluno and kept because the bundled snapshot cannot serve that site as well.</summary>
+    public const string Deluno = "deluno";
+
+    /// <summary>The bundled snapshot of Prowlarr's public definitions (#986).</summary>
+    public const string Bundled = "bundled";
+
+    /// <summary>A downloaded (#986), newer or hand-added file in the data folder's trackers directory.</summary>
+    public const string DataFolder = "data-folder";
+}
 
 public sealed record TrackerSettingSummary(
     string Name,
@@ -53,6 +67,7 @@ public interface ITrackerDefinitionCatalog
 public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
 {
     private const string ResourcePrefix = "Deluno.Trackers.";
+    private const string BundledPrefix = "Deluno.Cardigann.";
 
     private readonly string? overrideDirectory;
     private readonly ILogger<TrackerDefinitionCatalog> logger;
@@ -106,25 +121,63 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
         }
     }
 
+    /// <summary>
+    /// The bundled snapshot of Prowlarr's public tracker definitions (#986),
+    /// by id: hundreds of public, semi-private and private sites, read
+    /// unchanged. See the NOTICE resource for where they come from.
+    /// </summary>
+    public static IEnumerable<(string Id, string Yaml)> Bundled()
+    {
+        var assembly = typeof(TrackerDefinitionCatalog).Assembly;
+        foreach (var name in assembly.GetManifestResourceNames().Where(name => name.StartsWith(BundledPrefix, StringComparison.Ordinal) && name.EndsWith(".yml", StringComparison.Ordinal)))
+        {
+            using var stream = assembly.GetManifestResourceStream(name)!;
+            using var reader = new StreamReader(stream);
+            yield return (name[BundledPrefix.Length..^4], reader.ReadToEnd());
+        }
+    }
+
+    /// <summary>The words of the notice that travels with the bundled snapshot.</summary>
+    public static string BundledNotice()
+    {
+        using var stream = typeof(TrackerDefinitionCatalog).Assembly.GetManifestResourceStream(BundledPrefix + "NOTICE.md");
+        if (stream is null)
+        {
+            return string.Empty;
+        }
+
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
     private Loaded Load()
     {
-        var sources = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Later layers replace earlier ones with the same id: the bundled
+        // snapshot, then any Deluno-written definition kept for a site the
+        // snapshot cannot serve as well, then any file in the data folder (a
+        // newer update, or one a person dropped in).
+        var sources = new Dictionary<string, (string Yaml, string Origin)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, yaml) in Bundled())
+        {
+            sources[id] = (yaml, TrackerDefinitionOrigins.Bundled);
+        }
+
         foreach (var (id, yaml) in BuiltIn())
         {
-            sources[id] = yaml;
+            sources[id] = (yaml, TrackerDefinitionOrigins.Deluno);
         }
 
         if (overrideDirectory is not null && Directory.Exists(overrideDirectory))
         {
             foreach (var file in Directory.EnumerateFiles(overrideDirectory, "*.yml"))
             {
-                sources[Path.GetFileNameWithoutExtension(file)] = File.ReadAllText(file);
+                sources[Path.GetFileNameWithoutExtension(file)] = (File.ReadAllText(file), TrackerDefinitionOrigins.DataFolder);
             }
         }
 
         var definitions = new ConcurrentDictionary<string, TrackerDefinition>(StringComparer.OrdinalIgnoreCase);
         var summaries = new List<TrackerDefinitionSummary>();
-        foreach (var (id, yaml) in sources)
+        foreach (var (id, (yaml, origin)) in sources)
         {
             TrackerDefinition definition;
             try
@@ -133,12 +186,16 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
             }
             catch (Exception exception)
             {
+                // Listed, not hidden: a person can see the site exists and why it is off.
                 logger.LogWarning("Tracker definition {Id} could not be read and is not offered: {Reason}", id, exception.Message);
+                summaries.Add(new TrackerDefinitionSummary(
+                    id, id, string.Empty, "en-US", "private", [], false, false, null, [], false,
+                    "Deluno could not read this definition file.", origin));
                 continue;
             }
 
             var unsupported = TrackerDefinitionValidator.Unsupported(definition);
-            summaries.Add(Summarize(definition, unsupported));
+            summaries.Add(Summarize(definition, unsupported, origin));
             if (unsupported is null)
             {
                 definitions[definition.Id.ToLowerInvariant()] = definition;
@@ -150,7 +207,7 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
         return new Loaded(definitions, summaries);
     }
 
-    public static TrackerDefinitionSummary Summarize(TrackerDefinition definition, string? unsupported)
+    public static TrackerDefinitionSummary Summarize(TrackerDefinition definition, string? unsupported, string origin = TrackerDefinitionOrigins.Deluno)
     {
         var numbers = definition.Caps.CategoryMappings.Select(mapping => TrackerCategories.NumberOf(mapping.Category)).OfType<int>().ToArray();
         return new TrackerDefinitionSummary(
@@ -174,7 +231,8 @@ public sealed class TrackerDefinitionCatalog : ITrackerDefinitionCatalog
                     setting.Options))
                 .ToArray(),
             MayNeedCloudflareHelp: definition.Settings.Any(setting => setting.Type == "info_flaresolverr"),
-            Unsupported: unsupported);
+            Unsupported: unsupported,
+            Origin: origin);
     }
 
     private sealed record Loaded(

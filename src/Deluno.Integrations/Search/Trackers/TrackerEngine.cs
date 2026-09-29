@@ -234,7 +234,8 @@ public sealed partial class TrackerEngine : ITrackerEngine
         if (download?.Before is { } before)
         {
             var beforePath = before.Path is null ? link : TrackerTemplate.Render(before.Path, variables);
-            var beforeUri = new Uri(linkUri, beforePath);
+            // Relative to the site, as Cardigann resolves it, not to the release's own page.
+            var beforeUri = before.Path is null ? linkUri : new Uri(new Uri(siteLink), beforePath);
             var inputs = before.Inputs.Select(input => new KeyValuePair<string, string>(input.Key, TrackerTemplate.Render(input.Value, variables))).ToArray();
             var beforePage = await SendAsync(session, BuildRequest(definition, before.Method, beforeUri, inputs, before.QuerySeparator, headers, variables), cancellationToken);
             beforeRoot = new HtmlParser().ParseDocument(beforePage.Body).DocumentElement;
@@ -242,11 +243,20 @@ public sealed partial class TrackerEngine : ITrackerEngine
 
         if (download is { InfoHash: { } hashSelector })
         {
-            var page = await SendAsync(session, BuildRequest(definition, download.Method, linkUri, [], null, headers, variables), cancellationToken);
-            var root = new HtmlParser().ParseDocument(page.Body).DocumentElement;
-            var hash = TrackerResponseParser.HtmlValue(hashSelector, hashSelector.UseBeforeResponse && beforeRoot is not null ? beforeRoot : root, variables, context, required: true);
+            // "usebeforeresponse" sits on the infohash block itself in the
+            // definitions (kinozal-magnet, magnetdownload): the hash is on the
+            // page the "before" request returned, not on the details page.
+            var fromBefore = download.InfoHashUseBeforeResponse && beforeRoot is not null;
+            var root = beforeRoot;
+            if (!fromBefore)
+            {
+                var page = await SendAsync(session, BuildRequest(definition, download.Method, linkUri, [], null, headers, variables), cancellationToken);
+                root = new HtmlParser().ParseDocument(page.Body).DocumentElement;
+            }
+
+            var hash = TrackerResponseParser.HtmlValue(hashSelector, hashSelector.UseBeforeResponse && beforeRoot is not null ? beforeRoot : root!, variables, context, required: true);
             var title = download.InfoHashTitle is { } titleSelector
-                ? TrackerResponseParser.HtmlValue(titleSelector, titleSelector.UseBeforeResponse && beforeRoot is not null ? beforeRoot : root, variables, context, required: false)
+                ? TrackerResponseParser.HtmlValue(titleSelector, titleSelector.UseBeforeResponse && beforeRoot is not null ? beforeRoot : root!, variables, context, required: false)
                 : null;
             return new TrackerGrab(TrackerMagnet.Build(hash!, title), null, link);
         }
@@ -434,7 +444,7 @@ public sealed partial class TrackerEngine : ITrackerEngine
         await session.PaceAsync(timeProvider, cancellationToken);
         using var message = new HttpRequestMessage(request.Method, request.Uri) { Content = request.Content };
         // The helper's own when it cleared a Cloudflare check: the clearance holds for that one only.
-        message.Headers.TryAddWithoutValidation("User-Agent", session.UserAgent ?? BrowserUserAgent);
+        message.Headers.TryAddWithoutValidation("User-Agent", session.UserAgent ?? session.ConfiguredUserAgent ?? BrowserUserAgent);
         message.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7");
         message.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.8");
         foreach (var (name, value) in request.Headers)
@@ -841,7 +851,19 @@ internal sealed class TrackerSession
         // never reaches here (Deluno.Connections.Data.IndexerProxyWebProxy
         // returns null for it -- that kind is HelperUrl below, not a forward
         // proxy a plain request can be routed through).
-        Http = new HttpClient(handlerFactory(cookies, Deluno.Connections.Data.IndexerProxyWebProxy.Build(connection.Proxy)), disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
+        var handler = handlerFactory(cookies, Deluno.Connections.Data.IndexerProxyWebProxy.Build(connection.Proxy));
+        if (connection.Definition.Certificates.Count > 0 && handler is SocketsHttpHandler sockets)
+        {
+            // A few sites serve a certificate no authority signed (or one that
+            // has expired); the definition names the one it expects by its
+            // fingerprint, and only that one is accepted (#986).
+            var accepted = connection.Definition.Certificates;
+            sockets.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors)
+                => TrackerCertificates.Accepts(accepted, certificate, errors);
+        }
+
+        Http = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(30) };
+        ConfiguredUserAgent = connection.Settings.GetValueOrDefault("useragent") is { Length: > 0 } configured ? configured.Trim() : null;
         HelperProxy = connection.HelperProxy;
         HelperUrl = connection.HelperUrl;
         delay = TimeSpan.FromSeconds(Math.Max(connection.Definition.RequestDelaySeconds ?? 0, 0));
@@ -887,6 +909,13 @@ internal sealed class TrackerSession
 
     /// <summary>The User-Agent a Cloudflare clearance was earned with, once there is one (#628).</summary>
     public string? UserAgent { get; private set; }
+
+    /// <summary>
+    /// The browser User-Agent a person pasted beside a cookie (a definition's
+    /// "useragent" setting, #986): sites that tie a session cookie to the
+    /// browser it came from refuse it from any other.
+    /// </summary>
+    public string? ConfiguredUserAgent { get; }
 
     /// <summary>A Cloudflare helper's clearance: its cookies, and the User-Agent they hold for.</summary>
     public void AcceptClearance(IEnumerable<Cookie> cleared, string? userAgent)

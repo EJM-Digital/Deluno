@@ -16,35 +16,43 @@ public sealed class GitHubTrackerDefinitionSource(IHttpClientFactory httpClientF
     public const string HttpClientName = "tracker-definitions-source";
 
     /// <summary>
-    /// The GitHub Contents API for Prowlarr's definitions/v3 directory. Kept
+    /// The GitHub Contents API for Prowlarr's definitions/v11 directory, the
+    /// Cardigann schema version the bundled snapshot (#986) is also taken
+    /// from and the one Prowlarr's own VERSIONS file names as current. Kept
     /// as a constant rather than a setting: the acceptance is "a configured
     /// remote source", not a source the user is expected to change, and a
     /// stable well-known default means every install fetches from the same
     /// place a person can go verify.
     /// </summary>
-    public const string ContentsUrl = "https://api.github.com/repos/Prowlarr/Indexers/contents/definitions/v3";
+    public const string ContentsUrl = "https://api.github.com/repos/Prowlarr/Indexers/contents/definitions/v11";
 
     public async Task<IReadOnlyList<RemoteTrackerDefinition>> FetchAsync(CancellationToken cancellationToken)
     {
         var http = httpClientFactory.CreateClient(HttpClientName);
         var entries = await http.GetFromJsonAsync<GitHubContentEntry[]>(ContentsUrl, cancellationToken) ?? [];
 
-        var results = new List<RemoteTrackerDefinition>();
-        foreach (var entry in entries)
+        var wanted = entries.Where(entry => string.Equals(entry.Type, "file", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(entry.Name)
+            && entry.Name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(entry.DownloadUrl)).ToArray();
+
+        // Hundreds of small files: a few at a time, not one after another.
+        using var gate = new SemaphoreSlim(6);
+        var downloads = wanted.Select(async entry =>
         {
-            if (!string.Equals(entry.Type, "file", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(entry.Name)
-                || !entry.Name.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(entry.DownloadUrl))
+            await gate.WaitAsync(cancellationToken);
+            try
             {
-                continue;
+                var yaml = await http.GetStringAsync(entry.DownloadUrl!, cancellationToken);
+                return new RemoteTrackerDefinition(entry.Name![..^".yml".Length], yaml);
             }
+            finally
+            {
+                gate.Release();
+            }
+        });
 
-            var yaml = await http.GetStringAsync(entry.DownloadUrl, cancellationToken);
-            results.Add(new RemoteTrackerDefinition(entry.Name[..^".yml".Length], yaml));
-        }
-
-        return results;
+        return await Task.WhenAll(downloads);
     }
 
     private sealed record GitHubContentEntry(
