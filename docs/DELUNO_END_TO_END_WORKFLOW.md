@@ -66,7 +66,9 @@ default is to keep the completed source file. A user may instead choose to
 remove that source only after Deluno has verified the import, and may opt to
 remove folders that are genuinely empty afterwards. Deluno never removes the
 configured download root, and it does not silently take over queue retention
-or seeding decisions that belong to the external download client.
+or seeding decisions that belong to the external download client. Deluno only
+sees and acts on the downloads it sent itself; a download someone adds to the
+client directly is invisible to Deluno everywhere.
 
 ### 3. Select the Media Plan
 
