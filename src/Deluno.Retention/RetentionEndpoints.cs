@@ -92,23 +92,11 @@ public static class RetentionModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = problems.ToArray() });
             }
 
-            var before = await repository.GetRuleAsync(id, cancellationToken);
-            var saved = await repository.SaveRuleAsync(id, request, cancellationToken);
+            // Saved, forgotten and restarted under the rule's own gate, so no check runs in between (#1072).
+            var saved = await service.SaveEditedRuleAsync(id, request, cancellationToken);
             if (saved is null)
             {
                 return Results.NotFound();
-            }
-
-            // A titles whose day already came under the old action is done afresh, after a new wait, under the new one.
-            if (before is not null && (before.ExpiryAction != saved.ExpiryAction || !string.Equals(before.ExpiryTag, saved.ExpiryTag, StringComparison.OrdinalIgnoreCase)))
-            {
-                await service.ForgetDoneAsync(saved.Id, cancellationToken);
-            }
-
-            // Marks made while it only logged, tagged or unmonitored were promised a day for that, not for deleting.
-            if (before is not null && saved.ExpiryAction == RetentionExpiryActions.Delete && before.ExpiryAction != RetentionExpiryActions.Delete)
-            {
-                await service.RestartWaitForDeleteAsync(saved, cancellationToken);
             }
 
             // Turning a rule off or changing its servers changes what the collections hold.

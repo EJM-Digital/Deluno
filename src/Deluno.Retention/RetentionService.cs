@@ -506,7 +506,40 @@ public sealed class RetentionService(
     /// already Ready (confirmed for the old action) goes back to waiting, so nothing is ever removed early (#1072).
     /// </summary>
     public Task<int> RestartWaitForDeleteAsync(RetentionRule rule, CancellationToken cancellationToken)
-        => OneAtATimeAsync(rule.Id, async () =>
+        => OneAtATimeAsync(rule.Id, () => RestartWaitCoreAsync(rule, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Saves an edited rule under the rule's own gate, and, when the edit switches its action to delete, restarts
+    /// the wait before the gate opens again, so a check can never run under Delete against marks whose day was
+    /// promised for the old action (#1072). Null when the rule does not exist.
+    /// </summary>
+    public Task<RetentionRule?> SaveEditedRuleAsync(string id, SaveRetentionRuleRequest request, CancellationToken cancellationToken)
+        => OneAtATimeAsync(id, async () =>
+        {
+            var before = await repository.GetRuleAsync(id, cancellationToken);
+            var saved = await repository.SaveRuleAsync(id, request, cancellationToken);
+            if (saved is null)
+            {
+                return null;
+            }
+
+            // A titles whose day already came under the old action is done afresh, after a new wait, under the new one.
+            if (before is not null && (before.ExpiryAction != saved.ExpiryAction || !string.Equals(before.ExpiryTag, saved.ExpiryTag, StringComparison.OrdinalIgnoreCase)))
+            {
+                await ForgetDoneAsync(saved.Id, cancellationToken);
+            }
+
+            // Marks made while it only logged, tagged or unmonitored were promised a day for that, not for deleting.
+            if (before is not null && saved.ExpiryAction == RetentionExpiryActions.Delete && before.ExpiryAction != RetentionExpiryActions.Delete)
+            {
+                await RestartWaitCoreAsync(saved, cancellationToken);
+            }
+
+            return saved;
+        }, cancellationToken);
+
+    private async Task<int> RestartWaitCoreAsync(RetentionRule rule, CancellationToken cancellationToken)
+    {
         {
             var now = timeProvider.GetUtcNow();
             var restarted = 0;
@@ -535,7 +568,8 @@ public sealed class RetentionService(
             }
 
             return restarted;
-        }, cancellationToken);
+        }
+    }
 
     /// <summary>Forgets what a rule did on a title's day, so a changed action is done afresh, after a new wait.</summary>
     public async Task ForgetDoneAsync(string ruleId, CancellationToken cancellationToken)
@@ -661,14 +695,31 @@ public sealed class RetentionService(
         // On any server, by the file being played (the files are what is deleted), or for a film by its provider ids.
         var unit = candidate.Unit;
         var files = unit.Paths.Select(RetentionServerIndex.NormalizePath).ToHashSet(StringComparer.Ordinal);
-        bool Same(string? a, string? b) => !string.IsNullOrWhiteSpace(a) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
         var byFileOrId = reading.PlaysByServer.Values.SelectMany(plays => plays).Any(play =>
             play.Paths.Any(path => files.Contains(RetentionServerIndex.NormalizePath(path))) ||
-            (play.IsMovie && unit.Level == RetentionLevels.Movie &&
-             (Same(play.TmdbId, unit.TmdbId) || Same(play.ImdbId, unit.ImdbId) || Same(play.TvdbId, unit.TvdbId))) ||
+            (play.IsMovie && unit.Level == RetentionLevels.Movie && MoviePlayTouches(unit, play)) ||
             (play.IsEpisode && unit.Level != RetentionLevels.Movie && EpisodePlayTouches(unit, play)));
 
         return byItem || byFileOrId ? "Not removed: it is being played right now. Deluno tries again at the next check." : null;
+    }
+
+    /// <summary>
+    /// Whether a film being played on ANY server may be this film. A shared provider id says yes; ids both sides
+    /// carry that all differ say no; otherwise (no ids to compare, and its file is somewhere else) it cannot be
+    /// told apart, so it counts as "may be" and the title waits (#1071).
+    /// </summary>
+    public static bool MoviePlayTouches(RetentionUnit unit, MediaServerPlay play)
+    {
+        static bool Both(string? a, string? b) => !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b);
+        static bool Same(string? a, string? b) => Both(a, b) && string.Equals(a!.Trim(), b!.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        if (Same(play.TmdbId, unit.TmdbId) || Same(play.ImdbId, unit.ImdbId) || Same(play.TvdbId, unit.TvdbId))
+        {
+            return true;
+        }
+
+        var comparable = Both(play.TmdbId, unit.TmdbId) || Both(play.ImdbId, unit.ImdbId) || Both(play.TvdbId, unit.TvdbId);
+        return !comparable;
     }
 
     /// <summary>
