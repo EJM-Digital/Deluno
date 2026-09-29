@@ -536,14 +536,16 @@ public sealed class PlatformSettingsPersistenceTests
         var defaults = await repository.GetAsync(CancellationToken.None);
         Assert.False(defaults.ForceImportEnabled);
         Assert.Equal(3, defaults.ForceImportMaxTries);
+        Assert.Equal(100, defaults.ForceImportMinimumMegabytes);
 
         await repository.SaveAsync(
-            PlatformSettingsPatchMerger.Apply(defaults, new PatchPlatformSettingsRequest(ForceImportEnabled: true, ForceImportMaxTries: 7)),
+            PlatformSettingsPatchMerger.Apply(defaults, new PatchPlatformSettingsRequest(ForceImportEnabled: true, ForceImportMaxTries: 7, ForceImportMinimumMegabytes: 20)),
             CancellationToken.None);
 
         var updated = await repository.GetAsync(CancellationToken.None);
         Assert.True(updated.ForceImportEnabled);
         Assert.Equal(7, updated.ForceImportMaxTries);
+        Assert.Equal(20, updated.ForceImportMinimumMegabytes);
 
         // A patch that mentions neither leaves both as they were.
         await repository.SaveAsync(
@@ -552,6 +554,7 @@ public sealed class PlatformSettingsPersistenceTests
         var untouched = await repository.GetAsync(CancellationToken.None);
         Assert.True(untouched.ForceImportEnabled);
         Assert.Equal(7, untouched.ForceImportMaxTries);
+        Assert.Equal(20, untouched.ForceImportMinimumMegabytes);
     }
 
     /// <summary>#759: Smart Replace by default, and an unrecognised value normalizes back to it rather than being stored verbatim.</summary>

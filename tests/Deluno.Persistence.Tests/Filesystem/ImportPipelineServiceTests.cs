@@ -7196,6 +7196,13 @@ public sealed class ImportPipelineServiceTests
     public void A_file_that_could_not_be_read_is_told_to_be_a_sample_only_by_what_can_be_seen_outside_it(string path, long? size, bool sample)
         => Assert.Equal(sample, ImportPipelineService.LooksLikeASampleWithoutProbing(path, size));
 
+    [Theory]
+    [InlineData(30, 40L * 1024 * 1024, false)]
+    [InlineData(30, 20L * 1024 * 1024, true)]
+    [InlineData(500, 200L * 1024 * 1024, true)]
+    public void The_smallest_file_that_can_be_forced_is_the_configured_size(int minimumMegabytes, long size, bool sample)
+        => Assert.Equal(sample, ImportPipelineService.LooksLikeASampleWithoutProbing("/tv/Show/Show.S01E01.720p.mkv", size, minimumMegabytes));
+
     /// <summary>#1072: ffprobe's own operating-system errors are "could not be reached", never "bad release".</summary>
     [Theory]
     [InlineData("/mnt/nas/a.mkv: Input/output error", true)]

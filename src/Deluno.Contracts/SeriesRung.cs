@@ -31,10 +31,18 @@ public static class SeriesRung
     /// <param name="airedWithFile">Of those, how many are on disk.</param>
     /// <param name="airedUpgradable">Of those on disk, how many are below the cutoff.</param>
     /// <param name="hasFutureAirDate">Whether any episode is still to come.</param>
-    public static string From(int aired, int airedWithFile, int airedUpgradable, bool hasFutureAirDate)
+    /// <param name="episodeCount">How many episodes are catalogued, given as 0 when any of them is on disk; with none aired and none on disk, any episode at all (dated or not) makes the show Upcoming.</param>
+    public static string From(int aired, int airedWithFile, int airedUpgradable, bool hasFutureAirDate, int episodeCount = 0)
     {
         if (aired <= 0)
         {
+            // An episode with no air date has not aired either, so a show whose every episode is still to come
+            // or undated is Upcoming too: the same word, and the one retention uses (#1072).
+            if (episodeCount > 0)
+            {
+                return WantedStatuses.Upcoming;
+            }
+
             // Nothing has aired. Not having it is not a fact about the library,
             // which is exactly what Upcoming exists to say — and a show with no
             // catalogued episodes at all is not upcoming, it is unknown, so it

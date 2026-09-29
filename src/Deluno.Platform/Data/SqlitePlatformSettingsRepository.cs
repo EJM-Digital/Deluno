@@ -261,6 +261,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // #1013: off unless the key says "true"; a missing key reads as off.
         await UpsertSettingAsync(connection, transaction, "imports.forceImport.enabled", request.ForceImportEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "imports.forceImport.maxTries", Math.Clamp(request.ForceImportMaxTries ?? 3, 1, 25).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "imports.forceImport.minimumMegabytes", Math.Clamp(request.ForceImportMinimumMegabytes ?? 100, 1, 100000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #762: blank means no season/specials subfolder, the same "off"
         // value a brand-new install already reads for every other naming
         // format below.
@@ -670,6 +671,7 @@ public sealed class SqlitePlatformSettingsRepository(
             LeftoverMinAgeHours: ReadPositiveInt(GetValue(settings, "downloads.leftoverCleanup.minAgeHours"), 2, 1, 8760),
             ForceImportEnabled: string.Equals(GetValue(settings, "imports.forceImport.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             ForceImportMaxTries: ReadPositiveInt(GetValue(settings, "imports.forceImport.maxTries"), 3, 1, 25),
+            ForceImportMinimumMegabytes: ReadPositiveInt(GetValue(settings, "imports.forceImport.minimumMegabytes"), 100, 1, 100000),
             SeasonFolderFormat: GetValue(settings, "media.seasonFolderFormat") ?? string.Empty,
             SpecialsFolderFormat: GetValue(settings, "media.specialsFolderFormat") ?? string.Empty,
             MultiEpisodeStyle: NormalizeMultiEpisodeStyle(GetValue(settings, "media.multiEpisodeStyle")),

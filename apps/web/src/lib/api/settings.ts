@@ -125,6 +125,7 @@ export interface PlatformSettingsPatch {
   /** #1013: off by default. */
   forceImportEnabled?: boolean;
   forceImportMaxTries?: number;
+  forceImportMinimumMegabytes?: number;
   /** #762: blank clears the subfolder. */
   seasonFolderFormat?: string;
   specialsFolderFormat?: string;

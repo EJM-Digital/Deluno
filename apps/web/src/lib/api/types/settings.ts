@@ -186,6 +186,8 @@ export interface PlatformSettingsSnapshot {
   forceImportEnabled: boolean;
   /** #1013: forced tries per download (default 3, 1-25). */
   forceImportMaxTries: number;
+  /** Files smaller than this many MB are never force-imported (default 100). */
+  forceImportMinimumMegabytes: number;
   /** #762: per-season and specials (season 0) subfolders under the series folder. Blank means no subfolder, matching a movie/series folder format's own blank behaviour. */
   seasonFolderFormat: string;
   specialsFolderFormat: string;
@@ -457,6 +459,7 @@ export const emptyPlatformSettingsSnapshot: PlatformSettingsSnapshot = {
   leftoverMinAgeHours: 2,
   forceImportEnabled: false,
   forceImportMaxTries: 3,
+  forceImportMinimumMegabytes: 100,
   seasonFolderFormat: "",
   specialsFolderFormat: "",
   multiEpisodeStyle: "range",

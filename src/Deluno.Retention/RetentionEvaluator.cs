@@ -262,7 +262,10 @@ public sealed class RetentionEvaluator(
             unreachable.AddRange(seerrUnreachable);
         }
 
-        var all = await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions));
+        // Retention never acts on anything Upcoming (not aired, or no air date): it is not a candidate for any rule.
+        var all = (await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions)))
+            .Where(unit => unit.Facts?.Upcoming != true)
+            .ToArray();
         var qualityRanks = qualityModel is null
             ? null
             : (await qualityModel.GetAsync(cancellationToken)).Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase);
@@ -378,7 +381,7 @@ public sealed class RetentionEvaluator(
             }
         }
 
-        return new RetentionEvaluation(candidates, unreachable, [], all.Count, outcome.Counts, unmanaged);
+        return new RetentionEvaluation(candidates, unreachable, [], all.Length, outcome.Counts, unmanaged);
     }
 
     /// <summary>

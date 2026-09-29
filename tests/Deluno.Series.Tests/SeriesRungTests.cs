@@ -60,6 +60,15 @@ public sealed class SeriesRungTests
             SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: true));
     }
 
+    /// <summary>A show whose episodes have no air date has not aired either: Upcoming, the word retention uses too (#1072).</summary>
+    [Fact]
+    public void Nothing_aired_and_every_episode_undated_is_upcoming()
+    {
+        Assert.Equal(
+            WantedStatuses.Upcoming,
+            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: false, episodeCount: 8));
+    }
+
     /// <summary>
     /// And a show with no catalogued episodes at all is not upcoming — it is
     /// unknown, which reads as Missing so it gets searched for rather than
