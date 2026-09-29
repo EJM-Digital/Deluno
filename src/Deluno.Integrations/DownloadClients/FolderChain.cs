@@ -360,8 +360,8 @@ public sealed class FolderChainService(
                     CategoryKind(client.Protocol), client.SaveFolder, client.ClientSaveFolder, client.SavedBy, matches, status, message);
             }).ToArray();
             ProcessorConnectionDestinations? processorConnection = null;
-            if (report.UsesProcessor && processors is not null && !string.IsNullOrWhiteSpace(library.ProcessorName)
-                && await processors.FindProcessorConnectionByNameAsync(library.ProcessorName, cancellationToken) is { } connection)
+            if (report.UsesProcessor && processors is not null && (!string.IsNullOrWhiteSpace(library.ProcessorConnectionId) || !string.IsNullOrWhiteSpace(library.ProcessorName))
+                && await processors.FindProcessorConnectionAsync(library.ProcessorConnectionId, library.ProcessorName, cancellationToken) is { } connection)
             {
                 var mappings = await processors.ListProcessorPathMappingsAsync(connection.Id, cancellationToken);
                 processorConnection = new(connection.Id, connection.Name,

@@ -412,7 +412,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
     private static IProcessorRepository Processors(ProcessorConnectionItem connection, IReadOnlyList<ProcessorPathMappingItem> mappings)
     {
         var repository = new Mock<IProcessorRepository>();
-        repository.Setup(instance => instance.FindProcessorConnectionByNameAsync(connection.Name, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
+        repository.Setup(instance => instance.FindProcessorConnectionAsync(It.IsAny<string?>(), connection.Name, It.IsAny<CancellationToken>())).ReturnsAsync(connection);
         repository.Setup(instance => instance.ListProcessorPathMappingsAsync(connection.Id, It.IsAny<CancellationToken>())).ReturnsAsync(mappings);
         return repository.Object;
     }
