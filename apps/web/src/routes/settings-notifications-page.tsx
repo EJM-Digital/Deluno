@@ -14,6 +14,7 @@ import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, RotateCcw, Send } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import { Chip, type ChipProps } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFooter, DrawerSection, type DrawerSaveState } from "../components/ui/drawer";
@@ -29,6 +30,8 @@ import { fetchJson, type NotificationPreferences, type NotificationProvider, typ
 import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { authedFetch } from "../lib/use-auth";
+import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, ConnectionTagsDialog } from "../components/app/connection-tags-dialog";
+import { useRowSelection } from "../lib/connection-tags";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
@@ -222,6 +225,8 @@ export function SettingsNotificationsPage() {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const selection = useRowSelection();
+  const [tagsOpen, setTagsOpen] = useState(false);
 
   const isOpen = mode.kind !== "closed";
   const editing = mode.kind === "edit" ? webhooks.find((webhook) => webhook.id === mode.id) ?? null : null;
@@ -382,7 +387,11 @@ export function SettingsNotificationsPage() {
         }
       />
 
-      <ListCard title="Webhooks" count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled · send Deluno events to other tools` : undefined}>
+      <ListCard
+        title="Webhooks"
+        count={webhooks.length ? `${webhooks.length} ${webhooks.length === 1 ? "webhook" : "webhooks"} · ${webhooks.filter((webhook) => webhook.isEnabled).length} enabled · send Deluno events to other tools` : undefined}
+        actions={webhooks.length > 0 ? <ConnectionSelectButton active={selection.active} onClick={selection.toggleActive} /> : undefined}
+      >
         {webhooks.length === 0 ? (
           <ListEmpty
             title="No webhooks yet"
@@ -395,12 +404,26 @@ export function SettingsNotificationsPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Sends to", width: "minmax(0,1.4fr)" }, { label: "Events" }, { label: "Last fired" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+          <>
+          {selection.active ? (
+            <ConnectionSelectionBar count={selection.selected.size} noun="notification connections" onTags={() => setTagsOpen(true)} onClear={selection.clear} />
+          ) : null}
+          <ListTable columns={[{ label: "Name" }, ...(selection.active ? [{ label: <ConnectionSelectAll ids={sorted.map((webhook) => webhook.id)} selected={selection.selected} noun="notification connections" onChange={selection.setAll} />, width: "28px", mobile: true }] : []), { label: "Sends to", width: "minmax(0,1.4fr)" }, { label: "Events" }, { label: "Last fired" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
             {sorted.map((webhook) => {
               const chip = statusChip(webhook, settings.enableNotifications);
               return (
                 <ListRow key={webhook.id} onClick={() => open(webhook)} selected={mode.kind === "edit" && mode.id === webhook.id}>
                   <ListNameCell name={webhook.name} sub={webhook.lastError ? "Last delivery failed" : providerLabel(webhook.provider)} />
+                  {selection.active ? (
+                    <ListCell mobile>
+                      <Checkbox
+                        aria-label={`Select ${webhook.name}`}
+                        checked={selection.selected.has(webhook.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        onCheckedChange={() => selection.toggle(webhook.id)}
+                      />
+                    </ListCell>
+                  ) : null}
                   <ListCell mono primary={webhook.url || providerLabel(webhook.provider)} />
                   <ListCell primary={eventLabel(webhook.eventFilters)} secondary={webhook.eventFilters === "all" ? "Every event type" : "Filtered"} />
                   <ListCell numeric primary={webhook.lastFiredUtc ? relative(webhook.lastFiredUtc) : <span className="text-muted-foreground">Never</span>} secondary={webhook.lastError ?? undefined} />
@@ -414,6 +437,7 @@ export function SettingsNotificationsPage() {
               );
             })}
           </ListTable>
+          </>
         )}
       </ListCard>
 
@@ -623,6 +647,17 @@ export function SettingsNotificationsPage() {
         ) : null}
       </Drawer>
 
+      <ConnectionTagsDialog
+        open={tagsOpen}
+        kind="notification"
+        noun="notification connections"
+        ids={[...selection.selected]}
+        onOpenChange={setTagsOpen}
+        onApplied={() => {
+          selection.clear();
+          revalidator.revalidate();
+        }}
+      />
       <ConfirmDialog open={confirmRemove} onOpenChange={setConfirmRemove} title={`Delete “${editing?.name ?? form.name}”?`} description="Deluno stops posting to this URL. This cannot be undone." confirmLabel="Delete webhook" busy={busy === "remove"} onConfirm={() => void handleRemove()} />
       <ConfirmDialog
         open={confirmDiscard}

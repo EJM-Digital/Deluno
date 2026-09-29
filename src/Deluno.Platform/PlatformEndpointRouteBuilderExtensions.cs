@@ -374,6 +374,90 @@ public static class PlatformEndpointRouteBuilderExtensions
             return Results.Ok(new { removed = removed.Count, names = removed });
         });
 
+        // #1044: add, remove or replace tags on several indexers, download clients
+        // or notification connections at once, with the title editor's modes.
+        tags.MapPost("/bulk-connections", async (
+            HttpContext httpContext,
+            [FromBody] BulkConnectionTagsRequest request,
+            ITagReferenceStore tagReferences,
+            IActivityFeedRepository activityFeedRepository,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var (target, noun) = (request.Kind ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "indexer" or "indexers" => (BulkTagTarget.Indexer as BulkTagTarget?, "indexer"),
+                "downloadclient" or "downloadclients" => (BulkTagTarget.DownloadClient, "download client"),
+                "notification" or "notifications" => (BulkTagTarget.Notification, "notification connection"),
+                _ => (null, string.Empty)
+            };
+            if (target is null)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["kind"] = ["Kind must be indexer, downloadClient or notification."]
+                });
+            }
+
+            if (request.Ids is not { Count: > 0 })
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["ids"] = ["Choose at least one connection before applying tags."]
+                });
+            }
+
+            if (!MediaTagBulkOperations.TryParseMode(request.Mode, out var mode))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["mode"] = ["Mode must be add, remove or replace."]
+                });
+            }
+
+            var names = (request.Tags ?? [])
+                .SelectMany(tag => (tag ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (mode != BulkTagMode.Replace && names.Length == 0)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["tags"] = ["Pick at least one tag."]
+                });
+            }
+
+            var changed = await tagReferences.BulkApplyAsync(target.Value, request.Ids, mode, names, cancellationToken);
+            if (changed.Count > 0)
+            {
+                var plural = changed.Count == 1 ? noun : noun + "s";
+                var list = names.Length == 0 ? "no tags" : string.Join(", ", names);
+                var message = mode switch
+                {
+                    BulkTagMode.Add => $"Added the tags {list} to {changed.Count} {plural}: {string.Join(", ", changed)}.",
+                    BulkTagMode.Remove => $"Removed the tags {list} from {changed.Count} {plural}: {string.Join(", ", changed)}.",
+                    _ => names.Length == 0
+                        ? $"Cleared every tag from {changed.Count} {plural}: {string.Join(", ", changed)}."
+                        : $"Replaced the tags on {changed.Count} {plural} with {list}: {string.Join(", ", changed)}."
+                };
+                await activityFeedRepository.RecordActivityAsync(
+                    "tags.bulk.connections",
+                    message,
+                    null,
+                    null,
+                    "tag",
+                    null,
+                    cancellationToken);
+            }
+
+            return Results.Ok(new { updated = changed.Count, tags = names, mode = mode.ToString().ToLowerInvariant() });
+        });
+
         tags.MapPost(string.Empty, async (
             HttpContext httpContext,
             [FromBody] CreateTagRequest request,

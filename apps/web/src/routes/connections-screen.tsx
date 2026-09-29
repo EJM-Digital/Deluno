@@ -60,6 +60,8 @@ import {
   type IndexerFilters,
   type IndexerSortState
 } from "./connections/indexer-list-controls";
+import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, ConnectionTagsDialog } from "../components/app/connection-tags-dialog";
+import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
@@ -356,6 +358,8 @@ export function IndexersPage() {
   const [selectedIndexerIds, setSelectedIndexerIds] = useState<Set<string>>(new Set());
   const [confirmBulkRemove, setConfirmBulkRemove] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [tagsFor, setTagsFor] = useState<"indexer" | "downloadClient" | null>(null);
+  const clientSelection = useRowSelection();
 
   const visibleIndexers = useMemo(() => sortIndexers(filterIndexers(indexers, indexerFilters), indexerSort), [indexers, indexerFilters, indexerSort]);
 
@@ -913,6 +917,7 @@ export function IndexersPage() {
                   onPause={() => void bulkSetEnabled(false)}
                   onRemove={() => setConfirmBulkRemove(true)}
                   onChangeScope={(scope) => void bulkSetScope(scope)}
+                  onTags={() => setTagsFor("indexer")}
                   onClear={() => setSelectedIndexerIds(new Set())}
                 />
               ) : null}
@@ -980,7 +985,11 @@ export function IndexersPage() {
             configuredKinds={clients.map((item) => item.protocol)}
             onUse={openDetectedClient}
           />
-          <ListCard title="Download clients" count={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : undefined}>
+          <ListCard
+            title="Download clients"
+            count={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : undefined}
+            actions={clients.length > 0 ? <ConnectionSelectButton active={clientSelection.active} onClick={clientSelection.toggleActive} /> : undefined}
+          >
             {clients.length === 0 ? (
               <ListEmpty
                 title="No download client yet"
@@ -993,7 +1002,11 @@ export function IndexersPage() {
                 }
               />
             ) : (
-              <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Categories" }, { label: "Now" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+              <>
+              {clientSelection.active ? (
+                <ConnectionSelectionBar count={clientSelection.selected.size} noun="download clients" onTags={() => setTagsFor("downloadClient")} onClear={clientSelection.clear} />
+              ) : null}
+              <ListTable columns={[{ label: "Name" }, ...(clientSelection.active ? [{ label: <ConnectionSelectAll ids={clients.map((item) => item.id)} selected={clientSelection.selected} noun="download clients" onChange={clientSelection.setAll} />, width: "28px", mobile: true }] : []), { label: "Type" }, { label: "Categories" }, { label: "Now" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
                 {clients.map((item) => {
                   const sentBy = routing.filter((route) => route.downloadClients.some((client) => client.downloadClientId === item.id)).map((route) => route.libraryName);
                   const live = telemetryByClient.get(item.id);
@@ -1005,6 +1018,16 @@ export function IndexersPage() {
                   return (
                     <ListRow key={item.id} onClick={() => openClient(item)} selected={drawer.kind === "client" && drawer.id === item.id}>
                       <ListNameCell name={live?.clientVersion ? `${item.name} (v${live.clientVersion})` : item.name} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
+                      {clientSelection.active ? (
+                        <ListCell mobile>
+                          <Checkbox
+                            aria-label={`Select ${item.name}`}
+                            checked={clientSelection.selected.has(item.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            onCheckedChange={() => clientSelection.toggle(item.id)}
+                          />
+                        </ListCell>
+                      ) : null}
                       <ListCell primary={preset?.label ?? item.protocol} secondary={libraries.length > 0 && sentBy.length === 0 ? "No library sends downloads here" : sentBy.length ? `Used by ${sentBy.join(", ")}` : preset ? `${preset.kind} · ${preset.authMode}` : undefined} />
                       <ListCell mono primary={[movies, tv].filter(Boolean).join(" · ") || "—"} secondary={movies && tv && movies === tv ? "Same for both — files will mix" : mappings.length ? `${mappings.length} file-location link${mappings.length === 1 ? "" : "s"}` : "Movies · TV"} />
                       <ListCell numeric primary={live ? `${live.summary.activeCount} active` : <span className="text-muted-foreground">—</span>} secondary={live ? `${live.summary.totalSpeedMbps.toFixed(1)} MB/s · ${live.summary.importReadyCount} ready to import` : item.lastHealthTestUtc ? `Tested ${relative(item.lastHealthTestUtc)}` : "Not tested"} />
@@ -1034,6 +1057,7 @@ export function IndexersPage() {
                   );
                 })}
               </ListTable>
+              </>
             )}
           </ListCard>
         </>
@@ -1348,6 +1372,18 @@ export function IndexersPage() {
         confirmLabel={drawer.kind === "indexer" ? "Remove indexer" : drawer.kind === "proxy" ? "Remove proxy" : "Remove client"}
         busy={busy === "remove"}
         onConfirm={() => void handleRemove()}
+      />
+      <ConnectionTagsDialog
+        open={tagsFor !== null}
+        kind={tagsFor ?? "indexer"}
+        noun={tagsFor === "downloadClient" ? "download clients" : "indexers"}
+        ids={[...(tagsFor === "downloadClient" ? clientSelection.selected : selectedIndexerIds)]}
+        onOpenChange={(open) => { if (!open) setTagsFor(null); }}
+        onApplied={() => {
+          if (tagsFor === "downloadClient") clientSelection.clear();
+          else setSelectedIndexerIds(new Set());
+          revalidator.revalidate();
+        }}
       />
       <ConfirmDialog
         open={confirmBulkRemove}

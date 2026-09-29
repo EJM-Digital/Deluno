@@ -1,5 +1,5 @@
 import type { BulkRenamePreviewItem, BulkTagMode, BulkWorkflowOperation } from "../../hooks/use-bulk-edit";
-import { TagPicker } from "../../components/app/tag-picker";
+import { BulkTagField } from "./bulk-tag-field";
 import type { LibraryVariant } from "../../hooks/use-library-create";
 import { Button } from "../ui/button";
 import { CheckboxRow } from "../ui/checkbox";
@@ -85,18 +85,7 @@ export function LibraryBulkToolsDialog({
             <CheckboxRow label="Move the files to the new root" checked={moveFiles} onCheckedChange={onMoveFilesChange} />
           </Field>
         </> : null}
-        {operation === "tags" ? <Field label="Tags" help="Pick existing tags or create a new one. Add keeps existing tags; Remove drops only these; Replace wipes the rest.">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1"><TagPicker label="Tags to apply" value={tags} onChange={onTagsChange} warnUnused={false} /></div>
-            <div className="w-32 shrink-0">
-              <Select value={tagsMode} onChange={(event) => onTagsModeChange(event.target.value as BulkTagMode)}>
-                <option value="add">Add</option>
-                <option value="remove">Remove</option>
-                <option value="replace">Replace</option>
-              </Select>
-            </div>
-          </div>
-        </Field> : null}
+        {operation === "tags" ? <BulkTagField tags={tags} mode={tagsMode} onTagsChange={onTagsChange} onModeChange={onTagsModeChange} /> : null}
         {operation === "renamePreview" ? <Field label="Template (optional)" help="Preview generated folder names before rename workflows."><Input value={renameTemplate} onChange={(event) => onRenameTemplateChange(event.target.value)} placeholder={variant === "movies" ? "{Movie Title} ({Release Year})" : "{Series Title} ({Series Year})"} /></Field> : null}
       </div>
       {confirming && operation !== "renamePreview" ? <div className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">Confirming will run this operation across {selectedTitleLabel}.</div> : null}

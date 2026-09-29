@@ -1,4 +1,5 @@
 using System.Data.Common;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Platform.Contracts;
 using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
@@ -24,6 +25,26 @@ public interface ITagReferenceStore
 
     /// <summary>Deletes the definition of a tag that nothing uses; the caller checks first (#1039).</summary>
     Task<bool> DeleteAsync(string tagId, string name, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds, removes or replaces tags on several indexers, download clients or
+    /// notification connections in one transaction, with the same modes as the
+    /// title bulk editor (#1044). Returns each connection changed, by name.
+    /// </summary>
+    Task<IReadOnlyList<string>> BulkApplyAsync(
+        BulkTagTarget target,
+        IReadOnlyList<string> ids,
+        BulkTagMode mode,
+        IReadOnlyList<string> tags,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>The kinds of connection that can be tagged in bulk (#1044).</summary>
+public enum BulkTagTarget
+{
+    Indexer,
+    DownloadClient,
+    Notification,
 }
 
 public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory databaseConnectionFactory) : ITagReferenceStore
@@ -134,6 +155,69 @@ public sealed class SqliteTagReferenceStore(IDelunoDatabaseConnectionFactory dat
         var removed = await Exec(connection, transaction, "DELETE FROM tags WHERE id = @id;", cancellationToken, ("@id", tagId)) > 0;
         await transaction.CommitAsync(cancellationToken);
         return removed;
+    }
+
+    public async Task<IReadOnlyList<string>> BulkApplyAsync(
+        BulkTagTarget target,
+        IReadOnlyList<string> ids,
+        BulkTagMode mode,
+        IReadOnlyList<string> tags,
+        CancellationToken cancellationToken)
+    {
+        // Table names come from this closed map, never from input.
+        var table = target switch
+        {
+            BulkTagTarget.Indexer => "indexer_sources",
+            BulkTagTarget.DownloadClient => "download_clients",
+            BulkTagTarget.Notification => "notification_webhooks",
+            _ => throw new ArgumentOutOfRangeException(nameof(target))
+        };
+        var requested = tags
+            .Select(tag => tag.Trim())
+            .Where(tag => tag.Length > 0)
+            .Select(tag => new MediaTagAssignment(tag, tag))
+            .ToArray();
+        var changed = new List<string>();
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var id in ids.Distinct(StringComparer.Ordinal))
+        {
+            string name;
+            string current;
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = $"SELECT name, tags FROM {table} WHERE id = @id;";
+                AddParameter(command, "@id", id);
+                using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    continue;
+                }
+
+                name = reader.GetString(0);
+                current = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
+            }
+
+            var existing = Split(current).Select(tag => new MediaTagAssignment(tag, tag)).ToArray();
+            var final = MediaTagBulkOperations.Apply(mode, existing, requested)
+                .Select(item => item.Name.Trim())
+                .Where(tag => tag.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var next = string.Join(",", final);
+            if (string.Equals(next, string.Join(",", existing.Select(item => item.Name)), StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            await Exec(connection, transaction, $"UPDATE {table} SET tags = @value WHERE id = @id;", cancellationToken, ("@value", next), ("@id", id));
+            changed.Add(name);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return changed;
     }
 
     private sealed record TagRow(
