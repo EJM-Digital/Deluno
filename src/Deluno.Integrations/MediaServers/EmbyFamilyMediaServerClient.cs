@@ -276,6 +276,7 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         }
 
         var plays = new List<MediaServerPlay>();
+        var shows = new Dictionary<string, (string? Tmdb, string? Tvdb, string? Imdb)>(StringComparer.Ordinal);
         foreach (var session in document.RootElement.EnumerateArray())
         {
             if (!session.TryGetProperty("NowPlayingItem", out var playing) || playing.ValueKind != JsonValueKind.Object)
@@ -302,10 +303,48 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
                 return null;
             }
 
-            plays.Add(new MediaServerPlay(ids, paths.Distinct(StringComparer.Ordinal).ToArray(), String(playing, "Type") == "Movie", Provider("Tmdb"), Provider("Tvdb"), Provider("Imdb")));
+            var isEpisode = String(playing, "Type") == "Episode";
+            (string? Tmdb, string? Tvdb, string? Imdb) show = default;
+            if (isEpisode && String(playing, "SeriesId") is { Length: > 0 } seriesId && !shows.TryGetValue(seriesId, out show))
+            {
+                // A session lists the episode's own provider ids, not the show's: ask for the show once.
+                show = await ReadShowProviderIdsAsync(connection, seriesId, cancellationToken);
+                shows[seriesId] = show;
+            }
+
+            plays.Add(new MediaServerPlay(
+                ids, paths.Distinct(StringComparer.Ordinal).ToArray(), String(playing, "Type") == "Movie",
+                Provider("Tmdb"), Provider("Tvdb"), Provider("Imdb"),
+                isEpisode, String(playing, "SeriesName"), show.Tmdb, show.Tvdb, show.Imdb,
+                Int(playing, "ParentIndexNumber"), Int(playing, "IndexNumber")));
         }
 
         return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(plays);
+    }
+
+    private async Task<(string? Tmdb, string? Tvdb, string? Imdb)> ReadShowProviderIdsAsync(MediaServerConnection connection, string seriesId, CancellationToken cancellationToken)
+    {
+        // Not being able to ask leaves the ids null, which the caller reads as "cannot tell which show", never "not this show".
+        var call = await GetAsync(connection, $"/Items?Ids={Uri.EscapeDataString(seriesId)}&Fields=ProviderIds", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (document is null ||
+            !document.RootElement.TryGetProperty("Items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0 ||
+            !items[0].TryGetProperty("ProviderIds", out var providers) || providers.ValueKind != JsonValueKind.Object)
+        {
+            return default;
+        }
+
+        string? Provider(string name)
+        {
+            foreach (var property in providers.EnumerateObject())
+            {
+                if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
+            }
+
+            return null;
+        }
+
+        return (Provider("Tmdb"), Provider("Tvdb"), Provider("Imdb"));
     }
 
     public async Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(

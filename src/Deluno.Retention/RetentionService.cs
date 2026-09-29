@@ -209,7 +209,8 @@ public sealed class RetentionService(
             // Never take something out from under a viewer, and never guess that nobody is watching (#1012).
             if (NeedsPlaybackCheck(rule))
             {
-                playback ??= await ReadPlaybackAsync(cancellationToken);
+                // A fresh reading immediately before EACH removal: a play can start between two deletions in one run (#1071).
+                playback = await ReadPlaybackAsync(cancellationToken);
                 if (PlaybackHold(playback, candidates[mark.EntityId]) is { } hold)
                 {
                     var holding = mark with { State = RetentionMarkStates.Held, StateReason = hold, UpdatedUtc = started };
@@ -296,7 +297,8 @@ public sealed class RetentionService(
 
             if (NeedsPlaybackCheck(rule))
             {
-                playback ??= await ReadPlaybackAsync(cancellationToken);
+                // A fresh reading immediately before EACH removal: a play can start between two deletions in one run (#1071).
+                playback = await ReadPlaybackAsync(cancellationToken);
                 if (PlaybackHold(playback, candidate) is { } hold)
                 {
                     // Stays Ready to remove: the person can confirm again once it has stopped.
@@ -596,9 +598,51 @@ public sealed class RetentionService(
         var byFileOrId = reading.PlaysByServer.Values.SelectMany(plays => plays).Any(play =>
             play.Paths.Any(path => files.Contains(RetentionServerIndex.NormalizePath(path))) ||
             (play.IsMovie && unit.Level == RetentionLevels.Movie &&
-             (Same(play.TmdbId, unit.TmdbId) || Same(play.ImdbId, unit.ImdbId) || Same(play.TvdbId, unit.TvdbId))));
+             (Same(play.TmdbId, unit.TmdbId) || Same(play.ImdbId, unit.ImdbId) || Same(play.TvdbId, unit.TvdbId))) ||
+            (play.IsEpisode && unit.Level != RetentionLevels.Movie && EpisodePlayTouches(unit, play)));
 
         return byItem || byFileOrId ? "Not removed: it is being played right now. Deluno tries again at the next check." : null;
+    }
+
+    /// <summary>
+    /// Whether an episode being played on ANY server may be inside this show, season or episode.
+    /// The show is named by provider ids (then by name); the season and episode by their numbers. Anything
+    /// that cannot be told apart counts as "may be", never as "not": unknown defers (#1071).
+    /// </summary>
+    public static bool EpisodePlayTouches(RetentionUnit unit, MediaServerPlay play)
+    {
+        static bool Same(string? a, string? b) => !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        static string Letters(string? name) => new string((name ?? string.Empty).Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        static bool Both(string? a, string? b) => !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b);
+
+        var sameShow = Same(play.ShowTmdbId, unit.TmdbId) || Same(play.ShowTvdbId, unit.TvdbId) || Same(play.ShowImdbId, unit.ImdbId);
+        if (!sameShow)
+        {
+            var comparable = Both(play.ShowTmdbId, unit.TmdbId) || Both(play.ShowTvdbId, unit.TvdbId) || Both(play.ShowImdbId, unit.ImdbId);
+            if (comparable)
+            {
+                // Both sides named the show by an id they share and none agree: a different show.
+                return false;
+            }
+
+            if (Same(Letters(play.ShowName), Letters(unit.ShowTitle)))
+            {
+                sameShow = true;
+            }
+            else
+            {
+                // No id in common and a different (or missing) name: cannot tell, so wait.
+                return true;
+            }
+        }
+
+        return unit.Level switch
+        {
+            RetentionLevels.Show => true,
+            RetentionLevels.Season => play.SeasonNumber is null || unit.SeasonNumber is null || play.SeasonNumber == unit.SeasonNumber,
+            _ => play.SeasonNumber is null || play.EpisodeNumber is null || unit.SeasonNumber is null || unit.EpisodeNumber is null ||
+                 (play.SeasonNumber == unit.SeasonNumber && play.EpisodeNumber == unit.EpisodeNumber)
+        };
     }
 
     private async Task TellDeferredAsync(RetentionRule rule, IReadOnlyList<RetentionMark> deferred, PlaybackReading? reading, CancellationToken cancellationToken)

@@ -176,14 +176,22 @@ public interface IMediaServerAudioLanguageReader
 /// <summary>One thing being played on a server right now (#1012).</summary>
 /// <param name="ItemIds">The server's own ids for the item, its season and its show, so a whole show is seen to be in use while one episode plays.</param>
 /// <param name="Paths">The file(s) being played, as the server sees them.</param>
-/// <param name="IsMovie">Whether it is a film, the only kind whose provider ids can name the title.</param>
+/// <param name="IsMovie">Whether it is a film; its provider ids name the title.</param>
+/// <param name="IsEpisode">Whether it is an episode; then the show's own provider ids and name, and the season and episode numbers, say which one (null = the server did not say).</param>
 public sealed record MediaServerPlay(
     IReadOnlyList<string> ItemIds,
     IReadOnlyList<string> Paths,
     bool IsMovie = false,
     string? TmdbId = null,
     string? TvdbId = null,
-    string? ImdbId = null);
+    string? ImdbId = null,
+    bool IsEpisode = false,
+    string? ShowName = null,
+    string? ShowTmdbId = null,
+    string? ShowTvdbId = null,
+    string? ShowImdbId = null,
+    int? SeasonNumber = null,
+    int? EpisodeNumber = null);
 
 /// <summary>
 /// A server that can say what is being played on it right now (#1012). A server
