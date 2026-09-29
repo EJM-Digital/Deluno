@@ -144,3 +144,106 @@ Before a release, verify controlled movie and TV lookups. Operators only need
 deliberately override the managed route. The gateway accepts only title lookup
 terms, media type/year, and optional TMDb IDs; it does not receive library
 paths, inventory, queues, or user provider keys.
+
+## TheTVDB (TV first, #989)
+
+For TV, TheTVDB is the first source and TMDb the fallback (the same choice
+Sonarr makes, so season/episode, absolute and specials numbering line up with
+release names). Movies stay on TMDb. TheTVDB is served through the broker
+exactly like TMDb: the key lives only in the gateway's secrets, and an install
+using the managed broker never holds it.
+
+### What stays and what changes
+
+- A show's identity is unchanged: the TMDb id remains the provider id, so every
+  existing show keeps its id. TheTVDB's id is stored beside it
+  (`MetadataSearchResult.TvDbId`, in the stored metadata) and is filled in on
+  the show's next normal metadata refresh; there is no separate backfill.
+- TheTVDB wins field by field (title, overview, artwork, banner, logo, genres,
+  network, status, runtime, aliases). A field TheTVDB leaves empty keeps TMDb's
+  value. Ratings, cast, crew, keywords and the ratings-board certification for
+  the owner's chosen country stay TMDb's. TheTVDB's status words map to Deluno's
+  (`Continuing` to `Returning Series`, `Upcoming` to `In Production`).
+- Search: TheTVDB's hits come first, each tied to its TMDb identity through
+  TheTVDB's remote ids; results only TMDb found follow. A TheTVDB show with no
+  TMDb id cannot be stored and is left to TMDb's own results.
+- Episodes: the aired list and each episode's absolute number come from
+  TheTVDB (blank titles/overviews/dates are filled from TMDb by season and
+  episode number). DVD and absolute orderings come from TheTVDB's season types.
+- No file is renumbered by a refresh. A show whose existing episodes would not
+  all appear in TheTVDB's aired list stays on TMDb's numbering
+  (`MetadataCatalogueChoice`); moving it is a deliberate choice through the
+  normal numbering and rename preview. Alternate orderings are only taken from
+  TheTVDB for a show that sits on TheTVDB's numbering.
+- A TheTVDB failure is never a metadata outage: the app falls back to TMDb and
+  does not record the failure against the provider status.
+
+### Gateway routes
+
+All under the gateway's `/metadata` base, `GET`, JSON. Every payload carries
+`attribution: { text, url }`. `404` means TheTVDB has no such record; `503`
+means TheTVDB (or its key) is unavailable, and the app falls back to TMDb.
+
+| Route | Answer |
+| --- | --- |
+| `/metadata/tvdb/search?query=&year=` | `{ provider: "tvdb", resultCount, results: [series] }` |
+| `/metadata/tvdb/tv/{tvdbId}` | `{ provider: "tvdb", series }` (extended record, English translation, best artwork) |
+| `/metadata/tvdb/tv/{tvdbId}/catalogue` | the `/tv/{id}/catalogue` shape, each episode also has `absoluteNumber` and `runtimeMinutes` |
+| `/metadata/tvdb/tv/{tvdbId}/episode-groups` | the episode-groups shape: type 3 = DVD order, type 2 = absolute order, keyed to the aired list |
+| `/metadata/tvdb/remote/{imdbId}` | `{ tvdbId }` for an IMDb id, when a search result carried no TheTVDB id |
+
+`series` is `{ provider, tvdbId, tmdbId, imdbId, title, originalTitle, year,
+overview, posterUrl, backdropUrl, bannerUrl, logoUrl, screenshots, genres,
+network, status, runtimeMinutes, originalLanguage, certification, aliases,
+externalUrl }`. The TMDb search/detail payload also gained `tvDbId`.
+
+### Gateway secrets (set by the owner of the gateway, never committed)
+
+| Secret | Meaning |
+| --- | --- |
+| `TVDB_API_KEY` | The TheTVDB v4 API key. Required for the routes above; without it they answer `503`. |
+| `TVDB_PIN` | Optional. Only for a subscriber-supported ("user-supported") key: the subscriber's PIN, sent at login. Leave unset for a negotiated/licensed key, which must send none. |
+
+`npx wrangler secret put TVDB_API_KEY` (and `TVDB_PIN` if needed). The bearer
+token from `/login` lasts one month and is cached in KV for 25 days.
+
+### Direct mode
+
+A person not using the broker can set their own key in the environment
+(`TVDB_API_KEY`, optional `TVDB_PIN`, or `Deluno:Metadata:TvdbApiKey` /
+`Deluno:Metadata:TvdbPin` in configuration). Direct and hybrid mode then call
+TheTVDB's v4 API themselves and map the answers to the same records. Broker-only
+mode never reads a local key.
+
+### TheTVDB terms this follows (read 29 Sep 2026)
+
+Sources: https://thetvdb.com/api-information and the `thetvdb/v4-api` README
+and OpenAPI file.
+
+- Licence: free with attribution for projects under USD 50k annual revenue;
+  paid tiers above that (USD 1,000/yr from 50k, USD 10,000/yr from 250k, contact
+  for 1M+). They "reserve the right to change our interfaces, fees, or licensing
+  terms at any point without notice". Open-source projects can ask for a discount.
+- Two access models: a negotiated licence for companies, or a user-supported key
+  where each end user holds a paid subscription (USD 12/yr) and their PIN is
+  sent with the key at `/login`.
+- Attribution: "with a direct link to TheTVDB.com must be displayed to end users
+  viewing metadata from our API." Deluno shows "TV metadata provided by
+  TheTVDB" linking to https://thetvdb.com on the add-show search results and on
+  a show's page whenever it carries a TheTVDB id; the broker sends the same text
+  in `attribution`.
+- Caching: TheTVDB recommends a caching proxy and to "set time to live for each
+  endpoint based on the needs of your users"; rarely-changing lists may be kept
+  "a week or even longer". No fixed maximum is stated. The gateway uses: search
+  12 h, series record 6 h, episode list 6 h, DVD/absolute orders 24 h, IMDb to
+  TheTVDB id 7 days. The app keeps a 30 minute (search) / 1 hour (series) memory
+  cache only to avoid repeat identical questions; episode lists are not cached
+  in the app. Artwork is public CDN imagery and is cached on disk like TMDb's.
+- Rates: none published. The gateway's own 30 lookups per IP per minute applies
+  to these routes too.
+- Bearer token: valid one month.
+
+Confirm with TheTVDB which key type applies to the hosted gateway before
+release: a negotiated/licensed key needs no PIN, while a subscriber-supported
+key is tied to one subscriber's PIN and may not be intended to serve many
+installs.
