@@ -27,7 +27,7 @@ public sealed class RankingModelTrainingHostedService(
         var runOnStartup = configuration.GetValue("Deluno:RankingModel:TrainOnStartup", true);
         if (runOnStartup)
         {
-            await RunTrackedTrainingAsync("startup", intervalHours: null, cancellationToken: stoppingToken);
+            await RunGuardedAsync("startup", null, stoppingToken);
         }
 
         var intervalHours = Math.Clamp(configuration.GetValue("Deluno:RankingModel:RetrainIntervalHours", 24), 1, 168);
@@ -44,7 +44,21 @@ public sealed class RankingModelTrainingHostedService(
                 break;
             }
 
-            await RunTrackedTrainingAsync("scheduled", intervalHours, stoppingToken);
+            await RunGuardedAsync("scheduled", intervalHours, stoppingToken);
+        }
+    }
+
+    // A failed pass (or a failure recording it) must not end the loop, or the
+    // whole host: log it and wait for the next interval (#1080).
+    private async Task RunGuardedAsync(string reason, int? intervalHours, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await RunTrackedTrainingAsync(reason, intervalHours, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "The {Reason} ranking-model training pass failed; it will try again at the next interval.", reason);
         }
     }
 

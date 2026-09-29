@@ -19,8 +19,12 @@ public sealed class LaneRunner
         Func<int, CancellationToken, Task<LaneTickResult>> tick,
         Func<JobQueueItem, CancellationToken, Task> execute,
         CancellationToken cancellationToken,
-        Action<JobQueueItem, Exception>? onUnhandledJobFailure = null)
+        Action<JobQueueItem, Exception>? onUnhandledJobFailure = null,
+        Action<Exception, TimeSpan>? onTickFailure = null,
+        TimeSpan? maxBackoff = null)
     {
+        var backoffCap = maxBackoff ?? TimeSpan.FromMinutes(1);
+        var consecutiveTickFailures = 0;
         var inFlight = new List<Task>();
         var drainImmediately = true;
         var sleepFor = lane.Interval;
@@ -54,7 +58,25 @@ public sealed class LaneRunner
                 }
 
                 var availableSlots = Math.Min(lane.BatchSize, freeSlots);
-                var result = await tick(availableSlots, cancellationToken);
+                LaneTickResult result;
+                try
+                {
+                    result = await tick(availableSlots, cancellationToken);
+                    consecutiveTickFailures = 0;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    // One failed tick (a busy or slow database on a starved
+                    // machine, a bad row) must never end the lane: an exception
+                    // out of here stops the whole Deluno host (#1080). Log it,
+                    // back off, and try again.
+                    consecutiveTickFailures++;
+                    var backoff = BackoffFor(consecutiveTickFailures, lane.Interval, backoffCap);
+                    onTickFailure?.Invoke(exception, backoff);
+                    sleepFor = backoff;
+                    continue;
+                }
+
                 sleepFor = result.SleepFor;
 
                 if (result.Jobs.Count == 0)
@@ -84,6 +106,15 @@ public sealed class LaneRunner
         {
             await Task.WhenAll(inFlight);
         }
+    }
+
+    /// <summary>The lane's own interval, doubled for each failure in a row, capped.</summary>
+    internal static TimeSpan BackoffFor(int consecutiveFailures, TimeSpan interval, TimeSpan cap)
+    {
+        var baseTicks = Math.Max(interval.Ticks, TimeSpan.FromSeconds(1).Ticks);
+        var factor = Math.Pow(2, Math.Min(Math.Max(consecutiveFailures, 1), 10));
+        var ticks = Math.Min((double)cap.Ticks, baseTicks * factor);
+        return TimeSpan.FromTicks((long)ticks);
     }
 
     private static void RemoveCompleted(List<Task> inFlight)

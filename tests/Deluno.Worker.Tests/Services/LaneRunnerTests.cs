@@ -207,6 +207,50 @@ public sealed class LaneRunnerTests
         Assert.Equal(0, failures);
     }
 
+    [Fact]
+    public async Task A_tick_that_throws_is_reported_and_retried_instead_of_ending_the_lane()
+    {
+        var ticks = 0;
+        var reported = new ConcurrentQueue<TimeSpan>();
+        var recovered = NewSignal();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var runnerTask = new LaneRunner().RunAsync(
+            TestLane(1),
+            new SemaphoreSlim(0, 1),
+            (_, _) =>
+            {
+                if (Interlocked.Increment(ref ticks) <= 2)
+                {
+                    throw new InvalidOperationException("database is locked");
+                }
+
+                recovered.TrySetResult();
+                return Task.FromResult(LaneTickResult.Empty(TimeSpan.FromMilliseconds(20)));
+            },
+            (_, _) => Task.CompletedTask,
+            cancellation.Token,
+            onTickFailure: (_, backoff) => reported.Enqueue(backoff),
+            maxBackoff: TimeSpan.FromMilliseconds(50));
+
+        await recovered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        cancellation.Cancel();
+        await runnerTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(2, reported.Count);
+        Assert.All(reported, backoff => Assert.True(backoff <= TimeSpan.FromMilliseconds(50)));
+    }
+
+    [Fact]
+    public void Backoff_doubles_per_failure_and_is_capped()
+    {
+        var interval = TimeSpan.FromSeconds(5);
+        var cap = TimeSpan.FromMinutes(1);
+        Assert.Equal(TimeSpan.FromSeconds(10), LaneRunner.BackoffFor(1, interval, cap));
+        Assert.Equal(TimeSpan.FromSeconds(20), LaneRunner.BackoffFor(2, interval, cap));
+        Assert.Equal(cap, LaneRunner.BackoffFor(8, interval, cap));
+    }
+
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static class InterlockedExtensions
