@@ -35,3 +35,19 @@ describe("collection bulk editor (#998)", () => {
     expect(onApply).toHaveBeenCalledWith({ monitorMovies: false });
   });
 });
+
+describe("removing collections (#1056)", () => {
+  it("says the movies stay as they are and only acts on the confirmation", async () => {
+    const { RemoveCollectionsConfirm } = await import("./collections-page");
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    const two = [{ id: "a", name: "Nolan Collection" }, { id: "b", name: "Bond Collection" }] as never;
+    render(<RemoveCollectionsConfirm collections={two} busy={false} onCancel={onCancel} onConfirm={onConfirm} />);
+
+    expect(screen.getByText("Stop following 2 collections?")).toBeInTheDocument();
+    expect(screen.getByText(/Your movies stay exactly as they are: none is deleted, unmonitored or changed/)).toBeInTheDocument();
+    expect(onConfirm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Stop following" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+});

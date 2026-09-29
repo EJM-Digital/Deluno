@@ -26,6 +26,7 @@ DELETE /api/library-views/{id}
 DELETE /api/media-servers/{id}
 DELETE /api/media-servers/{id}/path-mappings/{mappingId}
 DELETE /api/metadata/cache
+DELETE /api/movie-collections/{id}
 DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
 DELETE /api/movies/{id}/files
@@ -391,6 +392,7 @@ POST /api/metadata/test
 POST /api/migration/apply
 POST /api/migration/preview
 POST /api/movie-collections/
+POST /api/movie-collections/remove
 POST /api/movie-collections/{id}/refresh
 POST /api/movies/
 POST /api/movies/bulk

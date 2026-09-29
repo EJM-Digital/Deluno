@@ -51,6 +51,9 @@ public interface IMovieCollectionsRepository
         string movieId,
         CancellationToken cancellationToken);
 
+    /// <summary>#1056: removes a followed collection and its member list. Never touches a movie.</summary>
+    Task<bool> DeleteAsync(string id, CancellationToken cancellationToken);
+
     Task<bool> SetMemberExcludedAsync(
         string collectionId,
         string providerId,
