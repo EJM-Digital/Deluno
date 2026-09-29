@@ -59,7 +59,24 @@ public sealed class FilesystemReconciliationService(
             var knownTrackedPaths = new HashSet<string>(
                 OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
+            // A mount point that exists but holds nothing (a Docker volume or
+            // share that did not mount) passes the check above and then makes
+            // every tracked file look deleted. A root with no entries at all
+            // while the library tracks files is that, not a wiped library.
+            var rootIsEmpty = IsRootEmptyOrUnreadable(rootPath);
+            var trackedList = new List<TrackedFile>();
             await foreach (var tracked in StreamTrackedFilesAsync(library, cancellationToken))
+            {
+                trackedList.Add(tracked);
+            }
+
+            if (rootIsEmpty && trackedList.Count > 0)
+            {
+                issues.Add(CreateUnreachableLibraryIssue(library, rootPath));
+                continue;
+            }
+
+            foreach (var tracked in trackedList)
             {
                 var fullPath = Path.GetFullPath(tracked.Path);
                 if (File.Exists(tracked.Path))
@@ -269,9 +286,23 @@ public sealed class FilesystemReconciliationService(
             return nothing;
         }
 
-        if (library is not null
-            && !string.IsNullOrWhiteSpace(library.RootPath)
-            && !Directory.Exists(Path.GetFullPath(library.RootPath)))
+        if (library is null)
+        {
+            // Nothing says which library holds these files, so nothing can be
+            // checked against a root and nothing may be changed.
+            var unknown = new TitleRescanResult(
+                normalizedType, titleId, title, "library-unknown", tracked.Count, 0, [], [], null,
+                $"Deluno could not tell which library holds {title}, so it changed nothing. Nothing was marked missing and it is still monitored.");
+            await RecordRescanAsync(unknown, cancellationToken);
+            return unknown;
+        }
+
+        if (!string.IsNullOrWhiteSpace(library.RootPath)
+            && (!Directory.Exists(Path.GetFullPath(library.RootPath))
+                // An empty mount point exists but holds nothing; the title's
+                // files are tracked, so this is a drive not mounted, not
+                // deleted files.
+                || IsRootEmptyOrUnreadable(Path.GetFullPath(library.RootPath))))
         {
             // A drive that has not mounted is not a title with no files.
             var unreachable = new TitleRescanResult(
@@ -294,16 +325,12 @@ public sealed class FilesystemReconciliationService(
                 continue;
             }
 
-            var repaired = false;
-            if (library is not null)
-            {
-                var displayTitle = episodeId is null ? title : $"{title} ({Path.GetFileName(path)})";
-                var issueId = EncodeIssueToken(
-                    "missingTrackedFile", normalizedType, library.Id, titleId, episodeId, path, displayTitle);
-                repaired = (await RepairAsync(
-                    new FilesystemReconciliationRepairRequest(issueId, "mark-missing"),
-                    cancellationToken)).Repaired;
-            }
+            var displayTitle = episodeId is null ? title : $"{title} ({Path.GetFileName(path)})";
+            var issueId = EncodeIssueToken(
+                "missingTrackedFile", normalizedType, library.Id, titleId, episodeId, path, displayTitle);
+            var repaired = (await RepairAsync(
+                new FilesystemReconciliationRepairRequest(issueId, "mark-missing"),
+                cancellationToken)).Repaired;
 
             missing.Add(new TitleRescanMissingFile(Path.GetFileName(path), path, repaired));
         }
@@ -339,12 +366,31 @@ public sealed class FilesystemReconciliationService(
             }
         }
 
-        var outcome = missing.Count > 0 ? "changed" : "ok";
+        // "changed" only when something really was: a refused repair changed nothing.
+        var outcome = missing.Any(item => item.MarkedMissing)
+            ? "changed"
+            : missing.Count > 0 ? "not-changed" : "ok";
         var result = new TitleRescanResult(
             normalizedType, titleId, title, outcome, tracked.Count, present, missing, untracked, folder,
             DescribeRescan(title, tracked.Count, present, missing, untracked.Count));
         await RecordRescanAsync(result, cancellationToken);
         return result;
+    }
+
+    /// <summary>
+    /// True when the root has no entries at all, or cannot be listed. A library
+    /// whose root is a mount point that never mounted looks exactly like this.
+    /// </summary>
+    private static bool IsRootEmptyOrUnreadable(string rootPath)
+    {
+        try
+        {
+            return !Directory.EnumerateFileSystemEntries(rootPath).Any();
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     private static string DescribeRescan(
@@ -363,9 +409,25 @@ public sealed class FilesystemReconciliationService(
         }
         else
         {
-            parts.Add(present == 0 && checkedCount == 1
-                ? "Its file is no longer on disk, so Deluno marked it missing and stopped wanting it. No files were touched."
-                : $"{missing.Count} of {checkedCount} files are no longer on disk. Deluno marked them missing and stopped wanting them. No files were touched.");
+            // Say only what happened: a repair that was refused (a path outside
+            // the library root, or nothing matching) marked nothing missing.
+            var marked = missing.Count(item => item.MarkedMissing);
+            if (marked == missing.Count)
+            {
+                parts.Add(present == 0 && checkedCount == 1
+                    ? "Its file is no longer on disk, so Deluno marked it missing and stopped wanting it. No files were touched."
+                    : $"{missing.Count} of {checkedCount} files are no longer on disk. Deluno marked them missing and stopped wanting them. No files were touched.");
+            }
+            else if (marked == 0)
+            {
+                parts.Add(missing.Count == 1
+                    ? "Its file is not on disk, but Deluno could not mark it missing, so nothing was changed and it is still monitored. No files were touched."
+                    : $"{missing.Count} of {checkedCount} files are not on disk, but Deluno could not mark them missing, so nothing was changed and the title is still monitored. No files were touched.");
+            }
+            else
+            {
+                parts.Add($"{missing.Count} of {checkedCount} files are not on disk. Deluno marked {marked} missing and stopped wanting {(marked == 1 ? "it" : "them")}; it could not mark the other {missing.Count - marked}, which are unchanged. No files were touched.");
+            }
         }
 
         if (untrackedCount > 0)
