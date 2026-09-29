@@ -25,6 +25,12 @@ public sealed class WeirHealthAddressTests
         {
             requests.Add(request);
             // Weir's hand-off route only takes POST; only /ready answers a GET with 200.
+            // #1076: a processor may publish its machine name in its capabilities; the connection is named after it.
+            if (request.RequestUri!.AbsolutePath == "/api/v1/intake/capabilities")
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"machine_name":"MEDIA-BOX"}""") };
+            }
+
             return new HttpResponseMessage(request.RequestUri!.AbsolutePath == "/ready" ? HttpStatusCode.OK : HttpStatusCode.MethodNotAllowed);
         });
         CreateProcessorConnectionRequest? created = null;
@@ -48,7 +54,10 @@ public sealed class WeirHealthAddressTests
 
         Assert.Equal($"{Base}/ready", created!.HealthCheckUrl);
         Assert.Equal($"{Base}{Intake}", created.SubmissionUrl);
-        var request = Assert.Single(requests);
+        Assert.Equal("MEDIA-BOX", created.MachineName);
+        Assert.Equal("/api/v1/intake/capabilities", requests[0].RequestUri!.AbsolutePath);
+        Assert.Equal("s3cret", requests[0].Headers.GetValues("X-Webhook-Secret").Single());
+        var request = Assert.Single(requests, item => item.RequestUri!.AbsolutePath == "/ready");
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal("/ready", request.RequestUri!.AbsolutePath);
         processors.Verify(repo => repo.RecordProcessorConnectionHealthAsync("p1", "healthy", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -119,6 +128,24 @@ public sealed class WeirHealthAddressTests
 
     private static ProcessorConnectionItem Connection(string id, string submissionUrl, string? healthUrl)
         => new(id, id, "generic-webhook", submissionUrl, "X-Webhook-Secret", "s", true, "degraded", null, null, Now, Now, healthUrl);
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, """{"machine_name":"  RIG  "}""", "RIG")]
+    [InlineData(HttpStatusCode.OK, """{"other":1}""", null)]
+    [InlineData(HttpStatusCode.OK, "not json", null)]
+    [InlineData(HttpStatusCode.NotFound, "", null)]
+    [InlineData(HttpStatusCode.Unauthorized, """{"machine_name":"RIG"}""", null)]
+    public async Task A_processor_publishes_its_machine_name_in_its_capabilities_or_the_address_host_is_used(HttpStatusCode status, string body, string? expected)
+    {
+        var handler = new Handler(_ => new HttpResponseMessage(status) { Content = new StringContent(body) });
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler));
+
+        var name = await new ProcessorConnectionService(factory.Object)
+            .GetMachineNameAsync($"{Base}{Intake}", "X-Webhook-Secret", "s3cret", CancellationToken.None);
+
+        Assert.Equal(expected, name);
+    }
 
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
     {

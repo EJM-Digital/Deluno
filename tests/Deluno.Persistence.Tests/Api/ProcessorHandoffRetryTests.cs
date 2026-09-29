@@ -88,10 +88,14 @@ public sealed class ProcessorHandoffRetryTests
     private static IProcessorRepository Repository(ApplicationTestHost app)
         => app.Services.GetRequiredService<IProcessorRepository>();
 
-    private static Task<ProcessorConnectionItem> ConnectionAsync(ApplicationTestHost app, string name)
-        => Repository(app).CreateProcessorConnectionAsync(
+    private static async Task<ProcessorConnectionItem> ConnectionAsync(ApplicationTestHost app, string name)
+    {
+        var connection = await Repository(app).CreateProcessorConnectionAsync(
             new CreateProcessorConnectionRequest(name, "weir", "http://127.0.0.1:9999", null, null, IsEnabled: true),
             CancellationToken.None);
+        await LegacyConnectionNames.SetAsync(app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>(), "processor_connections", connection.Id, name);
+        return connection with { Name = name };
+    }
 
     private static async Task<ProcessorHandoffItem> HandoffAsync(ApplicationTestHost app, string status, string? failureMessage)
     {

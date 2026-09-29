@@ -83,9 +83,6 @@ export function IndexerDrawerBody({
     <>
       <DrawerSection title="Basics">
         <FieldRow>
-          <Field label="Name" error={errors.name}>
-            <Input value={form.name} onChange={(event) => { clearError("name"); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="e.g. NZBgeek" autoComplete="off" />
-          </Field>
           <Field label="Protocol" help={editing ? undefined : preset.hint}>
             <Select value={form.protocol} disabled={Boolean(editing)} onChange={(event) => chooseProtocol(event.target.value as IndexerProtocol)} options={INDEXER_PRESETS.map((item) => ({ value: item.protocol, label: item.label }))} />
           </Field>

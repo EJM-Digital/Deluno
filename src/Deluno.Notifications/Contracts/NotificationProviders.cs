@@ -22,6 +22,19 @@ public static class NotificationProviders
         Generic, Discord, Slack, Telegram, Pushover, Ntfy, Gotify, Apprise
     ];
 
+    public static string DisplayName(string provider)
+        => provider switch
+        {
+            Discord => "Discord",
+            Slack => "Slack",
+            Telegram => "Telegram",
+            Pushover => "Pushover",
+            Ntfy => "ntfy",
+            Gotify => "Gotify",
+            Apprise => "Apprise",
+            _ => "Webhook"
+        };
+
     public static bool IsValid(string? value) => value is not null && All.Contains(value.Trim().ToLowerInvariant());
 
     public static string Normalize(string? value)

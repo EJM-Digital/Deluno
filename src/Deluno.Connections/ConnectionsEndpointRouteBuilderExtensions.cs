@@ -813,11 +813,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            errors["name"] = ["Give this download client a name."];
-        }
-
         if (!DownloadClientProtocolCatalog.IsDispatchable(request.Protocol))
         {
             errors["protocol"] = [$"Choose a supported download client protocol: {DownloadClientProtocolCatalog.SupportedProtocols}."];
@@ -867,11 +862,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     private static Dictionary<string, string[]> ValidateIndexer(CreateIndexerRequest request)
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            errors["name"] = ["Give this indexer a name."];
-        }
 
         if (string.IsNullOrWhiteSpace(request.BaseUrl))
         {

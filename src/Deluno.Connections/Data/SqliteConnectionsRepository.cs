@@ -18,9 +18,17 @@ namespace Deluno.Connections.Data;
 public sealed class SqliteConnectionsRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    ITrackerDefinitionNames? trackerDefinitionNames = null)
     : IConnectionsRepository
 {
+    private string IndexerBaseName(string? definitionId, string? baseUrl)
+        => (string.IsNullOrWhiteSpace(definitionId) ? null : trackerDefinitionNames?.DisplayName(definitionId))
+           ?? ConnectionNames.SiteName(baseUrl);
+
+    private static string DownloadClientBaseName(string? protocol, string? host, string? endpointUrl)
+        => ConnectionNames.AppOnHost(ConnectionNames.DownloadClientApp(protocol), string.IsNullOrWhiteSpace(host) ? endpointUrl : host);
+
     public async Task<IReadOnlyList<ConnectionItem>> ListConnectionsAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
@@ -275,7 +283,7 @@ public sealed class SqliteConnectionsRepository(
         var now = timeProvider.GetUtcNow();
         var item = new IndexerItem(
             Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New indexer",
+            Name: string.Empty,
             Protocol: IndexerProtocols.Normalize(request.Protocol),
             Privacy: IndexerPrivacy.Normalize(request.Privacy),
             BaseUrl: IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? string.Empty,
@@ -335,6 +343,15 @@ public sealed class SqliteConnectionsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        item = item with
+        {
+            Name = ConnectionNames.Unique(
+                IndexerBaseName(item.DefinitionId, item.BaseUrl),
+                ConnectionNames.PortOf(item.BaseUrl),
+                item.Id,
+                await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", item.Id, cancellationToken))
+        };
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -435,10 +452,14 @@ public sealed class SqliteConnectionsRepository(
             .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is null) return null;
 
-        var newName     = NormalizeName(request.Name) ?? existing.Name;
         var newProtocol = request.Protocol is not null ? IndexerProtocols.Normalize(request.Protocol) : existing.Protocol;
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? existing.BaseUrl;
+        var newName     = ConnectionNames.Unique(
+            IndexerBaseName(existing.DefinitionId, newBaseUrl),
+            ConnectionNames.PortOf(newBaseUrl),
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", id, cancellationToken));
         var newApiKey   = request.ApiKey is not null ? NormalizeName(request.ApiKey) : existing.ApiKey;
         var newPriority = request.Priority is >= 1 ? request.Priority.Value : existing.Priority;
         var newCats     = request.Categories is not null ? NormalizeCsv(request.Categories) : existing.Categories;
@@ -688,7 +709,7 @@ public sealed class SqliteConnectionsRepository(
         var now = timeProvider.GetUtcNow();
         var item = new DownloadClientItem(
             Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New download client",
+            Name: string.Empty,
             Protocol: NormalizeDownloadProtocol(request.Protocol),
             Host: NormalizeName(request.Host),
             Port: NormalizeNullablePositiveValue(request.Port),
@@ -725,6 +746,15 @@ public sealed class SqliteConnectionsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        item = item with
+        {
+            Name = ConnectionNames.Unique(
+                DownloadClientBaseName(item.Protocol, item.Host, item.EndpointUrl),
+                item.Port,
+                item.Id,
+                await ConnectionNameRows.OtherNamesAsync(connection, "download_clients", item.Id, cancellationToken))
+        };
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -933,13 +963,17 @@ public sealed class SqliteConnectionsRepository(
             .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is null) return null;
 
-        var newName     = NormalizeName(request.Name) ?? existing.Name;
         var newProtocol = request.Protocol is not null ? NormalizeDownloadProtocol(request.Protocol) : existing.Protocol;
         var newHost     = request.Host is not null ? NormalizeName(request.Host) : existing.Host;
         var newPort     = request.Port is >= 1 ? request.Port : existing.Port;
         var newUsername = request.Username is not null ? NormalizeName(request.Username) : existing.Username;
         var newSecret   = request.Password is not null ? NormalizeName(request.Password) : existing.Secret;
         var newEndpoint = request.EndpointUrl is not null ? NormalizePath(request.EndpointUrl) : existing.EndpointUrl;
+        var newName     = ConnectionNames.Unique(
+            DownloadClientBaseName(newProtocol, newHost, newEndpoint),
+            newPort,
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "download_clients", id, cancellationToken));
         var newUseSsl   = request.UseSsl ?? existing.UseSsl;
         var newUrlBase  = request.UrlBase is not null ? NormalizePath(request.UrlBase) : existing.UrlBase;
         var newAddPaused = request.AddPaused ?? existing.AddPaused;

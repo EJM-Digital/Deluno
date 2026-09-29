@@ -624,9 +624,10 @@ public sealed class ARemovedTitleTakesItsDownloadWithItTests
             var moviesRepository = new SqliteMovieCatalogRepository(storage.Factory, time);
             var seriesRepository = new SqliteSeriesCatalogRepository(storage.Factory, time);
 
-            await processors.CreateProcessorConnectionAsync(
+            var weir = await processors.CreateProcessorConnectionAsync(
                 new CreateProcessorConnectionRequest("Weir", "weir", "http://weir.local/submit", null, null, IsEnabled: true),
                 CancellationToken.None);
+            await LegacyConnectionNames.SetAsync(storage.Factory, "processor_connections", weir.Id, "Weir");
 
             return new World(
                 storage,

@@ -114,6 +114,9 @@ public sealed class AProcessorConnectionTranslatesMappedPathsTests
             isEnabled = true
         });
         Assert.True(connectionResponse.IsSuccessStatusCode, await connectionResponse.Content.ReadAsStringAsync());
+        // #1076: the name is worked out from the address now; the library above still names the processor the way an older install did.
+        var connectionId = (await connectionResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString()!;
+        await LegacyConnectionNames.SetAsync(app.Services.GetRequiredService<Deluno.Infrastructure.Storage.IDelunoDatabaseConnectionFactory>(), "processor_connections", connectionId, "Weir");
 
         return new Scene(library!.Id, downloads, output);
     }

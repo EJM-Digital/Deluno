@@ -54,6 +54,28 @@ public sealed class SqliteNotificationRepository(
         return items;
     }
 
+    /// <summary>#1076: "Discord on discord.com". Never typed; two of one app on one host tell themselves apart by port, then a suffix.</summary>
+    private static async Task<string> NameForAsync(
+        System.Data.Common.DbConnection connection,
+        string id,
+        string provider,
+        string? url,
+        CancellationToken cancellationToken)
+        => ConnectionNames.Unique(
+            ConnectionNames.AppOnHost(NotificationProviders.DisplayName(provider), url),
+            ConnectionNames.PortOf(url),
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "notification_webhooks", id, cancellationToken));
+
+    private static async Task<string> ProviderOfAsync(System.Data.Common.DbConnection connection, string id, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT provider FROM notification_webhooks WHERE id = @id;";
+        AddParameter(command, "@id", id);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return NotificationProviders.Normalize(value as string);
+    }
+
     public async Task<NotificationWebhookItem> CreateNotificationWebhookAsync(
         CreateNotificationWebhookRequest request,
         CancellationToken cancellationToken)
@@ -76,7 +98,7 @@ public sealed class SqliteNotificationRepository(
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", NormalizeName(request.Name) ?? "Webhook");
+        AddParameter(command, "@name", await NameForAsync(connection, id, NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
         AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);
@@ -119,7 +141,7 @@ public sealed class SqliteNotificationRepository(
             """;
 
         AddParameter(command, "@id", id);
-        AddParameter(command, "@name", NormalizeName(request.Name) ?? "Webhook");
+        AddParameter(command, "@name", await NameForAsync(connection, id, request.Provider is null ? await ProviderOfAsync(connection, id, cancellationToken) : NotificationProviders.Normalize(request.Provider), request.Url, cancellationToken));
         AddParameter(command, "@url", request.Url?.Trim() ?? string.Empty);
         AddParameter(command, "@eventFilters", NormalizeCsv(request.EventFilters));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);

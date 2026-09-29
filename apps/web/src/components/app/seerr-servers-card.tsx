@@ -379,9 +379,6 @@ export function SeerrServersCard({
         }
       >
         <DrawerSection title="Basics">
-          <Field label="Name" error={errors.name}>
-            <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} autoComplete="off" />
-          </Field>
           <Field label="Address" error={errors.baseUrl} help="Including the port, for example http://192.168.1.20:5055.">
             <Input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="http://192.168.1.20:5055" autoComplete="off" className="font-mono" />
           </Field>

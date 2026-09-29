@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -958,20 +959,13 @@ public sealed class MigrationAssistantService(
                 ["isEnabled"] = (!ReadBool(item, "enable").HasValue || ReadBool(item, "enable") == true).ToString(CultureInfo.InvariantCulture)
             };
 
-            if (existing.IndexersByName.TryGetValue(MakeKey(name), out var existingEndpoint) &&
-                !string.Equals(existingEndpoint, MakeKey(protocol, baseUrl), StringComparison.Ordinal))
-            {
-                operations.Add(Conflict(context, "indexer", name, "An indexer with this name already exists but points at a different protocol or URL. Deluno will not guess which one should win.", data));
-                continue;
-            }
-
             operations.Add(PlanCreateOrSkip(
                 context,
                 existing.IndexerKeys,
                 "source",
                 "indexer",
                 name,
-                MakeKey(protocol, baseUrl),
+                MakeKey(protocol, IndexerApiEndpoint.NormalizeBaseUrl(baseUrl)),
                 "Indexer will become a Deluno search source with imported categories and scope.",
                 "An indexer with this protocol and URL already exists.",
                 data,
@@ -1018,13 +1012,6 @@ public sealed class MigrationAssistantService(
                 ["isEnabled"] = (!ReadBool(item, "enable").HasValue || ReadBool(item, "enable") == true).ToString(CultureInfo.InvariantCulture)
             };
 
-            if (existing.DownloadClientsByName.TryGetValue(MakeKey(name), out var existingEndpoint) &&
-                !string.Equals(existingEndpoint, MakeKey(protocol, endpoint ?? host ?? name), StringComparison.Ordinal))
-            {
-                operations.Add(Conflict(context, "download-client", name, "A download client with this name already exists but points at a different host or endpoint. Deluno will not overwrite the existing client.", data));
-                continue;
-            }
-
             operations.Add(PlanCreateOrSkip(
                 context,
                 existing.DownloadClientKeys,
@@ -1067,13 +1054,6 @@ public sealed class MigrationAssistantService(
                 ["searchOnAdd"] = (!ReadBool(item, "searchOnAdd").HasValue || ReadBool(item, "searchOnAdd") == true).ToString(CultureInfo.InvariantCulture),
                 ["isEnabled"] = (!ReadBool(item, "enable").HasValue || ReadBool(item, "enable") == true).ToString(CultureInfo.InvariantCulture)
             };
-
-            if (existing.IntakeSourcesByName.TryGetValue(MakeKey(context.MediaType, name), out var existingFeed) &&
-                !string.Equals(existingFeed, MakeKey(provider, feedUrl), StringComparison.Ordinal))
-            {
-                operations.Add(Conflict(context, "intake-source", name, "An intake source with this name already exists but uses a different provider or feed. Deluno will not overwrite it.", data));
-                continue;
-            }
 
             operations.Add(PlanCreateOrSkip(
                 context,
@@ -2085,10 +2065,7 @@ public sealed class MigrationAssistantService(
         IReadOnlyDictionary<string, CustomFormatItem> CustomFormatsByIdentity,
         IReadOnlyDictionary<string, QualityProfileItem> QualityProfilesByKey,
         IReadOnlyDictionary<string, StoredReleasePreferencePlan> ReleasePreferencePlansByKey,
-        IReadOnlyDictionary<string, string> LibraryNamesByMedia,
-        IReadOnlyDictionary<string, string> IndexersByName,
-        IReadOnlyDictionary<string, string> DownloadClientsByName,
-        IReadOnlyDictionary<string, string> IntakeSourcesByName)
+        IReadOnlyDictionary<string, string> LibraryNamesByMedia)
     {
         public static async Task<ExistingState> LoadAsync(
             ILibrariesRepository repository,
@@ -2130,16 +2107,13 @@ public sealed class MigrationAssistantService(
             return new ExistingState(
                 profiles.Select(profile => MakeKey(profile.MediaType, profile.Name)).ToHashSet(StringComparer.Ordinal),
                 libraries.Select(library => MakeKey(library.MediaType, library.RootPath)).ToHashSet(StringComparer.Ordinal),
-                indexers.Select(indexer => MakeKey(indexer.Protocol, indexer.BaseUrl)).ToHashSet(StringComparer.Ordinal),
+                indexers.Select(indexer => MakeKey(NormalizeIndexerProtocol(indexer.Protocol), IndexerApiEndpoint.NormalizeBaseUrl(indexer.BaseUrl))).ToHashSet(StringComparer.Ordinal),
                 clients.Select(client => MakeKey(client.Protocol, client.EndpointUrl ?? client.Host ?? client.Name)).ToHashSet(StringComparer.Ordinal),
                 intakeSources.Select(source => MakeKey(source.MediaType, source.Provider, source.FeedUrl)).ToHashSet(StringComparer.Ordinal),
                 customFormatsByIdentity,
                 profiles.GroupBy(profile => MakeKey(profile.MediaType, profile.Name)).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal),
                 releasePreferencePlans,
-                libraries.GroupBy(library => MakeKey(library.MediaType, library.Name)).ToDictionary(group => group.Key, group => group.First().RootPath, StringComparer.Ordinal),
-                indexers.GroupBy(indexer => MakeKey(indexer.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Protocol, group.First().BaseUrl), StringComparer.Ordinal),
-                clients.GroupBy(client => MakeKey(client.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Protocol, group.First().EndpointUrl ?? group.First().Host ?? group.First().Name), StringComparer.Ordinal),
-                intakeSources.GroupBy(source => MakeKey(source.MediaType, source.Name)).ToDictionary(group => group.Key, group => MakeKey(group.First().Provider, group.First().FeedUrl), StringComparer.Ordinal));
+                libraries.GroupBy(library => MakeKey(library.MediaType, library.Name)).ToDictionary(group => group.Key, group => group.First().RootPath, StringComparer.Ordinal));
         }
 
         private static void AddCustomFormatIdentity(

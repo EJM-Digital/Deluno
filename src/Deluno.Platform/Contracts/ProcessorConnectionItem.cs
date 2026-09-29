@@ -37,7 +37,12 @@ public sealed record CreateProcessorConnectionRequest(
     string? AuthHeaderName,
     string? Secret,
     bool IsEnabled,
-    string? HealthCheckUrl = null);
+    string? HealthCheckUrl = null)
+{
+    /// <summary>#1076: the machine name the processor published (never sent by a client), used instead of the address host in the connection's name.</summary>
+    [JsonIgnore]
+    public string? MachineName { get; init; }
+}
 
 public sealed record UpdateProcessorConnectionRequest(
     string? Name,
@@ -46,7 +51,12 @@ public sealed record UpdateProcessorConnectionRequest(
     string? AuthHeaderName,
     string? Secret,
     bool IsEnabled,
-    string? HealthCheckUrl = null);
+    string? HealthCheckUrl = null)
+{
+    /// <summary>#1076: the machine name the processor published (never sent by a client), used instead of the address host in the connection's name.</summary>
+    [JsonIgnore]
+    public string? MachineName { get; init; }
+}
 
 public sealed record ProcessorConnectionTestResult(
     string ConnectionId,
@@ -64,6 +74,20 @@ public sealed record ProcessorSubmissionResult(
 
 public interface IProcessorConnectionService
 {
+    /// <summary>
+    /// #1076: the machine name a processor publishes in its capabilities
+    /// (GET /api/v1/intake/capabilities, answered to the webhook secret as
+    /// "machine_name"), or null when it publishes none, cannot be reached in a
+    /// few seconds, or is not that kind of processor. Any processor may do this;
+    /// nothing here knows which product it is.
+    /// </summary>
+    Task<string?> GetMachineNameAsync(
+        string submissionUrl,
+        string? authHeaderName,
+        string? secret,
+        CancellationToken cancellationToken)
+        => Task.FromResult<string?>(null);
+
     Task<ProcessorConnectionTestResult> TestAsync(
         ProcessorConnectionItem connection,
         CancellationToken cancellationToken);

@@ -76,6 +76,29 @@ public sealed class SqliteProcessorRepository(
         return await FindProcessorConnectionByNameAsync(nameFallback, cancellationToken);
     }
 
+    /// <summary>
+    /// #1076: "FileFlows on RIG". The machine name the processor publishes wins over the host
+    /// of its address; either way this machine's own address is written as its hostname.
+    /// </summary>
+    private static async Task<string> ProcessorNameAsync(
+        System.Data.Common.DbConnection connection,
+        string id,
+        string provider,
+        string submissionUrl,
+        string? machineName,
+        CancellationToken cancellationToken)
+    {
+        var app = provider == "fileflows-webhook" ? "FileFlows" : "Processor";
+        var named = string.IsNullOrWhiteSpace(machineName)
+            ? ConnectionNames.AppOnHost(app, submissionUrl)
+            : $"{app} on {(ConnectionNames.IsLoopback(machineName.Trim()) ? DelunoHostName.Current : machineName.Trim())}";
+        return ConnectionNames.Unique(
+            named,
+            ConnectionNames.PortOf(submissionUrl),
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "processor_connections", id, cancellationToken));
+    }
+
     public async Task<ProcessorConnectionItem> CreateProcessorConnectionAsync(
         CreateProcessorConnectionRequest request,
         CancellationToken cancellationToken)
@@ -83,7 +106,7 @@ public sealed class SqliteProcessorRepository(
         var now = timeProvider.GetUtcNow();
         var item = new ProcessorConnectionItem(
             Guid.CreateVersion7().ToString("N"),
-            NormalizeName(request.Name) ?? "Processor connection",
+            string.Empty,
             NormalizeProcessorConnectionProvider(request.Provider),
             NormalizeProcessorConnectionUrl(request.SubmissionUrl) ?? string.Empty,
             NormalizeProcessorAuthHeaderName(request.AuthHeaderName),
@@ -99,6 +122,10 @@ public sealed class SqliteProcessorRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+        item = item with
+        {
+            Name = await ProcessorNameAsync(connection, item.Id, item.Provider, item.SubmissionUrl, request.MachineName, cancellationToken)
+        };
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -140,9 +167,12 @@ public sealed class SqliteProcessorRepository(
         }
 
         var now = timeProvider.GetUtcNow();
-        var name = NormalizeName(request.Name) ?? existing.Name;
         var provider = NormalizeProcessorConnectionProvider(request.Provider ?? existing.Provider);
         var submissionUrl = NormalizeProcessorConnectionUrl(request.SubmissionUrl) ?? existing.SubmissionUrl;
+        // The name follows the address, and stays put when nothing about the address changed and no new machine name came.
+        var name = request.MachineName is null && provider == existing.Provider && string.Equals(submissionUrl, existing.SubmissionUrl, StringComparison.OrdinalIgnoreCase)
+            ? existing.Name
+            : await ProcessorNameAsync(connection, id.Trim(), provider, submissionUrl, request.MachineName, cancellationToken);
         var authHeaderName = NormalizeProcessorAuthHeaderName(request.AuthHeaderName ?? existing.AuthHeaderName);
         var secret = string.IsNullOrWhiteSpace(request.Secret) ? existing.Secret : request.Secret.Trim();
         // Not sent keeps the address; sent empty clears it.

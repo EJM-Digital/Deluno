@@ -289,7 +289,6 @@ export function SettingsListsPage() {
     event.preventDefault();
     if (!isOpen || busy) return;
     const nextErrors: typeof errors = {};
-    if (!form.name.trim()) nextErrors.name = "Give this list a name.";
     if (!form.feedUrl.trim() && form.provider !== "tmdb-popular") nextErrors.feedUrl = "Paste the list URL or identifier.";
     if (form.provider === "tmdb-person" && form.personCreditTypes.length === 0) {
       nextErrors.creditTypes = "Choose at least one credit type to follow.";
@@ -622,9 +621,6 @@ export function SettingsListsPage() {
       >
         <DrawerSection title="Basics">
           <FieldRow>
-            <Field label="Name" error={errors.name}>
-              <Input value={form.name} onChange={(event) => { setErrors((current) => ({ ...current, name: undefined })); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="Weekend movies" autoComplete="off" />
-            </Field>
             <Field label="Provider">
               <Select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} options={PROVIDERS} />
             </Field>

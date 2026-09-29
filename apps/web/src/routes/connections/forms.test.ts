@@ -154,7 +154,7 @@ describe("client form Use SSL and URL Base", () => {
 
   it("a new indexer says what is missing instead of nothing", () => {
     const errors = indexerFormErrors(emptyIndexerForm(), true);
-    expect(Object.keys(errors).sort()).toEqual(["apiKey", "baseUrl", "name"]);
+    expect(Object.keys(errors).sort()).toEqual(["apiKey", "baseUrl"]);
   });
 
   it("stops asking for the API key once the indexer exists", () => {
@@ -366,5 +366,12 @@ describe("indexer form proxy assignment", () => {
   it("reads a direct connection back as blank, not null", () => {
     const form = indexerFormFrom({ ...savedIndexer(), proxyId: null });
     expect(form.proxyId).toBe("");
+  });
+});
+
+describe("connection names (#1076)", () => {
+  it("a client or indexer form never asks for a name: the server names it from its address", () => {
+    expect(clientFormErrors(emptyClientForm())).not.toHaveProperty("name");
+    expect(indexerFormErrors(emptyIndexerForm(), true)).not.toHaveProperty("name");
   });
 });

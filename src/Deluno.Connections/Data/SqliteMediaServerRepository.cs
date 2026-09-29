@@ -126,7 +126,10 @@ public sealed class SqliteMediaServerRepository(
         var rowId = existing?.Id ?? Guid.CreateVersion7().ToString("N");
         AddParameter(command, "@id", rowId);
         AddParameter(command, "@kind", MediaServerKinds.Normalize(request.Kind) ?? existing?.Kind);
-        AddParameter(command, "@name", request.Name?.Trim());
+        AddParameter(command, "@name", ConnectionNames.Unique(
+            ConnectionNames.AppOnHost(MediaServerKinds.DisplayName(MediaServerKinds.Normalize(request.Kind) ?? existing?.Kind ?? string.Empty), request.BaseUrl),
+            ConnectionNames.PortOf(request.BaseUrl), rowId,
+            await ConnectionNameRows.OtherNamesAsync(connection, "media_servers", rowId, cancellationToken)));
         AddParameter(command, "@baseUrl", NormalizeBaseUrl(request.BaseUrl));
         AddParameter(command, "@token", string.IsNullOrWhiteSpace(token) ? null : secretProtector.Protect(TokenPurpose, token));
         AddParameter(command, "@isEnabled", request.IsEnabled ? 1 : 0);

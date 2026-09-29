@@ -234,7 +234,7 @@ public sealed class ImportPipelineServiceTests
 
         var updated = Assert.Single(await seerrAcquisitions.ListRecentAsync(seerrConnection.Id, 10, CancellationToken.None));
         Assert.Equal("available-failed", updated.Status);
-        Assert.Equal("Lab Seerr is unreachable", updated.Message);
+        Assert.Equal($"Seerr on {Deluno.Contracts.DelunoHostName.Current} is unreachable", updated.Message);
     }
 
     private sealed class UnreachableSeerrClient : Deluno.Integrations.Seerr.ISeerrClient

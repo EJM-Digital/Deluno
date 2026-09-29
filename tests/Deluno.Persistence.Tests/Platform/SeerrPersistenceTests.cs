@@ -34,7 +34,7 @@ public sealed class SeerrPersistenceTests
 
         await repository.RecordHealthAsync(created.Id, new SeerrTestResult(true, "healthy", "Connected to Lab Seerr (version 3.4.1).", 9, "Lab Seerr", "3.4.1"), CancellationToken.None);
         var renamed = await repository.SaveAsync(created.Id, new SaveSeerrRequest("Jellyseerr", "http://127.0.0.1:5055", "", true), CancellationToken.None);
-        Assert.Equal(("Jellyseerr", "key-1", "3.4.1", "healthy"), (renamed!.Name, renamed.ApiKey, renamed.Version, renamed.HealthStatus));
+        Assert.Equal(($"Seerr on {Deluno.Contracts.DelunoHostName.Current}", "key-1", "3.4.1", "healthy"), (renamed!.Name, renamed.ApiKey, renamed.Version, renamed.HealthStatus));
 
         var moved = await repository.SaveAsync(created.Id, new SaveSeerrRequest("Jellyseerr", "http://192.168.1.60:5055", "", true), CancellationToken.None);
         Assert.Equal(("untested", (string?)null), (moved!.HealthStatus, moved.Version));
@@ -51,7 +51,8 @@ public sealed class SeerrPersistenceTests
 
         var note = await service.ClearAsync("m1", "movies", "Nosferatu", "653", null, CancellationToken.None);
 
-        Assert.Equal("Lab Seerr could not be cleared yet (Deluno could not reach Lab Seerr); Deluno tries again at the next check.", note);
+        var self = $"Seerr on {Deluno.Contracts.DelunoHostName.Current}";
+        Assert.Equal($"{self} could not be cleared yet (Deluno could not reach {self}); Deluno tries again at the next check.", note);
         var owed = Assert.Single(await service.ListCleanupsAsync(CancellationToken.None));
         Assert.Equal(("m1", "Nosferatu", "653", 1), (owed.EntityId, owed.Title, owed.TmdbId, owed.Attempts));
 

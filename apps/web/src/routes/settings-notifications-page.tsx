@@ -594,9 +594,6 @@ export function SettingsNotificationsPage() {
       >
         <DrawerSection title="Basics">
           <FieldRow>
-            <Field label="Name">
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Home Assistant" autoComplete="off" />
-            </Field>
             <Field label="Provider" help="Each provider gets its own payload shape.">
               <Select
                 value={form.provider}
