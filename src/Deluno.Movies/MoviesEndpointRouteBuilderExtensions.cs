@@ -113,7 +113,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             [FromBody] UpdateMovieCollectionRequest request,
-            IMovieCollectionsRepository repository,
+            IMovieCollectionService service,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -122,17 +122,51 @@ public static class MoviesEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            if (request.MinimumAvailability is not null
-                && !MovieAvailability.All.Contains(request.MinimumAvailability.Trim(), StringComparer.OrdinalIgnoreCase))
+            try
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["minimumAvailability"] = [$"Choose one of: {string.Join(", ", MovieAvailability.All)}."]
-                });
+                var updated = await service.UpdateManyAsync([id], request, cancellationToken);
+                return updated.Count == 0 ? Results.NotFound() : Results.Ok(updated[0]);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["collection"] = [ex.Message] });
+            }
+        });
+
+        // #998: Radarr's collection editor changes several collections at once
+        // (monitor, add missing, quality profile, root folder, minimum
+        // availability, search on add); this is that call.
+        collections.MapPut("/bulk", async (
+            HttpContext httpContext,
+            [FromBody] BulkUpdateMovieCollectionsRequest request,
+            IMovieCollectionService service,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
             }
 
-            var updated = await repository.UpdateAsync(id, request, cancellationToken);
-            return updated is null ? Results.NotFound() : Results.Ok(updated);
+            try
+            {
+                var updated = await service.UpdateManyAsync(
+                    request.CollectionIds ?? [],
+                    new UpdateMovieCollectionRequest(
+                        request.Monitored,
+                        request.MonitorMovies,
+                        request.QualityProfileId,
+                        request.MinimumAvailability,
+                        request.SearchOnAdd,
+                        null,
+                        request.LibraryId),
+                    cancellationToken);
+                return Results.Ok(updated);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["collections"] = [ex.Message] });
+            }
         });
 
         collections.MapPost("/{id}/refresh", async (

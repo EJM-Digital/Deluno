@@ -42,7 +42,8 @@ public interface IMovieCollectionsRepository
     Task<MovieCollectionItem?> UpdateAsync(
         string id,
         UpdateMovieCollectionRequest request,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        MovieCollectionResolvedTargets? resolved = null);
 
     Task<bool> LinkMovieAsync(
         string collectionId,
