@@ -30,20 +30,21 @@ public sealed partial class TmdbMetadataProvider
         CancellationToken cancellationToken)
     {
         var results = await SearchTmdbAsync(request, cancellationToken);
+        var isIdentity = !string.IsNullOrWhiteSpace(request.IdSource) || !string.IsNullOrWhiteSpace(request.ProviderId);
         if (NormalizeMediaType(request.MediaType) != "tv")
         {
-            return results;
+            return isIdentity ? await ApplyLanguageAsync(results, cancellationToken) : results;
         }
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(request.IdSource) || !string.IsNullOrWhiteSpace(request.ProviderId))
+            if (isIdentity)
             {
                 // An identity search returns the one title; TheTVDB only adds to it.
                 var overlaid = new List<MetadataSearchResult>(results.Count);
                 foreach (var result in results)
                 {
-                    overlaid.Add(await OverlayTvdbAsync(result, cancellationToken));
+                    overlaid.Add(await ApplyLanguageAsync(await OverlayTvdbAsync(result, cancellationToken), cancellationToken));
                 }
 
                 return overlaid;
@@ -64,22 +65,39 @@ public sealed partial class TmdbMetadataProvider
         CancellationToken cancellationToken)
     {
         var lookup = await ResolveTmdbProviderRecordAsync(request, cancellationToken);
-        if (lookup.Status != MetadataProviderRecordStatus.Found ||
-            lookup.Result is null ||
-            NormalizeMediaType(request.MediaType) != "tv")
+        if (lookup.Status != MetadataProviderRecordStatus.Found || lookup.Result is null)
         {
             return lookup;
         }
 
+        if (NormalizeMediaType(request.MediaType) != "tv")
+        {
+            return lookup with { Result = await ApplyLanguageAsync(lookup.Result, cancellationToken) };
+        }
+
         try
         {
-            return lookup with { Result = await OverlayTvdbAsync(lookup.Result, cancellationToken) };
+            var overlaid = await OverlayTvdbAsync(lookup.Result, cancellationToken);
+            return lookup with { Result = await ApplyLanguageAsync(overlaid, cancellationToken) };
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogInformation(exception, "TheTVDB could not add to series {ProviderId}; keeping TMDb's record.", lookup.ProviderId);
-            return lookup;
+            return lookup with { Result = await ApplyLanguageAsync(lookup.Result, cancellationToken) };
         }
+    }
+
+    private async Task<IReadOnlyList<MetadataSearchResult>> ApplyLanguageAsync(
+        IReadOnlyList<MetadataSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        var localized = new List<MetadataSearchResult>(results.Count);
+        foreach (var result in results)
+        {
+            localized.Add(await ApplyLanguageAsync(result, cancellationToken));
+        }
+
+        return localized;
     }
 
     public Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(

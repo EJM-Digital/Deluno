@@ -345,7 +345,7 @@ export function LibraryTable(
                         column are one fact stated twice, which is what the row
                         already did with "Monitored" while the dot was halved.
                       */}
-                      <p className="truncate font-medium text-foreground">{item.title}</p>
+                      <p className="truncate font-medium text-foreground">{item.localizedTitle ?? item.title}</p>
                       <p className="text-[length:var(--type-caption)] text-muted-foreground">
                         {item.type === "movie" ? "Movie" : "TV"} · {item.year}
                       </p>

@@ -1135,7 +1135,7 @@ export function ShowDetailPage() {
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
               {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{series.title}</h1>
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{metaText("LocalizedTitle") ?? series.title}</h1>
                 {/* The shield, beside the title — one control, both shelves. */}
                 <button
                   type="button"
@@ -1155,7 +1155,12 @@ export function ShowDetailPage() {
                     : series.monitored ? <ShieldCheck className="h-5 w-5" /> : <ShieldOff className="h-5 w-5" />}
                 </button>
               </div>
-              {series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
+              {metaText("LocalizedTitle") ? (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Original title {series.originalTitle ?? series.title}
+                  {series.originalTitle && series.originalTitle !== series.title ? ` · Deluno name ${series.title}` : ""}
+                </p>
+              ) : series.originalTitle && series.originalTitle !== series.title ? <p className="mt-1 text-sm text-muted-foreground">Also known as {series.originalTitle}</p> : null}
               {alternateTitles.length ? (
                 <p className="mt-1 text-sm text-muted-foreground" title="Used to match a release filed under a region-specific spelling">
                   Alternate titles: {alternateTitles.join(", ")}

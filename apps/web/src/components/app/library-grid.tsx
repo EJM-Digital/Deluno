@@ -523,9 +523,9 @@ function PosterCard({
           // accessible label, so nothing is lost to the ellipsis.
           <p
             className={cn("h-[1lh] truncate font-semibold leading-tight text-foreground", titleCls)}
-            title={item.title}
+            title={item.localizedTitle ?? item.title}
           >
-            {item.title}
+            {item.localizedTitle ?? item.title}
           </p>
         ) : null}
 

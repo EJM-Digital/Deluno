@@ -78,21 +78,52 @@ the `/metadata/search` contract above, and the managed gateway deliberately
 accepts only title lookup terms, media type/year, and optional TMDb IDs (see
 below) — it is not a general-purpose query passthrough.
 
-Both settings therefore apply on the **direct** TMDb path only:
+The ratings region applies on the **direct** TMDb path only:
 
-- `direct` mode sends the saved language as TMDb's `language` query parameter
-  on search and detail requests, and picks a movie's or show's certification
-  for the saved country from TMDb's `release_dates` / `content_ratings`
-  detail data, falling back to `US` when that country has none.
-- `broker` mode returns whatever language and certification the broker itself
-  chose; Deluno cannot ask it for a different one under this contract.
-- `hybrid` mode behaves like `broker` for anything the broker answers, and
-  like `direct` only for the fallback calls it makes itself.
+- `direct` mode picks a movie's or show's certification for the saved country
+  from TMDb's `release_dates` / `content_ratings` detail data, falling back to
+  `US` when that country has none.
+- `broker` mode returns whatever certification the broker itself chose.
+- `hybrid` mode behaves like `broker` for anything the broker answers.
 
-A future broker contract could add `language` and `region` search parameters
-to close this gap; until then, an installation that cares about a
-non-English language or a non-US ratings board should use `direct` mode with
-its own TMDb key.
+The details language reaches every mode through the translation routes below
+(#1018), so it needs no `language` search parameter.
+
+## Translations (#1018)
+
+Radarr keeps every translation TMDb publishes for a film and shows the one
+chosen as its movie info language; Sonarr has no series translations. Deluno
+does the same with one small route per source. English or a blank language
+changes nothing: no translation is ever asked for.
+
+`GET /metadata/movie/{id}/translations` and `GET /metadata/tv/{id}/translations`
+(TMDb id) return every language TMDb has text for, once per title, so the answer
+is cached for a week whatever language an install asks for:
+
+```json
+{
+  "provider": "tmdb",
+  "providerId": "603",
+  "translations": [
+    { "language": "fr", "region": "FR", "title": "Matrix", "overview": "Un pirate...", "tagline": "Bienvenue dans le monde reel." }
+  ]
+}
+```
+
+Entries with no title, overview or tagline are left out. TV titles that have a
+TheTVDB id also use `GET /metadata/tvdb/tv/{tvdbId}/translations/{lang}`, where
+`{lang}` is TheTVDB's three-letter code (`fra`, `deu`, ...). It returns
+`{ "provider": "tvdb", "language": "fra", "title": "...", "overview": "..." }`,
+or `404 not_found` when TheTVDB has none (cached seven days).
+
+The app resolves each field in this order: TheTVDB (TV only), then TMDb's
+translation (the saved language and region, else the same language in any
+region), then the text the provider already sent. The title itself is never
+replaced: Deluno keeps it (folders, searches, the blocklist), stores the
+localized name beside it, and adds it to the title's known alternate names so
+release matching still sees every spelling. Direct and hybrid installs fall
+back to TMDb's own `/{movie|tv}/{id}/translations` and TheTVDB's
+`/series/{id}/translations/{lang}` with their own keys.
 
 ## Episode groups (TV numbering, #863)
 

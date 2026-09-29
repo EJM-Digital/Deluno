@@ -122,7 +122,19 @@ public sealed record MetadataSearchResult(
     /// picked from, kept so a changed "certification country" setting can
     /// choose a different stored country's facts instead of re-fetching TMDb.
     /// </summary>
-    IReadOnlyList<MetadataCountryFacts>? ReleaseFactsByCountry = null)
+    IReadOnlyList<MetadataCountryFacts>? ReleaseFactsByCountry = null,
+    /// <summary>
+    /// The title in the chosen metadata language (#1018), when a translation
+    /// exists. <see cref="Title"/> and <see cref="OriginalTitle"/> are never
+    /// replaced: the title is what folders and searches use, so the localized
+    /// name rides beside it for the screens to show. <see cref="Overview"/> and
+    /// <see cref="Tagline"/> are replaced by their translation when there is one.
+    /// </summary>
+    string? LocalizedTitle = null,
+    /// <summary>The language <see cref="LocalizedTitle"/> is in, as saved in Settings (for example <c>fr</c> or <c>pt-BR</c>).</summary>
+    string? LocalizedLanguage = null,
+    /// <summary>Where the translation came from: <c>tvdb</c> or <c>tmdb</c>.</summary>
+    string? LocalizedSource = null)
 {
     /// <summary>
     /// The catalogue entry Deluno would land on if this result were added, when
@@ -539,3 +551,11 @@ public sealed record MetadataSourceStatus(
     bool IsConfigured,
     string Mode,
     string Message);
+
+/// <summary>One title's name, overview and tagline in one language, as a provider published them (#1018).</summary>
+public sealed record MetadataTranslation(
+    string Language,
+    string? Region,
+    string? Title,
+    string? Overview,
+    string? Tagline);

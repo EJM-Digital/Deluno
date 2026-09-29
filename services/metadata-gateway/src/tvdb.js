@@ -30,6 +30,7 @@ export const TVDB_SERIES_TTL_SECONDS = 60 * 60 * 6;
 export const TVDB_CATALOGUE_TTL_SECONDS = 60 * 60 * 6;
 // Alternate orders (DVD, absolute) change far less often than the aired list.
 export const TVDB_ORDERS_TTL_SECONDS = 60 * 60 * 24;
+export const TVDB_TRANSLATION_TTL_SECONDS = 60 * 60 * 24 * 7;
 export const TVDB_REMOTE_ID_TTL_SECONDS = 60 * 60 * 24 * 7;
 // The bearer token is valid for a month; renew a few days early.
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 25;
@@ -66,6 +67,10 @@ export function matchTvdbRoute(pathname) {
   const groups = /^\/metadata\/tvdb\/tv\/(\d{1,12})\/episode-groups$/.exec(pathname);
   if (groups) {
     return { kind: "tvdb-episode-groups", id: groups[1] };
+  }
+  const translation = /^\/metadata\/tvdb\/tv\/(\d{1,12})\/translations\/([a-z]{3})$/.exec(pathname);
+  if (translation) {
+    return { kind: "tvdb-translation", id: translation[1], language: translation[2] };
   }
   const remote = /^\/metadata\/tvdb\/remote\/(tt\d{1,12})$/.exec(pathname);
   if (remote) {
@@ -248,6 +253,21 @@ export async function searchTvdb(lookup, env, request = fetch) {
   return { provider: "tvdb", resultCount: results.length, results, attribution: TVDB_ATTRIBUTION };
 }
 
+/**
+ * One series' name and overview in one language (TheTVDB's three-letter code).
+ * A language TheTVDB has no translation for is a 404, which the app reads as
+ * "fall back to TMDb, then the original".
+ */
+export async function lookupTvdbTranslation(id, language, env, request = fetch) {
+  const payload = await tvdbGet(env, `/series/${id}/translations/${language}`, {}, request);
+  const title = text(payload?.data?.name);
+  const overview = text(payload?.data?.overview);
+  if (!title && !overview) {
+    throw new TvdbRequestError(404);
+  }
+  return { provider: "tvdb", language, title, overview, attribution: TVDB_ATTRIBUTION };
+}
+
 export async function lookupTvdbSeries(id, env, request = fetch) {
   const payload = await tvdbGet(env, `/series/${id}/extended`, { short: "false" }, request);
   const record = payload?.data;
@@ -418,6 +438,11 @@ export async function serveTvdbRoute(route, url, env, cache, json, request = fet
       key = tvdbCacheKey("series", route.id);
       ttl = TVDB_SERIES_TTL_SECONDS;
       load = () => lookupTvdbSeries(route.id, env, request);
+      break;
+    case "tvdb-translation":
+      key = tvdbCacheKey("translation", `${route.id}|${route.language}`);
+      ttl = TVDB_TRANSLATION_TTL_SECONDS;
+      load = () => lookupTvdbTranslation(route.id, route.language, env, request);
       break;
     case "tvdb-catalogue":
       key = tvdbCacheKey("catalogue", route.id);

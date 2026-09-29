@@ -100,6 +100,8 @@ export interface MediaItem {
   inCinemas?: string | null;
   originalLanguage?: string | null;
   originalTitle?: string | null;
+  /** The title in the chosen metadata language (#1018); the plain title stays what folders and searches use. */
+  localizedTitle?: string | null;
   path?: string | null;
   qualityProfile?: string | null;
   runtimeMinutes?: number | null;

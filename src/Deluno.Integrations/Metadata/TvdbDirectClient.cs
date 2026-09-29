@@ -57,6 +57,20 @@ internal sealed partial class TvdbDirectClient(HttpClient httpClient, string api
         return MapSeries(data, translation);
     }
 
+    /// <summary>One language's name and overview; <paramref name="language"/> is TheTVDB's three-letter code. Null when TheTVDB has none.</summary>
+    public async Task<TvdbTranslation?> GetTranslationAsync(string tvdbId, string language, CancellationToken cancellationToken)
+    {
+        var payload = await GetAsync($"{Api}/series/{Uri.EscapeDataString(tvdbId)}/translations/{Uri.EscapeDataString(language)}", cancellationToken);
+        if (payload is null || !payload.Value.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var title = Text(data, "name");
+        var overview = Text(data, "overview");
+        return title is null && overview is null ? null : new TvdbTranslation(title, overview);
+    }
+
     public async Task<string?> FindByImdbIdAsync(string imdbId, CancellationToken cancellationToken)
     {
         var payload = await GetAsync($"{Api}/search/remoteid/{Uri.EscapeDataString(imdbId)}", cancellationToken);
