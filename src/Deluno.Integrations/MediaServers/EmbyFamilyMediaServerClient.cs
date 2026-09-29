@@ -265,17 +265,17 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         return (names, null);
     }
 
-    /// <summary>What is playing now, from <c>/Sessions</c>: each play's item, season and show (#1012).</summary>
-    public async Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    /// <summary>What is playing now, from <c>/Sessions</c>: each play's item, season, show, file and provider ids (#1012).</summary>
+    public async Task<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
     {
         var call = await GetAsync(connection, "/Sessions", cancellationToken);
         using var document = call.Ok ? TryParse(call.Body) : null;
         if (document is null || document.RootElement.ValueKind != JsonValueKind.Array)
         {
-            return new MediaServerAnswer<IReadOnlyList<string>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
+            return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
         }
 
-        var ids = new List<string>();
+        var plays = new List<MediaServerPlay>();
         foreach (var session in document.RootElement.EnumerateArray())
         {
             if (!session.TryGetProperty("NowPlayingItem", out var playing) || playing.ValueKind != JsonValueKind.Object)
@@ -283,16 +283,29 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
                 continue;
             }
 
-            foreach (var name in new[] { "Id", "SeasonId", "SeriesId" })
+            var ids = new[] { "Id", "SeasonId", "SeriesId" }.Select(name => String(playing, name)).OfType<string>().Where(id => id.Length > 0).ToArray();
+            var paths = new List<string>();
+            if (String(playing, "Path") is { Length: > 0 } path) paths.Add(path);
+            if (playing.TryGetProperty("MediaSources", out var sources) && sources.ValueKind == JsonValueKind.Array)
             {
-                if (String(playing, name) is { Length: > 0 } id)
-                {
-                    ids.Add(id);
-                }
+                paths.AddRange(sources.EnumerateArray().Select(source => String(source, "Path")).OfType<string>().Where(file => file.Length > 0));
             }
+
+            string? Provider(string name)
+            {
+                if (!playing.TryGetProperty("ProviderIds", out var providers) || providers.ValueKind != JsonValueKind.Object) return null;
+                foreach (var property in providers.EnumerateObject())
+                {
+                    if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && property.Value.ValueKind == JsonValueKind.String) return property.Value.GetString();
+                }
+
+                return null;
+            }
+
+            plays.Add(new MediaServerPlay(ids, paths.Distinct(StringComparer.Ordinal).ToArray(), String(playing, "Type") == "Movie", Provider("Tmdb"), Provider("Tvdb"), Provider("Imdb")));
         }
 
-        return new MediaServerAnswer<IReadOnlyList<string>>.Reported(ids.Distinct(StringComparer.Ordinal).ToArray());
+        return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(plays);
     }
 
     public async Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(

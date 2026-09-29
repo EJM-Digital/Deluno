@@ -569,31 +569,43 @@ public sealed class MediaServerClientTests
 
     // ------------------------------------------------------ what is playing now (#1012)
 
+    private static IReadOnlyList<MediaServerPlay> Plays(MediaServerAnswer<IReadOnlyList<MediaServerPlay>> answer)
+        => Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported>(answer).Value;
+
     [Fact]
-    public async Task Plex_names_the_item_season_and_show_of_every_play()
+    public async Task Plex_names_the_ids_file_and_provider_ids_of_every_play()
     {
         var client = new PlexMediaServerClient(Factory(request =>
         {
             Assert.Equal("/status/sessions", request.RequestUri!.AbsolutePath);
-            return Json("""{"MediaContainer":{"size":2,"Metadata":[{"ratingKey":"501","type":"movie"},{"ratingKey":"611","parentRatingKey":"61","grandparentRatingKey":"6","type":"episode"}]}}""");
+            return Json("""
+                {"MediaContainer":{"size":2,"Metadata":[
+                  {"ratingKey":"501","type":"movie","Guid":[{"id":"imdb://tt0013442"},{"id":"tmdb://653"}],"Media":[{"Part":[{"file":"/movies/Nosferatu (1922)/Nosferatu.mkv"}]}]},
+                  {"ratingKey":"611","parentRatingKey":"61","grandparentRatingKey":"6","type":"episode","Media":[{"Part":[{"file":"/tv/Show/S01E01.mkv"}]}]}]}}
+                """);
         }));
 
-        var answer = await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None);
+        var plays = Plays(await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
 
-        Assert.Equal(["501", "6", "61", "611"], Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Reported>(answer).Value.Order());
+        var film = plays[0];
+        Assert.Equal((true, "653", "tt0013442"), (film.IsMovie, film.TmdbId, film.ImdbId));
+        Assert.Equal(["/movies/Nosferatu (1922)/Nosferatu.mkv"], film.Paths);
+        var episode = plays[1];
+        Assert.Equal(["611", "61", "6"], episode.ItemIds);
+        Assert.False(episode.IsMovie);
     }
 
     [Fact]
     public async Task Plex_with_nothing_playing_says_nothing_is_playing_but_an_unreadable_answer_says_it_could_not_ask()
     {
         var idle = new PlexMediaServerClient(Factory(_ => Json("""{"MediaContainer":{"size":0}}""")));
-        Assert.Empty(Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Reported>(await idle.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)).Value);
+        Assert.Empty(Plays(await idle.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
 
         var refused = new PlexMediaServerClient(Factory(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Unreachable>(await refused.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await refused.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
 
         var nonsense = new PlexMediaServerClient(Factory(_ => Json("""{"hello":"world"}""")));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None));
     }
 
     [Theory]
@@ -606,25 +618,30 @@ public sealed class MediaServerClientTests
             Assert.Equal(expectedPath, request.RequestUri!.AbsolutePath);
             return Json("""
                 [{"Id":"s1","UserName":"owner"},
-                 {"Id":"s2","NowPlayingItem":{"Id":"e9","SeasonId":"se1","SeriesId":"sh1","Type":"Episode"}},
-                 {"Id":"s3","NowPlayingItem":{"Id":"m7","Type":"Movie"}}]
+                 {"Id":"s2","NowPlayingItem":{"Id":"e9","SeasonId":"se1","SeriesId":"sh1","Type":"Episode","Path":"D:\\TV\\Show\\S01E09.mkv"}},
+                 {"Id":"s3","NowPlayingItem":{"Id":"m7","Type":"Movie","ProviderIds":{"Tmdb":"653","Imdb":"tt0013442"},"MediaSources":[{"Path":"/media/Nosferatu.mkv"}]}}]
                 """);
         });
         IMediaServerPlaybackReader client = kind == MediaServerKinds.Jellyfin ? new JellyfinMediaServerClient(factory) : new EmbyMediaServerClient(factory);
 
-        var answer = await client.ListPlayingAsync(Server(kind), CancellationToken.None);
+        var plays = Plays(await client.ListPlayingAsync(Server(kind), CancellationToken.None));
 
-        Assert.Equal(["e9", "m7", "se1", "sh1"], Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Reported>(answer).Value.Order());
+        Assert.Equal(2, plays.Count);
+        Assert.Equal(["e9", "se1", "sh1"], plays[0].ItemIds);
+        Assert.False(plays[0].IsMovie);
+        Assert.Equal([@"D:\TV\Show\S01E09.mkv"], plays[0].Paths);
+        Assert.Equal((true, "653", "tt0013442"), (plays[1].IsMovie, plays[1].TmdbId, plays[1].ImdbId));
+        Assert.Equal(["/media/Nosferatu.mkv"], plays[1].Paths);
     }
 
     [Fact]
     public async Task A_Jellyfin_that_cannot_be_reached_or_answers_nonsense_could_not_be_asked_what_is_playing()
     {
         var down = new JellyfinMediaServerClient(Factory(_ => throw new HttpRequestException("refused")));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Unreachable>(await down.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await down.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
 
         var nonsense = new JellyfinMediaServerClient(Factory(_ => Json("""{"not":"a list"}""")));
-        Assert.IsType<MediaServerAnswer<IReadOnlyList<string>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
+        Assert.IsType<MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable>(await nonsense.ListPlayingAsync(Server(MediaServerKinds.Jellyfin), CancellationToken.None));
     }
 
     private static HttpResponseMessage Json(string body)

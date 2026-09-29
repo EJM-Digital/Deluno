@@ -222,12 +222,12 @@ public static class RetentionModule
                 return Results.NotFound();
             }
 
-            if (request.Days is not { } days || days < RetentionLimits.MinPostponeDays || days > RetentionLimits.MaxPostponeDays)
+            if (RetentionLimits.PostponeProblem(request.Days) is { } problem)
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = [$"Postpone by a whole number of days from {RetentionLimits.MinPostponeDays} to {RetentionLimits.MaxPostponeDays}."] });
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = [problem] });
             }
 
-            return Results.Ok(await service.PostponeAsync(rule, request.EntityIds ?? [], days, cancellationToken));
+            return Results.Ok(await service.PostponeAsync(rule, request.EntityIds ?? [], request.Days!.Value, cancellationToken));
         });
 
         // Run now: the same check the schedule runs.

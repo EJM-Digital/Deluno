@@ -50,8 +50,10 @@ public sealed class RetentionRuleTests
     private readonly FakeRetentionSeerr _seerr = new();
     private readonly Mock<IQualityModelService> _qualityModel = new();
     private readonly List<MovieListItem> _catalogue = [];
+    private readonly Mock<IMediaServerClient> _other = new();
+    private readonly Mock<IMediaServerPlaybackReader> _otherPlayback;
     private readonly Mock<IMediaServerPlaybackReader> _playback;
-    private MediaServerAnswer<IReadOnlyList<string>> _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+    private MediaServerAnswer<IReadOnlyList<MediaServerPlay>> _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([]);
     private readonly MediaServerConnection _server =new("server-1", "jellyfin", "Rig lab Jellyfin", "http://127.0.0.1:8096", "key", true, "healthy", null, null, null, "WIN-RIG", "id", Now, Now);
 
     public RetentionRuleTests()
@@ -82,6 +84,8 @@ public sealed class RetentionRuleTests
             Now));
         _jellyfin.SetupGet(client => client.Kind).Returns("jellyfin");
         // Jellyfin can say what is being played (#1012); each test sets what it says.
+        _other.SetupGet(client => client.Kind).Returns("emby");
+        _otherPlayback = _other.As<IMediaServerPlaybackReader>();
         _playback = _jellyfin.As<IMediaServerPlaybackReader>();
         _playback.Setup(reader => reader.ListPlayingAsync(_server, It.IsAny<CancellationToken>())).ReturnsAsync(() => _playing);
         _recycleBin.Setup(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()))
@@ -713,6 +717,24 @@ public sealed class RetentionRuleTests
         Assert.Equal(before.AddDays(days), after);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(-3)]
+    [InlineData(3651)]
+    public void Postponing_by_no_days_a_negative_number_or_too_many_is_refused(int? days)
+    {
+        Assert.Equal("Postpone by a whole number of days from 1 to 3650.", RetentionLimits.PostponeProblem(days));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3650)]
+    public void Postponing_by_one_to_3650_days_is_accepted(int days)
+    {
+        Assert.Null(RetentionLimits.PostponeProblem(days));
+    }
+
     [Fact]
     public async Task Postponing_something_not_on_the_list_or_already_done_changes_nothing()
     {
@@ -890,14 +912,80 @@ public sealed class RetentionRuleTests
         Assert.Contains(problems, problem => problem.Contains(expected, StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void Waiting_while_something_plays_needs_a_server_to_ask()
-    {
-        var problems = RetentionEvaluator.Validate(
-            new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [Keep("added:beyond:30")], [], false, DeferWhilePlaying: true),
-            [_server]);
+    // Every connected server is asked, not only the ones the rule reads (#1012): the files are deleted for all of them.
 
-        Assert.Contains(problems, problem => problem.Contains("what is being played", StringComparison.Ordinal));
+    private static readonly string NosferatuPlayed = "c:/deluno/retentionlab/movies/NOSFERATU (1922)/nosferatu (1922).mkv";
+
+    private async Task<(RetentionRule Rule, Mock<IActivityFeedRepository> Feed)> ReadyToRemoveWithAnotherServerAsync(MediaServerAnswer<IReadOnlyList<MediaServerPlay>> otherServerSays, bool otherEnabled = true)
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
+        var other = _server with { Id = "server-2", Kind = "emby", Name = "Family Emby", IsEnabled = otherEnabled };
+        _servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([_server, other]);
+        _otherPlayback.Setup(reader => reader.ListPlayingAsync(It.Is<MediaServerConnection>(server => server.Id == "server-2"), It.IsAny<CancellationToken>())).ReturnsAsync(otherServerSays);
+        var feed = new Mock<IActivityFeedRepository>();
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        return (rule, feed);
+    }
+
+    [Fact]
+    public async Task A_film_playing_on_a_server_the_rule_does_not_read_is_found_by_its_file_and_not_removed()
+    {
+        var (rule, feed) = await ReadyToRemoveWithAnotherServerAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["x1"], [NosferatuPlayed], true)]));
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Said(feed, "retention.deferred", "it is being played right now", Times.Once());
+    }
+
+    [Fact]
+    public async Task A_film_playing_under_another_path_is_found_by_its_provider_ids()
+    {
+        var (rule, _) = await ReadyToRemoveWithAnotherServerAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["x1"], ["/mnt/elsewhere/n.mkv"], true, TmdbId: "653")]));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_session_that_matches_nothing_of_the_titles_does_not_hold_it_back()
+    {
+        var (rule, _) = await ReadyToRemoveWithAnotherServerAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(
+            [new MediaServerPlay(["x1"], ["/mnt/elsewhere/other.mkv"], true, TmdbId: "999", ImdbId: "tt0000001")]));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("m1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_connected_server_that_cannot_be_asked_defers_the_removal_and_says_which()
+    {
+        var (rule, feed) = await ReadyToRemoveWithAnotherServerAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable("Deluno could not reach Family Emby."));
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var held = Assert.Single(run.Items!);
+        Assert.Equal(RetentionItemOutcomes.Held, held.Outcome);
+        Assert.Contains("Family Emby", held.Message, StringComparison.Ordinal);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingUnreachableEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_disabled_server_is_not_asked_and_does_not_defer_anything()
+    {
+        var (rule, _) = await ReadyToRemoveWithAnotherServerAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable("off"), otherEnabled: false);
+
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+        _otherPlayback.Verify(reader => reader.ListPlayingAsync(It.IsAny<MediaServerConnection>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ------------------------------------------------- playing now (#1012)
@@ -909,7 +997,7 @@ public sealed class RetentionRuleTests
         var feed = new Mock<IActivityFeedRepository>();
         await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["j1"], [])]);
 
         var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
 
@@ -927,7 +1015,7 @@ public sealed class RetentionRuleTests
 
         // It has stopped: the removal that was deferred goes ahead.
         _clock.Now = Now.AddDays(2).AddHours(16);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([]);
         var later = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
         Assert.Equal("m1", Assert.Single(later.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
@@ -940,7 +1028,7 @@ public sealed class RetentionRuleTests
         var feed = new Mock<IActivityFeedRepository>();
         await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Unreachable("Deluno could not reach Rig lab Jellyfin.");
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Unreachable("Deluno could not reach Rig lab Jellyfin.");
 
         var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
 
@@ -959,7 +1047,7 @@ public sealed class RetentionRuleTests
         var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.NotSupported("Rig lab Jellyfin cannot say what is being played.");
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.NotSupported("Rig lab Jellyfin cannot say what is being played.");
 
         var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
 
@@ -973,7 +1061,7 @@ public sealed class RetentionRuleTests
         var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j2", "somebody-elses-show"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["j2", "somebody-elses-show"], [])]);
 
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
@@ -985,7 +1073,7 @@ public sealed class RetentionRuleTests
         _store.Add(old);
         await Service().CheckAsync(old, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["j1"], [])]);
         await Service().CheckAsync(old, "schedule", CancellationToken.None);
         _playback.Verify(reader => reader.ListPlayingAsync(It.IsAny<MediaServerConnection>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -1001,7 +1089,7 @@ public sealed class RetentionRuleTests
         _clock.Now = Now.AddDays(2);
 
         // Season 1 is what is matched; a play in season 2 (js2, its episode, the show) is not a play of season 1.
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["js2", "je3"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["js2", "je3"], [])]);
         var other = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         Assert.Equal("s1:s1", Assert.Single(other.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
     }
@@ -1014,7 +1102,7 @@ public sealed class RetentionRuleTests
         _store.Add(rule);
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["je2", "js1", "js"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["je2", "js1", "js"], [])]);
 
         var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
 
@@ -1029,7 +1117,7 @@ public sealed class RetentionRuleTests
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
         _clock.Now = Now.AddDays(2);
         await Service().CheckAsync(rule, "schedule", CancellationToken.None);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([new MediaServerPlay(["j1"], [])]);
 
         var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
 
@@ -1038,7 +1126,7 @@ public sealed class RetentionRuleTests
         _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         // It is still Ready to remove; confirming again after it has stopped removes it.
         Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
-        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+        _playing = new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([]);
         await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -1058,7 +1146,7 @@ public sealed class RetentionRuleTests
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
         return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
-            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, (feed ?? new Mock<IActivityFeedRepository>()).Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object,
+            new MediaServerClientRegistry([_jellyfin.Object, _other.Object]), _seerr, (feed ?? new Mock<IActivityFeedRepository>()).Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object,
             null, tags, _servers.Object);
     }
 
