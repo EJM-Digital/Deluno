@@ -202,9 +202,9 @@ externalUrl }`. The TMDb search/detail payload also gained `tvDbId`.
 | Secret | Meaning |
 | --- | --- |
 | `TVDB_API_KEY` | The TheTVDB v4 API key. Required for the routes above; without it they answer `503`. |
-| `TVDB_PIN` | Optional. Only for a subscriber-supported ("user-supported") key: the subscriber's PIN, sent at login. Leave unset for a negotiated/licensed key, which must send none. |
+| `TVDB_PIN` | Not set on the broker: its key is a licensed project key and sends no PIN. Only meaningful in direct mode, for a subscriber-supported ("user-supported") key. |
 
-`npx wrangler secret put TVDB_API_KEY` (and `TVDB_PIN` if needed). The bearer
+`npx wrangler secret put TVDB_API_KEY` (no PIN: the broker key is licensed). The bearer
 token from `/login` lasts one month and is cached in KV for 25 days.
 
 ### Direct mode
@@ -243,7 +243,7 @@ and OpenAPI file.
   to these routes too.
 - Bearer token: valid one month.
 
-Confirm with TheTVDB which key type applies to the hosted gateway before
-release: a negotiated/licensed key needs no PIN, while a subscriber-supported
-key is tied to one subscriber's PIN and may not be intended to serve many
-installs.
+Key type (decided by James, 29 Sep 2026): the gateway's TheTVDB key is a
+licensed project key, so the broker sends no PIN and `TVDB_PIN` is not needed
+for it. PIN support stays only for direct-mode users who hold their own
+subscriber-supported key.
