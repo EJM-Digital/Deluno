@@ -1,12 +1,12 @@
 # Deluno 1.0.0 Release Notes (Draft)
 
-Updated: 2026-08-13
+Updated: 2026-09-29
 
-Status: draft for issue #86. Finalize this file against the approved GA candidate tag before publication.
+Status: draft for issue #86, written against candidate `1.0.0-rc.23` (rc.22 was not released; see [the GA release checklist](./ga-release-checklist.md)). The plain-language per-version notes are in `RELEASE_NOTES.md` at the repo root. Finalize this file against the approved GA candidate tag before publication.
 
 ## Summary
 
-Deluno 1.0.0 is planned as the first GA release for the current Windows packaged update model and operational workflow baseline. This draft must be finalized only after the approved GA candidate has passed the release gates.
+Deluno 1.0.0 is planned as the first GA release, and its current candidate is `1.0.0-rc.23`, for the current Windows packaged update model and operational workflow baseline. This draft must be finalized only after the approved GA candidate has passed the release gates.
 
 Highlights:
 
@@ -54,7 +54,14 @@ supplied for the release.
 
 ## Notable Changes Since 0.1.0
 
-Populate this section from merged changes on the approved candidate. Do not include a capability merely because it was planned or prototyped.
+Populate this section from merged changes on the approved candidate. Do not include a capability merely because it was planned or prototyped. The full user-facing list for `1.0.0-rc.23` is its section of `RELEASE_NOTES.md`; the headlines are:
+
+- The installer's tick-box download clients and Weir start on their own, listen on this computer only, and are connected to Deluno and tested automatically; first run goes in two steps.
+- Tags decide which titles an indexer, download client or notification connection is used for, with one tag picker everywhere.
+- Seerr requests are placed by Deluno's routing rules, and an unplaced 4K request is refused.
+- TheTVDB describes TV shows first, and titles show in your chosen language.
+- Retention rules gained audio language, watching, collection and playing-now checks.
+- Library pills put every title in exactly one pill.
 
 - **A release Deluno judges genuinely bad is now removed from the client and its files deleted by default** (#904). Previously it was only blocklisted and searched again, leaving the dead download and its files behind. Any install that never changed the "remove from client" and "delete files" cleanup settings moves to the new default automatically; one that already set either off keeps that choice. This never applies to a setup problem on your own machine — a full disk, a permissions error, or files missing from disk — which is never treated as a bad release (#880, #881): those stay in the client, keep their files, and are shown as a problem to fix rather than blocklisted, replaced, removed, or deleted.
 

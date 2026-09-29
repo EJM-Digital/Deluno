@@ -1,6 +1,6 @@
 # Deluno 1.x GA Release Checklist
 
-Updated: 2026-09-05
+Updated: 2026-09-29
 
 This checklist is the source of truth for promoting Deluno from `0.x` prerelease to `1.x` GA.
 
@@ -116,6 +116,27 @@ Exit criteria:
 2. QA owner confirms matrix + regression gates.
 3. Product owner confirms user-facing notes and upgrade guidance.
 4. Final approver confirms GA decision in issue #78.
+
+## Release Decision Log
+
+### rc.22: NO-GO (29 Sep 2026, the owner)
+
+Candidate tag: `v1.0.0-rc.22`. Decision: **NO-GO**, not released. Reason
+(the owner, on [#941](https://github.com/jampat000/Deluno/issues/941)): rc.22 is
+superseded by about 60 fixes on `main`. The candidate is cut again as
+`1.0.0-rc.23` once the installer's all-six clean-VM run passes
+([#968](https://github.com/jampat000/Deluno/issues/968)) and the rig checks
+pass ([#959](https://github.com/jampat000/Deluno/issues/959),
+[#1027](https://github.com/jampat000/Deluno/issues/1027)); the GA regression
+is then run on rc.23 and its summary and decision log are posted on #941.
+
+### rc.23: pending
+
+Candidate: `1.0.0-rc.23` (`Directory.Build.props` and `RELEASE_NOTES.md`
+already carry it). No decision yet. The regression summary draft is
+`artifacts/rc23-regression-summary.md`; the final CI, clean-VM and
+Release/Docker run links go there before a GO or NO-GO is posted. The
+"Final release decision log" box above stays unticked until that decision.
 
 ## Release Decision Log Template
 

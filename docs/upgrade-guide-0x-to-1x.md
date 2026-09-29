@@ -1,8 +1,15 @@
 # Upgrade Guide: Deluno 0.x to 1.x
 
-Updated: 2026-08-13
+Updated: 2026-09-29
 
-This guide is for users upgrading from packaged `0.1.x` builds to `1.x` GA.
+This guide is for users upgrading from packaged `0.1.x` builds to `1.x`.
+
+Current candidate: `1.0.0-rc.23` (rc.22 was not released; see the decision log
+in [the GA release checklist](./ga-release-checklist.md)). The steps below are
+the ones being run against that candidate. Deluno is not code-signed, so
+Windows SmartScreen warns on the first run of Setup: choose **More info**, then
+**Run anyway**. Existing installs keep what they do today after upgrading; new
+automatic behaviour is off until you switch it on.
 
 ## Before You Upgrade
 
