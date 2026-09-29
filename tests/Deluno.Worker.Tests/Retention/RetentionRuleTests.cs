@@ -1130,6 +1130,115 @@ public sealed class RetentionRuleTests
         _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ------------------------------------------------- playing on another server, by show and numbers (#1071)
+
+    private static MediaServerPlay EpisodePlay(string? showTmdb, int? season, int? episode, string? showName = "Breaking Bad", string? showTvdb = null)
+        => new(["x1"], ["/mnt/elsewhere/ep.mkv"], IsEpisode: true, ShowName: showName, ShowTmdbId: showTmdb, ShowTvdbId: showTvdb, SeasonNumber: season, EpisodeNumber: episode);
+
+    private async Task<RetentionRule> SeasonRuleWithAnotherServerPlayingAsync(MediaServerPlay play)
+    {
+        SeasonLibrary();
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1, DeferWhilePlaying = true };
+        _store.Add(rule);
+        var other = _server with { Id = "server-2", Kind = "emby", Name = "Family Emby" };
+        _servers.Setup(repo => repo.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([_server, other]);
+        _otherPlayback.Setup(reader => reader.ListPlayingAsync(It.Is<MediaServerConnection>(server => server.Id == "server-2"), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported([play]));
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        return rule;
+    }
+
+    [Fact]
+    public async Task A_season_is_held_while_an_episode_of_its_show_plays_on_another_server_under_another_path()
+    {
+        var rule = await SeasonRuleWithAnotherServerPlayingAsync(EpisodePlay("1396", 1, 2));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_season_is_not_held_by_another_season_of_the_show_playing_elsewhere()
+    {
+        var rule = await SeasonRuleWithAnotherServerPlayingAsync(EpisodePlay("1396", 2, 1));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("s1:s1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+    }
+
+    [Fact]
+    public async Task An_episode_playing_elsewhere_whose_show_cannot_be_told_defers_the_removal()
+    {
+        // No show ids from the server and a name that does not match: not knowing is not "nobody is watching".
+        var rule = await SeasonRuleWithAnotherServerPlayingAsync(EpisodePlay(null, 1, 2, showName: "Something Else"));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+    }
+
+    [Fact]
+    public async Task A_different_show_playing_elsewhere_by_its_own_ids_does_not_hold_the_season_back()
+    {
+        var rule = await SeasonRuleWithAnotherServerPlayingAsync(EpisodePlay("9999", 1, 1, showName: "Other Show"));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("s1:s1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+    }
+
+    [Theory]
+    [InlineData(RetentionLevels.Show, 1, null, true)]
+    [InlineData(RetentionLevels.Season, 1, null, true)]
+    [InlineData(RetentionLevels.Season, 2, null, false)]
+    [InlineData(RetentionLevels.Episode, 1, 2, true)]
+    [InlineData(RetentionLevels.Episode, 1, 3, false)]
+    public void Episode_plays_are_matched_by_the_shows_ids_and_the_season_and_episode_numbers(string level, int season, int? episode, bool held)
+    {
+        var unit = new RetentionUnit(level, "x", "s1", season, episode, "t", "Breaking Bad", 2008, null, "1396", null, null, [], []);
+
+        Assert.Equal(held, RetentionService.EpisodePlayTouches(unit, EpisodePlay("1396", 1, 2)));
+    }
+
+    [Fact]
+    public void An_unnumbered_episode_play_of_the_same_show_holds_a_season_or_episode()
+    {
+        var unit = new RetentionUnit(RetentionLevels.Episode, "x", "s1", 1, 1, "t", "Breaking Bad", 2008, null, "1396", null, null, [], []);
+
+        Assert.True(RetentionService.EpisodePlayTouches(unit, EpisodePlay("1396", null, null)));
+        Assert.True(RetentionService.EpisodePlayTouches(unit, EpisodePlay(null, 1, 1, showTvdb: null)));
+    }
+
+    [Fact]
+    public async Task Playback_is_read_again_before_every_removal_so_a_play_that_starts_mid_run_is_seen()
+    {
+        ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40)),
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", playedBy: ["james"], last: Now.AddDays(-40)));
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.watchedBy:anyone:")) with { WaitDays = 1, DeferWhilePlaying = true };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        // First reading: nothing plays. Every later reading: His Girl Friday has just started.
+        var readings = 0;
+        _playback.Setup(reader => reader.ListPlayingAsync(_server, It.IsAny<CancellationToken>())).ReturnsAsync(() =>
+            new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(++readings == 1 ? [] : [new MediaServerPlay(["j2"], [])]));
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(2, readings);
+        Assert.Equal(1, run.Items!.Count(item => item.Outcome == RetentionItemOutcomes.Removed));
+        Assert.Equal(1, run.Items!.Count(item => item.Outcome == RetentionItemOutcomes.Held));
+        _movies.Verify(repo => repo.DeleteAsync("m2", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task A_person_confirming_a_removal_does_not_remove_what_is_playing_either()
     {

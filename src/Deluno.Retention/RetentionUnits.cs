@@ -237,7 +237,7 @@ public sealed class RetentionUnitReader(
                     }
 
                     units.Add(new RetentionUnit(
-                        RetentionLevels.Show, show.Id, null, null, null, show.Title, show.Title, show.StartYear, show.ImdbId, tmdb, null,
+                        RetentionLevels.Show, show.Id, null, null, null, show.Title, show.Title, show.StartYear, show.ImdbId, tmdb, Tvdb(show.MetadataProvider, show.MetadataProviderId),
                         show.FileSizeBytes, held.Select(file => file.File.FilePath).ToArray(), showRoots,
                         AddedUtc: show.CreatedUtc,
                         Facts: new RetentionTitleFacts(
@@ -270,7 +270,7 @@ public sealed class RetentionUnitReader(
                         units.Add(new RetentionUnit(
                             RetentionLevels.Season, RetentionUnit.SeasonId(show.Id, season.Key), show.Id, season.Key, null,
                             season.Key == 0 ? $"{show.Title} — Specials" : $"{show.Title} — Season {season.Key}",
-                            show.Title, show.StartYear, show.ImdbId, tmdb, null,
+                            show.Title, show.StartYear, show.ImdbId, tmdb, Tvdb(show.MetadataProvider, show.MetadataProviderId),
                             season.Sum(file => file.File.FileSizeBytes ?? 0),
                             season.Select(file => file.File.FilePath).ToArray(), showRoots,
                             new RetentionPartFacts(
@@ -299,7 +299,7 @@ public sealed class RetentionUnitReader(
                     units.Add(new RetentionUnit(
                         RetentionLevels.Episode, file.File.EpisodeId!, show.Id, season, number,
                         $"{show.Title} — S{season:00}E{number ?? 0:00}{(string.IsNullOrWhiteSpace(episode?.Title) ? string.Empty : $" {episode!.Title}")}",
-                        show.Title, show.StartYear, show.ImdbId, tmdb, null,
+                        show.Title, show.StartYear, show.ImdbId, tmdb, Tvdb(show.MetadataProvider, show.MetadataProviderId),
                         file.File.FileSizeBytes, [file.File.FilePath], showRoots,
                         new RetentionPartFacts(
                             season == latestSeason, Unaired(season), 1, episode?.AirDateUtc, file.File.ImportedUtc,
@@ -327,6 +327,9 @@ public sealed class RetentionUnitReader(
             .Select(id => roots.TryGetValue(id, out var root) ? root : null)
             .OfType<string>()
             .ToArray();
+
+    private static string? Tvdb(string? provider, string? providerId)
+        => string.Equals(provider, "tvdb", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(providerId) ? providerId : null;
 
     private static string? Tmdb(string? provider, string? providerId)
         => string.Equals(provider, "tmdb", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(providerId) ? providerId : null;

@@ -577,11 +577,17 @@ public sealed class MediaServerClientTests
     {
         var client = new PlexMediaServerClient(Factory(request =>
         {
+            if (request.RequestUri!.AbsolutePath == "/library/metadata/6")
+            {
+                // The show itself: a session only lists the episode's own ids.
+                return Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"6","Guid":[{"id":"imdb://tt0903747"},{"id":"tmdb://1396"},{"id":"tvdb://81189"}]}]}}""");
+            }
+
             Assert.Equal("/status/sessions", request.RequestUri!.AbsolutePath);
             return Json("""
                 {"MediaContainer":{"size":2,"Metadata":[
                   {"ratingKey":"501","type":"movie","Guid":[{"id":"imdb://tt0013442"},{"id":"tmdb://653"}],"Media":[{"Part":[{"file":"/movies/Nosferatu (1922)/Nosferatu.mkv"}]}]},
-                  {"ratingKey":"611","parentRatingKey":"61","grandparentRatingKey":"6","type":"episode","Media":[{"Part":[{"file":"/tv/Show/S01E01.mkv"}]}]}]}}
+                  {"ratingKey":"611","parentRatingKey":"61","grandparentRatingKey":"6","grandparentTitle":"Breaking Bad","parentIndex":1,"index":2,"type":"episode","Media":[{"Part":[{"file":"/tv/Show/S01E01.mkv"}]}]}]}}
                 """);
         }));
 
@@ -593,6 +599,22 @@ public sealed class MediaServerClientTests
         var episode = plays[1];
         Assert.Equal(["611", "61", "6"], episode.ItemIds);
         Assert.False(episode.IsMovie);
+        Assert.Equal((true, "Breaking Bad", "1396", "81189", "tt0903747", 1, 2), (episode.IsEpisode, episode.ShowName, episode.ShowTmdbId, episode.ShowTvdbId, episode.ShowImdbId, episode.SeasonNumber, episode.EpisodeNumber));
+    }
+
+    [Fact]
+    public async Task Plex_leaves_the_shows_ids_empty_when_the_show_cannot_be_read_so_it_reads_as_cannot_tell()
+    {
+        var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.AbsolutePath == "/status/sessions"
+            ? Json("""{"MediaContainer":{"Metadata":[{"ratingKey":"611","grandparentRatingKey":"6","grandparentTitle":"Show","parentIndex":1,"index":2,"type":"episode"}]}}""")
+            : new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+
+        var episode = Assert.Single(Plays(await client.ListPlayingAsync(Server(MediaServerKinds.Plex, "http://192.168.1.51:32400"), CancellationToken.None)));
+
+        Assert.True(episode.IsEpisode);
+        Assert.Null(episode.ShowTmdbId);
+        Assert.Null(episode.ShowTvdbId);
+        Assert.Null(episode.ShowImdbId);
     }
 
     [Fact]
@@ -615,10 +637,16 @@ public sealed class MediaServerClientTests
     {
         IHttpClientFactory factory = Factory(request =>
         {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/Items", StringComparison.Ordinal))
+            {
+                Assert.Contains("Ids=sh1", request.RequestUri.Query, StringComparison.Ordinal);
+                return Json("""{"Items":[{"Id":"sh1","ProviderIds":{"Tvdb":"81189","Tmdb":"1396","Imdb":"tt0903747"}}]}""");
+            }
+
             Assert.Equal(expectedPath, request.RequestUri!.AbsolutePath);
             return Json("""
                 [{"Id":"s1","UserName":"james"},
-                 {"Id":"s2","NowPlayingItem":{"Id":"e9","SeasonId":"se1","SeriesId":"sh1","Type":"Episode","Path":"D:\\TV\\Show\\S01E09.mkv"}},
+                 {"Id":"s2","NowPlayingItem":{"Id":"e9","SeasonId":"se1","SeriesId":"sh1","SeriesName":"Breaking Bad","ParentIndexNumber":1,"IndexNumber":9,"Type":"Episode","Path":"D:\\TV\\Show\\S01E09.mkv"}},
                  {"Id":"s3","NowPlayingItem":{"Id":"m7","Type":"Movie","ProviderIds":{"Tmdb":"653","Imdb":"tt0013442"},"MediaSources":[{"Path":"/media/Nosferatu.mkv"}]}}]
                 """);
         });
@@ -629,6 +657,7 @@ public sealed class MediaServerClientTests
         Assert.Equal(2, plays.Count);
         Assert.Equal(["e9", "se1", "sh1"], plays[0].ItemIds);
         Assert.False(plays[0].IsMovie);
+        Assert.Equal((true, "Breaking Bad", "1396", "81189", "tt0903747", 1, 9), (plays[0].IsEpisode, plays[0].ShowName, plays[0].ShowTmdbId, plays[0].ShowTvdbId, plays[0].ShowImdbId, plays[0].SeasonNumber, plays[0].EpisodeNumber));
         Assert.Equal([@"D:\TV\Show\S01E09.mkv"], plays[0].Paths);
         Assert.Equal((true, "653", "tt0013442"), (plays[1].IsMovie, plays[1].TmdbId, plays[1].ImdbId));
         Assert.Equal(["/media/Nosferatu.mkv"], plays[1].Paths);

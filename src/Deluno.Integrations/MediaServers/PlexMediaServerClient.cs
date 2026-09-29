@@ -884,6 +884,7 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
         }
 
         var plays = new List<MediaServerPlay>();
+        var shows = new Dictionary<string, (string? Tmdb, string? Tvdb, string? Imdb)>(StringComparer.Ordinal);
         if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
         {
             foreach (var entry in metadata.EnumerateArray())
@@ -917,11 +918,51 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                     return null;
                 }
 
-                plays.Add(new MediaServerPlay(ids, paths, String(entry, "type") == "movie", Guid("tmdb"), Guid("tvdb"), Guid("imdb")));
+                var isEpisode = String(entry, "type") == "episode";
+                (string? Tmdb, string? Tvdb, string? Imdb) show = default;
+                if (isEpisode && String(entry, "grandparentRatingKey") is { Length: > 0 } showKey && !shows.TryGetValue(showKey, out show))
+                {
+                    // A session carries the episode's own Guid list, not the show's: ask for the show once.
+                    show = await ReadShowGuidsAsync(connection, showKey, cancellationToken);
+                    shows[showKey] = show;
+                }
+
+                plays.Add(new MediaServerPlay(
+                    ids, paths, String(entry, "type") == "movie", Guid("tmdb"), Guid("tvdb"), Guid("imdb"),
+                    isEpisode, String(entry, "grandparentTitle"), show.Tmdb, show.Tvdb, show.Imdb,
+                    Int(entry, "parentIndex"), Int(entry, "index")));
             }
         }
 
         return new MediaServerAnswer<IReadOnlyList<MediaServerPlay>>.Reported(plays);
+    }
+
+    private async Task<(string? Tmdb, string? Tvdb, string? Imdb)> ReadShowGuidsAsync(MediaServerConnection connection, string showKey, CancellationToken cancellationToken)
+    {
+        // Not being able to ask leaves the ids null, which the caller reads as "cannot tell which show", never "not this show".
+        var call = await GetAsync(connection, $"/library/metadata/{Uri.EscapeDataString(showKey)}", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (Container(document) is not { } container ||
+            !container.TryGetProperty("Metadata", out var metadata) || metadata.ValueKind != JsonValueKind.Array || metadata.GetArrayLength() == 0 ||
+            !metadata[0].TryGetProperty("Guid", out var guids) || guids.ValueKind != JsonValueKind.Array)
+        {
+            return default;
+        }
+
+        string? Guid(string scheme)
+        {
+            foreach (var guid in guids.EnumerateArray())
+            {
+                if (String(guid, "id") is { } text && text.StartsWith(scheme + "://", StringComparison.OrdinalIgnoreCase))
+                {
+                    return text[(scheme.Length + 3)..];
+                }
+            }
+
+            return null;
+        }
+
+        return (Guid("tmdb"), Guid("tvdb"), Guid("imdb"));
     }
 
     /// <summary>
