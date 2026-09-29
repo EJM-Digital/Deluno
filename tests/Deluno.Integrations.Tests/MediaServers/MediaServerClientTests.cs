@@ -220,12 +220,14 @@ public sealed class MediaServerClientTests
     }
 
     private const string SoloAccounts = """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"jampat"}]}}""";
+    private const string OwnerMe = """{"id":987654,"username":"jampat"}""";
+    private const string OwnedServer = """[{"name":"Rig","clientIdentifier":"machine-1","owned":true}]""";
     private const string EmptyList = """<MediaContainer size="0"></MediaContainer>""";
-    private const string OwnerOnlyHome = """<MediaContainer size="1"><User id="1" title="jampat" admin="1"/></MediaContainer>""";
+    private const string OwnerOnlyHome = """<MediaContainer size="1"><User id="987654" title="jampat" admin="1"/></MediaContainer>""";
 
     /// <summary>A Plex whose owner token can be asked; each part can be swapped for what a household really looks like. Null = that call fails.</summary>
     private static async Task<bool> PlexAccountIsEveryoneAsync(
-        string? accounts = SoloAccounts, string? shared = EmptyList, string? friends = EmptyList, string? home = OwnerOnlyHome, string? me = """{"id":1,"username":"jampat"}""")
+        string? accounts = SoloAccounts, string? shared = EmptyList, string? friends = EmptyList, string? home = OwnerOnlyHome, string? me = OwnerMe, string? resources = OwnedServer)
     {
         HttpResponseMessage Answer(string? body) => body is null ? new HttpResponseMessage(HttpStatusCode.Unauthorized) : Json(body);
         var client = new PlexMediaServerClient(Factory(request => request.RequestUri!.Host switch
@@ -234,6 +236,7 @@ public sealed class MediaServerClientTests
             "plex.tv" => request.RequestUri.AbsolutePath switch
             {
                 "/api/v2/user" => Answer(me),
+                "/api/v2/resources" => Answer(resources),
                 "/api/servers/machine-1/shared_servers" => Answer(shared),
                 "/api/users" => Answer(friends),
                 "/api/home/users" => Answer(home),
@@ -271,7 +274,7 @@ public sealed class MediaServerClientTests
 
     [Fact]
     public async Task A_home_user_means_not_everyone()
-        => Assert.False(await PlexAccountIsEveryoneAsync(home: """<MediaContainer size="2"><User id="1" admin="1"/><User id="33" title="Kids" restricted="1"/></MediaContainer>"""));
+        => Assert.False(await PlexAccountIsEveryoneAsync(home: """<MediaContainer size="2"><User id="987654" admin="1"/><User id="33" title="Kids" restricted="1"/></MediaContainer>"""));
 
     [Fact]
     public async Task A_second_account_in_the_servers_own_table_means_not_everyone()
@@ -281,19 +284,36 @@ public sealed class MediaServerClientTests
     public async Task A_single_account_that_is_not_the_connected_one_means_not_everyone()
         => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":7,"name":"someone"}]}}"""));
 
+    [Fact]
+    public async Task The_servers_owner_is_local_id_one_whatever_plex_tv_calls_them_when_the_name_is_theirs()
+        => Assert.True(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"JamPat"}]}}"""));
+
+    [Fact]
+    public async Task Local_id_one_with_someone_elses_name_means_not_everyone()
+        => Assert.False(await PlexAccountIsEveryoneAsync(accounts: """{"MediaContainer":{"Account":[{"id":0,"name":""},{"id":1,"name":"ben"}]}}"""));
+
+    [Fact]
+    public async Task A_token_whose_account_does_not_own_the_server_means_not_everyone()
+    {
+        Assert.False(await PlexAccountIsEveryoneAsync(resources: """[{"clientIdentifier":"machine-1","owned":false}]"""));
+        Assert.False(await PlexAccountIsEveryoneAsync(resources: """[{"clientIdentifier":"other","owned":true}]"""));
+    }
+
     [Theory]
     [InlineData("accounts")]
     [InlineData("shared")]
     [InlineData("friends")]
     [InlineData("home")]
     [InlineData("me")]
+    [InlineData("resources")]
     public async Task Any_call_that_fails_means_not_everyone(string failing)
         => Assert.False(await PlexAccountIsEveryoneAsync(
             accounts: failing == "accounts" ? null : SoloAccounts,
             shared: failing == "shared" ? null : EmptyList,
             friends: failing == "friends" ? null : EmptyList,
             home: failing == "home" ? null : OwnerOnlyHome,
-            me: failing == "me" ? null : """{"id":1,"username":"jampat"}"""));
+            me: failing == "me" ? null : OwnerMe,
+            resources: failing == "resources" ? null : OwnedServer));
 
     [Fact]
     public async Task Unreadable_answers_mean_not_everyone()

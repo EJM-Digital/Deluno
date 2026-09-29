@@ -205,6 +205,12 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
                 return false;
             }
 
+            // The token must be the owner's: plex.tv lists this very server as one the account owns.
+            if (!await OwnsServerAsync(connection, machine, cancellationToken))
+            {
+                return false;
+            }
+
             // plex.tv: nobody else has access. Each list must be readable, or it proves nothing.
             var shared = await PlexTvUsersAsync(connection, $"/api/servers/{Uri.EscapeDataString(machine)}/shared_servers", "SharedServer", cancellationToken);
             var friends = await PlexTvUsersAsync(connection, "/api/users", "User", cancellationToken);
@@ -225,12 +231,45 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             }
 
             var named = accounts.EnumerateArray().Where(entry => Int(entry, "id") is > 0 && !string.IsNullOrWhiteSpace(String(entry, "name"))).ToArray();
-            return named.Length == 1 && Int(named[0], "id") == ownerId;
+            if (named.Length != 1)
+            {
+                return false;
+            }
+
+            // A server's own table keys its owner as id 1 whatever plex.tv's id for that person is (python-plexapi's
+            // SystemAccount and Tautulli both treat local id 1 as the owner). So the row is the owner when its id is
+            // plex.tv's, or when it is local id 1 and carries the owner's own name.
+            var rowId = Int(named[0], "id");
+            if (rowId == ownerId)
+            {
+                return true;
+            }
+
+            var rowName = String(named[0], "name")?.Trim();
+            return rowId == 1 && rowName is { Length: > 0 } &&
+                new[] { "username", "title", "email" }.Any(field =>
+                    string.Equals(String(meDocument!.RootElement, field)?.Trim(), rowName, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return false;
         }
+    }
+
+    /// <summary>True only when plex.tv lists a server with this machine identifier as owned by the token's account.</summary>
+    private async Task<bool> OwnsServerAsync(MediaServerConnection connection, string machine, CancellationToken cancellationToken)
+    {
+        var call = await SendAsync(httpClientFactory, HttpMethod.Get, new Uri("https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1"), Headers(connection), "plex.tv", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (document is null || document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return document.RootElement.EnumerateArray().Any(entry =>
+            entry.ValueKind == JsonValueKind.Object &&
+            string.Equals(String(entry, "clientIdentifier"), machine, StringComparison.Ordinal) &&
+            entry.TryGetProperty("owned", out var owned) && owned.ValueKind == JsonValueKind.True);
     }
 
     /// <summary>
