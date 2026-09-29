@@ -17,6 +17,7 @@ using Deluno.Security.Hardening;
 using Deluno.Realtime;
 using Deluno.Series;
 using Deluno.Worker;
+using Deluno.Worker.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting.WindowsServices;
 
@@ -48,6 +49,19 @@ public static class ServiceHost
         {
             builder.Configuration["Security:AllowedHosts:ForceDisabled"] = "true";
         }
+
+        // When a critical background service cannot be kept running, end the
+        // process with a failing exit (#1080). A graceful host stop is reported
+        // to the service manager as a clean stop, so its restart actions would
+        // never run; a process that dies while the service is Running does.
+        builder.Services.AddSingleton(new BackgroundServiceSafetyOptions
+        {
+            ExitProcess = code => Environment.Exit(code)
+        });
+
+        // Services installed by earlier builds have no restart-on-failure
+        // actions; set them again on every start (sc failure is idempotent).
+        ServiceManager.EnsureFailureActionsFromInsideService();
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
