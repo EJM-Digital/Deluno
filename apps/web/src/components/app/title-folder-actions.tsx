@@ -34,7 +34,7 @@ export interface TitleRescanResult {
 }
 
 export interface TitleRenamePreview {
-  outcome: "no-files" | "already-named" | "name-taken" | "will-rename";
+  outcome: "no-files" | "already-named" | "name-taken" | "will-rename" | "flat-layout" | "library-folder" | "outside-library" | "spread-out" | "shared-folder";
   currentFolder: string | null;
   proposedFolder: string;
   willChange: boolean;

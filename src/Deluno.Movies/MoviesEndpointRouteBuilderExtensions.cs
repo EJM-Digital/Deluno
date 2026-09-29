@@ -3090,6 +3090,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             HttpContext httpContext,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -3115,7 +3116,13 @@ public static class MoviesEndpointRouteBuilderExtensions
                 replaceIllegalCharacters: settings.ReplaceIllegalCharacters,
                 colonReplacementMode: settings.ColonReplacementMode);
 
-            var sourceDir = movie.FilePath is { Length: > 0 } filePath ? Path.GetDirectoryName(filePath) : null;
+            var target = await ResolveOwnFolderAsync(repository, librariesRepository, movie, cancellationToken);
+            if (!target.IsSafe)
+            {
+                return Results.Ok(RenamePreviewOutcome.Refused(target, proposedName));
+            }
+
+            var sourceDir = target.Folder;
             var parentDir = sourceDir is null ? null : Path.GetDirectoryName(sourceDir);
             return Results.Ok(RenamePreviewOutcome.Describe(
                 sourceDir is null ? null : Path.GetFileName(sourceDir),
@@ -3194,6 +3201,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             [FromBody] BulkRenamePreviewRequest request,
             IMovieCatalogRepository repository,
             IPlatformSettingsRepository platformSettingsRepository,
+            ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
@@ -3235,9 +3243,18 @@ public static class MoviesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                var sourceDir = Path.GetDirectoryName(filePath);
-                var parentDir = sourceDir is null ? null : Path.GetDirectoryName(sourceDir);
-                if (sourceDir is null || parentDir is null)
+                // The same guard the title page's preview uses, re-run now at
+                // apply time against the current rows (#1067).
+                var target = await ResolveOwnFolderAsync(repository, librariesRepository, movie, cancellationToken);
+                if (!target.IsSafe)
+                {
+                    failures.Add(new { movieId = id, movie.Title, reason = target.Message });
+                    continue;
+                }
+
+                var sourceDir = target.Folder!;
+                var parentDir = Path.GetDirectoryName(sourceDir);
+                if (parentDir is null)
                 {
                     failures.Add(new { movieId = id, movie.Title, reason = "The stored file path has no folder to rename." });
                     continue;
@@ -3390,6 +3407,27 @@ public static class MoviesEndpointRouteBuilderExtensions
         {
             await repository.UpdateReleaseDatesAsync(movieId, dates.InCinemas, dates.Digital, dates.Physical, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// The one place a movie's own folder is decided for "rename folder", used
+    /// by the single-title preview and by rename-apply so they cannot disagree
+    /// (#1067). Never renames anything.
+    /// </summary>
+    private static async Task<TitleFolderTarget> ResolveOwnFolderAsync(
+        IMovieCatalogRepository repository,
+        ILibrariesRepository librariesRepository,
+        MovieListItem movie,
+        CancellationToken cancellationToken)
+    {
+        var roots = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+            .Select(library => library.RootPath)
+            .ToArray();
+        return await TitleFolderGuard.ForMovieAsync(
+            movie.FilePath,
+            roots,
+            (folder, ct) => repository.OtherMoviesHaveFilesUnderAsync(movie.Id, folder, ct),
+            cancellationToken);
     }
 
     /// <summary>Blank means "no override", so it is stored as null rather than kept.</summary>

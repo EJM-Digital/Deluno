@@ -56,6 +56,36 @@ public sealed class SeriesFolderRelocationPlannerTests
     }
 
     [Fact]
+    public void Plan_never_renames_a_lone_season_folder_to_the_series_name()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "library", "tv-main");
+        var seriesDir = Path.Combine(root, "The Expanse");
+        var episodes = new[]
+        {
+            Path.Combine(seriesDir, "Season 01", "S01E01.mkv"),
+            Path.Combine(seriesDir, "Season 01", "S01E02.mkv")
+        };
+
+        var plan = SeriesFolderRelocationPlanner.Plan(episodes, "The Expanse (2015)");
+
+        Assert.NotNull(plan);
+        Assert.Equal(seriesDir, plan!.SourceDirectory);
+        Assert.Equal(Path.Combine(root, "The Expanse (2015)"), plan.DestinationDirectory);
+    }
+
+    [Fact]
+    public void Plan_uses_the_folder_the_guard_proved_is_the_shows_own()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "library", "tv-main");
+        var seriesDir = Path.Combine(root, "The Expanse");
+        var episodes = new[] { Path.Combine(seriesDir, "Book One", "S01E01.mkv") };
+
+        var plan = SeriesFolderRelocationPlanner.Plan(episodes, "The Expanse (2015)", seriesDir);
+
+        Assert.Equal(seriesDir, plan!.SourceDirectory);
+    }
+
+    [Fact]
     public void Plan_returns_null_for_an_empty_file_list()
     {
         var plan = SeriesFolderRelocationPlanner.Plan([], "The Expanse (2015) [renamed]");

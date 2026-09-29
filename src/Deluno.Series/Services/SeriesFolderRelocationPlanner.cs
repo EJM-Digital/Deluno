@@ -23,7 +23,7 @@ public static class SeriesFolderRelocationPlanner
     /// but a caller that cannot prove a folder belongs to the title must not
     /// guess one).
     /// </summary>
-    public static SeriesFolderRelocationPlan? Plan(IReadOnlyList<string> episodeFilePaths, string proposedFolderName)
+    public static SeriesFolderRelocationPlan? Plan(IReadOnlyList<string> episodeFilePaths, string proposedFolderName, string? ownFolder = null)
     {
         if (episodeFilePaths.Count == 0 || string.IsNullOrWhiteSpace(proposedFolderName))
         {
@@ -42,8 +42,19 @@ public static class SeriesFolderRelocationPlanner
             return null;
         }
 
-        var commonDirectory = FindCommonAncestor(directories);
-        if (commonDirectory is null)
+        // The folder the shared guard proved is this show's own wins. Without
+        // one, the deepest shared folder is used - but a show with a single
+        // season on disk shares only "Season 01", which is never the show's
+        // folder, so a season folder steps up to its parent (#1067).
+        var commonDirectory = ownFolder ?? FindCommonAncestor(directories);
+        if (ownFolder is null
+            && commonDirectory is not null
+            && Deluno.Platform.TitleFolderGuard.IsSeasonFolderName(Path.GetFileName(commonDirectory)))
+        {
+            commonDirectory = Path.GetDirectoryName(commonDirectory);
+        }
+
+        if (string.IsNullOrEmpty(commonDirectory))
         {
             return null;
         }

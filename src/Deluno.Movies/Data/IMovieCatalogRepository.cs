@@ -393,6 +393,13 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string newFilePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// True when any movie other than <paramref name="movieId"/> has a file
+    /// inside <paramref name="directory"/> (#1067) - the folder is then not
+    /// this movie's own and must not be renamed as if it were.
+    /// </summary>
+    Task<bool> OtherMoviesHaveFilesUnderAsync(string movieId, string directory, CancellationToken cancellationToken);
+
     /// <summary>Store the provider's cinema, digital and physical release dates.</summary>
     Task<bool> UpdateReleaseDatesAsync(
         string movieId,
