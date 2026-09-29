@@ -65,6 +65,18 @@ public sealed class BackgroundServiceSafetyOptions
 
     /// <summary>Sets a failing process exit code when giving up, so an orchestrator restarts Deluno.</summary>
     public bool SetExitCodeWhenGivingUp { get; set; } = true;
+
+    /// <summary>
+    /// When set, giving up ends the process through this instead of a graceful
+    /// host stop. The installed Windows service needs it: a host that stops
+    /// itself is reported to the service manager as a clean stop, so its
+    /// restart-on-failure actions never run. A process that ends while the
+    /// service is still Running is treated as a crash, and they do.
+    /// </summary>
+    public Action<int>? ExitProcess { get; set; }
+
+    /// <summary>How long to wait after the last log line before <see cref="ExitProcess"/> is called, so the log file catches up.</summary>
+    public TimeSpan ExitDelay { get; set; } = TimeSpan.FromSeconds(2);
 }
 
 /// <summary>
@@ -202,6 +214,21 @@ public sealed class BackgroundServiceFailureMonitor(
             {
                 await RecordAsync(type, failure).ConfigureAwait(false);
                 logger.LogCritical(failure, "Critical background service {Service} could not be kept running after {Restarts} restarts; stopping Deluno so it is started again.", type.Name, restarts);
+                if (_options.ExitProcess is { } exitProcess)
+                {
+                    try
+                    {
+                        await Task.Delay(_options.ExitDelay).ConfigureAwait(false);
+                    }
+                    catch (Exception)
+                    {
+                        // The pause only lets the log catch up.
+                    }
+
+                    exitProcess(1);
+                    return;
+                }
+
                 if (_options.SetExitCodeWhenGivingUp)
                 {
                     Environment.ExitCode = 1;

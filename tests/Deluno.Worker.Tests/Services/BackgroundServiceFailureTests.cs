@@ -199,6 +199,40 @@ public sealed class BackgroundServiceFailureTests
     }
 
     [Fact]
+    public async Task Giving_up_ends_the_process_with_a_failing_exit_instead_of_a_clean_host_stop_when_asked_to()
+    {
+        HealthCheckHostedService.Starts = 0;
+        HealthCheckHostedService.AlwaysFail = true;
+        try
+        {
+            var exitCode = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var host = BuildCriticalHost(options =>
+            {
+                options.MaxRestarts = 1;
+                options.ExitDelay = TimeSpan.Zero;
+                options.ExitProcess = code => exitCode.TrySetResult(code);
+            });
+            var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+            await host.StartAsync();
+            try
+            {
+                Assert.Equal(1, await exitCode.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+                // The host was not asked to stop gracefully: a graceful stop is what
+                // the service manager would report as a clean stop.
+                Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
+            }
+            finally
+            {
+                await host.StopAsync();
+            }
+        }
+        finally
+        {
+            HealthCheckHostedService.AlwaysFail = false;
+        }
+    }
+
+    [Fact]
     public async Task A_reported_problem_shows_on_Health_and_clears_when_it_is_cleared()
     {
         using var host = Host.CreateDefaultBuilder()

@@ -119,6 +119,48 @@ public static class ServiceManager
         $"failureflag {serviceName} 1"
     ];
 
+    /// <summary>
+    /// Runs when Deluno starts as the service: services installed by earlier
+    /// builds were created without failure actions, so a Deluno that stopped
+    /// itself would stay stopped (#1080). The service already runs with the
+    /// rights to change its own settings when it runs as LocalSystem, so
+    /// sc.exe is called directly with no permission prompt. Never throws: if
+    /// the account may not, the service keeps whatever it had.
+    /// </summary>
+    internal static void EnsureFailureActionsFromInsideService()
+    {
+        try
+        {
+            foreach (var failureArgs in FailureActionArguments(ServiceName))
+            {
+                using var p = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "sc.exe",
+                    Arguments = failureArgs,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                });
+                if (p is null)
+                {
+                    continue;
+                }
+
+                p.StandardOutput.ReadToEnd();
+                p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(10_000))
+                {
+                    try { p.Kill(); } catch { /* best effort */ }
+                }
+            }
+        }
+        catch
+        {
+            // Best effort; see the summary.
+        }
+    }
+
     private static void RemoveService()
     {
         if (!IsInstalled()) return;
