@@ -95,6 +95,7 @@ public static class DelunoApplicationEndpointMapping
         endpoints.MapDelunoCommandEndpoints();
         endpoints.MapDelunoSystemStatusEndpoints();
         endpoints.MapDelunoDiskSpaceEndpoints();
+        endpoints.MapDelunoQueueHistoryWantedEndpoints();
         endpoints.MapDelunoMediaLibraryMembership();
         endpoints.MapDelunoRetention();
         endpoints.MapDelunoCompanions();

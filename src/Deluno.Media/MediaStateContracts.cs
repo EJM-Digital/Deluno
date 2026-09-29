@@ -321,6 +321,22 @@ public interface IMediaStateRepository
     Task<MediaWantedSummary> GetWantedSummaryAsync(MediaKind kind, CancellationToken cancellationToken);
 
     /// <summary>
+    /// One page of the titles in a single wanted state (<c>missing</c>, or
+    /// <c>upgrade</c> for quality-cutoff unmet), newest change first, with the
+    /// count of all of them. Unlike <see cref="GetWantedSummaryAsync"/>, which
+    /// only carries the latest 25, this is the whole list, for the wanted API
+    /// (#1022). <paramref name="monitored"/> narrows to titles that are (or are
+    /// not) monitored; null means both.
+    /// </summary>
+    Task<(IReadOnlyList<MediaWantedItem> Items, int Total)> ListWantedPageAsync(
+        MediaKind kind,
+        string wantedStatus,
+        bool? monitored,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reads wanted rows for an explicit selection in SQL. This keeps bulk
     /// actions correct even when the selected titles are not in the bounded
     /// recent-summary window.

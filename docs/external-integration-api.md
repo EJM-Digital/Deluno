@@ -424,6 +424,61 @@ it, plus `libraryEntryId` when Deluno already holds it.
 The calendar needs no new address: `GET /api/calendar/feed.ics` already
 carries both films and episodes.
 
+### Queue removal flags, history and wanted
+
+Radarr and Sonarr answer these with one address each. So does Deluno, over the
+same services the screens use.
+
+**Remove from the queue.** `DELETE /api/queue/{clientId}/{queueItemId}`
+(`queue` scope), Radarr's `DELETE /api/v3/queue/{id}` (its `QueueController`
+takes `removeFromClient=true`, `blocklist=false`, `skipRedownload=false`).
+Deluno has no single queue id, so the address names the download client and the
+client's own id for the download, as the Queue screen does.
+
+| Query flag | Default | Meaning |
+|---|---|---|
+| `removeFromClient` | `true` | Delete it from the client with its files. `false`: Deluno only stops tracking it and the client keeps it untouched. |
+| `blocklist` | `false` | Refuse the release on every indexer (hash or NZB id plus name), and search for another. |
+| `skipRedownload` | `false` | With `blocklist`, do not search for another. |
+
+`DELETE /api/queue/bulk` with `{ "items": [ { "clientId", "queueItemId" } ] }`
+(1 to 200) applies the same flags to each and answers a list of results.
+Removing never stops wanting the title (only the Queue's "I don't want it"
+does). Activity says what was done: "An outside program removed "X" from the
+Queue: removed from qBittorrent and deleted its files, blocklisted the release,
+started a new search." `200` with the result (`succeeded`, `message`,
+`blocklisted`, `searchStarted`, `entityId`, `mediaType`); `400` with the same
+shape when it could not be done; `403` without the `queue` scope.
+
+**History.** `GET /api/history` (`read` scope), Radarr's `GET /api/v3/history`
+(`eventType` filter). One record per download, showing the furthest it got:
+
+| `eventType` | Meaning |
+|---|---|
+| `grabbed` | The client took it; not imported or failed yet. |
+| `downloadFolderImported` | The finished download was imported. |
+| `downloadFailed` | The grab was refused, or the import failed (`message` says why). |
+
+Other Radarr events (file deleted, renamed) are not download events and are in
+Activity. Filters: `eventType`, `mediaType` (`movies` or `tv`), `titleId`.
+Newest download first. Deluno pages with a token, as its other lists do:
+`pageSize` (default 50) and `pageToken`; the answer is `{ items, nextPageToken,
+hasMore }`. Each item: `id`, `eventType`, `date`, `mediaType`, `titleId`,
+`sourceTitle`, `downloadId`, `indexer`, `downloadClient`, `importedFilePath`,
+`message`. An unknown `eventType` or `mediaType` is a `400`.
+
+**Wanted.** `GET /api/wanted/missing` and `GET /api/wanted/cutoff` (`read`
+scope), Radarr's `/wanted/missing` and `/wanted/cutoff`, for films and episodes
+in one list. `mediaType` (`movies` or `tv`, default both), `monitored`
+(default `true`, as Radarr's), `page` (from 1) and `pageSize` (default 50, at
+most 200). Answer: `{ page, pageSize, totalRecords, records }`. The list is the
+films first and then the episodes, so a page can hold both. A record:
+`mediaType`, `id` (the film or episode), `titleId` (the film, or the series),
+`title`, `year`, `seasonNumber`, `episodeNumber`, `episodeTitle`, `airDateUtc`,
+`wantedStatus`, `wantedReason`, `currentQuality`, `targetQuality`,
+`lastSearchUtc`, `nextEligibleSearchUtc`. `missing` is a title with no file;
+`cutoff` is one whose file is below what the quality profile wants.
+
 ## Refine Before Import
 
 When a Deluno library is configured for **Refine before import**, an external processor can clean the completed download without bypassing Deluno's destination resolver, import mover, rename rules, or metadata refresh. The normal path is processor-agnostic: the processor writes below the library's configured processed-output root using the completed download's final source-folder name, and Deluno matches that stable path component to its durable hand-off.

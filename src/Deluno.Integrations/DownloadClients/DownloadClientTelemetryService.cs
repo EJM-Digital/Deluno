@@ -467,6 +467,50 @@ public sealed class DownloadClientTelemetryService(
             };
         }
 
+        // The three plain-word choices are each one fixed combination of what a
+        // removal can do, so the dialog and the flag-based API call below share
+        // the one removal path.
+        var options = reason switch
+        {
+            QueueRemovalReasons.Failed => new QueueRemovalOptions(true, true, true, false),
+            QueueRemovalReasons.Unwanted => new QueueRemovalOptions(true, false, false, true),
+            _ => new QueueRemovalOptions(false, false, false, false)
+        };
+
+        return await RemoveCoreAsync(clientId, queueItemId, reason, options, fromReason: true, cancellationToken);
+    }
+
+    public Task<QueueRemovalResult> RemoveWithOptionsAsync(
+        string clientId,
+        string queueItemId,
+        bool removeFromClient,
+        bool blocklist,
+        bool skipRedownload,
+        CancellationToken cancellationToken)
+    {
+        // Radarr's own meaning of the three flags (QueueController.Remove):
+        // blocklisting marks the download failed, and that searches again
+        // unless skipRedownload says not to; nothing else searches.
+        var reason = blocklist
+            ? QueueRemovalReasons.Failed
+            : removeFromClient ? "removed" : QueueRemovalReasons.Forget;
+        return RemoveCoreAsync(
+            clientId,
+            queueItemId,
+            reason,
+            new QueueRemovalOptions(removeFromClient, blocklist, blocklist && !skipRedownload, false),
+            fromReason: false,
+            cancellationToken);
+    }
+
+    private async Task<QueueRemovalResult> RemoveCoreAsync(
+        string clientId,
+        string queueItemId,
+        string reason,
+        QueueRemovalOptions options,
+        bool fromReason,
+        CancellationToken cancellationToken)
+    {
         var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
         if (client is null)
@@ -486,9 +530,9 @@ public sealed class DownloadClientTelemetryService(
         var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
         var title = dispatch?.ReleaseName ?? queueItemId;
 
-        var clientAction = reason == QueueRemovalReasons.Forget
-            ? DownloadClientActions.Forget
-            : DownloadClientActions.DeleteWithData;
+        var clientAction = options.RemoveFromClient
+            ? DownloadClientActions.DeleteWithData
+            : DownloadClientActions.Forget;
 
         var actionResult = await ExecuteActionAsync(
             client.Id,
@@ -512,12 +556,12 @@ public sealed class DownloadClientTelemetryService(
         // here rather than left to the caller so an API caller that skips the
         // web client's own follow-up call gets the same outcome, and so this
         // is the one place Activity has to say it happened.
-        if (reason == QueueRemovalReasons.Unwanted && dispatch is not null && titleUnmonitorService is not null)
+        if (options.Unmonitor && dispatch is not null && titleUnmonitorService is not null)
         {
             unmonitored = await titleUnmonitorService.UnmonitorAsync(dispatch.EntityType, dispatch.EntityId, cancellationToken);
         }
 
-        if (reason == QueueRemovalReasons.Failed && blockedReleases is not null && dispatch is not null)
+        if (options.Blocklist && blockedReleases is not null && dispatch is not null)
         {
             await blockedReleases.BlockAsync(
                 new BlockedRelease(
@@ -538,7 +582,7 @@ public sealed class DownloadClientTelemetryService(
                 cancellationToken);
             blocklisted = true;
 
-            if (SupportsReplacementSearch(dispatch.EntityType))
+            if (options.Search && SupportsReplacementSearch(dispatch.EntityType))
             {
                 var library = (await librariesRepository.ListLibrariesAsync(cancellationToken))
                     .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.OrdinalIgnoreCase));
@@ -547,7 +591,9 @@ public sealed class DownloadClientTelemetryService(
             }
         }
 
-        var message = BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored);
+        var message = fromReason
+            ? BuildQueueRemovalMessage(reason, title, client.Name, blocklisted, searchStarted, unmonitored)
+            : BuildQueueRemovalMessage(title, client.Name, options.RemoveFromClient, blocklisted, searchStarted);
         await activityFeedRepository.RecordActivityAsync(
             "download.queue.removed",
             message,
@@ -569,7 +615,29 @@ public sealed class DownloadClientTelemetryService(
         return new QueueRemovalResult(client.Id, queueItemId, reason, true, message, blocklisted, searchStarted, dispatch?.EntityId, dispatch?.MediaType);
     }
 
-    private static string BuildQueueRemovalMessage(string reason, string title, string clientName, bool blocklisted, bool searchStarted, bool unmonitored)
+    /// <summary>The Activity line for a removal asked for by flags: it says what was actually done, part by part.</summary>
+    private static string BuildQueueRemovalMessage(string title, string clientName, bool removedFromClient, bool blocklisted, bool searchStarted)
+    {
+        var done = new List<string>
+        {
+            removedFromClient
+                ? $"removed from {clientName} and deleted its files"
+                : $"stopped tracking it, and {clientName} still has it, untouched"
+        };
+        if (blocklisted)
+        {
+            done.Add("blocklisted the release");
+        }
+
+        if (searchStarted)
+        {
+            done.Add("started a new search");
+        }
+
+        return $"An outside program removed \"{title}\" from the Queue: {string.Join(", ", done)}.";
+    }
+
+    private static string BuildQueueRemovalMessage(string reason,string title, string clientName, bool blocklisted, bool searchStarted, bool unmonitored)
         => reason switch
         {
             QueueRemovalReasons.Failed => searchStarted

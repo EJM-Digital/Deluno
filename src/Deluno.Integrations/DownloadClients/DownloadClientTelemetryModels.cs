@@ -92,6 +92,17 @@ public static class QueueRemovalReasons
 
 public sealed record QueueRemovalRequest(string Reason);
 
+/// <summary>
+/// What one removal does, part by part. The three <see cref="QueueRemovalReasons"/>
+/// are fixed combinations of these; the API's removeFromClient/blocklist flags
+/// (#1022) pick their own.
+/// </summary>
+/// <param name="RemoveFromClient">Delete it from the client with its files; otherwise Deluno only forgets it.</param>
+/// <param name="Blocklist">Refuse the release everywhere it could be found again.</param>
+/// <param name="Search">Look for a replacement (only with a blocklist).</param>
+/// <param name="Unmonitor">Stop wanting the title (the "I don't want it" choice).</param>
+public sealed record QueueRemovalOptions(bool RemoveFromClient, bool Blocklist, bool Search, bool Unmonitor);
+
 /// <param name="EntityId">
 /// The title this download belongs to, when Deluno can still say — read from
 /// the matching dispatch, not the queue item itself. Null for a download

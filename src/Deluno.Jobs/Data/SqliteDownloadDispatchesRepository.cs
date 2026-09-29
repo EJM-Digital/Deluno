@@ -360,6 +360,20 @@ public sealed class SqliteDownloadDispatchesRepository(
             : new List<string> { "status != 'archived'" };
         var parameters = new Dictionary<string, object?>();
 
+        // The same three-way rule as DispatchHistoryEvents.For, in SQL.
+        switch (DispatchHistoryEvents.Normalize(filter.HistoryEvent))
+        {
+            case DispatchHistoryEvents.Imported:
+                whereConditions.Add("import_status = 'imported'");
+                break;
+            case DispatchHistoryEvents.Failed:
+                whereConditions.Add("COALESCE(import_status, '') != 'imported' AND (grab_status = 'failed' OR import_status = 'failed')");
+                break;
+            case DispatchHistoryEvents.Grabbed:
+                whereConditions.Add("COALESCE(import_status, '') NOT IN ('imported', 'failed') AND COALESCE(grab_status, '') != 'failed'");
+                break;
+        }
+
         if (!string.IsNullOrEmpty(filter.GrabStatus))
         {
             whereConditions.Add("grab_status = @grabStatus");

@@ -577,6 +577,19 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         int take,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One page of episodes in a single wanted state, with the count of all of
+    /// them (#1022): <c>missing</c> (no file) or <c>upgrade</c> (a file below the
+    /// quality cutoff). Most recently aired first. <paramref name="monitored"/>
+    /// narrows to monitored or unmonitored episodes; null means both.
+    /// </summary>
+    Task<(IReadOnlyList<WantedEpisodeItem> Items, int Total)> ListWantedEpisodesPageAsync(
+        string wantedStatus,
+        bool? monitored,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+
     /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
     Task<MediaDailyMetrics> GetDailyMetricsAsync(
         DateOnly fromDate,
