@@ -2460,7 +2460,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 h.release_name,
                 h.indexer_name,
                 h.details_json,
-                COALESCE(h.created_utc, '')
+                COALESCE(h.created_utc, ''),
+                h.indexer_id
             FROM series_search_history h
             LEFT JOIN episode_entries e ON e.id = h.episode_id
             ORDER BY h.created_utc DESC
@@ -2486,7 +2487,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 DetailsJson: reader.IsDBNull(10) ? null : reader.GetString(10),
                 CreatedUtc: reader.IsDBNull(11) || string.IsNullOrWhiteSpace(reader.GetString(11))
                     ? DateTimeOffset.UnixEpoch
-                    : ParseTimestamp(reader.GetString(11))));
+                    : ParseTimestamp(reader.GetString(11)),
+                IndexerId: reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return items;
@@ -2525,7 +2527,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 h.release_name,
                 h.indexer_name,
                 h.details_json,
-                COALESCE(h.created_utc, '')
+                COALESCE(h.created_utc, ''),
+                h.indexer_id
             FROM series_search_history h
             LEFT JOIN episode_entries e ON e.id = h.episode_id
             ORDER BY h.created_utc DESC
@@ -2551,7 +2554,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 DetailsJson: reader.IsDBNull(10) ? null : reader.GetString(10),
                 CreatedUtc: reader.IsDBNull(11) || string.IsNullOrWhiteSpace(reader.GetString(11))
                     ? DateTimeOffset.UnixEpoch
-                    : ParseTimestamp(reader.GetString(11))));
+                    : ParseTimestamp(reader.GetString(11)),
+                IndexerId: reader.IsDBNull(12) ? null : reader.GetString(12)));
         }
 
         return items;
@@ -3799,6 +3803,9 @@ public sealed class SqliteSeriesCatalogRepository(
         string? detailsJson,
         CancellationToken cancellationToken)
     {
+        // Filed under the indexer's id (#1077), asked while its name still is its name.
+        var indexerId = await IndexerIdentity.ResolveIdAsync(databaseConnectionFactory, indexerName, cancellationToken);
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
@@ -3811,10 +3818,10 @@ public sealed class SqliteSeriesCatalogRepository(
             history.CommandText =
                 """
                 INSERT INTO series_search_history (
-                    id, series_id, episode_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+                    id, series_id, episode_id, library_id, trigger_kind, outcome, release_name, indexer_name, indexer_id, details_json, created_utc
                 )
                 VALUES (
-                    @id, @seriesId, @episodeId, @libraryId, @triggerKind, @outcome, @releaseName, @indexerName, @detailsJson, @createdUtc
+                    @id, @seriesId, @episodeId, @libraryId, @triggerKind, @outcome, @releaseName, @indexerName, @indexerId, @detailsJson, @createdUtc
                 );
                 """;
 
@@ -3826,6 +3833,7 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(history, "@outcome", outcome);
             AddParameter(history, "@releaseName", releaseName);
             AddParameter(history, "@indexerName", indexerName);
+            AddParameter(history, "@indexerId", indexerId);
             AddParameter(history, "@detailsJson", detailsJson);
             AddParameter(history, "@createdUtc", now.ToString("O"));
             await history.ExecuteNonQueryAsync(cancellationToken);
@@ -5990,7 +5998,8 @@ public sealed class SqliteSeriesCatalogRepository(
             ReleaseName: item.ReleaseName,
             IndexerName: item.IndexerName,
             DetailsJson: item.DetailsJson,
-            CreatedUtc: item.CreatedUtc);
+            CreatedUtc: item.CreatedUtc,
+            IndexerId: item.IndexerId);
 
     private static SeriesImportRecoveryCase MapImportRecoveryCase(MediaImportRecoveryCase item)
         => new(

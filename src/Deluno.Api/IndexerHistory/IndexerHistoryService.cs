@@ -1,3 +1,4 @@
+using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -19,6 +20,7 @@ public sealed class IndexerHistoryService(
     IIndexerHistoryEventStore eventStore,
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
+    IConnectionsRepository connectionsRepository,
     TimeProvider timeProvider) : IIndexerHistoryService
 {
     // Bounded, not a real cross-database join: each source is read for its
@@ -40,9 +42,18 @@ public sealed class IndexerHistoryService(
         var movieHistory = await movieCatalogRepository.ListRecentSearchHistoryAsync(PerSourceLimit, cancellationToken);
         var seriesHistory = await seriesCatalogRepository.ListRecentSearchHistoryAsync(PerSourceLimit, cancellationToken);
 
+        // History is filed under the indexer's id (#1077), so a renamed indexer
+        // is one indexer here, shown by the name it has now. A row whose source
+        // matched no indexer keeps the name it was written with.
+        var currentNames = (await connectionsRepository.ListIndexersAsync(cancellationToken))
+            .ToDictionary(indexer => indexer.Id, indexer => indexer.Name, StringComparer.OrdinalIgnoreCase);
+        string NameOf(string? indexerId, string snapshot)
+            => !string.IsNullOrWhiteSpace(indexerId) && currentNames.TryGetValue(indexerId, out var current) ? current : snapshot;
+
         var merged = events
-            .Concat(movieHistory.Select(item => FromMovie(item)))
-            .Concat(seriesHistory.Select(item => FromSeries(item)))
+            .Select(item => item with { IndexerName = NameOf(item.IndexerId, item.IndexerName) })
+            .Concat(movieHistory.Select(item => FromMovie(item, NameOf)))
+            .Concat(seriesHistory.Select(item => FromSeries(item, NameOf)))
             .Where(item => clearedBeforeUtc is null || item.CreatedUtc > clearedBeforeUtc)
             .Where(item => eventType is null || string.Equals(item.EventType, eventType, StringComparison.OrdinalIgnoreCase))
             .Where(item => string.IsNullOrWhiteSpace(indexerName) || string.Equals(item.IndexerName, indexerName, StringComparison.OrdinalIgnoreCase))
@@ -77,11 +88,11 @@ public sealed class IndexerHistoryService(
     private static bool IsGrab(string triggerKind)
         => triggerKind.Contains("grab", StringComparison.OrdinalIgnoreCase);
 
-    private static IndexerHistoryItem FromMovie(MovieSearchHistoryItem item)
+    private static IndexerHistoryItem FromMovie(MovieSearchHistoryItem item, Func<string?, string, string> nameOf)
         => new(
             item.Id,
-            null,
-            string.IsNullOrWhiteSpace(item.IndexerName) ? "Unknown indexer" : item.IndexerName,
+            item.IndexerId,
+            nameOf(item.IndexerId, string.IsNullOrWhiteSpace(item.IndexerName) ? "Unknown indexer" : item.IndexerName),
             IsGrab(item.TriggerKind) ? IndexerHistoryEventTypes.Grab : IndexerHistoryEventTypes.Search,
             item.Outcome,
             DescribeSearch(item.TriggerKind, item.Outcome, item.ReleaseName),
@@ -90,11 +101,11 @@ public sealed class IndexerHistoryService(
             item.MovieId,
             item.CreatedUtc);
 
-    private static IndexerHistoryItem FromSeries(SeriesSearchHistoryItem item)
+    private static IndexerHistoryItem FromSeries(SeriesSearchHistoryItem item, Func<string?, string, string> nameOf)
         => new(
             item.Id,
-            null,
-            string.IsNullOrWhiteSpace(item.IndexerName) ? "Unknown indexer" : item.IndexerName,
+            item.IndexerId,
+            nameOf(item.IndexerId, string.IsNullOrWhiteSpace(item.IndexerName) ? "Unknown indexer" : item.IndexerName),
             IsGrab(item.TriggerKind) ? IndexerHistoryEventTypes.Grab : IndexerHistoryEventTypes.Search,
             item.Outcome,
             DescribeSearch(item.TriggerKind, item.Outcome, item.ReleaseName),

@@ -79,15 +79,10 @@ public static class SearchEndpointRouteBuilderExtensions
             var snapshot = await statsRepository.GetScoreboardAsync(fromUtc, toUtc, cancellationToken);
             var configuredIndexers = await connectionsRepository.ListIndexersAsync(cancellationToken);
             var statsById = snapshot.QueryStats.ToDictionary(item => item.IndexerId, StringComparer.OrdinalIgnoreCase);
-            var grabsByName = snapshot.GrabStats
-                .GroupBy(item => item.IndexerName, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(
-                    group => group.Key,
-                    group => new IndexerGrabStatsItem(
-                        group.Key,
-                        group.Sum(item => item.TotalGrabs),
-                        group.Sum(item => item.SuccessfulGrabs)),
-                    StringComparer.OrdinalIgnoreCase);
+            // Grabs are filed under the indexer's id (#1077), so a renamed indexer
+            // keeps them. Only a dispatch whose source matched no indexer is left
+            // to be found by the name it carries.
+            var grabsByName = new GrabStatsLookup(snapshot.GrabStats);
 
             var rows = configuredIndexers
                 .Select(indexer => BuildScoreboardRow(indexer, statsById, grabsByName, windowDays))
@@ -403,6 +398,7 @@ public static class SearchEndpointRouteBuilderExtensions
             IReleaseRankingModelService rankingModelService,
             IIntelligentRoutingService intelligentRoutingService,
             IPlatformSettingsRepository platformSettingsRepository,
+            IConnectionsRepository connectionsRepository,
             CancellationToken cancellationToken) =>
         {
             var boost = rankingModelService.Score(new ReleaseRankingFeatures(
@@ -417,8 +413,14 @@ public static class SearchEndpointRouteBuilderExtensions
             var scoreComputation = ReleaseScoringModePolicy.Compute(0, boost, platformSettings.SearchScoringMode);
 
             var snapshot = await intelligentRoutingService.GetSnapshotAsync(cancellationToken);
+            // Success rates are filed under the indexer's id (#1077); the name only finds a source that matched no indexer.
+            var rateIndexer = string.IsNullOrWhiteSpace(request.IndexerName)
+                ? null
+                : (await connectionsRepository.ListIndexersAsync(cancellationToken))
+                    .FirstOrDefault(item => string.Equals(item.Name, request.IndexerName.Trim(), StringComparison.OrdinalIgnoreCase));
             double? indexerRate = string.IsNullOrWhiteSpace(request.IndexerName)
                 ? null
+                : rateIndexer is not null && snapshot.IndexerSuccessRates.TryGetValue(rateIndexer.Id, out var idRate) ? idRate
                 : snapshot.IndexerSuccessRates.TryGetValue(request.IndexerName, out var rate) ? rate : null;
             var clientRate = await intelligentRoutingService.GetDownloadClientSuccessRateAsync(request.DownloadClientId, cancellationToken);
 
@@ -559,16 +561,44 @@ public static class SearchEndpointRouteBuilderExtensions
         return errors;
     }
 
+    /// <summary>Grab counts by the indexer's id, with the name as the way back to a dispatch that never matched one.</summary>
+    private sealed class GrabStatsLookup
+    {
+        private readonly Dictionary<string, IndexerGrabStatsItem> byId = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IndexerGrabStatsItem> byName = new(StringComparer.OrdinalIgnoreCase);
+
+        public GrabStatsLookup(IEnumerable<IndexerGrabStatsItem> items)
+        {
+            foreach (var item in items)
+            {
+                var target = string.IsNullOrWhiteSpace(item.IndexerId) ? byName : byId;
+                var key = string.IsNullOrWhiteSpace(item.IndexerId) ? item.IndexerName : item.IndexerId;
+                target[key] = target.TryGetValue(key, out var seen)
+                    ? seen with { TotalGrabs = seen.TotalGrabs + item.TotalGrabs, SuccessfulGrabs = seen.SuccessfulGrabs + item.SuccessfulGrabs }
+                    : item;
+            }
+        }
+
+        public IndexerGrabStatsItem For(string indexerId, string indexerName)
+        {
+            byId.TryGetValue(indexerId, out var linked);
+            byName.TryGetValue(indexerName, out var byTheName);
+            return new IndexerGrabStatsItem(
+                indexerName,
+                (linked?.TotalGrabs ?? 0) + (byTheName?.TotalGrabs ?? 0),
+                (linked?.SuccessfulGrabs ?? 0) + (byTheName?.SuccessfulGrabs ?? 0),
+                indexerId);
+        }
+    }
+
     private static ScoreboardRow BuildScoreboardRow(
         IndexerItem indexer,
         IReadOnlyDictionary<string, IndexerQueryStatsItem> statsById,
-        IReadOnlyDictionary<string, IndexerGrabStatsItem> grabsByName,
+        GrabStatsLookup grabsByName,
         int windowDays)
     {
         statsById.TryGetValue(indexer.Id, out var stats);
-        var grabs = grabsByName.TryGetValue(indexer.Name, out var matchedGrabs)
-            ? matchedGrabs
-            : new IndexerGrabStatsItem(indexer.Name, 0, 0);
+        var grabs = grabsByName.For(indexer.Id, indexer.Name);
         return new ScoreboardRow(
             Id: indexer.Id,
             Name: indexer.Name,
@@ -594,12 +624,10 @@ public static class SearchEndpointRouteBuilderExtensions
 
     private static ScoreboardRow BuildHistoricalScoreboardRow(
         IndexerQueryStatsItem stats,
-        IReadOnlyDictionary<string, IndexerGrabStatsItem> grabsByName,
+        GrabStatsLookup grabsByName,
         int windowDays)
     {
-        var grabs = grabsByName.TryGetValue(stats.IndexerName, out var matchedGrabs)
-            ? matchedGrabs
-            : new IndexerGrabStatsItem(stats.IndexerName, 0, 0);
+        var grabs = grabsByName.For(stats.IndexerId, stats.IndexerName);
         return new ScoreboardRow(
             Id: stats.IndexerId,
             Name: stats.IndexerName,

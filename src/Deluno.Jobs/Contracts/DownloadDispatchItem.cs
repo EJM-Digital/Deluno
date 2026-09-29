@@ -65,4 +65,8 @@ public sealed record DownloadDispatchItem(
     // parser (Deluno.Quality.ReleasePreferences.ReleasePreferenceFactFactory)
     // that judges a probed file's audio track — never a second copy of the
     // token list in the web app.
-    string? DecisionLanguage = null);
+    string? DecisionLanguage = null,
+
+    // The indexer's id (#1077). IndexerName is what it was called when the
+    // grab was made; the id is what grabs and success rates are filed under.
+    string? IndexerId = null);

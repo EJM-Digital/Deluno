@@ -87,7 +87,10 @@ public sealed class SqliteIndexerQueryStatsRepository(
                 """
                 SELECT
                     indexer_id,
-                    MAX(indexer_name),
+                    -- The name it last went by, not the alphabetically last of every name it ever had.
+                    (SELECT latest.indexer_name FROM indexer_query_events latest
+                     WHERE latest.indexer_id = indexer_query_events.indexer_id
+                     ORDER BY latest.created_utc DESC LIMIT 1),
                     COUNT(*),
                     SUM(CASE WHEN query_kind = 'search' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN query_kind = 'rss' THEN 1 ELSE 0 END),
@@ -98,7 +101,7 @@ public sealed class SqliteIndexerQueryStatsRepository(
                 FROM indexer_query_events
                 WHERE created_utc >= @fromUtc AND created_utc < @toUtc
                 GROUP BY indexer_id
-                ORDER BY COUNT(*) DESC, MAX(indexer_name) COLLATE NOCASE;
+                ORDER BY COUNT(*) DESC, indexer_id;
                 """;
             AddParameter(command, "@fromUtc", fromUtc.ToUniversalTime().ToString("O"));
             AddParameter(command, "@toUtc", toUtc.ToUniversalTime().ToString("O"));
@@ -125,15 +128,18 @@ public sealed class SqliteIndexerQueryStatsRepository(
             command.CommandText =
                 """
                 SELECT
-                    indexer_name,
+                    MAX(indexer_name),
                     COUNT(*),
-                    SUM(CASE WHEN grab_status = 'succeeded' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN grab_status = 'succeeded' THEN 1 ELSE 0 END),
+                    MAX(indexer_id)
                 FROM download_dispatches
                 WHERE created_utc >= @fromUtc
                   AND created_utc < @toUtc
                   AND status != 'archived'
-                GROUP BY indexer_name
-                ORDER BY COUNT(*) DESC, indexer_name COLLATE NOCASE;
+                -- By id, so a renamed indexer is still one row (#1077); a dispatch
+                -- with no id (its source matched no indexer) falls back to its name.
+                GROUP BY COALESCE(indexer_id, 'name:' || LOWER(indexer_name))
+                ORDER BY COUNT(*) DESC, MAX(indexer_name) COLLATE NOCASE;
                 """;
             AddParameter(command, "@fromUtc", fromUtc.ToUniversalTime().ToString("O"));
             AddParameter(command, "@toUtc", toUtc.ToUniversalTime().ToString("O"));
@@ -144,7 +150,8 @@ public sealed class SqliteIndexerQueryStatsRepository(
                 grabStats.Add(new IndexerGrabStatsItem(
                     IndexerName: reader.GetString(0),
                     TotalGrabs: reader.GetInt64(1),
-                    SuccessfulGrabs: reader.GetInt64(2)));
+                    SuccessfulGrabs: reader.GetInt64(2),
+                    IndexerId: reader.IsDBNull(3) ? null : reader.GetString(3)));
             }
         }
 

@@ -1,4 +1,6 @@
 using Deluno.Api.IndexerHistory;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
@@ -19,6 +21,8 @@ public sealed class IndexerHistoryServiceTests
 {
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-28T12:00:00Z");
 
+    private readonly Mock<IConnectionsRepository> _connections = new();
+
     private (IndexerHistoryService Service, FakeEventStore EventStore, Mock<IMovieCatalogRepository> Movies, Mock<ISeriesCatalogRepository> Series) Build()
     {
         var eventStore = new FakeEventStore();
@@ -29,7 +33,10 @@ public sealed class IndexerHistoryServiceTests
         series.Setup(s => s.ListRecentSearchHistoryAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<SeriesSearchHistoryItem>)[]);
 
-        var service = new IndexerHistoryService(eventStore, movies.Object, series.Object, new FakeClock(Now));
+        _connections.Setup(c => c.ListIndexersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<IndexerItem>)[]);
+
+        var service = new IndexerHistoryService(eventStore, movies.Object, series.Object, _connections.Object, new FakeClock(Now));
         return (service, eventStore, movies, series);
     }
 
@@ -83,6 +90,37 @@ public sealed class IndexerHistoryServiceTests
 
         var item = Assert.Single(page.Items);
         Assert.Equal("indexer-b", item.IndexerName);
+    }
+
+    /// <summary>#1077: history is filed under the indexer's id, so renaming the indexer neither splits nor loses it.</summary>
+    [Fact]
+    public async Task A_renamed_indexer_keeps_its_history_under_its_new_name()
+    {
+        var (service, eventStore, movies, series) = Build();
+        _connections.Setup(c => c.ListIndexersAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<IndexerItem>)[
+                new IndexerItem("ix-1", "Renamed", "torznab", "public", "http://ix.invalid", null, 100, "", "", "both", true, "healthy", null, null, null, null, 0, null, null, Now, Now)
+            ]);
+        eventStore.Events.Add(Event("Old name", IndexerHistoryEventTypes.RssSync, Now.AddMinutes(-1)) with { IndexerId = "ix-1" });
+        movies.Setup(m => m.ListRecentSearchHistoryAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<MovieSearchHistoryItem>)[
+                new MovieSearchHistoryItem("m1", "movie-1", "lib-1", "manual-grab", "grabbed", "Movie.2026.1080p", "Old name", null, Now.AddMinutes(-3), "ix-1"),
+                new MovieSearchHistoryItem("m2", "movie-2", "lib-1", "manual", "matched", "Other.2026.1080p", "Gone indexer", null, Now.AddMinutes(-4))
+            ]);
+        series.Setup(s => s.ListRecentSearchHistoryAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<SeriesSearchHistoryItem>)[
+                new SeriesSearchHistoryItem("s1", "series-1", null, 1, 1, "lib-2", "manual", "matched", "Show.S01E01", "Another old name", null, Now.AddMinutes(-2), "ix-1")
+            ]);
+
+        var everything = await service.ListAsync(new PageRequest(50, null), null, null, CancellationToken.None);
+        Assert.Equal(4, everything.Items.Count);
+        Assert.Equal(3, everything.Items.Count(item => item.IndexerName == "Renamed"));
+        // A row whose source matched no indexer keeps the name it was written with.
+        Assert.Single(everything.Items, item => item.IndexerName == "Gone indexer");
+
+        var filtered = await service.ListAsync(new PageRequest(50, null), null, "Renamed", CancellationToken.None);
+        Assert.Equal(3, filtered.Items.Count);
+        Assert.All(filtered.Items, item => Assert.Equal("ix-1", item.IndexerId));
     }
 
     [Fact]

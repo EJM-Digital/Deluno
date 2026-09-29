@@ -55,7 +55,8 @@ public static class MoviesDatabaseMigrations
         new V0044MovieSubtitleAttemptHistoryScore(),
         new V0045MovieOneRungPerMovie(),
         new V0046MovieCollectionTags(),
-        new V0047MovieQuietRungRestored()
+        new V0047MovieQuietRungRestored(),
+        new V0048MovieSearchHistoryIndexerId()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

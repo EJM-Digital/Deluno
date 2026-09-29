@@ -67,7 +67,8 @@ public sealed record MediaSearchHistoryItem(
     string? ReleaseName,
     string? IndexerName,
     string? DetailsJson,
-    DateTimeOffset CreatedUtc);
+    DateTimeOffset CreatedUtc,
+    string? IndexerId = null);
 
 public sealed record MediaImportRecoveryCase(
     string Id,

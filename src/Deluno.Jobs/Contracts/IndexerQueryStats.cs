@@ -33,11 +33,16 @@ public sealed record IndexerQueryStatsItem(
     double AverageResponseMilliseconds,
     long CandidatesReturned);
 
-/// <summary>Dispatch/grab telemetry grouped by the indexer name on the dispatch.</summary>
+/// <summary>
+/// Dispatch/grab telemetry for one indexer. Grabs are filed under the indexer's
+/// id (#1077), so a renamed indexer keeps its history; a dispatch whose source
+/// matched no indexer has no id and is grouped by the name it carries.
+/// </summary>
 public sealed record IndexerGrabStatsItem(
     string IndexerName,
     long TotalGrabs,
-    long SuccessfulGrabs);
+    long SuccessfulGrabs,
+    string? IndexerId = null);
 
 /// <summary>The raw aggregates used by the indexer scoreboard endpoint.</summary>
 public sealed record IndexerScoreboardSnapshot(
