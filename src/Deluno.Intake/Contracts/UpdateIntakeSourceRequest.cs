@@ -23,4 +23,6 @@ public sealed record UpdateIntakeSourceRequest(
     /// <summary>See <see cref="CreateIntakeSourceRequest.SeriesType"/> (#850).</summary>
     string? SeriesType = null,
     /// <summary>See <see cref="CreateIntakeSourceRequest.SeasonFolder"/> (#850).</summary>
-    bool? SeasonFolder = null);
+    bool? SeasonFolder = null,
+    /// <summary>See <see cref="CreateIntakeSourceRequest.Tags"/> (#1015). Null keeps the tags the list already has.</summary>
+    string? Tags = null);

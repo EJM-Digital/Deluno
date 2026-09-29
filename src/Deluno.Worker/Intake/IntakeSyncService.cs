@@ -301,6 +301,8 @@ public sealed class IntakeSyncService(
         var added = 0;
         var errors = 0;
         var shouldRequestSearch = false;
+        var listTags = TagNameList.Split(source.Tags);
+        var taggedTitles = new List<string>();
 
         foreach (var entry in entries)
         {
@@ -420,6 +422,15 @@ public sealed class IntakeSyncService(
                     }
 
                     added++;
+
+                    // #1015: the list's tags go on the title the moment it exists, before its
+                    // wanted state, its search or anything else that reads its tags. Only a title
+                    // the list adds is tagged; one already in the library is left as it is.
+                    if (titleTagService is not null && listTags.Count > 0)
+                    {
+                        await titleTagService.GiveAsync(mediaType == "tv" ? MediaKind.Series : MediaKind.Movie, existingId!, listTags, cancellationToken);
+                        taggedTitles.Add(resolvedTitle!);
+                    }
                 }
                 else
                 {
@@ -510,6 +521,18 @@ public sealed class IntakeSyncService(
                 logger.LogWarning(ex, "Intake source {SourceId} failed processing entry.", source.Id);
                 Increment(skipReasons, $"Entry error: {ex.Message}");
             }
+        }
+
+        if (taggedTitles.Count > 0)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "intake.tagged",
+                $"{source.Name} added {taggedTitles.Count} title{(taggedTitles.Count == 1 ? "" : "s")} and gave {(taggedTitles.Count == 1 ? "it" : "them")} the tag{(listTags.Count == 1 ? "" : "s")} {string.Join(", ", listTags)}: {string.Join(", ", taggedTitles.Take(10))}{(taggedTitles.Count > 10 ? $" and {taggedTitles.Count - 10} more" : string.Empty)}.",
+                JsonSerializer.Serialize(new { source.Id, source.Name, tags = listTags, count = taggedTitles.Count }, JsonOptions),
+                relatedJobId,
+                "intake-source",
+                source.Id,
+                cancellationToken);
         }
 
         var searchRequested = false;

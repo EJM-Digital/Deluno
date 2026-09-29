@@ -186,6 +186,36 @@ public sealed class SourceTagsPersistenceTests
         Assert.Equal(["movie-solo"], again.Select(item => item.EntityId));
     }
 
+    [Fact]
+    public async Task A_list_stores_its_tags_keeps_them_when_a_save_sends_none_and_they_follow_a_tag_rename()
+    {
+        using var storage = TestStorage.Create();
+        await InitialiseAsync(storage);
+        var intake = new SqliteIntakeRepository(storage.Factory, Clock);
+        var plain = await CreateSourceAsync(intake, "Plain list");
+        Assert.Equal("", plain.Tags);
+
+        var created = await intake.CreateIntakeSourceAsync(
+            new CreateIntakeSourceRequest("Tagged list", "url-list", "https://example.test/t", "movies", null, null,
+                null, null, null, null, null, "any", 24, false, true, Tags: " from-list , kids "),
+            CancellationToken.None);
+        Assert.Equal("from-list, kids", created.Tags);
+
+        UpdateIntakeSourceRequest Update(string? tags) => new(
+            "Tagged list", "url-list", "https://example.test/t", "movies", null, null, null, null, null, null, null, "any", 24, false, true, Tags: tags);
+        Assert.Equal("from-list, kids", (await intake.UpdateIntakeSourceAsync(created.Id, Update(null), CancellationToken.None))!.Tags);
+        Assert.Equal("", (await intake.UpdateIntakeSourceAsync(created.Id, Update(""), CancellationToken.None))!.Tags);
+        await intake.UpdateIntakeSourceAsync(created.Id, Update("from-list"), CancellationToken.None);
+
+        var settings = new SqlitePlatformSettingsRepository(storage.Factory, Clock, TestSecretProtection.Create(storage));
+        var tag = await settings.CreateTagAsync(new CreateTagRequest("from-list", null, null), CancellationToken.None);
+        var references = new SqliteTagReferenceStore(storage.Factory);
+        Assert.Contains((await references.ListAllUsersAsync(CancellationToken.None))["from-list"], user => user.Kind == "list" && user.Id == created.Id);
+
+        await references.RenameAsync(tag.Id, "from-list", "imported", CancellationToken.None);
+        Assert.Equal("imported", (await intake.GetIntakeSourceAsync(created.Id, CancellationToken.None))!.Tags);
+    }
+
     private static Task<IntakeSourceItem> CreateSourceAsync(SqliteIntakeRepository intake, string name)
         => intake.CreateIntakeSourceAsync(
             new CreateIntakeSourceRequest(name, "url-list", "https://example.test/" + name.Replace(' ', '-'), "movies", null, null,

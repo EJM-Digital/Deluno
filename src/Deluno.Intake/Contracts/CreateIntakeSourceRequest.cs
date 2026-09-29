@@ -32,4 +32,10 @@ public sealed record CreateIntakeSourceRequest(
     /// existing per-series defaults (Standard type, global season format).
     /// </summary>
     string? SeriesType = null,
-    bool? SeasonFolder = null);
+    bool? SeasonFolder = null,
+    /// <summary>
+    /// #1015: comma-separated tag names given to every title this list adds
+    /// (Radarr and Sonarr's ImportListSyncService sets Tags = importList.Tags on
+    /// each title it adds). Blank gives none, which is what every existing list does.
+    /// </summary>
+    string? Tags = null);

@@ -131,7 +131,8 @@ public static class PlatformDatabaseMigrations
         new V0123SeerrTagsAndListDrops(),
         new V0124NotificationWebhookIncludeHealthWarnings(),
         new V0125ReleaseProfileTagSetsAndOrder(),
-        new V0126DownloadClientContentLayout()
+        new V0126DownloadClientContentLayout(),
+        new V0127IntakeSourceTags()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
