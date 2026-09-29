@@ -131,7 +131,7 @@ public sealed class RetentionFieldAnswers(
             case RetentionValueKinds.TextList:
             {
                 var names = Texts(field.Id, matches);
-                return Holds(TextList(op, value, names), $"{Lead(field, op, value)}: {(names.Count == 0 ? "none" : string.Join(", ", names))}");
+                return Holds(TextList(op, value, names, field.Id is "server.genres" or "server.people"), $"{Lead(field, op, value)}: {(names.Count == 0 ? (field.Id is "server.genres" or "server.people" ? "not known" : "none") : string.Join(", ", names))}");
             }
 
             case RetentionValueKinds.Date:
@@ -149,7 +149,7 @@ public sealed class RetentionFieldAnswers(
             default:
             {
                 var number = NumberOf(field.Id, matches);
-                return Holds(Number(op, value, number, 1), $"{Lead(field, op, value)}: {(number is null ? "none" : number.Value.ToString("0.#", CultureInfo.InvariantCulture))}");
+                return Holds(Number(op, value, number, 1), $"{Lead(field, op, value)}: {(number is null ? "not known" : number.Value.ToString("0.#", CultureInfo.InvariantCulture))}");
             }
         }
     }
@@ -404,7 +404,7 @@ public sealed class RetentionFieldAnswers(
         var (free, total) = space.Value;
         return field.Id switch
         {
-            "disk.freePercent" => Holds(Number(op, value, total <= 0 ? null : Math.Round(free * 100d / total, 1), 1), $"{Lead(field, op, value)}: {(total <= 0 ? 0 : free * 100d / total):0.#}%"),
+            "disk.freePercent" => Holds(Number(op, value, total <= 0 ? null : Math.Round(free * 100d / total, 1), 1), $"{Lead(field, op, value)}: {(total <= 0 ? "not known" : (free * 100d / total).ToString("0.#", CultureInfo.InvariantCulture) + "%")}"),
             "disk.totalGb" => Holds(Number(op, value, total, GigaByte), $"{Lead(field, op, value)}: {total / (double)GigaByte:0.#} GB"),
             _ => Holds(Number(op, value, free, GigaByte), $"{Lead(field, op, value)}: {free / (double)GigaByte:0.#} GB free")
         };
@@ -469,7 +469,7 @@ public sealed class RetentionFieldAnswers(
             "part.episodeNumber" => Holds(Number(op, value, unit.EpisodeNumber, 1), $"{phrase}: {unit.EpisodeNumber}"),
             "part.latestSeason" => Holds(Boolean(value, part.LatestSeason), $"{phrase}: {(part.LatestSeason ? "yes" : "no")}"),
             "part.hasUnaired" => Holds(Boolean(value, part.HasUnaired), $"{phrase}: {(part.HasUnaired ? "yes" : "no")}"),
-            "part.size" => Holds(Number(op, value, unit.SizeBytes, GigaByte), $"{phrase}: {(unit.SizeBytes ?? 0) / (double)GigaByte:0.#} GB"),
+            "part.size" => Holds(Number(op, value, unit.SizeBytes, GigaByte), $"{phrase}: {(unit.SizeBytes is { } size ? (size / (double)GigaByte).ToString("0.#", CultureInfo.InvariantCulture) + " GB" : "not known")}"),
             "part.episodesHeld" => Holds(Number(op, value, part.EpisodesHeld, 1), $"{phrase}: {part.EpisodesHeld}"),
             "part.airDate" => Holds(Date(op, value, part.AirDate), $"{phrase}: {part.AirDate?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "not known"}"),
             "part.imported" => Holds(Date(op, value, part.Imported), $"{phrase}: {part.Imported?.ToString("d MMM yyyy", CultureInfo.InvariantCulture) ?? "not known"}"),
@@ -523,7 +523,13 @@ public sealed class RetentionFieldAnswers(
     // -------------------------------------------------------------- operators
     private const long GigaByte = 1L << 30;
 
-    private static RetentionAnswer Holds(bool holds, string sentence) => holds ? RetentionAnswer.Yes(sentence) : RetentionAnswer.No(sentence);
+    /// <summary>Null is "cannot say": a value the source never gave is neither a match nor a non-match (#1068).</summary>
+    private static RetentionAnswer Holds(bool? holds, string sentence) => holds switch
+    {
+        true => RetentionAnswer.Yes(sentence),
+        false => RetentionAnswer.No(sentence),
+        _ => RetentionAnswer.CannotSay(sentence)
+    };
 
     private static string[] Values(string? value)
         => (value ?? string.Empty).Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -539,8 +545,18 @@ public sealed class RetentionFieldAnswers(
             _ => false
         };
 
-    internal static bool TextList(string op, string? value, IReadOnlyList<string> names)
-        => op switch
+    /// <param name="emptyIsUnknown">
+    /// The list is one a server may simply not have filled in (genres, people): an empty list says
+    /// nothing, so every test except the explicit "is empty" / "is not empty" is undecided (#1068).
+    /// </param>
+    internal static bool? TextList(string op, string? value, IReadOnlyList<string> names, bool emptyIsUnknown = false)
+    {
+        if (emptyIsUnknown && names.Count == 0 && op is "in" or "all" or "notin")
+        {
+            return null;
+        }
+
+        return op switch
         {
             "in" => Values(value).Any(name => names.Contains(name, StringComparer.OrdinalIgnoreCase)),
             "all" => Values(value) is { Length: > 0 } wanted && wanted.All(name => names.Contains(name, StringComparer.OrdinalIgnoreCase)),
@@ -549,21 +565,35 @@ public sealed class RetentionFieldAnswers(
             "unset" => names.Count == 0,
             _ => false
         };
+    }
 
-    internal static bool Text(string op, string? value, string? text)
-        => op switch
+    /// <returns>Null when the text is not known and the operator is not the explicit "is set" / "is not set": undecided, never a match (#1068).</returns>
+    internal static bool? Text(string op, string? value, string? text)
+    {
+        switch (op)
         {
-            "set" => !string.IsNullOrWhiteSpace(text),
-            "unset" => string.IsNullOrWhiteSpace(text),
-            "has" => text is not null && text.Contains(value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
-            "nothas" => text is null || !text.Contains(value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
-            "is" => text is not null && Values(value).Any(entry => string.Equals(entry, text, StringComparison.OrdinalIgnoreCase)),
-            "isnot" => text is null || !Values(value).Any(entry => string.Equals(entry, text, StringComparison.OrdinalIgnoreCase)),
+            case "set": return !string.IsNullOrWhiteSpace(text);
+            case "unset": return string.IsNullOrWhiteSpace(text);
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return op is "has" or "nothas" or "is" or "isnot" ? null : false;
+        }
+
+        return op switch
+        {
+            "has" => text.Contains(value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            "nothas" => !text.Contains(value ?? string.Empty, StringComparison.OrdinalIgnoreCase),
+            "is" => Values(value).Any(entry => string.Equals(entry, text, StringComparison.OrdinalIgnoreCase)),
+            "isnot" => !Values(value).Any(entry => string.Equals(entry, text, StringComparison.OrdinalIgnoreCase)),
             _ => false
         };
+    }
 
     /// <param name="unit">What one unit of the entered value is worth: bytes in a gigabyte, or 1.</param>
-    internal static bool Number(string op, string? value, double? actual, double unit)
+    /// <returns>Null when the number is not known and the operator is not the explicit "is set" / "is not set": undecided, never a match (#1068).</returns>
+    internal static bool? Number(string op, string? value, double? actual, double unit)
     {
         if (op == "set") return actual is not null;
         if (op == "unset") return actual is null;
@@ -572,13 +602,18 @@ public sealed class RetentionFieldAnswers(
             return false;
         }
 
+        if (actual is not { } known)
+        {
+            return op is "min" or "max" or "is" or "isnot" ? null : false;
+        }
+
         var target = entered * unit;
         return op switch
         {
-            "min" => actual >= target,
-            "max" => actual <= target,
-            "is" => actual is not null && Math.Abs(actual.Value - target) < 0.0001 * Math.Max(1, unit),
-            "isnot" => actual is null || Math.Abs(actual.Value - target) >= 0.0001 * Math.Max(1, unit),
+            "min" => known >= target,
+            "max" => known <= target,
+            "is" => Math.Abs(known - target) < 0.0001 * Math.Max(1, unit),
+            "isnot" => Math.Abs(known - target) >= 0.0001 * Math.Max(1, unit),
             _ => false
         };
     }
