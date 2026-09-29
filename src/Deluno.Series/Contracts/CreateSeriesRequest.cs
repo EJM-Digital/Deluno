@@ -26,4 +26,6 @@ public sealed record CreateSeriesRequest(
     /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.SeasonFolder"/> (#850). Null follows the global Media Management format, exactly today's behaviour.</summary>
     bool? SeasonFolder = null,
     /// <summary>See <see cref="Deluno.Series.Contracts.SeriesNumberingDetail.ListMonitorMode"/> (#848). Null means this series was not added from a list, or the list chose "All".</summary>
-    string? ListMonitorMode = null);
+    string? ListMonitorMode = null,
+    /// <summary>Tag names picked in the add dialog (#1038); written with the title before routing and the added notification.</summary>
+    IReadOnlyList<string>? Tags = null);

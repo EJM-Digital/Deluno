@@ -32,6 +32,8 @@ export type CreateFormDraft = {
   searchForMissingNow: boolean;
   /** Search for this title's cutoff-unmet content right away, once it is added (#793). Off by default. */
   searchForCutoffUnmetNow: boolean;
+  /** Tags to put on the title as it is added (#1038), comma-separated. Empty means none. */
+  tags: string;
   metadata: MetadataSearchResult | null;
 };
 
@@ -44,11 +46,34 @@ export function createInitialLibraryForm(): CreateFormDraft {
     monitorPreset: "all",
     searchForMissingNow: false,
     searchForCutoffUnmetNow: false,
+    tags: "",
     metadata: null
   };
 }
 
-export type IdPrefixedSearch = { source: "tmdb" | "imdb" | "tvdb"; id: string };
+const REMEMBERED_TAGS_KEY = "deluno:add-tags:";
+
+/** The tags last used when adding into this library (#1038), so the picker starts where the person left off. */
+export function readRememberedAddTags(libraryId: string | null | undefined): string {
+  if (!libraryId) return "";
+  try {
+    return window.localStorage.getItem(REMEMBERED_TAGS_KEY + libraryId) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function rememberAddTags(libraryId: string | null | undefined, tags: string) {
+  if (!libraryId) return;
+  try {
+    if (tags.trim()) window.localStorage.setItem(REMEMBERED_TAGS_KEY + libraryId, tags);
+    else window.localStorage.removeItem(REMEMBERED_TAGS_KEY + libraryId);
+  } catch {
+    // Remembering is a convenience; adding still works without it.
+  }
+}
+
+export type IdPrefixedSearch ={ source: "tmdb" | "imdb" | "tvdb"; id: string };
 
 /**
  * Recognizes an explicit `tmdb:<id>`, `imdb:<id>` or `tvdb:<id>` prefix typed

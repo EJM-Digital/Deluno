@@ -10,6 +10,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
+import { TagPicker } from "./tag-picker";
 
 type LibraryCreateDialogProps = {
   open: boolean;
@@ -133,7 +134,19 @@ export function LibraryCreateDialog({
             </div>
           ) : null}
 
-          <form onSubmit={onCreate} className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Optional tags, put on the title as it is added (#1038). */}
+          <div className="border-t border-hairline px-6 py-4">
+            <Field label="Tags" help="Optional. Put on the title as it is added, so a tagged connection or rule treats it right from the start.">
+              <TagPicker
+                label={`Tags for the ${singular} being added`}
+                value={createForm.tags}
+                onChange={(tags) => setCreateForm((current) => ({ ...current, tags }))}
+                warnUnused={false}
+              />
+            </Field>
+          </div>
+
+          <form onSubmit={onCreate}className="flex flex-col gap-3 border-t border-hairline bg-surface-1/70 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 text-sm text-muted-foreground">
               <div className="inline-flex min-h-[1.25rem] flex-wrap items-center gap-x-4 gap-y-2">
                 <label className="inline-flex select-none items-center gap-2"><Checkbox checked={createForm.monitored} onCheckedChange={(monitored) => setCreateForm((current) => ({ ...current, monitored }))} />Monitor and search automatically</label>

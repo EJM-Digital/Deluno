@@ -111,6 +111,45 @@ public sealed class LifecycleNotificationTriggerTests
         Assert.DoesNotContain("title.added", outbound.DispatchedCategories);
     }
 
+    [Fact]
+    public async Task A_title_added_with_a_tag_carries_it_on_the_added_notification_so_a_tagged_connection_gets_it_and_an_untagged_add_does_not()
+    {
+        var outbound = new RecordingOutboundNotificationService();
+        await using var app = await ApplicationTestHost.StartAsync(
+            replaceServices: services => services.AddSingleton<IOutboundNotificationService>(outbound));
+        await SetPreferenceAsync(app, prefs => prefs.AddedEnabled = true);
+
+        var tagged = await app.Client.PostAsJsonAsync("/api/movies", new { title = "A Family Film", releaseYear = 2024, monitored = true, tags = new[] { "kids" } });
+        var untagged = await app.Client.PostAsJsonAsync("/api/movies", new { title = "A Grown Up Film", releaseYear = 2024, monitored = true });
+
+        Assert.Equal(HttpStatusCode.Created, tagged.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, untagged.StatusCode);
+        Assert.Equal(2, outbound.Dispatched.Count);
+        Assert.True(Deluno.Contracts.TagRoutingMatch.IsEligible("kids", outbound.Dispatched[0].Tags));
+        Assert.False(Deluno.Contracts.TagRoutingMatch.IsEligible("kids", outbound.Dispatched[1].Tags));
+
+        using var body = System.Text.Json.JsonDocument.Parse(await tagged.Content.ReadAsStringAsync());
+        var movieId = body.RootElement.GetProperty("id").GetString()!;
+        var stored = await app.Services.GetRequiredService<Deluno.Contracts.IMediaTagStore>()
+            .ListAsync(Deluno.Contracts.MediaKind.Movie, movieId, CancellationToken.None);
+        Assert.Contains(stored, tag => tag.Name == "kids");
+    }
+
+    [Fact]
+    public async Task A_show_added_with_a_tag_carries_it_on_the_added_notification()
+    {
+        var outbound = new RecordingOutboundNotificationService();
+        await using var app = await ApplicationTestHost.StartAsync(
+            replaceServices: services => services.AddSingleton<IOutboundNotificationService>(outbound));
+        await SetPreferenceAsync(app, prefs => prefs.AddedEnabled = true);
+
+        var response = await app.Client.PostAsJsonAsync("/api/series", new { title = "A Family Show", startYear = 2024, monitored = true, tags = new[] { "kids" } });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var added = Assert.Single(outbound.Dispatched);
+        Assert.Contains("kids", added.Tags!);
+    }
+
     private static async Task<LibraryItem> CreateLibraryAsync(ApplicationTestHost app)
         => await app.Services.GetRequiredService<ILibrariesRepository>().CreateLibraryAsync(
             new CreateLibraryRequest(
@@ -129,10 +168,12 @@ public sealed class LifecycleNotificationTriggerTests
     private sealed class RecordingOutboundNotificationService : IOutboundNotificationService
     {
         public List<string> DispatchedCategories { get; } = [];
+        public List<(string Category, IReadOnlyList<string>? Tags)> Dispatched { get; } = [];
 
         public Task DispatchAsync(string eventCategory, string title, string message, string? detailsJson, CancellationToken cancellationToken, IReadOnlyList<string>? titleTags = null)
         {
             DispatchedCategories.Add(eventCategory);
+            Dispatched.Add((eventCategory, titleTags));
             return Task.CompletedTask;
         }
 

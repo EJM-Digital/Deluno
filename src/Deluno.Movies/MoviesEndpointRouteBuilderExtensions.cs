@@ -1927,6 +1927,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             IMediaStateRepository mediaState,
             IOutboundNotificationService notificationService,
             INotificationService notificationPreferences,
+            ITitleTagService titleTagService,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -1950,6 +1951,14 @@ public static class MoviesEndpointRouteBuilderExtensions
 
             var requestStartedUtc = DateTimeOffset.UtcNow;
             var movie = await repository.AddAsync(request, cancellationToken);
+            // #1038: the tags picked in the add dialog go on the title now, before
+            // any routing, search or the "added" notification reads them. A title
+            // the catalogue already held keeps its tags and gains these.
+            var addedTags = TagNameList.Split(string.Join(',', request.Tags ?? []));
+            if (addedTags.Count > 0)
+            {
+                await titleTagService.GiveAsync(MediaKind.Movie, movie.Id, addedTags, cancellationToken);
+            }
             // Only the library the person chose, or the one it is already in (#530).
             var already = (await mediaState.ListWantedByIdsAsync(MediaKind.Movie, [movie.Id], cancellationToken))
                 .Select(row => row.LibraryId)
@@ -2060,9 +2069,7 @@ public static class MoviesEndpointRouteBuilderExtensions
                     $"{movie.Title} was added to the library.",
                     JsonSerializer.Serialize(new { movie.Id, movie.Title, mediaType = "movies" }),
                     cancellationToken,
-                    // #1036: a title about to be added has no tags yet (they are
-                    // assigned afterwards), so it is a title event with none.
-                    titleTags: []);
+                    titleTags: await titleTagService.ListNamesAsync(MediaKind.Movie, movie.Id, cancellationToken));
             }
 
             return Results.Created($"/api/movies/{movie.Id}", movie);

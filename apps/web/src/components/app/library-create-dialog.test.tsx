@@ -7,6 +7,14 @@ import type { MetadataSearchResult } from "../../lib/api";
 import type { CreateFormDraft, LibraryVariant } from "../../hooks/use-library-create";
 import { LibraryCreateDialog } from "./library-create-dialog";
 
+vi.mock("../../lib/api", () => ({
+  fetchJson: vi.fn(async (url: string) => {
+    if (url === "/api/tags") return [{ id: "t1", name: "kids", color: "slate", description: "", createdUtc: "", updatedUtc: "" }];
+    return [];
+  })
+}));
+vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn() }));
+
 /**
  * The Add screen tells you when you already have something (#424).
  *
@@ -66,6 +74,7 @@ function renderDialog(
         monitorPreset: "all",
         searchForMissingNow: false,
         searchForCutoffUnmetNow: false,
+        tags: "",
         metadata: null,
         ...createFormOverrides
       }}
@@ -135,6 +144,24 @@ describe("the add-show monitor preset", () => {
       monitorPreset: "pilot",
       monitored: true
     });
+  });
+});
+
+/** Tags on add (#1038): an optional picker whose value is the form's tags. */
+describe("the add dialog tag field", () => {
+  it("is offered for movies", () => {
+    renderDialog([], "movies");
+    expect(screen.getByLabelText("Tags for the movie being added")).toBeInTheDocument();
+  });
+
+  it("is offered for shows", () => {
+    renderDialog([], "shows");
+    expect(screen.getByLabelText("Tags for the show being added")).toBeInTheDocument();
+  });
+
+  it("shows the tags the form already carries, such as the ones remembered for the library", () => {
+    renderDialog([], "movies", { tags: "kids" });
+    expect(screen.getByText("kids")).toBeInTheDocument();
   });
 });
 
