@@ -1,6 +1,9 @@
 using System.Text.Json;
 using Deluno.Api.Updates;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Microsoft.Extensions.Options;
 
 namespace Deluno.Persistence.Tests.Api;
@@ -168,5 +171,63 @@ public sealed class UpdateAppliedTriggerTests
         {
             Directory.Delete(dataRoot, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// #1017: a new version running is written to Activity in plain words even
+    /// when nobody switched the outbound message on.
+    /// </summary>
+    [Fact]
+    public async Task An_applied_update_writes_an_activity_line_even_when_the_outbound_trigger_is_off()
+    {
+        var dataRoot = CreateDataRoot();
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(dataRoot, "update-history.json"),
+                JsonSerializer.Serialize(new { lastKnownVersion = "0.0.1-previous-fixture", applied = Array.Empty<object>() }));
+
+            var options = Options.Create(new StoragePathOptions { DataRoot = dataRoot });
+            var outbound = new FakeOutboundNotificationService();
+            var notifications = new FakeNotificationService { Preferences = new() { UpdateEnabled = false } };
+            var activity = new RecordingActivityFeed();
+            var orchestrator = new DefaultUpdateOrchestrator(options, notifications, outbound, activityFeed: activity);
+
+            await orchestrator.GetStatusAsync(CancellationToken.None);
+
+            var line = Assert.Single(activity.Messages);
+            Assert.Contains("Deluno updated and is now running version", line);
+            Assert.Empty(outbound.DispatchedCategories);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
+    private sealed class RecordingActivityFeed : IActivityFeedRepository
+    {
+        public List<string> Messages { get; } = [];
+
+        public Task<ActivityEventItem> RecordActivityAsync(string category, string message, string? detailsJson, string? relatedJobId, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+        {
+            Messages.Add(message);
+            return Task.FromResult<ActivityEventItem>(null!);
+        }
+
+        public Task<IReadOnlyList<ActivityEventItem>> ListActivityAsync(int take, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<Page<ActivityEventItem>> ListActivityPageAsync(PageRequest request, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(IReadOnlyList<ActivityEventItem> activities, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<int> ClearActivityAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<ActivityStatsSnapshot> GetActivityStatsAsync(DateTimeOffset sinceUtc, int windowHours, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }
