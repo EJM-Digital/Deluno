@@ -174,6 +174,18 @@ public interface IMediaServerAudioLanguageReader
 }
 
 /// <summary>
+/// A server that can say what is being played on it right now (#1012). The
+/// answer is every id involved in a play - the item itself, its season and its
+/// show - so a whole show is seen to be in use while one episode plays. A server
+/// that could not be asked is <see cref="MediaServerAnswer{T}.Unreachable"/>,
+/// never an empty list: "nothing is playing" must not be a guess.
+/// </summary>
+public interface IMediaServerPlaybackReader
+{
+    Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// A server's whole library for one media type, and who uses it: "everyone has
 /// watched it" needs the list of everyone.
 /// </summary>

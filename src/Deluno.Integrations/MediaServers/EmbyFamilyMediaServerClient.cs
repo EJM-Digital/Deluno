@@ -21,7 +21,7 @@ namespace Deluno.Integrations.MediaServers;
 /// so each enabled user is asked what they have finished and the answers are
 /// combined: who played it, and the most recent time anyone did.</para>
 /// </summary>
-public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient
+public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient, IMediaServerPlaybackReader
 {
     private const int PageSize = 500;
 
@@ -263,6 +263,36 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
         }
 
         return (names, null);
+    }
+
+    /// <summary>What is playing now, from <c>/Sessions</c>: each play's item, season and show (#1012).</summary>
+    public async Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    {
+        var call = await GetAsync(connection, "/Sessions", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (document is null || document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            return new MediaServerAnswer<IReadOnlyList<string>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
+        }
+
+        var ids = new List<string>();
+        foreach (var session in document.RootElement.EnumerateArray())
+        {
+            if (!session.TryGetProperty("NowPlayingItem", out var playing) || playing.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            foreach (var name in new[] { "Id", "SeasonId", "SeriesId" })
+            {
+                if (String(playing, name) is { Length: > 0 } id)
+                {
+                    ids.Add(id);
+                }
+            }
+        }
+
+        return new MediaServerAnswer<IReadOnlyList<string>>.Reported(ids.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     public async Task<MediaServerAnswer<MediaServerRemoval>> RemoveAsync(

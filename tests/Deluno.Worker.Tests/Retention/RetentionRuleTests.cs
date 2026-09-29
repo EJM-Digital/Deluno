@@ -50,7 +50,9 @@ public sealed class RetentionRuleTests
     private readonly FakeRetentionSeerr _seerr = new();
     private readonly Mock<IQualityModelService> _qualityModel = new();
     private readonly List<MovieListItem> _catalogue = [];
-    private readonly MediaServerConnection _server = new("server-1", "jellyfin", "Rig lab Jellyfin", "http://127.0.0.1:8096", "key", true, "healthy", null, null, null, "WIN-RIG", "id", Now, Now);
+    private readonly Mock<IMediaServerPlaybackReader> _playback;
+    private MediaServerAnswer<IReadOnlyList<string>> _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+    private readonly MediaServerConnection _server =new("server-1", "jellyfin", "Rig lab Jellyfin", "http://127.0.0.1:8096", "key", true, "healthy", null, null, null, "WIN-RIG", "id", Now, Now);
 
     public RetentionRuleTests()
     {
@@ -79,6 +81,9 @@ public sealed class RetentionRuleTests
             new QualityUpgradeStopPolicy(true, false),
             Now));
         _jellyfin.SetupGet(client => client.Kind).Returns("jellyfin");
+        // Jellyfin can say what is being played (#1012); each test sets what it says.
+        _playback = _jellyfin.As<IMediaServerPlaybackReader>();
+        _playback.Setup(reader => reader.ListPlayingAsync(_server, It.IsAny<CancellationToken>())).ReturnsAsync(() => _playing);
         _recycleBin.Setup(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RecycleBinMoveResult(1, 1, [], []));
 
@@ -567,6 +572,477 @@ public sealed class RetentionRuleTests
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // ------------------------------------------------- by hand (#1008)
+
+    [Fact]
+    public async Task A_title_added_by_hand_is_marked_manual_and_the_rules_steps_no_longer_decide_it()
+    {
+        // Nobody has watched either film, so the rule's step matches neither.
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653"), Item("j2", Path("His Girl Friday", 1940), tmdb: "3085"));
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.watchedBy:anyone:")) with { WaitDays = 3 };
+        _store.Add(rule);
+        var feed = new Mock<IActivityFeedRepository>();
+
+        var added = await Service(feed).AddManualAsync(rule, "m1", CancellationToken.None);
+
+        Assert.Null(added.Problem);
+        Assert.True(added.Mark!.Manual);
+        Assert.Equal((RetentionMarkStates.Leaving, Now.AddDays(3), new RetentionServerItem("server-1", "j1", MediaServerItemLevels.Movie, null)), (added.Mark.State, added.Mark.RemoveAfterUtc, added.Mark.ServerItems.Single()));
+        Said(feed, "retention.added-by-hand", "Nosferatu was added by hand", Times.Once());
+
+        // A check does not clear it for failing the steps, and does not mark the other film.
+        var check = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        var mark = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+        Assert.Equal(("m1", true), (mark.EntityId, mark.Manual));
+        Assert.DoesNotContain(check.Items!, item => item.Outcome == RetentionItemOutcomes.Cleared);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // It goes on its day, like anything else on the list.
+        _clock.Now = Now.AddDays(4);
+        var day = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal("m1", Assert.Single(day.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+        _movies.Verify(repo => repo.DeleteAsync("m2", It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_kept_title_cannot_be_added_and_taking_a_title_off_by_hand_keeps_the_rule_from_putting_it_back()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        var service = Service();
+        await service.CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+
+        // Taking it off the list by hand is a keep from this rule.
+        await service.KeepAsync(new SaveRetentionKeepRequest("m1", "movie", rule.Id, "Taken off this list by hand."), CancellationToken.None);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+
+        var again = await Service().AddManualAsync(rule, "m1", CancellationToken.None);
+        Assert.Null(again.Mark);
+        Assert.Contains("kept", again.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Adding_by_hand_says_why_when_it_cannot()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653"));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+
+        Assert.Equal("Turn the rule on first, so its list is checked.", (await Service().AddManualAsync(rule with { IsEnabled = false }, "m1", CancellationToken.None)).Problem);
+        Assert.Equal("Choose a title to add.", (await Service().AddManualAsync(rule, " ", CancellationToken.None)).Problem);
+        Assert.Contains("no title like that", (await Service().AddManualAsync(rule, "nope", CancellationToken.None)).Problem, StringComparison.Ordinal);
+
+        _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaServerAnswer<MediaServerLibrary>.Unreachable("Deluno could not reach Rig lab Jellyfin."));
+        Assert.Contains("could not reach", (await Service().AddManualAsync(rule, "m1", CancellationToken.None)).Problem, StringComparison.Ordinal);
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Adding_a_title_the_rule_already_marked_makes_it_manual_without_moving_its_day()
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        var rule = Rule(Keep("server.watchedBy:anyone:"));
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(5);
+
+        var added = await Service().AddManualAsync(rule, "m1", CancellationToken.None);
+
+        Assert.True(added.Mark!.Manual);
+        Assert.Equal(Now.AddDays(14), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
+    }
+
+    // ------------------------------------------------- postpone (#1010)
+
+    [Fact]
+    public async Task Postponing_pushes_the_day_back_without_keeping_the_title_and_nothing_goes_early()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 14 });
+        var feed = new Mock<IActivityFeedRepository>();
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var moved = Assert.Single(await Service(feed).PostponeAsync(rule, ["m1"], 5, CancellationToken.None));
+
+        Assert.Equal((Now.AddDays(19), RetentionMarkStates.Leaving), (moved.RemoveAfterUtc, moved.State));
+        Said(feed, "retention.postponed", "Nosferatu was postponed by 5 days", Times.Once());
+        Assert.Empty(await _store.ListKeepsAsync(CancellationToken.None));
+
+        // The old day passes and it is still here; the new day comes and it goes.
+        _clock.Now = Now.AddDays(15);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(Now.AddDays(19), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
+
+        _clock.Now = Now.AddDays(20);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_title_already_past_its_day_is_postponed_from_today_and_a_ready_one_goes_back_to_waiting()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 1, RemovalMode = RetentionRemovalModes.Ask });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(10);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+
+        var moved = Assert.Single(await Service().PostponeAsync(rule, ["m1"], 3, CancellationToken.None));
+
+        Assert.Equal((Now.AddDays(13), RetentionMarkStates.Leaving), (moved.RemoveAfterUtc, moved.State));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(3650)]
+    public async Task Postponing_only_ever_moves_a_day_later(int days)
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 14 });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        var before = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc;
+
+        var after = Assert.Single(await Service().PostponeAsync(rule, ["m1"], days, CancellationToken.None)).RemoveAfterUtc;
+
+        Assert.Equal(before.AddDays(days), after);
+    }
+
+    [Fact]
+    public async Task Postponing_something_not_on_the_list_or_already_done_changes_nothing()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { ExpiryAction = RetentionExpiryActions.Log });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal(RetentionMarkStates.Done, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+
+        Assert.Empty(await Service().PostponeAsync(rule, ["m1", "nope"], 5, CancellationToken.None));
+    }
+
+    // ------------------------------------------------- what happens on the day (#1011)
+
+    [Fact]
+    public async Task A_rule_that_says_nothing_about_its_action_removes_the_title_as_every_rule_did()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule);
+        Assert.Equal(RetentionExpiryActions.Delete, rule.ExpiryAction);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(1, run.RemovedCount);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Stop_monitoring_leaves_the_files_and_the_title_and_is_done_once()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { ExpiryAction = RetentionExpiryActions.Unmonitor });
+        var feed = new Mock<IActivityFeedRepository>();
+        var first = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal("Leaving soon: stops being monitored on 18 Sep 2026 (its files stay) unless it stops matching or is kept.", Assert.Single(first.Items!).Message);
+        _clock.Now = Now.AddDays(2);
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var done = Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Done);
+        Assert.Equal("Stopped monitoring it; its files stay.", done.Message);
+        Assert.Equal(0, run.RemovedCount);
+        Assert.Equal("1 title stopped being monitored (files kept).", run.Summary);
+        _movies.Verify(repo => repo.UpdateMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "m1" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
+        var mark = Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+        Assert.Equal(RetentionMarkStates.Done, mark.State);
+        Said(feed, "retention.action", "Nosferatu: Stopped monitoring it; its files stay.", Times.Once());
+
+        // Later checks find it still matching and leave the done title alone.
+        _clock.Now = Now.AddDays(30);
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), false, It.IsAny<CancellationToken>()), Times.Once);
+
+        // Changing the action starts afresh, so the new action is done after a new wait.
+        await Service().ForgetDoneAsync(rule.Id, CancellationToken.None);
+        Assert.Empty(await _store.ListMarksAsync(rule.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Stop_monitoring_a_show_or_a_season_uses_the_shows_or_the_episodes_and_never_the_files()
+    {
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1, ExpiryAction = RetentionExpiryActions.Unmonitor };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Order().SequenceEqual(new[] { "e1", "e2" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Just_log_changes_nothing_and_says_so_in_Activity_once()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { ExpiryAction = RetentionExpiryActions.Log });
+        var feed = new Mock<IActivityFeedRepository>();
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(9);
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("Its day came. The rule only records it, so nothing changed.", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Done).Message);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _movies.Verify(repo => repo.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        Said(feed, "retention.action", "Its day came. The rule only records it", Times.Once());
+    }
+
+    [Fact]
+    public async Task Tag_gives_the_title_a_Deluno_tag_and_nothing_else_changes()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "watched-and-old" });
+        var tags = new Mock<ITitleTagService>();
+        tags.Setup(service => service.GiveAsync(MediaKind.Movie, "m1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>())).ReturnsAsync(["watched-and-old"]);
+        await Service(tags: tags.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        var run = await Service(tags: tags.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("Tagged “watched-and-old”.", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Done).Message);
+        tags.Verify(service => service.GiveAsync(MediaKind.Movie, "m1", It.Is<IEnumerable<string>>(names => names.SequenceEqual(new[] { "watched-and-old" })), It.IsAny<CancellationToken>()), Times.Once);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Tagging_a_season_tags_its_show_and_a_failure_to_tag_is_reported_not_swallowed()
+    {
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1, ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "seen" };
+        _store.Add(rule);
+        var tags = new Mock<ITitleTagService>();
+        tags.Setup(service => service.GiveAsync(MediaKind.Series, "s1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>())).ReturnsAsync(["seen"]);
+        await Service(tags: tags.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        await Service(tags: tags.Object).CheckAsync(rule, "schedule", CancellationToken.None);
+        tags.Verify(service => service.GiveAsync(MediaKind.Series, "s1", It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // Without a tag service the title is not marked done: the failure is what the run says.
+        var failing = Rule(Keep("server.watchedBy:anyone:")) with { Id = "rule-2", ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "x", WaitDays = 1 };
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        _store.Add(failing);
+        _clock.Now = Now;
+        await Service().CheckAsync(failing, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        var run = await Service().CheckAsync(failing, "schedule", CancellationToken.None);
+        Assert.Equal(RetentionItemOutcomes.Failed, Assert.Single(run.Items!).Outcome);
+        Assert.Equal(RetentionMarkStates.Leaving, Assert.Single(await _store.ListMarksAsync(failing.Id, CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task A_rule_that_asks_first_does_the_chosen_action_when_a_person_confirms()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { ExpiryAction = RetentionExpiryActions.Unmonitor, RemovalMode = RetentionRemovalModes.Ask });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        var check = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.StartsWith("Ready: waiting for you to confirm.", Assert.Single(check.Items!).Message, StringComparison.Ordinal);
+        _movies.Verify(repo => repo.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
+
+        Assert.Equal("1 title stopped being monitored (files kept).", confirmed.Summary);
+        _movies.Verify(repo => repo.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), false, It.IsAny<CancellationToken>()), Times.Once);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task The_builders_preview_says_what_will_happen_on_the_day()
+    {
+        var rule = Rule(Keep("server.watchedBy:anyone:")) with { ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "old" };
+
+        Assert.Equal("It is given the tag “old”. Nothing else changes.", RetentionExpiryActions.Describe(rule.ExpiryAction, rule.ExpiryTag));
+        Assert.Equal("Its files go to the recycle bin and it is removed.", RetentionExpiryActions.Describe(RetentionExpiryActions.Delete, null));
+        // A value nobody knows is never a deletion.
+        Assert.Equal(RetentionExpiryActions.Log, RetentionExpiryActions.Normalize("explode"));
+        Assert.Equal(RetentionExpiryActions.Delete, RetentionExpiryActions.Normalize(null));
+        await Task.CompletedTask;
+    }
+
+    [Theory]
+    [InlineData("explode", null, "Choose what happens on the day")]
+    [InlineData("tag", null, "Name the tag")]
+    [InlineData("tag", "a,b", "no commas")]
+    public void The_action_and_its_tag_are_checked_when_a_rule_is_saved(string action, string? tag, string expected)
+    {
+        var problems = RetentionEvaluator.Validate(
+            new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [Keep("server.watchedBy:anyone:")], ["server-1"], false, ExpiryAction: action, ExpiryTag: tag),
+            [_server]);
+
+        Assert.Contains(problems, problem => problem.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Waiting_while_something_plays_needs_a_server_to_ask()
+    {
+        var problems = RetentionEvaluator.Validate(
+            new SaveRetentionRuleRequest("Rule", RetentionLevels.Movie, true, [Keep("added:beyond:30")], [], false, DeferWhilePlaying: true),
+            [_server]);
+
+        Assert.Contains(problems, problem => problem.Contains("what is being played", StringComparison.Ordinal));
+    }
+
+    // ------------------------------------------------- playing now (#1012)
+
+    [Fact]
+    public async Task A_title_being_played_is_not_removed_and_goes_at_the_next_check_once_it_stops()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
+        var feed = new Mock<IActivityFeedRepository>();
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var held = Assert.Single(run.Items!);
+        Assert.Equal((RetentionItemOutcomes.Held, "Not removed: it is being played right now. Deluno tries again at the next check."), (held.Outcome, held.Message));
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(RetentionMarkStates.Held, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+        Said(feed, "retention.deferred", "did not remove Nosferatu: it is being played right now", Times.Once());
+        Assert.Contains("left alone while being played", run.Summary, StringComparison.Ordinal);
+
+        // Still playing at the next check: still not removed.
+        _clock.Now = Now.AddDays(2).AddHours(8);
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // It has stopped: the removal that was deferred goes ahead.
+        _clock.Now = Now.AddDays(2).AddHours(16);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+        var later = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal("m1", Assert.Single(later.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task When_what_is_playing_cannot_be_seen_nothing_is_removed()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
+        var feed = new Mock<IActivityFeedRepository>();
+        await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Unreachable("Deluno could not reach Rig lab Jellyfin.");
+
+        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
+
+        var held = Assert.Single(run.Items!);
+        Assert.Equal(RetentionItemOutcomes.Held, held.Outcome);
+        Assert.Contains("could not see what is being played", held.Message, StringComparison.Ordinal);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Said(feed, "retention.deferred", "could not see what is being played", Times.Once());
+        _notifications.Verify(service => service.DispatchAsync(RetentionService.WaitingUnreachableEvent, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_server_that_cannot_say_what_is_playing_holds_the_removal()
+    {
+        // Emby-family and Plex answer; a server kind without the ability must not read as "nothing playing".
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.NotSupported("Rig lab Jellyfin cannot say what is being played.");
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Something_else_playing_does_not_hold_a_title_back_and_a_rule_that_does_not_ask_never_asks()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j2", "somebody-elses-show"]);
+
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+
+        // A rule from before the setting existed removes as it always did, without asking the server anything.
+        _playback.Invocations.Clear();
+        _clock.Now = Now;
+        var old = Rule(Keep("server.watchedBy:anyone:")) with { Id = "rule-old", WaitDays = 1 };
+        _store.Add(old);
+        await Service().CheckAsync(old, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+        await Service().CheckAsync(old, "schedule", CancellationToken.None);
+        _playback.Verify(reader => reader.ListPlayingAsync(It.IsAny<MediaServerConnection>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_season_is_held_while_an_episode_of_it_plays_but_not_while_another_season_does()
+    {
+        SeasonLibrary();
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1, DeferWhilePlaying = true };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        // Season 1 is what is matched; a play in season 2 (js2, its episode, the show) is not a play of season 1.
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["js2", "je3"]);
+        var other = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        Assert.Equal("s1:s1", Assert.Single(other.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+    }
+
+    [Fact]
+    public async Task A_season_is_held_while_one_of_its_episodes_plays()
+    {
+        SeasonLibrary();
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1, DeferWhilePlaying = true };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["je2", "js1", "js"]);
+
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!).Outcome);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task A_person_confirming_a_removal_does_not_remove_what_is_playing_either()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { DeferWhilePlaying = true, RemovalMode = RetentionRemovalModes.Ask });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported(["j1"]);
+
+        var confirmed = await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
+
+        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(confirmed.Items!).Outcome);
+        Assert.Equal(0, confirmed.RemovedCount);
+        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        // It is still Ready to remove; confirming again after it has stopped removes it.
+        Assert.Equal(RetentionMarkStates.Ready, Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).State);
+        _playing = new MediaServerAnswer<IReadOnlyList<string>>.Reported([]);
+        await Service().ConfirmAsync(rule, ["m1"], CancellationToken.None);
+        _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private RetentionEvaluator Evaluator()
         => new(
             new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, _clock),
@@ -577,12 +1053,28 @@ public sealed class RetentionRuleTests
             _clock,
             _qualityModel.Object);
 
-    private RetentionService Service()
+    private RetentionService Service(Mock<IActivityFeedRepository>? feed = null, ITitleTagService? tags = null)
     {
         var intake = new Mock<IIntakeRepository>();
         var removal = new TitleRemovalService(_libraries.Object, intake.Object, Mock.Of<IJobQueueRepository>(), Mock.Of<IActivityFeedRepository>(), _recycleBin.Object);
         return new RetentionService(_store, Evaluator(), removal, _movies.Object, _series.Object, _libraries.Object, _recycleBin.Object, _exclusions.Object,
-            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, Mock.Of<IActivityFeedRepository>(), _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object);
+            new MediaServerClientRegistry([_jellyfin.Object]), _seerr, (feed ?? new Mock<IActivityFeedRepository>()).Object, _notifications.Object, _clock, NullLogger<RetentionService>.Instance, _notificationPreferences.Object,
+            null, tags, _servers.Object);
+    }
+
+    private static void Said(Mock<IActivityFeedRepository> feed, string category, string containing, Times times)
+        => feed.Verify(
+            repo => repo.RecordActivityAsync(category, It.Is<string>(message => message.Contains(containing, StringComparison.Ordinal)), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            times);
+
+    /// <summary>A watched film that has waited out its days, ready for a rule to act on.</summary>
+    private async Task<RetentionRule> WatchedFilmRuleAsync(Func<RetentionRule, RetentionRule> shape)
+    {
+        ServerAnswers(Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["owner"], last: Now.AddDays(-40)));
+        _exclusions.Setup(repo => repo.UpsertAsync(It.IsAny<UpsertMediaExclusionRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((MediaExclusionItem?)null);
+        var rule = shape(Rule(Keep("server.watchedBy:anyone:")) with { WaitDays = 1 });
+        _store.Add(rule);
+        return rule;
     }
 
     /// <summary>Breaking Bad: season 1 watched by everyone, season 2 by one person.</summary>

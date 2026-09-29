@@ -153,6 +153,29 @@ public sealed class RetentionEvaluator(
             problems.Add("Choose the media servers to tell when a title is removed, or turn that off.");
         }
 
+        if (request.ExpiryAction is not null && !RetentionExpiryActions.IsKnown(request.ExpiryAction))
+        {
+            problems.Add("Choose what happens on the day: remove it, stop monitoring it, only write it down, or tag it.");
+        }
+
+        if (string.Equals(request.ExpiryAction?.Trim(), RetentionExpiryActions.Tag, StringComparison.OrdinalIgnoreCase))
+        {
+            var tag = request.ExpiryTag?.Trim();
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                problems.Add("Name the tag to give a title on its day.");
+            }
+            else if (tag.Length > RetentionLimits.MaxTagLength || tag.Contains(','))
+            {
+                problems.Add($"A tag is at most {RetentionLimits.MaxTagLength} characters and has no commas.");
+            }
+        }
+
+        if (request.DeferWhilePlaying == true && chosen.Length == 0)
+        {
+            problems.Add("Choose the media servers to ask what is being played, or turn off waiting while something plays.");
+        }
+
         return problems.Distinct().ToArray();
     }
 
@@ -163,14 +186,16 @@ public sealed class RetentionEvaluator(
     public async Task<RetentionEvaluation> EvaluateAsync(
         RetentionRule rule,
         CancellationToken cancellationToken,
-        Func<MediaServerConnection, string, CancellationToken, Task<MediaServerAnswer<MediaServerLibrary>>>? cachedLibraries = null)
+        Func<MediaServerConnection, string, CancellationToken, Task<MediaServerAnswer<MediaServerLibrary>>>? cachedLibraries = null,
+        IReadOnlySet<string>? manualEntityIds = null)
     {
         var level = rule.Level;
         var steps = rule.Steps;
         var conditions = RetentionStepList.Conditions(steps).ToArray();
         var configured = await mediaServers.ListAsync(cancellationToken);
         var problems = Validate(
-            new SaveRetentionRuleRequest(rule.Name, level, rule.IsEnabled, steps, rule.MediaServerIds, rule.RemoveFromServers, rule.WaitDays, rule.RemovalMode, rule.CheckIntervalHours),
+            new SaveRetentionRuleRequest(rule.Name, level, rule.IsEnabled, steps, rule.MediaServerIds, rule.RemoveFromServers, rule.WaitDays, rule.RemovalMode, rule.CheckIntervalHours,
+                ExpiryAction: rule.ExpiryAction, ExpiryTag: rule.ExpiryTag, DeferWhilePlaying: rule.DeferWhilePlaying),
             configured);
         if (problems.Count > 0)
         {
@@ -304,6 +329,24 @@ public sealed class RetentionEvaluator(
                     rule.RemoveFromServers && matches.Length > 0 ? $"Also on {string.Join(", ", matches.Select(match => match.Server.Name).Distinct())}." : null,
                     matches));
             }
+            else if (manualEntityIds?.Contains(unit.EntityId) == true)
+            {
+                // Put on the list by hand (#1008): the steps do not decide it, a person did.
+                var handReason = "Added to the list by hand.";
+                if (needsServers && unreachable.Count > 0)
+                {
+                    candidates.Add(new RetentionCandidate(unit, [handReason], RetentionItemOutcomes.ExcludedUnreachable, null, []));
+                    continue;
+                }
+
+                var matches = MatchesFor(unit);
+                candidates.Add(new RetentionCandidate(
+                    unit,
+                    [handReason],
+                    RetentionItemOutcomes.Matched,
+                    rule.RemoveFromServers && matches.Length > 0 ? $"Also on {string.Join(", ", matches.Select(match => match.Server.Name).Distinct())}." : null,
+                    matches));
+            }
             else if (outcome.Undecided.TryGetValue(unit.EntityId, out var why))
             {
                 // With a server unreachable, what could not be decided is what
@@ -327,6 +370,28 @@ public sealed class RetentionEvaluator(
         }
 
         return new RetentionEvaluation(candidates, unreachable, [], all.Count, outcome.Counts, unmanaged);
+    }
+
+    /// <summary>
+    /// Titles Deluno holds files for whose name contains the text, for the
+    /// "add a title by hand" search (#1008).
+    /// </summary>
+    public async Task<IReadOnlyList<RetentionUnit>> SearchTitlesAsync(string level, string? query, int take, CancellationToken cancellationToken)
+    {
+        var text = query?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return [];
+        }
+
+        var all = await units.ReadAsync(level, cancellationToken);
+        return all
+            .Where(unit => unit.Title.Contains(text, StringComparison.OrdinalIgnoreCase) || unit.ShowTitle.Contains(text, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(unit => unit.ShowTitle, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(unit => unit.SeasonNumber)
+            .ThenBy(unit => unit.EpisodeNumber)
+            .Take(Math.Clamp(take, 1, 50))
+            .ToArray();
     }
 
     private sealed record StepOutcome(

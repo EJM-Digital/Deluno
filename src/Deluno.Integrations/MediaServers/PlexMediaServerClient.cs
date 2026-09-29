@@ -19,7 +19,7 @@ namespace Deluno.Integrations.MediaServers;
 /// recycle bin, so instead it rescans the folder they were in and empties the
 /// section's trash, which is how Plex drops an item whose files are gone.</para>
 /// </summary>
-public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient, IMediaServerAudioLanguageReader
+public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) : IMediaServerClient, IMediaServerAudioLanguageReader, IMediaServerPlaybackReader
 {
     private const int PageSize = 500;
 
@@ -871,6 +871,34 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             default:
                 return null;
         }
+    }
+
+    /// <summary>What is playing now: Plex's own sessions list, with each play's season and show (#1012).</summary>
+    public async Task<MediaServerAnswer<IReadOnlyList<string>>> ListPlayingAsync(MediaServerConnection connection, CancellationToken cancellationToken)
+    {
+        var call = await GetAsync(connection, "/status/sessions", cancellationToken);
+        using var document = call.Ok ? TryParse(call.Body) : null;
+        if (Container(document) is not { } container)
+        {
+            return new MediaServerAnswer<IReadOnlyList<string>>.Unreachable(call.Problem ?? $"{connection.Name} did not say what is being played.");
+        }
+
+        var ids = new List<string>();
+        if (container.TryGetProperty("Metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in metadata.EnumerateArray())
+            {
+                foreach (var name in new[] { "ratingKey", "parentRatingKey", "grandparentRatingKey" })
+                {
+                    if (String(entry, name) is { Length: > 0 } id)
+                    {
+                        ids.Add(id);
+                    }
+                }
+            }
+        }
+
+        return new MediaServerAnswer<IReadOnlyList<string>>.Reported(ids.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     /// <summary>

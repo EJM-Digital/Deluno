@@ -59,13 +59,13 @@ public sealed class SqliteRetentionRepository(
     TimeProvider timeProvider) : IRetentionRepository
 {
     private const string RuleColumns =
-        "id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, created_utc, updated_utc, level, steps_json, wait_days, removal_mode, check_interval_hours, last_checked_utc";
+        "id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, created_utc, updated_utc, level, steps_json, wait_days, removal_mode, check_interval_hours, last_checked_utc, expiry_action, expiry_tag, keep_in_deluno_only, defer_while_playing";
 
     private const string RunColumns =
         "id, rule_id, rule_name, kind, trigger, preview_run_id, started_utc, finished_utc, matched_count, excluded_count, removed_count, failed_count, bytes, summary";
 
     private const string MarkColumns =
-        "m.rule_id, COALESCE(r.name, 'Deleted rule'), m.entity_id, m.level, m.show_id, m.season_number, m.episode_ids_json, m.title, m.year, m.size_bytes, m.reasons_json, m.first_matched_utc, m.remove_after_utc, m.state, m.state_reason, m.updated_utc, m.server_items_json";
+        "m.rule_id, COALESCE(r.name, 'Deleted rule'), m.entity_id, m.level, m.show_id, m.season_number, m.episode_ids_json, m.title, m.year, m.size_bytes, m.reasons_json, m.first_matched_utc, m.remove_after_utc, m.state, m.state_reason, m.updated_utc, m.server_items_json, m.is_manual";
 
     private const string KeepColumns =
         "k.id, k.entity_id, k.level, k.title, k.rule_id, r.name, k.note, k.created_utc";
@@ -110,14 +110,16 @@ public sealed class SqliteRetentionRepository(
         using var command = connection.CreateCommand();
         command.CommandText = existing is null
             ? """
-              INSERT INTO retention_rules (id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, created_utc, updated_utc, level, steps_json, wait_days, removal_mode, check_interval_hours)
-              VALUES (@id, @name, @mediaType, @isEnabled, '[]', @servers, @removeFromServers, @now, @now, @level, @steps, @wait, @removal, @interval);
+              INSERT INTO retention_rules (id, name, media_type, is_enabled, conditions_json, media_server_ids_json, remove_from_servers, created_utc, updated_utc, level, steps_json, wait_days, removal_mode, check_interval_hours, expiry_action, expiry_tag, keep_in_deluno_only, defer_while_playing)
+              VALUES (@id, @name, @mediaType, @isEnabled, '[]', @servers, @removeFromServers, @now, @now, @level, @steps, @wait, @removal, @interval, @expiryAction, @expiryTag, @keepOnly, @defer);
               """
             : """
               UPDATE retention_rules
               SET name = @name, media_type = @mediaType, is_enabled = @isEnabled, conditions_json = '[]', level = @level, steps_json = @steps,
                   media_server_ids_json = @servers, remove_from_servers = @removeFromServers,
-                  wait_days = @wait, removal_mode = @removal, check_interval_hours = @interval, updated_utc = @now
+                  wait_days = @wait, removal_mode = @removal, check_interval_hours = @interval,
+                  expiry_action = @expiryAction, expiry_tag = @expiryTag, keep_in_deluno_only = @keepOnly, defer_while_playing = @defer,
+                  updated_utc = @now
               WHERE id = @id;
               """;
         var level = RetentionLevels.Normalize(request.Level, request.MediaType);
@@ -132,6 +134,14 @@ public sealed class SqliteRetentionRepository(
         AddParameter(command, "@wait", Math.Clamp(request.WaitDays ?? RetentionLimits.DefaultWaitDays, RetentionLimits.MinWaitDays, RetentionLimits.MaxWaitDays));
         AddParameter(command, "@removal", RetentionRemovalModes.Normalize(request.RemovalMode));
         AddParameter(command, "@interval", Math.Clamp(request.CheckIntervalHours ?? RetentionLimits.DefaultCheckIntervalHours, RetentionLimits.MinCheckIntervalHours, RetentionLimits.MaxCheckIntervalHours));
+        // A request that says nothing about these keeps what the rule has, or on a new rule
+        // the choices every rule had before they existed: delete, sync, no waiting on playback.
+        var expiryAction = request.ExpiryAction is null ? existing?.ExpiryAction ?? RetentionExpiryActions.Delete : RetentionExpiryActions.Normalize(request.ExpiryAction);
+        var expiryTag = request.ExpiryTag is null ? existing?.ExpiryTag : request.ExpiryTag.Trim();
+        AddParameter(command, "@expiryAction", expiryAction);
+        AddParameter(command, "@expiryTag", string.IsNullOrWhiteSpace(expiryTag) ? null : expiryTag);
+        AddParameter(command, "@keepOnly", (request.KeepInDelunoOnly ?? existing?.KeepInDelunoOnly ?? false) ? 1 : 0);
+        AddParameter(command, "@defer", (request.DeferWhilePlaying ?? existing?.DeferWhilePlaying ?? false) ? 1 : 0);
         AddParameter(command, "@now", now);
         await command.ExecuteNonQueryAsync(cancellationToken);
         return await GetRuleAsync(rowId, cancellationToken);
@@ -319,16 +329,17 @@ public sealed class SqliteRetentionRepository(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            INSERT INTO retention_marks (rule_id, entity_id, level, show_id, season_number, episode_ids_json, title, year, size_bytes, reasons_json, first_matched_utc, remove_after_utc, state, state_reason, updated_utc, server_items_json)
-            VALUES (@ruleId, @entityId, @level, @showId, @season, @episodes, @title, @year, @size, @reasons, @first, @removeAfter, @state, @stateReason, @updated, @serverItems)
+            INSERT INTO retention_marks (rule_id, entity_id, level, show_id, season_number, episode_ids_json, title, year, size_bytes, reasons_json, first_matched_utc, remove_after_utc, state, state_reason, updated_utc, server_items_json, is_manual)
+            VALUES (@ruleId, @entityId, @level, @showId, @season, @episodes, @title, @year, @size, @reasons, @first, @removeAfter, @state, @stateReason, @updated, @serverItems, @manual)
             ON CONFLICT (rule_id, entity_id) DO UPDATE SET
                 level = excluded.level, show_id = excluded.show_id, season_number = excluded.season_number,
                 episode_ids_json = excluded.episode_ids_json, title = excluded.title, year = excluded.year,
                 size_bytes = excluded.size_bytes, reasons_json = excluded.reasons_json,
                 remove_after_utc = excluded.remove_after_utc, state = excluded.state,
                 state_reason = excluded.state_reason, updated_utc = excluded.updated_utc,
-                server_items_json = excluded.server_items_json;
+                server_items_json = excluded.server_items_json, is_manual = excluded.is_manual;
             """;
+        AddParameter(command, "@manual", mark.Manual ? 1 : 0);
         AddParameter(command, "@ruleId", mark.RuleId);
         AddParameter(command, "@entityId", mark.EntityId);
         AddParameter(command, "@level", mark.Level);
@@ -581,7 +592,8 @@ public sealed class SqliteRetentionRepository(
                 reader.IsDBNull(14) ? null : reader.GetString(14),
                 DateTimeOffset.Parse(reader.GetString(15)))
             {
-                ServerItems = JsonSerializer.Deserialize<RetentionServerItem[]>(reader.GetString(16)) ?? []
+                ServerItems = JsonSerializer.Deserialize<RetentionServerItem[]>(reader.GetString(16)) ?? [],
+                Manual = reader.GetInt32(17) == 1
             });
         }
 
@@ -631,7 +643,11 @@ public sealed class SqliteRetentionRepository(
             reader.GetInt32(13),
             reader.IsDBNull(14) ? null : DateTimeOffset.Parse(reader.GetString(14)),
             DateTimeOffset.Parse(reader.GetString(7)),
-            DateTimeOffset.Parse(reader.GetString(8)));
+            DateTimeOffset.Parse(reader.GetString(8)),
+            RetentionExpiryActions.Normalize(reader.GetString(15)),
+            reader.IsDBNull(16) ? null : reader.GetString(16),
+            reader.GetInt32(17) == 1,
+            reader.GetInt32(18) == 1);
     }
 
     private static RetentionRun ReadRun(DbDataReader reader)
