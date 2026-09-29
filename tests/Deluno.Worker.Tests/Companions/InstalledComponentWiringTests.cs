@@ -70,6 +70,32 @@ public sealed class InstalledComponentWiringTests : IDisposable
     }
 
     [Fact]
+    public async Task The_installers_plain_sign_in_is_forgotten_once_the_connection_tests_healthy()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "Zx-secret");
+
+        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+
+        Assert.Equal("Zx-secret", Assert.Single(_created).Password);
+        Assert.False(_saved.ContainsKey("qbittorrent"));
+    }
+
+    [Fact]
+    public async Task The_installers_plain_sign_in_is_kept_while_the_connection_does_not_test_healthy()
+    {
+        _record.MarkInstalled("transmission", "localhost", 9091);
+        _saved["transmission"] = new BundledComponentCredentials("deluno", "tr-secret");
+        _testStatus = "unreachable";
+        _testMessage = "No answer.";
+
+        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+
+        Assert.Equal("tr-secret", _saved["transmission"].Password);
+        Assert.Equal("deluno", Assert.Single(_created).Username);
+    }
+
+    [Fact]
     public async Task SABnzbd_without_a_saved_key_is_connected_with_the_key_read_from_its_own_settings()
     {
         _record.MarkInstalled("sabnzbd", "localhost", 8080);
@@ -223,6 +249,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
             .ReturnsAsync((Deluno.Jobs.Contracts.ActivityEventItem)null!);
         var credentials = new Mock<IBundledComponentCredentialStore>();
         credentials.Setup(store => store.TryGet(It.IsAny<string>())).Returns((string kind) => _saved.GetValueOrDefault(kind));
+        credentials.Setup(store => store.Remove(It.IsAny<string>())).Callback((string kind) => _saved.Remove(kind));
         var tools = weir is null ? Array.Empty<ICompanionTool>() : [weir];
         return new InstalledComponentWirer(
             _record,

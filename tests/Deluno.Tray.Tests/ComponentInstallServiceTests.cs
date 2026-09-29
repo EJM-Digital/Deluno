@@ -177,11 +177,15 @@ public sealed class ComponentInstallServiceTests
         var result = await service.InstallAsync(Spec with { MustBeSigned = true, FileName = "test-client.msi" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
-        Assert.Equal("msiexec.exe", processes.LastPath);
-        Assert.Contains($"/i \"{downloadedPath}\"", processes.LastArguments);
-        Assert.Contains("ALLUSERS=1", processes.LastArguments);
-        Assert.Contains("/S", processes.LastArguments); // the manifest's own silentArgs still applies
-        Assert.Contains("/l*v", processes.LastArguments);
+        // msiexec runs from inside the elevated PowerShell step (#1061), on a protected copy.
+        Assert.Equal("powershell.exe", processes.LastPath);
+        var arguments = processes.LastArguments!;
+        var script = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(arguments[(arguments.IndexOf("-EncodedCommand ", StringComparison.Ordinal) + 16)..]));
+        Assert.Contains("'msiexec.exe'", script);
+        Assert.Contains("'" + downloadedPath + "'", script);
+        Assert.Contains("ALLUSERS=1", script);
+        Assert.Contains("/S", script); // the manifest's own silentArgs still applies
+        Assert.Contains("/l*v", script);
     }
 
     [Fact]

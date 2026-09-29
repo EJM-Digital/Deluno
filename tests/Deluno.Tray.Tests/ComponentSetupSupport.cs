@@ -145,6 +145,7 @@ public sealed partial class ComponentSetupTests
         public bool Has(string kind) => Saved.ContainsKey(kind);
         public BundledComponentCredentials? TryGet(string kind) => Saved.GetValueOrDefault(kind);
         public void Save(string kind, BundledComponentCredentials credentials) => Saved[kind] = credentials;
+        public void Remove(string kind) => Saved.Remove(kind);
     }
 
     private sealed class FakeRegistry(params string[] kinds) : IStartedComponentsRegistry

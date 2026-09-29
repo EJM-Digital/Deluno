@@ -15,6 +15,13 @@ namespace Deluno.Api.Network;
 /// clicks "Use qBittorrent", so the connection is filled in and tested with no
 /// typing. Once the connection is saved, Deluno's own secret store holds the
 /// password like any other client's.
+///
+/// <para>Lifetime (#1061): the plain value is needed only until a connection to
+/// the client has been saved and tested healthy. The tray never reads it (it
+/// starts a client without a password), so the wiring removes the entry as soon
+/// as its connection tests healthy, and it is kept only for a client whose
+/// connection could not be made, so "Use X" can still fill it in. It is only
+/// handed to a signed-in person's session, never to an API key.</para>
 /// </summary>
 public sealed record BundledComponentCredentials(string Username, string Password);
 
@@ -28,6 +35,9 @@ public interface IBundledComponentCredentialStore
 
     /// <summary>Saves the sign-in, replacing an earlier one for the same kind.</summary>
     void Save(string kind, BundledComponentCredentials credentials);
+
+    /// <summary>Forgets the saved sign-in for <paramref name="kind"/> (no error when there is none).</summary>
+    void Remove(string kind);
 }
 
 /// <summary>A host with no installer sign-ins: not Windows.</summary>
@@ -36,6 +46,7 @@ public sealed class NoBundledComponentCredentialStore : IBundledComponentCredent
     public bool Has(string kind) => false;
     public BundledComponentCredentials? TryGet(string kind) => null;
     public void Save(string kind, BundledComponentCredentials credentials) { }
+    public void Remove(string kind) { }
 }
 
 /// <summary>
@@ -89,6 +100,20 @@ public sealed class FileBundledComponentCredentialStore(string path, ISecretProt
         }
     }
 
+    public void Remove(string kind)
+    {
+        lock (Gate)
+        {
+            var entries = Read();
+            if (!entries.Remove(kind))
+            {
+                return;
+            }
+
+            File.WriteAllText(path, JsonSerializer.Serialize(entries));
+        }
+    }
+
     private Dictionary<string, StoredEntry> Read()
     {
         try
@@ -136,9 +161,19 @@ public static class BundledComponentCredentialsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoBundledComponentCredentialsEndpoints(this IEndpointRouteBuilder api)
     {
-        // Write scope, not Read: this hands back a password.
-        api.MapGet("/system/bundled-components/{kind}/credentials", (string kind, IBundledComponentCredentialStore store) =>
+        // A GET is only ever checked against the read scope, so the policy alone
+        // would let a read-only key take this password (#1061). The web screen
+        // reads it with the signed-in person's session, so an API key of any
+        // scope is refused here.
+        api.MapGet("/system/bundled-components/{kind}/credentials", (string kind, HttpContext httpContext, IBundledComponentCredentialStore store) =>
             {
+                if (UserAuthorization.TryReadApiKey(httpContext, out _))
+                {
+                    return Results.Json(
+                        new { message = "The sign-in an installed app was given is only shown to a signed-in person, not to an API key." },
+                        statusCode: StatusCodes.Status403Forbidden);
+                }
+
                 var credentials = store.TryGet(kind);
                 return credentials is null
                     ? Results.NotFound()

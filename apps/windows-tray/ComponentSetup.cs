@@ -128,23 +128,55 @@ public static class ComponentConfig
 }
 
 /// <summary>
-/// The one elevated step for a package that installs a Windows service Deluno
-/// does not want (#1052). Transmission's MSI registers an auto-start service,
-/// run as LocalService and bound to every address; Deluno runs the daemon
-/// itself, per user and bound to this computer only, so the service is stopped
-/// and disabled straight after the install in the same elevated prompt.
+/// The one elevated step for a per-machine .msi (#1052, #1061). It is run as an
+/// inline PowerShell command (nothing on disk to swap): it makes a folder only
+/// administrators can write (<c>%ProgramData%\Deluno\installer</c>, ACL set before
+/// anything is copied in), copies the downloaded .msi there, refuses to run it
+/// unless its SHA-256 is the one the tray verified, runs msiexec on the protected
+/// copy, and -- for a package that installs a Windows service Deluno does not want
+/// (Transmission's MSI registers an auto-start service, run as LocalService and
+/// bound to every address) -- stops and disables that service in the same prompt.
 /// </summary>
-public static class ServiceInstallScript
+public static class ElevatedInstallScript
 {
-    public static string Build(string installerPath, string? silentArgs, string logPath, string serviceName)
-        => string.Join("\r\n",
-            "@echo off",
-            $"msiexec.exe /i \"{installerPath}\" ALLUSERS=1 {silentArgs} /l*v \"{logPath}\"",
-            "set RC=%ERRORLEVEL%",
-            "if not \"%RC%\"==\"0\" exit /b %RC%",
-            $"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Stop-Service -Name '{serviceName}' -ErrorAction SilentlyContinue; Set-Service -Name '{serviceName}' -StartupType Disabled -ErrorAction SilentlyContinue\"",
-            "exit /b 0",
-            string.Empty);
+    /// <summary>Exit code the script returns when the copy does not match the verified hash.</summary>
+    public const int HashMismatchExitCode = 4001;
+
+    public static string Build(string installerPath, string sha256, string? silentArgs, string? serviceName)
+    {
+        var lines = new List<string>
+        {
+            "$ErrorActionPreference = 'Stop'",
+            "$dir = Join-Path $env:ProgramData 'Deluno\\installer'",
+            "New-Item -ItemType Directory -Force -Path $dir | Out-Null",
+            // SYSTEM and Administrators full control, Users read only, nothing inherited.
+            "& icacls.exe $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' | Out-Null",
+            "if ($LASTEXITCODE -ne 0) { exit 4002 }",
+            "$name = [guid]::NewGuid().ToString('N')",
+            "$copy = Join-Path $dir ($name + '.msi')",
+            "$log = Join-Path $dir ($name + '.log')",
+            $"Copy-Item -LiteralPath {Quote(installerPath)} -Destination $copy",
+            $"if ((Get-FileHash -Algorithm SHA256 -LiteralPath $copy).Hash -ne {Quote(sha256)}) {{ Remove-Item -LiteralPath $copy -Force; exit {HashMismatchExitCode} }}",
+            $"$arguments = '/i \"' + $copy + '\" ALLUSERS=1 ' + {Quote(silentArgs ?? string.Empty)} + ' /l*v \"' + $log + '\"'",
+            "$process = Start-Process -FilePath 'msiexec.exe' -ArgumentList $arguments -Wait -PassThru",
+            "Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue",
+            "if ($process.ExitCode -ne 0) { exit $process.ExitCode }"
+        };
+        if (!string.IsNullOrWhiteSpace(serviceName))
+        {
+            lines.Add($"Stop-Service -Name {Quote(serviceName)} -ErrorAction SilentlyContinue");
+            lines.Add($"Set-Service -Name {Quote(serviceName)} -StartupType Disabled -ErrorAction SilentlyContinue");
+        }
+
+        lines.Add("exit 0");
+        return string.Join("\n", lines);
+    }
+
+    /// <summary>The arguments for <c>powershell.exe</c> that run <paramref name="script"/> with no file involved.</summary>
+    public static string PowerShellArguments(string script)
+        => "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+
+    private static string Quote(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
 }
 
 /// <summary>Which clients Deluno started, so the next sign-in starts them again (see <see cref="ComponentAutoStarter"/>).</summary>

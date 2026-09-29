@@ -35,7 +35,7 @@ public sealed class InstalledComponentWirer(
     private static readonly IReadOnlyDictionary<string, ClientRecipe> Clients = new Dictionary<string, ClientRecipe>(StringComparer.OrdinalIgnoreCase)
     {
         ["qbittorrent"] = new("qBittorrent", "qbittorrent", "deluno-movies", "deluno-tv", true),
-        ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", false),
+        ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", true),
         ["deluge"] = new("Deluge", "deluge", "deluno-movies", "deluno-tv", true),
         ["sabnzbd"] = new("SABnzbd", "sabnzbd", "Movies", "TV", true),
         ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", true)
@@ -131,6 +131,17 @@ public sealed class InstalledComponentWirer(
             attempts, delay, cancellationToken);
         if (result.Healthy)
         {
+            // The connection now holds the sign-in in Deluno's own secret store and tested healthy,
+            // so the installer's plain copy is no longer needed anywhere (#1061).
+            try
+            {
+                credentials.Remove(kind);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Left in place; it is only readable through a signed-in session.
+            }
+
             await PrepareSaveFoldersAsync(recipe, result.Client, cancellationToken);
             return (recipe.Name, true, null);
         }
