@@ -8,24 +8,54 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Deluno.Platform;
+using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 
 namespace Deluno.Integrations.DownloadClients;
 
 public static class DownloadClientEndpointRouteBuilderExtensions
 {
+    /// <summary>The strike records for downloads Deluno sent; anything written for someone else's download is left out (#1062).</summary>
+    internal static async Task<IReadOnlyList<DownloadHealthRecord>> OwnHealthRecordsAsync(
+        IReadOnlyList<DownloadHealthRecord> records,
+        IDownloadDispatchesRepository dispatches,
+        CancellationToken cancellationToken)
+    {
+        var own = new List<DownloadHealthRecord>(records.Count);
+        foreach (var record in records)
+        {
+            if (await dispatches.FindAnyDispatchByHashAsync(record.ClientId, record.QueueItemId, cancellationToken) is not null)
+            {
+                own.Add(record);
+            }
+        }
+
+        return own;
+    }
+
     public static IEndpointRouteBuilder MapDelunoDownloadClientIntegrationEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/download-health", async (
             HttpContext httpContext,
             IDownloadHealthRepository platformRepository,
+            IDownloadDispatchesRepository dispatches,
             int? pageSize,
             string? pageToken,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            return denied ?? Results.Ok(await platformRepository.ListDownloadHealthRecordsPageAsync(
-                new PageRequest(pageSize ?? 30, pageToken), cancellationToken));
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var page = await platformRepository.ListDownloadHealthRecordsPageAsync(
+                new PageRequest(pageSize ?? 30, pageToken), cancellationToken);
+
+            // #1062: Deluno only ever shows downloads it sent. A strike written
+            // for someone else's download before that was the rule is not listed.
+            var own = await OwnHealthRecordsAsync(page.Items, dispatches, cancellationToken);
+            return Results.Ok(Page<DownloadHealthRecord>.Of(own, page.NextPageToken));
         });
 
         // Its own Settings screen (#905): the rule set Deluno holds for what

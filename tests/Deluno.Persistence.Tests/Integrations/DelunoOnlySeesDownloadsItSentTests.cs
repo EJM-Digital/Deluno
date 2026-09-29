@@ -62,6 +62,69 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
         Assert.DoesNotContain(client.History, item => item.Id == "history-foreign");
     }
 
+    /// <summary>
+    /// The one that matters most: another tool's completed job in a shared
+    /// SABnzbd/NZBGet history (finished, with a path) must never be picked up
+    /// by the import planner and imported into a Deluno library.
+    /// </summary>
+    [Fact]
+    public async Task A_completed_download_in_the_clients_history_that_Deluno_did_not_send_is_never_an_import_candidate()
+    {
+        using var world = await World.CreateAsync();
+
+        var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
+        var candidates = Deluno.Worker.Services.WorkPlanner.GetImportCandidates(overview);
+
+        Assert.DoesNotContain(candidates, item => item.SourcePath is not null && item.SourcePath.Contains("Old.Foreign", StringComparison.Ordinal));
+        Assert.DoesNotContain(candidates, item => item.Id is ForeignId or Foreign2Id or "history-foreign");
+        // Selective, not simply empty: Deluno's own finished download is still picked up.
+        Assert.Contains(candidates, item => item.SourcePath == "C:/Downloads/Own.Movie.2026.1080p.WEB");
+    }
+
+    /// <summary>Pause, resume and recheck are guarded like every other verb, and nothing reaches the client.</summary>
+    [Theory]
+    [InlineData("pause")]
+    [InlineData("resume")]
+    [InlineData("recheck")]
+    [InlineData("force-start")]
+    public async Task No_action_reaches_a_download_Deluno_did_not_send(string action)
+    {
+        using var world = await World.CreateAsync();
+
+        var result = await world.Service.ExecuteActionAsync(world.ClientId, new DownloadClientActionRequest(action, ForeignId), CancellationToken.None);
+
+        Assert.True(result.Refused);
+        Assert.False(result.Succeeded);
+        Assert.Equal(0, world.ActionsReachedTheClient);
+        // ...while its own download can still be paused.
+        var own = await world.Service.ExecuteActionAsync(world.ClientId, new DownloadClientActionRequest("pause", OwnId), CancellationToken.None);
+        Assert.True(own.Succeeded);
+        Assert.Equal(1, world.ActionsReachedTheClient);
+    }
+
+    [Fact]
+    public async Task An_old_strike_recorded_for_someone_elses_download_is_not_listed_as_a_health_problem()
+    {
+        using var world = await World.CreateAsync();
+        await world.Health.RecordDownloadHealthObservationsAsync(
+            world.ClientId,
+            [ForeignId, OwnId],
+            [
+                new DownloadHealthObservation(world.ClientId, ForeignId, "Someone.Elses.Download", "stalled", "warning", "old", null, null, null, null),
+                new DownloadHealthObservation(world.ClientId, OwnId, "Own.Movie.2026.1080p.WEB", "stalled", "warning", "old", null, null, null, null)
+            ],
+            TimeSpan.FromMinutes(30), TimeSpan.FromHours(24), CancellationToken.None);
+
+        var all = await world.Health.ListDownloadHealthRecordsPageAsync(new PageRequest(50, null), CancellationToken.None);
+        Assert.Contains(all.Items, record => record.QueueItemId == ForeignId);
+
+        var listed = await DownloadClientEndpointRouteBuilderExtensions.OwnHealthRecordsAsync(
+            all.Items, world.Dispatches, CancellationToken.None);
+
+        Assert.DoesNotContain(listed, record => record.QueueItemId == ForeignId);
+        Assert.Contains(listed, record => record.QueueItemId == OwnId);
+    }
+
     [Fact]
     public async Task An_outside_item_gets_no_strike()
     {
@@ -86,16 +149,25 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
     }
 
     [Fact]
-    public async Task The_leftover_scan_alone_still_reads_outside_items_so_their_files_are_never_swept_up()
+    public async Task The_leftover_scan_lists_only_Delunos_own_and_learns_outside_paths_only_to_protect_their_files()
     {
         using var world = await World.CreateAsync();
 
-        var everything = await world.Service.GetUnfilteredSnapshotsAsync(CancellationToken.None);
+        var scan = await world.Service.GetSnapshotsForLeftoverScanAsync(CancellationToken.None);
 
-        var client = Assert.Single(everything);
-        Assert.Contains(client.Queue, item => item.Id == ForeignId);
+        var client = Assert.Single(scan);
+        // Nothing outside is listed or counted...
+        Assert.DoesNotContain(client.Queue, item => item.Id is ForeignId or Foreign2Id);
+        Assert.DoesNotContain(client.History, item => item.Id == "history-foreign");
         Assert.Contains(client.Queue, item => item.Id == OwnId);
-        Assert.Contains(client.History, item => item.Id == "history-foreign");
+        // ...but where it keeps its files is known, so they are never swept up.
+        Assert.Contains("C:/dl/Someone.Elses.Download.2026.1080p.WEB", client.OutsideSourcePaths);
+        Assert.Contains("C:/dl/Added.By.Hand.2026.1080p.WEB", client.OutsideSourcePaths);
+        Assert.Contains("C:/Downloads/Old.Foreign.Download.2025.1080p.WEB", client.OutsideSourcePaths);
+        Assert.DoesNotContain("C:/dl/Own.Movie.2026.1080p.WEB", client.OutsideSourcePaths);
+        // The overview never carries them.
+        var overview = Assert.Single((await world.Service.GetOverviewAsync(CancellationToken.None)).Clients);
+        Assert.Empty(overview.OutsideSourcePaths);
         // The same pass never struck them either.
         var records = await world.Health.ListDownloadHealthRecordsPageAsync(new PageRequest(50, null), CancellationToken.None);
         Assert.DoesNotContain(records.Items, record => record.QueueItemId is ForeignId or Foreign2Id);
@@ -142,8 +214,10 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             SqlitePlatformSettingsRepository settings,
             SqliteDispatchAlertRepository alerts,
             string clientId,
-            string vanishedDispatchId)
+            string vanishedDispatchId,
+            Client fakeClient)
         {
+            _client = fakeClient;
             _storage = storage;
             Service = service;
             Health = health;
@@ -167,6 +241,11 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
         public string ClientId { get; }
 
         public string VanishedDispatchId { get; }
+
+        private readonly Client _client;
+
+        /// <summary>How many actions actually reached the download client.</summary>
+        public int ActionsReachedTheClient => _client.Actions;
 
         public static async Task<World> CreateAsync(bool includeOwn = true)
         {
@@ -209,7 +288,8 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var resilience = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
-            var registry = new DownloadClientRegistry([new Client(client, includeOwn)]);
+            var fakeClient = new Client(client, includeOwn);
+            var registry = new DownloadClientRegistry([fakeClient]);
 
             var service = new DownloadClientTelemetryService(
                 settings, health, libraries, connections, jobs, registry, time, resilience,
@@ -217,7 +297,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
                 dispatchAlertRepository: alerts);
 
-            return new World(storage, service, health, dispatches, settings, alerts, client.Id, vanished);
+            return new World(storage, service, health, dispatches, settings, alerts, client.Id, vanished, fakeClient);
         }
 
         public void Dispose() => _storage.Dispose();
@@ -233,7 +313,8 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
         {
             DownloadQueueItem Item(string id, string release, string status) => new(
                 id, client.Id, client.Name, Protocol, "movies", release, release,
-                "deluno-movies", status, 0.4, 1, 60, 1024, 400, 0, "Fixture", null, Now.AddHours(-1));
+                "deluno-movies", status, 0.4, 1, 60, 1024, 400, 0, "Fixture", null, Now.AddHours(-1),
+                SourcePath: $"C:/dl/{release}");
             DownloadClientHistoryItem History(string id, string release) => new(
                 id, client.Id, client.Name, Protocol, "movies", release, release, "deluno-movies", "completed", "Fixture",
                 1024, Now.AddMinutes(-30), null, SourcePath: $"C:/Downloads/{release}", HistorySource: "native", ExternalId: id);
@@ -263,8 +344,13 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
         public Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem requested, DownloadClientGrabRequest request, CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
+        public int Actions { get; private set; }
+
         public Task<DownloadClientActionResult> ExecuteActionAsync(DownloadClientItem requested, string action, string queueItemId, CancellationToken cancellationToken)
-            => throw new NotSupportedException();
+        {
+            Actions++;
+            return Task.FromResult(new DownloadClientActionResult(requested.Id, queueItemId, action, true, "done"));
+        }
 
         public Task<IReadOnlyList<DownloadClientHistoryItem>> GetHistoryAsync(DownloadClientItem requested, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<DownloadClientHistoryItem>>([]);

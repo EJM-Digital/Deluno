@@ -46,13 +46,12 @@ public sealed class OrphanedDownloadService(
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
     {
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-        // Unfiltered (#958, cleanup sheet M2): the Queue screen only ever
-        // shows Deluno's own downloads, but a leftover scan must still treat
-        // an item another tool -- or a person -- added to the client as
-        // holding its file. Reading straight from the client, before the
-        // ownership test GetOverviewAsync applies for display, is the only
-        // way to see it.
-        var clientSnapshots = await telemetryService.GetUnfilteredSnapshotsAsync(cancellationToken);
+        // Deluno's own downloads decide which folders are scanned and are
+        // claimed by their paths. What another tool -- or a person -- added to
+        // a client (#958, #1062) is never listed or scanned for, but its files
+        // are still in use: those paths only ever protect them from being
+        // swept up.
+        var clientSnapshots = await telemetryService.GetSnapshotsForLeftoverScanAsync(cancellationToken);
         var scans = DownloadFolders(libraries, clientSnapshots)
             .Select(folder => new DownloadFolderScan(folder.LibraryId, folder.LibraryName, folder.Path, ReadTopLevel(folder.Path)))
             .ToArray();
@@ -71,6 +70,7 @@ public sealed class OrphanedDownloadService(
         {
             claimed.AddRange(client.Queue.Select(item => item.SourcePath ?? string.Empty));
             claimed.AddRange(client.History.Select(item => item.SourcePath ?? string.Empty));
+            claimed.AddRange(client.OutsideSourcePaths);
         }
 
         claimed.AddRange(jobs

@@ -16,7 +16,7 @@ namespace Deluno.Integrations.Tests.DownloadClients;
 /// another download tool, or added to the client by hand, still holds its
 /// file. <see cref="IOrphanedDownloadService.ListAsync"/> must read the
 /// client's queue and history exactly as the client reports them --
-/// <see cref="IDownloadClientTelemetryService.GetUnfilteredSnapshotsAsync"/> --
+/// <see cref="IDownloadClientTelemetryService.GetSnapshotsForLeftoverScanAsync"/> --
 /// never <see cref="IDownloadClientTelemetryService.GetOverviewAsync"/>,
 /// whose Queue is already narrowed to Deluno's own dispatches for the Queue
 /// screen (#933) and so would let a foreign item's file look unclaimed.
@@ -39,14 +39,14 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             var library = Library(directory.FullName);
 
             // The mocked telemetry service stands in for real client polling:
-            // GetUnfilteredSnapshotsAsync returns the item exactly as the
+            // GetSnapshotsForLeftoverScanAsync returns the item exactly as the
             // client reports it, ownership untouched -- a foreign item Deluno
             // never dispatched. GetOverviewAsync is deliberately left
             // unconfigured (strict-ish): if ListAsync ever called it instead,
             // it would come back empty and wrongly report the item as an
             // orphan, failing this test.
             var telemetry = new Mock<IDownloadClientTelemetryService>();
-            telemetry.Setup(instance => instance.GetUnfilteredSnapshotsAsync(It.IsAny<CancellationToken>()))
+            telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([ClientSnapshot(foreignItemPath)]);
 
             var service = CreateService(library, telemetry.Object);
@@ -75,7 +75,7 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             var library = Library(directory.FullName);
 
             var telemetry = new Mock<IDownloadClientTelemetryService>();
-            telemetry.Setup(instance => instance.GetUnfilteredSnapshotsAsync(It.IsAny<CancellationToken>()))
+            telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
             var service = CreateService(library, telemetry.Object);
@@ -90,11 +90,45 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
         }
     }
 
+    /// <summary>
+    /// #1062: a folder only another tool's downloads live in is never scanned,
+    /// so a stray entry next to them is not listed as Deluno's leftover.
+    /// </summary>
+    [Fact]
+    public async Task A_folder_only_another_tools_downloads_live_in_is_never_scanned()
+    {
+        var directory = Directory.CreateTempSubdirectory("foreign-download-folder-not-scanned-");
+        try
+        {
+            var foreignItemPath = Path.Combine(directory.FullName, "Foreign.Tool.Added.This.S01E01");
+            var strayPath = Path.Combine(directory.FullName, "Some.Other.Stray.Folder");
+            Directory.CreateDirectory(foreignItemPath);
+            Directory.CreateDirectory(strayPath);
+            BackdatePastGrace(foreignItemPath);
+            BackdatePastGrace(strayPath);
+
+            // The library sets no download folder of its own, so the only way
+            // this folder could be scanned is through the other tool's item.
+            var library = Library(null);
+            var telemetry = new Mock<IDownloadClientTelemetryService>();
+            telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync([ClientSnapshot(foreignItemPath)]);
+
+            var found = await CreateService(library, telemetry.Object).ListAsync(CancellationToken.None);
+
+            Assert.Empty(found);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     /// <summary>Past <see cref="OrphanedDownloads.Grace"/> (2 hours), so a freshly-written test fixture is not mistaken for a download that only just finished.</summary>
     private static void BackdatePastGrace(string path)
         => Directory.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-3));
 
-    private static LibraryItem Library(string downloadsPath)
+    private static LibraryItem Library(string? downloadsPath)
         => new(
             "library-1", "TV", "tv", "main", @"C:\Deluno\Library\TV", downloadsPath, null, null, null,
             true, true, "direct", null, null, 0, "block",
@@ -110,30 +144,14 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             null,
             new DownloadClientTelemetryCapabilities(true, true, true, true, true, true, "form"),
             new DownloadTelemetrySummary(1, 0, 0, 0, 0, 0, 0),
-            [
-                new DownloadQueueItem(
-                    "foreign-hash",
-                    "client-1",
-                    "Some Other Tool's qBittorrent",
-                    "qbittorrent",
-                    "tv",
-                    "Foreign Tool Added This",
-                    "Foreign.Tool.Added.This.S01E01",
-                    "tv",
-                    "downloading",
-                    0.6,
-                    0,
-                    0,
-                    4096,
-                    2048,
-                    0,
-                    "",
-                    null,
-                    Now,
-                    SourcePath: foreignItemPath)
-            ],
             [],
-            Now);
+            [],
+            Now)
+        {
+            // #1062: what another tool added is not listed or counted; only
+            // its path comes through, so the file is never swept up.
+            OutsideSourcePaths = [foreignItemPath]
+        };
 
     private static OrphanedDownloadService CreateService(LibraryItem library, IDownloadClientTelemetryService telemetryService)
     {

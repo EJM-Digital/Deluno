@@ -205,7 +205,7 @@ public sealed class SeasonPassEndpointTests
 
         public Task<DownloadTelemetryOverview> GetOverviewAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetUnfilteredSnapshotsAsync(CancellationToken cancellationToken)
+        public Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetSnapshotsForLeftoverScanAsync(CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
         public Task<DownloadCleanupPreview?> PreviewCleanupAsync(string clientId, string queueItemId, CancellationToken cancellationToken) => throw new NotSupportedException();

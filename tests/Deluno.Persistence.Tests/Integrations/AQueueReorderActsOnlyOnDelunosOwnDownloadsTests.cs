@@ -62,19 +62,18 @@ public sealed class AQueueReorderActsOnlyOnDelunosOwnDownloadsTests
     }
 
     /// <summary>
-    /// The gate is new for #810's verbs only. Pause already worked against
-    /// any item the client holds, dispatched by Deluno or not, and #810 does
-    /// not narrow that existing behaviour.
+    /// #1062: Deluno only acts on downloads it sent, so pause is guarded like
+    /// every other verb.
     /// </summary>
     [Fact]
-    public async Task Pause_is_not_affected_by_the_new_ownership_gate()
+    public async Task Pause_on_a_download_Deluno_did_not_send_is_refused()
     {
         using var world = await World.CreateAsync();
 
         var result = await world.ExecuteActionAsync(DownloadClientActions.Pause, "not-a-deluno-item");
 
-        Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(DownloadClientActions.Pause, world.FakeDownloadClient.LastAction);
+        Assert.True(result.Refused);
+        Assert.Null(world.FakeDownloadClient.LastAction);
     }
 
     private sealed class FakeClient(string protocol) : IDownloadClient
