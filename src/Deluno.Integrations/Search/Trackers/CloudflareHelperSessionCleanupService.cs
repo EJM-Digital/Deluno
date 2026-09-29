@@ -23,7 +23,8 @@ public sealed class CloudflareHelperSessionCleanupService(
     IConnectionsRepository connections,
     ILogger<CloudflareHelperSessionCleanupService> logger) : BackgroundService
 {
-    private static readonly TimeSpan ReconcileInterval = TimeSpan.FromMinutes(15);
+    /// <summary>How often sessions are reconciled against the configured indexers.</summary>
+    internal TimeSpan ReconcileInterval { get; init; } = TimeSpan.FromMinutes(15);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,9 +36,10 @@ public sealed class CloudflareHelperSessionCleanupService(
                 await ReconcileAsync(stoppingToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Expected on shutdown.
+            // Expected on shutdown. A helper request that timed out is not a shutdown (#1080):
+            // ReconcileAsync logs it and the loop carries on.
         }
     }
 
@@ -68,7 +70,7 @@ public sealed class CloudflareHelperSessionCleanupService(
 
             await cloudflareHelper.ReconcileSessionsAsync(activeHosts, cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(exception, "Could not reconcile Cloudflare helper sessions against configured indexers.");
         }
