@@ -13,7 +13,8 @@ public sealed class SeriesMetadataRefreshJobHandler(
     IMetadataProvider metadataProvider,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
-    IAutoTaggingService? autoTagging = null) : IJobHandler
+    IAutoTaggingService? autoTagging = null,
+    IHealthCheckRepository? healthCheckRepository = null) : IJobHandler
 {
     public string JobType => "series.metadata.refresh";
 
@@ -171,9 +172,11 @@ public sealed class SeriesMetadataRefreshJobHandler(
                 // A show numbered by TheTVDB is never re-synced from TMDb's
                 // list: its episodes stay and the next refresh tries again.
                 await SeriesCatalogueChoice.RecordHoldAsync(
-                    activityFeedRepository, choice.Hold, seriesId, seriesTitle, jobId, cancellationToken);
+                    activityFeedRepository, healthCheckRepository, choice.Hold, seriesId, seriesTitle, jobId, cancellationToken);
                 return SeriesCatalogueSyncResult.None;
             }
+
+            await SeriesCatalogueChoice.ClearHoldAsync(healthCheckRepository, seriesId, cancellationToken);
 
             seasons = choice.Seasons;
         }

@@ -219,7 +219,7 @@ public sealed class MetadataRefreshJobHandlerTests
     }
 
     private static (SeriesMetadataRefreshJobHandler Handler, Mock<ISeriesCatalogRepository> Series, Mock<IActivityFeedRepository> Activity, JobQueueItem Job)
-        BuildTvdbNumberedShow(IReadOnlyList<MetadataSeason> preferred, IReadOnlyList<MetadataSeason> tmdbOnly)
+        BuildTvdbNumberedShow(IReadOnlyList<MetadataSeason> preferred, IReadOnlyList<MetadataSeason> tmdbOnly, Deluno.Contracts.IHealthCheckRepository? health = null)
     {
         var series = new SeriesListItem(
             "series-1", "A Show", 2020, "tt1234567", true, true,
@@ -252,7 +252,7 @@ public sealed class MetadataRefreshJobHandlerTests
         seriesRepository.Setup(repository => repository.GetByIdAsync("series-1", It.IsAny<CancellationToken>())).ReturnsAsync(series);
         seriesRepository.Setup(repository => repository.GetInventoryDetailAsync("series-1", It.IsAny<CancellationToken>())).ReturnsAsync(inventory);
         var activity = new Mock<IActivityFeedRepository>();
-        var handler = new SeriesMetadataRefreshJobHandler(metadataProvider.Object, seriesRepository.Object, activity.Object);
+        var handler = new SeriesMetadataRefreshJobHandler(metadataProvider.Object, seriesRepository.Object, activity.Object, null, health);
         return (handler, seriesRepository, activity, TestJobs.Create("series.metadata.refresh", relatedEntityId: "series-1"));
     }
 
@@ -278,6 +278,39 @@ public sealed class MetadataRefreshJobHandlerTests
             "metadata.series.catalogue.held",
             It.Is<string>(message => message.Contains("did not answer", StringComparison.Ordinal)),
             It.IsAny<string?>(), job.Id, "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_held_refresh_writes_Activity_once_and_leaves_one_clearable_Health_note_until_it_goes_through()
+    {
+        var rows = new Dictionary<string, Deluno.Contracts.HealthCheckResultItem>();
+        var health = new Mock<Deluno.Contracts.IHealthCheckRepository>();
+        health.Setup(repository => repository.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string id, CancellationToken _) => rows.GetValueOrDefault(id));
+        health.Setup(repository => repository.UpsertResultsAsync(It.IsAny<IReadOnlyList<Deluno.Contracts.HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
+            .Callback((IReadOnlyList<Deluno.Contracts.HealthCheckOutcome> outcomes, CancellationToken _) =>
+            {
+                foreach (var outcome in outcomes)
+                {
+                    rows[outcome.Id] = (Deluno.Contracts.HealthCheckResultItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Deluno.Contracts.HealthCheckResultItem));
+                }
+            })
+            .ReturnsAsync([]);
+        health.Setup(repository => repository.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback((string id, CancellationToken _) => rows.Remove(id))
+            .Returns(Task.CompletedTask);
+        var (handler, _, activity, job) = BuildTvdbNumberedShow([TmdbSeason()], [TmdbSeason()], health.Object);
+
+        await handler.HandleAsync(job, CancellationToken.None);
+        await handler.HandleAsync(job, CancellationToken.None);
+        await handler.HandleAsync(job, CancellationToken.None);
+
+        activity.Verify(repository => repository.RecordActivityAsync(
+            "metadata.series.catalogue.held", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
+        health.Verify(repository => repository.UpsertResultsAsync(
+            It.Is<IReadOnlyList<Deluno.Contracts.HealthCheckOutcome>>(items => items.Count == 1
+                && items[0].Id == "notice:catalogue-held:series-1" && items[0].Category == Deluno.Contracts.HealthCheckCategories.Notice),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

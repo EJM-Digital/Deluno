@@ -481,6 +481,26 @@ public sealed class TvdbFirstMetadataTests : IDisposable
         // TMDb-numbered: stays on TMDb's own list.
         var stays = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", Existing("tmdb"), CancellationToken.None);
         Assert.Equal("tmdb", MetadataCatalogueChoice.SourceName(stays.Seasons));
+
+        // A person choosing this record on purpose (fixing a wrong link) gets the list to preview, flagged, not a hold.
+        var chosen = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", Existing("tvdb"), CancellationToken.None, deliberateRelink: true);
+        Assert.Equal(MetadataCatalogueHold.None, chosen.Hold);
+        Assert.True(chosen.TvdbDisagreesButChosen);
+        Assert.Equal(4, chosen.Seasons.SelectMany(season => season.Episodes).Count());
+    }
+
+    [Fact]
+    public async Task A_deliberate_relink_is_still_held_when_TheTVDB_gives_no_list_at_all()
+    {
+        var air = DateTimeOffset.Parse("2020-01-01T00:00:00Z");
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Season((null, 1, 1), (null, 1, 2))]);
+        MetadataEpisodeIdentity[] existing = [new(1, 1, true, "Pilot", air, "tvdb"), new(1, 2, true, "Second", air.AddDays(7), "tvdb")];
+
+        var result = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", existing, CancellationToken.None, deliberateRelink: true);
+
+        Assert.Equal(MetadataCatalogueHold.TvdbUnavailable, result.Hold);
     }
 
     [Fact]
