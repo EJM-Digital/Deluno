@@ -248,6 +248,7 @@ GET /api/system/log-files
 GET /api/system/log-files/folder
 GET /api/system/log-files/{name}/download
 GET /api/system/log-level
+GET /api/system/status
 GET /api/system/tasks
 GET /api/tags/
 GET /api/tags/usage
