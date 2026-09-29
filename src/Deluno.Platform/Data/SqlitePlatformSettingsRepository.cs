@@ -304,6 +304,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // #1046: off by default (#936), for existing installs too: a missing key reads as off.
         await UpsertSettingAsync(connection, transaction, "lists.tagTitlesOffEveryList", request.TagTitlesOffEveryList == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "lists.offListTag", (request.OffListTag ?? string.Empty).Trim(), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "ui.showAbsoluteEpisodeNumbers", request.ShowAbsoluteEpisodeNumbers == true ? "true" : "false", updatedUtc, cancellationToken);
         // #909: warn and pause both read as "percent free remaining", so pause
         // must be the smaller number -- clamped here rather than merely
         // validated, so a stored value can never be read back the wrong way
@@ -690,7 +691,8 @@ public sealed class SqlitePlatformSettingsRepository(
             UnmatchedImportGiveUpDays: ReadPositiveInt(GetValue(settings, "import.unmatchedGiveUpDays"), 7, 1, 365),
             DownloadHealthDangerousFileEnabled: string.Equals(GetValue(settings, "download-health.dangerousFile.enabled"), "true", StringComparison.OrdinalIgnoreCase),
             TagTitlesOffEveryList: string.Equals(GetValue(settings, "lists.tagTitlesOffEveryList"), "true", StringComparison.OrdinalIgnoreCase),
-            OffListTag: (GetValue(settings, "lists.offListTag") ?? string.Empty).Trim());
+            OffListTag: (GetValue(settings, "lists.offListTag") ?? string.Empty).Trim(),
+            ShowAbsoluteEpisodeNumbers: string.Equals(GetValue(settings, "ui.showAbsoluteEpisodeNumbers"), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeMultiEpisodeStyle(string? value)

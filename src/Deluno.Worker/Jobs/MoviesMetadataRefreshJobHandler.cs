@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -9,7 +10,8 @@ namespace Deluno.Worker.Jobs;
 public sealed class MoviesMetadataRefreshJobHandler(
     IMetadataProvider metadataProvider,
     IMovieCatalogRepository movieCatalogRepository,
-    IActivityFeedRepository activityFeedRepository) : IJobHandler
+    IActivityFeedRepository activityFeedRepository,
+    IAutoTaggingService? autoTagging = null) : IJobHandler
 {
     public string JobType => "movies.metadata.refresh";
 
@@ -65,6 +67,13 @@ public sealed class MoviesMetadataRefreshJobHandler(
         }
 
         await movieCatalogRepository.UpdateMetadataAsync(movie.Id, match, cancellationToken);
+
+        // #1024: what the refresh learned (genres, language, certification) can change
+        // which auto-tagging rules the title matches.
+        if (autoTagging is not null)
+        {
+            await autoTagging.ApplyAsync(MediaKind.Movie, movie.Id, AutoTagTrigger.Refreshed, null, null, cancellationToken);
+        }
 
         await activityFeedRepository.RecordActivityAsync(
             "metadata.movie.refreshed",

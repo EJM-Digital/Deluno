@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -10,7 +11,8 @@ namespace Deluno.Worker.Jobs;
 public sealed class SeriesMetadataRefreshJobHandler(
     IMetadataProvider metadataProvider,
     ISeriesCatalogRepository seriesCatalogRepository,
-    IActivityFeedRepository activityFeedRepository) : IJobHandler
+    IActivityFeedRepository activityFeedRepository,
+    IAutoTaggingService? autoTagging = null) : IJobHandler
 {
     public string JobType => "series.metadata.refresh";
 
@@ -63,6 +65,13 @@ public sealed class SeriesMetadataRefreshJobHandler(
         }
 
         await seriesCatalogRepository.UpdateMetadataAsync(series.Id, match, cancellationToken);
+
+        // #1024: what the refresh learned (genres, status, language) can change
+        // which auto-tagging rules the show matches.
+        if (autoTagging is not null)
+        {
+            await autoTagging.ApplyAsync(MediaKind.Series, series.Id, AutoTagTrigger.Refreshed, null, null, cancellationToken);
+        }
 
         // Re-syncing the catalogue on the schedule is how an episode announced
         // after the show was added ever becomes known. Without it the inventory

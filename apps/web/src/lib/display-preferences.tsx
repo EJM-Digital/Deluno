@@ -31,6 +31,8 @@ export interface DisplayPreferences {
   longDateFormat: LongDateFormat;
   timeFormat: TimeFormat;
   showRelativeDates: boolean;
+  /** #1024: write an anime episode as S01E05 (105), with its absolute number. Off until chosen. */
+  showAbsoluteEpisodeNumbers: boolean;
   /**
    * The IANA zone (e.g. "Australia/Sydney") an air date/time is converted
    * into before it is shown (#860). Empty means none chosen — every
@@ -50,6 +52,7 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   longDateFormat: "full",
   timeFormat: "12",
   showRelativeDates: true,
+  showAbsoluteEpisodeNumbers: false,
   timezone: ""
 };
 
@@ -66,6 +69,7 @@ export function displayPreferencesFromSettings(settings: Partial<PlatformSetting
     longDateFormat: longDate === "mdy" ? "mdy" : "full",
     timeFormat: settings?.timeFormat === "24" ? "24" : "12",
     showRelativeDates: settings?.showRelativeDates !== false,
+    showAbsoluteEpisodeNumbers: settings?.showAbsoluteEpisodeNumbers === true,
     timezone: settings?.timezone?.trim() || ""
   };
 }

@@ -61,4 +61,29 @@ public sealed class TitleTagService(
 
         return given;
     }
+
+    public async Task<IReadOnlyList<string>> TakeAwayAsync(
+        MediaKind kind,
+        string mediaId,
+        IEnumerable<string> tagNames,
+        CancellationToken cancellationToken)
+    {
+        var unwanted = tagNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (unwanted.Count == 0 || string.IsNullOrWhiteSpace(mediaId))
+        {
+            return [];
+        }
+
+        var current = await mediaTagStore.ListAsync(kind, mediaId, cancellationToken);
+        var removed = current.Where(item => unwanted.Contains(item.Name)).Select(item => item.Name).ToArray();
+        if (removed.Length > 0)
+        {
+            await mediaTagStore.ReplaceAsync(kind, mediaId, current.Where(item => !unwanted.Contains(item.Name)).ToArray(), cancellationToken);
+        }
+
+        return removed;
+    }
 }

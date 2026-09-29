@@ -21,7 +21,8 @@ public sealed class MovieCollectionService(
     IJobQueueRepository jobQueueRepository,
     TimeProvider timeProvider,
     ITitleTagService? titleTagService = null,
-    IActivityFeedRepository? activityFeedRepository = null) : IMovieCollectionService
+    IActivityFeedRepository? activityFeedRepository = null,
+    IAutoTaggingService? autoTagging = null) : IMovieCollectionService
 {
     private static readonly TimeSpan SyncInterval = TimeSpan.FromHours(24);
     private static readonly TimeSpan RetryInterval = TimeSpan.FromHours(6);
@@ -128,6 +129,7 @@ public sealed class MovieCollectionService(
 
                 var movieId = member.LocalMovieId;
                 MovieListItem? localMovie = null;
+                var addedNow = false;
                 if (string.IsNullOrWhiteSpace(movieId))
                 {
                     movieId = await movieCatalogRepository.FindExistingIdAsync(
@@ -163,6 +165,7 @@ public sealed class MovieCollectionService(
                         cancellationToken);
                     movieId = localMovie.Id;
                     added++;
+                    addedNow = true;
 
                     // #1046: the collection's tags go on the movie the moment it exists,
                     // before its wanted state, its search or anything that reads its tags.
@@ -222,6 +225,19 @@ public sealed class MovieCollectionService(
                     await movieCatalogRepository.UpdateQualityProfileAsync(
                         movieId,
                         collection.QualityProfileId,
+                        cancellationToken);
+                }
+
+                // #1024: auto-tagging rules for a film this collection just added, after its
+                // own tags and library are settled and before anything searches for it.
+                if (addedNow && autoTagging is not null)
+                {
+                    await autoTagging.ApplyAsync(
+                        MediaKind.Movie,
+                        movieId,
+                        AutoTagTrigger.Added,
+                        new AutoTagAddFacts(false, false, collection.Name),
+                        [library.Id],
                         cancellationToken);
                 }
             }

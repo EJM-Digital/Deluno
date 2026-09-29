@@ -76,6 +76,9 @@ public interface ITitleTagService
 
     /// <summary>Adds the tags to the title and returns the names it did not already carry.</summary>
     Task<IReadOnlyList<string>> GiveAsync(MediaKind kind, string mediaId, IEnumerable<string> tagNames, CancellationToken cancellationToken);
+
+    /// <summary>Takes the tags off the title and returns the names it actually carried (#1024). The definitions stay.</summary>
+    Task<IReadOnlyList<string>> TakeAwayAsync(MediaKind kind, string mediaId, IEnumerable<string> tagNames, CancellationToken cancellationToken);
 }
 
 public static class TagNameList

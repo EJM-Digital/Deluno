@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { Captions, FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Workflow } from "lucide-react";
+import { Captions, FileInput, FolderTree, HelpCircle, Image, MapPinned, SlidersHorizontal, Tags, Wand2, Workflow } from "lucide-react";
 import { CONFIGURATION_AREAS } from "../../lib/configuration-areas";
 import { cn } from "../../lib/utils";
 import { GlossaryModal } from "../ui/glossary-modal";
@@ -16,7 +16,8 @@ export const librarySetupNavItems = [
   { to: "/settings/subtitles", label: "Subtitles", end: false, icon: <Captions aria-hidden="true" /> },
   // Cross-library: what is still missing, not a setting (#840).
   { to: "/settings/subtitles-wanted", label: "Subtitle Wanted", end: false, icon: <Captions aria-hidden="true" /> },
-  { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> }
+  { to: "/settings/tags", label: "Tags", end: false, icon: <Tags aria-hidden="true" /> },
+  { to: "/settings/auto-tagging", label: "Auto-tagging", end: false, icon: <Wand2 aria-hidden="true" /> }
 ] as const;
 
 export const automationNavItems = [
@@ -289,6 +290,12 @@ export const settingsPageMeta = [
   },
   {
     match: (path: string) => path.startsWith("/settings/subtitles"),
+    title: "Media Management",
+    description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
+    chrome: "none"
+  },
+  {
+    match: (path: string) => path.startsWith("/settings/auto-tagging"),
     title: "Media Management",
     description: "Manage where your media lives, how it is named, and how it moves through Deluno.",
     chrome: "none"

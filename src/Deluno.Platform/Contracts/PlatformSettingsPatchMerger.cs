@@ -117,5 +117,6 @@ public static class PlatformSettingsPatchMerger
             UnmatchedImportGiveUpDays: patch.UnmatchedImportGiveUpDays ?? current.UnmatchedImportGiveUpDays,
             DownloadHealthDangerousFileEnabled: patch.DownloadHealthDangerousFileEnabled ?? current.DownloadHealthDangerousFileEnabled,
             TagTitlesOffEveryList: patch.TagTitlesOffEveryList ?? current.TagTitlesOffEveryList,
-            OffListTag: patch.OffListTag?.Trim() ?? current.OffListTag);
+            OffListTag: patch.OffListTag?.Trim() ?? current.OffListTag,
+            ShowAbsoluteEpisodeNumbers: patch.ShowAbsoluteEpisodeNumbers ?? current.ShowAbsoluteEpisodeNumbers);
 }

@@ -123,4 +123,5 @@ public sealed record PatchPlatformSettingsRequest(
     int? UnmatchedImportGiveUpDays = null,
     bool? DownloadHealthDangerousFileEnabled = null,
     bool? TagTitlesOffEveryList = null,
-    string? OffListTag = null);
+    string? OffListTag = null,
+    bool? ShowAbsoluteEpisodeNumbers = null);

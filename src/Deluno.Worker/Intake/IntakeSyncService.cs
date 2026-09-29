@@ -42,7 +42,8 @@ public sealed class IntakeSyncService(
     ILogger<IntakeSyncService> logger,
     ITraktTokenProvider? traktTokenProvider = null,
     ITraktClient? traktClient = null,
-    ITitleTagService? titleTagService = null)
+    ITitleTagService? titleTagService = null,
+    IAutoTaggingService? autoTagging = null)
     : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
     private const int PreviewLimit = 100;
@@ -361,6 +362,7 @@ public sealed class IntakeSyncService(
                     metadata?.ProviderId,
                     cancellationToken);
 
+                var isNewFromList = existingId is null;
                 if (existingId is null)
                 {
                     if (mediaType == "tv")
@@ -511,6 +513,19 @@ public sealed class IntakeSyncService(
                     {
                         await movieCatalogRepository.UpdateQualityProfileAsync(existingId!, source.QualityProfileId!, cancellationToken);
                     }
+                }
+
+                // #1024: auto-tagging rules for a title this list just added, once its library
+                // and quality profile are settled and before anything searches for it.
+                if (isNewFromList && autoTagging is not null)
+                {
+                    await autoTagging.ApplyAsync(
+                        mediaType == "tv" ? MediaKind.Series : MediaKind.Movie,
+                        existingId!,
+                        AutoTagTrigger.Added,
+                        new AutoTagAddFacts(false, false, source.Name),
+                        [targetLibrary.Id],
+                        cancellationToken);
                 }
 
                 shouldRequestSearch = shouldRequestSearch || ((searchOnAddOverride ?? source.SearchOnAdd) && isAvailable);

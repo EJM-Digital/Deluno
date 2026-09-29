@@ -127,6 +127,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
             ILibrariesRepository librariesRepository,
             IMediaDecisionService mediaDecisionService,
             IJobScheduler jobScheduler,
+            IAutoTaggingService autoTagging,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -145,6 +146,7 @@ public static class DiscoverEndpointRouteBuilderExtensions
             var target = LibraryMembership.Targets(libraries, normalized == "series" ? "tv" : "movies", request.LibraryId, [])
                 .FirstOrDefault();
 
+            var addStartedUtc = DateTimeOffset.UtcNow;
             if (normalized == "series")
             {
                 var series = await seriesRepository.AddAsync(
@@ -212,6 +214,16 @@ public static class DiscoverEndpointRouteBuilderExtensions
                 {
                     await seriesRepository.UpdateQualityProfileAsync(series.Id, request.QualityProfileId, cancellationToken);
                 }
+
+                // #1024: auto-tagging rules, before the catalogue refresh and any search.
+                var seriesIsNew = series.CreatedUtc >= addStartedUtc;
+                await autoTagging.ApplyAsync(
+                    MediaKind.Series,
+                    series.Id,
+                    seriesIsNew ? AutoTagTrigger.Added : AutoTagTrigger.Edited,
+                    seriesIsNew ? new AutoTagAddFacts(false, false, null) : null,
+                    target is null ? null : [target.Id],
+                    cancellationToken);
 
                 await jobScheduler.EnqueueAsync(
                     new EnqueueJobRequest(
@@ -291,6 +303,16 @@ public static class DiscoverEndpointRouteBuilderExtensions
             {
                 await movieRepository.UpdateQualityProfileAsync(movie.Id, request.QualityProfileId, cancellationToken);
             }
+
+            // #1024: auto-tagging rules, before the catalogue refresh and any search.
+            var movieIsNew = movie.CreatedUtc >= addStartedUtc;
+            await autoTagging.ApplyAsync(
+                MediaKind.Movie,
+                movie.Id,
+                movieIsNew ? AutoTagTrigger.Added : AutoTagTrigger.Edited,
+                movieIsNew ? new AutoTagAddFacts(false, false, null) : null,
+                target is null ? null : [target.Id],
+                cancellationToken);
 
             await jobScheduler.EnqueueAsync(
                 new EnqueueJobRequest(

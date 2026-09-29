@@ -38,6 +38,7 @@ describe("display preferences", () => {
       longDateFormat: "mdy",
       timeFormat: "24",
       showRelativeDates: false,
+      showAbsoluteEpisodeNumbers: false,
       timezone: "Australia/Sydney"
     });
 

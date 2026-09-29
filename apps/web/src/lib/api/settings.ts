@@ -36,6 +36,8 @@ export interface PlatformSettingsPatch {
   longDateFormat?: string;
   timeFormat?: string;
   showRelativeDates?: boolean;
+  /** #1024: show an anime episode's absolute number beside its season and episode. */
+  showAbsoluteEpisodeNumbers?: boolean;
   /** #860: the IANA zone episode air times convert into; empty clears it back to the browser/OS timezone. */
   timezone?: string;
   defaultMovieView?: string;
