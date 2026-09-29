@@ -495,6 +495,16 @@ public abstract class LibrarySearchJobHandler(
     private static bool PersonAsked(JobPayloads.LibrarySearchPayload payload)
         => string.Equals(payload.TriggeredBy, "manual", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Whether this search may pick a title that is unmonitored: a person's own
+    /// request, or another tool asking Deluno to download a file again. That file
+    /// was just removed on purpose, so the search must run even if the title was
+    /// unmonitored earlier (#1065).
+    /// </summary>
+    private static bool AsksPastMonitored(JobPayloads.LibrarySearchPayload payload)
+        => PersonAsked(payload)
+            || string.Equals(payload.TriggeredBy, "external-redownload", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The blocklist, read once per run rather than once per title.</summary>
     private async Task<IReadOnlyList<BlockedRelease>> ListRefusalsAsync(CancellationToken cancellationToken)
         => blockedReleases is null ? [] : await blockedReleases.ListAsync(cancellationToken);
@@ -628,7 +638,7 @@ public abstract class LibrarySearchJobHandler(
             cancellationToken,
             searchStatus,
             scopeFilters,
-            requireMonitored: !PersonAsked(payload),
+            requireMonitored: !AsksPastMonitored(payload),
             randomOrder: payload.RandomizeSearchOrder);
         return CapEachKind(payload, searchStatus, candidates, candidate => candidate.WantedStatus);
     }
@@ -650,7 +660,7 @@ public abstract class LibrarySearchJobHandler(
             cancellationToken,
             searchStatus,
             scopeFilters,
-            requireMonitored: !PersonAsked(payload),
+            requireMonitored: !AsksPastMonitored(payload),
             randomOrder: payload.RandomizeSearchOrder);
         return CapEachKind(payload, searchStatus, candidates, candidate => candidate.WantedStatus);
     }
@@ -679,7 +689,7 @@ public abstract class LibrarySearchJobHandler(
             cancellationToken,
             searchStatus,
             scopeFilters,
-            requireMonitored: !PersonAsked(payload));
+            requireMonitored: !AsksPastMonitored(payload));
         return CapEachKind(payload, searchStatus, candidates, episode => episode.WantedStatus);
     }
 

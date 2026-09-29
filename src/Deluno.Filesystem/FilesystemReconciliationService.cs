@@ -85,6 +85,12 @@ public sealed class FilesystemReconciliationService(
                     continue;
                 }
 
+                if (IsBeingReplacedByAnImport(tracked.Path))
+                {
+                    knownTrackedPaths.Add(fullPath);
+                    continue;
+                }
+
                 issues.Add(CreateMissingTrackedFileIssue(library, tracked));
             }
 
@@ -125,51 +131,57 @@ public sealed class FilesystemReconciliationService(
 
         if (token.Kind == "missingTrackedFile" && action == "mark-missing")
         {
-            var repaired = token.MediaType == "tv"
-                ? await seriesCatalogRepository.MarkTrackedFileMissingAsync(
+            if (IsBeingReplacedByAnImport(token.Path))
+            {
+                return new FilesystemReconciliationRepairResult(
+                    false,
+                    action,
+                    "An import is replacing this file right now, so it was left alone. The next check will see the new file.");
+            }
+
+            // A file the reconciliation scan finds gone is a file that
+            // disappeared outside Deluno. Deluno's own removals never come
+            // through here: an upgrade never marks the old file missing, and
+            // an external re-download keeps the title monitored. So the title
+            // (or episode) stopped being something the user still wants and is
+            // unmonitored in the same step, so it is never searched for and
+            // downloaded again. Cleanup sheet row K2, #931, #1065. For a movie
+            // the file fields, status and monitored flag change in one
+            // transaction (MarkTrackedFileGoneAsync).
+            bool repaired;
+            if (token.MediaType == "tv")
+            {
+                repaired = await seriesCatalogRepository.MarkTrackedFileMissingAsync(
                     token.EntityId,
                     token.EpisodeId,
                     token.LibraryId,
                     token.Path,
-                    cancellationToken)
-                : await movieCatalogRepository.MarkTrackedFileMissingAsync(
+                    cancellationToken);
+                if (repaired)
+                {
+                    if (!string.IsNullOrWhiteSpace(token.EpisodeId))
+                    {
+                        await seriesCatalogRepository.UpdateEpisodeMonitoredAsync(
+                            [token.EpisodeId],
+                            monitored: false,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        await seriesCatalogRepository.UpdateMonitoredAsync(
+                            [token.EntityId],
+                            monitored: false,
+                            cancellationToken);
+                    }
+                }
+            }
+            else
+            {
+                repaired = await movieCatalogRepository.MarkTrackedFileGoneAsync(
                     token.EntityId,
                     token.LibraryId,
                     token.Path,
                     cancellationToken);
-
-            // A file the reconciliation scan finds gone is a file that
-            // disappeared outside Deluno - Deluno's own removals (retention,
-            // an upgrade, a delete from Deluno itself) never reach this path,
-            // because they call MarkTrackedFileMissingAsync directly rather
-            // than going through a reconciliation issue. So the moment this
-            // repair runs, the title (or episode) stopped being something the
-            // user still wants: unmonitor it in the same pass, so it is never
-            // searched for and downloaded again on nothing but the user's own
-            // deletion. Cleanup sheet row K2, #931.
-            if (repaired)
-            {
-                if (token.MediaType == "tv" && !string.IsNullOrWhiteSpace(token.EpisodeId))
-                {
-                    await seriesCatalogRepository.UpdateEpisodeMonitoredAsync(
-                        [token.EpisodeId],
-                        monitored: false,
-                        cancellationToken);
-                }
-                else if (token.MediaType == "tv")
-                {
-                    await seriesCatalogRepository.UpdateMonitoredAsync(
-                        [token.EntityId],
-                        monitored: false,
-                        cancellationToken);
-                }
-                else
-                {
-                    await movieCatalogRepository.UpdateMonitoredAsync(
-                        [token.EntityId],
-                        monitored: false,
-                        cancellationToken);
-                }
             }
 
             await RecordMarkMissingRepairAsync(token, repaired, cancellationToken);
@@ -321,6 +333,13 @@ public sealed class FilesystemReconciliationService(
             trackedFullPaths.Add(Path.GetFullPath(path));
             if (File.Exists(path))
             {
+                present++;
+                continue;
+            }
+
+            if (IsBeingReplacedByAnImport(path))
+            {
+                // An import is swapping this file right now (#1065); not a deletion.
                 present++;
                 continue;
             }
@@ -764,6 +783,33 @@ public sealed class FilesystemReconciliationService(
 
     private static bool IsDelunoArtifact(string path)
         => ArtifactMarkers.Any(marker => Path.GetFileName(path).Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// True while an import is replacing this very file: the import moves the old
+    /// file aside as <c>name.deluno-backup-*.tmp</c> and stages the new one as
+    /// <c>name.deluno-stage-*.tmp</c> before the new file takes its place, so for
+    /// that stretch the tracked path is genuinely absent. A check that ran then
+    /// would read the upgrade as a deletion and unmonitor the title mid-upgrade
+    /// (#1065). The next check, once the import has finished, sees the new file.
+    /// </summary>
+    internal static bool IsBeingReplacedByAnImport(string trackedPath)
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(trackedPath);
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
+                return false;
+            }
+
+            var name = Path.GetFileName(trackedPath);
+            return Directory.EnumerateFiles(folder, $"{name}.deluno-*-*.tmp").Any();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private static long? GetFileSize(string path)
     {

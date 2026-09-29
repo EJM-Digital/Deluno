@@ -36,7 +36,7 @@ public sealed class TitleRescanTests : IDisposable
         Assert.Equal("ok", result!.Outcome);
         Assert.Equal(1, result.FilesPresent);
         Assert.Empty(result.Missing);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.True(File.Exists(file));
         Assert.Contains("where Deluno expects it", result.Summary);
     }
@@ -55,9 +55,26 @@ public sealed class TitleRescanTests : IDisposable
         Assert.Equal("changed", result!.Outcome);
         Assert.Single(result.Missing);
         Assert.True(result.Missing[0].MarkedMissing);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync("movie-1", "lib-1", gone, It.IsAny<CancellationToken>()), Times.Once);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-1", "lib-1", gone, It.IsAny<CancellationToken>()), Times.Once);
         Assert.True(File.Exists(sibling));
         Assert.Contains(rig.Activity, a => a.Category == "library.title.rescanned" && a.Message.Contains("No files were touched"));
+    }
+
+    [Fact]
+    public async Task A_file_being_replaced_by_an_import_right_now_is_not_read_as_deleted()
+    {
+        // An upgrade over the same name moves the old file aside (.deluno-backup) before the
+        // new one lands. A check in that gap must not mark the title missing or unmonitor it (#1065).
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "Arrival (2016)")).FullName;
+        var tracked = Path.Combine(folder, "Arrival.mkv");
+        File.WriteAllText(tracked + ".deluno-backup-abc123.tmp", "old");
+        var rig = new Rig(this, tracked);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
+
+        Assert.Empty(result!.Missing);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -98,7 +115,7 @@ public sealed class TitleRescanTests : IDisposable
         var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
 
         Assert.Equal("library-unreachable", result!.Outcome);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -113,7 +130,7 @@ public sealed class TitleRescanTests : IDisposable
 
         Assert.Equal("library-unreachable", result!.Outcome);
         Assert.Contains("changed nothing", result.Summary);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         rig.Movies.Verify(m => m.UpdateMonitoredAsync(It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -132,7 +149,7 @@ public sealed class TitleRescanTests : IDisposable
         var result = await rig.Service.RescanTitleAsync("movies", "movie-1", CancellationToken.None);
 
         Assert.Equal("library-unreachable", result!.Outcome);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -160,7 +177,7 @@ public sealed class TitleRescanTests : IDisposable
         Assert.Equal("library-unknown", result!.Outcome);
         Assert.Contains("changed nothing", result.Summary);
         Assert.DoesNotContain("marked it missing", result.Summary);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -177,7 +194,7 @@ public sealed class TitleRescanTests : IDisposable
         Assert.False(result.Missing[0].MarkedMissing);
         Assert.Contains("could not mark it missing", result.Summary);
         Assert.DoesNotContain("marked it missing and stopped", result.Summary);
-        rig.Movies.Verify(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -230,7 +247,7 @@ public sealed class TitleRescanTests : IDisposable
                 .ReturnsAsync(new MovieListItem(
                     "movie-1", "Arrival", 2016, null, true, true, null, null, null, null, null, null, null, [],
                     null, null, null, null, now, now, FilePath: filePath, LibraryId: libraryIdOverride));
-            Movies.Setup(m => m.MarkTrackedFileMissingAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            Movies.Setup(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 
             var activity = new Mock<IActivityFeedRepository>();

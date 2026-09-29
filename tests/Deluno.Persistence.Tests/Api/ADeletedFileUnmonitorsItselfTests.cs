@@ -26,6 +26,14 @@ namespace Deluno.Persistence.Tests.Api;
 /// <para>Driven through <c>POST /api/filesystem/file-check</c> — the same
 /// route the System screen's "Check library files now" button calls and the
 /// six-hourly schedule calls — so this is a guard on both.</para>
+///
+/// <para>Scope after #1065 (James's decision): a file deleted from disk - outside
+/// Deluno, or from a title's Files tab - unmonitors the title. Deluno's own
+/// replacements (an upgrade, an external re-download, retention) are not
+/// "deleted from disk" and keep the title searching; deleting the whole title in
+/// Deluno removes the entry. #931's acceptance line 3 means those flows, not the
+/// Files-tab delete, which is covered by
+/// <c>MovieOneRungPerMovieTests.Deleting_a_movies_file_leaves_it_with_no_file_unmonitored_and_never_covered</c>.</para>
 /// </summary>
 public sealed class ADeletedFileUnmonitorsItselfTests
 {

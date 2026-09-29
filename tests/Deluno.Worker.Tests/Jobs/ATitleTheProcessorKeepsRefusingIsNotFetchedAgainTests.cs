@@ -107,6 +107,32 @@ public sealed class ATitleTheProcessorKeepsRefusingIsNotFetchedAgainTests
         await Assert.ThrowsAsync<Searched>(() => SearchMoviesAsync(triggeredBy: "manual"));
     }
 
+    /// <summary>
+    /// #1065: another tool asking Deluno to download a film again removes the file on
+    /// purpose, and the search that follows must run even if the film was unmonitored
+    /// earlier; the schedule still skips unmonitored films.
+    /// </summary>
+    [Theory]
+    [InlineData("external-redownload", true)]
+    [InlineData("schedule", false)]
+    public async Task An_external_redownload_searches_an_unmonitored_film_but_the_schedule_does_not(string triggeredBy, bool mayPickUnmonitored)
+    {
+        try
+        {
+            await SearchMoviesAsync(triggeredBy);
+        }
+        catch (Searched)
+        {
+            // The search reaching the indexers is enough; what matters is what was asked of the catalogue.
+        }
+
+        _movies.Verify(
+            repository => repository.ListEligibleWantedAsync(
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTimeOffset>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<CatalogueFilters?>(), false, It.IsAny<bool>()),
+            mayPickUnmonitored ? Times.AtLeastOnce() : Times.Never());
+    }
+
     [Fact]
     public async Task Refusals_for_other_reasons_or_other_titles_do_not_count()
     {

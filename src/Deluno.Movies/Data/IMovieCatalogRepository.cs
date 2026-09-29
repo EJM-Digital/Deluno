@@ -249,6 +249,19 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string filePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The tracked file is gone from disk and nobody in Deluno removed it (#1065):
+    /// clears the file, marks the movie Missing (or Upcoming) and unmonitors it in
+    /// one transaction, so it is never searched for. Contrast
+    /// <see cref="MarkTrackedFileMissingAsync"/>, for Deluno's own replacements,
+    /// which keeps the movie monitored.
+    /// </summary>
+    Task<bool> MarkTrackedFileGoneAsync(
+        string movieId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken);
+
     Task RecordSearchAttemptAsync(
         string movieId,
         string libraryId,

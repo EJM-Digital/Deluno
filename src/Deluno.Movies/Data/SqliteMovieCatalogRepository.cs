@@ -2106,37 +2106,108 @@ public sealed class SqliteMovieCatalogRepository(
         }
     }
 
-    public async Task<bool> MarkTrackedFileMissingAsync(
+    public Task<bool> MarkTrackedFileMissingAsync(
         string movieId,
         string libraryId,
         string filePath,
         CancellationToken cancellationToken)
+        => FileGoneAsync(
+            movieId,
+            libraryId,
+            filePath,
+            "Reconciliation detected that the tracked library file is missing from disk.",
+            unmonitor: false,
+            cancellationToken);
+
+    public Task<bool> MarkTrackedFileGoneAsync(
+        string movieId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken)
+        => FileGoneAsync(
+            movieId,
+            libraryId,
+            filePath,
+            "The file is gone from disk, so Deluno stopped wanting this movie.",
+            unmonitor: true,
+            cancellationToken);
+
+    public Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
+        => FileGoneAsync(
+            movieId,
+            libraryId: null,
+            filePath,
+            "The file was deleted, so Deluno stopped wanting this movie.",
+            unmonitor: true,
+            cancellationToken);
+
+    /// <summary>
+    /// The one writer behind every "this movie's file is gone" path (#1065):
+    /// the file fields, the status and (when the file was removed outside
+    /// Deluno's own replacement flows) the monitored flag change in a single
+    /// transaction, so a crash can never leave a title Missing and still
+    /// monitored, and a title with no file never keeps a stale quality or
+    /// "cutoff met" from the file it no longer has. Matched by path so a row
+    /// that changed since it was read is never cleared by mistake.
+    /// </summary>
+    private async Task<bool> FileGoneAsync(
+        string movieId,
+        string? libraryId,
+        string filePath,
+        string reason,
+        bool unmonitor,
+        CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow();
+        var now = timeProvider.GetUtcNow().ToString("O");
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             UPDATE movie_wanted_state
-            SET has_file = 0,
-                wanted_status = 'missing',
-                wanted_reason = 'Reconciliation detected that the tracked library file is missing from disk.',
+            SET has_file = 0, file_path = NULL, file_size_bytes = NULL, current_quality = NULL,
+                quality_cutoff_met = 0,
+                wanted_status = CASE
+                    WHEN COALESCE((SELECT e.release_year FROM movie_entries e WHERE e.id = @movieId), 0)
+                         > CAST(strftime('%Y', 'now') AS INTEGER) THEN 'upcoming'
+                    ELSE 'missing'
+                END,
+                wanted_reason = @reason,
                 missing_since_utc = COALESCE(missing_since_utc, @now),
                 missing_detected_utc = @now,
                 last_verified_utc = @now,
                 updated_utc = @now
             WHERE movie_id = @movieId
-              AND library_id = @libraryId
+              AND (@libraryId IS NULL OR library_id = @libraryId)
               AND file_path = @filePath;
             """;
         AddParameter(command, "@movieId", movieId);
         AddParameter(command, "@libraryId", libraryId);
         AddParameter(command, "@filePath", filePath);
-        AddParameter(command, "@now", now.ToString("O"));
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        AddParameter(command, "@reason", reason);
+        AddParameter(command, "@now", now);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return false;
+        }
+
+        if (unmonitor)
+        {
+            // Unmonitoring is title-wide: monitored lives on the title, not a library.
+            using var monitored = connection.CreateCommand();
+            monitored.Transaction = transaction;
+            monitored.CommandText = "UPDATE movie_entries SET monitored = 0, updated_utc = @now WHERE id = @movieId;";
+            AddParameter(monitored, "@movieId", movieId);
+            AddParameter(monitored, "@now", now);
+            await monitored.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task RecordSearchAttemptAsync(
@@ -2784,47 +2855,6 @@ public sealed class SqliteMovieCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Movies,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE movie_wanted_state
-            SET has_file = 0, file_path = NULL, file_size_bytes = NULL, current_quality = NULL,
-                quality_cutoff_met = 0,
-                wanted_status = CASE
-                    WHEN COALESCE((SELECT e.release_year FROM movie_entries e WHERE e.id = @movieId), 0)
-                         > CAST(strftime('%Y', 'now') AS INTEGER) THEN 'upcoming'
-                    ELSE 'missing'
-                END,
-                wanted_reason = 'The file was deleted, so Deluno stopped wanting this movie.',
-                missing_since_utc = COALESCE(missing_since_utc, @now),
-                updated_utc = @now
-            WHERE movie_id = @movieId AND file_path = @filePath;
-            """;
-        AddParameter(command, "@movieId", movieId);
-        AddParameter(command, "@filePath", filePath);
-        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
-        var cleared = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
-        if (!cleared)
-        {
-            return false;
-        }
-
-        // One rule for a file deleted from disk, whoever noticed (#931, #1065):
-        // the title has no file and is unmonitored, so no search picks it up.
-        // It shows under Unmonitored and its status says it has no file.
-        using var unmonitor = connection.CreateCommand();
-        unmonitor.CommandText = "UPDATE movie_entries SET monitored = 0, updated_utc = @now WHERE id = @movieId;";
-        AddParameter(unmonitor, "@movieId", movieId);
-        AddParameter(unmonitor, "@now", timeProvider.GetUtcNow().ToString("O"));
-        await unmonitor.ExecuteNonQueryAsync(cancellationToken);
-        return true;
-    }
 
     public async Task<bool> UpdateQualityProfileAsync(string movieId, string qualityProfileId, CancellationToken cancellationToken)
     {
