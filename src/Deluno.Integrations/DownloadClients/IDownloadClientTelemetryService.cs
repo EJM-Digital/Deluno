@@ -66,6 +66,23 @@ public interface IDownloadClientTelemetryService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same removal with the choices given as flags, the way Radarr's and
+    /// Sonarr's queue delete takes them (#1022): <paramref name="removeFromClient"/>
+    /// deletes the download and its files from the client (otherwise Deluno only
+    /// forgets it), <paramref name="blocklist"/> refuses the release everywhere
+    /// and searches for another unless <paramref name="skipRedownload"/>. Writes
+    /// Activity like every other removal.
+    /// </summary>
+    Task<QueueRemovalResult> RemoveWithOptionsAsync(
+        string clientId,
+        string queueItemId,
+        bool removeFromClient,
+        bool blocklist,
+        bool skipRedownload,
+        CancellationToken cancellationToken)
+        => throw new NotSupportedException("This telemetry service does not remove by flags.");
+
+    /// <summary>
     /// Clears a client's own queue-level warnings (#813) — SABnzbd's
     /// mode=warnings&amp;name=clear — so it does not keep reporting one Deluno
     /// already showed and the person handled. False for a client whose

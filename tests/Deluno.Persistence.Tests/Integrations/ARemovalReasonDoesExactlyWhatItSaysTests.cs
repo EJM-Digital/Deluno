@@ -197,6 +197,48 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Contains("untouched", activity.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// #1022: the API's removeFromClient / blocklist / skipRedownload flags reach
+    /// the same removal, each part on its own, with Radarr's meaning: only a
+    /// blocklist searches again, and skipRedownload turns that off.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, false, DownloadClientActions.DeleteWithData, true, true)]
+    [InlineData(true, true, true, DownloadClientActions.DeleteWithData, true, false)]
+    [InlineData(false, true, false, DownloadClientActions.Forget, true, true)]
+    [InlineData(true, false, false, DownloadClientActions.DeleteWithData, false, false)]
+    [InlineData(false, false, false, DownloadClientActions.Forget, false, false)]
+    public async Task The_flags_do_each_part_on_their_own(
+        bool removeFromClient,
+        bool blocklist,
+        bool skipRedownload,
+        string expectedAction,
+        bool expectBlocklisted,
+        bool expectSearch)
+    {
+        using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
+
+        var result = await world.RemoveAsync(removeFromClient, blocklist, skipRedownload);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(expectedAction, world.Client.LastAction);
+        Assert.Equal(expectBlocklisted, result.Blocklisted);
+        Assert.Equal(expectBlocklisted, (await world.Blocklist.ListAsync(CancellationToken.None)).Count == 1);
+        Assert.Equal(expectSearch, result.SearchStarted);
+        Assert.Equal(expectSearch ? 1 : 0, (await world.Jobs.ListAsync(10, CancellationToken.None)).Count);
+
+        // Never unmonitors: only the "I don't want it" choice does.
+        Assert.True((await world.Movies!.GetByIdAsync(world.EntityId, CancellationToken.None))!.Monitored);
+
+        var activity = (await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None))
+            .Single(entry => entry.Category == "download.queue.removed");
+        Assert.StartsWith("An outside program removed", activity.Message, StringComparison.Ordinal);
+        Assert.Equal(removeFromClient, activity.Message.Contains("deleted its files", StringComparison.Ordinal));
+        Assert.Equal(!removeFromClient, activity.Message.Contains("untouched", StringComparison.Ordinal));
+        Assert.Equal(expectBlocklisted, activity.Message.Contains("blocklisted", StringComparison.Ordinal));
+        Assert.Equal(expectSearch, activity.Message.Contains("started a new search", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task An_unrecognised_reason_is_refused_rather_than_guessed()
     {
@@ -432,6 +474,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         public Task<QueueRemovalResult> RemoveAsync(string reason)
             => _service.RemoveWithReasonAsync(ClientId, QueueItemId, reason, CancellationToken.None);
+
+        public Task<QueueRemovalResult> RemoveAsync(bool removeFromClient, bool blocklist, bool skipRedownload)
+            => _service.RemoveWithOptionsAsync(ClientId, QueueItemId, removeFromClient, blocklist, skipRedownload, CancellationToken.None);
 
         public void Dispose() => _storage.Dispose();
     }

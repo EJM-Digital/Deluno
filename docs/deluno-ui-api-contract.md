@@ -557,6 +557,7 @@ Implemented core operational endpoints:
 - `POST /api/command`, `GET /api/command`, `GET /api/command/{id}` (#1019, see docs/external-integration-api.md)
 - `GET /api/system/status` (#1020, see docs/external-integration-api.md)
 - `GET /api/diskspace`, `GET /api/movies/lookup/imdb?imdbId=` (#1021, see docs/external-integration-api.md)
+- `DELETE /api/queue/{clientId}/{queueItemId}?removeFromClient=&blocklist=&skipRedownload=`, `DELETE /api/queue/bulk`, `GET /api/history?eventType=`, `GET /api/wanted/missing`, `GET /api/wanted/cutoff` (#1022, see docs/external-integration-api.md)
 - `POST /api/integrations/processors/events`
 
 `GET /api/stats` (#827) aggregates the same facts the Activity feed already

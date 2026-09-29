@@ -163,8 +163,44 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// What a download's history says happened to it (#1022), in Radarr's names for
+/// the same events. One per download: the furthest it got.
+/// </summary>
+public static class DispatchHistoryEvents
+{
+    /// <summary>The client took it and it has not been imported or failed yet.</summary>
+    public const string Grabbed = "grabbed";
+
+    /// <summary>The finished download was imported into the library.</summary>
+    public const string Imported = "downloadFolderImported";
+
+    /// <summary>The grab was refused, or the finished download could not be imported.</summary>
+    public const string Failed = "downloadFailed";
+
+    public static bool IsKnown(string? value) => Normalize(value) is not null;
+
+    public static string? Normalize(string? value)
+        => value?.Trim().ToLowerInvariant() switch
+        {
+            "grabbed" => Grabbed,
+            "downloadfolderimported" or "imported" => Imported,
+            "downloadfailed" or "failed" => Failed,
+            _ => null
+        };
+
+    /// <summary>The event a dispatch row is in, by the same rule the filter uses.</summary>
+    public static string For(string? grabStatus, string? importStatus)
+        => string.Equals(importStatus, "imported", StringComparison.OrdinalIgnoreCase) ? Imported
+            : string.Equals(grabStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(importStatus, "failed", StringComparison.OrdinalIgnoreCase) ? Failed
+            : Grabbed;
+}
+
 public class DispatchQueryFilter
 {
+    /// <summary>One of <see cref="DispatchHistoryEvents"/>; anything else matches nothing extra.</summary>
+    public string? HistoryEvent { get; set; }
     public string? Status { get; set; }
     public string? GrabStatus { get; set; }
     public string? ImportStatus { get; set; }

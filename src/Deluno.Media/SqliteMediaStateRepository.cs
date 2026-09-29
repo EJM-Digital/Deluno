@@ -92,6 +92,75 @@ public sealed class SqliteMediaStateRepository(
         return new MediaWantedSummary(totalWanted, missingCount, upgradeCount, coveredCount, upcomingCount, items);
     }
 
+    public async Task<(IReadOnlyList<MediaWantedItem> Items, int Total)> ListWantedPageAsync(
+        MediaKind kind,
+        string wantedStatus,
+        bool? monitored,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var map = MediaTableMap.For(kind);
+        var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
+        var monitoredClause = monitored is null
+            ? string.Empty
+            : $"AND {map.EntryAlias}.monitored = @monitored";
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var total = 0;
+        using (var count = connection.CreateCommand())
+        {
+            count.CommandText = $"""
+                SELECT COUNT(*)
+                FROM {map.WantedTable} w
+                INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
+                WHERE w.wanted_status = @status {monitoredClause};
+                """;
+            AddParameter(count, "@status", wantedStatus);
+            if (monitored is not null)
+            {
+                AddParameter(count, "@monitored", monitored.Value ? 1 : 0);
+            }
+
+            total = Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        }
+
+        var items = new List<MediaWantedItem>();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT
+                {map.EntryAlias}.id, {map.EntryAlias}.title, {map.EntryAlias}.{map.YearColumn}, {map.EntryAlias}.imdb_id,
+                w.library_id, w.wanted_status, w.wanted_reason, w.has_file, w.current_quality, w.target_quality,
+                w.quality_cutoff_met, w.missing_since_utc, w.last_search_utc, w.next_eligible_search_utc,
+                w.last_search_result, w.prevent_lower_quality_replacements, w.quality_delta_last_decision, w.updated_utc,
+                {availabilityColumn} AS available_utc,
+                w.file_path, w.file_size_bytes, {map.EntryAlias}.runtime_minutes
+            FROM {map.WantedTable} w
+            INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
+            WHERE w.wanted_status = @status {monitoredClause}
+            ORDER BY w.updated_utc DESC, {map.EntryAlias}.title ASC, {map.EntryAlias}.id ASC
+            LIMIT @take OFFSET @skip;
+            """;
+        AddParameter(command, "@status", wantedStatus);
+        if (monitored is not null)
+        {
+            AddParameter(command, "@monitored", monitored.Value ? 1 : 0);
+        }
+
+        AddParameter(command, "@take", take);
+        AddParameter(command, "@skip", skip);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            items.Add(ReadWanted(reader));
+        }
+
+        return (items, total);
+    }
+
     public async Task<IReadOnlyList<MediaWantedItem>> ListWantedByIdsAsync(
         MediaKind kind,
         IReadOnlyList<string> mediaIds,

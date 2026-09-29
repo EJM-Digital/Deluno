@@ -35,6 +35,8 @@ DELETE /api/notifications/
 DELETE /api/notifications/{notificationId}
 DELETE /api/policy-sets/{id}
 DELETE /api/quality-profiles/{id}
+DELETE /api/queue/bulk
+DELETE /api/queue/{clientId}/{queueItemId}
 DELETE /api/recycle-bin/{id}
 DELETE /api/release-profiles/{id}
 DELETE /api/retention/episode-removals/{episodeId}
@@ -97,6 +99,7 @@ GET /api/filesystem/directories
 GET /api/filesystem/reconciliation
 GET /api/health/live
 GET /api/health/ready
+GET /api/history
 GET /api/indexer-history
 GET /api/indexer-proxies/
 GET /api/indexers/
@@ -277,6 +280,8 @@ GET /api/v1/release-preferences/plans
 GET /api/v1/release-preferences/plans/quality-profile/{profileId}
 GET /api/v1/release-preferences/plans/{planId}
 GET /api/v1/release-preferences/registry
+GET /api/wanted/cutoff
+GET /api/wanted/missing
 GET /health
 PATCH /api/settings/
 POST /api/activity/clear
