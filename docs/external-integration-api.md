@@ -682,7 +682,7 @@ GET /api/integrations/processors/download-destinations?libraryId=library-id
 | `libraries[].destinations[].clientSaveFolder` | string or null | The same folder as the download client writes it. It differs from `saveFolder` behind a download-client path mapping. |
 | `libraries[].destinations[].savedBy` | string | `deluno-per-grab` when Deluno names the library's downloads folder on each grab (Transmission, Deluge); `client-category` when the client's own category folder decides. |
 | `libraries[].destinations[].matchesDownloadsPath` | bool or null | Whether `saveFolder` is the library's `downloadsPath`. Null when either is unknown. |
-| `libraries[].destinations[].status` | string | `ok`, `problem` or `unknown`. |
+| `libraries[].destinations[].status` | string | `ok`, `problem` or `unknown`. A client on another machine gets a named folder only when a path mapping covers the library's downloads folder; without one Deluno names none, `savedBy` is `client-category` and `status` is `problem`. Each client's answer is kept for 60 seconds, clients are asked side by side, and one that does not answer within 8 seconds is `unknown`. |
 | `libraries[].destinations[].message` | string | Why, in plain words. |
 | `libraries[].processorConnection` | object or null | The processor connection the library hands downloads to. Null when the library does not use a processor, or its connection is gone. |
 | `libraries[].processorConnection.id` | string | The connection's id. |

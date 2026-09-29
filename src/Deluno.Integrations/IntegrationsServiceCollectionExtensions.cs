@@ -88,6 +88,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         services.AddScoped<IFolderChainService, FolderChainService>();
+        services.AddHostedService<DownloadFolderChangeNoticeService>();
         // Scoped, because the telemetry service it drives is. The schedule and
         // the "clean up now" button resolve the same registration.
         services.AddScoped<IRefusedDownloadCleanupService, RefusedDownloadCleanupService>();
