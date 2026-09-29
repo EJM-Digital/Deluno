@@ -970,7 +970,7 @@ function ProcessingWorkflowPage() {
             actions={<Button type="button" size="sm" variant="outline" onClick={openCallback}>Connect processor</Button>}
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Notifies", width: "minmax(0,1.4fr)" }, { label: "Health", width: LIST_TRACK.status, mobile: true }, { label: "", width: "150px", srOnly: true, mobile: true }]} chevron={false}>
+          <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Notifies", width: "minmax(0,1.4fr)" }, { label: "Health", width: LIST_TRACK.status, mobile: true }, { label: "Actions", width: "22rem", srOnly: true }]} chevron={false}>
             {processorConnections.map((connection) => (
               <ListRow key={connection.id}>
                 <ListNameCell name={connection.name} sub={processorSub(connection)} />
@@ -979,8 +979,9 @@ function ProcessingWorkflowPage() {
                 <ListCell mobile>
                   <Chip tone={healthTone(connection.healthStatus)}>{connection.healthStatus}</Chip>
                 </ListCell>
-                <ListCell mobile align="end">
-                  <span className="flex justify-end gap-2">
+                {/* Its own fixed-width track on wide screens; on a phone it drops to a full-width line under the name, and the buttons wrap instead of overlapping. */}
+                <ListCell align="end" className="max-md:col-span-full max-md:!block">
+                  <span className="flex flex-wrap justify-end gap-2">
                     <Button type="button" variant="outline" size="sm" className="h-7 px-2" disabled={busy !== null} onClick={() => void testCallback(connection)}>
                       {busy === `test:${connection.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wifi className="h-3 w-3" />}
                       Test
