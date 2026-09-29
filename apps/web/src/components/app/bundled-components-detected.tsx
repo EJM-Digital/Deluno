@@ -11,7 +11,18 @@ export type BundledComponentStatus = {
   reachable: boolean;
   defaultHost: string;
   defaultPort: number;
+  /** The installer gave this client a sign-in (qBittorrent, NZBGet); Deluno keeps it and fills it in. */
+  hasCredentials?: boolean;
 };
+
+/** The sign-in the installer generated for a detected client, or null when there is none to use. */
+export async function fetchDetectedCredentials(kind: string): Promise<{ username: string; password: string } | null> {
+  try {
+    return await fetchJson<{ username: string; password: string }>(`/api/system/bundled-components/${encodeURIComponent(kind)}/credentials`);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * What the installer's component picker put on this machine, or found already

@@ -36,6 +36,8 @@ public static class DelunoApiExtensions
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();
         services.TryAddSingleton<IBundledComponentDetection, UncheckedBundledComponentDetection>();
+        services.TryAddSingleton<IBundledComponentCredentialStore>(sp => BundledComponentCredentialStores.CreateForDataRoot(
+            sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["Storage:DataRoot"] ?? "data"));
         services.AddSingleton<IIndexerHistoryEventStore, SqliteIndexerHistoryEventStore>();
         services.AddSingleton<IIndexerHistoryService, IndexerHistoryService>();
         services.AddSingleton<Deluno.Contracts.IIndexerAuthFailureRecorder, IndexerHistoryAuthFailureRecorder>();
@@ -90,6 +92,7 @@ public static class DelunoApiExtensions
         api.MapDelunoLanAccessEndpoints();
         api.MapDelunoConnectivityEndpoints();
         api.MapDelunoBundledComponentsEndpoints();
+        api.MapDelunoBundledComponentCredentialsEndpoints();
         api.MapDelunoSystemLogLevelEndpoints();
         api.MapDelunoSystemLogFilesEndpoints();
         api.MapDelunoSystemInstallationInfoEndpoints();

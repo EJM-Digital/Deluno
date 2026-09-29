@@ -45,3 +45,22 @@ describe("what the installer found on this machine (#640)", () => {
     expect(container.textContent).toBe("");
   });
 });
+
+describe("the sign-in the installer gave a client (#1050)", () => {
+  afterEach(() => fetchJson.mockReset());
+
+  it("reads it from the credentials endpoint for that client", async () => {
+    const { fetchDetectedCredentials } = await import("./bundled-components-detected");
+    fetchJson.mockResolvedValueOnce({ username: "deluno", password: "generated" });
+
+    await expect(fetchDetectedCredentials("qbittorrent")).resolves.toEqual({ username: "deluno", password: "generated" });
+    expect(fetchJson).toHaveBeenCalledWith("/api/system/bundled-components/qbittorrent/credentials");
+  });
+
+  it("falls back to no sign-in when there is none saved", async () => {
+    const { fetchDetectedCredentials } = await import("./bundled-components-detected");
+    fetchJson.mockRejectedValueOnce(new Error("404"));
+
+    await expect(fetchDetectedCredentials("nzbget")).resolves.toBeNull();
+  });
+});

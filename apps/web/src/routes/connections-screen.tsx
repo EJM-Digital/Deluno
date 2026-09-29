@@ -25,7 +25,7 @@ import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
-import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
+import { DetectedComponents, fetchDetectedCredentials, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
@@ -538,13 +538,18 @@ export function IndexersPage() {
    * them. Auto-tests once the drawer has settled, the same test a manual
    * "Test" click would run, so the connection shows as tested before Save.
    */
-  function openDetectedClient(status: BundledComponentStatus) {
+  async function openDetectedClient(status: BundledComponentStatus) {
     const preset = CLIENT_PRESETS.find((item) => item.protocol === status.kind);
+    // A client the installer gave a sign-in (qBittorrent 5.2.1 will not start
+    // without one) is filled in with it, so nothing has to be typed (#1050).
+    const credentials = status.hasCredentials ? await fetchDetectedCredentials(status.kind) : null;
     const next: ClientForm = {
       ...emptyClientForm(),
       protocol: status.kind,
       host: status.defaultHost,
       port: String(status.defaultPort),
+      username: credentials?.username ?? "",
+      password: credentials?.password ?? "",
       name: preset?.label ?? status.displayName,
       moviesCategory: preset?.defaultMoviesCategory ?? emptyClientForm().moviesCategory,
       tvCategory: preset?.defaultTvCategory ?? emptyClientForm().tvCategory
@@ -983,7 +988,7 @@ export function IndexersPage() {
           <DetectedComponents
             category="download-client"
             configuredKinds={clients.map((item) => item.protocol)}
-            onUse={openDetectedClient}
+            onUse={(status) => void openDetectedClient(status)}
           />
           <ListCard
             title="Download clients"

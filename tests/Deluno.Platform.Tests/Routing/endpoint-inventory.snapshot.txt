@@ -233,6 +233,7 @@ GET /api/subtitle-languages
 GET /api/subtitle-providers/
 GET /api/subtitles/wanted
 GET /api/system/bundled-components
+GET /api/system/bundled-components/{kind}/credentials
 GET /api/system/connectivity
 GET /api/system/health/
 GET /api/system/health/summary

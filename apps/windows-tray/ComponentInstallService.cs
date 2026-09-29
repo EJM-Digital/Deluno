@@ -52,6 +52,15 @@ public interface IProcessRunner
 {
     /// <summary>Runs <paramref name="path"/> with <paramref name="arguments"/> and returns its exit code, or null if it could not start.</summary>
     Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same, but asks Windows for administrator rights first (its own permission
+    /// prompt, none when already elevated), with no window of its own. A per-machine
+    /// .msi run unattended needs it: without elevation Windows Installer refuses a
+    /// quiet install. Runs the plain way where a runner has no notion of elevation.
+    /// </summary>
+    Task<int?> RunElevatedAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+        => RunAsync(path, arguments, timeout, cancellationToken);
 }
 
 /// <summary>A process started without waiting for it to exit -- for a component whose post-install step is a long-running tray app, not an installer.</summary>
@@ -67,6 +76,32 @@ public interface IProcessStarter
 {
     /// <summary>Starts <paramref name="path"/> with <paramref name="arguments"/> and returns immediately without waiting for it to exit, or null if it could not start.</summary>
     IStartedProcess? Start(string path, string? arguments);
+
+    /// <summary>The same, with no console window when <paramref name="hidden"/> is true (a console-mode server such as NZBGet's <c>-s</c> or the Transmission daemon).</summary>
+    IStartedProcess? Start(string path, string? arguments, bool hidden)
+        => Start(path, arguments);
+}
+
+/// <summary>Reads a text file a vendor's own installer shipped, to build a seeded config from it.</summary>
+public interface ITextFileReader
+{
+    /// <summary>The file's text, or null when it does not exist or cannot be read.</summary>
+    string? ReadAllText(string path);
+}
+
+public sealed class RealTextFileReader : ITextFileReader
+{
+    public string? ReadAllText(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>Polls a component's own readiness endpoint rather than waiting on its process tree, for a component (like Weir) that keeps running once it is ready.</summary>
@@ -107,9 +142,16 @@ public sealed class ComponentInstallService(
     IProcessStarter? processStarter = null,
     IReadinessChecker? readiness = null,
     IConfigFileWriter? configWriter = null,
-    IPrerequisiteRegistryReader? prerequisiteRegistry = null)
+    IPrerequisiteRegistryReader? prerequisiteRegistry = null,
+    ITextFileReader? templates = null,
+    IBundledComponentCredentialStore? credentialStore = null,
+    IStartedComponentsRegistry? startedComponents = null)
 {
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
+    private readonly ITextFileReader _templates = templates ?? new RealTextFileReader();
+    private readonly Lazy<IBundledComponentCredentialStore> _credentials = new(
+        () => credentialStore ?? BundledComponentCredentialStores.CreateForDataRoot(AppSettings.Load().DataRoot));
+    private readonly IStartedComponentsRegistry _startedComponents = startedComponents ?? new FileStartedComponentsRegistry();
 
     private readonly IInstalledProgramsReader _programs = programs ?? new RegistryInstalledProgramsReader();
     private readonly IPortProbe _portProbe = portProbe ?? new LoopbackPortProbe();
@@ -188,9 +230,35 @@ public sealed class ComponentInstallService(
             }
         }
 
-        var (runPath, runArguments) = BuildInstallCommand(path, spec.SilentArgs);
-        var exitCode = await _processes.RunAsync(runPath, runArguments, TimeSpan.FromMinutes(5), cancellationToken);
+        int? exitCode;
+        var scriptPath = default(string);
+        if (IsMsi(path))
+        {
+            // A per-machine .msi needs administrator rights to install quietly.
+            var logPath = path + ".log";
+            if (!string.IsNullOrWhiteSpace(spec.DisableServiceAfterInstall))
+            {
+                scriptPath = path + ".install.cmd";
+                File.WriteAllText(scriptPath, ServiceInstallScript.Build(path, spec.SilentArgs, logPath, spec.DisableServiceAfterInstall));
+                exitCode = await _processes.RunElevatedAsync("cmd.exe", $"/c \"\"{scriptPath}\"\"", TimeSpan.FromMinutes(5), cancellationToken);
+            }
+            else
+            {
+                var (msiPath, msiArguments) = BuildInstallCommand(path, spec.SilentArgs);
+                exitCode = await _processes.RunElevatedAsync(msiPath, msiArguments, TimeSpan.FromMinutes(5), cancellationToken);
+            }
+        }
+        else
+        {
+            var (runPath, runArguments) = BuildInstallCommand(path, spec.SilentArgs);
+            exitCode = await _processes.RunAsync(runPath, runArguments, TimeSpan.FromMinutes(5), cancellationToken);
+        }
+
         TryDelete(path);
+        if (scriptPath is not null)
+        {
+            TryDelete(scriptPath);
+        }
 
         if (exitCode is null or not 0)
         {
@@ -198,11 +266,7 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName}'s installer did not finish cleanly (exit code {exitCode?.ToString() ?? "none"}).");
         }
 
-        if (!string.IsNullOrWhiteSpace(spec.ConfigFilePath) && !string.IsNullOrWhiteSpace(spec.ConfigFileContent))
-        {
-            var configPath = Environment.ExpandEnvironmentVariables(spec.ConfigFilePath);
-            await _configWriter.WriteIfAbsentAsync(configPath, spec.ConfigFileContent, cancellationToken);
-        }
+        await SeedConfigAsync(spec, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
         {
@@ -222,9 +286,64 @@ public sealed class ComponentInstallService(
     /// context instead of leaving it ambiguous) and a verbose log fixes the
     /// unattended case Transmission's installer hit on a clean VM.
     /// </summary>
+    private static bool IsMsi(string installerPath) => installerPath.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Seeds the component's config ahead of its first start (only when no config
+    /// exists yet). A component that needs sign-in credentials gets a generated
+    /// password, written into the config in the vendor's own format and kept in
+    /// Deluno's secret store -- and only when the config really was written, so a
+    /// stored password never disagrees with a config the client is using (#1050).
+    /// </summary>
+    private async Task SeedConfigAsync(BundledComponentSpec spec, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(spec.ConfigFilePath))
+        {
+            return;
+        }
+
+        var credentials = string.IsNullOrWhiteSpace(spec.CredentialsUsername)
+            ? null
+            : new BundledComponentCredentials(spec.CredentialsUsername, GeneratedPassword.Create());
+
+        string? content;
+        if (!string.IsNullOrWhiteSpace(spec.ConfigTemplateSourcePath))
+        {
+            var template = _templates.ReadAllText(Environment.ExpandEnvironmentVariables(spec.ConfigTemplateSourcePath));
+            content = template is null
+                ? null
+                : ComponentConfig.ApplyReplacements(template, spec.ConfigReplacements ?? new Dictionary<string, string>(), credentials);
+        }
+        else
+        {
+            content = string.IsNullOrWhiteSpace(spec.ConfigFileContent)
+                ? null
+                : ComponentConfig.RenderPlaceholders(spec.ConfigFileContent, credentials);
+        }
+
+        if (content is null)
+        {
+            return;
+        }
+
+        var configPath = Environment.ExpandEnvironmentVariables(spec.ConfigFilePath);
+        var written = await _configWriter.WriteIfAbsentAsync(configPath, content, cancellationToken);
+        if (written && credentials is not null)
+        {
+            try
+            {
+                _credentials.Value.Save(spec.Kind, credentials);
+            }
+            catch
+            {
+                // The client still works; the connection just has to be filled in by hand.
+            }
+        }
+    }
+
     private static (string Path, string? Arguments) BuildInstallCommand(string installerPath, string? silentArgs)
     {
-        if (!installerPath.EndsWith(".msi", StringComparison.OrdinalIgnoreCase))
+        if (!IsMsi(installerPath))
         {
             return (installerPath, silentArgs);
         }
@@ -253,15 +372,20 @@ public sealed class ComponentInstallService(
             // failure here does not fail the whole install; it degrades to
             // "the Web UI came up but has no host configured yet", which is
             // still an improvement over not starting at all.
-            _processStarter.Start(Environment.ExpandEnvironmentVariables(spec.PreStartCommand), spec.PreStartArgs);
+            _processStarter.Start(Environment.ExpandEnvironmentVariables(spec.PreStartCommand), ComponentAutoStarter.ExpandArgs(spec.PreStartArgs), spec.StartHidden);
         }
 
         var command = Environment.ExpandEnvironmentVariables(spec.PostInstallCommand!);
-        var started = _processStarter.Start(command, spec.PostInstallArgs);
+        var started = _processStarter.Start(command, ComponentAutoStarter.ExpandArgs(spec.PostInstallArgs), spec.StartHidden);
         if (started is null)
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.StartFailed,
                 $"{spec.DisplayName} installed, but Deluno could not start it.");
+        }
+
+        if (spec.RestartsAtSignIn)
+        {
+            _startedComponents.Add(spec.Kind);
         }
 
         if (string.IsNullOrWhiteSpace(spec.ReadinessUrl))
@@ -513,14 +637,21 @@ public sealed class WindowsAuthenticodeVerifier : IAuthenticodeVerifier
 
 public sealed class RealProcessRunner : IProcessRunner
 {
-    public async Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+    public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+        => RunCoreAsync(new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true }, timeout, cancellationToken);
+
+    /// <summary>Windows' own permission prompt (none when already elevated), then the process with no window: the person sees one prompt, not an installer.</summary>
+    public Task<int?> RunElevatedAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
+        => RunCoreAsync(
+            new ProcessStartInfo(path, arguments ?? string.Empty) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden },
+            timeout,
+            cancellationToken);
+
+    private static async Task<int?> RunCoreAsync(ProcessStartInfo startInfo, TimeSpan timeout, CancellationToken cancellationToken)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(path, arguments ?? string.Empty)
-            {
-                UseShellExecute = true
-            });
+            using var process = Process.Start(startInfo);
             if (process is null)
             {
                 return null;
@@ -570,13 +701,16 @@ public sealed class RealProcessRunner : IProcessRunner
 /// </summary>
 public sealed class RealProcessStarter : IProcessStarter
 {
-    public IStartedProcess? Start(string path, string? arguments)
+    public IStartedProcess? Start(string path, string? arguments) => Start(path, arguments, hidden: false);
+
+    public IStartedProcess? Start(string path, string? arguments, bool hidden)
     {
         try
         {
             var process = Process.Start(new ProcessStartInfo(path, arguments ?? string.Empty)
             {
-                UseShellExecute = false
+                UseShellExecute = false,
+                CreateNoWindow = hidden
             });
             return process is null ? null : new RealStartedProcess(process);
         }

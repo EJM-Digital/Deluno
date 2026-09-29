@@ -75,7 +75,17 @@ public sealed record BundledComponentSpec(
     [property: JsonPropertyName("configFileContent")] string? ConfigFileContent = null,
     /// <summary>A second, untracked process started (fire-and-forget) before <see cref="PostInstallCommand"/> -- for a component (like Deluge) whose Web UI/API is a separate process from the daemon it talks to.</summary>
     [property: JsonPropertyName("preStartCommand")] string? PreStartCommand = null,
-    [property: JsonPropertyName("preStartArgs")] string? PreStartArgs = null)
+    [property: JsonPropertyName("preStartArgs")] string? PreStartArgs = null,
+    /// <summary>The Web UI/API user name Deluno gives a component that refuses to start without credentials (qBittorrent 5.2.1, #1050) or whose shipped default is a known public password (NZBGet). A password is generated at install, filled into the config through the <c>{{username}}</c>, <c>{{password}}</c> and <c>{{qbittorrentPbkdf2}}</c> placeholders, and kept in Deluno's own secret store for the connection to use.</summary>
+    [property: JsonPropertyName("credentialsUsername")] string? CredentialsUsername = null,
+    /// <summary>A file the vendor's own installer ships (e.g. NZBGet's nzbget.conf.template) that <see cref="ConfigFilePath"/> is built from, with <see cref="ConfigReplacements"/> applied, instead of writing <see cref="ConfigFileContent"/> from scratch. Environment variables are expanded.</summary>
+    [property: JsonPropertyName("configTemplateSourcePath")] string? ConfigTemplateSourcePath = null,
+    /// <summary>Exact text in the template mapped to its replacement. Values may use the credential placeholders and environment variables. A replacement whose text is not in the template stops the config being seeded, rather than writing a config that silently lacks it.</summary>
+    [property: JsonPropertyName("configReplacements")] Dictionary<string, string>? ConfigReplacements = null,
+    /// <summary>Start the post-install command with no console window (a console-mode server such as NZBGet's <c>-s</c> or the Transmission daemon).</summary>
+    [property: JsonPropertyName("startHidden")] bool StartHidden = false,
+    /// <summary>A Windows service the component's own package installs and starts that Deluno does not want (Transmission's MSI registers an auto-start service bound to every address). It is stopped and disabled in the same elevated step as the install, and Deluno runs the daemon itself, bound to this computer only.</summary>
+    [property: JsonPropertyName("disableServiceAfterInstall")] string? DisableServiceAfterInstall = null)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]
@@ -83,6 +93,16 @@ public sealed record BundledComponentSpec(
 
     public const string DownloadClientCategory = "download-client";
     public const string ProcessorCategory = "processor";
+
+    /// <summary>
+    /// A download client Deluno started for the person is started again the next
+    /// time they sign in to Windows (see <see cref="ComponentAutoStarter"/>), so a
+    /// restart does not leave Deluno pointing at a client that is not running.
+    /// Weir looks after its own start.
+    /// </summary>
+    [JsonIgnore]
+    public bool RestartsAtSignIn => string.Equals(Category, DownloadClientCategory, StringComparison.Ordinal)
+        && !string.IsNullOrWhiteSpace(PostInstallCommand);
 }
 
 public static class BundledComponents
