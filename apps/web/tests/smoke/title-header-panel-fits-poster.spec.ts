@@ -11,6 +11,18 @@ async function authHeaders(page: Page) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// These titles must not outlive the test: the dashboard specs that run later in
+// the same shared database assume an empty library (#1057).
+const seeded: { movieId: string; seriesId: string }[] = [];
+
+test.afterEach(async ({ page }) => {
+  const headers = await authHeaders(page);
+  for (const { movieId, seriesId } of seeded.splice(0)) {
+    await page.request.post("/api/movies/bulk", { headers, data: { movieIds: [movieId], operation: "remove" } });
+    await page.request.post("/api/series/bulk", { headers, data: { seriesIds: [seriesId], operation: "remove" } });
+  }
+});
+
 async function seedTitles(page: Page) {
   await authenticateAndNavigate(page, "/movies");
   const headers = await authHeaders(page);
@@ -23,6 +35,7 @@ async function seedTitles(page: Page) {
     headers,
     data: { title: `Header fit show ${stamp}`, startYear: 2024, monitored: true }
   })).json() as { id: string };
+  seeded.push({ movieId: movie.id, seriesId: series.id });
   return { movie: `/movies/${movie.id}`, show: `/tv/${series.id}` };
 }
 
