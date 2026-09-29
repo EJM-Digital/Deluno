@@ -271,11 +271,19 @@ public sealed class RetentionEvaluator(
         // Library filter conditions are asked of the catalogue once each; a
         // season or episode carries its show's answer.
         var catalogue = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+        var catalogueKnown = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
         var kind = RetentionFieldCatalog.CatalogueKind(level);
         foreach (var condition in conditions.Select(RetentionFieldCatalog.Upgrade).Where(condition => !RetentionFieldCatalog.IsRetentionField(condition)).Distinct(StringComparer.Ordinal))
         {
             var filters = CatalogueFilters.Parse(kind, [condition], out _);
             catalogue[condition] = await units.CatalogueMatchesAsync(kind, filters, cancellationToken);
+            // "is not", "none of" and "does not contain" also hold for a title whose
+            // value was never filled in. Such a title is asked again as "is set", so
+            // a blank value is undecided and never read as a match (#1068).
+            if (filters.Conditions is [{ } only] && IsNegativeOnText(kind, only))
+            {
+                catalogueKnown[condition] = await units.CatalogueMatchesAsync(kind, new CatalogueFilters([new CatalogueFilterCondition(only.FieldId, CatalogueFilterOperator.IsSet, [])]), cancellationToken);
+            }
         }
 
         RetentionAnswer Ask(RetentionUnit unit, string raw)
@@ -284,6 +292,11 @@ public sealed class RetentionEvaluator(
             if (!RetentionFieldCatalog.IsRetentionField(condition))
             {
                 var sentence = Describe(kind, condition);
+                if (catalogueKnown.TryGetValue(condition, out var known) && !known.Contains(unit.CatalogueId))
+                {
+                    return RetentionAnswer.CannotSay($"{sentence}: not known.");
+                }
+
                 return catalogue[condition].Contains(unit.CatalogueId) ? RetentionAnswer.Yes(sentence) : RetentionAnswer.No(sentence);
             }
 
@@ -532,6 +545,11 @@ public sealed class RetentionEvaluator(
     }
 
     internal static string NormalizePath(string path) => RetentionServerIndex.NormalizePath(path);
+
+    /// <summary>A negative test on a text-like library field, which a blank value would satisfy.</summary>
+    private static bool IsNegativeOnText(MediaKind kind, CatalogueFilterCondition condition)
+        => condition.Operator is CatalogueFilterOperator.IsNot or CatalogueFilterOperator.Excludes or CatalogueFilterOperator.DoesNotContain &&
+           CatalogueFilterFields.Find(kind, condition.FieldId) is { ValueKind: CatalogueFilterValueKind.Text or CatalogueFilterValueKind.Genre or CatalogueFilterValueKind.QualityTier or CatalogueFilterValueKind.Enum };
 
     /// <summary>A library filter condition, in the words a person reads in a preview.</summary>
     internal static string Describe(MediaKind kind, string condition)

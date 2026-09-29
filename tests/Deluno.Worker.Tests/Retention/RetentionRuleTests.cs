@@ -1131,6 +1131,68 @@ public sealed class RetentionRuleTests
         _movies.Verify(repo => repo.DeleteAsync("m1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // #1068: a value nobody reported is undecided, and undecided never deletes.
+    private void CodecLibrary()
+        => ServerAnswers(
+            Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40)) with { Video = new MediaServerVideo("1080p", 8000, "hevc") },
+            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085") with { Video = new MediaServerVideo("1080p", 8000, "h264") },
+            // Detour: the server never said what the video is.
+            Item("j3", Path("Detour", 1945), tmdb: "20367", playedBy: ["ben"], last: Now.AddDays(-40)));
+
+    [Fact]
+    public async Task A_negative_rule_never_selects_a_film_whose_codec_the_server_did_not_report()
+    {
+        CodecLibrary();
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep("server.codec:isnot:hevc")), CancellationToken.None);
+
+        Assert.Equal("m2", Assert.Single(evaluation.Matched).EntityId);
+        var undecided = Assert.Single(evaluation.Candidates, item => item.Outcome == RetentionItemOutcomes.Undecided);
+        Assert.Equal("m3", undecided.EntityId);
+    }
+
+    [Fact]
+    public async Task An_unknown_codec_stays_undecided_when_another_keep_step_holds()
+    {
+        CodecLibrary();
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep("server.watchedBy:anyone:"), Keep("server.codec:nothas:hevc")), CancellationToken.None);
+
+        Assert.Empty(evaluation.Matched);
+        Assert.Equal("m3", Assert.Single(evaluation.Candidates, item => item.Outcome == RetentionItemOutcomes.Undecided).EntityId);
+    }
+
+    [Fact]
+    public async Task An_unknown_step_does_not_stop_a_later_also_include_from_deciding_the_title()
+    {
+        CodecLibrary();
+        var include = new RetentionStep(RetentionStep.ConditionType, RetentionStep.Include, "server.watchedBy:anyone:");
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep("server.codec:is:hevc"), include), CancellationToken.None);
+
+        // Nosferatu is hevc; Detour is watched, so the second step decides it; His Girl Friday is h264 and unwatched.
+        Assert.Equal(["m1", "m3"], evaluation.Matched.Select(item => item.EntityId).Order());
+        Assert.DoesNotContain(evaluation.Candidates, item => item.Outcome == RetentionItemOutcomes.Undecided);
+    }
+
+    [Fact]
+    public async Task A_title_whose_library_value_is_blank_is_undecided_for_a_negative_library_test()
+    {
+        // The catalogue says every film is "not Horror", but only Nosferatu has a genre filled in.
+        _movies.Setup(repo => repo.ListPageAsync(It.IsAny<CatalogueQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CatalogueQuery query, CancellationToken _) =>
+            {
+                var isSet = query.Filters?.Conditions is [{ Operator: CatalogueFilterOperator.IsSet }];
+                var items = isSet ? _catalogue.Where(movie => movie.Id == "m1").ToArray() : _catalogue.ToArray();
+                return new CataloguePage<MovieListItem>(items, null, false, items.Length, null);
+            });
+
+        var evaluation = await Evaluator().EvaluateAsync(Rule(Keep("genre:notin:Horror")), CancellationToken.None);
+
+        Assert.Equal("m1", Assert.Single(evaluation.Matched).EntityId);
+        Assert.Equal(["m2", "m3"], evaluation.Candidates.Where(item => item.Outcome == RetentionItemOutcomes.Undecided).Select(item => item.EntityId).Order());
+    }
+
     private RetentionEvaluator Evaluator()
         => new(
             new RetentionUnitReader(_movies.Object, _series.Object, _libraries.Object, _clock),
