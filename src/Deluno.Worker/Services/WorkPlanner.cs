@@ -660,6 +660,12 @@ public sealed class WorkPlanner(
         var indexersByName = indexers
             .GroupBy(indexer => indexer.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        // A dispatch is tied to its indexer by id (#1077), so renaming the indexer
+        // does not lose the sharing rule that belongs to it. The name is only the
+        // way back for a dispatch whose source matched no indexer.
+        var indexersById = indexers
+            .GroupBy(indexer => indexer.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var librariesById = libraries.ToDictionary(library => library.Id, StringComparer.OrdinalIgnoreCase);
@@ -697,7 +703,9 @@ public sealed class WorkPlanner(
                 continue;
             }
 
-            indexersByName.TryGetValue(dispatch.IndexerName ?? string.Empty, out var source);
+            var source = !string.IsNullOrWhiteSpace(dispatch.IndexerId) && indexersById.TryGetValue(dispatch.IndexerId, out var linkedIndexer)
+                ? linkedIndexer
+                : indexersByName.GetValueOrDefault(dispatch.IndexerName ?? string.Empty);
 
             // #817: exempt from seeding reclaim the same way it is exempt from
             // every strike/blocklist rule.

@@ -1835,7 +1835,7 @@ public sealed class SqliteJobStore(
         """
         id, entity_type, entity_id, indexer_name, library_id,
         replacement_authorized, force_replacement_authorized, replacement_expected_path,
-        replacement_targets_json
+        replacement_targets_json, indexer_id
         """;
 
     /// <summary>
@@ -1902,12 +1902,12 @@ public sealed class SqliteJobStore(
         using var candidates = await loose.ExecuteReaderAsync(cancellationToken);
         while (await candidates.ReadAsync(cancellationToken))
         {
-            if (candidates.IsDBNull(9))
+            if (candidates.IsDBNull(10))
             {
                 continue;
             }
 
-            var candidateName = candidates.GetString(9);
+            var candidateName = candidates.GetString(10);
             if (ComparableReleaseName(candidateName) == wanted)
             {
                 return ReadDispatchLink(candidates);
@@ -1975,7 +1975,8 @@ public sealed class SqliteJobStore(
             reader.IsDBNull(7) ? null : reader.GetString(7),
             reader.IsDBNull(8)
                 ? []
-                : DeserializeReplacementTargets(reader.GetString(8)));
+                : DeserializeReplacementTargets(reader.GetString(8)),
+            reader.IsDBNull(9) ? null : reader.GetString(9));
 
     public async Task<bool> RequestLibrarySearchAsync(
         LibraryAutomationPlanItem library,
@@ -2878,6 +2879,9 @@ public sealed class SqliteJobStore(
         var ownedReplacementAuthorized = replacementAuthorized &&
             (!string.IsNullOrWhiteSpace(replacementExpectedPath) || normalizedReplacementTargets.Count > 0);
 
+        // Filed under the indexer's id (#1077), asked while its name still is its name.
+        var indexerId = await IndexerIdentity.ResolveIdAsync(databaseConnectionFactory, indexerName, cancellationToken);
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
@@ -2891,7 +2895,7 @@ public sealed class SqliteJobStore(
                 """
                 INSERT INTO download_dispatches (
                     id, library_id, media_type, entity_type, entity_id, release_name,
-                    indexer_name, download_client_id, download_client_name, status, notes_json,
+                    indexer_name, indexer_id, download_client_id, download_client_name, status, notes_json,
                     decision_quality, decision_score, decision_meets_cutoff, decision_status, decision_quality_delta,
                     decision_custom_format_score, decision_seeder_score, decision_size_score, decision_release_group,
                     decision_estimated_bitrate_mbps, decision_size_bytes, decision_seeders, decision_policy_version,
@@ -2902,7 +2906,7 @@ public sealed class SqliteJobStore(
                 )
                 VALUES (
                     @id, @libraryId, @mediaType, @entityType, @entityId, @releaseName,
-                    @indexerName, @downloadClientId, @downloadClientName, @status, @notesJson,
+                    @indexerName, @indexerId, @downloadClientId, @downloadClientName, @status, @notesJson,
                     @decisionQuality, @decisionScore, @decisionMeetsCutoff, @decisionStatus, @decisionQualityDelta,
                     @decisionCustomFormatScore, @decisionSeederScore, @decisionSizeScore, @decisionReleaseGroup,
                     @decisionEstimatedBitrateMbps, @decisionSizeBytes, @decisionSeeders, @decisionPolicyVersion,
@@ -2920,6 +2924,7 @@ public sealed class SqliteJobStore(
             AddParameter(command, "@entityId", entityId);
             AddParameter(command, "@releaseName", releaseName);
             AddParameter(command, "@indexerName", indexerName);
+            AddParameter(command, "@indexerId", indexerId);
             AddParameter(command, "@downloadClientId", downloadClientId);
             AddParameter(command, "@downloadClientName", downloadClientName);
             AddParameter(command, "@status", status);

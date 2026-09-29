@@ -92,7 +92,9 @@ public sealed class IntelligentRoutingService(
             cancellationToken);
 
         var preferences = await QueryPreferencesAsync(connection, cancellationToken);
-        var indexers = await QuerySuccessRatesAsync(connection, "indexer_name", cancellationToken);
+        // By the indexer's id, so a renamed indexer keeps its success rate (#1077); a
+        // dispatch whose source matched no indexer is keyed by its name.
+        var indexers = await QuerySuccessRatesAsync(connection, "COALESCE(indexer_id, indexer_name)", cancellationToken);
         var clients = await QuerySuccessRatesAsync(connection, "download_client_id", cancellationToken);
 
         return new IntelligentRoutingSnapshot(now, preferences, indexers, clients);

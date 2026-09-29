@@ -81,6 +81,9 @@ public static class DelunoApplicationComposition
         services.AddDelunoWorkerModule();
         services.AddDelunoRetentionModule();
         services.AddDelunoCompanionsModule();
+        // #1077: after every module, so every database has its schema when older
+        // history rows are linked to their indexers by id.
+        services.AddHostedService<Deluno.Infrastructure.Storage.IndexerIdentityBackfillService>();
         services.AddScoped<Companions.InstalledComponentWirer>();
         services.AddScoped<Companions.WeirHealthAddressBackfill>();
         services.AddHostedService<Companions.InstalledComponentWiringService>();

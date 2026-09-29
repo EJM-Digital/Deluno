@@ -1474,7 +1474,7 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             SELECT
-                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc, indexer_id
             FROM movie_search_history
             ORDER BY created_utc DESC
             LIMIT 20;
@@ -1492,7 +1492,8 @@ public sealed class SqliteMovieCatalogRepository(
                 ReleaseName: reader.IsDBNull(5) ? null : reader.GetString(5),
                 IndexerName: reader.IsDBNull(6) ? null : reader.GetString(6),
                 DetailsJson: reader.IsDBNull(7) ? null : reader.GetString(7),
-                CreatedUtc: ParseTimestamp(reader.GetString(8))));
+                CreatedUtc: ParseTimestamp(reader.GetString(8)),
+                IndexerId: reader.IsDBNull(9) ? null : reader.GetString(9)));
         }
 
         return items;
@@ -1520,7 +1521,7 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             $"""
             SELECT
-                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+                id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc, indexer_id
             FROM movie_search_history
             ORDER BY created_utc DESC
             LIMIT {boundedLimit};
@@ -1538,7 +1539,8 @@ public sealed class SqliteMovieCatalogRepository(
                 ReleaseName: reader.IsDBNull(5) ? null : reader.GetString(5),
                 IndexerName: reader.IsDBNull(6) ? null : reader.GetString(6),
                 DetailsJson: reader.IsDBNull(7) ? null : reader.GetString(7),
-                CreatedUtc: ParseTimestamp(reader.GetString(8))));
+                CreatedUtc: ParseTimestamp(reader.GetString(8)),
+                IndexerId: reader.IsDBNull(9) ? null : reader.GetString(9)));
         }
 
         return items;
@@ -2150,6 +2152,9 @@ public sealed class SqliteMovieCatalogRepository(
         string? detailsJson,
         CancellationToken cancellationToken)
     {
+        // Filed under the indexer's id (#1077), asked while its name still is its name.
+        var indexerId = await IndexerIdentity.ResolveIdAsync(databaseConnectionFactory, indexerName, cancellationToken);
+
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
@@ -2162,10 +2167,10 @@ public sealed class SqliteMovieCatalogRepository(
             history.CommandText =
                 """
                 INSERT INTO movie_search_history (
-                    id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, details_json, created_utc
+                    id, movie_id, library_id, trigger_kind, outcome, release_name, indexer_name, indexer_id, details_json, created_utc
                 )
                 VALUES (
-                    @id, @movieId, @libraryId, @triggerKind, @outcome, @releaseName, @indexerName, @detailsJson, @createdUtc
+                    @id, @movieId, @libraryId, @triggerKind, @outcome, @releaseName, @indexerName, @indexerId, @detailsJson, @createdUtc
                 );
                 """;
 
@@ -2176,6 +2181,7 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(history, "@outcome", outcome);
             AddParameter(history, "@releaseName", releaseName);
             AddParameter(history, "@indexerName", indexerName);
+            AddParameter(history, "@indexerId", indexerId);
             AddParameter(history, "@detailsJson", detailsJson);
             AddParameter(history, "@createdUtc", now.ToString("O"));
             await history.ExecuteNonQueryAsync(cancellationToken);
@@ -3755,7 +3761,8 @@ public sealed class SqliteMovieCatalogRepository(
             ReleaseName: item.ReleaseName,
             IndexerName: item.IndexerName,
             DetailsJson: item.DetailsJson,
-            CreatedUtc: item.CreatedUtc);
+            CreatedUtc: item.CreatedUtc,
+            IndexerId: item.IndexerId);
 
     private static MovieImportRecoveryCase MapImportRecoveryCase(MediaImportRecoveryCase item)
         => new(

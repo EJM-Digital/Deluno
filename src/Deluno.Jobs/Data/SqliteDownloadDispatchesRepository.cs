@@ -23,7 +23,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         "torrent_hash_or_item_id, downloaded_bytes, import_status, import_detected_utc, " +
         "import_completed_utc, imported_file_path, import_failure_code, " +
         "import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count, " +
-        "client_completed_utc, decision_quality, decision_custom_format_score, decision_language";
+        "client_completed_utc, decision_quality, decision_custom_format_score, decision_language, indexer_id";
 
     public async Task<DownloadDispatchItem?> GetDispatchIncludingArchivedAsync(
         string dispatchId,
@@ -881,7 +881,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             ClientCompletedUtc: reader.IsDBNull(32) ? null : DateTimeOffset.Parse(reader.GetString(32)),
             DecisionQuality: reader.IsDBNull(33) ? null : reader.GetString(33),
             DecisionCustomFormatScore: reader.IsDBNull(34) ? null : reader.GetInt32(34),
-            DecisionLanguage: reader.IsDBNull(35) ? null : reader.GetString(35));
+            DecisionLanguage: reader.IsDBNull(35) ? null : reader.GetString(35),
+            IndexerId: reader.IsDBNull(36) ? null : reader.GetString(36));
 
         return dispatch with
         {

@@ -680,7 +680,7 @@ public sealed class SqliteMediaStateRepository(
         command.CommandText = kind == MediaKind.Movie
             ? $"""
               SELECT id, movie_id, NULL, NULL, NULL, library_id, trigger_kind, outcome,
-                     release_name, indexer_name, details_json, created_utc
+                     release_name, indexer_name, details_json, created_utc, indexer_id
               FROM {map.HistoryTable}
               ORDER BY created_utc DESC
               LIMIT {boundedLimit};
@@ -689,7 +689,7 @@ public sealed class SqliteMediaStateRepository(
               SELECT COALESCE(h.id, ''), COALESCE(h.series_id, ''), h.episode_id,
                      e.season_number, e.episode_number, COALESCE(h.library_id, ''),
                      COALESCE(h.trigger_kind, 'manual'), COALESCE(h.outcome, 'unknown'),
-                     h.release_name, h.indexer_name, h.details_json, COALESCE(h.created_utc, '')
+                     h.release_name, h.indexer_name, h.details_json, COALESCE(h.created_utc, ''), h.indexer_id
               FROM {map.HistoryTable} h
               LEFT JOIN episode_entries e ON e.id = h.episode_id
               ORDER BY h.created_utc DESC
@@ -712,7 +712,8 @@ public sealed class SqliteMediaStateRepository(
                 ReleaseName: ReadNullableString(reader, 8),
                 IndexerName: ReadNullableString(reader, 9),
                 DetailsJson: ReadNullableString(reader, 10),
-                CreatedUtc: ReadTimestampOrFallback(reader, 11, DateTimeOffset.UnixEpoch)));
+                CreatedUtc: ReadTimestampOrFallback(reader, 11, DateTimeOffset.UnixEpoch),
+                IndexerId: ReadNullableString(reader, 12)));
         }
 
         return items;

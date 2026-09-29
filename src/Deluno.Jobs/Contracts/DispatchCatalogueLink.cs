@@ -29,7 +29,9 @@ public sealed record DispatchCatalogueLink(
     bool ReplacementAuthorized = false,
     bool ForceReplacementAuthorized = false,
     string? ReplacementExpectedPath = null,
-    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null);
+    IReadOnlyList<DispatchReplacementTarget>? ReplacementTargets = null,
+    /// <summary>The indexer's id (#1077): what the release is filed under, so renaming the indexer changes nothing. Null for a dispatch whose source matched no indexer.</summary>
+    string? IndexerId = null);
 
 /// <summary>
 /// One catalogue entity and the exact file it owned when acquisition was
