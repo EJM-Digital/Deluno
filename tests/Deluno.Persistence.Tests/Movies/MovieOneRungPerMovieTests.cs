@@ -5,6 +5,7 @@ using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 using Deluno.Movies.Migrations;
 using Deluno.Persistence.Tests.Support;
+using Deluno.Quality;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Deluno.Persistence.Tests.Movies;
@@ -38,7 +39,8 @@ public sealed class MovieOneRungPerMovieTests
         await SeedAsync(movies, "Upcoming Film", "lib-a", WantedStatuses.Upcoming, hasFile: false, cutoffMet: false);
         await SeedAsync(movies, "Downloading Film", "lib-a", WantedStatuses.Downloading, hasFile: false, cutoffMet: false);
 
-        // The rig's case: stored covered, with a file below its cutoff.
+        // A profile that does not upgrade: the engine stores covered beside a
+        // file below its cutoff, and that stays Quality met (#1065).
         await SeedAsync(movies, "Below Target Film", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: false);
 
         // Held in two libraries: covered in one, upgradable in the other.
@@ -77,21 +79,21 @@ public sealed class MovieOneRungPerMovieTests
         var everything = (await movies.ListPageAsync(new CatalogueQuery(PageSize: 100), CancellationToken.None)).Facets!;
         Assert.Equal(8, everything.All);
         Assert.Equal(2, everything.Missing); // Missing Film + B Only Film
-        Assert.Equal(3, everything.Upgrades); // Upgrade Film + Below Target Film + Two Library Film
-        Assert.Equal(1, everything.Covered);
+        Assert.Equal(2, everything.Upgrades); // Upgrade Film + Two Library Film
+        Assert.Equal(2, everything.Covered); // Covered Film + Below Target Film
         Assert.Equal(1, everything.Upcoming);
         Assert.Equal(1, everything.Downloading);
 
         // The two-library film follows the library asked about.
         var inA = (await movies.ListPageAsync(new CatalogueQuery(LibraryId: "lib-a", PageSize: 100), CancellationToken.None)).Facets!;
         var inB = (await movies.ListPageAsync(new CatalogueQuery(LibraryId: "lib-b", PageSize: 100), CancellationToken.None)).Facets!;
-        Assert.Equal(2, inA.Covered); // Covered Film + Two Library Film in A
+        Assert.Equal(3, inA.Covered); // Covered Film + Below Target Film + Two Library Film in A
         Assert.Equal(0, inB.Covered);
         Assert.Equal(1, inB.Upgrades);
     }
 
     [Fact]
-    public async Task A_below_cutoff_file_is_never_stored_as_covered()
+    public async Task A_below_cutoff_file_the_profile_does_not_upgrade_stays_covered_and_a_file_less_title_is_never_covered()
     {
         using var storage = TestStorage.Create();
         var movies = await CreateMoviesAsync(storage);
@@ -100,7 +102,7 @@ public sealed class MovieOneRungPerMovieTests
 
         var page = await movies.ListPageAsync(new CatalogueQuery(PageSize: 10), CancellationToken.None);
 
-        Assert.Equal(WantedStatuses.Upgrade, page.Items.Single(item => item.Title == "Below Target Film").WantedStatus);
+        Assert.Equal(WantedStatuses.Covered, page.Items.Single(item => item.Title == "Below Target Film").WantedStatus);
         Assert.Equal(WantedStatuses.Missing, page.Items.Single(item => item.Title == "Phantom Cover Film").WantedStatus);
     }
 
@@ -134,6 +136,95 @@ public sealed class MovieOneRungPerMovieTests
         Assert.Equal("upcoming", await StatusAsync(connection, future));
         Assert.Equal("covered", await StatusAsync(connection, fine));
     }
+
+    [Fact]
+    public void The_policy_engine_stops_looking_only_when_the_profile_does_not_upgrade()
+    {
+        var engine = new VersionedMediaPolicyEngine();
+
+        var quiet = engine.DecideWantedState(Input(false, false, "WEB 1080p"));
+        Assert.Equal(WantedStatuses.Covered, quiet.WantedStatus);
+        Assert.False(quiet.QualityCutoffMet);
+
+        var quietUnknown = engine.DecideWantedState(Input(true, false, null));
+        Assert.Equal(WantedStatuses.Covered, quietUnknown.WantedStatus);
+        Assert.False(quietUnknown.QualityCutoffMet);
+
+        Assert.Equal(WantedStatuses.Upgrade, engine.DecideWantedState(Input(true, false, "WEB 1080p")).WantedStatus);
+        Assert.Equal(WantedStatuses.Upgrade, engine.DecideWantedState(Input(false, true, null)).WantedStatus);
+    }
+
+    [Fact]
+    public async Task Repair_v0047_puts_quiet_movies_back_on_covered_and_leaves_upgrading_ones_and_searches_alone()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+        var engine = new VersionedMediaPolicyEngine();
+
+        // The exact words the engine writes, so the repair's match cannot drift from them.
+        var quietBelow = engine.DecideWantedState(Input(false, false, "WEB 1080p")).WantedReason;
+        var quietUnknown = engine.DecideWantedState(Input(true, false, null)).WantedReason;
+        var hunting = engine.DecideWantedState(Input(true, false, "WEB 1080p")).WantedReason;
+        var huntingUnknown = engine.DecideWantedState(Input(false, true, null)).WantedReason;
+
+        var a = await SeedAsync(movies, "Quiet Below", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: false);
+        var b = await SeedAsync(movies, "Quiet Unknown", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: false);
+        var c = await SeedAsync(movies, "Hunting", "lib-a", WantedStatuses.Upgrade, hasFile: true, cutoffMet: false);
+        var d = await SeedAsync(movies, "Hunting Unknown", "lib-a", WantedStatuses.Upgrade, hasFile: true, cutoffMet: false);
+        var e = await SeedAsync(movies, "Was Cleared", "lib-a", WantedStatuses.Missing, hasFile: false, cutoffMet: false);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        // An install V0045 already rewrote: status upgrade, the engine's reason untouched.
+        await ExecuteAsync(connection, "DELETE FROM movie_rung_repairs;");
+        await SetRewrittenAsync(connection, a, quietBelow);
+        await SetRewrittenAsync(connection, b, quietUnknown);
+        await SetRewrittenAsync(connection, c, hunting);
+        await SetRewrittenAsync(connection, d, huntingUnknown);
+
+        await using (var transaction = await connection.BeginTransactionAsync())
+        {
+            await new V0047MovieQuietRungRestored().UpAsync(connection, transaction, CancellationToken.None);
+            await transaction.CommitAsync();
+        }
+
+        Assert.Equal("covered", await StatusAsync(connection, a));
+        Assert.Equal("covered", await StatusAsync(connection, b));
+        Assert.Equal("upgrade", await StatusAsync(connection, c));
+        Assert.Equal("upgrade", await StatusAsync(connection, d));
+        Assert.Equal("missing", await StatusAsync(connection, e));
+
+        // Nothing was queued for search, and only the two repaired are recorded for Activity.
+        await using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM movie_wanted_state WHERE last_search_utc IS NOT NULL OR next_eligible_search_utc IS NOT NULL;";
+        Assert.Equal(0L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+        count.CommandText = "SELECT COUNT(*) FROM movie_rung_repairs WHERE reported = 0;";
+        Assert.Equal(2L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+    }
+
+    [Fact]
+    public async Task Deleting_a_movies_file_leaves_it_missing_or_upcoming_never_covered()
+    {
+        using var storage = TestStorage.Create();
+        var movies = await CreateMoviesAsync(storage);
+        var released = await SeedAsync(movies, "Released Film", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: true);
+        var future = await SeedAsync(movies, "Future Film", "lib-a", WantedStatuses.Covered, hasFile: true, cutoffMet: true, year: 2999);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        await ExecuteAsync(connection, "UPDATE movie_wanted_state SET file_path = '/movies/' || movie_id || '.mkv';");
+
+        Assert.True(await movies.ClearFileAsync(released, $"/movies/{released}.mkv", CancellationToken.None));
+        Assert.True(await movies.ClearFileAsync(future, $"/movies/{future}.mkv", CancellationToken.None));
+
+        Assert.Equal("missing", await StatusAsync(connection, released));
+        Assert.Equal("upcoming", await StatusAsync(connection, future));
+    }
+
+    private static MediaWantedDecisionInput Input(bool upgradeUntilCutoff, bool upgradeUnknown, string? current)
+        => new("movies", true, current, "WEB 2160p", upgradeUntilCutoff, upgradeUnknown);
+
+    private static Task SetRewrittenAsync(System.Data.Common.DbConnection connection, string movieId, string reason)
+        => ExecuteAsync(connection,
+            $"UPDATE movie_wanted_state SET wanted_status = 'upgrade', wanted_reason = '{reason.Replace("'", "''")}' WHERE movie_id = '{movieId}';");
 
     private static async Task<string> SeedAsync(
         SqliteMovieCatalogRepository movies,

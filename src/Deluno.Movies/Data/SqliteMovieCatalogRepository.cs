@@ -2787,11 +2787,21 @@ public sealed class SqliteMovieCatalogRepository(
         command.CommandText =
             """
             UPDATE movie_wanted_state
-            SET has_file = 0, file_path = NULL, file_size_bytes = NULL, current_quality = NULL
+            SET has_file = 0, file_path = NULL, file_size_bytes = NULL, current_quality = NULL,
+                quality_cutoff_met = 0,
+                wanted_status = CASE
+                    WHEN COALESCE((SELECT e.release_year FROM movie_entries e WHERE e.id = @movieId), 0)
+                         > CAST(strftime('%Y', 'now') AS INTEGER) THEN 'upcoming'
+                    ELSE 'missing'
+                END,
+                wanted_reason = 'The file was deleted, so Deluno will look for this movie again.',
+                missing_since_utc = COALESCE(missing_since_utc, @now),
+                updated_utc = @now
             WHERE movie_id = @movieId AND file_path = @filePath;
             """;
         AddParameter(command, "@movieId", movieId);
         AddParameter(command, "@filePath", filePath);
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
