@@ -17,6 +17,7 @@ public sealed class PlatformSchemaInitializer(
     {
         try
         {
+            await IndexerIdentity.RememberNamesBeforeRenameAsync(databaseConnectionFactory, cancellationToken);
             await migrator.ApplyAsync(
                 DelunoDatabaseNames.Platform,
                 PlatformDatabaseMigrations.All,
