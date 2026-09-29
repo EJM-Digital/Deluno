@@ -326,6 +326,17 @@ public sealed class DownloadClientTelemetryService(
             now - dispatch.CreatedUtc <= RecentDispatchWindow);
     }
 
+    public async Task<DownloadOwnership> CheckOwnershipAsync(
+        string clientId,
+        string queueItemId,
+        CancellationToken cancellationToken)
+    {
+        var dispatch = await dispatchesRepository.FindDispatchByHashAsync(clientId, queueItemId, cancellationToken);
+        return dispatch is not null
+            ? new DownloadOwnership(true, null)
+            : new DownloadOwnership(false, $"Deluno did not send the download \"{queueItemId}\", so it will not remove or change it. Manage it in the download client itself.");
+    }
+
     public async Task<DownloadClientActionResult> ExecuteActionAsync(
         string clientId,
         DownloadClientActionRequest request,
@@ -367,13 +378,15 @@ public sealed class DownloadClientTelemetryService(
         // client — the Queue screen already only lists Deluno's own
         // downloads, but this is the backend's own guarantee of it, not only
         // a UI convention.
-        if (DownloadClientActions.IsQueuePriorityOrForceStart(action))
+        // #1062: removal goes through the same check.
+        if (DownloadClientActions.RequiresDelunoOwnership(action))
         {
-            var owningDispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, request.QueueItemId, cancellationToken);
-            if (owningDispatch is null)
+            var ownership = await CheckOwnershipAsync(client.Id, request.QueueItemId, cancellationToken);
+            if (!ownership.Owned)
             {
-                return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, "Deluno did not dispatch this download, so it will not reorder or force-start it.")
+                return new DownloadClientActionResult(client.Id, request.QueueItemId, action, false, ownership.Message!)
                 {
+                    Refused = true,
                     Failure = IntegrationFailureFactory.FromLegacy(
                         "download-client",
                         client.Id,
@@ -527,6 +540,17 @@ public sealed class DownloadClientTelemetryService(
         // download Deluno never grabbed (added by hand, or older than this
         // dispatch), in which case only the client action below happens —
         // there is no title to blocklist for or search again.
+        var ownership = await CheckOwnershipAsync(client.Id, queueItemId, cancellationToken);
+        if (!ownership.Owned)
+        {
+            return new QueueRemovalResult(client.Id, queueItemId, reason, false, ownership.Message!, false, false, null, null)
+            {
+                Refused = true,
+                Failure = IntegrationFailureFactory.FromLegacy(
+                    "download-client", client.Id, client.Name, "queue:remove", "rejected", "Not a Deluno dispatch.")
+            };
+        }
+
         var dispatch = await dispatchesRepository.FindDispatchByHashAsync(client.Id, queueItemId, cancellationToken);
         var title = dispatch?.ReleaseName ?? queueItemId;
 
@@ -543,7 +567,8 @@ public sealed class DownloadClientTelemetryService(
         {
             return new QueueRemovalResult(client.Id, queueItemId, reason, false, actionResult.Message, false, false, dispatch?.EntityId, dispatch?.MediaType)
             {
-                Failure = actionResult.Failure
+                Failure = actionResult.Failure,
+                Refused = actionResult.Refused
             };
         }
 

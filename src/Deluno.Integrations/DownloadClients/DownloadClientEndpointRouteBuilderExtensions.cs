@@ -346,7 +346,8 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             }
 
             var result = await telemetryService.ExecuteActionAsync(clientId, request, cancellationToken);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+            return result.Refused ? Results.Conflict(result)
+                : result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
         // #813: dismissing a SABnzbd queue-level warning in Deluno also
@@ -387,7 +388,8 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             }
 
             var result = await telemetryService.RemoveWithReasonAsync(clientId, queueItemId, request.Reason, cancellationToken);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+            return result.Refused ? Results.Conflict(result)
+                : result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
         endpoints.MapGet("/api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview", async (

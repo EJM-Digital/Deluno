@@ -34,7 +34,7 @@ public sealed class AQueueReorderActsOnlyOnDelunosOwnDownloadsTests
         var result = await world.ExecuteActionAsync(DownloadClientActions.MoveToTop, "not-a-deluno-item");
 
         Assert.False(result.Succeeded);
-        Assert.Contains("did not dispatch", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("did not send", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Null(world.FakeDownloadClient.LastAction);
     }
 

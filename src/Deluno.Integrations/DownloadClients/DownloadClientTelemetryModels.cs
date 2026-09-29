@@ -58,6 +58,11 @@ public static class DownloadClientActions
 
     /// <summary>#810/#933: whether this action is one of the queue-reorder/force-start verbs, which are only ever allowed against a download Deluno itself dispatched.</summary>
     public static bool IsQueuePriorityOrForceStart(string action) => QueuePriorityOrForceStartActions.Contains(action);
+
+    /// <summary>#1062/#933: every verb that reorders, force-starts or removes a download acts only on one Deluno sent.</summary>
+    public static bool RequiresDelunoOwnership(string action) =>
+        QueuePriorityOrForceStartActions.Contains(action) ||
+        action is Delete or DeleteWithData or Forget;
 }
 
 /// <summary>
@@ -122,6 +127,9 @@ public sealed record QueueRemovalResult(
     string? MediaType)
 {
     public IntegrationFailure? Failure { get; init; }
+
+    /// <summary>True when Deluno refused because it did not send this download (#1062, #933); the API answers 409.</summary>
+    public bool Refused { get; init; }
 }
 
 /// <summary>
@@ -491,7 +499,13 @@ public sealed record DownloadClientActionResult(
 {
     /// <summary>Attributable failure details when the client rejected the action.</summary>
     public IntegrationFailure? Failure { get; init; }
+
+    /// <summary>True when Deluno refused because it did not send this download (#1062, #933); the API answers 409.</summary>
+    public bool Refused { get; init; }
 }
+
+/// <summary>Whether Deluno itself sent a download; <see cref="Message"/> says so in plain words when it did not.</summary>
+public sealed record DownloadOwnership(bool Owned, string? Message);
 
 public sealed record DownloadHealthRemediationReport(
     int Evaluated,
