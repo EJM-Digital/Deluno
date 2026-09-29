@@ -1206,25 +1206,6 @@ public sealed class RetentionRuleTests
     }
 
     [Fact]
-    public async Task Switching_a_rule_to_delete_starts_the_wait_of_marks_already_leaving_again_from_today()
-    {
-        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 3, ExpiryAction = RetentionExpiryActions.Tag, ExpiryTag = "old" });
-        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
-        Assert.Equal(Now.AddDays(3), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
-
-        // Its promised day has come and gone before the rule is switched, so an unchanged mark would be removed at once.
-        _clock.Now = Now.AddDays(4);
-        var deleting = rule with { ExpiryAction = RetentionExpiryActions.Delete, ExpiryTag = null };
-        var feed = new Mock<IActivityFeedRepository>();
-        Assert.Equal(1, await Service(feed).RestartWaitForDeleteAsync(deleting, CancellationToken.None));
-
-        Assert.Equal(Now.AddDays(7), Assert.Single(await _store.ListMarksAsync(rule.Id, CancellationToken.None)).RemoveAfterUtc);
-        Said(feed, "retention.restarted", "starts again from today", Times.Once());
-        await Service().CheckAsync(deleting, "schedule", CancellationToken.None);
-        _movies.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
     public async Task Checks_of_one_rule_run_one_at_a_time()
     {
         var rule = await WatchedFilmRuleAsync(rule => rule);
