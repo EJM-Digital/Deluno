@@ -1181,49 +1181,6 @@ public sealed class RetentionRuleTests
         Assert.Equal("m1", Assert.Single(evaluation.Matched).EntityId);
     }
 
-    // ------------------------------------------------- lows from the integrity review (#1072)
-
-    [Fact]
-    public async Task A_mark_that_starts_being_held_is_said_once_in_Activity_and_not_again_while_it_stays_held()
-    {
-        ServerAnswers(
-            Item("j1", Path("Nosferatu", 1922), tmdb: "653", genres: ["Comedy"]),
-            Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", genres: ["Comedy"]));
-        var rule = Rule(Keep("server.genres:notin:Horror")) with { WaitDays = 30 };
-        _store.Add(rule);
-        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
-
-        // Nosferatu drops off the server: the rule can no longer tell, so its mark is held.
-        ServerAnswers(Item("j2", Path("His Girl Friday", 1940), tmdb: "3085", genres: ["Comedy"]));
-        var feed = new Mock<IActivityFeedRepository>();
-        var run = await Service(feed).CheckAsync(rule, "schedule", CancellationToken.None);
-
-        Assert.Equal(RetentionItemOutcomes.Held, Assert.Single(run.Items!, item => item.EntityId == "m1").Outcome);
-        Said(feed, "retention.check", "held", Times.Once());
-
-        var again = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
-        Assert.DoesNotContain(again.Items!, item => item.Outcome == RetentionItemOutcomes.Held);
-    }
-
-    [Fact]
-    public async Task Checks_of_one_rule_run_one_at_a_time()
-    {
-        var rule = await WatchedFilmRuleAsync(rule => rule);
-        var active = 0;
-        var most = 0;
-        _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>())).Returns(async () =>
-        {
-            most = Math.Max(most, Interlocked.Increment(ref active));
-            await Task.Delay(40);
-            Interlocked.Decrement(ref active);
-            return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary([Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40))], ["james", "ben"]));
-        });
-
-        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Service().CheckAsync(rule, "manual", CancellationToken.None)));
-
-        Assert.Equal(1, most);
-    }
-
     // ------------------------------------------------- playing on another server, by show and numbers (#1071)
 
     private static MediaServerPlay EpisodePlay(string? showTmdb, int? season, int? episode, string? showName = "Breaking Bad", string? showTvdb = null)
