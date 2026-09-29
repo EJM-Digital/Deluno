@@ -441,6 +441,26 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True((await repository.GetAsync(CancellationToken.None)).SubtitleFetchAutomaticEnabled);
     }
 
+    /// <summary>#1002: off for a new install and for an existing one (a missing key reads as off); the limit defaults to 20 and is clamped.</summary>
+    [Fact]
+    public async Task PauseSearchWhenQueueLong_is_off_by_default_and_saves_its_limit()
+    {
+        using var storage = TestStorage.Create();
+        var repository = await SettingsAsync(storage);
+
+        var fresh = await repository.GetAsync(CancellationToken.None);
+        Assert.False(fresh.PauseSearchWhenQueueLongEnabled);
+        Assert.Equal(20, fresh.PauseSearchWhenQueueLongThreshold);
+
+        await repository.SaveAsync(
+            PlatformSettingsPatchMerger.Apply(fresh, new PatchPlatformSettingsRequest(PauseSearchWhenQueueLongEnabled: true, PauseSearchWhenQueueLongThreshold: 7)),
+            CancellationToken.None);
+
+        var loaded = await repository.GetAsync(CancellationToken.None);
+        Assert.True(loaded.PauseSearchWhenQueueLongEnabled);
+        Assert.Equal(7, loaded.PauseSearchWhenQueueLongThreshold);
+    }
+
     /// <summary>#757: on by default (today's replace-with-dash rendering), and stays off once turned off.</summary>
     [Fact]
     public async Task ReplaceIllegalCharacters_defaults_to_on_for_a_new_install_and_stays_off_once_turned_off()

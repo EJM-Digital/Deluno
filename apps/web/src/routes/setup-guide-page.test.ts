@@ -35,6 +35,7 @@ const UNANSWERED: AutomationChoices = {
   leftoverCleanup: null,
   leftoverDownloadCleanup: null,
   forceImport: null,
+  pauseSearchWhenQueueLong: null,
   dangerousFileCheck: null
 };
 
@@ -49,6 +50,7 @@ const ALL_NO: AutomationChoices = {
   leftoverCleanup: false,
   leftoverDownloadCleanup: false,
   forceImport: false,
+  pauseSearchWhenQueueLong: false,
   dangerousFileCheck: false
 };
 
@@ -63,6 +65,7 @@ const ALL_YES: AutomationChoices = {
   leftoverCleanup: true,
   leftoverDownloadCleanup: true,
   forceImport: true,
+  pauseSearchWhenQueueLong: true,
   dangerousFileCheck: true
 };
 
@@ -131,6 +134,7 @@ describe("setup guide Automation step (#936)", () => {
       "forceImport",
       "leftoverCleanup",
       "leftoverDownloadCleanup",
+      "pauseSearchWhenQueueLong",
       "qualityUpgrades",
       "removeBadDownloads",
       "renameOnImport",
@@ -157,7 +161,8 @@ describe("setup guide Automation step (#936)", () => {
       cleanupPurgePayloadAfterThreshold: false,
       subtitleFetchAutomaticEnabled: false,
       leftoverDownloadCleanupEnabled: false,
-      forceImportEnabled: false
+      forceImportEnabled: false,
+      pauseSearchWhenQueueLongEnabled: false
     });
     expect(buildLibraryAutomationFields(ALL_NO)).toEqual({
       autoSearchEnabled: false,

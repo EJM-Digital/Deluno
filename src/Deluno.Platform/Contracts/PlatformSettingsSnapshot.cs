@@ -273,7 +273,12 @@ public sealed record PlatformSettingsSnapshot(
     bool TagTitlesOffEveryList = false,
     string OffListTag = "",
     // #1024: show an anime episode's absolute number beside its season and episode. Off until chosen.
-    bool ShowAbsoluteEpisodeNumbers = false);
+    bool ShowAbsoluteEpisodeNumbers = false,
+    // #1002: pause the automatic search cycles while more than this many of
+    // Deluno's own downloads are still waiting. Off for every install (#936);
+    // a missing key reads as off, so no existing install changes.
+    bool PauseSearchWhenQueueLongEnabled = false,
+    int PauseSearchWhenQueueLongThreshold = 20);
 
 /// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
 public static class UnmatchedImportPolicies

@@ -79,6 +79,8 @@ public static class IntegrationsServiceCollectionExtensions
         // the client registry) already is one.
         services.AddSingleton<Deluno.Contracts.IGrabAppearanceLookupService, GrabAppearanceLookupService>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
+        services.AddSingleton<SearchQueuePauseMemory>();
+        services.AddScoped<ISearchQueuePauseGate, SearchQueuePauseGate>();
         services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
         services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
