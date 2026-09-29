@@ -13,6 +13,22 @@ namespace Deluno.Worker;
 
 public static class WorkerServiceCollectionExtensions
 {
+    /// <summary>
+    /// One background service failing must not stop the whole host (#1080):
+    /// the failure is ignored by the host (it is logged), and the monitor
+    /// keeps a record Health shows in plain words.
+    /// </summary>
+    public static IServiceCollection AddDelunoBackgroundServiceSafety(this IServiceCollection services)
+    {
+        services.Configure<Microsoft.Extensions.Hosting.HostOptions>(options =>
+            options.BackgroundServiceExceptionBehavior = Microsoft.Extensions.Hosting.BackgroundServiceExceptionBehavior.Ignore);
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton(services, TimeProvider.System);
+        services.AddSingleton<BackgroundServiceFailureMonitor>();
+        services.AddSingleton<IBackgroundServiceFailureState>(provider => provider.GetRequiredService<BackgroundServiceFailureMonitor>());
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(provider => provider.GetRequiredService<BackgroundServiceFailureMonitor>());
+        return services;
+    }
+
     public static IServiceCollection AddDelunoWorkerModule(this IServiceCollection services)
     {
         // The only way the sharing rule can touch a download client: through
@@ -101,6 +117,8 @@ public static class WorkerServiceCollectionExtensions
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.Proxy, client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<HealthCheckRunner>();
         services.AddHostedService<HealthCheckHostedService>();
+        services.AddScoped<IHealthCheck, BackgroundServiceHealthCheck>();
+        services.AddDelunoBackgroundServiceSafety();
         return services;
     }
 }

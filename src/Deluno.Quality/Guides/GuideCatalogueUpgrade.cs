@@ -80,7 +80,7 @@ public sealed class GuideCatalogueUpgradeHostedService(
         {
             // Normal shutdown.
         }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or InvalidDataException)
+        catch (Exception exception)
         {
             logger.LogWarning(exception, "Deluno could not carry its guide layer forward onto the stored guide package; the stored package stays active.");
         }

@@ -19,6 +19,19 @@ public sealed class MovieRungRepairReportService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // A tidy-up report must never stop the host from starting (#1080); it runs again next start.
+        try
+        {
+            await RunAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "This start-up tidy-up did not finish; it will run again on the next start.");
+        }
+    }
+
+    private async Task RunAsync(CancellationToken cancellationToken)
+    {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);

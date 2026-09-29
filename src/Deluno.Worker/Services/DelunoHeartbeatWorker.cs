@@ -57,9 +57,20 @@ public sealed class DelunoHeartbeatWorker(
         using (var scope = scopeFactory.CreateScope())
         {
             AssertHandlerRoutingIsComplete(scope.ServiceProvider.GetRequiredService<JobHandlerRegistry>());
-            var recoveredJobs = await scope.ServiceProvider.GetRequiredService<IJobQueueRepository>().ReleaseLeasesAsync(
-                _lanes.Select(lane => $"{_workerId}-{lane.Name}").ToArray(),
-                stoppingToken);
+            IReadOnlyList<JobQueueItem> recoveredJobs = [];
+            try
+            {
+                recoveredJobs = await scope.ServiceProvider.GetRequiredService<IJobQueueRepository>().ReleaseLeasesAsync(
+                    _lanes.Select(lane => $"{_workerId}-{lane.Name}").ToArray(),
+                    stoppingToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A busy database at startup must not stop the worker: leases
+                // a previous run left behind expire on their own (#1080).
+                logger.LogWarning(exception, "Worker {WorkerId} could not release leases held by its previous incarnation; they will expire on their own.", _workerId);
+            }
+
             if (recoveredJobs.Count > 0)
             {
                 logger.LogInformation(
@@ -213,7 +224,13 @@ public sealed class DelunoHeartbeatWorker(
             gate,
             (availableSlots, cancellationToken) => RunLaneTickAsync(lane, availableSlots, cancellationToken),
             (job, cancellationToken) => RunJobAsync(lane, job, cancellationToken),
-            stoppingToken);
+            stoppingToken,
+            onTickFailure: (exception, backoff) => logger.LogWarning(
+                exception,
+                "Worker {WorkerId} lane {LaneName} could not finish a pass; it will try again in {Backoff}.",
+                _workerId,
+                lane.Name,
+                backoff));
     }
 
     private async Task<LaneTickResult> RunLaneTickAsync(
