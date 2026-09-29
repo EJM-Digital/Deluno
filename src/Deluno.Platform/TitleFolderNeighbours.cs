@@ -14,8 +14,14 @@ public static class TitleFolderNeighbours
 {
     private static readonly char[] Separators = ['/', '\\'];
 
-    private const string Match =
-        "substr(lower(replace(file_path, char(92), '/')), 1, length(@prefix)) = @prefix LIMIT 1;";
+    // SQLite's lower() and COLLATE NOCASE fold ASCII only, so "Édith" and "édith" would
+    // never match there. Candidate paths are read and compared in C#, where
+    // OrdinalIgnoreCase folds every letter.
+
+    /// <summary>True when <paramref name="filePath"/> lies under the folder whose normalised key is <paramref name="prefix"/> (ends in "/"), ignoring letter case of every alphabet and the kind of slash.</summary>
+    public static bool IsUnder(string? filePath, string prefix)
+        => filePath is not null
+           && filePath.Replace('\\', '/').StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
 
     public static async Task<bool> OtherTitleHasFilesUnderAsync(
         IDelunoDatabaseConnectionFactory connectionFactory,
@@ -34,15 +40,15 @@ public static class TitleFolderNeighbours
         var lead = directory.StartsWith("\\\\", StringComparison.Ordinal) || directory.StartsWith("//", StringComparison.Ordinal)
             ? "//"
             : directory.StartsWith('/') || directory.StartsWith('\\') ? "/" : string.Empty;
-        var prefix = lead + string.Join('/', segments).ToLowerInvariant() + "/";
+        var prefix = lead + string.Join('/', segments) + "/";
 
         return await AnyAsync(
                    connectionFactory, DelunoDatabaseNames.Movies,
-                   "SELECT 1 FROM movie_wanted_state WHERE file_path IS NOT NULL AND (@own IS NULL OR movie_id <> @own) AND " + Match,
+                   "SELECT file_path FROM movie_wanted_state WHERE file_path IS NOT NULL AND (@own IS NULL OR movie_id <> @own)",
                    ownMovieId, prefix, cancellationToken)
                || await AnyAsync(
                    connectionFactory, DelunoDatabaseNames.Series,
-                   "SELECT 1 FROM episode_entries WHERE has_file = 1 AND file_path IS NOT NULL AND (@own IS NULL OR series_id <> @own) AND " + Match,
+                   "SELECT file_path FROM episode_entries WHERE has_file = 1 AND file_path IS NOT NULL AND (@own IS NULL OR series_id <> @own)",
                    ownSeriesId, prefix, cancellationToken);
     }
 
@@ -60,8 +66,16 @@ public static class TitleFolderNeighbours
             using var command = connection.CreateCommand();
             command.CommandText = sql;
             Add(command, "@own", ownId);
-            Add(command, "@prefix", prefix);
-            return await command.ExecuteScalarAsync(cancellationToken) is not null;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (IsUnder(reader.GetString(0), prefix))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         catch (DbException exception) when (exception.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
         {

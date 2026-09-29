@@ -152,6 +152,38 @@ public sealed class MovieBulkLibraryToolsPersistenceTests
     }
 
     [Fact]
+    public async Task Relocating_a_folder_whose_name_starts_with_an_uppercase_non_ASCII_letter_still_rewrites_every_path()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-30T00:00:00Z"));
+        var repository = await CreateRepositoryAsync(storage, timeProvider);
+
+        var movie = await repository.AddAsync(new CreateMovieRequest("Édith Piaf", 2007, "tt0450188"), CancellationToken.None);
+        await repository.EnsureWantedStateAsync(
+            movie.Id, "movies-main", "covered", "Imported.", hasFile: true,
+            currentQuality: "WEB 1080p", targetQuality: "WEB 1080p", qualityCutoffMet: true, CancellationToken.None);
+        await repository.ImportExistingAsync(
+            "movies-main", movie.Title, 2007, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            filePath: "/library/main/ÉDITH Piaf (2007)/Edith.mkv", fileSizeBytes: 42,
+            CancellationToken.None, movieId: movie.Id);
+        await using (var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"INSERT INTO movie_subtitle_state (movie_id, language, forced, hearing_impaired, source, file_path, created_utc, updated_utc) VALUES ('{movie.Id}', 'en', 0, 0, 'external', '/library/main/ÉDITH Piaf (2007)/Subs/Edith.en.srt', 'x', 'x');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        // The folder is written with a lowercase é on the way in: it is the same folder.
+        var rewritten = await repository.RelocateTrackedFilePathsAsync(
+            movie.Id, "/library/main/édith Piaf (2007)", "/library/4k/Édith Piaf (2007)", CancellationToken.None);
+
+        Assert.Equal(2, rewritten);
+        var paths = await repository.ListTrackedFilePathsAsync(movie.Id, CancellationToken.None);
+        Assert.Contains("/library/4k/Édith Piaf (2007)/Edith.mkv", paths);
+        Assert.Contains("/library/4k/Édith Piaf (2007)/Subs/Edith.en.srt", paths);
+    }
+
+    [Fact]
     public async Task Relocating_a_moved_folder_rewrites_every_tracked_path_under_it_and_only_those()
     {
         using var storage = TestStorage.Create();

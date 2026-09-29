@@ -3744,26 +3744,38 @@ public sealed class SqliteMovieCatalogRepository(
         // Match on a folder boundary only, so "Arrival" never captures "Arrival 2". Slashes may be
         // either kind in a stored path; replacing them one for one keeps the character count, so the
         // remainder after the old folder is cut at the same place.
-        var prefix = oldTrimmed.Replace('\\', '/').ToLowerInvariant() + "/";
+        // SQLite folds only ASCII letters, so the match is made here with OrdinalIgnoreCase, which
+        // also folds "É" and "é": a folder such as "Édith Piaf (2007)" is found either way.
+        var prefix = oldTrimmed.Replace('\\', '/') + "/";
         var rewritten = 0;
         foreach (var table in TrackedPathTables)
         {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText =
-                $"""
-                UPDATE {table}
-                SET file_path = @newFolder || substr(file_path, @oldLength + 1)
-                WHERE movie_id = @movieId
-                  AND file_path IS NOT NULL
-                  AND substr(lower(replace(file_path, char(92), '/')), 1, @prefixLength) = @prefix;
-                """;
-            AddParameter(command, "@movieId", movieId);
-            AddParameter(command, "@newFolder", newTrimmed);
-            AddParameter(command, "@oldLength", oldTrimmed.Length);
-            AddParameter(command, "@prefix", prefix);
-            AddParameter(command, "@prefixLength", prefix.Length);
-            rewritten += await command.ExecuteNonQueryAsync(cancellationToken);
+            var toRewrite = new List<(long RowId, string Path)>();
+            using (var select = connection.CreateCommand())
+            {
+                select.Transaction = transaction;
+                select.CommandText = $"SELECT rowid, file_path FROM {table} WHERE movie_id = @movieId AND file_path IS NOT NULL;";
+                AddParameter(select, "@movieId", movieId);
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var path = reader.GetString(1);
+                    if (Deluno.Platform.TitleFolderNeighbours.IsUnder(path, prefix))
+                    {
+                        toRewrite.Add((reader.GetInt64(0), path));
+                    }
+                }
+            }
+
+            foreach (var (rowId, path) in toRewrite)
+            {
+                using var update = connection.CreateCommand();
+                update.Transaction = transaction;
+                update.CommandText = $"UPDATE {table} SET file_path = @filePath WHERE rowid = @rowId;";
+                AddParameter(update, "@filePath", newTrimmed + path[oldTrimmed.Length..]);
+                AddParameter(update, "@rowId", rowId);
+                rewritten += await update.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);

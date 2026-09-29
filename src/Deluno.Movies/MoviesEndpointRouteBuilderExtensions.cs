@@ -3001,8 +3001,43 @@ public static class MoviesEndpointRouteBuilderExtensions
                             .ToArray();
 
                         Directory.Move(plan.SourceDirectory, plan.DestinationDirectory);
-                        await repository.RelocateTrackedFilePathsAsync(
-                            movie.Id, plan.SourceDirectory, plan.DestinationDirectory, cancellationToken);
+                        try
+                        {
+                            await repository.RelocateTrackedFilePathsAsync(
+                                movie.Id, plan.SourceDirectory, plan.DestinationDirectory, cancellationToken);
+                        }
+                        catch (Exception exception) when (exception is not OperationCanceledException)
+                        {
+                            // The folder has already moved but the database could not follow. The
+                            // batch carries on with the next film, and this one is put back where it
+                            // was if it can be; otherwise the message says exactly where it is.
+                            var putBack = false;
+                            try
+                            {
+                                Directory.Move(plan.DestinationDirectory, plan.SourceDirectory);
+                                putBack = true;
+                            }
+                            catch (Exception moveBack) when (moveBack is IOException or UnauthorizedAccessException)
+                            {
+                            }
+
+                            var failure = putBack
+                                ? $"{movie.Title}: Deluno could not update its records for the move, so the folder was put back and nothing changed."
+                                : $"{movie.Title}: the folder is now at {plan.DestinationDirectory}, but Deluno could not update its records ({exception.Message}). Move it back to {plan.SourceDirectory}, or run Rescan folder on {toLibrary.Name}.";
+                            failedMovieIds.Add(movieId);
+                            moveFailureTitles.Add(movie.Title);
+                            moveFailureReasons.Add(failure);
+                            await activityFeedRepository.RecordActivityAsync(
+                                "library.movie.move-records-failed",
+                                failure,
+                                JsonSerializer.Serialize(new { movieId, source = plan.SourceDirectory, destination = plan.DestinationDirectory, putBack }),
+                                null,
+                                "movie",
+                                movieId,
+                                cancellationToken);
+                            continue;
+                        }
+
                         if (untrackedHere.Length > 0)
                         {
                             untrackedTravelled.Add($"{movie.Title}: {string.Join(", ", untrackedHere.Take(5))}{(untrackedHere.Length > 5 ? $" and {untrackedHere.Length - 5} more" : "")}");
