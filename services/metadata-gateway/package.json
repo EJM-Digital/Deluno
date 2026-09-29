@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/index.js",
+    "check": "node --check src/index.js && node --check src/tvdb.js",
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy"
   }

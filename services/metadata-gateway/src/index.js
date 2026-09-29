@@ -1,3 +1,5 @@
+import { matchTvdbRoute, serveTvdbRoute } from "./tvdb.js";
+
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
 // A catalogue changes when a broadcaster announces an episode, so it expires
 // sooner than a search result. Six hours means a new episode shows up the same
@@ -40,6 +42,23 @@ export default {
 
     if (url.pathname.startsWith("/artwork/")) {
       return serveArtwork(request, url);
+    }
+
+    const tvdbRoute = matchTvdbRoute(url.pathname);
+    if (tvdbRoute) {
+      // TheTVDB is served from this same boundary as TMDb: one shared per-IP
+      // limit, one cache, and a key that only exists in this Worker's secrets.
+      const tvdbRate = await enforceRateLimit(
+        env.METADATA_CACHE,
+        request.headers.get("CF-Connecting-IP") ?? "unknown",
+        Date.now());
+      if (!tvdbRate.allowed) {
+        return json(
+          { error: "rate_limited", message: "Please try title matching again shortly." },
+          429,
+          { "Retry-After": String(tvdbRate.retryAfterSeconds) });
+      }
+      return serveTvdbRoute(tvdbRoute, url, env, env.METADATA_CACHE, json);
     }
 
     const route = matchRoute(url.pathname);
@@ -398,7 +417,7 @@ export async function enforceRateLimit(cache, clientAddress, now) {
  */
 export function buildCacheKey({ query, mediaType, providerId, year }) {
   const normalized = `${mediaType}|${query.toLocaleLowerCase("en-US")}|${year ?? ""}|${providerId ?? ""}`;
-  return `search:v7:${encodeURIComponent(normalized)}`;
+  return `search:v8:${encodeURIComponent(normalized)}`;
 }
 
 export async function lookupTmdb(lookup, apiKey, request = fetch, artworkOrigin = null) {
@@ -560,6 +579,8 @@ export function mapTmdbResult(item, mediaType, artworkOrigin = null) {
     cast: readCast(item, artworkOrigin),
     crew: readCrew(crew, artworkOrigin),
     imdbId: item.external_ids?.imdb_id ?? null,
+    // Lets Deluno find the same show on TheTVDB without a second lookup.
+    tvDbId: item.external_ids?.tvdb_id ? String(item.external_ids.tvdb_id) : null,
     externalUrl,
     certification,
     studio,

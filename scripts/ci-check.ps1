@@ -223,8 +223,9 @@ Write-Host ""
 Write-Host "Metadata gateway"
 
 $gatewaySyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/index.js")
-$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js")
-if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
+$gatewayTvdbSyntax = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--check", "services/metadata-gateway/src/tvdb.js")
+$gatewayTests = Invoke-LoggedCommand -FilePath $nodePath -Arguments @("--test", "services/metadata-gateway/test/index.test.js", "services/metadata-gateway/test/tvdb.test.js")
+if ($gatewaySyntax.ExitCode -eq 0 -and $gatewayTvdbSyntax.ExitCode -eq 0 -and $gatewayTests.ExitCode -eq 0) {
     Write-Ok "metadata gateway contract"
 } else {
     if ($gatewaySyntax.Output) { Write-Host $gatewaySyntax.Output }
