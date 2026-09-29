@@ -276,6 +276,12 @@ describe("client save payload qBittorrent options (#811)", () => {
     expect(buildClientSavePayload(form)).toMatchObject({ skipHashCheck: true, sequentialDownload: true, firstLastPiecePrio: true });
   });
 
+  it("sends the chosen content layout, and default when none was chosen (#999)", () => {
+    const base = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
+    expect(buildClientSavePayload(base).contentLayout).toBe("default");
+    expect(buildClientSavePayload({ ...base, contentLayout: "subfolder" }).contentLayout).toBe("subfolder");
+  });
+
   it("sends null and a clear flag for a blank share limit", () => {
     const form = { ...emptyClientForm(), name: "qBittorrent", host: "localhost" };
     const payload = buildClientSavePayload(form);

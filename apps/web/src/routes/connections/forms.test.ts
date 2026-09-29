@@ -123,6 +123,13 @@ describe("client form Use SSL and URL Base", () => {
     expect(set.shareInactiveSeedingTimeLimitMinutes).toBe("60");
   });
 
+  // #999 — content layout starts on the client's own setting and reads back what was saved.
+  it("reads a saved client's content layout into the form on reopen", () => {
+    expect(emptyClientForm().contentLayout).toBe("default");
+    expect(clientFormFrom(baseItem).contentLayout).toBe("default");
+    expect(clientFormFrom({ ...baseItem, contentLayout: "no-subfolder" }).contentLayout).toBe("no-subfolder");
+  });
+
   // #811 — qBittorrent's save path (setLocation/savepath), blank unless set.
   it("reads a saved client's save path into the form on reopen", () => {
     expect(clientFormFrom(baseItem).location).toBe("");

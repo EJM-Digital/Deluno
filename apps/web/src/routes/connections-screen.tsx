@@ -291,7 +291,8 @@ export function buildClientSavePayload(form: ClientForm) {
     shareInactiveSeedingTimeLimitMinutes: form.shareInactiveSeedingTimeLimitMinutes.trim() ? Number(form.shareInactiveSeedingTimeLimitMinutes) : null,
     clearShareInactiveSeedingTimeLimitMinutes: !form.shareInactiveSeedingTimeLimitMinutes.trim(),
     location: form.location.trim() || null,
-    clearLocation: !form.location.trim()
+    clearLocation: !form.location.trim(),
+    contentLayout: form.contentLayout || "default"
   };
 }
 

@@ -15,6 +15,20 @@ import { SwitchRow } from "../../components/ui/switch";
 import { CATEGORY_OPTIONS, CLIENT_PRESETS, HOST_OPTIONS, PORT_OPTIONS, TV_CATEGORY_OPTIONS } from "./presets";
 import type { ClientForm } from "./forms";
 import { healthChip, relative } from "./format";
+const CONTENT_LAYOUT_OPTIONS = [
+  { value: "default", label: "Use qBittorrent's own setting" },
+  { value: "original", label: "Keep the torrent's own layout" },
+  { value: "subfolder", label: "Always create a subfolder" },
+  { value: "no-subfolder", label: "Never create a subfolder" }
+];
+
+const CONTENT_LAYOUT_HELP: Record<string, string> = {
+  default: "Deluno does not choose; qBittorrent does what its own setting says.",
+  original: "A torrent with one file saves that file; a torrent with a folder saves the folder.",
+  subfolder: "Every download gets its own folder named after the torrent, even a single file.",
+  "no-subfolder": "Files go straight into the save folder. A download with several files, such as a season pack, will land loose beside everything else, so the folder check flags this."
+};
+
 export function ClientDrawerBody({
   form,
   setForm,
@@ -181,6 +195,13 @@ export function ClientDrawerBody({
           </Field>
           <Field label="Save path" optional help="Where qBittorrent should save this client's downloads. Leave blank to use qBittorrent's own default, or its category's save path.">
             <PathInput value={form.location} onChange={(value) => setForm((current) => ({ ...current, location: value }))} placeholder="e.g. D:\Downloads\Movies" />
+          </Field>
+          <Field label="Where a download's files go" help={CONTENT_LAYOUT_HELP[form.contentLayout] ?? CONTENT_LAYOUT_HELP.default}>
+            <Select
+              value={form.contentLayout}
+              onChange={(event) => setForm((current) => ({ ...current, contentLayout: event.target.value }))}
+              options={CONTENT_LAYOUT_OPTIONS}
+            />
           </Field>
           {editing ? (
             <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline px-[var(--field-pad-x)] py-2">

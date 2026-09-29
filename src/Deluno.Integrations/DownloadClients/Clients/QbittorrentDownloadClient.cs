@@ -58,6 +58,15 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             addTimePairs.Add(new("tags", client.Tags));
         }
+        // #999: content layout, sent only when this client has one chosen.
+        // Radarr and Sonarr's QBittorrentProxyV2 send "Original" and
+        // "Subfolder" the same way and send nothing for "use qBittorrent's
+        // own setting"; the API also takes "NoSubfolder" (files straight into
+        // the save folder), which their settings leave out.
+        if (ContentLayouts.ToQbittorrentValue(client.ContentLayout) is { } layout)
+        {
+            addTimePairs.Add(new("contentLayout", layout));
+        }
         // #811: savepath, when this client has one configured -- sent at add
         // time same as the others, and reapplied with setLocation once the
         // hash is known below, since qBittorrent's own Automatic Torrent

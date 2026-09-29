@@ -1167,6 +1167,8 @@ export interface DownloadClientItem {
   shareInactiveSeedingTimeLimitMinutes?: number | null;
   /** #811 (qBittorrent only): save path sent at add time and reasserted with setLocation. Null uses the client's own default (or its category's save path). */
   location?: string | null;
+  /** #999 (qBittorrent only): how a torrent's files land in the save folder. "default" leaves it to qBittorrent's own setting. */
+  contentLayout?: "default" | "original" | "subfolder" | "no-subfolder";
 }
 
 export interface ExistingLibraryCandidate {

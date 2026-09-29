@@ -527,6 +527,31 @@ public sealed class DownloadClientPersistenceTests
         Assert.Null(withoutLocation.Location);
     }
 
+    // ── Content layout (#999) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_client_keeps_the_clients_own_content_layout_until_one_is_chosen_and_the_choice_persists()
+    {
+        using var storage = TestStorage.Create();
+        var repo = await CreateRepositoryAsync(storage);
+
+        var plain = await repo.CreateDownloadClientAsync(BaseCreateRequest(), CancellationToken.None);
+        Assert.Equal("default", plain.ContentLayout);
+
+        var chosen = await repo.CreateDownloadClientAsync(BaseCreateRequest(name: "qBittorrent 2") with { ContentLayout = "no-subfolder" }, CancellationToken.None);
+        Assert.Equal("no-subfolder", chosen.ContentLayout);
+        Assert.Equal("no-subfolder", Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None), item => item.Id == chosen.Id).ContentLayout);
+
+        // An edit that does not mention it leaves it alone; naming one changes it.
+        var untouched = await repo.UpdateDownloadClientAsync(
+            chosen.Id, new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, Location: @"E:\T"), CancellationToken.None);
+        Assert.Equal("no-subfolder", untouched!.ContentLayout);
+        var changed = await repo.UpdateDownloadClientAsync(
+            chosen.Id, new UpdateDownloadClientRequest(null, null, null, null, null, null, null, null, null, null, null, null, ContentLayout: "subfolder"), CancellationToken.None);
+        Assert.Equal("subfolder", changed!.ContentLayout);
+        Assert.Equal("subfolder", Assert.Single(await repo.ListDownloadClientsAsync(CancellationToken.None), item => item.Id == chosen.Id).ContentLayout);
+    }
+
     [Fact]
     public async Task UpdateDownloadClientAsync_can_set_and_clear_the_save_path()
     {

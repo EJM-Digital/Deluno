@@ -46,7 +46,9 @@ public sealed record DownloadClientItem(
     /// <summary>#811 (qBittorrent only): minutes of no upload activity before the client's own share limits stop seeding, regardless of ratio or total seeding time.</summary>
     int? ShareInactiveSeedingTimeLimitMinutes = null,
     /// <summary>#811 (qBittorrent only): save path sent at add time and reasserted with setLocation once the grab has a hash. Null leaves the client's own default (or its category's save path).</summary>
-    string? Location = null)
+    string? Location = null,
+    /// <summary>#999 (qBittorrent only): how a torrent's files land in the save folder: "default" (leave it to qBittorrent's own setting), "original", "subfolder" (always a folder named after the torrent) or "no-subfolder" (files straight into the save folder). See <see cref="ContentLayouts"/>.</summary>
+    string ContentLayout = ContentLayouts.Default)
 {
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }
