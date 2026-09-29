@@ -1,5 +1,6 @@
 using Deluno.Api.Network;
 using Deluno.Companions;
+using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -24,7 +25,8 @@ public sealed class InstalledComponentWirer(
     DownloadClientConnector connector,
     IEnumerable<ICompanionTool> tools,
     ICompanionSystem system,
-    IActivityFeedRepository activity)
+    IActivityFeedRepository activity,
+    IDownloadClientRegistry? registry = null)
 {
     public const string ActivityCategory = "installer.components.connected";
 
@@ -129,6 +131,7 @@ public sealed class InstalledComponentWirer(
             attempts, delay, cancellationToken);
         if (result.Healthy)
         {
+            await PrepareSaveFoldersAsync(recipe, result.Client, cancellationToken);
             return (recipe.Name, true, null);
         }
 
@@ -139,6 +142,76 @@ public sealed class InstalledComponentWirer(
         }
 
         return (recipe.Name, false, problem);
+    }
+
+    /// <summary>
+    /// A client that names a folder per category (NZBGet, Transmission) reports
+    /// "download folder / category" before anything has been downloaded, and that folder
+    /// does not exist yet, which Health then lists as a problem on a clean install (#1060).
+    /// So each missing category folder is created, but only as the category's own folder
+    /// directly inside the download folder the client itself reports; a path that does not
+    /// end in the category name, or sits at a drive root, is left alone. Nothing is moved or
+    /// deleted, and every folder created is written to Activity.
+    /// </summary>
+    private async Task PrepareSaveFoldersAsync(ClientRecipe recipe, Deluno.Connections.Contracts.DownloadClientItem? client, CancellationToken cancellationToken)
+    {
+        if (registry is null || client is null || !registry.TryGet(recipe.Protocol, out var implementation))
+        {
+            return;
+        }
+
+        var created = new List<string>();
+        foreach (var category in new[] { recipe.MoviesCategory, recipe.TvCategory }.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var check = await implementation.CheckCategoryAsync(client, category, cancellationToken);
+                if (SafeCategoryFolderToCreate(check.SavePath, category) is { } folder && !Directory.Exists(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                    created.Add(folder);
+                }
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested
+                && exception is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                // Not being able to prepare a folder is not a failed connection; Health still reports a folder that is missing.
+            }
+        }
+
+        if (created.Count > 0)
+        {
+            await activity.RecordActivityAsync(
+                ActivityCategory,
+                $"Created {(created.Count == 1 ? "the folder" : "the folders")} {Join(created)} for {recipe.Name}'s downloads, inside the download folder {recipe.Name} itself uses, so {(created.Count == 1 ? "it is" : "they are")} there before the first download.",
+                null, null, null, null, cancellationToken);
+        }
+    }
+
+    /// <summary>The folder to create for a category, or null when it is not exactly a category-named folder inside a client download folder.</summary>
+    internal static string? SafeCategoryFolderToCreate(string? savePath, string category)
+    {
+        if (string.IsNullOrWhiteSpace(savePath) || string.IsNullOrWhiteSpace(category)
+            || category.IndexOfAny(['/', '\\', ':']) >= 0 || category is "." or "..")
+        {
+            return null;
+        }
+
+        var path = savePath.Trim().TrimEnd('/', '\\');
+        if (!ClientPaths.IsFullClientPath(path) || path.StartsWith(@"\\", StringComparison.Ordinal) || path.Contains("..", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var name = path[(Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\')) + 1)..];
+        if (!string.Equals(name, category, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var parent = path[..(path.Length - name.Length)].TrimEnd('/', '\\');
+        // The download folder itself must be a real folder, never a drive root.
+        return parent.Length == 0 || (parent.Length == 2 && parent[1] == ':') ? null : path;
     }
 
     private string? SabnzbdKey()
