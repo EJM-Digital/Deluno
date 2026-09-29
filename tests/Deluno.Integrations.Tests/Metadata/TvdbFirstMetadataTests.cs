@@ -415,6 +415,102 @@ public sealed class TvdbFirstMetadataTests : IDisposable
         Assert.Equal("tvdb", MetadataCatalogueChoice.SourceName(fresh));
     }
 
+    [Fact]
+    public async Task A_TheTVDB_numbered_show_keeps_its_episodes_while_TheTVDB_is_unreachable()
+    {
+        var provider = new Mock<IMetadataProvider>();
+        // TheTVDB is down, so "Preferred" quietly comes back as TMDb's list with extra episodes.
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Season((null, 1, 1), (null, 1, 2), (null, 1, 3))]);
+
+        var choice = await MetadataCatalogueChoice.ChooseAsync(
+            provider.Object,
+            "1",
+            [new(1, 1, true, "One", null, "tvdb"), new(1, 2, false, "Two", null, "tvdb")],
+            CancellationToken.None);
+
+        Assert.Equal(MetadataCatalogueHold.TvdbUnavailable, choice.Hold);
+        Assert.Empty(choice.Seasons);
+    }
+
+    [Fact]
+    public async Task A_TMDb_numbered_show_still_refreshes_from_TMDb_when_TheTVDB_is_unreachable()
+    {
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Season((null, 1, 1), (null, 1, 2))]);
+
+        var choice = await MetadataCatalogueChoice.ChooseAsync(
+            provider.Object,
+            "1",
+            [new(1, 1, true, "One", null, "tmdb")],
+            CancellationToken.None);
+
+        Assert.Equal(MetadataCatalogueHold.None, choice.Hold);
+        Assert.Equal(2, choice.Seasons.Sum(season => season.Episodes.Count));
+    }
+
+    [Fact]
+    public async Task A_wrong_TheTVDB_id_with_the_same_numbers_but_other_episodes_is_rejected()
+    {
+        var air = DateTimeOffset.Parse("2020-01-01T00:00:00Z");
+        var wrong = new MetadataSeason(1, null, 4, null,
+        [
+            new(1, 1, "Something Else", null, air.AddYears(5), null, "tvdb"),
+            new(1, 2, "Other Show", null, air.AddYears(5).AddDays(7), null, "tvdb"),
+            new(1, 3, "Unrelated", null, air.AddYears(5).AddDays(14), null, "tvdb"),
+            new(1, 4, "Nope", null, air.AddYears(5).AddDays(21), null, "tvdb")
+        ]);
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([wrong]);
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.TmdbOnly, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Season((null, 1, 1), (null, 1, 2), (null, 1, 3))]);
+        MetadataEpisodeIdentity[] Existing(string source) =>
+        [
+            new(1, 1, true, "Pilot", air, source),
+            new(1, 2, true, "Second", air.AddDays(7), source),
+            new(1, 3, false, "Third", air.AddDays(14), source)
+        ];
+
+        // Already TheTVDB-numbered: kept, nothing synced.
+        var held = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", Existing("tvdb"), CancellationToken.None);
+        Assert.Equal(MetadataCatalogueHold.TvdbDisagrees, held.Hold);
+        Assert.Empty(held.Seasons);
+
+        // TMDb-numbered: stays on TMDb's own list.
+        var stays = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", Existing("tmdb"), CancellationToken.None);
+        Assert.Equal("tmdb", MetadataCatalogueChoice.SourceName(stays.Seasons));
+    }
+
+    [Fact]
+    public async Task The_right_TheTVDB_id_is_accepted_even_when_titles_and_dates_are_a_little_different()
+    {
+        var air = DateTimeOffset.Parse("2020-01-01T00:00:00Z");
+        var right = new MetadataSeason(1, null, 3, null,
+        [
+            new(1, 1, "Pilot", null, air.AddDays(1), null, "tvdb"),
+            new(1, 2, "The Second One", null, air.AddDays(7), null, "tvdb"),
+            new(1, 3, "Third", null, air.AddDays(14), null, "tvdb")
+        ]);
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([right]);
+
+        var choice = await MetadataCatalogueChoice.ChooseAsync(
+            provider.Object,
+            "1",
+            [
+                new(1, 1, true, "Pilot", air, "tvdb"),
+                new(1, 2, true, "Second", air.AddDays(7), "tvdb"),
+                new(1, 3, false, "Third", air.AddDays(14), "tvdb")
+            ],
+            CancellationToken.None);
+
+        Assert.Equal(MetadataCatalogueHold.None, choice.Hold);
+        Assert.Equal("tvdb", MetadataCatalogueChoice.SourceName(choice.Seasons));
+    }
+
     private static MetadataSeason Season(params (string? Source, int Season, int Episode)[] episodes)
         => new(
             1,

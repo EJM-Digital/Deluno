@@ -451,7 +451,10 @@ public sealed record MetadataCatalogueImpact(
 public sealed record MetadataEpisodeIdentity(
     int SeasonNumber,
     int EpisodeNumber,
-    bool HasFile = false);
+    bool HasFile = false,
+    string? Title = null,
+    DateTimeOffset? AirDateUtc = null,
+    string? CatalogueSource = null);
 
 public sealed record MetadataCatalogueEvaluation(
     MetadataCatalogueImpact Impact,

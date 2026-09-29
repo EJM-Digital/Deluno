@@ -3775,13 +3775,37 @@ public static class SeriesEndpointRouteBuilderExtensions
         try
         {
             var inventory = await repository.GetInventoryDetailAsync(seriesId, cancellationToken);
-            seasons = await MetadataCatalogueChoice.GetAsync(
+            var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 providerId,
                 (inventory?.Episodes ?? [])
-                    .Select(episode => new MetadataEpisodeIdentity(episode.SeasonNumber, episode.EpisodeNumber, episode.HasFile))
+                    .Select(episode => new MetadataEpisodeIdentity(
+                        episode.SeasonNumber,
+                        episode.EpisodeNumber,
+                        episode.HasFile,
+                        episode.Title,
+                        episode.AirDateUtc,
+                        episode.CatalogueSource))
                     .ToArray(),
                 cancellationToken);
+            if (choice.Hold != MetadataCatalogueHold.None)
+            {
+                // The show's numbering came from TheTVDB. Its episodes stay as
+                // they are and the next refresh tries TheTVDB again.
+                await activityFeedRepository.RecordActivityAsync(
+                    "metadata.series.catalogue.held",
+                    choice.Hold == MetadataCatalogueHold.TvdbUnavailable
+                        ? $"TheTVDB did not answer for {seriesTitle}, so its episode list was left as it is. Deluno will try again at the next refresh."
+                        : $"TheTVDB's episode list for {seriesTitle} does not match the episodes Deluno already has, so it was not used and the list was left as it is. Check the TheTVDB link on the title.",
+                    null,
+                    null,
+                    "series",
+                    seriesId,
+                    cancellationToken);
+                return SeriesCatalogueSyncResult.None;
+            }
+
+            seasons = choice.Seasons;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
