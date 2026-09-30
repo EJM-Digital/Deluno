@@ -124,6 +124,9 @@ public sealed class FolderChainService(
 
     private TimeSpan Timeout => stepTimeout ?? DefaultStepTimeout;
 
+    /// <summary>How many clients, or folders, are checked at the same time.</summary>
+    private const int MaxConcurrentChecks = 4;
+
     /// <summary>How long a client's answer is kept for the destinations list, so a processor polling it does not hit the client each time (#1073).</summary>
     internal static readonly TimeSpan CacheFor = TimeSpan.FromSeconds(60);
 
@@ -177,13 +180,28 @@ public sealed class FolderChainService(
         var tv = string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase);
         var kind = tv ? "TV" : "movies";
 
-        var chains = new List<FolderChainClient>();
-        foreach (var link in routing?.DownloadClients ?? [])
+        // #1079: every routed client is asked at once (a few at a time), each with its own step
+        // timeout, so one that never answers holds nothing else up. The order of the links is kept.
+        using var gate = new SemaphoreSlim(MaxConcurrentChecks);
+        async Task<FolderChainClient?> CheckClientAsync(LibraryDownloadClientLinkItem link)
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                return await CheckClientCoreAsync(link);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        async Task<FolderChainClient?> CheckClientCoreAsync(LibraryDownloadClientLinkItem link)
         {
             var client = clients.FirstOrDefault(item => string.Equals(item.Id, link.DownloadClientId, StringComparison.OrdinalIgnoreCase));
             if (client is null)
             {
-                continue;
+                return null;
             }
 
             var category = !string.IsNullOrWhiteSpace(link.Category) ? link.Category.Trim() : (tv ? client.TvCategory : client.MoviesCategory) ?? string.Empty;
@@ -191,8 +209,7 @@ public sealed class FolderChainService(
             if (!registry.TryGet(client.Protocol, out var implementation))
             {
                 links.Add(new("category", FolderChainStatuses.Unknown, $"Deluno cannot read {client.Protocol} settings."));
-                chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
-                continue;
+                return new(client.Id, client.Name, client.Protocol, category, links);
             }
 
             DownloadClientCategoryCheckResult check;
@@ -213,15 +230,16 @@ public sealed class FolderChainService(
                 }
                 catch (TimeoutException)
                 {
+                    // A kept answer from before the client stopped answering is no longer true.
+                    CategoryCache.TryRemove(cacheKey, out _);
                     links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} did not answer within {(int)Timeout.TotalSeconds} seconds, so its {category} folder could not be checked. Check that {client.Name} is running and reachable, then check again."));
-                    chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
-                    continue;
+                    return new(client.Id, client.Name, client.Protocol, category, links);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    CategoryCache.TryRemove(cacheKey, out _);
                     links.Add(new("category", FolderChainStatuses.Unknown, $"{client.Name} could not be checked: {ex.Message}"));
-                    chains.Add(new(client.Id, client.Name, client.Protocol, category, links));
-                    continue;
+                    return new(client.Id, client.Name, client.Protocol, category, links);
                 }
             }
 
@@ -271,11 +289,15 @@ public sealed class FolderChainService(
                 links.Add(layoutLink);
             }
 
-            chains.Add(new(client.Id, client.Name, client.Protocol, category, links,
+            return new(client.Id, client.Name, client.Protocol, category, links,
                 named is not null ? FolderChainSavedBy.DelunoPerGrab : FolderChainSavedBy.ClientCategory,
                 clientFolder,
-                named?.ClientFolder ?? check.SavePath));
+                named?.ClientFolder ?? check.SavePath);
         }
+
+        var chains = (await Task.WhenAll((routing?.DownloadClients ?? []).Select(CheckClientAsync)))
+            .OfType<FolderChainClient>()
+            .ToList();
 
         return new FolderChainReport(
             library.Id,
@@ -425,19 +447,28 @@ public sealed class FolderChainService(
             links.Add(new("clients", FolderChainStatuses.Problem, $"No download client is routed to the {library.Name} library, so nothing it finds can be downloaded."));
         }
 
-        links.Add(string.IsNullOrWhiteSpace(library.DownloadsPath)
-            ? new("downloads", FolderChainStatuses.Unknown, $"The {library.Name} library has no downloads folder set: the folder its download clients finish {kind} into.")
-            : await FolderExistsAsync("downloads", library.DownloadsPath, $"{kind} finish downloading into", timeout, cancellationToken));
-
+        // #1079: the folders are probed together, each with its own timeout, so a dead share
+        // costs one timeout for the whole check, not one per folder.
+        var downloads = string.IsNullOrWhiteSpace(library.DownloadsPath)
+            ? Task.FromResult<FolderChainLink>(new("downloads", FolderChainStatuses.Unknown, $"The {library.Name} library has no downloads folder set: the folder its download clients finish {kind} into."))
+            : FolderExistsAsync("downloads", library.DownloadsPath, $"{kind} finish downloading into", timeout, cancellationToken);
+        Task<FolderChainLink>? ready = null;
         if (usesProcessor)
         {
             var processor = library.ProcessorName ?? "The processor";
-            links.Add(string.IsNullOrWhiteSpace(library.ProcessorOutputPath)
-                ? new("ready", FolderChainStatuses.Problem, $"{processor} has no ready folder set for the {library.Name} library, so Deluno has nowhere to import its files from.")
-                : await FolderExistsAsync("ready", library.ProcessorOutputPath, $"{processor} leaves finished files in", timeout, cancellationToken));
+            ready = string.IsNullOrWhiteSpace(library.ProcessorOutputPath)
+                ? Task.FromResult<FolderChainLink>(new("ready", FolderChainStatuses.Problem, $"{processor} has no ready folder set for the {library.Name} library, so Deluno has nowhere to import its files from."))
+                : FolderExistsAsync("ready", library.ProcessorOutputPath, $"{processor} leaves finished files in", timeout, cancellationToken);
         }
 
-        links.Add(await FolderExistsAsync("library", library.RootPath, $"the {library.Name} library lives in", timeout, cancellationToken));
+        var root = FolderExistsAsync("library", library.RootPath, $"the {library.Name} library lives in", timeout, cancellationToken);
+        links.Add(await downloads);
+        if (ready is not null)
+        {
+            links.Add(await ready);
+        }
+
+        links.Add(await root);
         return links;
     }
 

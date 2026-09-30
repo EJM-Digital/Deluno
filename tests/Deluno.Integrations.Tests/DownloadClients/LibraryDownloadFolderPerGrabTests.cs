@@ -457,6 +457,37 @@ public sealed class LibraryDownloadFolderPerGrabTests
         Assert.Equal(FolderChainStatuses.Unknown, destination.Status);
     }
 
+    [Fact]
+    public async Task Every_routed_client_is_checked_at_once_and_the_links_keep_their_order()
+    {
+        ClientSaveFolders.DirectoryExistsOverride.Value = _ => true;
+        var now = DateTimeOffset.UnixEpoch;
+        var library = Library("lib-1", LibraryFolder);
+        var repository = new Mock<ILibrariesRepository>();
+        repository.Setup(instance => instance.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
+        repository.Setup(instance => instance.GetLibraryRoutingAsync("lib-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LibraryRoutingSnapshot("lib-1", library.Name, [],
+                [.. new[] { "client-a", "client-b", "client-c" }.Select((id, index) => new LibraryDownloadClientLinkItem($"link-{id}", "lib-1", id, id, index + 1, now, now, "movies"))]));
+        var connections = new Mock<IConnectionsRepository>();
+        connections.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([.. new[] { "client-a", "client-b", "client-c" }.Select(id => Client("deluge") with { Id = id, Name = id })]);
+        connections.Setup(instance => instance.ListDownloadClientPathMappingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var fake = FakeClient(perGrab: false, reportedFolder: LibraryFolder);
+        fake.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(async (DownloadClientItem item, string category, CancellationToken _) =>
+            {
+                await Task.Delay(500);
+                return new DownloadClientCategoryCheckResult(item.Id, item.Name, category, DownloadClientCategoryStatuses.Ready, "Ready.", true, true, LibraryFolder);
+            });
+        var service = new FolderChainService(repository.Object, connections.Object, Registry(fake.Object));
+
+        var started = DateTimeOffset.UtcNow;
+        var report = await service.CheckAsync("lib-1", CancellationToken.None);
+
+        Assert.True(DateTimeOffset.UtcNow - started < TimeSpan.FromMilliseconds(1300), "three 500 ms clients took as long as one after another");
+        Assert.Equal(["client-a", "client-b", "client-c"], report!.Clients.Select(chain => chain.ClientId).ToArray());
+    }
+
     // ------------------------------------------------------------ the upgrade note (#1073)
 
     [Fact]
