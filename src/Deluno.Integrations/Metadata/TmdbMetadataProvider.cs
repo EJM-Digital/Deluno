@@ -43,7 +43,21 @@ public sealed partial class TmdbMetadataProvider(
     private readonly string _artworkRootPath = Path.Combine(
         Path.GetFullPath(storageOptions.Value.DataRoot),
         "artwork-cache");
-    private readonly SemaphoreSlim _artworkCacheMaintenanceGate = new(1, 1);
+    /// <summary>
+    /// One lock for the whole artwork cache in this process: the API, the
+    /// cleanup job and every search share it, so none can delete a file another
+    /// is writing (#1089). It guards only short database and file steps.
+    /// </summary>
+    private static readonly SemaphoreSlim ArtworkCacheGate = new(1, 1);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> ArtworkDownloadLocks = new();
+
+    /// <summary>The longest one artwork download may take before it is given up.</summary>
+    private static readonly TimeSpan ArtworkDownloadTimeout = TimeSpan.FromSeconds(20);
+
+    /// <summary>The most a search will spend saving its results' artwork.</summary>
+    private static readonly TimeSpan ArtworkSearchDeadline = TimeSpan.FromSeconds(30);
+    private const int ArtworkSearchConcurrency = 6;
+    private const int MaxArtworkBytes = 20 * 1024 * 1024;
     private IntegrationFailure? _lastFailure;
 
     /// <summary>
@@ -627,19 +641,46 @@ public sealed partial class TmdbMetadataProvider(
             return results;
         }
 
-        var localized = new List<MetadataSearchResult>(results.Count);
-        foreach (var result in results)
+        // Up to 24 results a search, each with a poster and a backdrop: fetched
+        // a few at a time and within one deadline, so a slow image host cannot
+        // hold the whole search. Whatever is not saved by then keeps its remote
+        // address and is localised again by the next refresh (#1089).
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(ArtworkSearchDeadline);
+        using var slots = new SemaphoreSlim(ArtworkSearchConcurrency);
+
+        async Task<MetadataSearchResult> LocalizeOneAsync(MetadataSearchResult result)
         {
-            var poster = await CacheArtworkUrlAsync(result.MediaType, result.PosterUrl, cancellationToken);
-            var backdrop = await CacheArtworkUrlAsync(result.MediaType, result.BackdropUrl, cancellationToken);
-            localized.Add(result with
+            try
             {
-                PosterUrl = poster ?? result.PosterUrl,
-                BackdropUrl = backdrop ?? result.BackdropUrl
-            });
+                await slots.WaitAsync(deadline.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return result;
+            }
+
+            try
+            {
+                var poster = await CacheArtworkUrlAsync(result.MediaType, result.PosterUrl, deadline.Token);
+                var backdrop = await CacheArtworkUrlAsync(result.MediaType, result.BackdropUrl, deadline.Token);
+                return result with
+                {
+                    PosterUrl = poster ?? result.PosterUrl,
+                    BackdropUrl = backdrop ?? result.BackdropUrl
+                };
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return result;
+            }
+            finally
+            {
+                slots.Release();
+            }
         }
 
-        return localized;
+        return await Task.WhenAll(results.Select(LocalizeOneAsync));
     }
 
     public async Task<string?> CacheArtworkUrlAsync(
@@ -654,7 +695,19 @@ public sealed partial class TmdbMetadataProvider(
         }
 
         var cacheKey = ComputeSha256(remoteUri.ToString());
-        await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+        var file = await FindCachedArtworkFileAsync(cacheKey, cancellationToken)
+            ?? await DownloadArtworkAsync(cacheKey, mediaType, remoteUri, cancellationToken);
+        return file is null ? remoteUrl : $"/api/metadata/artwork/{cacheKey}";
+    }
+
+    /// <summary>
+    /// The cached file for a key: the one the row names (found by its own name
+    /// in this data folder, #1088), or failing that any <c>&lt;key&gt;.*</c>
+    /// left in <c>artwork-cache</c> with no row at all.
+    /// </summary>
+    private async Task<string?> FindCachedArtworkFileAsync(string cacheKey, CancellationToken cancellationToken)
+    {
+        await ArtworkCacheGate.WaitAsync(cancellationToken);
         try
         {
             var cachedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
@@ -662,111 +715,208 @@ public sealed partial class TmdbMetadataProvider(
                 && TryGetManagedArtworkPath(cacheKey, cachedPath, out var cachedFile)
                 && File.Exists(cachedFile))
             {
-                return $"/api/metadata/artwork/{cacheKey}";
+                return cachedFile;
             }
         }
         finally
         {
-            _artworkCacheMaintenanceGate.Release();
-        }
-
-        var extension = ResolveArtworkExtension(remoteUri);
-        var destinationPath = Path.Combine(_artworkRootPath, $"{cacheKey}{extension}");
-
-        // Artwork comes from the same provider and counts against the same
-        // budget. A backfill fetching a poster per title is the larger half of
-        // the traffic, not an afterthought.
-        if (await outboundRequestThrottle.TryAcquireAsync(
-                remoteUri.Host,
-                OutboundRate.MetadataProviderDefault,
-                MaxMetadataThrottleWait,
-                cancellationToken) is null)
-        {
-            return remoteUrl;
+            ArtworkCacheGate.Release();
         }
 
         try
         {
-            using var response = await httpClient.GetAsync(remoteUri, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            if (!Directory.Exists(_artworkRootPath))
             {
-                await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
-                try
-                {
-                    await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, cancellationToken);
-                }
-                finally
-                {
-                    _artworkCacheMaintenanceGate.Release();
-                }
-
-                return remoteUrl;
+                return null;
             }
 
-            await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+            return Directory
+                .EnumerateFiles(_artworkRootPath, $"{cacheKey}.*")
+                .FirstOrDefault(path =>
+                    !path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(Path.GetFileNameWithoutExtension(path), cacheKey, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Downloads one artwork file and saves it, once per key however many
+    /// requests want it. Only a real image is kept: the answer must say it is
+    /// an image and start with an image's first bytes, so a captive portal's
+    /// page or an empty body is never served as a poster. The file is written
+    /// beside its final name and renamed, so a half-written poster is never
+    /// visible. Returns null when nothing was saved; the failure is written
+    /// down so the address is still on the row for a later repair.
+    /// </summary>
+    private async Task<string?> DownloadArtworkAsync(
+        string cacheKey,
+        string mediaType,
+        Uri remoteUri,
+        CancellationToken cancellationToken)
+    {
+        var flight = ArtworkDownloadLocks.GetOrAdd(
+            Path.Combine(_artworkRootPath, cacheKey),
+            _ => new SemaphoreSlim(1, 1));
+        await flight.WaitAsync(cancellationToken);
+        try
+        {
+            // Another request may have saved it while this one waited.
+            var existing = await FindCachedArtworkFileAsync(cacheKey, cancellationToken);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            // Artwork comes from the same provider and counts against the same
+            // budget. A backfill fetching a poster per title is the larger half
+            // of the traffic, not an afterthought.
+            if (await outboundRequestThrottle.TryAcquireAsync(
+                    remoteUri.Host,
+                    OutboundRate.MetadataProviderDefault,
+                    MaxMetadataThrottleWait,
+                    cancellationToken) is null)
+            {
+                return null;
+            }
+
             try
             {
-                // Another metadata request may have completed while this one
-                // was waiting on the provider. Reuse its file rather than
-                // replacing it or resetting its cache age.
-                var refreshedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
-                if (refreshedPath is not null
-                    && TryGetManagedArtworkPath(cacheKey, refreshedPath, out var refreshedFile)
-                    && File.Exists(refreshedFile))
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(ArtworkDownloadTimeout);
+
+                using var response = await httpClient.GetAsync(
+                    remoteUri,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    timeout.Token);
+                if (!response.IsSuccessStatusCode)
                 {
-                    return $"/api/metadata/artwork/{cacheKey}";
+                    await RecordArtworkFailureAsync(cacheKey, mediaType, remoteUri);
+                    return null;
+                }
+
+                var declaredType = response.Content.Headers.ContentType?.MediaType;
+                if (declaredType is null
+                    || !declaredType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                    || response.Content.Headers.ContentLength > MaxArtworkBytes)
+                {
+                    await RecordArtworkFailureAsync(cacheKey, mediaType, remoteUri);
+                    return null;
+                }
+
+                var body = await response.Content.ReadAsByteArrayAsync(timeout.Token);
+                var extension = body.Length <= MaxArtworkBytes ? SniffImageExtension(body) : null;
+                if (extension is null)
+                {
+                    await RecordArtworkFailureAsync(cacheKey, mediaType, remoteUri);
+                    return null;
                 }
 
                 Directory.CreateDirectory(_artworkRootPath);
-                await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
-                await using (var output = File.Open(destinationPath, FileMode.Create, FileAccess.Write, FileShare.Read))
-                {
-                    await stream.CopyToAsync(output, cancellationToken);
-                }
-
-                await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), destinationPath, cancellationToken);
-            }
-            finally
-            {
-                _artworkCacheMaintenanceGate.Release();
-            }
-
-            return $"/api/metadata/artwork/{cacheKey}";
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // A failed fetch should be remembered so a broken remote URL is
-            // not treated as a fresh download on every request. Do not let a
-            // best-effort cache write hide the original provider failure.
-            try
-            {
-                await _artworkCacheMaintenanceGate.WaitAsync(CancellationToken.None);
+                var destinationPath = Path.Combine(Path.GetFullPath(_artworkRootPath), $"{cacheKey}{extension}");
+                var temporaryPath = $"{destinationPath}.{Guid.NewGuid():N}.tmp";
                 try
                 {
-                    await UpsertArtworkCacheAsync(
-                        cacheKey,
-                        mediaType,
-                        remoteUri.ToString(),
-                        null,
-                        CancellationToken.None);
+                    await File.WriteAllBytesAsync(temporaryPath, body, cancellationToken);
+                    await ArtworkCacheGate.WaitAsync(cancellationToken);
+                    try
+                    {
+                        File.Move(temporaryPath, destinationPath, overwrite: true);
+                        await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), destinationPath, cancellationToken);
+                    }
+                    finally
+                    {
+                        ArtworkCacheGate.Release();
+                    }
                 }
                 finally
                 {
-                    _artworkCacheMaintenanceGate.Release();
+                    try
+                    {
+                        if (File.Exists(temporaryPath))
+                        {
+                            File.Delete(temporaryPath);
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // A leftover temporary file is harmless; it is never served.
+                    }
                 }
+
+                return destinationPath;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
-                // The remote URL is still the useful fallback when the cache
-                // database is unavailable.
+                // Includes the download timeout. A failed fetch is remembered so
+                // a broken address is not treated as fresh on every request, and
+                // a cache-database fault must not hide the provider failure.
+                await RecordArtworkFailureAsync(cacheKey, mediaType, remoteUri);
+                return null;
             }
-
-            return remoteUrl;
         }
+        finally
+        {
+            flight.Release();
+        }
+    }
+
+    private async Task RecordArtworkFailureAsync(string cacheKey, string mediaType, Uri remoteUri)
+    {
+        try
+        {
+            await ArtworkCacheGate.WaitAsync(CancellationToken.None);
+            try
+            {
+                await UpsertArtworkCacheAsync(cacheKey, mediaType, remoteUri.ToString(), null, CancellationToken.None);
+            }
+            finally
+            {
+                ArtworkCacheGate.Release();
+            }
+        }
+        catch
+        {
+            // The remote address is still the useful fallback when the cache
+            // database is unavailable.
+        }
+    }
+
+    /// <summary>The file extension for an image's first bytes, or null when they are not an image.</summary>
+    internal static string? SniffImageExtension(ReadOnlySpan<byte> body)
+    {
+        if (body.Length >= 3 && body[0] == 0xFF && body[1] == 0xD8 && body[2] == 0xFF)
+        {
+            return ".jpg";
+        }
+
+        if (body.Length >= 8 && body[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }))
+        {
+            return ".png";
+        }
+
+        if (body.Length >= 6 && (body[..6].SequenceEqual("GIF87a"u8) || body[..6].SequenceEqual("GIF89a"u8)))
+        {
+            return ".gif";
+        }
+
+        if (body.Length >= 12 && body[..4].SequenceEqual("RIFF"u8) && body[8..12].SequenceEqual("WEBP"u8))
+        {
+            return ".webp";
+        }
+
+        if (body.Length >= 2 && body[0] == 0x42 && body[1] == 0x4D)
+        {
+            return ".bmp";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -792,12 +942,32 @@ public sealed partial class TmdbMetadataProvider(
         var skippedReferenced = 0;
         var failed = 0;
 
-        await _artworkCacheMaintenanceGate.WaitAsync(cancellationToken);
+        await ArtworkCacheGate.WaitAsync(cancellationToken);
         try
         {
             await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
                 DelunoDatabaseNames.Cache,
                 cancellationToken);
+
+            // A search that is out of date is still answered from the cache when
+            // the provider is down, so the artwork its results point at stays.
+            using (var searchCommand = connection.CreateCommand())
+            {
+                searchCommand.CommandText = "SELECT result_json FROM search_result_cache;";
+                using var searchReader = await searchCommand.ExecuteReaderAsync(cancellationToken);
+                while (await searchReader.ReadAsync(cancellationToken))
+                {
+                    if (searchReader.IsDBNull(0))
+                    {
+                        continue;
+                    }
+
+                    foreach (System.Text.RegularExpressions.Match match in CachedSearchArtworkKey().Matches(searchReader.GetString(0)))
+                    {
+                        referenced.Add(match.Groups[1].Value.ToLowerInvariant());
+                    }
+                }
+            }
 
             var candidates = new List<ArtworkCacheEntry>();
             using (var command = connection.CreateCommand())
@@ -900,7 +1070,7 @@ public sealed partial class TmdbMetadataProvider(
         }
         finally
         {
-            _artworkCacheMaintenanceGate.Release();
+            ArtworkCacheGate.Release();
         }
 
         return new ArtworkCacheCleanupResult(
@@ -973,36 +1143,106 @@ public sealed partial class TmdbMetadataProvider(
 
     public async Task<MetadataArtworkAsset?> GetCachedArtworkAsync(string cacheKey, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(cacheKey))
+        if (!IsArtworkCacheKey(cacheKey, out var key))
         {
             return null;
         }
 
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Cache,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT local_path
-            FROM artwork_cache
-            WHERE cache_key = @cacheKey
-            LIMIT 1;
-            """;
-        AddParameter(command, "@cacheKey", cacheKey.Trim());
-
-        var localPath = await command.ExecuteScalarAsync(cancellationToken) as string;
-        if (localPath is null
-            || !TryGetManagedArtworkPath(cacheKey.Trim(), localPath, out var filePath)
-            || !File.Exists(filePath))
+        var file = await FindCachedArtworkFileAsync(key, cancellationToken);
+        if (file is null)
         {
-            return null;
+            // The file is gone (deleted, cleaned up, or only partly restored):
+            // fetch it again from the address the row remembers (#1089).
+            var row = await ReadArtworkRowAsync(key, cancellationToken);
+            if (row is null
+                || !Uri.TryCreate(row.RemoteUrl, UriKind.Absolute, out var remoteUri)
+                || !IsArtworkSourceAllowed(remoteUri)
+                || !string.Equals(ComputeSha256(remoteUri.ToString()), key, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            file = await DownloadArtworkAsync(key, row.MediaType, remoteUri, cancellationToken);
         }
 
-        return new MetadataArtworkAsset(
-            filePath,
-            ResolveContentType(filePath));
+        return file is null
+            ? null
+            : new MetadataArtworkAsset(file, ResolveContentType(file));
+    }
+
+    private static bool IsArtworkCacheKey(string? cacheKey, out string key)
+    {
+        key = string.Empty;
+        if (cacheKey is null)
+        {
+            return false;
+        }
+
+        var candidate = cacheKey.Trim();
+        if (candidate.Length != 64 || candidate.Any(character => !Uri.IsHexDigit(character)))
+        {
+            return false;
+        }
+
+        key = candidate.ToLowerInvariant();
+        return true;
+    }
+
+    /// <summary>
+    /// Deluno only fetches artwork over http(s) from a named host, never from
+    /// the machine itself or its local network, and the address on a row must
+    /// hash to the row's own key, so nothing but what Deluno itself once
+    /// localised can be fetched here.
+    /// </summary>
+    private static bool IsArtworkSourceAllowed(Uri uri)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp)
+        {
+            return false;
+        }
+
+        if (uri.IsLoopback
+            || uri.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6
+            || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || !uri.Host.Contains('.'))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<ArtworkRow?> ReadArtworkRowAsync(string cacheKey, CancellationToken cancellationToken)
+    {
+        await ArtworkCacheGate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                DelunoDatabaseNames.Cache,
+                cancellationToken);
+
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                SELECT remote_url, media_type
+                FROM artwork_cache
+                WHERE cache_key = @cacheKey
+                LIMIT 1;
+                """;
+            AddParameter(command, "@cacheKey", cacheKey);
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0))
+            {
+                return null;
+            }
+
+            return new ArtworkRow(reader.GetString(0), reader.IsDBNull(1) ? "movies" : reader.GetString(1));
+        }
+        finally
+        {
+            ArtworkCacheGate.Release();
+        }
     }
 
     private async Task<string?> ReadArtworkLocalPathAsync(string cacheKey, CancellationToken cancellationToken)
@@ -3112,6 +3352,11 @@ public sealed partial class TmdbMetadataProvider(
         var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("/api/metadata/artwork/([0-9a-fA-F]{64})")]
+    private static partial System.Text.RegularExpressions.Regex CachedSearchArtworkKey();
+
+    private sealed record ArtworkRow(string RemoteUrl, string MediaType);
 
     private sealed record ArtworkCacheEntry(
         string CacheKey,

@@ -113,10 +113,9 @@ public sealed class TmdbMetadataProviderTests : IDisposable
 
             if (uri.Equals("https://img.deluno.test/inception.jpg", StringComparison.OrdinalIgnoreCase))
             {
-                return new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new ByteArrayContent([1, 2, 3, 4, 5])
-                };
+                var image = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xE0, 4, 5]);
+                image.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg");
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = image };
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
