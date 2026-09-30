@@ -812,6 +812,10 @@ export interface IndexerCallLimitStatus {
 export interface IndexerItem {
   id: string;
   name: string;
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
+
   protocol: string;
   /**
    * What the app you migrated from called this source: "private",
@@ -917,6 +921,9 @@ export interface ProxyItem {
   address: string;
   username?: string | null;
   hasPassword: boolean;
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
   isEnabled: boolean;
   createdUtc: string;
   updatedUtc: string;
@@ -1124,6 +1131,9 @@ export interface NotificationPreferences {
 }
 
 export interface DownloadClientItem {
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
   id: string;
   name: string;
   /** qbittorrent | sabnzbd | nzbget | transmission | deluge | utorrent */
@@ -1459,6 +1469,9 @@ export interface ProcessorConnectionItem {
   /** Optional address Deluno asks (GET) to prove the processor is up (#1055). */
   healthCheckUrl?: string | null;
   secretConfigured: boolean;
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
   isEnabled: boolean;
   healthStatus: "unknown" | "healthy" | "degraded" | "unreachable" | string;
   lastHealthMessage: string | null;

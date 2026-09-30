@@ -41,6 +41,8 @@ describe("processor connection health-check address", () => {
     expect(processorSub({ secretConfigured: true, healthCheckUrl: null, healthStatus: "degraded" })).toMatch(/Add a health check address \(Edit\)/);
     expect(processorSub({ secretConfigured: true, healthCheckUrl: "http://x/ready", healthStatus: "healthy" })).toBe("Token saved");
     expect(processorSub({ secretConfigured: false, healthCheckUrl: null, healthStatus: "healthy" })).toBe("No token");
+    // #1094: a token saved on another computer is not "saved" here.
+    expect(processorSub({ secretConfigured: true, secretUnreadable: true, healthCheckUrl: null, healthStatus: "degraded" })).toMatch(/can't be read here/);
   });
 });
 

@@ -1,3 +1,4 @@
+import { SecretUnreadableNotice } from "./secret-unreadable-notice";
 import { useEffect, useState, type FormEvent } from "react";
 import { Copy, Loader2, Wifi } from "lucide-react";
 import { fetchJson, readValidationProblem } from "../../lib/api";
@@ -23,6 +24,9 @@ export interface SeerrServer {
   name: string;
   baseUrl: string;
   hasApiKey: boolean;
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
   isEnabled: boolean;
   healthStatus: string;
   lastHealthMessage: string | null;
@@ -378,6 +382,7 @@ export function SeerrServersCard({
           />
         }
       >
+        <SecretUnreadableNotice item={editing} />
         <DrawerSection title="Basics">
           <Field label="Address" error={errors.baseUrl} help="Including the port, for example http://192.168.1.20:5055.">
             <Input value={form.baseUrl} onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="http://192.168.1.20:5055" autoComplete="off" className="font-mono" />

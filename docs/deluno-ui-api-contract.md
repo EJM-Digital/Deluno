@@ -597,6 +597,13 @@ Current UI contract expectations:
 - inbound download-client webhook payloads are normalized and idempotent across duplicate completed/failed callbacks
 - outbound notification webhooks support event-filter matching, Discord embed formatting, and bounded retry delivery before recording final error state
 
+Saved secrets that cannot be read here (#1094):
+
+- API keys, passwords, tokens and webhook secrets are protected per computer and account. One saved on another computer (a restored backup, a moved install) cannot be read here. That never fails a list: every reader goes through `ISecretProtector.TryUnprotect`, which answers no value, a value, or "cannot be read here".
+- The list items for indexers, download clients, indexer proxies, processor connections (`/api/integrations/processors/connections`), media servers, Seerr servers and subtitle providers carry `secretUnreadable: boolean` and `secretProblem: string | null` (plain words: "The saved API key was stored on another computer and can't be read here. Enter it again."). The secret itself is listed as missing (`hasApiKey`/`hasPassword`/`hasToken` false).
+- While the flag is set and the connection is enabled, `healthStatus` is `degraded` and `lastHealthMessage` is that sentence, so Health, the Dashboard and any background work (tests, searches, grabs, refreshes) report the same clear reason instead of a crypto error. Tests and grabs refuse with it rather than trying the missing key.
+- Entering the secret again through the normal save (`PUT`/save) replaces the stored value and clears the flag.
+
 Current gaps:
 
 - reorder/prioritization contracts are still indirect
