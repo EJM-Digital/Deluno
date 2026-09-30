@@ -2087,26 +2087,7 @@ public sealed class SqliteSeriesCatalogRepository(
         }
 
         // An unmonitored episode is not wanted, so not missing: the show's stored rung moves with it (#1072).
-        foreach (var seriesId in touched)
-        {
-            var libraryIds = new List<string>();
-            using (var libraries = connection.CreateCommand())
-            {
-                libraries.Transaction = transaction;
-                libraries.CommandText = "SELECT DISTINCT library_id FROM series_wanted_state WHERE series_id = @seriesId;";
-                AddParameter(libraries, "@seriesId", seriesId);
-                using var libraryReader = await libraries.ExecuteReaderAsync(cancellationToken);
-                while (await libraryReader.ReadAsync(cancellationToken))
-                {
-                    libraryIds.Add(libraryReader.GetString(0));
-                }
-            }
-
-            foreach (var libraryId in libraryIds)
-            {
-                await RefreshSeriesRungAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
-            }
-        }
+        await RefreshSeriesRungsAsync(connection, transaction, touched, now, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return updated;
@@ -3538,6 +3519,41 @@ public sealed class SqliteSeriesCatalogRepository(
     }
 
     /// <summary>
+    /// Re-decides the stored rung of each show for every library that holds it.
+    /// The one call every writer of <c>episode_entries.monitored</c> or
+    /// <c>has_file</c> ends with, inside its own transaction, so the stored
+    /// column automatic search reads never lags the episodes (#1072).
+    /// </summary>
+    private async Task RefreshSeriesRungsAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        IEnumerable<string> seriesIds,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        foreach (var seriesId in seriesIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var libraryIds = new List<string>();
+            using (var libraries = connection.CreateCommand())
+            {
+                libraries.Transaction = transaction;
+                libraries.CommandText = "SELECT DISTINCT library_id FROM series_wanted_state WHERE series_id = @seriesId;";
+                AddParameter(libraries, "@seriesId", seriesId);
+                using var libraryReader = await libraries.ExecuteReaderAsync(cancellationToken);
+                while (await libraryReader.ReadAsync(cancellationToken))
+                {
+                    libraryIds.Add(libraryReader.GetString(0));
+                }
+            }
+
+            foreach (var libraryId in libraryIds)
+            {
+                await RefreshSeriesRungAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
     /// Re-decides one show's rung from its episodes and stores it.
     ///
     /// <para><b>The stored column is what the chips and the status filter read</b>
@@ -3778,7 +3794,9 @@ public sealed class SqliteSeriesCatalogRepository(
 
         if (!string.IsNullOrWhiteSpace(episodeId))
         {
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
             using var episode = connection.CreateCommand();
+            episode.Transaction = transaction;
             episode.CommandText =
                 """
                 UPDATE episode_entries
@@ -3797,6 +3815,7 @@ public sealed class SqliteSeriesCatalogRepository(
             var updatedEpisode = await episode.ExecuteNonQueryAsync(cancellationToken);
 
             using var wanted = connection.CreateCommand();
+            wanted.Transaction = transaction;
             wanted.CommandText =
                 """
                 UPDATE episode_wanted_state
@@ -3810,6 +3829,8 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@libraryId", libraryId);
             AddParameter(wanted, "@now", now.ToString("O"));
             await wanted.ExecuteNonQueryAsync(cancellationToken);
+            await RefreshSeriesRungsAsync(connection, transaction, [seriesId], now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return updatedEpisode > 0;
         }
 
@@ -3942,6 +3963,7 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@libraryId", libraryId);
             AddParameter(wanted, "@now", now);
             await wanted.ExecuteNonQueryAsync(cancellationToken);
+            await RefreshSeriesRungsAsync(connection, transaction, [seriesId], timeProvider.GetUtcNow(), cancellationToken);
             return true;
         }
 
@@ -5075,6 +5097,12 @@ public sealed class SqliteSeriesCatalogRepository(
             updated += await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        await RefreshSeriesRungsAsync(
+            connection,
+            transaction,
+            scopes.Select(scope => scope.SeriesId),
+            timeProvider.GetUtcNow(),
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;
     }
