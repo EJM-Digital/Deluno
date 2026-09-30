@@ -59,8 +59,8 @@ export const fullSummary: DashboardSummary = {
   health: {
     asOfUtc: NOW, problems: 3, unknown: 1, suggestions: 1, lastRunUtc: "2026-09-30T09:45:00Z",
     topProblems: [
-      { id: "indexer:i2", title: "Nyaa.si isn\u2019t answering", category: "indexers", message: "HTTP 504 since 27 Sep.", sinceUtc: null, link: "/indexers/indexers" },
-      { id: "system:background-problem:startup:service-restart-on-failure", title: "Restart after a crash isn\u2019t set", category: "system", message: "Windows won\u2019t restart Deluno by itself.", sinceUtc: null, link: "/system" }
+      { id: "indexer:i2", title: "Nyaa.si isn\u2019t answering", category: "indexers", message: "HTTP 504 since 27 Sep.", sinceUtc: null, link: "/indexers/indexers", snoozed: false },
+      { id: "system:background-problem:startup:service-restart-on-failure", title: "Restart after a crash isn\u2019t set", category: "system", message: "Windows won\u2019t restart Deluno by itself.", sinceUtc: null, link: "/system", snoozed: false }
     ]
   },
   storage: { asOfUtc: NOW, readingUtc: "2026-09-30T09:59:00Z", volumes: [

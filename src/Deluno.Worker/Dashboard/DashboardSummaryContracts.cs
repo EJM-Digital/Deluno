@@ -272,13 +272,15 @@ public sealed record DashboardHealthSection(
     IReadOnlyList<DashboardHealthProblem> TopProblems);
 
 /// <param name="Link">The screen that clears it, as a web path.</param>
+/// <param name="Snoozed">True while the person has snoozed it; a snoozed problem is not counted.</param>
 public sealed record DashboardHealthProblem(
     string Id,
     string Title,
     string Category,
     string Message,
     DateTimeOffset? SinceUtc,
-    string Link);
+    string Link,
+    bool Snoozed);
 
 // ---------------------------------------------------------------- storage
 

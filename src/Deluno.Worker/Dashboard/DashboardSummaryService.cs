@@ -564,7 +564,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
                 check.Category,
                 check.Message,
                 check.ProblemSinceUtc,
-                LinkFor(check.Category)))
+                LinkFor(check.Category),
+                check.IsSnoozed(now)))
             .ToArray();
 
         var summary = summaryTask.Result;

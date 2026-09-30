@@ -934,6 +934,8 @@ export interface DashboardHealthProblem {
   sinceUtc: string | null;
   /** The screen that clears it, as a web path. */
   link: string;
+  /** True while the person has snoozed it; a snoozed problem is not counted. */
+  snoozed: boolean;
 }
 
 export interface DashboardHealthSection {

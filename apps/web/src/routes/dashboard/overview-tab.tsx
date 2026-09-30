@@ -14,7 +14,7 @@ import type { DashboardActivityItem, DashboardSummary } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { ago, bytesText, plural, speedText, until, uptimeText } from "./format";
 import { useDashboardAttention } from "./use-dashboard-attention";
-import { Panel, Plain } from "./parts";
+import { FitList, Panel, Plain } from "./parts";
 import { useSetupState } from "./sources";
 
 interface AreaLine {
@@ -225,6 +225,7 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
   const needs = attention.items;
   const latest = summary?.activity?.recent ?? [];
   const showSetup = setup.ready && !setup.status.isComplete;
+  const areaLines = summary ? buildAreaLines(summary) : [];
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -246,8 +247,9 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
         <Panel title="Areas" count="each opens its tab">
           {summary ? (
-            <ul>
-              {buildAreaLines(summary).map((line) => (
+            <FitList
+              moreTo={(hidden) => areaLines.find((line) => line.id === hidden[0]?.key)?.to ?? "/?tab=library"}
+              rows={areaLines.map((line) => (
                 <li key={line.id} className="relative flex min-h-[52px] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)] py-2 transition-colors last:border-b-0 hover:bg-primary/[0.05]">
                   <StatusLed tone={line.tone} />
                   <div className="min-w-0 flex-1">
@@ -267,18 +269,38 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
                   <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                 </li>
               ))}
-            </ul>
+            />
           ) : (
             <Plain>Waiting for the numbers from Deluno.</Plain>
           )}
         </Panel>
 
-        <Panel title="Needs you" className="max-lg:order-first" count={attention.counts.overview === 0 ? "nothing right now" : String(attention.counts.overview)}>
+        <Panel
+          title="Needs you"
+          className="max-lg:order-first"
+          count={
+            attention.counts.overview === 0 ? (
+              "nothing right now"
+            ) : attention.dashboardOnly > 0 ? (
+              <span title="The sidebar's Needs a look card counts the same problems, without the checks only the Dashboard makes: download clients, processors, background workers, collections, request servers and setup.">
+                <span>{attention.counts.overview}</span>
+                <span> · the sidebar counts {attention.counts.overview - attention.dashboardOnly}</span>
+              </span>
+            ) : (
+              String(attention.counts.overview)
+            )
+          }
+        >
           {needs.length === 0 ? (
             <Plain>Nothing needs you. Anything that does will be listed here, each with a button that fixes it.</Plain>
           ) : (
-            <ul>
-              {needs.map((row) => (
+            <FitList
+              moreTo={(hidden) => {
+                const first = needs.find((row) => row.id === hidden[0]?.key);
+                return first && first.tab !== "overview" ? `/?tab=${first.tab}` : first?.to ?? "/queue";
+              }}
+              moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more`}
+              rows={needs.map((row) => (
                 <li key={row.id} className="flex min-h-[52px] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
                   <StatusLed tone={row.tone === "bad" ? "bad" : "warn"} />
                   <div className="min-w-0 flex-1">
@@ -290,7 +312,7 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
                   </Button>
                 </li>
               ))}
-            </ul>
+            />
           )}
         </Panel>
 
@@ -298,8 +320,9 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
           {latest.length === 0 ? (
             <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
           ) : (
-            <ul>
-              {latest.map((item) => (
+            <FitList
+              moreTo="/activity"
+              rows={latest.map((item) => (
                 <li key={item.id} className="border-b border-hairline last:border-b-0">
                   <Link
                     to={entityLink(item)}
@@ -312,7 +335,7 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
                   </Link>
                 </li>
               ))}
-            </ul>
+            />
           )}
         </Panel>
       </div>

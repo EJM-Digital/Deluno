@@ -26,6 +26,7 @@ import { cn } from "../../lib/utils";
 import { useDashboardAttention } from "./use-dashboard-attention";
 import type { DashboardAttention } from "./attention";
 import { ActionButton, FactRow, Panel, PanelLink, PanelNote, ago, formatSize, plainWords, plural, send, until, useAction } from "./downloads-kit";
+import { FitList } from "./parts";
 
 const MACHINE_HOURS = 6;
 
@@ -136,12 +137,13 @@ const linkButton =
 function Problems({ summary, attention, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
   const health = summary?.health;
   const system = summary?.system;
-  const problems = health?.topProblems ?? [];
+  // A snoozed problem is not counted, so it is not listed either.
+  const problems = (health?.topProblems ?? []).filter((problem) => !problem.snoozed);
   const failedLanes = system?.lanes.filter((lane) => lane.state === "failing") ?? [];
   const failedJobs = attention.jobsGaveUp;
   const total = attention.counts.system;
-  const shownProblems = problems.length;
-  const more = Math.max(0, (health?.problems ?? 0) - shownProblems);
+  // Health problems the summary did not carry: the list panel says "and N more" for these too.
+  const more = attention.items.find((item) => item.id === "health:more")?.count ?? 0;
 
   return (
     <Panel
@@ -152,7 +154,6 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
       className="flex-[13]"
       footer={
         <span className="flex flex-wrap items-center gap-x-3">
-          {more > 0 ? <Link className="text-primary hover:underline" to="/system">{`and ${more} more on Health`}</Link> : null}
           {(health?.suggestions ?? 0) > 0 ? <Link className="text-primary hover:underline" to="/system">{plural(health?.suggestions ?? 0, "suggestion")}</Link> : null}
           <span>{(health?.unknown ?? 0) > 0 ? `${health?.unknown} not checked yet` : health?.lastRunUtc ? `Last checked ${ago(health.lastRunUtc)}` : "Not checked yet"}</span>
         </span>
@@ -161,8 +162,8 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
       {total === 0 ? (
         <PanelNote>Nothing is wrong. Deluno checks downloads, indexers, libraries and connections every 15 minutes{health?.lastRunUtc ? `, most recently ${ago(health.lastRunUtc)}` : ""}.</PanelNote>
       ) : (
-        <ul>
-          {problems.map((problem) => {
+        <FitList moreTo="/system" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Health`} extra={more} rows={[
+          ...problems.map((problem) => {
             const startup = problem.id.startsWith(STARTUP_PREFIX);
             const key = problem.id.slice("system:background-problem:".length);
             return (
@@ -203,9 +204,9 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
                 />
               </li>
             );
-          })}
-          {failedJobs > 0 ? (
-            <li className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
+          }),
+          ...(failedJobs > 0 ? [
+            <li key="jobs-gave-up" className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="bad" />
               <div className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{plural(failedJobs, "job")} gave up</span>
@@ -220,8 +221,8 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
               />
               <Link to="/activity" aria-label="Review the jobs that gave up" className={linkButton}>Review</Link>
             </li>
-          ) : null}
-          {failedLanes.map((lane) => (
+          ] : []),
+          ...failedLanes.map((lane) => (
             <li key={lane.name} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="bad" />
               <div className="min-w-0 flex-1 leading-tight">
@@ -230,8 +231,8 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
               </div>
               <Link to="/system" aria-label={`Look at ${plainWords(lane.name, "the worker")}`} className={linkButton}>Look</Link>
             </li>
-          ))}
-        </ul>
+          ))
+        ]} />
       )}
     </Panel>
   );
@@ -254,8 +255,8 @@ function Automation({ summary }: { summary: DashboardSummary | undefined }) {
       {!automation || automation.libraries.length === 0 ? (
         <PanelNote>No library is set up yet, so there is nothing to search for. Add a library and Deluno starts looking.</PanelNote>
       ) : (
-        <ul>
-          {automation.libraries.map((library) => {
+        <FitList moreTo="/search-cycles" rows={[
+          ...automation.libraries.map((library) => {
             const bad = Boolean(library.lastError);
             return (
               <li key={library.libraryId} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-1.5 last:border-b-0">
@@ -271,11 +272,11 @@ function Automation({ summary }: { summary: DashboardSummary | undefined }) {
                 </span>
               </li>
             );
-          })}
-          {notes.map((note) => (
+          }),
+          ...notes.map((note) => (
             <li key={note} className="border-b border-hairline px-[var(--card-pad-x)] py-1.5 text-[length:var(--type-caption)] text-warning last:border-b-0">{note}</li>
-          ))}
-        </ul>
+          ))
+        ]} />
       )}
     </Panel>
   );
@@ -293,7 +294,7 @@ function Machine({ summary, window }: { summary: DashboardSummary | undefined; w
   const flat = "rounded-none border-0 shadow-none";
 
   return (
-    <ListCard title="This computer" count={`last ${MACHINE_HOURS} hours`} actions={<PanelLink to="/system">Health</PanelLink>} className="min-h-0 flex-[9]">
+    <ListCard title="This computer" count={`last ${MACHINE_HOURS} hours`} actions={<PanelLink to="/system">Health</PanelLink>} className="shrink-0">
       {machine ? (
         <div className="grid min-h-0 grid-cols-2 gap-x-2">
           <MetricChart
@@ -347,20 +348,27 @@ function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) 
       count={tasks.length > 0 ? (failed > 0 ? `${failed} failed` : "none failed") : undefined}
       to="/system"
       linkLabel="System"
-      className="flex-[20]"
+      className="flex-1"
     >
       {tasks.length === 0 ? (
         <PanelNote>No scheduled tasks have been reported yet.</PanelNote>
       ) : (
-        <ListTable
-          chevron={false}
-          columns={[
-            { label: "Task", width: "minmax(0,1.6fr)", mobile: true },
-            { label: "Last time", width: "minmax(0,1fr)" },
-            { label: "Next", width: "6.5rem", align: "end" }
-          ]}
-        >
-          {tasks.map((task) => {
+        <FitList
+          moreTo="/system"
+          moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more tasks`}
+          wrap={(shown) => (
+            <ListTable
+              chevron={false}
+              columns={[
+                { label: "Task", width: "minmax(0,1.6fr)", mobile: true },
+                { label: "Last time", width: "minmax(0,1fr)" },
+                { label: "Next", width: "6.5rem", align: "end" }
+              ]}
+            >
+              {shown}
+            </ListTable>
+          )}
+          rows={tasks.map((task) => {
             const state = taskState(task);
             return (
               <ListRow key={task.key} className="min-h-[2rem] py-0.5">
@@ -377,7 +385,7 @@ function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) 
               </ListRow>
             );
           })}
-        </ListTable>
+        />
       )}
     </Panel>
   );
@@ -388,7 +396,7 @@ function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) 
 function UpdatesAndBackups({ summary }: { summary: DashboardSummary | undefined }) {
   const system = summary?.system;
   return (
-    <ListCard title="Updates and backups" actions={<PanelLink to="/system/backups">Backups</PanelLink>} className="min-h-0 flex-[7]">
+    <ListCard title="Updates and backups" actions={<PanelLink to="/system/backups">Backups</PanelLink>} className="shrink-0">
       <div className="py-1">
         <FactRow label="Updates">
           {system?.updateAvailable ? (
@@ -431,8 +439,7 @@ function RecentActivity({ summary, rows }: { summary: DashboardSummary | undefin
       {items.length === 0 ? (
         <PanelNote>Nothing has happened yet. Searches, downloads and imports will appear here as they happen.</PanelNote>
       ) : (
-        <ul>
-          {items.map((item) => (
+        <FitList moreTo="/activity" rows={items.map((item) => (
             <li key={item.id} className="border-b border-hairline px-[var(--card-pad-x)] py-1.5 leading-tight last:border-b-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.message}</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
@@ -440,8 +447,7 @@ function RecentActivity({ summary, rows }: { summary: DashboardSummary | undefin
                 {ago(item.createdUtc)}
               </span>
             </li>
-          ))}
-        </ul>
+          ))} />
       )}
     </Panel>
   );
@@ -465,8 +471,8 @@ function Storage({ summary }: { summary: DashboardSummary | undefined }) {
       {volumes.length === 0 ? (
         <PanelNote>No drive has been read yet, so free space is unknown. Add a library or a download client and it shows here.</PanelNote>
       ) : (
-        <ul>
-          {volumes.map((volume) => {
+        <FitList moreTo="/settings/libraries" moreLabel={(hidden) => `and ${hidden} more drives`} rows={
+          volumes.map((volume) => {
             const used = volume.totalBytes && volume.freeBytes !== null ? 1 - volume.freeBytes / volume.totalBytes : null;
             const roles = volume.roles.map((role) => ROLE_WORDS[role] ?? "Other").join(", ");
             return (
@@ -483,8 +489,7 @@ function Storage({ summary }: { summary: DashboardSummary | undefined }) {
                 </span>
               </li>
             );
-          })}
-        </ul>
+          })} />
       )}
     </Panel>
   );
