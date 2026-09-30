@@ -105,7 +105,8 @@ public interface IJobQueueRepository
 
     Task CompleteAsync(string jobId, string workerId, string? completionMessage, CancellationToken cancellationToken);
 
-    Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken);
+    /// <summary>errorMessage is the plain-words reason screens show (PlainFailure); rawDetail is the exception text, kept in the activity details.</summary>
+    Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken, string? rawDetail = null);
 
     /// <summary>
     /// Puts a running job back in the queue to run again at <paramref name="runAtUtc"/>,

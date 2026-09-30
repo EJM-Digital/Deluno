@@ -329,6 +329,35 @@ public sealed class JobStoreTests
     }
 
     [Fact]
+    public async Task A_failed_job_says_when_it_will_try_again_in_words_and_keeps_the_raw_text_in_details()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new MutableTimeProvider(DateTimeOffset.Parse("2026-04-29T04:00:00Z"));
+        await InitializeJobsAsync(storage, timeProvider);
+        var store = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+
+        var queued = await store.EnqueueAsync(
+            new EnqueueJobRequest(
+                JobType: LibrarySearchJobTypes.Movies,
+                Source: "test",
+                PayloadJson: """{"libraryId":"movies-main"}""",
+                RelatedEntityType: "library",
+                RelatedEntityId: "movies-main",
+                MaxAttempts: 3),
+            CancellationToken.None);
+        Assert.NotNull(await store.LeaseNextAsync("worker-a", TimeSpan.FromMinutes(5), [LibrarySearchJobTypes.Movies], CancellationToken.None));
+
+        await store.FailAsync(queued.Id, "worker-a", PlainFailure.UnreadableKey, CancellationToken.None, rawDetail: "Key not valid for use in specified state.");
+
+        var activities = await store.ListActivityAsync(20, null, null, CancellationToken.None);
+        Assert.NotEmpty(activities);
+        Assert.All(activities, activity => Assert.DoesNotMatch(@"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", activity.Message));
+        Assert.Contains(activities, activity => activity.Message.Contains("Deluno will try again", StringComparison.Ordinal));
+        Assert.DoesNotContain(activities, activity => activity.Message.Contains("Key not valid", StringComparison.Ordinal));
+        Assert.Contains(activities, activity => activity.DetailsJson?.Contains("Key not valid for use in specified state.", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
     public async Task Failed_jobs_retry_after_backoff_and_dead_letter_at_retry_limit()
     {
         using var storage = TestStorage.Create();

@@ -60,6 +60,19 @@ const loaderData = {
       createdUtc: "2026-09-27T08:04:00Z"
     },
     {
+      id: "job-failed",
+      category: "job.failed",
+      label: "Task failed",
+      message: "A saved key can't be read on this computer. Enter it again on the connection's page. Deluno will try again in about 5 minutes.",
+      severity: "warning",
+      detail: undefined,
+      detailsJson: null,
+      relatedJobId: "job-43",
+      relatedEntityType: "movie",
+      relatedEntityId: null,
+      createdUtc: "2026-09-27T08:02:00Z"
+    },
+    {
       id: "job-queued",
       category: "job.queued",
       message: "Added a media read (Movies) to the queue.",
@@ -196,6 +209,22 @@ describe("Activity names each kind of event in plain words (#1086)", () => {
     await userEvent.click(screen.getByText("Imported Arrival (2016)."));
     expect(await screen.findByText(/Imported into the library ·/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/filesystem\.import\.completed/);
+  });
+});
+
+describe("Activity shows failures and retry times in plain words (#1095)", () => {
+  it("shows the plain reason and a relative retry time, and no machine timestamp anywhere", async () => {
+    window.localStorage.clear();
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+
+    expect(screen.getByText(/Deluno will try again in about 5 minutes\./)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+    expect(document.body.textContent).not.toMatch(/Key not valid|will retry after/);
   });
 });
 

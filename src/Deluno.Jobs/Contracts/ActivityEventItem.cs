@@ -11,7 +11,7 @@ public sealed record ActivityEventItem(
     DateTimeOffset CreatedUtc)
 {
     /// <summary>What happened. A job type an older row still carries in it is worded as the job (#1086).</summary>
-    public string Message { get; init; } = Deluno.Contracts.JobTypeLabels.RewriteCodes(WithoutDecisionScope(Category, Message));
+    public string Message { get; init; } = Deluno.Contracts.PlainFailure.Rewrite(Deluno.Contracts.JobTypeLabels.RewriteCodes(WithoutDecisionScope(Category, Message)), CreatedUtc);
 
     /// <summary>The event kind in plain words (#1086); screens show this, never <see cref="Category"/>.</summary>
     public string Label => Deluno.Contracts.ActivityEventLabels.For(Category);
