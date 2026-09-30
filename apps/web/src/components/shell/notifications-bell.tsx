@@ -184,7 +184,10 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const margin = 16;
-      const width = Math.min(384, window.innerWidth - margin * 2);
+      // Wide enough for a title, its reason and the row's buttons side by side
+      // (the owner, 1 Oct: "i think this can be wider"); a phone gets its width less
+      // the margins.
+      const width = Math.min(560, window.innerWidth - margin * 2);
       let right = Math.max(margin, window.innerWidth - rect.right);
       // The bell sits near the right edge of a phone's narrow header, so a
       // panel anchored purely off the trigger's right edge ran off the left
