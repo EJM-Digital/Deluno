@@ -1,5 +1,7 @@
 using Deluno.Api.Network;
 using Deluno.Companions;
+using Deluno.Connections.Data;
+using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -26,19 +28,23 @@ public sealed class InstalledComponentWirer(
     IEnumerable<ICompanionTool> tools,
     ICompanionSystem system,
     IActivityFeedRepository activity,
-    IDownloadClientRegistry? registry = null)
+    IDownloadClientRegistry? registry = null,
+    IConnectionsRepository? connections = null)
+    : IInstalledComponentConnector, IDownloadClientDeletedHook
 {
     public const string ActivityCategory = "installer.components.connected";
 
-    private sealed record ClientRecipe(string Name, string Protocol, string MoviesCategory, string TvCategory, bool NeedsSignIn);
+    /// <param name="DefaultUsername">The app's own shipped login, used when the installer generated none (#1061).</param>
+    /// <param name="DefaultPassword">The app's own shipped password, used when the installer generated none (#1061).</param>
+    private sealed record ClientRecipe(string Name, string Protocol, string MoviesCategory, string TvCategory, bool NeedsSignIn, string? DefaultUsername = null, string? DefaultPassword = null);
 
     private static readonly IReadOnlyDictionary<string, ClientRecipe> Clients = new Dictionary<string, ClientRecipe>(StringComparer.OrdinalIgnoreCase)
     {
         ["qbittorrent"] = new("qBittorrent", "qbittorrent", "deluno-movies", "deluno-tv", true),
         ["transmission"] = new("Transmission", "transmission", "deluno-movies", "deluno-tv", false),
-        ["deluge"] = new("Deluge", "deluge", "deluno-movies", "deluno-tv", true),
+        ["deluge"] = new("Deluge", "deluge", "deluno-movies", "deluno-tv", false, null, "deluge"),
         ["sabnzbd"] = new("SABnzbd", "sabnzbd", "Movies", "TV", true),
-        ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", true)
+        ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", false, "nzbget", "tegbzn6789")
     };
 
     /// <summary>Weir last: it can take a while to answer, and the clients should not wait behind it.</summary>
@@ -118,8 +124,10 @@ public sealed class InstalledComponentWirer(
     {
         var recipe = Clients[kind];
         var saved = credentials.TryGet(kind);
-        var username = string.IsNullOrEmpty(saved?.Username) ? null : saved.Username;
-        var secret = saved?.Password;
+        // Only qBittorrent gets a login from the installer. NZBGet and Deluge keep the login
+        // they ship with, and Deluno connects with that (#1061).
+        var username = string.IsNullOrEmpty(saved?.Username) ? recipe.DefaultUsername : saved.Username;
+        var secret = saved?.Password ?? recipe.DefaultPassword;
         if (secret is null && kind == "sabnzbd")
         {
             // The install session could not read SABnzbd's key; try where this account can.
@@ -129,19 +137,15 @@ public sealed class InstalledComponentWirer(
         var result = await connector.ConnectAsync(
             new DownloadClientWiring(recipe.Name, recipe.Protocol, "localhost", entry.Port, username, secret, recipe.MoviesCategory, recipe.TvCategory),
             attempts, delay, cancellationToken);
+        if (result.Client is not null)
+        {
+            // The connection exists and holds the sign-in in Deluno's own secret store, so the
+            // installer's copy is not needed anywhere any more, healthy or not (#1061).
+            ForgetSavedSignIn(kind);
+        }
+
         if (result.Healthy)
         {
-            // The connection now holds the sign-in in Deluno's own secret store and tested healthy,
-            // so the installer's plain copy is no longer needed anywhere (#1061).
-            try
-            {
-                credentials.Remove(kind);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // Left in place; it is only readable through a signed-in session.
-            }
-
             await PrepareSaveFoldersAsync(recipe, result.Client, cancellationToken);
             return (recipe.Name, true, null);
         }
@@ -153,6 +157,80 @@ public sealed class InstalledComponentWirer(
         }
 
         return (recipe.Name, false, problem);
+    }
+
+    private void ForgetSavedSignIn(string kind)
+    {
+        try
+        {
+            credentials.Remove(kind);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Left in place; the next sweep tries again. Nothing serves it to a caller.
+        }
+    }
+
+    /// <summary>
+    /// The person clicked "Use X" on an app the installer added: connects it now, on this
+    /// computer, with the sign-in Deluno holds, and never returns that sign-in (#1061).
+    /// </summary>
+    public async Task<InstalledComponentConnectResult?> ConnectNowAsync(string kind, CancellationToken cancellationToken)
+    {
+        kind = kind.ToLowerInvariant();
+        if (!Clients.ContainsKey(kind))
+        {
+            return null;
+        }
+
+        var entry = record.Read().FirstOrDefault(item => string.Equals(item.Kind, kind, StringComparison.OrdinalIgnoreCase))
+            ?? new InstalledComponentEntry(kind, "localhost", BundledComponentCatalog.All.First(spec => spec.Kind == kind).DefaultPort, DateTimeOffset.UtcNow);
+        var (name, ok, problem) = await WireClientAsync(kind, entry, 3, TimeSpan.FromSeconds(2), cancellationToken);
+        record.MarkWired(kind);
+        return new InstalledComponentConnectResult(name, ok, ok ? $"{name} is connected." : problem ?? $"{name} did not answer its test.");
+    }
+
+    /// <summary>
+    /// Forgets every stored sign-in that has no more work to do (#1061). The rule: a sign-in is
+    /// kept only for an app the installer put on this computer (it has an installed record),
+    /// that Deluno can connect, and that has no connection yet (a connection holds the sign-in
+    /// in Deluno's own secret store). Anything else is removed: a kind Deluno cannot connect,
+    /// a kind with no installed record (it never will be connected), or one whose connection
+    /// already exists (made by the wiring, made by hand, or kept after a failed test). A
+    /// deleted connection is handled by <see cref="DownloadClientDeletedAsync"/>.
+    /// </summary>
+    public async Task<int> SweepStoredSignInsAsync(CancellationToken cancellationToken)
+    {
+        if (connections is null)
+        {
+            return 0;
+        }
+
+        var installed = record.Read().Select(entry => entry.Kind).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var clients = await connections.ListDownloadClientsAsync(cancellationToken);
+        var removed = 0;
+        foreach (var kind in credentials.Kinds())
+        {
+            var connected = clients.Any(client => string.Equals(client.Protocol, kind, StringComparison.OrdinalIgnoreCase) && DownloadClientConnector.IsLoopback(client.Host));
+            if (!Clients.ContainsKey(kind) || !installed.Contains(kind) || connected)
+            {
+                ForgetSavedSignIn(kind);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>A connection to an app on this computer was deleted: its stored sign-in goes with it (#1061).</summary>
+    public Task DownloadClientDeletedAsync(string protocol, string? host, CancellationToken cancellationToken)
+    {
+        if (DownloadClientConnector.IsLoopback(host) && Clients.ContainsKey(protocol.ToLowerInvariant()))
+        {
+            ForgetSavedSignIn(protocol.ToLowerInvariant());
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -320,7 +398,9 @@ public sealed class InstalledComponentWiringService(
                 _healthAddressChecked = true;
             }
 
-            var wirer =scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
+            var wirer = scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
+            // Any sign-in kept for an app whose connection exists, or never will, is forgotten (#1061).
+            await wirer.SweepStoredSignInsAsync(cancellationToken);
             if (!wirer.HasWork() || OwnAddress() is not { } baseUrl)
             {
                 return;

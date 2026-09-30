@@ -25,7 +25,7 @@ import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
-import { DetectedComponents, fetchDetectedCredentials, type BundledComponentStatus } from "../components/app/bundled-components-detected";
+import { connectDetectedApp, DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
@@ -542,15 +542,23 @@ export function IndexersPage() {
   async function openDetectedClient(status: BundledComponentStatus) {
     const preset = CLIENT_PRESETS.find((item) => item.protocol === status.kind);
     // A client the installer gave a sign-in (qBittorrent 5.2.1 will not start
-    // without one) is filled in with it, so nothing has to be typed (#1050).
-    const credentials = status.hasCredentials ? await fetchDetectedCredentials(status.kind) : null;
+    // without one) is connected by Deluno itself: the sign-in never reaches the
+    // screen (#1061), so there is no form to fill in.
+    if (status.hasCredentials) {
+      await run(`detected:${status.kind}`, async () => {
+        const result = await connectDetectedApp(status.kind);
+        if (result.healthy) toast.success(result.message);
+        else toast.error(result.message);
+      });
+      return;
+    }
     const next: ClientForm = {
       ...emptyClientForm(),
       protocol: status.kind,
       host: status.defaultHost,
       port: String(status.defaultPort),
-      username: credentials?.username ?? "",
-      password: credentials?.password ?? "",
+      username: "",
+      password: "",
       name: preset?.label ?? status.displayName,
       moviesCategory: preset?.defaultMoviesCategory ?? emptyClientForm().moviesCategory,
       tvCategory: preset?.defaultTvCategory ?? emptyClientForm().tvCategory

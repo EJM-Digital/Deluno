@@ -12,16 +12,16 @@ namespace Deluno.Api.Network;
 /// 5.2.1 refuses to start its Web UI with no username and password, so the
 /// installer seeds a generated pair. The installer (the tray) writes the plain
 /// password here, protected; the running Deluno reads it back when the person
-/// clicks "Use qBittorrent", so the connection is filled in and tested with no
-/// typing. Once the connection is saved, Deluno's own secret store holds the
+/// clicks "Use qBittorrent" and connects it there and then, server-side, with no
+/// typing. Once the connection exists, Deluno's own secret store holds the
 /// password like any other client's.
 ///
 /// <para>Lifetime (#1061): the plain value is needed only until a connection to
-/// the client has been saved and tested healthy. The tray never reads it (it
-/// starts a client without a password), so the wiring removes the entry as soon
-/// as its connection tests healthy, and it is kept only for a client whose
-/// connection could not be made, so "Use X" can still fill it in. It is only
-/// handed to a signed-in person's session, never to an API key.</para>
+/// the client exists. It is never returned by Deluno's API, to anyone: the
+/// connection is made server-side. It is removed when a connection is made
+/// (healthy or not), when the connection is deleted, and on every start for any
+/// leftover copy whose connection already exists or never will (see
+/// <c>InstalledComponentWirer.SweepStoredSignInsAsync</c>).</para>
 /// </summary>
 public sealed record BundledComponentCredentials(string Username, string Password);
 
@@ -38,6 +38,19 @@ public interface IBundledComponentCredentialStore
 
     /// <summary>Forgets the saved sign-in for <paramref name="kind"/> (no error when there is none).</summary>
     void Remove(string kind);
+
+    /// <summary>Every kind that has a saved sign-in, so a leftover one can be swept.</summary>
+    IReadOnlyList<string> Kinds() => [];
+}
+
+/// <summary>What a "connect this installed app now" request did. Never carries the sign-in.</summary>
+public sealed record InstalledComponentConnectResult(string Name, bool Healthy, string Message);
+
+/// <summary>Connects an app the installer added, on this computer (#1061). Implemented by the worker.</summary>
+public interface IInstalledComponentConnector
+{
+    /// <returns>Null when <paramref name="kind"/> is not an app Deluno can connect this way.</returns>
+    Task<InstalledComponentConnectResult?> ConnectNowAsync(string kind, CancellationToken cancellationToken);
 }
 
 /// <summary>A host with no installer sign-ins: not Windows.</summary>
@@ -65,6 +78,8 @@ public sealed class FileBundledComponentCredentialStore(string path, ISecretProt
     public static string PathFor(string dataRoot) => Path.Combine(dataRoot, "secrets", "component-credentials.json");
 
     public bool Has(string kind) => Read().ContainsKey(kind);
+
+    public IReadOnlyList<string> Kinds() => Read().Keys.ToArray();
 
     public BundledComponentCredentials? TryGet(string kind)
     {
@@ -159,25 +174,19 @@ public static class BundledComponentCredentialStores
 
 public static class BundledComponentCredentialsEndpointRouteBuilderExtensions
 {
+    /// <summary>
+    /// "Use X" on an app the installer added: Deluno connects it itself, with the sign-in it
+    /// holds, and answers with whether it worked. There is no route that returns an app's
+    /// sign-in to anyone (#1061).
+    /// </summary>
     public static IEndpointRouteBuilder MapDelunoBundledComponentCredentialsEndpoints(this IEndpointRouteBuilder api)
     {
-        // A GET is only ever checked against the read scope, so the policy alone
-        // would let a read-only key take this password (#1061). The web screen
-        // reads it with the signed-in person's session, so an API key of any
-        // scope is refused here.
-        api.MapGet("/system/bundled-components/{kind}/credentials", (string kind, HttpContext httpContext, IBundledComponentCredentialStore store) =>
+        api.MapPost("/system/bundled-components/{kind}/connect", async (string kind, IInstalledComponentConnector connector, CancellationToken cancellationToken) =>
             {
-                if (UserAuthorization.TryReadApiKey(httpContext, out _))
-                {
-                    return Results.Json(
-                        new { message = "The sign-in an installed app was given is only shown to a signed-in person, not to an API key." },
-                        statusCode: StatusCodes.Status403Forbidden);
-                }
-
-                var credentials = store.TryGet(kind);
-                return credentials is null
+                var result = await connector.ConnectNowAsync(kind, cancellationToken);
+                return result is null
                     ? Results.NotFound()
-                    : Results.Ok(new { username = credentials.Username, password = credentials.Password });
+                    : Results.Ok(new { name = result.Name, healthy = result.Healthy, message = result.Message });
             })
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 

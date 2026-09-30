@@ -639,6 +639,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IDeletedThingCleanup cleanup,
+            [FromServices] IEnumerable<IDownloadClientDeletedHook> deletedHooks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -654,6 +655,13 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             if (removed)
             {
                 await cleanup.DownloadClientDeletedAsync(id, client?.Name ?? string.Empty, cancellationToken);
+                if (client is not null)
+                {
+                    foreach (var hook in deletedHooks)
+                    {
+                        await hook.DownloadClientDeletedAsync(client.Protocol, client.Host, cancellationToken);
+                    }
+                }
                 await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", id, cancellationToken);
             }
             return removed ? Results.NoContent() : Results.NotFound();
