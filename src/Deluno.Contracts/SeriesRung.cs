@@ -31,9 +31,15 @@ public static class SeriesRung
     /// <param name="airedWithFile">Of those, how many are on disk.</param>
     /// <param name="airedUpgradable">Of those on disk, how many are below the cutoff.</param>
     /// <param name="hasFutureAirDate">Whether any episode is still to come.</param>
-    /// <param name="hasUndatedEpisode">Whether any episode has no air date; with nothing aired that reads Missing, not Upcoming.</param>
-    public static string From(int aired, int airedWithFile, int airedUpgradable, bool hasFutureAirDate, bool hasUndatedEpisode = false)
+    /// <param name="hasUndatedEpisode">Whether any (monitored) episode has no air date; with nothing aired that reads Missing, not Upcoming.</param>
+    /// <param name="nothingWanted">Episodes are catalogued but none is monitored (retention or the person removed them all): nothing is wanted, so nothing is missing (#1072). The counts above are over monitored episodes only.</param>
+    public static string From(int aired, int airedWithFile, int airedUpgradable, bool hasFutureAirDate, bool hasUndatedEpisode = false, bool nothingWanted = false)
     {
+        if (aired <= 0 && nothingWanted)
+        {
+            return hasFutureAirDate ? WantedStatuses.Upcoming : WantedStatuses.Covered;
+        }
+
         if (aired <= 0)
         {
             // An episode with no air date counts as Missing (James, 30 Sep, #1072): only an episode with a future

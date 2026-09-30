@@ -89,3 +89,17 @@ describe("counting a show's episodes", () => {
     expect(progress.upgradable).toBe(1);
   });
 });
+
+describe("episodes nobody wants", () => {
+  it("are not counted as aired, held, missing, upcoming or upgradable, so a retention-trimmed show is not Missing", () => {
+    const past = "2020-01-01T00:00:00Z";
+    const summary = summariseEpisodes([
+      { airDateUtc: past, hasFile: false, wantedStatus: "missing", monitored: false },
+      { airDateUtc: past, hasFile: true, wantedStatus: "upgrade", monitored: false },
+      { airDateUtc: past, hasFile: true, wantedStatus: "covered", monitored: true },
+    ]);
+    expect(summary).toMatchObject({ total: 3, aired: 1, held: 1, missing: 0, upgradable: 0 });
+    expect(isEpisodeMissing({ airDateUtc: past, hasFile: false, wantedStatus: "missing", monitored: false })).toBe(false);
+    expect(isEpisodeUpcoming({ airDateUtc: "2999-01-01T00:00:00Z", hasFile: false, monitored: false })).toBe(false);
+  });
+});

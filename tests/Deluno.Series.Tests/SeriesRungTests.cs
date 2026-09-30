@@ -60,6 +60,18 @@ public sealed class SeriesRungTests
             SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: true));
     }
 
+    /// <summary>A show every episode of which is unmonitored (retention removed them) wants nothing, so it is not Missing (#1072).</summary>
+    [Fact]
+    public void A_show_with_nothing_wanted_is_not_missing()
+    {
+        Assert.Equal(
+            WantedStatuses.Covered,
+            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: false, nothingWanted: true));
+        Assert.Equal(
+            WantedStatuses.Upcoming,
+            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: true, nothingWanted: true));
+    }
+
     /// <summary>Undated episodes count as Missing (James, 30 Sep, #1072): with nothing aired, a show with any undated episode is Missing and is searched, even when other episodes are dated in the future.</summary>
     [Fact]
     public void Nothing_aired_and_episodes_undated_is_missing()
