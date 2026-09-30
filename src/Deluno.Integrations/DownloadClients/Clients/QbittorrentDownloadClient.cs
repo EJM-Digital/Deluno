@@ -496,7 +496,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
         try
         {
-            using var handler = new HttpClientHandler { CookieContainer = new CookieContainer() };
+            using var handler = this.handlerFactory();
             using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
             await AuthenticateAsync(http, client, cancellationToken);
             using var response = await http.GetAsync("api/v2/torrents/categories", cancellationToken);
@@ -555,7 +555,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                     $"qBittorrent has a category named {normalizedCategory}, saving to {savePath}.",
                     Supported: true, Found: true, SavePath: savePath);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
         {
             return new(client.Id, client.Name, normalizedCategory, DownloadClientCategoryStatuses.Unreachable,
                 $"Deluno could not reach qBittorrent to check its categories: {ex.Message}", Supported: true, Found: false);
@@ -774,15 +774,15 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     private static async Task LoginAsync(HttpClient http, DownloadClientItem client, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(client.Username) && string.IsNullOrWhiteSpace(client.Secret)) return;
-        using var body = new FormUrlEncodedContent(
-        [
-            new KeyValuePair<string, string>("username", client.Username ?? string.Empty),
-            new KeyValuePair<string, string>("password", client.Secret ?? string.Empty)
-        ]);
-        using var response = await http.PostAsync("api/v2/auth/login", body, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        var text = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!text.Contains("Ok.", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("qBittorrent rejected the configured username/password.");
+        // The same sign-in the connection test uses (#1061): a login the test accepted is never refused here.
+        var result = await Deluno.Connections.QbittorrentSignIn.SignInAsync(http, client.Username, client.Secret, cancellationToken);
+        if (result.SignedIn) return;
+        if (!result.Rejected)
+        {
+            throw new HttpRequestException($"qBittorrent answered the sign-in with {(int)result.Status}.", null, result.Status);
+        }
+
+        throw new InvalidOperationException("qBittorrent rejected the configured username/password.");
     }
 
     /// <summary>
