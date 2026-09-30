@@ -75,22 +75,22 @@ function renderCard(card: JourneyCard, poster: string | undefined, arrived: bool
         className="flex gap-2 rounded-xl p-2 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         {card.stage !== "searching" ? (
-          <ArtworkImage src={poster} alt="" loading="lazy" className="h-12 w-8 shrink-0 rounded-md bg-surface-3 object-cover" fallback={<span aria-hidden className={cn("flex h-12 w-8 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-3.5 w-3.5" /></span>} />
+          <ArtworkImage src={poster} alt="" loading="lazy" className="h-11 w-7 shrink-0 rounded-md bg-surface-3 object-cover" fallback={<span aria-hidden className={cn("flex h-11 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-3.5 w-3.5" /></span>} />
         ) : null}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{card.title}</span>
+          <span title={card.title} className="block truncate text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{card.title}</span>
           <span className={cn("mt-0.5 flex items-center gap-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
             <StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} />
-            <span className="truncate">{card.state.label}</span>
+            <span className="min-w-0 truncate">{card.state.label}</span>
+            {downloading && formatEta(card.etaSeconds) !== "–" ? <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{formatEta(card.etaSeconds)}</span> : null}
           </span>
           {downloading ? (
             <span className="mt-1 block">
               <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-surface-3">
                 <span className={cn("live-fill block h-full rounded-full", card.state.tone === "warn" ? "bg-warning" : "bg-info")} style={{ width: `${Math.round(card.progress ?? 0)}%` }} />
               </span>
-              <span className="mt-0.5 flex justify-between gap-2 text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
-                <span><CountUp value={Math.round(card.progress ?? 0)} format={(value) => `${Math.round(value)}%`} /> &middot; <CountUp value={card.speedMbps ?? 0} format={formatSpeed} /></span>
-                <span>{formatEta(card.etaSeconds) === "–" ? "" : `${formatEta(card.etaSeconds)} left`}</span>
+              <span className="mt-0.5 block truncate text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
+                <CountUp value={Math.round(card.progress ?? 0)} format={(value) => `${Math.round(value)}%`} /> &middot; <CountUp value={card.speedMbps ?? 0} format={formatSpeed} />
               </span>
             </span>
           ) : null}

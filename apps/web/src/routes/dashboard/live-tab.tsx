@@ -151,12 +151,12 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.1fr)_minmax(0,1fr)]">
+      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
           <div className="flex min-h-0 flex-[5] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <Flow grouped={grouped} counts={counts} summary={summary} posters={posters} arrivals={arrivals} action={action} stalledWithButton={stalledWithButton} />
           </div>
-          <div className="grid min-h-0 flex-[3] gap-[var(--grid-gap)] sm:grid-cols-2 lg:grid-cols-4 [&>section]:min-h-0">
+          <div className="grid min-h-0 flex-[3] gap-[var(--grid-gap)] sm:grid-cols-2 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr] [&>section]:min-h-0">
             <SpeedChart samples={data.throughput?.samples ?? []} summary={summary} />
             <Rhythm rows={rhythmRows} />
             <Countdowns summary={summary} />
@@ -171,7 +171,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <ActivityStream rows={latest} />
           </div>
-          <div className="flex min-h-0 flex-[2] flex-col [&>section]:min-h-0 [&>section]:flex-1">
+          <div className="flex min-h-0 flex-[3] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
               {upcoming.length === 0 ? (
                 <Plain>Nothing airs in the next 72 hours.</Plain>

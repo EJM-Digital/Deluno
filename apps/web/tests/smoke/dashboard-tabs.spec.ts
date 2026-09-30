@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { serveLiveBusy } from "../helpers/live-busy";
 
 // #1087: the Dashboard is two tabs, Live and System. Each fits one screen
 // at 1920x1080 and 2560x1440: the page never scrolls, whatever the tab holds,
@@ -211,6 +212,32 @@ test.describe("Dashboard tabs", () => {
     await expect(page.getByRole("link", { name: /^and [0-9]+ more on Transfers/ }).first()).toBeVisible();
     await page.goto("/?tab=system");
     await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
+  });
+
+  test("a busy Live board keeps to one screen with whole cards, and is photographed at both sizes", async ({ page }) => {
+    test.setTimeout(120_000);
+    await authenticateAndNavigate(page, "/");
+    await serveLiveBusy(page);
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.goto("/");
+      await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+      // Every lane has its own cards, and the countdown reads by the second.
+      await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "In the library" }).getByText("Coherence (2013)")).toBeVisible();
+      await expect(page.getByRole("link", { name: /^Search Movies: in/ })).toBeVisible();
+      // A set-up install has no guided-setup banners above the board. The checks below run with them (a fresh
+      // install), then the photograph is taken without them, as it looks once set up.
+      await expectFitsOneScreen(page, `live busy with setup banners ${size.width}x${size.height}`);
+      await expectNoPanelCutsAnything(page, `live busy with setup banners ${size.width}x${size.height}`);
+      await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
+      await expectFitsOneScreen(page, `live busy ${size.width}x${size.height}`);
+      await page.waitForTimeout(1600);
+      await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-${size.width}.png` });
+      await expectNoPanelCutsAnything(page, `live busy ${size.width}x${size.height}`);
+    }
   });
 
   test("the tab numbers count only real problems, and the bell shows the two added together", async ({ page }) => {
