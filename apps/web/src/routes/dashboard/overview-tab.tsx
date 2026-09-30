@@ -13,11 +13,9 @@ import { StatusLed, type LedTone } from "../../components/ui/status-led";
 import type { DashboardActivityItem, DashboardSummary } from "../../lib/api";
 import { authedFetch } from "../../lib/use-auth";
 import { ago, bytesText, plural, speedText, until, uptimeText } from "./format";
-import { buildNeedsYou, overviewTabAttention } from "./needs-you";
+import { useDashboardAttention } from "./use-dashboard-attention";
 import { Panel, Plain } from "./parts";
 import { useSetupState } from "./sources";
-
-export { overviewTabAttention };
 
 interface AreaLine {
   id: string;
@@ -223,7 +221,8 @@ function entityLink(item: DashboardActivityItem): string {
 
 export function OverviewTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
-  const needs = buildNeedsYou(summary, setup.needs);
+  const attention = useDashboardAttention(summary, setup.needs);
+  const needs = attention.items;
   const latest = summary?.activity?.recent ?? [];
   const showSetup = setup.ready && !setup.status.isComplete;
 
@@ -274,7 +273,7 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
           )}
         </Panel>
 
-        <Panel title="Needs you" className="max-lg:order-first" count={needs.length === 0 ? "nothing right now" : String(needs.length)}>
+        <Panel title="Needs you" className="max-lg:order-first" count={attention.counts.overview === 0 ? "nothing right now" : String(attention.counts.overview)}>
           {needs.length === 0 ? (
             <Plain>Nothing needs you. Anything that does will be listed here, each with a button that fixes it.</Plain>
           ) : (

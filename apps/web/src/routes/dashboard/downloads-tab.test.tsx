@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
-import { DownloadsTab, downloadsTabAttention } from "./downloads-tab";
+import { computeAttention } from "./attention";
+import { DownloadsTab } from "./downloads-tab";
 
 const authedFetchMock = vi.fn();
 vi.mock("../../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -73,10 +74,10 @@ beforeEach(() => {
 
 describe("Downloads tab", () => {
   it("counts what needs a person, and nothing when all is well", () => {
-    // 2 stalled + 1 client not answering + 1 paused + 1 case + 1 failed job + 1 failed hand-off + 1 indexer + 1 processor
-    expect(downloadsTabAttention(fullSummary)).toBe(9);
-    expect(downloadsTabAttention(emptySummary)).toBe(0);
-    expect(downloadsTabAttention(undefined)).toBe(0);
+    // 2 stalled + 2 clients with a button + 1 case + 1 failed import + 1 failed hand-off + 1 indexer + 1 processor
+    expect(computeAttention(fullSummary).counts.downloads).toBe(9);
+    expect(computeAttention(emptySummary).counts.downloads).toBe(0);
+    expect(computeAttention(undefined).counts.downloads).toBe(0);
   });
 
   it("shows a busy install with each problem's own button, unique names and no raw codes", async () => {

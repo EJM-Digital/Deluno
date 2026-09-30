@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve(new
 
 const { DashboardPage, dashboardShouldRevalidate, tabFromSearch } = await import("./dashboard-page");
 const { queryClient } = await import("../lib/route-cache");
+const { computeAttention } = await import("./dashboard/attention");
 
 function Where() {
   const location = useLocation();
@@ -88,14 +89,28 @@ describe("DashboardPage tabs", () => {
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
   });
 
-  it("badges a tab with the number of things on it that need a look, and shows none at zero", async () => {
+  it("badges each tab with the problems on it, counted once, and shows none at zero", async () => {
     open("/");
-    const overview = await screen.findByRole("tab", { name: /^Overview/ });
-    expect(within(overview).getByLabelText(/things need a look/)).toBeInTheDocument();
-    const library = screen.getByRole("tab", { name: /^Library/ });
-    expect(within(library).getByLabelText("1 thing needs a look")).toBeInTheDocument();
-    // The other two tabs report their own problems; the stand-ins report none.
-    expect(within(screen.getByRole("tab", { name: /^Downloads/ })).queryByLabelText(/need/)).toBeNull();
+    await screen.findByRole("tab", { name: /^Overview/ });
+    // The same count the Overview lists and the tabs draw their buttons from.
+    // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
+    const none = [] as never;
+    const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
+    const expected = attention.counts;
+    expect(expected.overview).toBe(expected.library + expected.downloads + expected.system + attention.items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0));
+    const label = (tab: string) => within(screen.getByRole("tab", { name: new RegExp(`^${tab}`) })).queryByLabelText(/need a look|needs a look/)?.getAttribute("aria-label") ?? null;
+    const words = (n: number) => (n === 1 ? "1 thing needs a look" : `${n} things need a look`);
+    // The stored lists arrive after the summary; the badges settle on them.
+    await waitFor(() => expect(label("Downloads")).toBe(words(expected.downloads)));
+    expect(label("Library")).toBe(words(expected.library));
+    expect(label("Downloads")).toBe(words(expected.downloads));
+    expect(label("System")).toBe(expected.system === 0 ? null : words(expected.system));
+    // The setup checklist adds its own steps to the Overview only; the number is the Needs you list's count.
+    const listed = Number(within(screen.getByRole("region", { name: /^needs you$/i })).getByText(/^[0-9]+$/).textContent);
+    expect(label("Overview")).toBe(words(listed));
+    expect(listed).toBeGreaterThanOrEqual(expected.overview);
+    expect(expected.library).toBe(1);
+    expect(expected.downloads).toBeGreaterThan(0);
   });
 
   it("shows no badges on a new install", async () => {

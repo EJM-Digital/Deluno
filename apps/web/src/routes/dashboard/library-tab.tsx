@@ -20,12 +20,6 @@ import { ago, bytesText, plural, total, until } from "./format";
 import { Bar, Group, Line, Panel, Plain } from "./parts";
 import { libraryTabSources } from "./sources";
 
-/** How many problems this tab has, for its badge. */
-export function libraryTabAttention(summary: DashboardSummary | undefined): number {
-  if (!summary) return 0;
-  return (summary.library?.collections.syncFailing ?? 0) + (summary.requests?.seerrFailing ?? 0);
-}
-
 interface WantedRow {
   key: string;
   kind: "movie" | "series";
