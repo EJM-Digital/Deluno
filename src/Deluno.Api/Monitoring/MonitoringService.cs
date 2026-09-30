@@ -25,13 +25,28 @@ public sealed class MonitoringService(
     IApiLatencyTracker latencyTracker,
     IConfiguration configuration,
     TimeProvider timeProvider,
+    LibraryRootReachability libraryRoots,
     ILogger<MonitoringService> logger)
     : IMonitoringService
 {
-    public async Task<MonitoringDashboardSnapshot> GetDashboardAsync(CancellationToken cancellationToken)
+    // The whole dashboard is kept for ten seconds (#1081). Opening it re-checks five
+    // databases, writes and deletes a probe file, and reads every library and client;
+    // a screen that refreshes itself should not repeat that every time.
+    private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(10);
+    private readonly Deluno.Infrastructure.Caching.GenerationMemo<MonitoringDashboardSnapshot> _dashboardMemo = new(timeProvider);
+    private readonly Deluno.Infrastructure.Caching.GenerationMemo<IReadOnlyList<MonitoringAlertItem>> _alertsMemo = new(timeProvider);
+    private readonly Deluno.Infrastructure.Caching.GenerationMemo<DelunoReadinessResponse> _readinessMemo = new(timeProvider);
+
+    public Task<MonitoringDashboardSnapshot> GetDashboardAsync(CancellationToken cancellationToken)
+        => _dashboardMemo.GetOrAddAsync("dashboard", 0, SnapshotLifetime, () => BuildDashboardAsync(CancellationToken.None), cancellationToken);
+
+    private Task<DelunoReadinessResponse> ReadinessAsync(CancellationToken cancellationToken)
+        => _readinessMemo.GetOrAddAsync("readiness", 0, SnapshotLifetime, () => readinessService.CheckAsync(CancellationToken.None), cancellationToken);
+
+    private async Task<MonitoringDashboardSnapshot> BuildDashboardAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var readiness = await readinessService.CheckAsync(cancellationToken);
+        var readiness = await ReadinessAsync(cancellationToken);
         var dispatch = await dispatchMetricsRepository.GetMetricsAsync(cancellationToken);
         var storage = ReadStorageSummary(storageOptions.Value.DataRoot);
         var services = await ReadServiceSummaryAsync(dispatch.RecoveryCasesOpenCount, cancellationToken);
@@ -71,10 +86,13 @@ public sealed class MonitoringService(
         }
     }
 
-    public async Task<IReadOnlyList<MonitoringAlertItem>> GetAlertsAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<MonitoringAlertItem>> GetAlertsAsync(CancellationToken cancellationToken)
+        => _alertsMemo.GetOrAddAsync("alerts", 0, SnapshotLifetime, () => BuildAlertListAsync(CancellationToken.None), cancellationToken);
+
+    private async Task<IReadOnlyList<MonitoringAlertItem>> BuildAlertListAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var readiness = await readinessService.CheckAsync(cancellationToken);
+        var readiness = await ReadinessAsync(cancellationToken);
         var dispatch = await dispatchMetricsRepository.GetMetricsAsync(cancellationToken);
         var storage = ReadStorageSummary(storageOptions.Value.DataRoot);
         return await BuildAlertsAsync(now, readiness, storage, dispatch, cancellationToken);
@@ -321,9 +339,15 @@ public sealed class MonitoringService(
         // it is not nothing either. Every title in it is unverifiable, every
         // import into it will fail identically, and until this alert existed
         // the only symptom was silence. DESIGN-007 decision 12.
-        foreach (var library in await librariesRepository.ListLibrariesAsync(cancellationToken))
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        // Read from a check made off the request, so a share that is switched off
+        // cannot hold this page for as long as Windows takes to give up on it (#1081).
+        var unreachableRoots = await libraryRoots.UnreachableAsync(
+            libraries.Where(library => !string.IsNullOrWhiteSpace(library.RootPath)).Select(library => library.RootPath!),
+            cancellationToken);
+        foreach (var library in libraries)
         {
-            if (string.IsNullOrWhiteSpace(library.RootPath) || Directory.Exists(library.RootPath))
+            if (string.IsNullOrWhiteSpace(library.RootPath) || !unreachableRoots.Contains(library.RootPath))
             {
                 continue;
             }

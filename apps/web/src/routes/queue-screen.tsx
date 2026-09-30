@@ -149,11 +149,11 @@ export async function queueLoader(): Promise<QueueLoaderData> {
   const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans] = await Promise.all([
     fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
-    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
+    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
+    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500"),
     fetchJson<LibraryItem[]>("/api/libraries"),
     fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80"),
+    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80&includePayload=true"),
     fetchFailedJobs(),
     fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"),
     fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((error) => {

@@ -88,8 +88,8 @@ export function useAttention(pollMs = 45000) {
         fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => null),
         fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => null),
         // The sources Transfers reads for Needs attention, so the two agree.
-        fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery").catch(() => null),
-        fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery").catch(() => null),
+        fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500").catch(() => null),
+        fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500").catch(() => null),
         fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60").catch(() => []),
         fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch(() => []),
         fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),

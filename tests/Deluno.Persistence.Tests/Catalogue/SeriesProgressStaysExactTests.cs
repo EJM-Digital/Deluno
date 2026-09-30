@@ -188,7 +188,6 @@ public sealed class SeriesProgressStaysExactTests
 
     private static class TestStorageAccessor
     {
-        [ThreadStatic]
         public static TestStorage? Current;
     }
 }

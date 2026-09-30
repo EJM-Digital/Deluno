@@ -283,6 +283,15 @@ public class DispatchQueryFilter
     /// right and a history view that hides them shows an empty past.
     /// </summary>
     public bool IncludeArchived { get; set; }
+
+    /// <summary>
+    /// A list has no use for a grab's raw JSON, which can be hundreds of
+    /// kilobytes (the whole search plan and every candidate in it), so a caller
+    /// that only lists asks for it to be left out when it is large (#1081).
+    /// Callers that read the notes to act on them leave this off and get every
+    /// byte.
+    /// </summary>
+    public bool OmitLargeJson { get; set; }
 }
 
 public class DispatchPaginationOptions

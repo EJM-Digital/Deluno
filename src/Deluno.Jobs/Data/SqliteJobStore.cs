@@ -240,7 +240,7 @@ public sealed class SqliteJobStore(
         return jobs;
     }
 
-    public async Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken)
+    public async Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken, bool includePayload = true)
     {
         var pageSize = request.BoundedPageSize;
         var token = DelunoPageToken.Decode(request.PageToken, 2);
@@ -250,23 +250,40 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
+        // The WHERE is built from only the conditions that apply: a "@x IS NULL OR"
+        // guard is not seen through by SQLite, and turns the newest-first read into a
+        // scan and a sort of every job ever queued (#1081).
+        var conditions = new List<string>();
+        if (token is not null)
+        {
+            conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))");
+        }
+
+        if (failedOnly)
+        {
+            conditions.Add("status IN ('failed', 'dead-letter')");
+        }
+
+        var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, job_type, source, status, payload_json, attempts, created_utc, scheduled_utc,
+                id, job_type, source, status, {(includePayload ? "CASE WHEN octet_length(payload_json) <= 65536 THEN payload_json END" : "NULL")}, attempts, created_utc, scheduled_utc,
                 started_utc, completed_utc, leased_until_utc, worker_id, last_error, related_entity_type, related_entity_id,
                 idempotency_key, dedupe_key, max_attempts, last_attempt_utc, next_attempt_utc
             FROM job_queue
-            WHERE (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
-              AND (@failedOnly = 0 OR status IN ('failed', 'dead-letter'))
+            {where}
             ORDER BY created_utc DESC, id DESC
             LIMIT @take;
             """;
 
-        AddParameter(command, "@failedOnly", failedOnly ? 1 : 0);
-        AddParameter(command, "@createdUtc", token?[0]);
-        AddParameter(command, "@id", token?[1]);
+        if (token is not null)
+        {
+            AddParameter(command, "@createdUtc", token[0]);
+            AddParameter(command, "@id", token[1]);
+        }
+
         AddParameter(command, "@take", pageSize + 1);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1807,14 +1824,18 @@ public sealed class SqliteJobStore(
         string? mediaType,
         CancellationToken cancellationToken,
         bool includeArchived = false,
-        string? entityId = null)
+        string? entityId = null,
+        bool includeRawJson = false)
     {
         var (items, nextPageToken) = await downloadDispatchesRepository.QueryDispatchesAsync(
             new DispatchQueryFilter
             {
                 MediaType = string.IsNullOrWhiteSpace(mediaType) ? null : mediaType.Trim().ToLowerInvariant(),
                 EntityId = string.IsNullOrWhiteSpace(entityId) ? null : entityId.Trim(),
-                IncludeArchived = includeArchived
+                IncludeArchived = includeArchived,
+                // A grab's notes and response are copies of one search plan and can
+                // run to a megabyte a row; a list leaves them out unless asked (#1081).
+                OmitLargeJson = !includeRawJson
             },
             new DispatchPaginationOptions
             {
@@ -2880,6 +2901,9 @@ public sealed class SqliteJobStore(
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
         var decisionTelemetry = TryParseDispatchDecisionTelemetry(notesJson);
+        // The decision is in its own columns now; keep the notes to a size a screen
+        // can carry, and keep one copy of them (#1081).
+        notesJson = DispatchNotesTrimmer.Trim(notesJson);
         var normalizedReplacementTargets = NormalizeReplacementTargets(replacementTargets);
         var ownedReplacementAuthorized = replacementAuthorized &&
             (!string.IsNullOrWhiteSpace(replacementExpectedPath) || normalizedReplacementTargets.Count > 0);
@@ -3018,7 +3042,8 @@ public sealed class SqliteJobStore(
             grabResponseCode: responseCode,
             grabMessage: status,
             grabFailureCode: grabFailureCode,
-            grabResponseJson: notesJson,
+            // Not a second copy of the notes: they are stored once, on the dispatch (#1081).
+            grabResponseJson: null,
             cancellationToken: cancellationToken,
             failure: failure,
             externalId: clientExternalId);
@@ -3237,21 +3262,25 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
+        var conditions = new List<string>();
+        if (relatedEntityType is not null) conditions.Add("related_entity_type = @relatedEntityType");
+        if (relatedEntityId is not null) conditions.Add("related_entity_id = @relatedEntityId");
+        var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
+
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
                 id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc
             FROM activity_events
-            WHERE (@relatedEntityType IS NULL OR related_entity_type = @relatedEntityType)
-              AND (@relatedEntityId IS NULL OR related_entity_id = @relatedEntityId)
+            {where}
             ORDER BY created_utc DESC
             LIMIT @take;
             """;
 
         AddParameter(command, "@take", take);
-        AddParameter(command, "@relatedEntityType", relatedEntityType);
-        AddParameter(command, "@relatedEntityId", relatedEntityId);
+        if (relatedEntityType is not null) AddParameter(command, "@relatedEntityType", relatedEntityType);
+        if (relatedEntityId is not null) AddParameter(command, "@relatedEntityId", relatedEntityId);
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -3276,24 +3305,33 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
+        // Only the conditions that apply are written, so SQLite can seek the
+        // (related_entity_type, created_utc) index instead of scanning (#1081).
+        var conditions = new List<string>();
+        if (relatedEntityType is not null) conditions.Add("related_entity_type = @relatedEntityType");
+        if (relatedEntityId is not null) conditions.Add("related_entity_id = @relatedEntityId");
+        if (token is not null) conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))");
+        var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
+
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
+            $"""
             SELECT
-                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc
+                id, category, message, CASE WHEN octet_length(details_json) <= 65536 THEN details_json END, related_job_id, related_entity_type, related_entity_id, created_utc
             FROM activity_events
-            WHERE (@relatedEntityType IS NULL OR related_entity_type = @relatedEntityType)
-              AND (@relatedEntityId IS NULL OR related_entity_id = @relatedEntityId)
-              AND (@createdUtc IS NULL OR created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))
+            {where}
             ORDER BY created_utc DESC, id DESC
             LIMIT @take;
             """;
 
         AddParameter(command, "@take", pageSize + 1);
-        AddParameter(command, "@relatedEntityType", relatedEntityType);
-        AddParameter(command, "@relatedEntityId", relatedEntityId);
-        AddParameter(command, "@createdUtc", token?[0]);
-        AddParameter(command, "@id", token?[1]);
+        if (relatedEntityType is not null) AddParameter(command, "@relatedEntityType", relatedEntityType);
+        if (relatedEntityId is not null) AddParameter(command, "@relatedEntityId", relatedEntityId);
+        if (token is not null)
+        {
+            AddParameter(command, "@createdUtc", token[0]);
+            AddParameter(command, "@id", token[1]);
+        }
 
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

@@ -469,9 +469,13 @@ public interface IMediaStateRepository
         int limit,
         CancellationToken cancellationToken);
 
+    /// <param name="limit">How many open cases to list; the counts always cover every open case.</param>
+    /// <param name="includeDetails">False leaves each case's details JSON out, which a list has no use for (#1081).</param>
     Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        int limit = 500,
+        bool includeDetails = true);
 
     /// <summary>
     /// Closes the open recovery cases a scope covers, writing <c>case_settled</c>

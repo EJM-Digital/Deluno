@@ -16,6 +16,19 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
     private static readonly IReadOnlyDictionary<string, DatabaseDescriptor> DatabaseLookup =
         DelunoStorageLayout.Databases.ToDictionary(database => database.Key, StringComparer.OrdinalIgnoreCase);
 
+    private static readonly ConcurrentDictionary<string, long[]> WriteGenerations = new(StringComparer.OrdinalIgnoreCase);
+
+    // One delegate for every connection: it must stay reachable for as long as
+    // SQLite may call it, and the counter it moves arrives as its state.
+    private static readonly SQLitePCL.delegate_commit CommitHook = static state =>
+    {
+        Interlocked.Increment(ref ((long[])state)[0]);
+        return 0;
+    };
+
+    public long GetWriteGeneration(string databaseName)
+        => Volatile.Read(ref WriteGenerations.GetOrAdd(GetDatabasePath(databaseName), static _ => new long[1])[0]);
+
     public string GetDatabasePath(string databaseName)
     {
         if (!DatabaseLookup.TryGetValue(databaseName, out var database))
@@ -170,6 +183,14 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
                   PRAGMA mmap_size = 268435456;
                   """;
             await command.ExecuteNonQueryAsync(cancellationToken);
+            if (mode != SqliteOpenMode.ReadOnly)
+            {
+                SQLitePCL.raw.sqlite3_commit_hook(
+                    connection.Handle,
+                    CommitHook,
+                    WriteGenerations.GetOrAdd(databasePath, static _ => new long[1]));
+            }
+
             if (applyInitializationPragmas)
             {
                 InitializedPaths.TryAdd(databasePath, 0);

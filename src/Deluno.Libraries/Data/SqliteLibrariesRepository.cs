@@ -13,13 +13,23 @@ public sealed class SqliteLibrariesRepository(
     TimeProvider timeProvider)
     : ILibrariesRepository
 {
+    private long _backfilledAtGeneration = -1;
+
     public async Task<IReadOnlyList<LibraryItem>> ListLibrariesAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
-        await BackfillLibraryQualityProfilesAsync(connection, cancellationToken);
+        // Only when something has been written to the database since it last ran: a
+        // read with nothing new to find used to open with a query of its own on
+        // every call (#1081). The first read after start-up always runs it.
+        var generation = databaseConnectionFactory.GetWriteGeneration(DelunoDatabaseNames.Platform);
+        if (Volatile.Read(ref _backfilledAtGeneration) != generation)
+        {
+            await BackfillLibraryQualityProfilesAsync(connection, cancellationToken);
+            Volatile.Write(ref _backfilledAtGeneration, generation);
+        }
 
         var items = new List<LibraryItem>();
 
