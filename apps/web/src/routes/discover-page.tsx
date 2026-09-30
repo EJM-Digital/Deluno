@@ -189,8 +189,8 @@ export function DiscoverPage() {
         ) : !data || data.popular.length === 0 ? (
           <EmptyState
             variant="library"
-            title="Nothing to show yet"
-            description="TMDb's popular list needs a metadata provider configured in Settings → Metadata."
+            title="Nothing to show right now"
+            description="The popular list could not be loaded just now. Deluno will try again when you open this page."
           />
         ) : (
           <div className="grid grid-cols-2 gap-3 p-[var(--tile-pad)] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
