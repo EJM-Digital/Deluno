@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.ServiceProcess;
+using Deluno.Contracts;
 
 namespace Deluno.Tray;
 
@@ -119,47 +120,101 @@ public static class ServiceManager
         $"failureflag {serviceName} 1"
     ];
 
+    /// <summary>The key of the Health note raised when the restart-on-failure settings cannot be set.</summary>
+    public const string FailureActionsProblemKey = "startup:service-restart-on-failure";
+
+    internal const string FailureActionsProblemMessage =
+        "Windows would not let Deluno set its restart-on-failure settings, so if Deluno stops itself Windows will not start it again on its own. " +
+        "Choose the Windows service option from the Deluno tray icon again and approve the Windows prompt to set them; this note goes away the next time Deluno starts with them set.";
+
+    /// <summary>Runs one sc.exe command and returns its exit code, or null when it did not finish in time or could not start.</summary>
+    internal interface IScRunner
+    {
+        int? Run(string arguments, TimeSpan timeout);
+    }
+
+    private sealed class ProcessScRunner : IScRunner
+    {
+        public int? Run(string arguments, TimeSpan timeout)
+        {
+            using var p = Process.Start(new ProcessStartInfo
+            {
+                FileName = "sc.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            if (p is null)
+            {
+                return null;
+            }
+
+            // Both streams are drained on their own so a full pipe never holds sc.exe up.
+            var output = p.StandardOutput.ReadToEndAsync();
+            var error = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit((int)timeout.TotalMilliseconds))
+            {
+                try { p.Kill(); } catch { /* best effort */ }
+                return null;
+            }
+
+            Task.WaitAll([output, error], TimeSpan.FromSeconds(2));
+            return p.ExitCode;
+        }
+    }
+
     /// <summary>
-    /// Runs when Deluno starts as the service: services installed by earlier
-    /// builds were created without failure actions, so a Deluno that stopped
-    /// itself would stay stopped (#1080). The service already runs with the
-    /// rights to change its own settings when it runs as LocalSystem, so
-    /// sc.exe is called directly with no permission prompt. Never throws: if
-    /// the account may not, the service keeps whatever it had.
+    /// Sets the restart-on-failure actions and returns null when they are all set, or a plain
+    /// reason when Windows refused (a non-zero exit code) or sc.exe could not run or did not
+    /// answer. Never throws.
     /// </summary>
-    internal static void EnsureFailureActionsFromInsideService()
+    internal static string? SetFailureActions(IScRunner runner, TimeSpan timeout)
     {
         try
         {
             foreach (var failureArgs in FailureActionArguments(ServiceName))
             {
-                using var p = Process.Start(new ProcessStartInfo
+                var exit = runner.Run(failureArgs, timeout);
+                if (exit is not 0)
                 {
-                    FileName = "sc.exe",
-                    Arguments = failureArgs,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                });
-                if (p is null)
-                {
-                    continue;
-                }
-
-                p.StandardOutput.ReadToEnd();
-                p.StandardError.ReadToEnd();
-                if (!p.WaitForExit(10_000))
-                {
-                    try { p.Kill(); } catch { /* best effort */ }
+                    return exit is null
+                        ? $"sc.exe {failureArgs.Split(' ')[0]} did not finish."
+                        : $"sc.exe {failureArgs.Split(' ')[0]} exited with code {exit}.";
                 }
             }
+
+            return null;
         }
-        catch
+        catch (Exception exception)
         {
-            // Best effort; see the summary.
+            return exception.Message;
         }
     }
+
+    /// <summary>
+    /// Runs when Deluno starts as the service: services installed by earlier builds were
+    /// created without failure actions, so a Deluno that stopped itself would stay stopped
+    /// (#1080). It runs on its own thread after Deluno is up, never on the start path, since
+    /// the service manager allows a service about 30 seconds to start. The service has the
+    /// rights to change its own settings when it runs as LocalSystem, so sc.exe is called
+    /// directly with no permission prompt. When Windows refuses, a warning is logged and a
+    /// Health note in plain words is raised (cleared by the next start that succeeds).
+    /// </summary>
+    internal static Task EnsureFailureActionsInBackground(Action<string> logWarning, IBackgroundProblemReporter? reporter, IScRunner? runner = null, TimeSpan? timeout = null)
+        => Task.Run(() =>
+        {
+            var problem = SetFailureActions(runner ?? new ProcessScRunner(), timeout ?? TimeSpan.FromSeconds(10));
+            if (problem is null)
+            {
+                reporter?.Clear(FailureActionsProblemKey);
+                return;
+            }
+
+            logWarning($"Deluno could not set the service's restart-on-failure settings: {problem}");
+            reporter?.Report(FailureActionsProblemKey, "Deluno may not restart itself", FailureActionsProblemMessage, problem);
+        });
 
     private static void RemoveService()
     {
