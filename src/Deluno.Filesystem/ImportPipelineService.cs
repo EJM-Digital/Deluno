@@ -2947,8 +2947,9 @@ public sealed partial class ImportPipelineService(
     {
         // Attributed to the title, so the file's own journey is readable from
         // the title's History rather than only from the whole-system feed.
+        var startedDispatch = await ResolveDispatchAsync(request.DispatchId, cancellationToken);
         var entityId = request.Preview.SeriesId
-            ?? (await ResolveDispatchAsync(request.DispatchId, cancellationToken))?.EntityId;
+            ?? await EntityIdForImportAsync(startedDispatch, mediaType, TitleForActivity(request.Preview), request.Preview, imported: true, cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
             "filesystem.import.started",

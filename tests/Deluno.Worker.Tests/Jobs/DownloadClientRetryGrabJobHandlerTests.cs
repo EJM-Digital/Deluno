@@ -115,6 +115,20 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task A_torrent_Deluno_already_fetched_rides_along_so_the_next_retry_does_not_fetch_it_again()
+    {
+        var world = new World(succeeds: false, failureKind: IntegrationFailureKind.Unavailable, fetchedTorrent: [1, 2, 3, 4]);
+
+        await world.Handler().HandleAsync(world.Job(attemptNumber: 1), CancellationToken.None);
+
+        world.Scheduler.Verify(
+            scheduler => scheduler.EnqueueAsync(
+                It.Is<EnqueueJobRequest>(request => request.PayloadJson != null && request.PayloadJson.Contains(Convert.ToBase64String(new byte[] { 1, 2, 3, 4 }))),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     private sealed class World
     {
         public Mock<IDownloadClientGrabService> Grabs { get; } = new();
@@ -122,13 +136,14 @@ public sealed class DownloadClientRetryGrabJobHandlerTests
         public Mock<IActivityFeedRepository> ActivityFeed { get; } = new();
         public Mock<IJobScheduler> Scheduler { get; } = new();
 
-        public World(bool succeeds, IntegrationFailureKind? failureKind = null, string? status = null)
+        public World(bool succeeds, IntegrationFailureKind? failureKind = null, string? status = null, byte[]? fetchedTorrent = null)
         {
             var effectiveStatus = status ?? (succeeds ? "sent" : "failed");
             var result = new DownloadClientGrabResult("client-1", Release, succeeds, effectiveStatus,
                 succeeds ? "Sent." : "SABnzbd could not be reached.")
             {
                 ExternalId = succeeds ? "nzo-1" : null,
+                FetchedTorrentFile = fetchedTorrent,
                 Failure = !succeeds
                     ? IntegrationFailureFactory.FromLegacy("download-client", "client-1", "SABnzbd", "grab", null, "SABnzbd could not be reached.")
                         with { Kind = failureKind ?? IntegrationFailureKind.RejectedAction }
