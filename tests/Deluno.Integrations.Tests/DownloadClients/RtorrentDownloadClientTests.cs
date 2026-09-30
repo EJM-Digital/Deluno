@@ -77,7 +77,7 @@ public sealed class RtorrentDownloadClientTests
         var result = await new RtorrentDownloadClient(new StubFactory(handler)).GrabAsync(Client(), request, CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(hash, result.ExternalId);
+        Assert.Equal(hash.ToLowerInvariant(), result.ExternalId);
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }
 

@@ -100,6 +100,21 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
             };
         }
 
+        // #1062: status true with no id is SABnzbd saying yes and adding nothing,
+        // usually because it discarded a duplicate. A grab Deluno cannot name
+        // is never a success, since nothing could follow it afterwards.
+        if (string.IsNullOrWhiteSpace(externalId))
+        {
+            return DownloadClientHelpers.GrabFailure(
+                client,
+                request,
+                "SABnzbd accepted the NZB but gave no id, usually because it discarded a duplicate.") with
+            {
+                ResponseCode = (int)response.StatusCode,
+                ResponseJson = responseJson
+            };
+        }
+
         return DownloadClientHelpers.GrabSuccess(client, request, "Release URL sent to SABnzbd.") with
         {
             ResponseCode = (int)response.StatusCode,

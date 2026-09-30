@@ -133,6 +133,14 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>([]);
 
+    public Task<string> ReserveGrabAsync(string clientId, string clientItemId, string releaseName, CancellationToken cancellationToken) =>
+        Task.FromResult(Guid.NewGuid().ToString("N"));
+
+    public Task ReleaseGrabReservationAsync(string reservationId, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task<bool> HasOtherGrabReservationAsync(string clientId, string clientItemId, string? exceptReservationId, CancellationToken cancellationToken) =>
+        Task.FromResult(false);
+
     public Task<bool> ReplaceClientItemIdAsync(
         string dispatchId,
         string oldId,

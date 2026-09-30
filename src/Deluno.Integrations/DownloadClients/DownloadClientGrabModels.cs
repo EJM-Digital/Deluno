@@ -39,6 +39,25 @@ public sealed record DownloadClientGrabRequest(
     public string? Password { get; init; }
 
     /// <summary>
+    /// The torrent info-hash or NZB id the indexer's own listing named for this
+    /// release (a Torznab `infohash` attribute, say), carried from the search
+    /// result. The grab service prefers the hash it works out from the magnet or
+    /// the file it sends, and uses this one only when it agrees or when there is
+    /// nothing else to go on (#1062).
+    /// </summary>
+    public string? ReleaseHash { get; init; }
+
+    /// <summary>
+    /// The torrent's info-hash, lower-case hex, known BEFORE the client is asked
+    /// anything (#1062): read from the magnet, or worked out from the .torrent
+    /// bytes. Filled in by the grab service and never read from a caller. Every
+    /// torrent client files the download under it, so the grab is known by this
+    /// id and no client is asked to name it.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? KnownInfoHash { get; init; }
+
+    /// <summary>
     /// The folder, written the way the client sees it, this grab must be saved
     /// into (#1073). Filled in by the grab service from the library's downloads
     /// folder for a client that has no category folders of its own (Transmission,
