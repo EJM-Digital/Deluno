@@ -132,13 +132,18 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // failed, and qBittorrent then held the torrent — the release had
         // arrived and the film stayed Missing, with a blocker card explaining a
         // duplicate that never existed.
-        var after = await WaitForNewHashAsync(http, before, cancellationToken);
-        if (before is not null && after is not null && !after.Except(before).Any())
+        // #1062: Deluno knows the info-hash before it sends (from the magnet, or
+        // from the .torrent's own bytes), so the grab's id is that hash. What
+        // qBittorrent lists afterwards is only a confirmation, never a place to
+        // pick an item out of by position.
+        var knownHash = DownloadClientHelpers.KnownHashOf(request);
+        var after = await WaitForNewHashAsync(http, before, knownHash, cancellationToken);
+        if (knownHash is not null && before is not null && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
+            || knownHash is null && before is not null && after is not null && !after.Except(before).Any())
         {
             // No new torrent is also what a link qBittorrent could not read
             // looks like: it logs "Failed to add torrent" and still answered
             // Ok. Only a hash Deluno knows, already in the list, is a duplicate.
-            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
             if (knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
             {
                 // #877: "the download client says it already has this one" is
@@ -163,13 +168,10 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
                 };
             }
 
-            var message = knownHash is { Length: 40 }
-                ? "qBittorrent accepted the magnet but added no torrent. Its log says why."
-                : "qBittorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned; its log says which.";
             return DownloadClientHelpers.GrabFailure(
                 client,
                 request,
-                message) with
+                "qBittorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned; its log says which.") with
             {
                 ResponseCode = (int)response.StatusCode,
                 ResponseJson = payload
@@ -183,16 +185,18 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // tie the release to the torrent. That is why a stuck download could
         // not be followed, and why forcing a re-download could not work out
         // which item to ask the client to forget.
-        var added = before is not null && after is not null
-            ? after.Except(before).FirstOrDefault()
-            : null;
+        // A release qBittorrent never shows within the window still has its id
+        // (the hash Deluno sent); the poller ends it as "never showed it" the
+        // same as for every other client.
+        var added = knownHash ?? DownloadClientHelpers.TheOnlyNewItem(before, after);
 
         // #811: setShareLimits, once the hash is known. Best-effort -- a
         // failure here does not fail the grab, since the download itself
         // already succeeded; the client just keeps its own default limits.
-        if (added is not null && HasShareLimits(client))
+        var listed = added is not null && after is not null && after.Contains(added, StringComparer.OrdinalIgnoreCase);
+        if (listed && HasShareLimits(client))
         {
-            await TrySetShareLimitsAsync(http, client, added, cancellationToken);
+            await TrySetShareLimitsAsync(http, client, added!, cancellationToken);
         }
 
         // #811: setCategory and setLocation, once the hash is known — the
@@ -201,12 +205,12 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // form field happened to take (qBittorrent's Automatic Torrent
         // Management can override an add-time savepath; the explicit call
         // does not go through it the same way).
-        if (added is not null)
+        if (listed)
         {
-            await TrySetCategoryAsync(http, client, request, added, cancellationToken);
+            await TrySetCategoryAsync(http, client, request, added!, cancellationToken);
             if (!string.IsNullOrWhiteSpace(client.Location))
             {
-                await TrySetLocationAsync(http, client, added, cancellationToken);
+                await TrySetLocationAsync(http, client, added!, cancellationToken);
             }
         }
 
@@ -730,6 +734,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     private static async Task<HashSet<string>?> WaitForNewHashAsync(
         HttpClient http,
         HashSet<string>? before,
+        string? knownHash,
         CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
@@ -739,7 +744,8 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         {
             after = await ListHashesAsync(http, cancellationToken);
 
-            if (before is null || after is null || after.Except(before).Any())
+            if (before is null || after is null
+                || (knownHash is null ? after.Except(before).Any() : after.Contains(knownHash, StringComparer.OrdinalIgnoreCase)))
             {
                 return after;
             }

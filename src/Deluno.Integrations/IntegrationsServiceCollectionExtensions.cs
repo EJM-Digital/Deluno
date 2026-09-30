@@ -87,6 +87,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddScoped<ISearchQueuePauseGate, SearchQueuePauseGate>();
         services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
         services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();
+        services.AddScoped<IIndexerTorrentFetcher, IndexerTorrentFetcher>();
         services.AddScoped<IDownloadClientGrabService, DownloadClientGrabService>();
         services.AddScoped<IFolderChainService, FolderChainService>();
         services.AddHostedService<DownloadFolderChangeNoticeService>();

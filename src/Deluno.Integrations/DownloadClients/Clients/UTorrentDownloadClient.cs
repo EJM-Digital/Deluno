@@ -76,37 +76,64 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
             successMessage = "Release URL sent to uTorrent.";
         }
 
-        var added = await WaitForNewHashAsync(http, token, before, cancellationToken);
-        if (added is not null)
+        // #1062: the hash is known before the send (magnet, or the .torrent's own
+        // bytes), so the grab's id is that hash and uTorrent's list only confirms
+        // it. uTorrent never returns success with no id: a release whose hash
+        // Deluno could not know is only followed when exactly one torrent
+        // appeared because of it.
+        var knownHash = DownloadClientHelpers.KnownHashOf(request);
+        if (knownHash is not null)
         {
-            var category = DownloadClientHelpers.ResolveCategory(client, request);
-            // Best-effort: uTorrent already has the torrent at this point, so a
-            // failed label set is not a grab failure, only an unlabeled item
-            // for InferMediaType to fall back on.
-            using var labelResponse = await http.GetAsync(
-                $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(added)}&s=label&v={Uri.EscapeDataString(category)}",
-                cancellationToken);
-            return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added };
+            if (before is not null && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase))
+            {
+                return DownloadClientHelpers.GrabSuccess(
+                    client,
+                    request,
+                    "uTorrent already holds this release. Deluno is following the copy it has instead of sending another.") with
+                {
+                    ExternalId = knownHash,
+                    IsDuplicateFollow = true
+                };
+            }
+
+            var listed = await WaitForHashAsync(http, token, before, knownHash, cancellationToken);
+            if (listed is not null)
+            {
+                await TryLabelAsync(http, token, listed, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+            }
+
+            return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = knownHash };
         }
 
-        // #877/#911: no new hash appearing is also what a link uTorrent could
-        // not read looks like, so only a hash Deluno already knows and finds
-        // in uTorrent's own list beforehand is a genuine duplicate — the same
-        // check qBittorrent, Deluge and rTorrent's adapters make.
-        var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
-        if (before is not null && knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
+        var added = await WaitForHashAsync(http, token, before, null, cancellationToken);
+        if (added is null)
         {
-            return DownloadClientHelpers.GrabSuccess(
+            return DownloadClientHelpers.GrabFailure(
                 client,
                 request,
-                "uTorrent already holds this release. Deluno is following the copy it has instead of sending another.") with
-            {
-                ExternalId = duplicateHash,
-                IsDuplicateFollow = true
-            };
+                "uTorrent accepted the release, but Deluno could not tell which torrent it became, so it is not following it. Check uTorrent's list; if it is there, remove it and search again.");
         }
 
-        return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added };
+        await TryLabelAsync(http, token, added, DownloadClientHelpers.ResolveCategory(client, request), cancellationToken);
+        return DownloadClientHelpers.GrabSuccess(client, request, successMessage) with { ExternalId = added.ToLowerInvariant() };
+    }
+
+    /// <summary>
+    /// Best-effort: uTorrent already has the torrent at this point, so a failed
+    /// label set is not a grab failure, only an unlabeled item for
+    /// InferMediaType to fall back on.
+    /// </summary>
+    private static async Task TryLabelAsync(HttpClient http, string token, string hash, string category, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var labelResponse = await http.GetAsync(
+                $"gui/?token={Uri.EscapeDataString(token)}&action=setprops&hash={Uri.EscapeDataString(hash)}&s=label&v={Uri.EscapeDataString(category)}",
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
     public override async Task<DownloadClientTelemetrySnapshot?> GetSnapshotAsync(DownloadClientItem client, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
@@ -318,16 +345,25 @@ public sealed class UTorrentDownloadClient(Func<HttpMessageHandler>? handlerFact
     /// Bounded the same way qBittorrent's grab waits: a person is watching a
     /// page for the answer, so this polls briefly rather than hanging.
     /// </summary>
-    private static async Task<string?> WaitForNewHashAsync(HttpClient http, string token, HashSet<string>? before, CancellationToken cancellationToken)
+    /// <summary>
+    /// uTorrent's own spelling of a hash once it shows in its list: the known one
+    /// when Deluno has one, else the single torrent that appeared. Null when it
+    /// never shows within the window (or, unknown, when more than one appeared).
+    /// </summary>
+    private static async Task<string?> WaitForHashAsync(HttpClient http, string token, HashSet<string>? before, string? knownHash, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
         while (true)
         {
             var after = await ListHashesAsync(http, token, cancellationToken);
-            if (before is not null && after is not null)
+            if (knownHash is not null)
             {
-                var added = after.Except(before).FirstOrDefault();
-                if (added is not null) return added;
+                var found = after?.FirstOrDefault(hash => string.Equals(hash, knownHash, StringComparison.OrdinalIgnoreCase));
+                if (found is not null) return found;
+            }
+            else if (before is not null && after is not null && after.Except(before).Any())
+            {
+                return DownloadClientHelpers.TheOnlyNewItem(before, after);
             }
 
             if (DateTimeOffset.UtcNow >= deadline) return null;

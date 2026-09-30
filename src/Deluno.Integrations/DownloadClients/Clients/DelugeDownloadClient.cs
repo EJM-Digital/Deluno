@@ -49,7 +49,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             // Deluge's own session state instead of failing outright the way
             // a torrent client used to (cleanup sheet B3; Usenet clients
             // already follow the existing item).
-            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
+            var knownHash = DownloadClientHelpers.KnownHashOf(request);
             if (knownHash is { Length: 40 } duplicateHash)
             {
                 var session = await DownloadClientHelpers.PostJsonAsync<DelugeResponse<string[]>>(

@@ -91,8 +91,12 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"rTorrent refused the release: {fault.FaultMessage}.");
         }
 
-        var after = await WaitForNewHashAsync(http, baseUri, before, cancellationToken);
-        if (before is not null && after is not null && !after.Except(before).Any())
+        // #1062: the hash is known before the send (magnet, or the file's own
+        // bytes); what rTorrent lists afterwards only confirms it.
+        var knownHash = DownloadClientHelpers.KnownHashOf(request);
+        var after = await WaitForNewHashAsync(http, baseUri, before, knownHash, cancellationToken);
+        if (knownHash is not null && before is not null && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
+            || knownHash is null && before is not null && after is not null && !after.Except(before).Any())
         {
             // #877: no new hash appearing is also what a link rTorrent could
             // not read looks like, so only a hash Deluno already knows and
@@ -100,7 +104,6 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             // link names its own hash, so it can be checked directly against
             // what rTorrent already held before this request — the same
             // check qBittorrent's adapter makes (cleanup sheet B3).
-            var knownHash = Search.Trackers.TrackerMagnet.InfoHashOf(request.DownloadUrl);
             if (knownHash is { Length: 40 } duplicateHash && before.Contains(duplicateHash, StringComparer.OrdinalIgnoreCase))
             {
                 return DownloadClientHelpers.GrabSuccess(
@@ -119,7 +122,7 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
                 "rTorrent accepted the request but added no torrent. Either it already holds this release (remove it there, or force a re-download), or it could not read what the link returned.");
         }
 
-        var added = before is not null && after is not null ? after.Except(before).FirstOrDefault() : null;
+        var added = knownHash ?? DownloadClientHelpers.TheOnlyNewItem(before, after);
         return DownloadClientHelpers.GrabSuccess(client, request, request.TorrentFile is null ? "Release URL sent to rTorrent." : "Torrent file sent to rTorrent.") with
         {
             ExternalId = added
@@ -486,14 +489,14 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
     /// necessarily appears in download_list, so asking once immediately is
     /// asking before the answer exists.
     /// </summary>
-    private static async Task<HashSet<string>?> WaitForNewHashAsync(HttpClient http, Uri baseUri, HashSet<string>? before, CancellationToken cancellationToken)
+    private static async Task<HashSet<string>?> WaitForNewHashAsync(HttpClient http, Uri baseUri, HashSet<string>? before, string? knownHash, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow.AddSeconds(6);
         HashSet<string>? after;
         while (true)
         {
             after = await ListHashesAsync(http, baseUri, cancellationToken);
-            if (before is null || after is null || after.Except(before).Any()) return after;
+            if (before is null || after is null || (knownHash is null ? after.Except(before).Any() : after.Contains(knownHash, StringComparer.OrdinalIgnoreCase))) return after;
             if (DateTimeOffset.UtcNow >= deadline) return after;
             await Task.Delay(TimeSpan.FromMilliseconds(400), cancellationToken);
         }

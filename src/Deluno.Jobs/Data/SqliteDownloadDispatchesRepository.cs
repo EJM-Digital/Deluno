@@ -914,16 +914,27 @@ public sealed class SqliteDownloadDispatchesRepository(
             }
 
             var list = string.Join(", ", names);
+            // The ids a client reports are a dispatch's stored hash/item id
+            // (index on client + id ignoring case) or, for a client that files
+            // an item under Deluno's own dispatch id, the primary key, which is
+            // always written lower-case, so it is compared exactly.
             command.CommandText =
                 $"""
-                SELECT
-                    {DispatchColumns}
+                SELECT {DispatchColumns}
                 FROM download_dispatches
                 WHERE download_client_id = @clientId
-                  AND (torrent_hash_or_item_id COLLATE NOCASE IN ({list})
-                       OR id COLLATE NOCASE IN ({list}))
+                  AND torrent_hash_or_item_id COLLATE NOCASE IN ({list})
+                UNION
+                SELECT {DispatchColumns}
+                FROM download_dispatches
+                WHERE download_client_id = @clientId
+                  AND id IN ({list.Replace("@id", "@lower")})
                 """;
             AddParameter(command, "@clientId", clientId);
+            for (var index = 0; index < batch.Length; index++)
+            {
+                AddParameter(command, $"@lower{index}", batch[index].ToLowerInvariant());
+            }
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -936,6 +947,74 @@ public sealed class SqliteDownloadDispatchesRepository(
         return found.Values
             .OrderByDescending(item => item.GrabAttemptedUtc ?? item.CreatedUtc)
             .ToArray();
+    }
+
+    public async Task<string> ReserveGrabAsync(
+        string clientId,
+        string clientItemId,
+        string releaseName,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var reservationId = Guid.CreateVersion7().ToString("N");
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        // A reservation only has to outlive the moment between the send and the
+        // dispatch row being written; older ones are swept as new ones arrive.
+        using (var sweep = connection.CreateCommand())
+        {
+            sweep.CommandText = "DELETE FROM download_grab_reservations WHERE created_utc < @cutoff";
+            AddParameter(sweep, "@cutoff", now.AddDays(-2).ToString("O"));
+            await sweep.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO download_grab_reservations (id, download_client_id, client_item_id, release_name, created_utc)
+            VALUES (@id, @clientId, @itemId, @releaseName, @now)
+            """;
+        AddParameter(command, "@id", reservationId);
+        AddParameter(command, "@clientId", clientId);
+        AddParameter(command, "@itemId", clientItemId.Trim().ToLowerInvariant());
+        AddParameter(command, "@releaseName", releaseName);
+        AddParameter(command, "@now", now.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return reservationId;
+    }
+
+    public async Task ReleaseGrabReservationAsync(string reservationId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM download_grab_reservations WHERE id = @id";
+        AddParameter(command, "@id", reservationId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<bool> HasOtherGrabReservationAsync(
+        string clientId,
+        string clientItemId,
+        string? exceptReservationId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT 1 FROM download_grab_reservations
+            WHERE download_client_id = @clientId
+              AND client_item_id = @itemId
+              AND id != @except
+            LIMIT 1
+            """;
+        AddParameter(command, "@clientId", clientId);
+        AddParameter(command, "@itemId", clientItemId.Trim().ToLowerInvariant());
+        AddParameter(command, "@except", exceptReservationId ?? string.Empty);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     public async Task<bool> ReplaceClientItemIdAsync(

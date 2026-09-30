@@ -599,7 +599,12 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             candidate.DownloadUrl ?? string.Empty,
             NormalizeMediaType(mediaType),
             category,
-            candidate.IndexerName);
+            candidate.IndexerName)
+        {
+            // The hash the indexer's own listing named, kept for the grab
+            // service to check against the release itself (#1062).
+            ReleaseHash = candidate.TorrentHashOrItemId
+        };
 
     private static string NormalizeMediaType(string mediaType)
         => string.Equals(mediaType, "tv", StringComparison.OrdinalIgnoreCase) ||

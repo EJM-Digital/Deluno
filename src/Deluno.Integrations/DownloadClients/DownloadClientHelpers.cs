@@ -93,6 +93,33 @@ internal static class DownloadClientHelpers
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken);
     }
 
+    /// <summary>
+    /// The torrent's info-hash for this grab, known before the client was asked
+    /// anything (#1062): the one the grab service worked out, or, for a caller
+    /// that talks to a client directly, the one the magnet or the file names.
+    /// </summary>
+    internal static string? KnownHashOf(DownloadClientGrabRequest request)
+        => request.KnownInfoHash
+           ?? TorrentInfoHash.FromMagnet(request.DownloadUrl)
+           ?? (request.TorrentFile is { } file ? TorrentInfoHash.FromTorrentFile(file, out _) : null);
+
+    /// <summary>
+    /// When the hash was not known beforehand, the one torrent that appeared in
+    /// the client's list because of this add. Two or more new ones (something
+    /// else was added at the same moment) name nothing, and no torrent is
+    /// ever picked out of a diff by position.
+    /// </summary>
+    internal static string? TheOnlyNewItem(IReadOnlyCollection<string>? before, IReadOnlyCollection<string>? after)
+    {
+        if (before is null || after is null)
+        {
+            return null;
+        }
+
+        var added = after.Except(before, StringComparer.OrdinalIgnoreCase).Take(2).ToArray();
+        return added.Length == 1 ? added[0] : null;
+    }
+
     internal static DownloadClientGrabResult GrabSuccess(DownloadClientItem client, DownloadClientGrabRequest request, string message)
         => new(client.Id, request.ReleaseName, true, "sent", message);
 

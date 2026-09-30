@@ -151,6 +151,34 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Writes Deluno's own record that it is sending the download the client will
+    /// file under <paramref name="clientItemId"/>, BEFORE it is sent, and returns
+    /// the reservation's id (#1062). A second Deluno grab of the same release
+    /// (a film in two libraries, two search jobs at once) then sees Deluno's own
+    /// record and follows the copy instead of blocklisting a release Deluno itself
+    /// sent. Ids are kept lower-case.
+    /// </summary>
+    Task<string> ReserveGrabAsync(
+        string clientId,
+        string clientItemId,
+        string releaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>Removes a reservation: the send failed, so there is nothing of Deluno's to follow.</summary>
+    Task ReleaseGrabReservationAsync(string reservationId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether a reservation other than <paramref name="exceptReservationId"/>
+    /// exists for this client item, which is Deluno's own record that another of
+    /// its grabs is sending or has just sent it.
+    /// </summary>
+    Task<bool> HasOtherGrabReservationAsync(
+        string clientId,
+        string clientItemId,
+        string? exceptReservationId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Moves a dispatch from an id the client used to file the item under (a
     /// Transmission torrent number) to the id it is filed under now (its
     /// hash). Only when the dispatch still holds exactly <paramref name="oldId"/>.

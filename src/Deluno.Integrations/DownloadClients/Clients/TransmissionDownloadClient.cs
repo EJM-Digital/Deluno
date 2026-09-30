@@ -89,7 +89,12 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                 ? "Transmission already holds this release. Deluno is following the copy it has instead of sending another."
                 : request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.") with
         {
-            ExternalId = added?.HashString?.Trim().ToLowerInvariant() is { Length: > 0 } hashString ? hashString : added?.Id?.ToString(CultureInfo.InvariantCulture),
+            // Its hash, which Deluno also worked out before sending (#1062); the
+            // session's number is only the last resort, for a torrent Deluno
+            // could not hash and Transmission did not name.
+            ExternalId = added?.HashString?.Trim().ToLowerInvariant() is { Length: > 0 } hashString
+                ? hashString
+                : DownloadClientHelpers.KnownHashOf(request) ?? added?.Id?.ToString(CultureInfo.InvariantCulture),
             IsDuplicateFollow = duplicate is not null
         };
     }
