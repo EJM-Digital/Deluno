@@ -59,6 +59,7 @@ DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
 GET /api/
 GET /api/activity
+GET /api/activity/by-hour
 GET /api/activity/display-settings
 GET /api/api-keys/
 GET /api/api-keys/scope-templates
@@ -164,6 +165,7 @@ GET /api/movies/genres
 GET /api/movies/import-recovery
 GET /api/movies/lookup/imdb
 GET /api/movies/page
+GET /api/movies/posters
 GET /api/movies/search-history
 GET /api/movies/wanted
 GET /api/movies/{id}
@@ -226,6 +228,7 @@ GET /api/series/genres
 GET /api/series/import-recovery
 GET /api/series/inventory
 GET /api/series/page
+GET /api/series/posters
 GET /api/series/search-history
 GET /api/series/season-pass
 GET /api/series/upcoming
