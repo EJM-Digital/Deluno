@@ -89,7 +89,7 @@ public sealed class HeldByFileCheckIsLoggedOnceTests : IDisposable
             .ReturnsAsync(true);
         jobs.Setup(repository => repository.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
-        var telemetry = new Mock<IDownloadClientTelemetryService>();
+        var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Overview(new DownloadQueueItem(
             "queue-1", "client-1", "qBittorrent", "qbittorrent", "movies", "Dementia 13 1963 1080p WEB DL DDP5 1 H 264 DELUNO", ReleaseName,
             "deluno-movies", DownloadQueueStatuses.Completed, 1, 0, 0, 100, 100, 0, "Indexer", null,

@@ -317,7 +317,7 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
                 summary, [item], [], DateTimeOffset.UnixEpoch)],
             DateTimeOffset.UnixEpoch);
 
-        var telemetry = new Mock<IDownloadClientTelemetryService>();
+        var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>())).ReturnsAsync(overview);
         return telemetry;
     }

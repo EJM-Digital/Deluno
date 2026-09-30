@@ -114,7 +114,7 @@ public sealed class DownloadProgressPublisher(
     {
         using var scope = scopeFactory.CreateScope();
         var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
-        var overview = await telemetry.GetOverviewAsync(cancellationToken);
+        var overview = await telemetry.GetFreshOverviewAsync(DownloadTelemetryFreshness.Loop, cancellationToken);
 
         var live = overview.Clients
             .SelectMany(client => client.Queue)

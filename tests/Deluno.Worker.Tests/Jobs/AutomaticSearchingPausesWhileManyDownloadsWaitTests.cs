@@ -174,7 +174,7 @@ public sealed class AutomaticSearchingPausesWhileManyDownloadsWaitTests
                 PauseSearchWhenQueueLongEnabled = _enabled,
                 PauseSearchWhenQueueLongThreshold = _threshold
             });
-        var telemetry = new Mock<IDownloadClientTelemetryService>();
+        var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new DownloadTelemetryOverview(
                 new DownloadTelemetrySummary(0, 0, 0, 0, 0, 0, 0),

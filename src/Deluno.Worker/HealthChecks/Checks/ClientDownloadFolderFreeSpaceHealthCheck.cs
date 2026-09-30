@@ -25,7 +25,7 @@ public sealed class ClientDownloadFolderFreeSpaceHealthCheck(IDownloadClientTele
 
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
-        var overview = await telemetry.GetOverviewAsync(cancellationToken);
+        var overview = await telemetry.GetLatestOverviewAsync(DownloadTelemetryFreshness.Screen, cancellationToken);
         var outcomes = new List<HealthCheckOutcome>(overview.Clients.Count);
 
         foreach (var client in overview.Clients)

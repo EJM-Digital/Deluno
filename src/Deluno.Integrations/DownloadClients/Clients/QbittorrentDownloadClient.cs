@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -400,11 +401,113 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return CreateConfigurationSnapshot(client, capturedUtc, "Download client address is missing.");
 
-        using var handler = this.handlerFactory();
-        using var http = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) };
-        await AuthenticateAsync(http, client, cancellationToken);
+        // One session per client, kept between polls (#1081): the cookie stays,
+        // and the sign-in happens once, then again only when qBittorrent says
+        // the session is gone (401/403), instead of a new connection and a login
+        // on every poll.
+        var session = GetSession(client, baseUri);
+        await session.EnsureSignedInAsync(() => AuthenticateAsync(session.Http, client, cancellationToken));
+        try
+        {
+            return await ReadSnapshotAsync(session.Http, client, baseUri, capturedUtc, cancellationToken);
+        }
+        catch (HttpRequestException exception) when (exception.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            session.SignedOut();
+            await session.EnsureSignedInAsync(() => AuthenticateAsync(session.Http, client, cancellationToken));
+            return await ReadSnapshotAsync(session.Http, client, baseUri, capturedUtc, cancellationToken);
+        }
+    }
+
+    private readonly ConcurrentDictionary<string, QbitSession> sessions = new(StringComparer.OrdinalIgnoreCase);
+
+    private QbitSession GetSession(DownloadClientItem client, Uri baseUri)
+    {
+        var fingerprint = $"{baseUri}|{client.Username}|{client.Secret}";
+        while (true)
+        {
+            if (sessions.TryGetValue(client.Id, out var existing))
+            {
+                if (existing.Fingerprint == fingerprint)
+                {
+                    return existing;
+                }
+
+                // Address or credentials changed: start again.
+                if (sessions.TryUpdate(client.Id, CreateSession(fingerprint, baseUri), existing))
+                {
+                    existing.Dispose();
+                }
+
+                continue;
+            }
+
+            var created = CreateSession(fingerprint, baseUri);
+            if (sessions.TryAdd(client.Id, created))
+            {
+                return created;
+            }
+
+            created.Dispose();
+        }
+    }
+
+    private QbitSession CreateSession(string fingerprint, Uri baseUri)
+    {
+        var handler = handlerFactory();
+        return new QbitSession(fingerprint, new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(8) });
+    }
+
+    private sealed class QbitSession(string fingerprint, HttpClient http) : IDisposable
+    {
+        private readonly SemaphoreSlim signInGate = new(1, 1);
+        private volatile bool signedIn;
+
+        public string Fingerprint { get; } = fingerprint;
+
+        public HttpClient Http { get; } = http;
+
+        public void SignedOut() => signedIn = false;
+
+        public async Task EnsureSignedInAsync(Func<Task> signIn)
+        {
+            if (signedIn)
+            {
+                return;
+            }
+
+            await signInGate.WaitAsync();
+            try
+            {
+                if (!signedIn)
+                {
+                    await signIn();
+                    signedIn = true;
+                }
+            }
+            finally
+            {
+                signInGate.Release();
+            }
+        }
+
+        // Left to the garbage collector when a call is still using it; the
+        // handler holds only a connection and a cookie jar.
+        public void Dispose() { }
+    }
+
+    // How long a tracker verdict for one torrent is reused (#1081).
+    private static readonly TimeSpan TrackerStatusTtl = TimeSpan.FromMinutes(1);
+    private readonly ConcurrentDictionary<string, (string Status, DateTimeOffset At)> trackerStatusCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task<DownloadClientTelemetrySnapshot?> ReadSnapshotAsync(
+        HttpClient http, DownloadClientItem client, Uri baseUri, DateTimeOffset capturedUtc, CancellationToken cancellationToken)
+    {
+        // The two reads are independent, so they go together.
+        var serverStateTask = GetServerStateAsync(http, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
-        var trackerStatusByHash = await GetTrackerStatusesAsync(http, torrents, cancellationToken);
+
+        var trackerStatusByHash = await GetTrackerStatusesAsync(http, client.Id, torrents, capturedUtc, cancellationToken);
         var queue = torrents.Select(item => new DownloadQueueItem(
             item.Hash ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Category), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown qBittorrent item"),
@@ -446,7 +549,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             IsFetchingMetadata: string.Equals(item.State, "metaDL", StringComparison.OrdinalIgnoreCase)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
-        var (freeSpaceBytes, alternateSpeedLimitEnabled) = await GetServerStateAsync(http, cancellationToken);
+        var (freeSpaceBytes, alternateSpeedLimitEnabled) = await serverStateTask;
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
@@ -896,27 +999,79 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     /// #878: qBittorrent has no tracker field on <c>torrents/info</c> at all —
     /// its answer is only ever the queue-status word, never the tracker's own
     /// message, which is why it could not tell an unregistered torrent apart
-    /// from an ordinary stall (cleanup sheet C5). This is the one extra
-    /// request, per torrent, that reads what the tracker actually said.
+    /// from an ordinary stall (cleanup sheet C5). This reads what the tracker
+    /// actually said.
+    ///
+    /// <para>#1081: that used to be one request per torrent on every poll, one
+    /// after another. A torrent that is moving data right now has a working
+    /// tracker by any test that matters, so only the ones that are not
+    /// (stalled, errored, idle, queued) are asked, each verdict is kept for a
+    /// minute, and the asking happens in parallel.</para>
     /// </summary>
-    private static async Task<Dictionary<string, string>> GetTrackerStatusesAsync(
-        HttpClient http, IReadOnlyList<QbitTorrentItem> torrents, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> GetTrackerStatusesAsync(
+        HttpClient http, string clientId, IReadOnlyList<QbitTorrentItem> torrents, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var statusByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var hash in torrents.Select(item => item.Hash).Where(hash => !string.IsNullOrWhiteSpace(hash)).Distinct(StringComparer.OrdinalIgnoreCase))
+        var toAsk = new List<string>();
+        foreach (var torrent in torrents.Where(item => !string.IsNullOrWhiteSpace(item.Hash)).DistinctBy(item => item.Hash, StringComparer.OrdinalIgnoreCase))
         {
+            var hash = torrent.Hash!;
+            var key = $"{clientId}|{hash}";
+            if (trackerStatusCache.TryGetValue(key, out var cached) && now - cached.At < TrackerStatusTtl)
+            {
+                statusByHash[hash] = cached.Status;
+            }
+            else if ((torrent.DownloadSpeed ?? 0) > 0 || (torrent.UploadSpeed ?? 0) > 0)
+            {
+                // Moving data: nothing to ask, and nothing to claim either.
+                statusByHash[hash] = DownloadTrackerStatuses.Unknown;
+            }
+            else
+            {
+                toAsk.Add(hash);
+            }
+        }
+
+        using var gate = new SemaphoreSlim(8);
+        await Task.WhenAll(toAsk.Select(async hash =>
+        {
+            await gate.WaitAsync(cancellationToken);
             try
             {
-                var trackers = await http.GetFromJsonAsync<IReadOnlyList<QbitTrackerItem>>($"api/v2/torrents/trackers?hash={hash}", cancellationToken) ?? [];
-                statusByHash[hash!] = trackers.Any(tracker => tracker.Status == TrackerNotWorking && DownloadClientHelpers.LooksUnregistered(tracker.Message))
-                    ? DownloadTrackerStatuses.Unregistered
-                    : DownloadTrackerStatuses.Ok;
+                string status;
+                try
+                {
+                    var trackers = await http.GetFromJsonAsync<IReadOnlyList<QbitTrackerItem>>($"api/v2/torrents/trackers?hash={hash}", cancellationToken) ?? [];
+                    status = trackers.Any(tracker => tracker.Status == TrackerNotWorking && DownloadClientHelpers.LooksUnregistered(tracker.Message))
+                        ? DownloadTrackerStatuses.Unregistered
+                        : DownloadTrackerStatuses.Ok;
+                    trackerStatusCache[$"{clientId}|{hash}"] = (status, now);
+                }
+                catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    // A tracker read that fails says nothing either way (#901) -
+                    // an outage never reads as "unregistered". Not remembered.
+                    status = DownloadTrackerStatuses.Unknown;
+                }
+
+                lock (statusByHash)
+                {
+                    statusByHash[hash] = status;
+                }
             }
-            catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException)
+            finally
             {
-                // A tracker read that fails says nothing either way (#901) -
-                // an outage never reads as "unregistered".
-                statusByHash[hash!] = DownloadTrackerStatuses.Unknown;
+                gate.Release();
+            }
+        }));
+
+        // Forget torrents that are gone, so the memory cannot grow forever.
+        if (trackerStatusCache.Count > torrents.Count + 64)
+        {
+            var live = torrents.Select(item => $"{clientId}|{item.Hash}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in trackerStatusCache.Keys.Where(key => key.StartsWith(clientId + "|", StringComparison.OrdinalIgnoreCase) && !live.Contains(key)).ToArray())
+            {
+                trackerStatusCache.TryRemove(key, out _);
             }
         }
 

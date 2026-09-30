@@ -45,7 +45,7 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             // unconfigured (strict-ish): if ListAsync ever called it instead,
             // it would come back empty and wrongly report the item as an
             // orphan, failing this test.
-            var telemetry = new Mock<IDownloadClientTelemetryService>();
+            var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
             telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([ClientSnapshot(foreignItemPath)]);
 
@@ -71,7 +71,7 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             await File.WriteAllTextAsync(Path.Combine(itemPath, "episode.mkv"), "bytes");
             BackdatePastGrace(itemPath);
 
-            var telemetry = new Mock<IDownloadClientTelemetryService>();
+            var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
             telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
@@ -119,7 +119,7 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             // The library sets no download folder of its own, so the only way
             // this folder could be scanned is through the other tool's item.
             var library = Library(null);
-            var telemetry = new Mock<IDownloadClientTelemetryService>();
+            var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
             telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([ClientSnapshot(foreignItemPath)]);
 

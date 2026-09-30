@@ -648,7 +648,7 @@ public sealed class WorkPlanner(
         DownloadTelemetryOverview overview;
         try
         {
-            overview = await downloadClientTelemetryService.GetOverviewAsync(cancellationToken);
+            overview = await downloadClientTelemetryService.GetFreshOverviewAsync(DownloadTelemetryFreshness.Acting, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -986,7 +986,7 @@ public sealed class WorkPlanner(
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var telemetry = await downloadClientTelemetryService.GetOverviewAsync(cancellationToken);
+        var telemetry = await downloadClientTelemetryService.GetFreshOverviewAsync(DownloadTelemetryFreshness.Acting, cancellationToken);
         await downloadClientTelemetryService.RunConfiguredHealthRemediationAsync(telemetry, cancellationToken);
         foreach (var item in GetImportCandidates(telemetry))
         {

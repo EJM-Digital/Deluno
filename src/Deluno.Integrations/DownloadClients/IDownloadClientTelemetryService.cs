@@ -16,6 +16,41 @@ public interface IDownloadClientTelemetryService
     /// </summary>
     Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetSnapshotsForLeftoverScanAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One real pass over the clients that answers both the overview and the
+    /// leftover scan (#1081). This is the only member the snapshot store's
+    /// refresher needs to talk to the download clients; it also writes
+    /// progress, health and activity as it goes, so no screen's request calls it.
+    /// </summary>
+    async Task<DownloadTelemetryCapture> CaptureAsync(CancellationToken cancellationToken)
+        => new(await GetOverviewAsync(cancellationToken), await GetSnapshotsForLeftoverScanAsync(cancellationToken));
+
+    /// <summary>
+    /// The latest overview the background refresher captured, returned at once
+    /// (#1081). Never waits on a download client: an answer older than
+    /// <paramref name="maxAge"/> starts a refresh in the background and is still
+    /// returned, its <see cref="DownloadTelemetryOverview.CapturedUtc"/> saying
+    /// how old it is. For screens and the sidebar.
+    /// </summary>
+    Task<DownloadTelemetryOverview> GetLatestOverviewAsync(TimeSpan maxAge, CancellationToken cancellationToken)
+        => GetOverviewAsync(cancellationToken);
+
+    /// <summary>
+    /// An overview for a caller that acts on it: the latest capture when it is
+    /// younger than <paramref name="reuseWithin"/>, otherwise one refresh that
+    /// every concurrent caller shares (#1081).
+    /// </summary>
+    Task<DownloadTelemetryOverview> GetFreshOverviewAsync(TimeSpan reuseWithin, CancellationToken cancellationToken)
+        => GetOverviewAsync(cancellationToken);
+
+    /// <summary>
+    /// The leftover-scan view for a caller that acts on it (#1081): the latest
+    /// capture when younger than <paramref name="reuseWithin"/>, otherwise one
+    /// shared refresh, awaited. Never for a screen's request.
+    /// </summary>
+    Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetFreshSnapshotsForLeftoverScanAsync(TimeSpan reuseWithin, CancellationToken cancellationToken)
+        => GetSnapshotsForLeftoverScanAsync(cancellationToken);
+
     Task<DownloadClientActionResult> ExecuteActionAsync(
         string clientId,
         DownloadClientActionRequest request,
