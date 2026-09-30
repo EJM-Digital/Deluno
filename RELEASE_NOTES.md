@@ -9,6 +9,65 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.24
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Every screen opens at once
+
+- Switching to the Dashboard, Transfers, Activity, Find & Download, System
+  or any other screen from the sidebar now shows it straight away. On the
+  test server the slowest screen went from 1.7 seconds to under a tenth of a
+  second.
+- A screen you have already visited opens on what it last showed and
+  refreshes in the background. Nothing blanks the page while it loads.
+- Screens read what Deluno already knows. They never wait on a download
+  client, indexer or media server to answer.
+
+### A new Dashboard
+
+- The Dashboard is now four tabs across the top: Overview, Library,
+  Downloads and System. Each fits on one screen.
+- Overview gives one line per area, a single "Needs you" list where every
+  problem has a button to fix it, and what Deluno just did.
+- Library shows what you have and what Deluno is still looking for, with
+  Search now on each title.
+- Downloads shows what is downloading, your download clients and indexers,
+  and imports that need a look, with Retry, Give up, Search again and Test
+  again where they apply.
+- System shows problems, this computer's CPU and memory, scheduled tasks,
+  backups and free space on every drive, including network shares.
+- A tab shows a badge only when something on it needs you. The count is
+  the same one the sidebar's "Needs a look" shows.
+- A paused SABnzbd or NZBGet can be resumed from the Dashboard.
+
+### Smaller, cleaner databases
+
+- Search history now keeps what the screens show (the release Deluno chose,
+  why, and how many it compared) instead of every release it looked at.
+  On the test server the TV database went from 1.8 GB to 22 MB.
+- Something that keeps happening, such as a download waiting for its
+  processor, is written to Activity once when it starts and again when it
+  changes, not every few seconds.
+- The first start after this update tidies the existing records and
+  compacts the databases once. On a large install that start takes a little
+  longer.
+
+### Plain words everywhere
+
+- Activity, System, Transfers and the film and show pages name every event,
+  background task, what started it and what a decision was about in
+  everyday words, never an internal code.
+- A film's or show's search history shows the releases each search compared
+  again.
+
+### Backups
+
+- A backup now takes a consistent copy of each database, even while Deluno
+  is busy, so it always restores cleanly.
+
 ## 1.0.0-rc.23
 
 rc.22 was not released: about 60 fixes landed on top of it, so this version
