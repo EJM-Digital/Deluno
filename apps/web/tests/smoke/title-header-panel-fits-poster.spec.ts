@@ -150,3 +150,101 @@ for (const spec of pages) {
     expect(heights).toBeLessThanOrEqual(posterBox!.height);
   });
 }
+
+// #1058 (reopened): the WHOLE header card, not just the panel, fits the poster.
+// A real title has a long synopsis, a long path and every fact; the middle
+// column must fit beside the poster with no dead space under poster or panel.
+const longOverview = Array.from({ length: 8 }, (_, i) =>
+  `Sentence ${i + 1} of a long synopsis that goes on for a good while so the text cannot fit in three lines of the header.`).join(" ");
+
+async function crowd(page: Page, kind: "movie" | "show") {
+  const rich = {
+    overview: longOverview,
+    genres: "Horror, Thriller, Mystery, Silent film, Drama",
+    metadataProvider: "tmdb",
+    metadataJson: JSON.stringify({ Studio: "Decla-Bioscop AG", Director: "Robert Wiene", OriginalLanguage: "German", Network: "Some Network", Status: "Ended", Certification: "NR" }),
+    ...(kind === "movie"
+      ? {
+          filePath: "D:\\Media\\Movies\\The Cabinet of Dr. Caligari (1920)\\The Cabinet of Dr. Caligari (1920) - Remux-1080p Bluray FLAC 2.0 x264-GROUP.mkv",
+          fileSizeBytes: 21474836480,
+          videoCodec: "x264",
+          audioCodec: "FLAC",
+          runtimeMinutes: 76
+        }
+      : { runtimeMinutes: 45 })
+  };
+  const pattern = kind === "movie" ? /\/api\/movies\/[0-9a-f-]+$/ : /\/api\/series\/[0-9a-f-]+$/;
+  await page.route(pattern, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), ...rich } });
+  });
+}
+
+
+for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 }, { width: 1920, height: 1080 }, { width: 2560, height: 1300 }]) {
+  for (const spec of pages) {
+    test(`the whole ${spec.kind} header card is as tall as its poster at ${size.width}px`, async ({ page }) => {
+      const urls = await seedTitles(page);
+      await crowd(page, spec.kind);
+      await page.setViewportSize(size);
+      await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
+      const panel = page.locator("aside").filter({ hasText: "Ratings & IDs" });
+      await expect(panel).toBeVisible();
+      const synopsis = page.getByTestId("title-synopsis");
+      await expect(synopsis).toBeVisible();
+      await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+
+      const m = await page.evaluate(() => {
+        const box = (e: Element) => e.getBoundingClientRect();
+        const grid = document.querySelector("div.grid.items-start") as HTMLElement;
+        const card = grid.closest("[class*='overflow-hidden']") as HTMLElement;
+        const content = grid.parentElement as HTMLElement;
+        const style = getComputedStyle(content);
+        const poster = (grid.querySelector("img[alt$=' poster']") ?? grid.firstElementChild) as HTMLElement;
+        const middle = grid.children[1] as HTMLElement;
+        const aside = grid.querySelector("aside") as HTMLElement;
+        return {
+          card: box(card).height,
+          padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
+          poster: box(poster).height,
+          posterBottom: box(poster).bottom,
+          middleBottom: box(middle).bottom,
+          asideBottom: box(aside).bottom,
+          middleScroll: middle.scrollHeight - middle.clientHeight
+        };
+      });
+      console.log(`${spec.kind} ${size.width}px card=${m.card} poster=${m.poster} padding=${m.padding}`);
+      expect(m.card).toBeLessThanOrEqual(m.poster + m.padding + 2);
+      expect(Math.abs(m.posterBottom - m.middleBottom)).toBeLessThanOrEqual(2);
+      expect(Math.abs(m.asideBottom - m.middleBottom)).toBeLessThanOrEqual(2);
+      expect(m.middleScroll).toBeLessThanOrEqual(1);
+      // The More button is inside the column, and at least two lines of the synopsis show.
+      const moreBox = (await page.getByRole("button", { name: "More", exact: true }).boundingBox())!;
+      expect(moreBox.y + moreBox.height).toBeLessThanOrEqual(m.middleBottom + 1);
+      expect((await page.locator("[data-testid=title-synopsis] p").boundingBox())!.height).toBeGreaterThanOrEqual(40);
+      await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058b-${spec.kind}-${size.width}.png` });
+
+      // More opens the rest in place, Less puts it back.
+      const before = (await synopsis.boundingBox())!.height;
+      await page.getByRole("button", { name: "More", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Less", exact: true })).toBeVisible();
+      expect((await synopsis.boundingBox())!.height).toBeGreaterThan(before);
+      await page.getByRole("button", { name: "Less", exact: true }).click();
+      await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+      expect(Math.abs((await synopsis.boundingBox())!.height - before)).toBeLessThanOrEqual(2);
+    });
+  }
+}
+
+for (const spec of pages) {
+  test(`the crowded ${spec.kind} header does not run off a phone screen`, async ({ page }) => {
+    const urls = await seedTitles(page);
+    await crowd(page, spec.kind);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
+    await expect(page.locator("aside").filter({ hasText: "Ratings & IDs" })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    // Stacked: the whole synopsis shows, no More button.
+    await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+  });
+}

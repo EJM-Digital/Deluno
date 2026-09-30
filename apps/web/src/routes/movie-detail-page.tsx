@@ -49,6 +49,7 @@ import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
+import { TitleSynopsis } from "../components/app/title-synopsis";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
 import { ActionMenu } from "../components/ui/action-menu";
@@ -804,7 +805,7 @@ export function MovieDetailPage() {
             ) : (
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
-            <div className="min-w-0 self-start">
+            <div className="min-w-0 self-start xl:flex xl:h-96 xl:flex-col xl:has-[[data-expanded=true]]:h-auto">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
               {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
@@ -819,8 +820,8 @@ export function MovieDetailPage() {
                 heading and an icon, and two things of different heights line up
                 on their centres.
               */}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{metaText("LocalizedTitle") ?? movie.title}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? movie.title}>{metaText("LocalizedTitle") ?? movie.title}</h1>
                 {/*
                   Monitoring: the shield, beside the title, and nothing else.
                   the owner: *"instead of having a big button for monitor/unmonitored
@@ -876,7 +877,7 @@ export function MovieDetailPage() {
                   <span>{formatRuntime(movie.runtimeMinutes, preferences)}</span>
                 ) : null}
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2 xl:mt-2 xl:max-h-7 xl:shrink-0 xl:overflow-hidden" title={movie.genres ?? undefined}>
                 {/*
                   The mark, and nothing beside it about monitoring.
 
@@ -915,7 +916,7 @@ export function MovieDetailPage() {
                 into the space two rows of chips would take — and every one is
                 skippable by eye until you want it.
               */}
-              <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3 xl:shrink-0 2xl:grid-cols-4">
                 {[
                   { label: "Path", value: movie.filePath || null, mono: true },
                   // Quality and Target are NOT here: the summary strip below says
@@ -949,9 +950,7 @@ export function MovieDetailPage() {
                 ))}
               </dl>
 
-              <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
-                {movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."}
-              </p>
+              <TitleSynopsis text={movie.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this title."} />
             </div>
             <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-sm xl:min-h-96">
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>

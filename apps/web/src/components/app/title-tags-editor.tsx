@@ -86,7 +86,7 @@ export function TitleTagsEditor({
   return (
     <div
       className={cn(
-        "mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-sm",
+        "mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-card/55 px-3 py-2 backdrop-blur-sm xl:mt-2 xl:shrink-0 xl:py-1",
         // Only the editor needs the full row: it holds a text field that wants
         // room. Reading a title's tags - most often none at all - was drawing a
         // full-width bar to hold three short words and a button.

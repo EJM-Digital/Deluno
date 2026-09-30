@@ -71,6 +71,7 @@ import { CreditsRow, readStoredCredits } from "../components/app/credits-row";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
+import { TitleSynopsis } from "../components/app/title-synopsis";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
 import { ActionMenu } from "../components/ui/action-menu";
@@ -1132,12 +1133,12 @@ export function ShowDetailPage() {
             ) : (
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
-            <div className="min-w-0 self-start">
+            <div className="min-w-0 self-start xl:flex xl:h-96 xl:flex-col xl:has-[[data-expanded=true]]:h-auto">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">TV series</p>
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
               {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">{metaText("LocalizedTitle") ?? series.title}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 xl:flex-nowrap">
+                <h1 className="font-display text-4xl font-semibold tracking-tight text-foreground sm:text-5xl xl:min-w-0 xl:truncate xl:text-3xl" title={metaText("LocalizedTitle") ?? series.title}>{metaText("LocalizedTitle") ?? series.title}</h1>
                 {/* The shield, beside the title — one control, both shelves. */}
                 <button
                   type="button"
@@ -1179,7 +1180,7 @@ export function ShowDetailPage() {
                   <span>{formatRuntime(series.runtimeMinutes, preferences)}</span>
                 ) : null}
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2 xl:mt-2 xl:max-h-7 xl:shrink-0 xl:overflow-hidden" title={series.genres ?? undefined}>
                 {/*
                   The mark, and nothing beside it about monitoring.
 
@@ -1207,7 +1208,7 @@ export function ShowDetailPage() {
                 {series.genres?.split(",").map((genre) => <span key={genre} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">{genre.trim()}</span>)}
               </div>
               <TitleTagsEditor id={series.id} mediaType="series" metadataJson={series.metadataJson} onSaved={() => revalidator.revalidate()} />
-              <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1.5 sm:grid-cols-3 xl:shrink-0 2xl:grid-cols-4">
                 {[
                   { label: "Episodes", value: progress.aired ? `${progress.held}/${progress.aired} aired held` : null },
                   { label: "Network", value: metaText("Network") },
@@ -1226,9 +1227,7 @@ export function ShowDetailPage() {
                   </div>
                 ))}
               </dl>
-              <p className="mt-4 max-w-4xl text-sm leading-relaxed text-muted-foreground">
-                {series.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this series."}
-              </p>
+              <TitleSynopsis text={series.overview ?? "No overview has been stored yet. Refresh metadata when you want Deluno to enrich this series."} />
             </div>
             <aside className="w-full self-start rounded-xl border border-white/10 bg-card/80 p-3 backdrop-blur-sm xl:min-h-96">
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
