@@ -31,10 +31,11 @@ function summary(cases: unknown[]) {
 
 async function showCases(page: Page, answer: { status: number; message: string }) {
   const posted: string[] = [];
-  await page.route("**/api/movies/import-recovery", async (route) => {
+  // The screens ask with ?limit= (#1081), so the query string is allowed.
+  await page.route(/\/api\/movies\/import-recovery(\?.*)?$/, async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(summary([lostDownload, qualityProblem])) });
   });
-  await page.route("**/api/series/import-recovery", async (route) => {
+  await page.route(/\/api\/series\/import-recovery(\?.*)?$/, async (route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(summary([])) });
   });
   await page.route("**/api/movies/import-recovery/*/retry", async (route) => {
