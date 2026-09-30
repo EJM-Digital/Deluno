@@ -1,4 +1,5 @@
 import { matchTvdbRoute, serveTvdbRoute } from "./tvdb.js";
+import { ProviderRateLimited, limitedFetch, rateLimitedResponse } from "./limits.js";
 import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
 
 const CACHE_TTL_SECONDS = 60 * 60 * 12;
@@ -9,8 +10,6 @@ const CATALOGUE_TTL_SECONDS = 60 * 60 * 6;
 // A title's translations change rarely and one answer carries every language,
 // so it is kept a week and shared by every install whatever language it asks for.
 const TRANSLATIONS_TTL_SECONDS = 60 * 60 * 24 * 7;
-const RATE_WINDOW_SECONDS = 60;
-const RATE_LIMIT_PER_WINDOW = 30;
 const MAX_RESULTS = 6;
 // A series with 10 seasons is 11 upstream calls. Doing that fan-out here rather
 // than in the app is the whole point of the gateway: one client request, one
@@ -51,21 +50,15 @@ export default {
       return serveArtwork(request, url);
     }
 
+    const clientAddress = request.headers.get("CF-Connecting-IP") ?? "unknown";
     const tvdbRoute = matchTvdbRoute(url.pathname);
     if (tvdbRoute) {
-      // TheTVDB is served from this same boundary as TMDb: one shared per-IP
-      // limit, one cache, and a key that only exists in this Worker's secrets.
-      const tvdbRate = await enforceRateLimit(
-        env.METADATA_CACHE,
-        request.headers.get("CF-Connecting-IP") ?? "unknown",
-        Date.now());
-      if (!tvdbRate.allowed) {
-        return json(
-          { error: "rate_limited", message: "Please try title matching again shortly." },
-          429,
-          { "Retry-After": String(tvdbRate.retryAfterSeconds) });
-      }
-      return serveTvdbRoute(tvdbRoute, url, env, env.METADATA_CACHE, json);
+      // TheTVDB is served from this same boundary as TMDb: one cache, one
+      // provider-call budget per install, and a key that only exists in this
+      // Worker's secrets. Only calls that reach TheTVDB are counted.
+      return serveTvdbRoute(
+        tvdbRoute, url, env, env.METADATA_CACHE, json,
+        limitedFetch(env, clientAddress));
     }
 
     const route = matchRoute(url.pathname);
@@ -82,21 +75,14 @@ export default {
       return json({ error: "service_unavailable", message: "Metadata service is not configured." }, 503);
     }
 
-    const clientAddress = request.headers.get("CF-Connecting-IP") ?? "unknown";
-    const rate = await enforceRateLimit(env.METADATA_CACHE, clientAddress, Date.now());
-    if (!rate.allowed) {
-      return json(
-        { error: "rate_limited", message: "Please try title matching again shortly." },
-        429,
-        { "Retry-After": String(rate.retryAfterSeconds) });
-    }
+    const provider = limitedFetch(env, clientAddress);
 
     if (route.kind === "person-imdb") {
-      return servePersonImdbRoute(route, env);
+      return servePersonImdbRoute(route, env, provider);
     }
 
     if (route.kind !== "search") {
-      return serveCatalogueRoute(route, env, url.searchParams);
+      return serveCatalogueRoute(route, env, url.searchParams, provider);
     }
 
     const key = await boundCacheKey(buildCacheKey(lookup.value));
@@ -111,7 +97,7 @@ export default {
     }
 
     try {
-      const results = await lookupTmdb(lookup.value, env.TMDB_API_KEY, fetch, url.origin);
+      const results = await lookupTmdb(lookup.value, env.TMDB_API_KEY, provider, url.origin);
       const response = {
         provider: "deluno-broker",
         mode: "broker",
@@ -121,6 +107,7 @@ export default {
       await writeCache(env.METADATA_CACHE, key, response, CACHE_TTL_SECONDS);
       return json(response, 200, { "Cache-Control": "public, max-age=300" });
     } catch (error) {
+      if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
       const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
       let failure;
       // A 404 is meaningful only when Deluno asked for one exact identity.
@@ -190,7 +177,7 @@ export function matchRoute(pathname) {
   return null;
 }
 
-async function servePersonImdbRoute(route, env) {
+async function servePersonImdbRoute(route, env, provider = fetch) {
   const key = `person-external-ids:v1:${route.id}`;
   const cached = await env.METADATA_CACHE.get(key, "json");
   if (cached && typeof cached.imdbId === "string") {
@@ -201,12 +188,13 @@ async function servePersonImdbRoute(route, env) {
   }
 
   try {
-    const imdbId = await lookupPersonImdbId(route.id, env.TMDB_API_KEY);
+    const imdbId = await lookupPersonImdbId(route.id, env.TMDB_API_KEY, provider);
     await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId }), {
       expirationTtl: PERSON_EXTERNAL_IDS_TTL_SECONDS
     });
     return imdbId ? redirectToImdb(imdbId) : json({ error: "not_found" }, 404);
   } catch (error) {
+    if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
     if (providerStatus === 404) {
       await env.METADATA_CACHE.put(key, JSON.stringify({ imdbId: null }), {
@@ -248,7 +236,7 @@ function redirectToImdb(imdbId) {
   });
 }
 
-async function serveCatalogueRoute(route, env, params = new URLSearchParams()) {
+async function serveCatalogueRoute(route, env, params = new URLSearchParams(), provider = fetch) {
   const page = route.kind === "popular" ? parsePopularPage(params) : 1;
   const key = route.kind === "catalogue"
     ? `catalogue:v1:${route.id}`
@@ -273,16 +261,16 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams()) {
 
   try {
     const payload = route.kind === "catalogue"
-      ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY)
+      ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY, provider)
       : route.kind === "episode-groups"
-        ? await lookupEpisodeGroups(route.id, env.TMDB_API_KEY)
+        ? await lookupEpisodeGroups(route.id, env.TMDB_API_KEY, provider)
         : route.kind === "popular"
-          ? await lookupPopular(route.mediaType, page, env.TMDB_API_KEY)
+          ? await lookupPopular(route.mediaType, page, env.TMDB_API_KEY, provider)
       : route.kind === "release-dates"
-        ? await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY)
+        ? await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY, provider)
         : route.kind === "translations"
-          ? await lookupTranslations(route.mediaKind, route.id, env.TMDB_API_KEY)
-          : await lookupMovieCollection(route.id, env.TMDB_API_KEY);
+          ? await lookupTranslations(route.mediaKind, route.id, env.TMDB_API_KEY, provider)
+          : await lookupMovieCollection(route.id, env.TMDB_API_KEY, provider);
 
     await writeCache(
       env.METADATA_CACHE,
@@ -295,6 +283,7 @@ async function serveCatalogueRoute(route, env, params = new URLSearchParams()) {
           : CATALOGUE_TTL_SECONDS);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
+    if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
     let failure;
     if (providerStatus === 404) {
@@ -580,20 +569,6 @@ export function parseLookup(params) {
   }
 
   return { value: { query, mediaType, providerId, year } };
-}
-
-export async function enforceRateLimit(cache, clientAddress, now) {
-  const window = Math.floor(now / (RATE_WINDOW_SECONDS * 1000));
-  const key = `rate:${clientAddress}:${window}`;
-  const count = Number.parseInt((await cache.get(key)) ?? "0", 10) || 0;
-  const retryAfterSeconds = RATE_WINDOW_SECONDS - Math.floor((now / 1000) % RATE_WINDOW_SECONDS);
-
-  if (count >= RATE_LIMIT_PER_WINDOW) {
-    return { allowed: false, retryAfterSeconds };
-  }
-
-  await cache.put(key, String(count + 1), { expirationTtl: RATE_WINDOW_SECONDS + 5 });
-  return { allowed: true, retryAfterSeconds: 0 };
 }
 
 /**

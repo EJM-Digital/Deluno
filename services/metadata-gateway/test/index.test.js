@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCacheKey,
-  enforceRateLimit,
   lookupMovieReleaseDates,
   lookupEpisodeGroups,
   lookupPopular,
@@ -212,19 +211,6 @@ test("a show takes its runtime from the episode length", () => {
   }, "tv");
 
   assert.equal(show.runtimeMinutes, 45);
-});
-
-test("rate-limits a client after the configured request window", async () => {
-  const values = new Map();
-  const cache = {
-    get: async (key) => values.get(key) ?? null,
-    put: async (key, value) => values.set(key, value)
-  };
-  const now = Date.UTC(2026, 7, 14, 0, 0, 0);
-  for (let index = 0; index < 30; index += 1) {
-    assert.equal((await enforceRateLimit(cache, "203.0.113.1", now)).allowed, true);
-  }
-  assert.equal((await enforceRateLimit(cache, "203.0.113.1", now)).allowed, false);
 });
 
 test("searches TMDb once and returns card-ready results without a detail fan-out", async () => {

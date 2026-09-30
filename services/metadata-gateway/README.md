@@ -15,8 +15,12 @@ download history, credentials from Deluno users, or a library inventory.
 - `TMDB_API_KEY` is a Cloudflare Worker secret, never a source-controlled value
   or a Deluno UI setting.
 - Successful searches are cached for 12 hours in KV.
-- Public callers are best-effort limited to 30 lookups per IP address per
-  minute. The Worker emits no application logs containing the title query.
+- Each install (IP address) may make 120 calls a minute to TMDb or TheTVDB, with
+  a best-effort shared ceiling of 400 every 10 seconds under TMDb's own limit.
+  Only calls that reach a provider count: answers served from the gateway cache
+  are never counted or limited. The counts use Workers Rate Limiting bindings
+  (`wrangler.jsonc`, no KV writes); a missing binding allows the call. A spent
+  budget answers `429 rate_limited` with `Retry-After`. The Worker emits no application logs containing the title query.
 - TMDb provider failures return generic, actionable Deluno status messages and
   never disclose upstream credentials or response bodies.
 - OMDb is not part of the launch gateway.
