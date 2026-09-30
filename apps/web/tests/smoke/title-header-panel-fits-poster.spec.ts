@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
-// #1058. The Ratings & IDs panel stacked its buttons one per row, so the header
-// was taller than the poster and left dead space. The actions now sit two to a
-// row in a wider panel; the header is about as tall as the poster on wide
-// screens and the panel drops under the details on a phone.
+// #1058. The Ratings & IDs panel is never taller than the poster: the poster sets
+// the header height. Rarely used actions (Edit metadata, Edit movie, Remove from
+// Deluno) sit behind one More button; the three everyday ones stay visible.
 
 async function authHeaders(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
@@ -40,13 +39,13 @@ async function seedTitles(page: Page) {
 }
 
 const pages = [
-  { kind: "movie", buttons: ["Refresh metadata", "Edit metadata", "Edit movie", "Remove from Deluno"] },
-  { kind: "show", buttons: ["Refresh metadata", "Edit metadata", "Remove from Deluno"] }
+  { kind: "movie", menuItems: ["Edit metadata", "Edit movie", "Remove from Deluno"] },
+  { kind: "show", menuItems: ["Edit metadata", "Remove from Deluno"] }
 ] as const;
 
-for (const size of [{ width: 1669, height: 1000 }, { width: 1920, height: 1080 }]) {
+for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 }, { width: 1920, height: 1080 }, { width: 2560, height: 1300 }]) {
   for (const spec of pages) {
-    test(`the ${spec.kind} header is no taller than its poster and its buttons do not overlap at ${size.width}px`, async ({ page }) => {
+    test(`the ${spec.kind} Ratings & IDs panel is no taller than its poster at ${size.width}px`, async ({ page }) => {
       const urls = await seedTitles(page);
       await page.setViewportSize(size);
       await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
@@ -55,34 +54,48 @@ for (const size of [{ width: 1669, height: 1000 }, { width: 1920, height: 1080 }
 
       const poster = page.getByAltText(/ poster$/).or(page.getByText("No artwork yet")).first();
       const posterBox = await poster.boundingBox();
-      // The grid holding poster, details and panel: the box that grew.
-      const headerBox = await panel.locator("xpath=..").boundingBox();
       const panelBox = await panel.boundingBox();
       expect(posterBox).not.toBeNull();
-      expect(headerBox).not.toBeNull();
-      console.log(`${spec.kind} ${size.width}px poster=${posterBox!.height} header=${headerBox!.height} panel=${panelBox!.height}`);
-      expect(headerBox!.height).toBeLessThanOrEqual(posterBox!.height + 24);
+      expect(panelBox).not.toBeNull();
+      console.log(`${spec.kind} ${size.width}px poster=${posterBox!.height} panel=${panelBox!.height}`);
+      // The two-column layout (poster beside details) has no panel column below xl (1280px).
+      if (size.width >= 1280) expect(panelBox!.height).toBeLessThanOrEqual(posterBox!.height);
 
+      // The three everyday buttons stay visible and never overlap.
       const boxes = [];
-      const names = [...spec.buttons, "Rescan the folder", "Preview the folder rename"];
-      for (const name of names) {
+      for (const name of ["Refresh metadata", "Rescan the folder", "Preview the folder rename", "More actions"]) {
         const button = panel.getByRole("button", { name: new RegExp(`^${name}`) });
         await expect(button).toBeVisible();
         boxes.push({ name, box: (await button.boundingBox())! });
       }
       for (let i = 0; i < boxes.length; i++) {
         for (let j = i + 1; j < boxes.length; j++) {
-          const a = boxes[i].box;
-          const b = boxes[j].box;
-          const overlaps = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+          const x = boxes[i].box;
+          const y = boxes[j].box;
+          const overlaps = x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height;
           expect(overlaps, `${boxes[i].name} and ${boxes[j].name} overlap`).toBe(false);
         }
       }
-      // Remove from Deluno stays last.
-      const remove = boxes.find((entry) => entry.name === "Remove from Deluno")!.box;
-      for (const entry of boxes) expect(entry.box.y + entry.box.height).toBeLessThanOrEqual(remove.y + remove.height + 1);
+      // Remove from Deluno is inside the menu, not on the panel.
+      await expect(panel.getByRole("button", { name: "Remove from Deluno" })).toHaveCount(0);
     });
   }
+}
+
+for (const spec of pages) {
+  test(`the ${spec.kind} More menu holds the rarely used actions and works from the keyboard`, async ({ page }) => {
+    const urls = await seedTitles(page);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
+    const more = page.getByRole("button", { name: "More actions" });
+    await more.focus();
+    await page.keyboard.press("Enter");
+    for (const name of spec.menuItems) await expect(page.getByRole("menuitem", { name })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: spec.menuItems[0] })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(more).toBeFocused();
+  });
 }
 
 for (const spec of pages) {
@@ -97,5 +110,43 @@ for (const spec of pages) {
     const panelBox = await panel.boundingBox();
     expect(panelBox!.x).toBeGreaterThanOrEqual(0);
     expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(390);
+  });
+}
+
+// A real title has ratings, an IMDb id, a TheTVDB id and the TheTVDB credit. The
+// empty seeded titles above are the easy case; this is the crowded one.
+for (const spec of pages) {
+  test(`the ${spec.kind} panel with ratings, every id and the TheTVDB credit still fits its poster`, async ({ page }) => {
+    const urls = await seedTitles(page);
+    const rich = {
+      metadataProvider: "tmdb",
+      imdbId: "tt13111078",
+      tvDbId: 388589,
+      rating: 8.3,
+      ratings: [
+        { source: "tmdb", label: "TMDB", score: 8.3, maxScore: 10, voteCount: 1643, url: null },
+        { source: "imdb", label: "IMDb", score: 8.1, maxScore: 10, voteCount: 90210, url: null }
+      ],
+      metadataJson: JSON.stringify({ TvDbId: "388589" })
+    };
+    const pattern = spec.kind === "movie" ? /\/api\/movies\/[0-9a-f-]+$/ : /\/api\/series\/[0-9a-f-]+$/;
+    await page.route(pattern, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), ...rich } });
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
+    const panel = page.locator("aside").filter({ hasText: "Ratings & IDs" });
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText("8.3/10")).toBeVisible();
+    // Measure the content, not the panel's own minimum height.
+    const heights = await panel.evaluate((element) => {
+      const node = element as HTMLElement;
+      node.style.minHeight = "0";
+      return node.getBoundingClientRect().height;
+    });
+    const posterBox = await page.getByAltText(/ poster$/).or(page.getByText("No artwork yet")).first().boundingBox();
+    console.log(`${spec.kind} rich content=${heights} poster=${posterBox!.height}`);
+    expect(heights).toBeLessThanOrEqual(posterBox!.height);
   });
 }
