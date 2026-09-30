@@ -115,6 +115,19 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                 Password: string.IsNullOrWhiteSpace(request.Secret) ? stored?.Secret : request.Secret.Trim(),
                 ApiKey: string.IsNullOrWhiteSpace(request.ApiKey) ? stored?.ApiKey : request.ApiKey.Trim());
 
+            // A saved key that cannot be read here is treated as missing; unless a
+            // fresh one is being offered, say so instead of testing without it (#1094).
+            var freshKeyOffered = !string.IsNullOrWhiteSpace(request.Secret) || !string.IsNullOrWhiteSpace(request.ApiKey);
+            if (stored is { SecretUnreadable: true } && !freshKeyOffered)
+            {
+                return Results.Ok(new SubtitleProviderTestResult(
+                    false,
+                    "degraded",
+                    stored.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("API key"),
+                    null,
+                    null));
+            }
+
             var result = await TestAsync(provider, credentials, cancellationToken);
 
             if (stored is not null)

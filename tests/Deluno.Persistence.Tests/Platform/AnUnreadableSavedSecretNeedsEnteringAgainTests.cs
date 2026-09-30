@@ -164,6 +164,58 @@ public sealed class AnUnreadableSavedSecretNeedsEnteringAgainTests
         Assert.False(Assert.Single(await seerrHere.ListAsync(CancellationToken.None)).SecretUnreadable);
     }
 
+    [Fact]
+    public async Task Subtitle_providers_list_flagged_and_entering_again_clears_it()
+    {
+        using var storage = TestStorage.Create();
+        await InitializeAsync(storage);
+        var elsewhere = new SqliteSubtitleProviderRepository(storage.Factory, Clock, Protector(storage, "keys-elsewhere"));
+        var here = new SqliteSubtitleProviderRepository(storage.Factory, Clock, Protector(storage, "keys-here"));
+        await elsewhere.SaveAsync("opensubtitles", "OpenSubtitles", new SaveSubtitleProviderRequest(null, "user", "pass", "api-key", null, true), CancellationToken.None);
+
+        var listed = Assert.Single(await here.ListAsync(CancellationToken.None));
+        Assert.True(listed.SecretUnreadable);
+        Assert.False(listed.HasApiKey);
+        Assert.Equal("degraded", listed.HealthStatus);
+        Assert.Contains("can't be read here", listed.SecretProblem);
+        Assert.False(listed.IsAskable(Clock.GetUtcNow()));
+
+        await here.SaveAsync("opensubtitles", "OpenSubtitles", new SaveSubtitleProviderRequest(null, "user", "pass", "new-key", null, true), CancellationToken.None);
+        var fixedItem = Assert.Single(await here.ListAsync(CancellationToken.None));
+        Assert.False(fixedItem.SecretUnreadable);
+        Assert.Equal("new-key", fixedItem.ApiKey);
+    }
+
+    [Fact]
+    public async Task Metadata_keys_saved_elsewhere_report_as_needing_entering_again()
+    {
+        using var storage = TestStorage.Create();
+        await InitializeAsync(storage);
+        var elsewhere = new SqlitePlatformSettingsRepository(storage.Factory, Clock, Protector(storage, "keys-elsewhere"));
+        var here = new SqlitePlatformSettingsRepository(storage.Factory, Clock, Protector(storage, "keys-here"));
+        var current = await elsewhere.GetAsync(CancellationToken.None);
+        await elsewhere.SaveAsync(PlatformSettingsPatchMerger.Apply(current, new PatchPlatformSettingsRequest(MetadataTmdbApiKey: "tmdb-key", MdbListApiKey: "mdb-key")), CancellationToken.None);
+
+        var seenElsewhere = await elsewhere.GetAsync(CancellationToken.None);
+        Assert.True(seenElsewhere.MetadataTmdbApiKeyConfigured);
+        Assert.False(seenElsewhere.MetadataTmdbApiKeyUnreadable);
+
+        var seen = await here.GetAsync(CancellationToken.None);
+        Assert.False(seen.MetadataTmdbApiKeyConfigured);
+        Assert.True(seen.MetadataTmdbApiKeyUnreadable);
+        Assert.False(seen.MdbListApiKeyConfigured);
+        Assert.True(seen.MdbListApiKeyUnreadable);
+        Assert.False(seen.MetadataOmdbApiKeyUnreadable);
+        Assert.Contains("TMDb API key", seen.MetadataKeyProblem);
+        Assert.Contains("can't be read here. Enter it again.", seen.MetadataKeyProblem);
+
+        await here.SaveAsync(PlatformSettingsPatchMerger.Apply(seen, new PatchPlatformSettingsRequest(MetadataTmdbApiKey: "new-tmdb", MdbListApiKey: "new-mdb")), CancellationToken.None);
+        var cleared = await here.GetAsync(CancellationToken.None);
+        Assert.True(cleared.MetadataTmdbApiKeyConfigured);
+        Assert.False(cleared.MetadataTmdbApiKeyUnreadable);
+        Assert.Null(cleared.MetadataKeyProblem);
+    }
+
     private sealed class ThrowingProtector : ISecretProtector
     {
         public string Protect(string purpose, string plaintext) => plaintext;

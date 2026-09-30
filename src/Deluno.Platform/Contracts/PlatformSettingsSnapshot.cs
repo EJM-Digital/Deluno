@@ -278,7 +278,14 @@ public sealed record PlatformSettingsSnapshot(
     // Deluno's own downloads are still waiting. Off for every install (#936);
     // a missing key reads as off, so no existing install changes.
     bool PauseSearchWhenQueueLongEnabled = false,
-    int PauseSearchWhenQueueLongThreshold = 20);
+    int PauseSearchWhenQueueLongThreshold = 20,
+    // #1094: a saved key that was stored on another computer cannot be read here. It
+    // counts as not configured (the *Configured flags are false) and these say so, so the
+    // screen can ask for it again instead of claiming a key is saved.
+    bool MetadataTmdbApiKeyUnreadable = false,
+    bool MetadataOmdbApiKeyUnreadable = false,
+    bool MdbListApiKeyUnreadable = false,
+    string? MetadataKeyProblem = null);
 
 /// <summary>The choices behind <see cref="PlatformSettingsSnapshot.UnmatchedImportPolicy"/> (#888).</summary>
 public static class UnmatchedImportPolicies

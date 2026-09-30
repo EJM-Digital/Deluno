@@ -213,6 +213,18 @@ public sealed class SubtitleFetchService(
 
         if (askable.Length == 0)
         {
+            var unreadable = configured.FirstOrDefault(item => item.IsEnabled && item.SecretUnreadable);
+            if (unreadable is not null)
+            {
+                var unreadableMessage = unreadable.SecretProblem
+                    ?? Deluno.Security.SecretUnreadable.Message("API key");
+                return new SubtitleFetchOutcome(
+                    language, false, null, null, false, $"{unreadable.Name}: {unreadableMessage}",
+                    Failures: [IntegrationFailureFactory.FromLegacy(
+                        "subtitle", unreadable.ProviderKey, unreadable.Name, "search",
+                        "authentication", unreadableMessage)]);
+            }
+
             var failure = IntegrationFailureFactory.FromLegacy(
                 "subtitle",
                 "provider-registry",
@@ -601,6 +613,13 @@ public sealed class SubtitleFetchService(
         var connection = configured.FirstOrDefault(item =>
             string.Equals(item.ProviderKey, providerKey, StringComparison.OrdinalIgnoreCase));
         var provider = registry.Find(providerKey);
+
+        if (connection is { SecretUnreadable: true })
+        {
+            return new SubtitleFetchOutcome(
+                language, false, null, null, false,
+                $"{connection.Name}: {connection.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("API key")}");
+        }
 
         if (connection is null || provider is null || !Serves(provider, isEpisodeMedia))
         {

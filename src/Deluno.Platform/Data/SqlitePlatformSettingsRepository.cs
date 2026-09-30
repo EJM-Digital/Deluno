@@ -561,11 +561,21 @@ public sealed class SqlitePlatformSettingsRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    private static PlatformSettingsSnapshot CreateSnapshot(
+    private PlatformSettingsSnapshot CreateSnapshot(
         IReadOnlyDictionary<string, string> settings,
         IReadOnlyDictionary<string, string> roots)
     {
         var brokerUrl = NormalizeMetadataBrokerUrl(GetValue(settings, "metadata.brokerUrl")) ?? ManagedMetadataBrokerUrl;
+        var tmdbKey = secretProtector.TryUnprotect("metadata:tmdb", GetValue(settings, "metadata.tmdbApiKey"));
+        var omdbKey = secretProtector.TryUnprotect("metadata:omdb", GetValue(settings, "metadata.omdbApiKey"));
+        var mdbKey = secretProtector.TryUnprotect("intake:mdblist", GetValue(settings, "intake.mdblistApiKey"));
+        var unreadableKeys = new List<string>();
+        if (tmdbKey.Unreadable) unreadableKeys.Add("TMDb API key");
+        if (omdbKey.Unreadable) unreadableKeys.Add("OMDb API key");
+        if (mdbKey.Unreadable) unreadableKeys.Add("MDbList API key");
+        var keyProblem = unreadableKeys.Count == 0
+            ? null
+            : $"The saved {string.Join(" and the saved ", unreadableKeys)} was stored on another computer and can't be read here. Enter it again.";
 
         return new PlatformSettingsSnapshot(
             MovieRootPath: GetValue(roots, "movies"),
@@ -598,8 +608,10 @@ public sealed class SqlitePlatformSettingsRepository(
             MetadataProviderMode: NormalizeMetadataProviderMode(GetValue(settings, "metadata.providerMode") ?? "broker"),
             MetadataBrokerUrl: brokerUrl,
             MetadataBrokerConfigured: !string.IsNullOrWhiteSpace(brokerUrl),
-            MetadataTmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.tmdbApiKey")),
-            MetadataOmdbApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "metadata.omdbApiKey")),
+            MetadataTmdbApiKeyConfigured: tmdbKey.Value is not null,
+            MetadataTmdbApiKeyUnreadable: tmdbKey.Unreadable,
+            MetadataOmdbApiKeyConfigured: omdbKey.Value is not null,
+            MetadataOmdbApiKeyUnreadable: omdbKey.Unreadable,
             ReleaseNeverGrabPatterns: NormalizeNeverGrabPatterns(GetValue(settings, "search.neverGrabPatterns")),
             SearchScoringMode: SearchScoringModes.Normalize(GetValue(settings, "search.scoringMode")),
             ImportRecoveryRetentionDays: int.TryParse(GetValue(settings, "media.importRecoveryRetentionDays"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var retentionDays) && retentionDays > 0 ? retentionDays : 30,
@@ -608,7 +620,9 @@ public sealed class SqlitePlatformSettingsRepository(
             CloudflareHelperTimeoutSeconds: int.TryParse(GetValue(settings, "search.cloudflareHelperTimeoutSeconds"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var helperTimeoutSeconds) && helperTimeoutSeconds > 0 ? Math.Clamp(helperTimeoutSeconds, 1, 180) : 60,
             CloudflareHelperKind: CloudflareHelperKinds.Normalize(GetValue(settings, "search.cloudflareHelperKind")),
             UpdatedUtc: DateTimeOffset.UtcNow,
-            MdbListApiKeyConfigured: !string.IsNullOrWhiteSpace(GetValue(settings, "intake.mdblistApiKey")),
+            MdbListApiKeyConfigured: mdbKey.Value is not null,
+            MdbListApiKeyUnreadable: mdbKey.Unreadable,
+            MetadataKeyProblem: keyProblem,
             DownloadHealthStrikeThreshold: ReadDownloadHealthStrikeThreshold(settings),
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
