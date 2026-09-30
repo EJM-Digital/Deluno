@@ -4726,6 +4726,23 @@ public sealed class SqliteSeriesCatalogRepository(
         return value is DBNull or null ? null : value.ToString();
     }
 
+    public async Task<IReadOnlyList<string>> ListAllEpisodeFilePathsAsync(CancellationToken cancellationToken)
+    {
+        var paths = new List<string>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT file_path FROM episode_entries WHERE has_file = 1 AND file_path IS NOT NULL;";
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
     public async Task<string?> GetEpisodeFilePathAsync(
         string episodeId,
         CancellationToken cancellationToken)

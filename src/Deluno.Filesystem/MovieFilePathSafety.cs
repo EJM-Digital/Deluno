@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace Deluno.Filesystem;
 
 /// <summary>
@@ -10,7 +8,7 @@ namespace Deluno.Filesystem;
 /// public, so this rule is tested directly rather than only through the
 /// endpoints that lean on it (#782).
 /// </summary>
-public static partial class MovieFilePathSafety
+public static class MovieFilePathSafety
 {
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -19,14 +17,6 @@ public static partial class MovieFilePathSafety
 
     private static readonly string[] ArtworkSuffixes =
         ["-poster", "-fanart", "-thumb", "-banner", "-clearlogo", "-logo", "-landscape", "-disc", "-backdrop"];
-
-    private static readonly HashSet<string> SubtitleTags = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "forced", "sdh", "hi", "cc", "default", "full", "signs"
-    };
-
-    [GeneratedRegex("^[a-z]{2,3}([-_][a-z0-9]{2,4})?$", RegexOptions.IgnoreCase)]
-    private static partial Regex LanguageTag();
 
     public static bool TryResolveWithinFolder(string folder, string? requestedPath, out string resolved)
     {
@@ -83,11 +73,62 @@ public static partial class MovieFilePathSafety
     }
 
     /// <summary>
+    /// True when the film's folder is not its own: it is a library's root
+    /// itself, or it holds another tracked primary file (another film or an
+    /// episode, in any library), or the film's library no longer exists. Only
+    /// the film's own named files count as its files there.
+    /// </summary>
+    public static bool IsSharedFolder(
+        string primaryFilePath,
+        IEnumerable<string> libraryRoots,
+        IEnumerable<string> otherTrackedPrimaryPaths,
+        bool libraryStillExists = true)
+    {
+        if (!libraryStillExists || IsFiledFlat(primaryFilePath, libraryRoots))
+        {
+            return true;
+        }
+
+        var ownFull = Path.GetFullPath(primaryFilePath);
+        var folder = Path.GetDirectoryName(ownFull);
+        if (folder is null)
+        {
+            return true;
+        }
+
+        var own = Normalise(folder);
+        foreach (var other in otherTrackedPrimaryPaths)
+        {
+            if (string.IsNullOrWhiteSpace(other))
+            {
+                continue;
+            }
+
+            string otherFull;
+            try { otherFull = Path.GetFullPath(other); }
+            catch (ArgumentException) { continue; }
+
+            if (string.Equals(otherFull, ownFull, PathComparison))
+            {
+                continue;
+            }
+
+            var otherFolder = Path.GetDirectoryName(otherFull);
+            if (otherFolder is not null && string.Equals(Normalise(otherFolder), own, PathComparison))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// For a film filed flat: only its tracked file and the files that carry its
     /// name (subtitles, nfo, artwork), in that same folder - never another
     /// title's files.
     /// </summary>
-    public static bool BelongsToFlatFilm(string primaryFilePath, string candidatePath)
+    public static bool BelongsToFlatFilm(string primaryFilePath, string candidatePath, IEnumerable<string>? alternateBaseNames = null)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(primaryFilePath));
         var candidateFolder = Path.GetDirectoryName(Path.GetFullPath(candidatePath));
@@ -109,8 +150,18 @@ public static partial class MovieFilePathSafety
             return false;
         }
 
-        var baseName = Path.GetFileNameWithoutExtension(primaryFilePath);
+        var bases =new List<string> { Path.GetFileNameWithoutExtension(primaryFilePath) };
+        if (alternateBaseNames is not null)
+        {
+            bases.AddRange(alternateBaseNames.Where(item => !string.IsNullOrWhiteSpace(item)));
+        }
+
         var name = Path.GetFileNameWithoutExtension(candidatePath);
+        return bases.Any(baseName => NameBelongsTo(baseName, name));
+    }
+
+    private static bool NameBelongsTo(string baseName, string name)
+    {
         if (name.Equals(baseName, StringComparison.OrdinalIgnoreCase))
         {
             return true;
@@ -127,14 +178,10 @@ public static partial class MovieFilePathSafety
             return true;
         }
 
-        if (!rest.StartsWith('.'))
-        {
-            return false;
-        }
-
-        var tokens = rest.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        return tokens.Length > 0
-            && tokens.All(token => SubtitleTags.Contains(token) || LanguageTag().IsMatch(token));
+        // Only tags the subtitle reader itself understands (a language, a forced or
+        // hearing-impaired flag): "Alien.Man.srt" is not "Alien"'s subtitle.
+        return rest.StartsWith('.')
+            && SubtitleInventoryService.AreAllTagsRecognised(rest[1..]);
     }
 
     private static StringComparison PathComparison

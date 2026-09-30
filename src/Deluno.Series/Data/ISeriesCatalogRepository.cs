@@ -539,6 +539,12 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string episodeId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every tracked episode file path across all series. Lets a film's Files tab treat a folder that
+    /// also holds an episode as shared (#1065).
+    /// </summary>
+    Task<IReadOnlyList<string>> ListAllEpisodeFilePathsAsync(CancellationToken cancellationToken);
+
     /// <summary>Get the installed file path for a specific episode.</summary>
     Task<string?> GetEpisodeFilePathAsync(
         string episodeId,
