@@ -1,5 +1,8 @@
 using System.Text.Json;
+using Deluno.Connections.Contracts;
+using Deluno.Connections.Data;
 using Deluno.Contracts;
+using Deluno.Infrastructure.Resilience;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search;
 using Deluno.Jobs.Contracts;
@@ -30,6 +33,10 @@ namespace Deluno.Worker.Tests.Jobs;
 /// only <see cref="DownloadQueueStatuses.DeadRelease"/>, which a download
 /// client only reports when it looked at the exact link or file and refused
 /// it in the same request.</para>
+///
+/// <para>#1062: the block-and-search-again step lives in the grab service, so
+/// every caller gets it. These tests run each search handler against the real
+/// grab service with a client that answers with a chosen status.</para>
 /// </summary>
 public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
 {
@@ -288,7 +295,7 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
         public Mock<IMovieCatalogRepository> Movies { get; } = new();
         public Mock<ISeriesCatalogRepository> Series { get; } = new();
         public Mock<IAcquisitionDecisionPipeline> Pipeline { get; } = new();
-        public Mock<IDownloadClientGrabService> Grabs { get; } = new();
+        public IDownloadClientGrabService Grabs { get; private set; } = null!;
         public Mock<IActivityFeedRepository> ActivityFeed { get; } = new();
         public Mock<IBlockedReleaseRepository> BlockedReleases { get; } = new();
         public Mock<IJobScheduler> JobScheduler { get; } = new();
@@ -320,7 +327,7 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
 
             var candidate = new MediaSearchCandidate(Release, "indexer-1", "Fixture", "WEB 1080p", 100, true, "Best.", DownloadUrl: "http://fixture.invalid/release.nzb", TorrentHashOrItemId: CandidateHash);
             Pipeline.Setup(pipeline => pipeline.PlanAsync(It.IsAny<AcquisitionDecisionRequest>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new AcquisitionDecisionPlan(
+                .ReturnsAsync((AcquisitionDecisionRequest planned, CancellationToken _) => new AcquisitionDecisionPlan(
                     new MediaSearchPlan(candidate, [candidate], "Found one."),
                     Deluno.Quality.MediaPolicyCatalog.CurrentVersion,
                     "matched",
@@ -329,31 +336,69 @@ public sealed class ADeadOrBrokenLinkIsBlocklistedAndSearchedAgainTests
                     1,
                     new LibraryDownloadClientLinkItem("link-1", "library-1", "client-1", "SABnzbd", 1, Now, Now),
                     true,
-                    new DownloadClientGrabRequest(Release, "http://fixture.invalid/release.nzb", "movies", "movies", "Fixture"),
+                    new DownloadClientGrabRequest(Release, "http://fixture.invalid/release.nzb", string.Equals(planned.MediaType, "movies", StringComparison.OrdinalIgnoreCase) ? "movies" : "tv", "movies", "Fixture") { ReleaseHash = CandidateHash },
                     []));
-            Grabs.Setup(grab => grab.GrabAsync(It.IsAny<string>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
+            var clientItem = new DownloadClientItem(
+                "client-1", "SABnzbd", "sabnzbd", "localhost", 8080, null, null, null, false, null,
+                "movies", "tv", null, 1, true, "healthy", null, null, null, Now, Now, Now);
+            var connections = new Mock<IConnectionsRepository>();
+            connections.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([clientItem]);
+            connections.Setup(instance => instance.ListIndexersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            connections.Setup(instance => instance.ListDownloadClientPathMappingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            var client = new Mock<IDownloadClient>();
+            client.Setup(instance => instance.GrabAsync(It.IsAny<DownloadClientItem>(), It.IsAny<DownloadClientGrabRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new DownloadClientGrabResult(
                     "client-1", Release, grabStatus == "sent", grabStatus,
                     grabStatus == DownloadQueueStatuses.DeadRelease
                         ? "SABnzbd did not accept the release URL. It may be a dead link or a file it could not read."
                         : grabStatus)
                 { ExternalId = "nzo-1" });
+            var registry = new Mock<IDownloadClientRegistry>();
+            var captured = client.Object;
+            registry.Setup(instance => instance.TryGet(It.IsAny<string?>(), out captured)).Returns(true);
+            Grabs = new DownloadClientGrabService(
+                connections.Object,
+                registry.Object,
+                new PassThrough(),
+                new Mock<IDownloadDispatchesRepository>().Object,
+                new Mock<IRealtimeEventPublisher>().Object,
+                activityFeedRepository: ActivityFeed.Object,
+                blockedReleases: BlockedReleases.Object,
+                jobScheduler: JobScheduler.Object);
         }
 
         public MoviesLibrarySearchJobHandler MoviesHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Jobs.Object, Movies.Object, Series.Object,
-                Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
+                Pipeline.Object, Grabs, ActivityFeed.Object, new FixedClock(Now),
                 blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
 
         public TvLibrarySearchJobHandler TvHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Jobs.Object, Movies.Object, Series.Object,
-                Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
+                Pipeline.Object, Grabs, ActivityFeed.Object, new FixedClock(Now),
                 blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
 
         public EpisodeSearchJobHandler EpisodeHandler()
             => new(Libraries.Object, new Mock<IQualityRepository>().Object, Series.Object, Jobs.Object,
-                Pipeline.Object, Grabs.Object, ActivityFeed.Object, new FixedClock(Now),
+                Pipeline.Object, Grabs, ActivityFeed.Object, new FixedClock(Now),
                 blockedReleases: BlockedReleases.Object, jobScheduler: JobScheduler.Object);
+    }
+
+    private sealed class PassThrough : IIntegrationResiliencePolicy
+    {
+        public async Task<IntegrationResilienceResult<T>> ExecuteAsync<T>(
+            IntegrationResilienceRequest request,
+            Func<CancellationToken, Task<T>> operation,
+            Func<T, IntegrationResilienceOutcome> classifyResult,
+            CancellationToken cancellationToken)
+            => new(await operation(cancellationToken), false, false, 1, null, null);
+
+        public bool IsCircuitOpen(string key, out DateTimeOffset retryAfterUtc)
+        {
+            retryAfterUtc = default;
+            return false;
+        }
+
+        public Task CloseCircuitsAsync(string serviceType, string serviceId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider

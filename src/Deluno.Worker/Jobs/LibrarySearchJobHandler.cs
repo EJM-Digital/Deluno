@@ -328,29 +328,13 @@ public abstract class LibrarySearchJobHandler(
                     downloadClientGrabService,
                     downloadClient.DownloadClientId,
                     bestCandidate!,
-                    decisionPlan.DispatchRequest,
+                    decisionPlan.DispatchRequest with { OnDeadRelease = new DeadReleaseFollowUp("movie", candidate.MovieId, candidate.Title, payload.LibraryId, payload.LibraryName) },
                     cancellationToken);
 
                 if (mediaStateRepository is not null)
                 {
                     await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Movie, candidate.MovieId, grabResult.Status, now, cancellationToken);
                 }
-
-                await SearchExecutionSupport.BlockDeadReleaseAsync(
-                    blockedReleases,
-                    activityFeedRepository,
-                    grabResult,
-                    "movies",
-                    "movie",
-                    candidate.MovieId,
-                    candidate.Title,
-                    bestCandidate!.IndexerName,
-                    downloadClient.DownloadClientName,
-                    cancellationToken,
-                    jobScheduler,
-                    payload.LibraryId,
-                    payload.LibraryName,
-                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,
@@ -373,7 +357,7 @@ public abstract class LibrarySearchJobHandler(
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     cancellationToken,
-                    bestCandidate.TorrentHashOrItemId);
+                    bestCandidate!.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                     activityFeedRepository,
@@ -998,29 +982,13 @@ public abstract class LibrarySearchJobHandler(
                     downloadClientGrabService,
                     downloadClient.DownloadClientId,
                     bestCandidate!,
-                    decisionPlan.DispatchRequest,
+                    decisionPlan.DispatchRequest with { OnDeadRelease = new DeadReleaseFollowUp("series", candidate.SeriesId, candidate.Title, payload.LibraryId, payload.LibraryName) },
                     cancellationToken);
 
                 if (mediaStateRepository is not null)
                 {
                     await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, candidate.SeriesId, grabResult.Status, now, cancellationToken);
                 }
-
-                await SearchExecutionSupport.BlockDeadReleaseAsync(
-                    blockedReleases,
-                    activityFeedRepository,
-                    grabResult,
-                    "tv",
-                    "series",
-                    candidate.SeriesId,
-                    candidate.Title,
-                    bestCandidate!.IndexerName,
-                    downloadClient.DownloadClientName,
-                    cancellationToken,
-                    jobScheduler,
-                    payload.LibraryId,
-                    payload.LibraryName,
-                    bestCandidate.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordDuplicateFollowAsync(
                     activityFeedRepository,
@@ -1043,7 +1011,7 @@ public abstract class LibrarySearchJobHandler(
                     downloadClient.DownloadClientId,
                     downloadClient.DownloadClientName,
                     cancellationToken,
-                    bestCandidate.TorrentHashOrItemId);
+                    bestCandidate!.TorrentHashOrItemId);
 
                 await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                     activityFeedRepository,

@@ -27,8 +27,7 @@ public sealed class DownloadClientRetryGrabJobHandler(
     IJobQueueRepository jobQueueRepository,
     IActivityFeedRepository activityFeedRepository,
     IJobScheduler jobScheduler,
-    TimeProvider timeProvider,
-    IBlockedReleaseRepository? blockedReleases = null) : IJobHandler
+    TimeProvider timeProvider) : IJobHandler
 {
     public string JobType => SearchExecutionSupport.DownloadClientRetryGrabJobType;
 
@@ -56,26 +55,12 @@ public sealed class DownloadClientRetryGrabJobHandler(
         {
             Priority = payload.Priority,
             Password = payload.Password,
-            TorrentFile = payload.TorrentFile
+            TorrentFile = payload.TorrentFile,
+            ReleaseHash = payload.TorrentHashOrItemId,
+            OnDeadRelease = new DeadReleaseFollowUp(payload.EntityType, payload.EntityId, payload.Title, payload.LibraryId, payload.LibraryId)
         };
 
         var grabResult = await downloadClientGrabService.GrabAsync(payload.DownloadClientId, request, cancellationToken);
-
-        await SearchExecutionSupport.BlockDeadReleaseAsync(
-            blockedReleases,
-            activityFeedRepository,
-            grabResult,
-            payload.MediaType,
-            payload.EntityType,
-            payload.EntityId,
-            payload.Title,
-            payload.IndexerName ?? string.Empty,
-            payload.DownloadClientName,
-            cancellationToken,
-            jobScheduler,
-            payload.LibraryId,
-            payload.LibraryId,
-            payload.TorrentHashOrItemId);
 
         await jobQueueRepository.RecordDownloadDispatchAsync(
             payload.LibraryId,

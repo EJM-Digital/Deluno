@@ -172,7 +172,10 @@ public static class MediaSearchHandler
                 }
                 : await downloadClientGrabService.GrabAsync(
                     downloadClient.DownloadClientId,
-                    decisionPlan.DispatchRequest,
+                    decisionPlan.DispatchRequest with
+                    {
+                        OnDeadRelease = new DeadReleaseFollowUp(entityType, item.Id, item.Title, library.Id, library.Name)
+                    },
                     cancellationToken);
             if (grabResult.Failure is { } dispatchFailure)
             {
