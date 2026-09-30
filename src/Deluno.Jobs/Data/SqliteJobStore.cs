@@ -175,7 +175,7 @@ public sealed class SqliteJobStore(
             transaction,
             category: "job.queued",
             message: FormatQueuedMessage(job.JobType, job.Source, job.PayloadJson, job.RelatedEntityType),
-            detailsJson: job.PayloadJson,
+            detailsJson: ActivityDetailsOf(job.PayloadJson),
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
             relatedEntityId: job.RelatedEntityId,
@@ -4398,6 +4398,39 @@ public sealed class SqliteJobStore(
 
     private static DateTimeOffset ParseTimestamp(string value)
         => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+
+    /// <summary>
+    /// A job's payload as its "queued" Activity line keeps it: without a carried
+    /// .torrent file, which a connectivity retry holds so the tracker is not
+    /// fetched again (#1062) and which would otherwise be copied into Activity
+    /// on every attempt.
+    /// </summary>
+    public static string? ActivityDetailsOf(string? payloadJson)
+    {
+        if (string.IsNullOrEmpty(payloadJson) || !payloadJson.Contains("\"torrentFile\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return payloadJson;
+        }
+
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(payloadJson);
+            if (node is System.Text.Json.Nodes.JsonObject payload)
+            {
+                foreach (var name in payload.Select(pair => pair.Key).Where(key => string.Equals(key, "torrentFile", StringComparison.OrdinalIgnoreCase)).ToArray())
+                {
+                    payload.Remove(name);
+                }
+
+                return payload.ToJsonString();
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return payloadJson;
+    }
 
     private static string FormatQueuedMessage(string jobType, string source, string? payloadJson, string? relatedEntityType = null)
     {
