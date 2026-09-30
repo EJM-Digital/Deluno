@@ -52,6 +52,7 @@ DELETE /api/series/{id}/subtitles/override
 DELETE /api/setup/draft
 DELETE /api/sharing-rules/{id}
 DELETE /api/subtitle-providers/{key}
+DELETE /api/system/health/background-problems/{key}
 DELETE /api/system/health/notices/{id}
 DELETE /api/system/log-files/{name}
 DELETE /api/tags/{id}
@@ -503,6 +504,7 @@ POST /api/sharing-rules/
 POST /api/subtitle-providers/{key}/test
 POST /api/subtitles/wanted/search-all
 POST /api/system/bundled-components/{kind}/connect
+POST /api/system/health/background-problems/{key}/retry
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
