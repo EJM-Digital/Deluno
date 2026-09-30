@@ -198,7 +198,7 @@ public sealed class SqliteDownloadDispatchesRepository(
                     SET
                         detected_utc = COALESCE(detected_utc, @now),
                         client_completed_utc = CASE WHEN @completed = 1 THEN COALESCE(client_completed_utc, @now) ELSE client_completed_utc END,
-                        torrent_hash_or_item_id = COALESCE(@torrentHashOrItemId, torrent_hash_or_item_id),
+                        torrent_hash_or_item_id = CASE WHEN torrent_hash_or_item_id IS NULL OR torrent_hash_or_item_id = '' THEN @torrentHashOrItemId ELSE torrent_hash_or_item_id END,
                         downloaded_bytes = COALESCE(@downloadedBytes, downloaded_bytes),
                         -- A client that was down for longer than the detection
                         -- limit shows the download late. That undoes the ending
