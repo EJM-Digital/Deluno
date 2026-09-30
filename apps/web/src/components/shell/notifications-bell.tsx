@@ -9,8 +9,8 @@
  *
  * The panel is seeded from `/api/activity`, the same endpoint Activity itself
  * reads, and stays live from the same `activity` realtime group while it is
- * open -- see `components/app/activity-ticker.tsx`, which this borrows its
- * merge and formatting from (`lib/activity-format.ts`).
+ * open. The merge and formatting are borrowed from the Activity screen
+ * (`lib/activity-format.ts`).
  *
  * It is portalled to `document.body` and positioned from the trigger's own
  * box, the way `MenuSelect` is: the topbar clips overflow for its own rounded
