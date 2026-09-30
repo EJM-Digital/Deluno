@@ -2,8 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 // #1058. The Ratings & IDs panel is never taller than the poster: the poster sets
-// the header height. Rarely used actions (Edit metadata, Edit movie, Remove from
-// Deluno) sit behind one More button; the three everyday ones stay visible.
+// the header height. Every action is a visible button, two to a row.
 
 async function authHeaders(page: Page) {
   const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
@@ -39,8 +38,8 @@ async function seedTitles(page: Page) {
 }
 
 const pages = [
-  { kind: "movie", menuItems: ["Edit metadata", "Edit movie", "Remove from Deluno"] },
-  { kind: "show", menuItems: ["Edit metadata", "Remove from Deluno"] }
+  { kind: "movie", buttons: ["Refresh metadata", "Rescan the folder", "Preview the folder rename", "Edit metadata", "Edit movie", "Remove from Deluno"] },
+  { kind: "show", buttons: ["Refresh metadata", "Rescan the folder", "Preview the folder rename", "Edit metadata", "Remove from Deluno"] }
 ] as const;
 
 for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 }, { width: 1920, height: 1080 }, { width: 2560, height: 1300 }]) {
@@ -61,9 +60,9 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
       // The two-column layout (poster beside details) has no panel column below xl (1280px).
       if (size.width >= 1280) expect(panelBox!.height).toBeLessThanOrEqual(posterBox!.height);
 
-      // The three everyday buttons stay visible and never overlap.
+      // Every button stays visible and never overlaps.
       const boxes = [];
-      for (const name of ["Refresh metadata", "Rescan the folder", "Preview the folder rename", "More actions"]) {
+      for (const name of spec.buttons) {
         const button = panel.getByRole("button", { name: new RegExp(`^${name}`) });
         await expect(button).toBeVisible();
         boxes.push({ name, box: (await button.boundingBox())! });
@@ -76,26 +75,10 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
           expect(overlaps, `${boxes[i].name} and ${boxes[j].name} overlap`).toBe(false);
         }
       }
-      // Remove from Deluno is inside the menu, not on the panel.
-      await expect(panel.getByRole("button", { name: "Remove from Deluno" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
+      await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058c-${spec.kind}-plain-${size.width}.png` });
     });
   }
-}
-
-for (const spec of pages) {
-  test(`the ${spec.kind} More menu holds the rarely used actions and works from the keyboard`, async ({ page }) => {
-    const urls = await seedTitles(page);
-    await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto(spec.kind === "movie" ? urls.movie : urls.show);
-    const more = page.getByRole("button", { name: "More actions" });
-    await more.focus();
-    await page.keyboard.press("Enter");
-    for (const name of spec.menuItems) await expect(page.getByRole("menuitem", { name })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: spec.menuItems[0] })).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(more).toBeFocused();
-  });
 }
 
 for (const spec of pages) {
@@ -192,7 +175,8 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
       await expect(panel).toBeVisible();
       const synopsis = page.getByTestId("title-synopsis");
       await expect(synopsis).toBeVisible();
-      await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+      const more = page.getByRole("button", { name: "Read the full synopsis" });
+      await expect(more).toBeVisible();
 
       const m = await page.evaluate(() => {
         const box = (e: Element) => e.getBoundingClientRect();
@@ -219,19 +203,27 @@ for (const size of [{ width: 1280, height: 900 }, { width: 1669, height: 1000 },
       expect(Math.abs(m.asideBottom - m.middleBottom)).toBeLessThanOrEqual(2);
       expect(m.middleScroll).toBeLessThanOrEqual(1);
       // The More button is inside the column, and at least two lines of the synopsis show.
-      const moreBox = (await page.getByRole("button", { name: "More", exact: true }).boundingBox())!;
+      const moreBox = (await more.boundingBox())!;
       expect(moreBox.y + moreBox.height).toBeLessThanOrEqual(m.middleBottom + 1);
       expect((await page.locator("[data-testid=title-synopsis] p").boundingBox())!.height).toBeGreaterThanOrEqual(40);
-      await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058b-${spec.kind}-${size.width}.png` });
+      await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058c-${spec.kind}-${size.width}.png` });
 
-      // More opens the rest in place, Less puts it back.
-      const before = (await synopsis.boundingBox())!.height;
-      await page.getByRole("button", { name: "More", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Less", exact: true })).toBeVisible();
-      expect((await synopsis.boundingBox())!.height).toBeGreaterThan(before);
-      await page.getByRole("button", { name: "Less", exact: true }).click();
-      await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
-      expect(Math.abs((await synopsis.boundingBox())!.height - before)).toBeLessThanOrEqual(2);
+      // More floats the full text over the page: the card does not change height.
+      await more.click();
+      const popover = page.getByTestId("title-synopsis-popover");
+      await expect(popover).toBeVisible();
+      await expect(popover).toContainText("Sentence 8 of a long synopsis");
+      const after = await page.evaluate(() => {
+        const grid = document.querySelector("div.grid.items-start") as HTMLElement;
+        return (grid.closest("[class*='overflow-hidden']") as HTMLElement).getBoundingClientRect().height;
+      });
+      expect(Math.abs(after - m.card)).toBeLessThanOrEqual(1);
+      if (size.width === 1920 || size.width === 2560) {
+        await page.screenshot({ path: `../../artifacts/e2e-rig/rc23-1058c-${spec.kind}-${size.width}-popover.png` });
+      }
+      await page.keyboard.press("Escape");
+      await expect(popover).toHaveCount(0);
+      await expect(more).toBeFocused();
     });
   }
 }
@@ -245,6 +237,6 @@ for (const spec of pages) {
     await expect(page.locator("aside").filter({ hasText: "Ratings & IDs" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
     // Stacked: the whole synopsis shows, no More button.
-    await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Read the full synopsis" })).toHaveCount(0);
   });
 }

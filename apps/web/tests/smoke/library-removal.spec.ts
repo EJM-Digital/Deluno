@@ -62,8 +62,7 @@ test.describe("library removal", () => {
     const series = await seriesCreate.json() as { id: string };
 
     await page.goto(`/movies/${movie.id}`);
-    await page.getByRole("button", { name: "More actions" }).click();
-    await page.getByRole("menuitem", { name: "Remove from Deluno" }).click();
+    await page.getByRole("button", { name: "Remove from Deluno" }).click();
     const movieDialog = page.getByRole("dialog");
     await expect(movieDialog).toContainText("Prevent automatic re-add");
     await expect(movieDialog).toContainText("Delete imported files from disk");
@@ -73,8 +72,7 @@ test.describe("library removal", () => {
     expect((await page.request.get(`/api/movies/${movie.id}`, { headers })).status()).toBe(404);
 
     await page.goto(`/tv/${series.id}`);
-    await page.getByRole("button", { name: "More actions" }).click();
-    await page.getByRole("menuitem", { name: "Remove from Deluno" }).click();
+    await page.getByRole("button", { name: "Remove from Deluno" }).click();
     const seriesDialog = page.getByRole("dialog");
     await expect(seriesDialog).toContainText("Prevent automatic re-add");
     await expect(seriesDialog).toContainText("Delete imported files from disk");
