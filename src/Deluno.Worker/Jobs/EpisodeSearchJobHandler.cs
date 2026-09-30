@@ -199,7 +199,7 @@ public sealed class EpisodeSearchJobHandler(
                 downloadClientGrabService,
                 downloadClient.DownloadClientId,
                 bestCandidate!,
-                decisionPlan.DispatchRequest with { OnDeadRelease = new DeadReleaseFollowUp("episode", payload.EpisodeId, seriesItem?.Title ?? bestCandidate!.ReleaseName, payload.LibraryId, payload.LibraryId) },
+                decisionPlan.DispatchRequest with { OnDeadRelease = new DeadReleaseFollowUp("episode", payload.EpisodeId, seriesItem?.Title ?? bestCandidate!.ReleaseName, payload.LibraryId, library?.Name ?? payload.LibraryId) },
                 cancellationToken);
 
             await SearchExecutionSupport.RecordDuplicateFollowAsync(

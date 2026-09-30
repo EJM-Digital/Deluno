@@ -107,6 +107,15 @@ public sealed record DownloadClientGrabResult(
     /// actually happened, even though nothing here failed.
     /// </summary>
     public bool IsDuplicateFollow { get; init; }
+
+    /// <summary>
+    /// The .torrent Deluno itself fetched for this grab, kept (when small enough)
+    /// so a connectivity retry resends it instead of fetching the file from the
+    /// indexer again: a private tracker counts every fetch as a snatch (#1062).
+    /// Never serialised into the stored notes.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public byte[]? FetchedTorrentFile { get; init; }
 }
 
 /// <summary>

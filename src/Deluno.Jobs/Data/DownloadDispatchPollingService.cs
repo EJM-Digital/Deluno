@@ -459,6 +459,28 @@ public sealed class DownloadDispatchPollingService(
             ? $"{dispatch.DownloadClientName} rejected this release."
             : $"{dispatch.DownloadClientName} rejected this release: {lookup.Detail}";
 
+        if (!DispatchTargets.HasTitle(dispatch.EntityType))
+        {
+            // A release the person chose on Search (#1062): failed with the
+            // client's reason; not blocklisted and nothing searched for.
+            await downloadDispatchesRepository.ArchiveDispatchAsync(
+                dispatch.Id, $"{reason} {DispatchTargets.ChosenOnSearchNote}", cancellationToken);
+            recoveryActivities.Add(CreateRecoveryActivity(
+                "download.grab.rejected",
+                $"{dispatch.DownloadClientName} rejected {dispatch.ReleaseName}. {DispatchTargets.ChosenOnSearchNote}",
+                JsonSerializer.Serialize(new
+                {
+                    DispatchId = dispatch.Id,
+                    dispatch.DownloadClientId,
+                    dispatch.DownloadClientName,
+                    dispatch.ReleaseName,
+                    detail = lookup.Detail
+                }),
+                "download",
+                dispatch.Id));
+            return;
+        }
+
         if (blockedReleaseRepository is not null)
         {
             try

@@ -97,6 +97,31 @@ public sealed class AddingATorrentTakesAMomentTests
         Assert.Contains("refused", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task An_answer_that_is_not_Ok_and_a_torrent_never_listed_fails_the_grab_with_the_clients_answer()
+    {
+        var handler = new StubHandler(request =>
+            request.RequestUri!.AbsolutePath.Contains("torrents/info", StringComparison.Ordinal)
+                ? Json("[]")
+                : request.RequestUri!.AbsolutePath.Contains("torrents/add", StringComparison.Ordinal)
+                    ? Text("Rejected by policy")
+                    : Text("Ok."));
+        var before = QbittorrentDownloadClient.ExtendedConfirmationDelay;
+        QbittorrentDownloadClient.ExtendedConfirmationDelay = TimeSpan.Zero;
+        try
+        {
+            var result = await new QbittorrentDownloadClient(() => handler)
+                .GrabAsync(Client(), Request() with { KnownInfoHash = "de4158016fbc49ebf35641903cec65a0ad0d30b5" }, CancellationToken.None);
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("Rejected by policy", result.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            QbittorrentDownloadClient.ExtendedConfirmationDelay = before;
+        }
+    }
+
     private static DownloadClientGrabRequest Request()
         => new("Arrival.2016.1080p", "http://indexer/arrival.torrent", "movies", "movies", "Lab Torznab");
 

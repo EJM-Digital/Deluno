@@ -1419,6 +1419,13 @@ public sealed class WorkPlanner(
 
         var entityType = library.MediaType == "tv" ? "series" : "movie";
         var entityId = string.IsNullOrWhiteSpace(dispatch?.EntityId) ? null : dispatch.EntityId;
+        // #1062: a release the person chose on Search has no title: it is never
+        // blocklisted for them and nothing is searched for.
+        var chosenOnSearch = dispatch is not null && !DispatchTargets.HasTitle(dispatch.EntityType);
+        if (chosenOnSearch)
+        {
+            entityId = null;
+        }
 
         if (result.Outcome == DownloadIntegrityOutcome.Pass)
         {
@@ -1444,7 +1451,7 @@ public sealed class WorkPlanner(
         // processor never sees it.
         var reason = result.Reason ?? "Deluno's own check of this file found it was not what it claimed to be.";
 
-        if (blockedReleaseRepository is not null)
+        if (blockedReleaseRepository is not null && !chosenOnSearch)
         {
             try
             {
@@ -1520,7 +1527,9 @@ public sealed class WorkPlanner(
 
         await activityFeedRepository.RecordActivityAsync(
             DownloadIntegrityFailedCategory,
-            removedFromClient
+            chosenOnSearch
+                ? $"{item.Title} finished in {item.ClientName}, but {reason} {(removedFromClient ? "Deluno removed it. " : "")}{DispatchTargets.ChosenOnSearchNote}"
+                : removedFromClient
                 ? $"{item.Title} finished in {item.ClientName}, but {reason} Deluno removed it, blocklisted the release and is searching for another copy."
                 : $"{item.Title} finished in {item.ClientName}, but {reason} Deluno blocklisted the release and is searching for another copy. It could not remove the download from {item.ClientName}, so remove it there.",
             JsonSerializer.Serialize(new

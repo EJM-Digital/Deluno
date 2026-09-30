@@ -16,7 +16,7 @@ namespace Deluno.Integrations.DownloadClients;
 /// that is not a torrent: an indexer that is down, slow or refusing a sign-in
 /// says nothing about the release and is never a bad release.
 /// </summary>
-public sealed record IndexerTorrentFetch(string? MagnetUrl, byte[]? TorrentFile, string? Problem = null, bool ReleaseIsGone = false)
+public sealed record IndexerTorrentFetch(string? MagnetUrl, byte[]? TorrentFile, string? Problem = null, bool ReleaseIsGone = false, bool AuthFailed = false)
 {
     public bool Succeeded => Problem is null;
 }
@@ -108,6 +108,14 @@ public sealed class IndexerTorrentFetcher(
             return new IndexerTorrentFetch(null, null, $"{name} is behind a Cloudflare check, so Deluno could not fetch the release. Set up a Cloudflare helper for it.");
         }
 
+        if (fetched.Status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            return new IndexerTorrentFetch(
+                null, null,
+                $"{name} refused to hand over the release (it answered {(int)fetched.Status}). Its API key or sign-in may be wrong, or it may block Deluno's download requests; check it in Indexers.",
+                AuthFailed: true);
+        }
+
         if ((int)fetched.Status >= 400)
         {
             return new IndexerTorrentFetch(null, null, $"{name} refused to hand over the release (it answered {(int)fetched.Status}).");
@@ -118,7 +126,7 @@ public sealed class IndexerTorrentFetcher(
             return new IndexerTorrentFetch(null, null, $"{name} sent a file bigger than a torrent can be ({MaxTorrentBytes / (1024 * 1024)} MB), so Deluno did not take it.", ReleaseIsGone: true);
         }
 
-        if (fetched.Body.Length == 0 || fetched.Body[0] != (byte)'d')
+        if (!LooksLikeBencodeDictionary(fetched.Body))
         {
             // A page rather than a file: a sign-in page, a rate-limit notice.
             // It says nothing certain about the release, so it is not a bad one.
@@ -127,6 +135,14 @@ public sealed class IndexerTorrentFetcher(
 
         return new IndexerTorrentFetch(null, fetched.Body);
     }
+
+    /// <summary>
+    /// A torrent file is a bencoded dictionary: a 'd' then a key length or the
+    /// closing 'e'. Plain text that happens to start with a 'd' (a daily-limit
+    /// notice) is a page, not a file (#1062).
+    /// </summary>
+    internal static bool LooksLikeBencodeDictionary(byte[] body)
+        => body.Length >= 2 && body[0] == (byte)'d' && (body[1] is >= (byte)'0' and <= (byte)'9' || body[1] == (byte)'e');
 
     private static async Task<Fetched> GetAsync(HttpClient http, Uri uri, string? cookie, string? userAgent, CancellationToken cancellationToken)
     {

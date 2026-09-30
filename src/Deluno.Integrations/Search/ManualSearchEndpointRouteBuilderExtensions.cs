@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
@@ -311,7 +312,12 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             // is found again by the id the grab already knows.
             var homeLibrary = librariesOfType.FirstOrDefault(library => string.Equals(library.Id, downloadClient.LibraryId, StringComparison.OrdinalIgnoreCase))
                 ?? librariesOfType[0];
-            await jobQueueRepository.RecordDownloadDispatchAsync(
+            // A hash a title's own dispatch already owns is followed, not recorded
+            // a second time as a title-less one (#1062).
+            var onItsWay = grabResult.Succeeded && grabResult.IsDuplicateFollow;
+            if (!onItsWay)
+            {
+                await jobQueueRepository.RecordDownloadDispatchAsync(
                 homeLibrary.Id,
                 mediaType,
                 "release",
@@ -321,12 +327,13 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                 downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
                 grabResult.Status,
-                notesJson: null,
+                notesJson: JsonSerializer.Serialize(new { chosenOnSearch = true, decision }),
                 grabResponseCode: grabResult.Succeeded ? 200 : 400,
                 grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
                 cancellationToken: cancellationToken,
                 failure: grabResult.Failure,
                 clientExternalId: grabResult.ExternalId);
+            }
 
             // #978: a grab made from the Search page shows in Indexer
             // History against its indexer, the same as a per-title grab.
@@ -348,7 +355,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                 downloadClient.DownloadClientName,
                 grabResult.Succeeded,
                 grabResult.Status,
-                grabResult.Message
+                Message = onItsWay ? $"{downloadClient.DownloadClientName} already has this one and Deluno is following it: it is already on its way." : grabResult.Message
             });
         });
 

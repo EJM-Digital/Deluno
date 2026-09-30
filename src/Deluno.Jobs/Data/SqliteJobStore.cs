@@ -1954,8 +1954,8 @@ public sealed class SqliteJobStore(
             SELECT {DispatchLinkColumns}
             FROM download_dispatches
             WHERE download_client_id = @downloadClientId
-              AND lower(torrent_hash_or_item_id) = lower(@clientItemId)
-            ORDER BY created_utc DESC
+              AND torrent_hash_or_item_id = @clientItemId COLLATE NOCASE
+            ORDER BY CASE WHEN entity_type = 'release' THEN 1 ELSE 0 END, created_utc DESC
             LIMIT 1;
             """;
         AddParameter(command, "@downloadClientId", downloadClientId);
@@ -2977,11 +2977,23 @@ public sealed class SqliteJobStore(
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // The dispatch is now Deluno's record of this send; the reservation that
+        // stood in for it until now is no longer needed (#1062).
+        if (!string.IsNullOrWhiteSpace(clientExternalId))
+        {
+            using var release = connection.CreateCommand();
+            release.Transaction = transaction;
+            release.CommandText = "DELETE FROM download_grab_reservations WHERE download_client_id = @clientId AND client_item_id = @itemId";
+            AddParameter(release, "@clientId", downloadClientId);
+            AddParameter(release, "@itemId", clientExternalId.Trim().ToLowerInvariant());
+            await release.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         // Say what happened, not what was attempted. This line read "Deluno sent
         // … to qBittorrent" while the dispatch was failing and the client's
         // torrent list stayed empty (#292), which is the one place a user looks
         // to find out whether a grab worked.
-        var (activityCategory, activityMessage) = DescribeDispatch(status, releaseName, downloadClientName, grabFailureCode);
+        var (activityCategory, activityMessage) = DescribeDispatch(status, releaseName, downloadClientName, grabFailureCode, failure);
 
         await InsertActivityAsync(
             connection,
@@ -4633,8 +4645,16 @@ public sealed class SqliteJobStore(
         string status,
         string releaseName,
         string downloadClientName,
-        string? grabFailureCode)
+        string? grabFailureCode,
+        IntegrationFailure? failure = null)
     {
+        // The indexer would not hand the release over: the client was never asked,
+        // so the line must not blame it (#1062).
+        if (failure is { Operation: "fetch" } && status is not "sent")
+        {
+            return ("download.dispatch.failed", $"Deluno could not get {releaseName} from the indexer, so it was not sent to {downloadClientName}: {failure.Message}");
+        }
+
         var reason = string.IsNullOrWhiteSpace(grabFailureCode) ? "." : $" — {grabFailureCode}.";
         return status switch
         {

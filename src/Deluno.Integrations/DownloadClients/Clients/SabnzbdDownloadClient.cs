@@ -105,13 +105,14 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         // is never a success, since nothing could follow it afterwards.
         if (string.IsNullOrWhiteSpace(externalId))
         {
-            return DownloadClientHelpers.GrabFailure(
-                client,
-                request,
-                "SABnzbd accepted the NZB but gave no id, usually because it discarded a duplicate.") with
+            // The grab service follows it only with a Deluno record of this same
+            // release; otherwise it is a copy added from elsewhere and the release
+            // is failed so another is tried.
+            return DownloadClientHelpers.GrabSuccess(client, request, "SABnzbd already has this NZB.") with
             {
                 ResponseCode = (int)response.StatusCode,
-                ResponseJson = responseJson
+                ResponseJson = responseJson,
+                IsDuplicateFollow = true
             };
         }
 

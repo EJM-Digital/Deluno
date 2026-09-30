@@ -657,7 +657,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
             notificationService: Mock.Of<IOutboundNotificationService>());
 
         await service.GrabAsync("client-1", new DownloadClientGrabRequest(
-            "Big.Buck.Bunny", "magnet:?xt=urn:btih:abc", "movies", "movies", null), CancellationToken.None);
+            "Big.Buck.Bunny", "magnet:?xt=urn:btih:de4158016fbc49ebf35641903cec65a0ad0d30b5", "movies", "movies", null), CancellationToken.None);
         return (seen, fake);
     }
 

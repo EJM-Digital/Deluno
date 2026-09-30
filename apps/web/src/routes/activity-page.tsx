@@ -62,6 +62,7 @@ import {
   type ActivityEventType
 } from "../lib/activity-format";
 import { reasonWords } from "../lib/failure-reasons";
+import { isChosenOnSearch, relatedEntityLabel } from "../lib/dispatch-target";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import {
   fileNameFromPath,
@@ -451,7 +452,7 @@ export function ActivityPage() {
                   {eventColumns.isVisible("category") ? <ListCell primary={categoryLabel(event.category)} mobile /> : null}
                   {eventColumns.isVisible("type") ? <ListCell primary={ACTIVITY_EVENT_TYPE_LABELS[activityEventType(event)]} /> : null}
                   {eventColumns.isVisible("related") ? (
-                    <ListCell primary={event.relatedEntityType ?? "—"} secondary={event.relatedEntityId ?? undefined} />
+                    <ListCell {...relatedEntityLabel(event.relatedEntityType, event.relatedEntityId)} />
                   ) : null}
                   {eventColumns.isVisible("when") ? <ListCell primary={formatPreferenceDateTime(event.createdUtc, preferences)} /> : null}
                 </ListRow>
@@ -526,8 +527,8 @@ export function ActivityPage() {
               <DrawerSection title="What it was for">
                 <DrawerFacts
                   items={[
-                    { label: "Type", value: openJob.relatedEntityType ?? "—" },
-                    { label: "Id", value: openJob.relatedEntityId, mono: true }
+                    { label: "Type", value: relatedEntityLabel(openJob.relatedEntityType, openJob.relatedEntityId).primary },
+                    ...(isChosenOnSearch(openJob.relatedEntityType) ? [] : [{ label: "Id", value: openJob.relatedEntityId, mono: true }])
                   ]}
                 />
               </DrawerSection>
@@ -589,8 +590,8 @@ export function ActivityPage() {
               <DrawerSection title="What it was about">
                 <DrawerFacts
                   items={[
-                    { label: "Type", value: openEvent.relatedEntityType ?? "—" },
-                    { label: "Id", value: openEvent.relatedEntityId, mono: true }
+                    { label: "Type", value: relatedEntityLabel(openEvent.relatedEntityType, openEvent.relatedEntityId).primary },
+                    ...(isChosenOnSearch(openEvent.relatedEntityType) ? [] : [{ label: "Id", value: openEvent.relatedEntityId, mono: true }])
                   ]}
                 />
               </DrawerSection>

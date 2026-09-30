@@ -80,6 +80,32 @@ public sealed class IndexerTorrentFetcherTests
     }
 
     [Fact]
+    public async Task A_plain_text_notice_that_starts_with_a_d_is_a_page_not_a_dead_release()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("daily limit reached") });
+
+        var fetched = await Fetcher(handler).FetchAsync(Indexer(), "https://ix.example/dl/1", CancellationToken.None);
+
+        Assert.False(fetched.Succeeded);
+        Assert.False(fetched.ReleaseIsGone);
+        Assert.Contains("web page instead of a torrent", fetched.Problem, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task A_refused_fetch_says_so_plainly_and_is_marked_as_an_auth_problem(int status)
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage((HttpStatusCode)status));
+
+        var fetched = await Fetcher(handler).FetchAsync(Indexer(), "https://ix.example/dl/1", CancellationToken.None);
+
+        Assert.True(fetched.AuthFailed);
+        Assert.Contains(status.ToString(), fetched.Problem, StringComparison.Ordinal);
+        Assert.Contains("API key", fetched.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_web_page_instead_of_a_torrent_is_a_problem_but_not_a_bad_release()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("<html>Please sign in</html>") });
@@ -187,7 +213,7 @@ public sealed class IndexerTorrentFetcherTests
         [InlineData("""{"status":true,"nzo_ids":[]}""")]
         [InlineData("""{"status":true}""")]
         [InlineData("""{"status":true,"nzo_ids":[""]}""")]
-        public async Task An_accepted_nzb_with_no_id_is_a_plain_failure(string answer)
+        public async Task An_accepted_nzb_with_no_id_is_a_client_that_already_has_it(string answer)
         {
             var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(answer) });
             var client = new DownloadClientItem(
@@ -199,10 +225,11 @@ public sealed class IndexerTorrentFetcherTests
                 new DownloadClientGrabRequest("Example.Movie.2026", "https://ix.example/getnzb/1", "movies", "movies", "Example"),
                 CancellationToken.None);
 
-            Assert.False(result.Succeeded);
-            Assert.NotEqual(DownloadQueueStatuses.DeadRelease, result.Status);
-            Assert.Contains("gave no id", result.Message, StringComparison.Ordinal);
-            Assert.Contains("discarded a duplicate", result.Message, StringComparison.Ordinal);
+            // Said as "already has it": the grab service follows it only with a
+            // Deluno record of the same release, else fails it as a dead release.
+            Assert.True(result.Succeeded);
+            Assert.True(result.IsDuplicateFollow);
+            Assert.Null(result.ExternalId);
         }
 
         [Fact]

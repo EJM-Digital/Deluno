@@ -8,6 +8,7 @@ import type {
   ProcessorHandoffItem,
   SeriesImportRecoverySummary
 } from "./api";
+import { isChosenOnSearch } from "./dispatch-target";
 import { downloadQueueStatuses } from "./download-telemetry";
 import { isJobRetrying } from "./job-status-constants";
 
@@ -128,7 +129,9 @@ export function needsAction(sources: NeedsActionSources): NeedsAction {
   const byTitleAndRelease = new Map<string, FailedDownloadRow>();
   for (const dispatch of (sources.dispatches ?? []).filter(isDispatchFailure)) {
     if (coveredByCase.has(dispatch.id)) continue;
-    const key = `${dispatch.entityType}:${dispatch.entityId}:${dispatch.releaseName.toLowerCase()}`;
+    // A release chosen on Search has no title: it is one problem per release name.
+    const target = isChosenOnSearch(dispatch.entityType) ? "chosen-on-search" : `${dispatch.entityType}:${dispatch.entityId}`;
+    const key = `${target}:${dispatch.releaseName.toLowerCase()}`;
     const row = byTitleAndRelease.get(key);
     if (!row) {
       byTitleAndRelease.set(key, { dispatch, attempts: 1 });

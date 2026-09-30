@@ -106,7 +106,7 @@ public sealed class FilesystemImportExecuteJobHandler(
         }
 
         var dispatch = await dispatches.GetDispatchAsync(payload.DispatchId, cancellationToken);
-        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId))
+        if (dispatch is null || string.IsNullOrWhiteSpace(dispatch.EntityId) || !DispatchTargets.HasTitle(dispatch.EntityType))
         {
             return false;
         }

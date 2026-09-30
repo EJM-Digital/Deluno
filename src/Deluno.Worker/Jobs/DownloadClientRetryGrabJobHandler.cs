@@ -27,7 +27,8 @@ public sealed class DownloadClientRetryGrabJobHandler(
     IJobQueueRepository jobQueueRepository,
     IActivityFeedRepository activityFeedRepository,
     IJobScheduler jobScheduler,
-    TimeProvider timeProvider) : IJobHandler
+    TimeProvider timeProvider,
+    Deluno.Libraries.Data.ILibrariesRepository? librariesRepository = null) : IJobHandler
 {
     public string JobType => SearchExecutionSupport.DownloadClientRetryGrabJobType;
 
@@ -44,6 +45,20 @@ public sealed class DownloadClientRetryGrabJobHandler(
             return "Connectivity retry skipped: nothing to resend.";
         }
 
+        var libraryName = payload.LibraryId;
+        if (librariesRepository is not null)
+        {
+            try
+            {
+                libraryName = (await librariesRepository.ListLibrariesAsync(cancellationToken))
+                    .FirstOrDefault(item => string.Equals(item.Id, payload.LibraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? payload.LibraryId;
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The id stands in for the name.
+            }
+        }
+
         var request = new DownloadClientGrabRequest(
             payload.ReleaseName,
             payload.DownloadUrl,
@@ -57,7 +72,7 @@ public sealed class DownloadClientRetryGrabJobHandler(
             Password = payload.Password,
             TorrentFile = payload.TorrentFile,
             ReleaseHash = payload.TorrentHashOrItemId,
-            OnDeadRelease = new DeadReleaseFollowUp(payload.EntityType, payload.EntityId, payload.Title, payload.LibraryId, payload.LibraryId)
+            OnDeadRelease = new DeadReleaseFollowUp(payload.EntityType, payload.EntityId, payload.Title, payload.LibraryId, libraryName)
         };
 
         var grabResult = await downloadClientGrabService.GrabAsync(payload.DownloadClientId, request, cancellationToken);
@@ -125,7 +140,9 @@ public sealed class DownloadClientRetryGrabJobHandler(
             payload.ReleaseName,
             request,
             payload.AttemptNumber + 1,
-            cancellationToken);
+            cancellationToken,
+            payload.TorrentHashOrItemId,
+            grabResult.FetchedTorrentFile);
 
         await activityFeedRepository.RecordActivityAsync(
             "download.client.connectivity-retry-scheduled",

@@ -1,6 +1,7 @@
 import type { DownloadDispatchItem } from "../../lib/api";
 import { formatDateTime, useDisplayPreferences } from "../../lib/display-preferences";
 import { getDispatchStatusLabel as formatDispatchStatus } from "../../lib/job-status-constants";
+import { CHOSEN_ON_SEARCH_LABEL, isChosenOnSearch } from "../../lib/dispatch-target";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../ui/drawer";
 import { BlockReleaseAction } from "./block-release-action";
 import { RemoveDownloadAction } from "./remove-download-action";
@@ -110,7 +111,9 @@ export function DownloadDispatchDrawer({
             <DrawerFacts items={[
               { label: "Deluno dispatch", value: dispatch.id, mono: true },
               { label: "Client item", value: dispatch.failure?.externalId ?? dispatch.torrentHashOrItemId ?? "Not reported", mono: true },
-              { label: "Media", value: `${dispatch.entityType} · ${dispatch.entityId}`, mono: true },
+              isChosenOnSearch(dispatch.entityType)
+                ? { label: "Media", value: CHOSEN_ON_SEARCH_LABEL }
+                : { label: "Media", value: `${dispatch.entityType} · ${dispatch.entityId}`, mono: true },
               { label: "Library", value: dispatch.libraryId, mono: true }
             ]} />
           </DrawerSection>

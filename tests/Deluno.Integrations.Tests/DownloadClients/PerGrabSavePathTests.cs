@@ -52,7 +52,7 @@ public sealed class PerGrabSavePathTests
 
         await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             ReleaseName: "Example.Movie.2026",
-            DownloadUrl: "magnet:?xt=urn:btih:abc",
+            DownloadUrl: "magnet:?xt=urn:btih:de4158016fbc49ebf35641903cec65a0ad0d30b5",
             MediaType: "movies",
             Category: "movies",
             IndexerName: null), CancellationToken.None);
@@ -97,7 +97,7 @@ public sealed class PerGrabSavePathTests
 
         await service.GrabAsync(client.Id, new DownloadClientGrabRequest(
             ReleaseName: "Example.Movie.2026",
-            DownloadUrl: "magnet:?xt=urn:btih:abc",
+            DownloadUrl: "magnet:?xt=urn:btih:de4158016fbc49ebf35641903cec65a0ad0d30b5",
             MediaType: "movies",
             Category: "movies",
             IndexerName: null), CancellationToken.None);

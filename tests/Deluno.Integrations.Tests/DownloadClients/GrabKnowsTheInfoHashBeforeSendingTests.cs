@@ -214,6 +214,89 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
         Assert.Single(harness.Released);
     }
 
+    [Fact]
+    public async Task A_magnet_that_names_no_torrent_is_a_dead_release_and_sends_nothing()
+    {
+        var harness = new Harness(externalId: null);
+
+        var result = await harness.GrabAsync(Request("magnet:?dn=only-a-name"));
+
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("names no torrent", result.Message, StringComparison.Ordinal);
+        Assert.Null(harness.SentToClient);
+    }
+
+    [Fact]
+    public async Task A_file_the_indexer_sent_that_is_not_a_torrent_is_a_dead_release_saying_so()
+    {
+        var fetcher = new Mock<IIndexerTorrentFetcher>();
+        fetcher.Setup(instance => instance.FetchAsync(It.IsAny<IndexerItem?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexerTorrentFetch(null, Encoding.ASCII.GetBytes("d4:infod4:name99:shorte")));
+        var harness = new Harness(externalId: null, fetcher: fetcher.Object);
+
+        var result = await harness.GrabAsync(Request("https://indexer.example/dl/1"));
+
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, result.Status);
+        Assert.Contains("isn't a torrent", result.Message, StringComparison.Ordinal);
+        Assert.Null(harness.SentToClient);
+    }
+
+    [Fact]
+    public async Task A_torrent_Deluno_fetched_is_kept_on_a_failed_send_so_a_retry_does_not_fetch_it_again()
+    {
+        var file = TorrentFile();
+        var fetcher = new Mock<IIndexerTorrentFetcher>();
+        fetcher.Setup(instance => instance.FetchAsync(It.IsAny<IndexerItem?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexerTorrentFetch(null, file));
+        var harness = new Harness(externalId: null, fetcher: fetcher.Object, sendSucceeds: false);
+
+        var result = await harness.GrabAsync(Request("https://indexer.example/dl/1"));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(file, result.FetchedTorrentFile);
+    }
+
+    [Fact]
+    public async Task A_grab_cancelled_part_way_gives_its_reservation_back()
+    {
+        var harness = new Harness(externalId: null, sendThrows: true);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => harness.GrabAsync(Request($"magnet:?xt=urn:btih:{Hash}")));
+
+        Assert.Equal(harness.Reserved, harness.Released);
+        Assert.Single(harness.Released);
+    }
+
+    [Fact]
+    public async Task A_client_that_has_it_but_names_nothing_is_followed_only_with_a_Deluno_record_of_that_release()
+    {
+        var unknown = new Harness(externalId: null, duplicate: true);
+        var failed = await unknown.GrabAsync(Request("https://indexer.example/getnzb/1"));
+        Assert.Equal(DownloadQueueStatuses.DeadRelease, failed.Status);
+        Assert.Contains("already has this one from elsewhere", failed.Message, StringComparison.Ordinal);
+
+        var known = new Harness(externalId: null, duplicate: true, knownReleaseNames: ["Example.Movie.2026.1080p"]);
+        var followed = await known.GrabAsync(Request("https://indexer.example/getnzb/1"));
+        Assert.True(followed.Succeeded, followed.Message);
+        Assert.True(followed.IsDuplicateFollow);
+    }
+
+    [Fact]
+    public async Task An_indexer_that_refused_the_fetch_with_a_bad_key_is_recorded_so_Health_shows_it()
+    {
+        var recorder = new Mock<IIndexerAuthFailureRecorder>();
+        var fetcher = new Mock<IIndexerTorrentFetcher>();
+        fetcher.Setup(instance => instance.FetchAsync(It.IsAny<IndexerItem?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IndexerTorrentFetch(null, null, "Example refused to hand over the release (it answered 403).", AuthFailed: true));
+        var harness = new Harness(externalId: null, fetcher: fetcher.Object, recorder: recorder.Object, indexerKnown: true);
+
+        var result = await harness.GrabAsync(Request("https://indexer.example/dl/1"));
+
+        Assert.False(result.Succeeded);
+        Assert.NotEqual(DownloadQueueStatuses.DeadRelease, result.Status);
+        recorder.Verify(instance => instance.RecordAsync("ix-1", "Example Indexer", "grab", It.IsAny<string>(), null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static DownloadClientGrabRequest Request(string url)
         => new("Example.Movie.2026.1080p", url, "movies", "movies", "Example Indexer");
 
@@ -228,7 +311,11 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
             IIndexerTorrentFetcher? fetcher = null,
             bool sendSucceeds = true,
             bool duplicate = false,
-            bool otherReservationExists = false)
+            bool otherReservationExists = false,
+            bool sendThrows = false,
+            string[]? knownReleaseNames = null,
+            IIndexerAuthFailureRecorder? recorder = null,
+            bool indexerKnown = false)
         {
             var now = DateTimeOffset.UnixEpoch;
             var client = new DownloadClientItem(
@@ -237,7 +324,9 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
 
             var connections = new Mock<IConnectionsRepository>();
             connections.Setup(instance => instance.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([client]);
-            connections.Setup(instance => instance.ListIndexersAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+            connections.Setup(instance => instance.ListIndexersAsync(It.IsAny<CancellationToken>())).ReturnsAsync(indexerKnown
+                ? [new IndexerItem("ix-1", "Example Indexer", "torznab", "public", "http://ix.invalid", null, 100, "", "", "both", true, "healthy", null, null, null, null, 0, null, null, now, now)]
+                : []);
             connections.Setup(instance => instance.ListDownloadClientPathMappingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
             var implementation = new Mock<IDownloadClient>();
@@ -246,6 +335,11 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
                 {
                     SentToClient = request;
                     Calls.Add("send");
+                    if (sendThrows)
+                    {
+                        throw new OperationCanceledException();
+                    }
+
                     return sendSucceeds
                         ? new DownloadClientGrabResult(client.Id, request.ReleaseName, true, "sent", "Sent.") { ExternalId = externalId, IsDuplicateFollow = duplicate }
                         : new DownloadClientGrabResult(client.Id, request.ReleaseName, false, "failed", "Refused.");
@@ -270,6 +364,8 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
                 });
             dispatches.Setup(instance => instance.HasOtherGrabReservationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(otherReservationExists);
+            dispatches.Setup(instance => instance.FindGrabbedReleaseNamesAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(knownReleaseNames ?? []);
             dispatches.Setup(instance => instance.FindDispatchesByClientItemIdsAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
@@ -279,6 +375,7 @@ public sealed class GrabKnowsTheInfoHashBeforeSendingTests
                 new PassThrough(),
                 dispatches.Object,
                 Mock.Of<IRealtimeEventPublisher>(),
+                indexerAuthFailureRecorder: recorder,
                 torrentFetcher: fetcher);
         }
 

@@ -71,6 +71,15 @@ describe("needsAction", () => {
     expect(result.total).toBe(1);
   });
 
+  it("folds a release chosen on Search by its name, whatever generated id each grab got (#1062)", () => {
+    const chosen = (id: string, entityId: string) => dispatch({ id, entityType: "release", entityId });
+
+    const result = needsAction({ dispatches: [chosen("d1", "aaa"), chosen("d2", "bbb")] });
+
+    expect(result.failedDownloads).toHaveLength(1);
+    expect(result.failedDownloads[0].attempts).toBe(2);
+  });
+
   it("keeps different releases, and different titles, apart", () => {
     const result = needsAction({
       dispatches: [
