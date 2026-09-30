@@ -56,6 +56,7 @@
  *   DispatchDetected        { dispatchId, releaseName, torrentHash, downloadedBytes, timestamp }
  *   DispatchImportStarted   { dispatchId, releaseName, mediaType, timestamp }
  *   DispatchImportCompleted { dispatchId, releaseName, succeeded, importedPath, failureReason, timestamp }
+ *   DashboardSummaryChanged { asOfUtc } (at most every 2 s; refetch /api/dashboard/summary)
  *   *Changed                { id } (identity-only state-change family)
  */
 
@@ -136,6 +137,11 @@ export interface ImportStateChangedEvent {
 }
 
 /** Identity only: refetch the affected entity instead of trusting event data. */
+/** The Dashboard summary changed (#1082): refetch GET /api/dashboard/summary. Sent at most every two seconds. */
+export interface DashboardSummaryChangedEvent {
+  asOfUtc: string;
+}
+
 export interface EntityChangedEvent {
   id: string;
 }
@@ -205,6 +211,9 @@ type EventMap = {
   AutomationStateChanged: EntityChangedEvent;
   IndexerChanged: EntityChangedEvent;
   DownloadClientChanged: EntityChangedEvent;
+  EpisodeChanged: EntityChangedEvent;
+  IndexerProxyChanged: EntityChangedEvent;
+  DashboardSummaryChanged: DashboardSummaryChangedEvent;
 };
 
 export type SignalREventName = keyof EventMap;
