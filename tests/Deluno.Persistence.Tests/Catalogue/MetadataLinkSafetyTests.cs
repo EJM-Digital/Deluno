@@ -1,3 +1,4 @@
+using Deluno.Media;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.Metadata;
 using Deluno.Movies.Contracts;
@@ -122,6 +123,105 @@ public sealed class MetadataLinkSafetyTests
         Assert.Equal(2, superset.NewEpisodeCount);
         Assert.Equal(["S0001E0001", "S0001E0002", "S0001E0003", "S0002E0001"], superset.ProposedKeys);
     }
+
+    [Fact]
+    public async Task An_automatic_movie_refresh_keeps_stored_details_when_the_provider_answers_empty_but_a_real_new_value_replaces()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-01T05:00:00Z"));
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new MovieRepository(storage.Factory, clock);
+        var movie = await repository.AddAsync(
+            new CreateMovieRequest("Keeper", 2020, "tt0000077", MetadataProvider: "tmdb", MetadataProviderId: "77"),
+            CancellationToken.None);
+        await repository.UpdateMetadataAsync(movie.Id, Full("77", "tv-placeholder"), CancellationToken.None);
+
+        // A partial answer: nothing but the identity.
+        await repository.UpdateMetadataAsync(
+            movie.Id,
+            new MetadataSearchResult("tmdb", "77", "movies", "Keeper", null, 2020, null, null, null, 0, [], [], "tt0000077", null),
+            CancellationToken.None);
+        var kept = (await repository.GetByIdAsync(movie.Id, CancellationToken.None))!;
+        Assert.Equal("Stored overview", kept.Overview);
+        Assert.Equal("https://img/poster.jpg", kept.PosterUrl);
+        Assert.Equal("https://img/backdrop.jpg", kept.BackdropUrl);
+        Assert.Equal("Drama, Crime", kept.Genres);
+        Assert.Equal(7.5, kept.Rating);
+
+        // A genuine new value still replaces.
+        await repository.UpdateMetadataAsync(
+            movie.Id,
+            new MetadataSearchResult("tmdb", "77", "movies", "Keeper", null, 2020, "New overview", "https://img/new.jpg", null, 8.1, [], ["Thriller"], "tt0000077", null),
+            CancellationToken.None);
+        var replaced = (await repository.GetByIdAsync(movie.Id, CancellationToken.None))!;
+        Assert.Equal("New overview", replaced.Overview);
+        Assert.Equal("https://img/new.jpg", replaced.PosterUrl);
+        Assert.Equal("https://img/backdrop.jpg", replaced.BackdropUrl);
+        Assert.Equal("Thriller", replaced.Genres);
+        Assert.Equal(8.1, replaced.Rating);
+    }
+
+    [Fact]
+    public async Task A_person_choosing_a_re_link_or_override_can_clear_stored_details()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-01T05:00:00Z"));
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new MovieRepository(storage.Factory, clock);
+        var movie = await repository.AddAsync(
+            new CreateMovieRequest("Keeper", 2020, "tt0000078", MetadataProvider: "tmdb", MetadataProviderId: "78"),
+            CancellationToken.None);
+        await repository.UpdateMetadataAsync(movie.Id, Full("78", "x"), CancellationToken.None);
+
+        await repository.UpdateMetadataAsync(
+            CatalogueMetadata.ToUpdate(
+                movie.Id,
+                new MetadataSearchResult("tmdb", "78", "movies", "Keeper", null, 2020, null, null, null, null, [], [], "tt0000078", null),
+                null) with { ReplaceWithEmpty = true },
+            CancellationToken.None);
+
+        var cleared = (await repository.GetByIdAsync(movie.Id, CancellationToken.None))!;
+        Assert.Null(cleared.Overview);
+        Assert.Null(cleared.PosterUrl);
+        Assert.Null(cleared.BackdropUrl);
+    }
+
+    [Fact]
+    public async Task An_automatic_series_refresh_keeps_stored_details_when_the_provider_answers_empty()
+    {
+        using var storage = TestStorage.Create();
+        var clock = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-01T05:00:00Z"));
+        await new SeriesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, clock),
+            NullLogger<SeriesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SeriesRepository(storage.Factory, clock);
+        var series = await repository.AddAsync(
+            new CreateSeriesRequest("Keeper Show", 2020, "tt0000079", MetadataProvider: "tmdb", MetadataProviderId: "79"),
+            CancellationToken.None);
+        await repository.UpdateMetadataAsync(series.Id, Full("79", "x") with { MediaType = "tv" }, CancellationToken.None);
+
+        await repository.UpdateMetadataAsync(
+            series.Id,
+            new MetadataSearchResult("tmdb", "79", "tv", "Keeper Show", null, 2020, "", null, null, null, [], [], "tt0000079", null),
+            CancellationToken.None);
+
+        var kept = (await repository.GetByIdAsync(series.Id, CancellationToken.None))!;
+        Assert.Equal("Stored overview", kept.Overview);
+        Assert.Equal("https://img/poster.jpg", kept.PosterUrl);
+        Assert.Equal("https://img/backdrop.jpg", kept.BackdropUrl);
+        Assert.Equal("Drama, Crime", kept.Genres);
+        Assert.Equal(7.5, kept.Rating);
+    }
+
+    private static MetadataSearchResult Full(string id, string _)
+        => new("tmdb", id, "movies", "Keeper", null, 2020, "Stored overview", "https://img/poster.jpg", "https://img/backdrop.jpg", 7.5, [], ["Drama", "Crime"], "tt00000" + id, null);
 
     private static MetadataSearchResult Metadata(string id, string title, string mediaType, int year, string imdbId)
         => new("tmdb", id, mediaType, title, null, year, "overview", null, null, 7, [], [], imdbId, null);

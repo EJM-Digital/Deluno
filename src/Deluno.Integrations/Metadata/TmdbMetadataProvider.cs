@@ -1668,7 +1668,7 @@ public sealed partial class TmdbMetadataProvider(
         {
             var failure = LastFailure;
             return new MetadataProviderRecordLookup(
-                failure?.HttpStatus == 404
+                failure?.HttpStatus == 404 && await BrokerSaysRecordMissingAsync(url, cancellationToken)
                     ? MetadataProviderRecordStatus.Missing
                     : MetadataProviderRecordStatus.Unavailable,
                 ProviderName,
@@ -1689,12 +1689,58 @@ public sealed partial class TmdbMetadataProvider(
         }
 
         return new MetadataProviderRecordLookup(
-            response.Failure?.HttpStatus == 404
-                ? MetadataProviderRecordStatus.Missing
-                : MetadataProviderRecordStatus.Unavailable,
+            // Only the gateway saying "provider_record_missing" makes a record
+            // missing; a result list that lacks the id is an unanswered question.
+            MetadataProviderRecordStatus.Unavailable,
             ProviderName,
             providerId,
             Failure: response.Failure);
+    }
+
+    /// <summary>
+    /// Asks the gateway again, reading the reason it gave for a 404. The shared
+    /// request path does not keep the body, and a proxy or a wrong address also
+    /// answers 404, so "missing" needs the gateway's own words (#1091). The
+    /// gateway remembers its answers briefly, so this costs it almost nothing.
+    /// </summary>
+    private async Task<bool> BrokerSaysRecordMissingAsync(string url, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await httpClient.GetAsync(url, cancellationToken);
+            if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            {
+                return false;
+            }
+
+            return IsProviderRecordMissingBody(await response.Content.ReadAsStringAsync(cancellationToken));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException or JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>True only for the gateway's <c>{"error":"provider_record_missing"}</c> body.</summary>
+    internal static bool IsProviderRecordMissingBody(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.ValueKind == JsonValueKind.Object &&
+                   document.RootElement.TryGetProperty("error", out var error) &&
+                   error.ValueKind == JsonValueKind.String &&
+                   string.Equals(error.GetString(), "provider_record_missing", StringComparison.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static string BuildBrokerSearchBaseUrl(string brokerUrl)

@@ -61,6 +61,11 @@ public sealed class SeriesMetadataRefreshJobHandler(
             match = matches.FirstOrDefault();
         }
 
+        if (match is not null && MetadataLinkPolicy.WouldDowngradeLink(series.MetadataProvider, match))
+        {
+            return $"Kept {series.Title} linked to {series.MetadataProvider?.ToUpperInvariant()}; the refresh only found it on OMDb, and changing the source is left to Fix match.";
+        }
+
         if (match is null)
         {
             return $"No metadata match found for {series.Title}.";
