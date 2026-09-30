@@ -1377,8 +1377,11 @@ export function MovieDetailPage() {
                 <ListNameCell
                   name="Background automation"
                   sub={
-                    workflowStatus?.reason ||
-                    "Deluno searches for a missing file and quality upgrades on its own schedule."
+                    (memberships.some((item) => item.notWantedHere)
+                      ? "Switching this on also brings back any library you stopped wanting it in. "
+                      : "") +
+                    (workflowStatus?.reason ||
+                      "Deluno searches for a missing file and quality upgrades on its own schedule.")
                   }
                 />
                 <div role="cell" className="flex justify-end">
