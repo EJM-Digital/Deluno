@@ -662,7 +662,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             stats.CleanupRemovals,
             stats.RetentionRemovals,
             recent
-                .Select(item => new DashboardActivityItem(item.Id, item.Category, item.Message, item.RelatedEntityType, item.RelatedEntityId, item.CreatedUtc))
+                .Select(item => new DashboardActivityItem(item.Id, item.Category, Deluno.Contracts.ActivityEventLabels.For(item.Category), item.Message, item.RelatedEntityType, item.RelatedEntityId, item.CreatedUtc))
                 .ToArray());
     }
 }

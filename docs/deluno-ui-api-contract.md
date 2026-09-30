@@ -165,7 +165,7 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
                  notificationsUnread },
   activity?:   { asOfUtc, windowHours, searchesRun, downloadsStarted, importsCompleted,
                  cleanupRemovals, retentionRemovals,
-                 recent: [{ id, category, message, relatedEntityType?, relatedEntityId?, createdUtc }] (8, newest first, raw category code) }
+                 recent: [{ id, category, label, message, relatedEntityType?, relatedEntityId?, createdUtc }] (8, newest first, label = plain-words name of the kind, #1086; category is the raw code) }
                  // counts are the last 24 hours; the stream itself stays GET /api/activity; the plain label comes from the shared activity mapping (#1086)
 }
 ```

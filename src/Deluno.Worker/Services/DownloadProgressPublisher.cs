@@ -115,13 +115,9 @@ public sealed class DownloadProgressPublisher(
     {
         using var scope = scopeFactory.CreateScope();
         var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
-<<<<<<< HEAD
         var overview = await telemetry.GetFreshOverviewAsync(DownloadTelemetryFreshness.Loop, cancellationToken);
-=======
-        var overview = await telemetry.GetOverviewAsync(cancellationToken);
         // The Dashboard reads this reading instead of calling a client (#1081).
         dashboardSnapshot?.Publish(overview);
->>>>>>> ce14193b (The Dashboard can now ask for everything it shows in one quick request, built only from stored numbers and never from a call to a download client, an indexer or a disk)
 
         var live = overview.Clients
             .SelectMany(client => client.Queue)

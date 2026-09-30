@@ -342,12 +342,13 @@ public sealed record DashboardActivitySection(
     IReadOnlyList<DashboardActivityItem> Recent);
 
 /// <summary>
-/// One recent Activity row as stored: the raw <c>Category</c> code and the message.
-/// The plain-English label comes from the shared activity mapping (#1086), not from here.
+/// One recent Activity row as stored: the raw <c>Category</c> code, its plain-words
+/// <c>Label</c> from the shared activity mapping (#1086), and the message.
 /// </summary>
 public sealed record DashboardActivityItem(
     string Id,
     string Category,
+    string Label,
     string Message,
     string? RelatedEntityType,
     string? RelatedEntityId,

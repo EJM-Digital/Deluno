@@ -984,6 +984,8 @@ export interface DashboardSystemSection {
 export interface DashboardActivityItem {
   id: string;
   category: string;
+  /** Plain-words name of the event kind (#1086); show this, never the category code. */
+  label: string;
   message: string;
   relatedEntityType: string | null;
   relatedEntityId: string | null;
