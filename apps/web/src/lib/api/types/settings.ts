@@ -71,6 +71,11 @@ export interface PlatformSettingsSnapshot {
   metadataTmdbApiKeyConfigured: boolean;
   metadataOmdbApiKeyConfigured: boolean;
   mdbListApiKeyConfigured: boolean;
+  /** #1094: the saved key was stored on another computer and cannot be read here; it counts as not configured until entered again. */
+  metadataTmdbApiKeyUnreadable?: boolean;
+  metadataOmdbApiKeyUnreadable?: boolean;
+  mdbListApiKeyUnreadable?: boolean;
+  metadataKeyProblem?: string | null;
   releaseNeverGrabPatterns: string;
   searchScoringMode: "hybrid" | "rules-only" | "ml-only" | string;
   /** How many days an unresolved manual-import (import-recovery) case is kept before it is cleared away unresolved. */

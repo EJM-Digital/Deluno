@@ -15,6 +15,7 @@ import { Input } from "../components/ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
+import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
 
@@ -42,6 +43,8 @@ interface SubtitleProviderOption {
     username: string | null;
     hasSecret: boolean;
     hasApiKey: boolean;
+    secretUnreadable?: boolean;
+    secretProblem?: string | null;
     priority: number;
     isEnabled: boolean;
     healthStatus: string;
@@ -257,6 +260,7 @@ export function SubtitleProvidersPage() {
       >
         {editing ? (
           <DrawerSection title="Account">
+            <SecretUnreadableNotice item={editing.configured} />
             {!editing.needsUsername && !editing.needsPassword && !editing.needsApiKey ? (
               <p className="text-[length:var(--type-caption)] text-muted-foreground">
                 {editing.displayName} needs no account at all. Turn it on and Deluno will start asking it.
@@ -338,6 +342,7 @@ function accountLabel(provider: SubtitleProviderOption) {
 
 function accountDetail(provider: SubtitleProviderOption) {
   if (!provider.configured) return undefined;
+  if (provider.configured.secretUnreadable) return "Saved key can't be read here";
   const held = [
     provider.configured.username ? "username" : null,
     provider.configured.hasSecret ? "password" : null,

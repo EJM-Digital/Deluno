@@ -15,6 +15,9 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Field, FieldRow } from "../components/ui/field";
 import { ListCard } from "../components/ui/list-card";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PresetField } from "../components/ui/preset-field";
@@ -87,6 +90,26 @@ export function SettingsMetadataPage() {
   const [saveState, setSaveState] = useState<Exclude<DrawerSaveState, "clean" | "dirty">>();
   const [message, setMessage] = useState<string | null>(null);
 
+  const [keys, setKeys] = useState({ tmdb: "", omdb: "", mdblist: "" });
+  const [keysSaving, setKeysSaving] = useState(false);
+  const keysEntered = Boolean(keys.tmdb.trim() || keys.omdb.trim() || keys.mdblist.trim());
+  async function saveKeys() {
+    setKeysSaving(true);
+    try {
+      await settingsMutation.mutate({
+        ...(keys.tmdb.trim() ? { metadataTmdbApiKey: keys.tmdb.trim() } : {}),
+        ...(keys.omdb.trim() ? { metadataOmdbApiKey: keys.omdb.trim() } : {}),
+        ...(keys.mdblist.trim() ? { mdbListApiKey: keys.mdblist.trim() } : {})
+      });
+      setKeys({ tmdb: "", omdb: "", mdblist: "" });
+      revalidator.revalidate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save the key");
+    } finally {
+      setKeysSaving(false);
+    }
+  }
+
   const dirty = !same(form, savedForm);
   const settingsForm = useMemo(() => formFrom(settings), [settings]);
   useEffect(() => {
@@ -156,6 +179,36 @@ export function SettingsMetadataPage() {
         </div>
       </ListCard>
 
+      {metadataKeysUnreadable(settings) ? (
+        <ListCard title="Saved keys" count="Enter again">
+          <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
+            <SecretUnreadableNotice item={{ secretUnreadable: true, secretProblem: settings.metadataKeyProblem }} />
+            <FieldRow>
+              {settings.metadataTmdbApiKeyUnreadable ? (
+                <Field label="TMDb API key">
+                  <Input type="password" value={keys.tmdb} onChange={(event) => setKeys((current) => ({ ...current, tmdb: event.target.value }))} />
+                </Field>
+              ) : null}
+              {settings.metadataOmdbApiKeyUnreadable ? (
+                <Field label="OMDb API key">
+                  <Input type="password" value={keys.omdb} onChange={(event) => setKeys((current) => ({ ...current, omdb: event.target.value }))} />
+                </Field>
+              ) : null}
+              {settings.mdbListApiKeyUnreadable ? (
+                <Field label="MDbList API key">
+                  <Input type="password" value={keys.mdblist} onChange={(event) => setKeys((current) => ({ ...current, mdblist: event.target.value }))} />
+                </Field>
+              ) : null}
+            </FieldRow>
+            <div>
+              <Button type="button" variant="default" disabled={keysSaving || !keysEntered} onClick={() => void saveKeys()}>
+                {keysSaving ? "Saving…" : "Save keys"}
+              </Button>
+            </div>
+          </div>
+        </ListCard>
+      ) : null}
+
       <PageFooter state={state} message={message} saveLabel="Save metadata settings" />
     </form>
   );
@@ -172,4 +225,9 @@ function formFrom(settings: PlatformSettingsSnapshot): MetadataForm {
     certificationCountry: settings.metadataCertificationCountry,
     language: settings.metadataLanguage
   };
+}
+
+/** True when any saved metadata key was stored on another computer and needs entering again (#1094). */
+export function metadataKeysUnreadable(settings: Pick<PlatformSettingsSnapshot, "metadataTmdbApiKeyUnreadable" | "metadataOmdbApiKeyUnreadable" | "mdbListApiKeyUnreadable">): boolean {
+  return Boolean(settings.metadataTmdbApiKeyUnreadable || settings.metadataOmdbApiKeyUnreadable || settings.mdbListApiKeyUnreadable);
 }
