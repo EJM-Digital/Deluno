@@ -90,6 +90,27 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
     public void A_category_folder_directly_inside_a_download_folder_is_allowed()
         => Assert.Equal("C:\\Users\\a\\Downloads\\deluno-tv", InstalledComponentWirer.SafeCategoryFolderToCreate("C:\\Users\\a\\Downloads\\deluno-tv\\", "deluno-tv"));
 
+    /// <summary>
+    /// #1060, clean-VM run 12: NZBGet keeps both categories in its own DestDir, which it only
+    /// creates on its first download, so Health listed it as missing. It is made one level
+    /// deep, inside a folder that already exists.
+    /// </summary>
+    [Fact]
+    public void A_clients_own_download_folder_is_made_when_its_parent_exists()
+        => Assert.Equal(
+            "C:\\ProgramData\\NZBGet\\complete",
+            InstalledComponentWirer.SafeDownloadFolderToCreate("C:\\ProgramData\\NZBGet\\complete\\", parent => parent == "C:\\ProgramData\\NZBGet"));
+
+    [Theory]
+    [InlineData("C:\\ProgramData\\NZBGet\\complete")]
+    [InlineData("C:\\complete")]
+    [InlineData("\\\\nas\\share\\complete")]
+    [InlineData("C:\\ProgramData\\..\\complete")]
+    [InlineData("relative\\complete")]
+    [InlineData("")]
+    public void A_download_folder_is_not_made_without_an_existing_parent_or_outside_a_local_folder(string path)
+        => Assert.Null(InstalledComponentWirer.SafeDownloadFolderToCreate(path, _ => false));
+
     [Fact]
     public async Task A_timeout_is_retried_once_and_a_slow_answer_is_healthy_with_a_plain_note()
     {
