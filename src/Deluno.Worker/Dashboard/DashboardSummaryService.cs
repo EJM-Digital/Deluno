@@ -159,7 +159,10 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
         var moviesTask = sp.GetRequiredService<IMovieCatalogRepository>().GetDashboardCountsAsync(CancellationToken.None);
         var showsTask = sp.GetRequiredService<ISeriesCatalogRepository>().GetDashboardCountsAsync(CancellationToken.None);
         var librariesTask = sp.GetRequiredService<ILibrariesRepository>().ListLibrariesAsync(CancellationToken.None);
-        await Task.WhenAll(moviesTask, showsTask, librariesTask);
+        var store = sp.GetRequiredService<DashboardCountsStore>();
+        var mixTask = store.GetLibraryMixAsync(CancellationToken.None);
+        var collectionsTask = store.GetCollectionCountsAsync(CancellationToken.None);
+        await Task.WhenAll(moviesTask, showsTask, librariesTask, mixTask, collectionsTask);
 
         var movies = moviesTask.Result;
         var shows = showsTask.Result;
@@ -178,7 +181,19 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             Counts(movies),
             Counts(shows),
             movies.FileBytes + shows.FileBytes,
-            bytes);
+            bytes,
+            new DashboardLibraryMix(
+                Mix(mixTask.Result.MovieQuality),
+                Mix(mixTask.Result.MovieCodec),
+                Mix(mixTask.Result.EpisodeQuality),
+                Mix(mixTask.Result.ShowCodec)),
+            new DashboardCollections(
+                collectionsTask.Result.Followed,
+                collectionsTask.Result.Monitored,
+                collectionsTask.Result.Members,
+                collectionsTask.Result.InLibrary,
+                collectionsTask.Result.SyncFailing,
+                collectionsTask.Result.LastSyncedUtc));
 
         static DashboardMediaCounts Counts(MediaDashboardCounts counts) => new(
             counts.Facets.All,
@@ -191,6 +206,24 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             counts.Facets.Downloading,
             counts.Facets.Airing,
             counts.FileBytes);
+
+        static IReadOnlyList<DashboardMixEntry> Mix(IReadOnlyDictionary<string, int> counts)
+        {
+            var ordered = counts
+                .Select(pair => new DashboardMixEntry(string.IsNullOrWhiteSpace(pair.Key) ? "Unknown" : pair.Key, pair.Value))
+                .GroupBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .Select(group => new DashboardMixEntry(group.First().Label, group.Sum(entry => entry.Count)))
+                .OrderByDescending(entry => entry.Count)
+                .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (ordered.Count <= 8)
+            {
+                return ordered;
+            }
+
+            var rest = ordered.Skip(7).Sum(entry => entry.Count);
+            return [.. ordered.Take(7), new DashboardMixEntry("Other", rest)];
+        }
     }
 
     // ------------------------------------------------------------- downloads
@@ -479,14 +512,21 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
                 library.SubtitlePictureBasedCounts,
                 CancellationToken.None)));
 
-        return new DashboardSubtitlesSection(now, counts.Sum());
+        var wanted = counts.Sum();
+        var filesByLibrary = (await sp.GetRequiredService<DashboardCountsStore>().GetLibraryMixAsync(CancellationToken.None)).FilesByLibrary;
+        var files = libraries
+            .Where(library => library.SubtitleLanguages is { Count: > 0 })
+            .Sum(library => filesByLibrary.GetValueOrDefault(library.Id));
+        return new DashboardSubtitlesSection(now, wanted, Math.Max(0, files - wanted));
     }
 
     // -------------------------------------------------------------- requests
 
     private static async Task<DashboardRequestsSection> RequestsAsync(IServiceProvider sp, DateTimeOffset now)
     {
-        var counts = await sp.GetRequiredService<DashboardCountsStore>().GetRequestCountsAsync(now.AddDays(-7), CancellationToken.None);
+        var store = sp.GetRequiredService<DashboardCountsStore>();
+        var counts = await store.GetRequestCountsAsync(now.AddDays(-7), CancellationToken.None);
+        var listTitlesAdded = await store.CountListTitlesAddedAsync(now.AddDays(-7), CancellationToken.None);
         return new DashboardRequestsSection(
             now,
             counts.Servers,
@@ -494,7 +534,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             counts.Failing,
             counts.AcquisitionsByStatus,
             counts.ImportListsByLastSync.Values.Sum(),
-            counts.ImportListsByLastSync);
+            counts.ImportListsByLastSync,
+            listTitlesAdded);
     }
 
     // ------------------------------------------------------------- blocklist
@@ -608,7 +649,9 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
 
     private static async Task<DashboardActivitySection> ActivityAsync(IServiceProvider sp, DateTimeOffset now)
     {
-        var stats = await sp.GetRequiredService<IActivityFeedRepository>()
+        var feed = sp.GetRequiredService<IActivityFeedRepository>();
+        var recent = await feed.ListActivityAsync(8, null, null, CancellationToken.None);
+        var stats = await feed
             .GetActivityStatsAsync(now.AddHours(-24), 24, CancellationToken.None);
         return new DashboardActivitySection(
             now,
@@ -617,6 +660,9 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             stats.DownloadsStarted,
             stats.ImportsCompleted,
             stats.CleanupRemovals,
-            stats.RetentionRemovals);
+            stats.RetentionRemovals,
+            recent
+                .Select(item => new DashboardActivityItem(item.Id, item.Category, item.Message, item.RelatedEntityType, item.RelatedEntityId, item.CreatedUtc))
+                .ToArray());
     }
 }

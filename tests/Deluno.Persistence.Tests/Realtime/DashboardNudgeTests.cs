@@ -39,9 +39,9 @@ public sealed class DashboardNudgeTests : IAsyncDisposable
         await _services.DisposeAsync();
     }
 
-    private async Task<IReadOnlyList<RealtimeEnvelope>> WaitForDashboardEventsAsync(string name, int expected)
+    private async Task<IReadOnlyList<RealtimeEnvelope>> WaitForDashboardEventsAsync(string name, int expected, int timeoutMs = 5000)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
         IReadOnlyList<RealtimeEnvelope> found = [];
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -91,6 +91,14 @@ public sealed class DashboardNudgeTests : IAsyncDisposable
         Assert.Equal(1, await NudgesAfterSettlingAsync());
 
         _clock.Advance(TimeSpan.FromMilliseconds(200));
+        // The timer is armed from whatever the fake clock reads when the background task
+        // starts, so keep nudging the clock past the due moment until the second nudge lands.
+        var due = DateTimeOffset.UtcNow.AddSeconds(8);
+        while (DateTimeOffset.UtcNow < due && (await WaitForDashboardEventsAsync("DashboardSummaryChanged", 2, timeoutMs: 100)).Count < 2)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(250));
+        }
+
         Assert.Equal(2, (await WaitForDashboardEventsAsync("DashboardSummaryChanged", 2)).Count);
         Assert.Equal(2, await NudgesAfterSettlingAsync());
     }

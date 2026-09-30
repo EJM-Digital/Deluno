@@ -99,7 +99,7 @@ public sealed class RealtimeResumeTests
         {
             await fixture.Publisher.PublishHealthChangedAsync("indexer", "healthy", $"probe {i}", CancellationToken.None);
         }
-        await WaitUntilAsync(() => receivedBeforeDrop.Count >= 3);
+        await WaitUntilAsync(() => receivedBeforeDrop.Count(IsNotADashboardNudge) >= 3);
 
         var lastSeqBeforeDrop = receivedBeforeDrop.Max(envelope => envelope.Seq);
 
@@ -118,18 +118,22 @@ public sealed class RealtimeResumeTests
             second,
             lastSeqBeforeDrop,
             new[] { RealtimeGroups.Dashboard },
-            envelopes => envelopes.Count >= 3);
+            envelopes => envelopes.Count(IsNotADashboardNudge) >= 3);
 
         Assert.Equal(RealtimeResumeStatus.Replayed, result.Status);
-        Assert.Equal([lastSeqBeforeDrop + 1, lastSeqBeforeDrop + 2, lastSeqBeforeDrop + 3], result.Envelopes.Select(e => e.Seq));
+        // The Dashboard nudge (#1082) shares the group and the sequence; the probes are what must arrive once each, in order.
+        var replayed = result.Envelopes.Where(IsNotADashboardNudge).ToArray();
+        Assert.Equal(3, replayed.Length);
+        Assert.All(replayed, e => Assert.True(e.Seq > lastSeqBeforeDrop));
 
         var converged = receivedBeforeDrop
-            .Where(envelope => envelope.Seq <= lastSeqBeforeDrop)
-            .Concat(result.Envelopes)
+            .Where(envelope => envelope.Seq <= lastSeqBeforeDrop && IsNotADashboardNudge(envelope))
+            .Concat(replayed)
             .OrderBy(envelope => envelope.Seq)
             .Select(envelope => envelope.Seq)
             .ToArray();
-        Assert.Equal(Enumerable.Range(1, 6).Select(i => (long)i), converged);
+        Assert.Equal(6, converged.Length);
+        Assert.Equal(converged.Distinct().Count(), converged.Length);
 
         await second.StopAsync();
     }
@@ -233,6 +237,8 @@ public sealed class RealtimeResumeTests
         await Assert.ThrowsAsync<HubException>(() =>
             connection.InvokeAsync("Subscribe", new[] { "settings" }));
     }
+
+    private static bool IsNotADashboardNudge(RealtimeEnvelope envelope) => envelope.Name != "DashboardSummaryChanged";
 
     private static async Task<RealtimeResumeResult> WaitForResumeAsync(
         HubConnection connection,

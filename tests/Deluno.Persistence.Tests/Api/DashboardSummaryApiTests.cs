@@ -246,6 +246,57 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task The_summary_carries_the_quality_mix_collections_lists_added_and_recent_activity()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        await SeedBigLibraryAsync(app, movies: 8, shows: 0, jobs: 0);
+        var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var now = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+
+        await ExecuteAsync(databases, DelunoDatabaseNames.Movies,
+            $"""
+            INSERT INTO movie_collections (id, provider, provider_id, library_id, library_name, root_path, name, monitored, last_synced_utc, last_sync_error, created_utc, updated_utc)
+            VALUES ('c1', 'tmdb', '10', 'lib', 'Films', '/data/films', 'Sample Collection', 1, '{now}', NULL, '{now}', '{now}');
+            INSERT INTO movie_collection_members (collection_id, provider_id, title, is_excluded, local_movie_id, created_utc, updated_utc)
+            VALUES ('c1', '1', 'One', 0, NULL, '{now}', '{now}'),
+                   ('c1', '2', 'Two', 0, NULL, '{now}', '{now}'),
+                   ('c1', '3', 'Three', 1, NULL, '{now}', '{now}');
+            """);
+        await ExecuteAsync(databases, DelunoDatabaseNames.Platform,
+            $"""
+            INSERT INTO intake_title_origins (id, source_id, source_name, provider, media_type, entity_id, entry_key, title, first_seen_utc, last_seen_utc)
+            VALUES ('o1', 's1', 'A list', 'trakt', 'movies', 'e1', 'k1', 'Recent', '{now}', '{now}'),
+                   ('o2', 's1', 'A list', 'trakt', 'movies', 'e2', 'k2', 'Old', '2020-01-01T00:00:00.0000000+00:00', '2020-01-01T00:00:00.0000000+00:00');
+            """);
+        await app.Services.GetRequiredService<Deluno.Jobs.Data.IActivityFeedRepository>()
+            .RecordActivityAsync("download.vanished.recovered", "A download came back", null, null, null, null, CancellationToken.None);
+
+        Refresh(app);
+        var summary = await GetSummaryAsync(app);
+
+        Assert.Equal(0, summary.GetProperty("unavailableSections").GetArrayLength());
+        var library = summary.GetProperty("library");
+        var quality = library.GetProperty("mix").GetProperty("movieQuality").EnumerateArray().ToArray();
+        var tier = Assert.Single(quality);
+        Assert.Equal("WEBDL-1080p", tier.GetProperty("label").GetString());
+        Assert.Equal(4, tier.GetProperty("count").GetInt32());
+
+        var collections = library.GetProperty("collections");
+        Assert.Equal(1, collections.GetProperty("followed").GetInt32());
+        Assert.Equal(1, collections.GetProperty("monitored").GetInt32());
+        Assert.Equal(2, collections.GetProperty("members").GetInt32());
+        Assert.Equal(0, collections.GetProperty("inLibrary").GetInt32());
+
+        Assert.Equal(1, summary.GetProperty("requests").GetProperty("listTitlesAddedLast7Days").GetInt32());
+        Assert.Equal(0, summary.GetProperty("subtitles").GetProperty("held").GetInt32());
+
+        var recent = summary.GetProperty("activity").GetProperty("recent").EnumerateArray().ToArray();
+        var item = Assert.Single(recent);
+        Assert.Equal("download.vanished.recovered", item.GetProperty("category").GetString());
+        Assert.Equal("A download came back", item.GetProperty("message").GetString());
+    }
+
+    [Fact]
     public async Task A_big_library_answers_inside_the_budget_cold_and_warm()
     {
         await using var app = await ApplicationTestHost.StartAsync();
