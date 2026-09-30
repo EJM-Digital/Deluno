@@ -19,6 +19,12 @@ describe("rowsThatFit", () => {
     expect(rowsThatFit(bottoms, 30)).toBe(0);
   });
 
+  it("keeps room for the and-N-more line when more rows exist that the list was never given", () => {
+    // Every row it has ends by 200, but 17 more exist elsewhere: the line still needs its 36, so the last row goes.
+    expect(rowsThatFit(bottoms, 200, 36, () => false, true)).toBe(4);
+    expect(rowsThatFit(bottoms, 236, 36, () => false, true)).toBe(5);
+  });
+
   it("never leaves a heading as the last thing shown", () => {
     // Row 1 is a caption; showing rows 0 and 1 would end on it, so it is dropped too.
     expect(rowsThatFit(bottoms, 150, 36, (index) => index === 1)).toBe(1);

@@ -135,10 +135,20 @@ const MORE_LINE_PX = 36;
  *
  * A row marked as a heading is never left as the last thing shown, because a
  * caption with nothing under it is the same cut-off row in other clothes.
+ *
+ * `moreBeyond` says the list has rows that were never handed to it (the server
+ * sent only the newest), so the "and N more" line is shown even when every row
+ * it has fits, and its height is kept.
  */
-export function rowsThatFit(bottoms: number[], boxHeight: number, moreLine = MORE_LINE_PX, isHeading: (index: number) => boolean = () => false): number {
+export function rowsThatFit(
+  bottoms: number[],
+  boxHeight: number,
+  moreLine = MORE_LINE_PX,
+  isHeading: (index: number) => boolean = () => false,
+  moreBeyond = false
+): number {
   if (boxHeight <= 0 || bottoms.length === 0) return bottoms.length;
-  if (bottoms[bottoms.length - 1] <= boxHeight) return bottoms.length;
+  if (!moreBeyond && bottoms[bottoms.length - 1] <= boxHeight) return bottoms.length;
   let count = 0;
   while (count < bottoms.length && bottoms[count] <= boxHeight - moreLine) count += 1;
   while (count > 0 && isHeading(count - 1)) count -= 1;
@@ -187,8 +197,8 @@ export function FitList({
       return;
     }
     const bottoms = marked.map((element) => element.getBoundingClientRect().bottom - boxTop);
-    setFit(rowsThatFit(bottoms, box.getBoundingClientRect().height, MORE_LINE_PX, isHeading));
-  }, [rows.length, isHeading]);
+    setFit(rowsThatFit(bottoms, box.getBoundingClientRect().height, MORE_LINE_PX, isHeading, extra > 0));
+  }, [rows.length, isHeading, extra]);
 
   // Whenever the rows change, show them all again and measure before anything is painted.
   useLayoutEffect(() => setFit(null), [signature, extra]);
