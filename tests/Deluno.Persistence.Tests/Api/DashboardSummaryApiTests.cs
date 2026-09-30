@@ -328,14 +328,23 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
         // The first request pays for loading code and warming SQLite; it is not the measurement.
         await GetSummaryAsync(app);
 
-        Refresh(app);
-        var cold = Stopwatch.StartNew();
-        var summary = await GetSummaryAsync(app);
-        cold.Stop();
+        // The best of three of each, as ScreenEndpointsStayFastTests times the
+        // screens: CI measured one fresh build at 1,007 ms and the memoised
+        // answer after it at 879 ms, which is the runner stalling, not the build.
+        // A build that is really slow is slow all three times.
+        long cold = long.MaxValue, warm = long.MaxValue;
+        JsonElement summary = default;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            Refresh(app);
+            var coldClock = Stopwatch.StartNew();
+            summary = await GetSummaryAsync(app);
+            cold = Math.Min(cold, coldClock.ElapsedMilliseconds);
 
-        var warm = Stopwatch.StartNew();
-        await GetSummaryAsync(app);
-        warm.Stop();
+            var warmClock = Stopwatch.StartNew();
+            await GetSummaryAsync(app);
+            warm = Math.Min(warm, warmClock.ElapsedMilliseconds);
+        }
 
         Assert.Equal(0, summary.GetProperty("unavailableSections").GetArrayLength());
         var library = summary.GetProperty("library");
@@ -345,9 +354,9 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
         Assert.Equal(10_000, summary.GetProperty("system").GetProperty("jobs").GetProperty("queued").GetInt32());
         Assert.True(libraryIds.Length == 2);
 
-        output.WriteLine($"cold build {cold.ElapsedMilliseconds} ms (server {summary.GetProperty("buildMilliseconds").GetInt32()} ms), memoized {warm.ElapsedMilliseconds} ms");
-        Assert.True(cold.ElapsedMilliseconds < 150, $"cold build took {cold.ElapsedMilliseconds} ms");
-        Assert.True(warm.ElapsedMilliseconds < 50, $"memoized answer took {warm.ElapsedMilliseconds} ms");
+        output.WriteLine($"best cold build {cold} ms (server {summary.GetProperty("buildMilliseconds").GetInt32()} ms), best memoized {warm} ms");
+        Assert.True(cold < 150, $"cold build took {cold} ms at best of three");
+        Assert.True(warm < 50, $"memoized answer took {warm} ms at best of three");
     }
 
     private static async Task<string[]> SeedBigLibraryAsync(ApplicationTestHost app, int movies, int shows, int jobs)
