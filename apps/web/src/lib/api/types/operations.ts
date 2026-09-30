@@ -3,6 +3,8 @@ import type { IntegrationFailure } from "./resources";
 export interface JobQueueItem {
   id: string;
   jobType: string;
+  /** The job in plain words (#1086). Show this, never jobType. */
+  label: string;
   source: string;
   status: string;
   payloadJson: string | null;

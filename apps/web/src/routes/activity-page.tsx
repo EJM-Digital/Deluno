@@ -257,7 +257,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     setBusy(true);
     try {
       await dismissFailedJob(job.id);
-      toast.success(`${formatJobType(job.jobType)} dismissed`);
+      toast.success(`${job.label} dismissed`);
       setOpenJobId(null);
       revalidator.revalidate();
     } catch (error) {
@@ -321,7 +321,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               >
                 {stopped.map((job) => (
                   <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
-                    <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
+                    <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
                     <ListCell primary={job.source} mobile />
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
@@ -349,7 +349,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               >
                 {jobs.map((job) => (
                   <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
-                    <ListNameCell name={formatJobType(job.jobType)} sub={job.lastError ?? job.workerId ?? "—"} />
+                    <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
                     <ListCell primary={job.source} mobile />
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
@@ -500,7 +500,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         onOpenChange={(next) => {
           if (!next) setOpenJobId(null);
         }}
-        title={openJob ? formatJobType(openJob.jobType) : "Job"}
+        title={openJob ? openJob.label : "Job"}
         description={openJob ? `${openJob.source} · ${getJobStatusLabel(openJob.status as JobStatus)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenJobId(null)} />}
       >
@@ -705,13 +705,6 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 }
 
 /* -------------------------------------------------------------- helpers */
-
-function formatJobType(value: string) {
-  const [area, ...rest] = value.split(".");
-  const action = rest.join(" ").replace(/[-_]/g, " ");
-  const label = `${area} ${action}`.trim();
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
 
 /**
  * Queued was grey here, which is the colour for nothing happening — a queued job

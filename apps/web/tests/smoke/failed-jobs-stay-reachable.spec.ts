@@ -8,6 +8,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 const buried = {
   id: "job-buried-failure",
   jobType: "filesystem.import.execute",
+  label: "Import a download",
   source: "processor",
   status: "dead-letter",
   payloadJson: "{}",
@@ -32,6 +33,7 @@ const latest = Array.from({ length: 24 }, (_, index) => ({
   ...buried,
   id: `job-probe-${index}`,
   jobType: "library.media.probe",
+  label: "Read what your files are",
   source: "system",
   status: "completed",
   attempts: 1,

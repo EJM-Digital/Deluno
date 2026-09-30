@@ -323,3 +323,31 @@ describe("A season pack's leftovers can be reviewed and deleted (#889)", () => {
   });
 
 });
+
+describe("Activity names each job in plain words (#1086)", () => {
+  it("shows the label in the failed list, the drawer and the toast text, never the job type", async () => {
+    const job = {
+      id: "job-9", jobType: "episode.search", label: "Search for an episode", source: "automation", status: "dead-letter",
+      payloadJson: "{}", attempts: 3, createdUtc: "2026-09-27T08:00:00Z", scheduledUtc: "2026-09-27T08:00:00Z", startedUtc: null,
+      completedUtc: "2026-09-27T08:05:00Z", leasedUntilUtc: null, workerId: null, lastError: "The indexer did not answer.",
+      relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
+    };
+    const saved = { jobs: loaderData.jobs, failedJobs: loaderData.failedJobs };
+    loaderData.jobs = [job] as never;
+    loaderData.failedJobs = [job] as never;
+    try {
+      render(
+        <MemoryRouter>
+          <ActivityPage />
+        </MemoryRouter>
+      );
+
+      await userEvent.click(screen.getAllByText("Search for an episode")[0]);
+      expect(document.body.textContent).toContain("Search for an episode");
+      expect(document.body.textContent).not.toMatch(/episode\.search/);
+    } finally {
+      loaderData.jobs = saved.jobs;
+      loaderData.failedJobs = saved.failedJobs;
+    }
+  });
+});

@@ -79,7 +79,7 @@ public sealed class FailedJobsStayReachableTests
         var dismissal = Assert.Single(
             await ItemsAsync(app, "/api/activity?pageSize=50"),
             item => item.GetProperty("category").GetString() == "job.dismissed");
-        Assert.Contains("filesystem.import.execute", dismissal.GetProperty("message").GetString());
+        Assert.Contains("Import a download", dismissal.GetProperty("message").GetString());
         Assert.Contains("The file is gone.", dismissal.GetProperty("detailsJson").GetString());
 
         // A second press finds nothing to dismiss and says so, rather than erroring.

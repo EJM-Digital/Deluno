@@ -102,9 +102,26 @@ test.describe("authenticated app smoke", () => {
   // lists one. An internal kind such as `download.vanished.recovered` or
   // `processing.waiting` must never show as text.
   const rawEventCode =
-    /\b(job|jobs|download|downloads|processing|processor|filesystem|library|metadata|retention|intake|release|health|tags|trackers|subtitle|connectivity|seerr|movie|series|episode|external|collection|quality|activity)\.[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*\b/;
+    /\b(job|jobs|movies|media-servers|download-client|download|downloads|processing|processor|filesystem|library|metadata|retention|intake|release|health|tags|trackers|subtitle|connectivity|seerr|movie|series|episode|external|collection|quality|activity)\.[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*\b/;
 
-  for (const path of ["/", "/activity", "/system"]) {
+  const smokeJobs = [
+    ["series.search.season", "Search for a season", "completed"],
+    ["episode.search", "Search for an episode", "failed"],
+    ["library.search.tv", "Search the TV library", "completed"],
+    ["movies.metadata.refresh", "Refresh film details", "completed"]
+  ].map(([jobType, label, status], index) => ({
+    id: `smoke-job-${index}`, jobType, label, source: "automation", status, payloadJson: "{}", attempts: 1,
+    createdUtc: "2026-09-30T00:00:00Z", scheduledUtc: "2026-09-30T00:00:00Z", startedUtc: "2026-09-30T00:00:00Z",
+    completedUtc: "2026-09-30T00:01:00Z", leasedUntilUtc: null, workerId: null, lastError: status === "failed" ? "The indexer did not answer." : null,
+    relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
+  }));
+  // What the API sends for an event whose stored message began with a job type.
+  const smokeEvents = [
+    { id: "smoke-event-1", category: "job.completed", label: "Task finished", message: "Search for a season: Best feed candidate is Some.Show.S01.", detailsJson: null, relatedJobId: "smoke-job-0", relatedEntityType: null, relatedEntityId: null, createdUtc: "2026-09-30T00:01:00Z" },
+    { id: "smoke-event-2", category: "job.lease-released", label: "Task released", message: "Refresh film details: released after this worker restarted.", detailsJson: null, relatedJobId: "smoke-job-3", relatedEntityType: null, relatedEntityId: null, createdUtc: "2026-09-30T00:02:00Z" }
+  ];
+
+  for (const path of ["/", "/activity", "/system", "/system/audit"]) {
     test(`shows no internal event code on ${path}`, async ({ page }) => {
       await page.goto(path);
       await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
