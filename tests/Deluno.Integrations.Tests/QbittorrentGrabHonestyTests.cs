@@ -123,6 +123,83 @@ public sealed class QbittorrentGrabHonestyTests
         Assert.Contains("following", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// qBittorrent 5.1 and later answer 409 when nothing was added. For a
+    /// torrent it already holds that is the #877 case, so Deluno follows the
+    /// copy instead of treating the client as unreachable (#1062).
+    /// </summary>
+    [Fact]
+    public async Task A_409_for_a_torrent_qbittorrent_already_holds_is_followed()
+    {
+        const string hash = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222";
+        var handler = new SequencedHandler(
+            beforeHashes: $$"""[{"hash":"{{hash}}"}]""",
+            addBody: "Fails.",
+            afterHashes: $$"""[{"hash":"{{hash}}"}]""",
+            addStatus: HttpStatusCode.Conflict);
+
+        var result = await Grab(handler, downloadUrl: $"magnet:?xt=urn:btih:{hash}");
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.IsDuplicateFollow);
+        Assert.Equal(hash, result.ExternalId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_409_for_a_new_torrent_is_a_refused_release_not_an_unreachable_client()
+    {
+        const string hash = "cccc3333cccc3333cccc3333cccc3333cccc3333";
+        var handler = new SequencedHandler(
+            beforeHashes: "[]",
+            addBody: "Fails.",
+            afterHashes: "[]",
+            addStatus: HttpStatusCode.Conflict);
+
+        var result = await Grab(handler, downloadUrl: $"magnet:?xt=urn:btih:{hash}");
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("refused", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(409, result.ResponseCode);
+    }
+
+    /// <summary>
+    /// From 5.1 a successful add answers JSON, not "Ok."; a torrent that is
+    /// slow to appear in the list must not be failed as a silent rejection.
+    /// </summary>
+    [Fact]
+    public async Task A_json_answer_that_took_the_torrent_is_not_failed_when_the_list_is_slow()
+    {
+        const string hash = "dddd4444dddd4444dddd4444dddd4444dddd4444";
+        var handler = new SequencedHandler(
+            beforeHashes: "[]",
+            addBody: $$"""{"success_count":1,"failure_count":0,"pending_count":0,"added_torrent_ids":["{{hash}}"]}""",
+            afterHashes: "[]");
+        var delay = QbittorrentDownloadClient.ExtendedConfirmationDelay;
+        QbittorrentDownloadClient.ExtendedConfirmationDelay = TimeSpan.Zero;
+        try
+        {
+            var result = await Grab(handler, downloadUrl: $"magnet:?xt=urn:btih:{hash}");
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(hash, result.ExternalId, StringComparer.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            QbittorrentDownloadClient.ExtendedConfirmationDelay = delay;
+        }
+    }
+
+    [Theory]
+    [InlineData("Ok.", true)]
+    [InlineData("Fails.", false)]
+    [InlineData("""{"success_count":1,"failure_count":0,"pending_count":0}""", true)]
+    [InlineData("""{"success_count":0,"failure_count":0,"pending_count":1}""", true)]
+    [InlineData("""{"success_count":0,"failure_count":1,"pending_count":0}""", false)]
+    [InlineData("""{"success_count":0,"failure_count":0,"pending_count":0,"added_torrent_ids":["EEEE5555EEEE5555EEEE5555EEEE5555EEEE5555"]}""", true)]
+    [InlineData("{not json", false)]
+    public void What_counts_as_qbittorrent_taking_the_torrent(string payload, bool taken)
+        => Assert.Equal(taken, QbittorrentDownloadClient.AnswerSaysItWasTaken(payload, "eeee5555eeee5555eeee5555eeee5555eeee5555"));
+
     // ------------------------------------------------------------------ helpers
 
     private static Task<DownloadClientGrabResult> Grab(HttpMessageHandler handler, string? downloadUrl = null)
@@ -141,7 +218,7 @@ public sealed class QbittorrentGrabHonestyTests
     /// Answers the login, the two torrent-list reads and the add. The list
     /// answer changes after the add, which is the whole point.
     /// </summary>
-    private sealed class SequencedHandler(string beforeHashes, string addBody, string? afterHashes) : HttpMessageHandler
+    private sealed class SequencedHandler(string beforeHashes, string addBody, string? afterHashes, HttpStatusCode addStatus = HttpStatusCode.OK) : HttpMessageHandler
     {
         private bool _added;
 
@@ -157,7 +234,7 @@ public sealed class QbittorrentGrabHonestyTests
             if (path.Contains("torrents/add", StringComparison.OrdinalIgnoreCase))
             {
                 _added = true;
-                return Task.FromResult(Text(addBody));
+                return Task.FromResult(new HttpResponseMessage(addStatus) { Content = new StringContent(addBody) });
             }
 
             if (path.Contains("torrents/info", StringComparison.OrdinalIgnoreCase))

@@ -92,8 +92,16 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         var before = await ListHashesAsync(http, cancellationToken);
 
         using var response = await http.PostAsync("api/v2/torrents/add", body, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        // qBittorrent 5.1 and later answer 409 when nothing was added, which is
+        // also how it reports a torrent it already holds; that must reach the
+        // duplicate check below rather than throw as if the client were down.
+        if (response.StatusCode != HttpStatusCode.Conflict)
+        {
+            response.EnsureSuccessStatusCode();
+        }
         var payload = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+        var knownHash = DownloadClientHelpers.KnownHashOf(request);
+        var alreadyHeld = knownHash is not null && before is not null && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase);
 
         // qBittorrent answers 200 with a body of "Ok." or "Fails.", so the
         // status code on its own says nothing about whether it took the
@@ -105,7 +113,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // a dead release, so the caller blocklists it and lets the next
         // search pick a different one, instead of leaving it to fail the
         // same way again on its ordinary retry cycle.
-        if (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase))
+        if (!alreadyHeld && (payload.StartsWith("Fails", StringComparison.OrdinalIgnoreCase) || response.StatusCode == HttpStatusCode.Conflict))
         {
             return DownloadClientHelpers.DeadReleaseGrabFailure(client, request, "qBittorrent refused the release URL. It may be a dead link or a file it could not read.") with
             {
@@ -136,15 +144,15 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // from the .torrent's own bytes), so the grab's id is that hash. What
         // qBittorrent lists afterwards is only a confirmation, never a place to
         // pick an item out of by position.
-        var knownHash = DownloadClientHelpers.KnownHashOf(request);
         var after = await WaitForNewHashAsync(http, before, knownHash, cancellationToken);
 
-        // A hash still unlisted after the 6 second window, on an answer that was not
-        // a plain "Ok.", is looked for once more at about 30 seconds: a client that
-        // answers something else and never lists the torrent rejected it silently,
-        // and waiting out the 2 hour grab timeout to learn that helps nobody (#1062).
+        // A hash still unlisted after the 6 second window, on an answer that did
+        // not say it took the torrent, is looked for once more at about 30
+        // seconds: a client that answers something else and never lists the
+        // torrent rejected it silently, and waiting out the 2 hour grab timeout
+        // to learn that helps nobody (#1062).
         if (knownHash is not null && after is not null && !after.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
-            && !payload.StartsWith("Ok", StringComparison.OrdinalIgnoreCase))
+            && !AnswerSaysItWasTaken(payload, knownHash))
         {
             await Task.Delay(ExtendedConfirmationDelay, cancellationToken);
             after = await ListHashesAsync(http, cancellationToken) ?? after;
@@ -244,6 +252,44 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
 
     /// <summary>How much longer than the first 6 second window a silent rejection is waited on.</summary>
     internal static TimeSpan ExtendedConfirmationDelay { get; set; } = TimeSpan.FromSeconds(24);
+
+    /// <summary>
+    /// Whether qBittorrent's answer to an add says it took the torrent: "Ok." up
+    /// to 5.0, or from 5.1 a JSON object whose success or pending count is above
+    /// zero, or whose added ids name this hash.
+    /// </summary>
+    internal static bool AnswerSaysItWasTaken(string payload, string knownHash)
+    {
+        if (payload.StartsWith("Ok", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!payload.StartsWith('{'))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            if (root.TryGetProperty("added_torrent_ids", out var ids) && ids.ValueKind == JsonValueKind.Array
+                && ids.EnumerateArray().Any(id => id.ValueKind == JsonValueKind.String && string.Equals(id.GetString(), knownHash, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            return CountAbove(root, "success_count") || CountAbove(root, "pending_count");
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        static bool CountAbove(JsonElement root, string name)
+            => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var count) && count > 0;
+    }
 
     private static bool HasShareLimits(DownloadClientItem client)
         => client.ShareRatioLimit is not null
