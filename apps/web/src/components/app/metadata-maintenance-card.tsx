@@ -9,6 +9,7 @@ import {
   type MetadataRefreshJobsResponse,
   type MetadataTestResponse
 } from "../../lib/api";
+import { describeMetadataCheck } from "../../lib/metadata-check";
 
 const REFRESH_JOBS = [
   {
@@ -72,6 +73,11 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
           body: JSON.stringify({ query: "The Matrix", mediaType: "movies", year: 1999 })
         })
       );
+      // Check now also closes the metadata circuits on the server, so the chip
+      // reports the service answering now, not a pause from an earlier blip.
+      void fetchJson<MetadataProviderStatus>("/api/metadata/status")
+        .then(setMetadataStatus)
+        .catch(() => undefined);
     } catch (error) {
       setTestResult({
         isConfigured: false,
@@ -121,7 +127,7 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
     }
   }
 
-  const ready = Boolean(metadataStatus?.isConfigured);
+  const check = describeMetadataCheck(metadataStatus, testResult);
 
   return (
     <ListCard
@@ -137,14 +143,9 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
       <ListTable columns={[{ label: "Service" }, { label: "Last check", width: "minmax(0,1.6fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
         <ListRow>
           <ListNameCell name="Title matching and library details" sub="Posters, descriptions, ratings, dates" />
-          <ListCell
-            primary={testResult ? (testResult.isConfigured ? `${testResult.resultCount} ${testResult.resultCount === 1 ? "match" : "matches"} for “The Matrix”` : "The check could not reach the service") : "Not checked this session"}
-            secondary={testResult?.failure?.nextAction ?? testResult?.message ?? metadataStatus?.lastFailure?.nextAction ?? (ready ? "Deluno can match titles and collect their details." : "You can still add a movie or show by hand.")}
-          />
+          <ListCell primary={check.primary} secondary={check.secondary} />
           <ListCell mobile>
-            <Chip tone={testResult ? (testResult.isConfigured ? "ok" : "bad") : ready ? "ok" : "warn"}>
-              {testResult ? (testResult.isConfigured ? "Working" : "Failed") : ready ? "Ready" : "Unavailable"}
-            </Chip>
+            <Chip tone={check.tone}>{check.chip}</Chip>
           </ListCell>
         </ListRow>
       </ListTable>
