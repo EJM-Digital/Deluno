@@ -139,6 +139,18 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every dispatch (archived included) on this client whose recorded
+    /// hash/item id, or own id, is one of <paramref name="clientItemIds"/>,
+    /// compared ignoring case. This is how ownership is decided for what a
+    /// client reports: by asking about exactly those ids, so it never depends
+    /// on how many newer dispatches the client has had since (#1062).
+    /// </summary>
+    Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesByClientItemIdsAsync(
+        string clientId,
+        IReadOnlyCollection<string> clientItemIds,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// The newest dispatch (archived or not) for this client and release name
     /// that never recorded the client's own id for it. Used to give such a
     /// dispatch the id once the client shows the item (#1062).
