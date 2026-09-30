@@ -84,11 +84,14 @@ public sealed class RetentionEpisodeMath
 
     /// <summary>
     /// Still to come, for retention's "still airing" protection: a future air date, or no air date and no file yet (a season
-    /// announced with dates to be announced). An undated episode that already has a file is not to come. This is separate from the
+    /// announced with dates to be announced). Only monitored episodes of a real season count (#1072): an undated special, or an
+    /// episode retention or the person stopped wanting, never keeps a finished show "airing". An undated episode that already has a
+    /// file is not to come. This is separate from the
     /// rung, where an undated episode is Missing (#1072).
     /// </summary>
     public static bool StillToCome(SeriesEpisodeInventoryItem episode, DateTimeOffset now)
-        => EpisodeUpcoming(episode, now) || (episode.AirDateUtc is null && !episode.HasFile);
+        => episode.Monitored && episode.SeasonNumber > 0
+           && (EpisodeUpcoming(episode, now) || (episode.AirDateUtc is null && !episode.HasFile));
 
     private bool HasToCome(int season)
         => _episodes.Any(episode => episode.SeasonNumber == season && StillToCome(episode, _now));
