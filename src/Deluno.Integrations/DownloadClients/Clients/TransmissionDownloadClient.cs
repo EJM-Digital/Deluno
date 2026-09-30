@@ -13,7 +13,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     public override string Protocol => "transmission";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "basic", SupportsQueueReorder: true);
 
-    public bool SetsSaveFolderPerGrab => true;
+    public override bool SetsSaveFolderPerGrab => true;
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
