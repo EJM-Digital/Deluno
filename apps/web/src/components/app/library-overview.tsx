@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { ArtworkImage } from "../ui/artwork-image";
 import { Link } from "react-router-dom";
 import { Play, ShieldCheck, ShieldOff, Star } from "lucide-react";
 
@@ -108,7 +109,7 @@ function OverviewRow({
           className="pointer-events-none absolute inset-y-0 right-0 w-1/3 overflow-hidden"
           style={{ maskImage: "linear-gradient(to right, transparent, black)", WebkitMaskImage: "linear-gradient(to right, transparent, black)" }}
         >
-          <img src={item.backdrop} alt="" className="h-full w-full object-cover opacity-[0.14]" />
+          <ArtworkImage fallback={null} src={item.backdrop} alt="" className="h-full w-full object-cover opacity-[0.14]" />
         </div>
       ) : null}
 

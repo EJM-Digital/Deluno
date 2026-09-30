@@ -19,6 +19,7 @@
  * the words on top of it stay legible.</p>
  */
 import { useEffect, useRef, useState } from "react";
+import { ArtworkImage } from "../ui/artwork-image";
 
 interface HeroBackdropProps {
   url?: string | null;
@@ -43,9 +44,10 @@ export function HeroBackdrop({ url }: HeroBackdropProps) {
   return (
     <>
       {url ? (
-        <img
+        <ArtworkImage
           src={url}
           alt=""
+          fallback={null}
           className="pointer-events-none absolute inset-0 h-full w-full scale-105 object-cover object-top saturate-[0.85]"
           // Solved, so it is an inline value rather than a class: there is no
           // useful set of Tailwind steps between "dark plate" and "fog wall".

@@ -14,6 +14,7 @@
  * GET /api/libraries, GET /api/quality-profiles.
  */
 import { useEffect, useMemo, useState } from "react";
+import { ArtworkImage } from "../components/ui/artwork-image";
 import { useLoaderData } from "react-router-dom";
 import { CircleSlash, Compass, Plus, ShieldCheck } from "lucide-react";
 import {
@@ -275,7 +276,7 @@ function DiscoverPosterCard({ item, onAdd }: { item: DiscoverItem; onAdd: () => 
     <div className="group relative overflow-hidden rounded-[10px] border border-hairline bg-surface-1">
       <div className="aspect-[2/3] w-full overflow-hidden bg-surface-2">
         {item.posterUrl ? (
-          <img src={item.posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <ArtworkImage src={item.posterUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[length:var(--type-caption)] text-muted-foreground">No art</div>
         )}
