@@ -27,6 +27,8 @@ const attention: AttentionSnapshot = {
   movieWanted: 0,
   tvWanted: 0,
   healthProblems: 0,
+  total: 0,
+  summary: "",
   loading: false
 };
 

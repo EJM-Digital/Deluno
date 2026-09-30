@@ -278,18 +278,7 @@ export function OverviewTab({ summary }: { summary: DashboardSummary | undefined
         <Panel
           title="Needs you"
           className="max-lg:order-first"
-          count={
-            attention.counts.overview === 0 ? (
-              "nothing right now"
-            ) : attention.dashboardOnly > 0 ? (
-              <span title="The sidebar's Needs a look card counts the same problems, without the checks only the Dashboard makes: download clients, processors, background workers, collections, request servers and setup.">
-                <span>{attention.counts.overview}</span>
-                <span> · the sidebar counts {attention.counts.overview - attention.dashboardOnly}</span>
-              </span>
-            ) : (
-              String(attention.counts.overview)
-            )
-          }
+          count={attention.counts.overview === 0 ? "nothing right now" : String(attention.counts.overview)}
         >
           {needs.length === 0 ? (
             <Plain>Nothing needs you. Anything that does will be listed here, each with a button that fixes it.</Plain>

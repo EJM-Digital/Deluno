@@ -137,8 +137,8 @@ const linkButton =
 function Problems({ summary, attention, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
   const health = summary?.health;
   const system = summary?.system;
-  // A snoozed problem is not counted, so it is not listed either.
-  const problems = (health?.topProblems ?? []).filter((problem) => !problem.snoozed);
+  // A snoozed problem is not counted, so it is not listed; one that Downloads has its own row for is that row.
+  const problems = attention.healthListed;
   const failedLanes = system?.lanes.filter((lane) => lane.state === "failing") ?? [];
   const failedJobs = attention.jobsGaveUp;
   const total = attention.counts.system;

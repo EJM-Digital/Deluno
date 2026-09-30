@@ -4,6 +4,9 @@ import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
+import type { DashboardSummary } from "./api";
+import { attentionSources, attentionSummaryLine, computeAttention, type AttentionLists } from "../routes/dashboard/attention";
+import { SUMMARY_KEY, summaryQuery, setupNeedsFromCache, setupSources } from "../routes/dashboard/sources";
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
 
 /** The activity categories that move the failed-job count. */
@@ -24,6 +27,14 @@ export interface AttentionSnapshot {
   tvWanted: number;
   /** Health checks currently reporting a problem that is not snoozed (#909). */
   healthProblems: number;
+  /**
+   * Everything that needs a person, in one number. It is the Dashboard's own
+   * count (`computeAttention`, over the same stored sources), so the sidebar
+   * and the Dashboard's Needs you never disagree (#1082).
+   */
+  total: number;
+  /** The same rows in a short sentence for the sidebar card. */
+  summary: string;
   loading: boolean;
 }
 
@@ -36,6 +47,8 @@ const empty: AttentionSnapshot = {
   movieWanted: 0,
   tvWanted: 0,
   healthProblems: 0,
+  total: 0,
+  summary: "",
   loading: true
 };
 
@@ -45,10 +58,8 @@ const empty: AttentionSnapshot = {
  * import and an unhealthy search source (#250), and then beside twenty
  * downloads on Transfers asking for Try again or Dismiss (#556).
  */
-export function attentionTotal(snapshot: AttentionSnapshot): number {
-  // A failed import is one of the failed jobs and also one of the downloads Transfers lists: it is one problem.
-  const failedJobsNotImports = Math.max(0, snapshot.failedJobs - snapshot.failedImportJobs);
-  return failedJobsNotImports + snapshot.indexerAlerts + snapshot.downloadsNeedingAction + snapshot.healthProblems;
+export function attentionTotal(snapshot: Pick<AttentionSnapshot, "total">): number {
+  return snapshot.total;
 }
 
 /**
@@ -57,6 +68,9 @@ export function attentionTotal(snapshot: AttentionSnapshot): number {
  * each asking. A read is a cache read whenever the answer is recent enough.
  */
 const ATTENTION_FRESH_MS = 30_000;
+
+/** The Dashboard summary, read through the cache the Dashboard itself uses. */
+const summarySource: RouteSource<DashboardSummary> = { key: [...SUMMARY_KEY], label: "Dashboard summary", fetch: summaryQuery.queryFn };
 
 function readCached<T>(source: RouteSource<T>): T | undefined {
   return queryClient.getQueryData<T>(source.key);
@@ -82,6 +96,10 @@ function snapshotFromCache(): AttentionSnapshot | null {
   const orphans = readCached(sharedSources.orphans) ?? [];
   const health = readCached(sharedSources.healthSummary) ?? null;
 
+  // The one count: the Dashboard's, over the same summary and the same stored lists.
+  const lists = Object.fromEntries(Object.entries(attentionSources).map(([name, source]) => [name, readCached(source as RouteSource<unknown>)])) as AttentionLists;
+  const attention = computeAttention(readCached(summarySource), lists, setupNeedsFromCache());
+
   return {
     failedJobs: stopped.length,
     deadLetteredJobs: stopped.filter((job) => isJobDeadLettered(job.status as JobStatus)).length,
@@ -91,6 +109,8 @@ function snapshotFromCache(): AttentionSnapshot | null {
     movieWanted: readCached(sharedSources.movieWanted)?.totalWanted ?? 0,
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
     healthProblems: health?.unsnoozedProblemCount ?? 0,
+    total: attention.counts.overview,
+    summary: attentionSummaryLine(attention.items),
     loading: false
   };
 }
@@ -135,7 +155,11 @@ export function useAttention(pollMs = 45000) {
         readFresh(sharedSources.telemetry, force).catch(() => undefined),
         orphansKnown ? Promise.resolve(undefined) : readFresh(sharedSources.orphans, false).catch(() => undefined),
         // #909: the same summary System -> Health and the Dashboard tile read.
-        readFresh(sharedSources.healthSummary, force).catch(() => undefined)
+        readFresh(sharedSources.healthSummary, force).catch(() => undefined),
+        // The Dashboard's own summary (memoised, stored numbers only) and the lists its count also reads.
+        readFresh(summarySource, force).catch(() => undefined),
+        readFresh(attentionSources.processors, force).catch(() => undefined),
+        ...Object.values(setupSources).map((source) => readFresh(source as RouteSource<unknown>, force).catch(() => undefined))
       ]);
 
       // A job Deluno will try again on its own is not one the pill should
@@ -163,7 +187,7 @@ export function useAttention(pollMs = 45000) {
   useEffect(() => {
     return queryClient.getQueryCache().subscribe((event) => {
       if (event.type !== "updated" || event.action.type !== "success") return;
-      if (event.query.queryKey[0] !== "src") return;
+      if (event.query.queryKey[0] !== "src" && event.query.queryKey[0] !== "dashboard") return;
       const next = snapshotFromCache();
       if (next) setSnapshot(next);
     });

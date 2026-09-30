@@ -153,7 +153,7 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
                  listTitlesAddedLast7Days },
   blocklist?:  { asOfUtc, count },
   health?:     { asOfUtc, problems, unknown, suggestions, lastRunUtc?,
-                 topProblems: [{ id, title, category, message, sinceUtc?, link }] (5) },
+                 topProblems: [{ id, title, category, message, sinceUtc?, link, snoozed }] (30) },
   storage?:    { asOfUtc, readingUtc?,
                  volumes: [{ id, label, roles: ["data"|"library"|"downloads"|"processor"], paths, available,
                              totalBytes?, freeBytes? }] },

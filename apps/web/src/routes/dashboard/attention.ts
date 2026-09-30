@@ -1,9 +1,10 @@
 /**
  * What on the Dashboard needs a person, counted once (#1082).
  *
- * The tab badges, the Overview's Needs you list and its count all come from
- * this one function, and it follows the rules the sidebar's "Needs a look"
- * already keeps (`lib/needs-action.ts`, `lib/use-attention.ts`): a job Deluno
+ * The tab badges, the Overview's Needs you list and its count, and the
+ * sidebar's "Needs a look" card all come from this one function (the sidebar
+ * reads it in `lib/use-attention.ts`), so they can never disagree. It follows
+ * the rules in `lib/needs-action.ts`: a job Deluno
  * will retry by itself is not a problem, a download a recovery case is about is
  * the case and not also a stalled download, and a hand-off a case is about is
  * the hand-off.
@@ -19,6 +20,7 @@
 import {
   fetchJson,
   type DashboardClientRow,
+  type DashboardHealthProblem,
   type DashboardSummary,
   type DownloadDispatchItem,
   type DownloadQueueItem,
@@ -94,16 +96,14 @@ export interface AttentionItem {
   action: string;
   /** How many rows with a button this item is on its tab. */
   count: number;
-  /** True when the sidebar's "Needs a look" card counts this too (same source, same rule). */
-  sidebar: boolean;
 }
 
 export interface DashboardAttention {
   /** Every problem, worst first. The Overview's Needs you list. */
   items: AttentionItem[];
   counts: Record<DashboardTab, number>;
-  /** How many of the Overview's problems only the Dashboard checks; the sidebar card does not count them. */
-  dashboardOnly: number;
+  /** The health problems the System tab lists: not snoozed, and not one a row above already stands for. */
+  healthListed: DashboardHealthProblem[];
   /** The rows the tabs draw with buttons, already free of duplicates. */
   downloads: {
     stalled: DownloadQueueItem[];
@@ -117,6 +117,14 @@ export interface DashboardAttention {
   /** Jobs that gave up, not counting failed imports (those are on Downloads). */
   jobsGaveUp: number;
   failingLanes: number;
+}
+
+/** The sidebar card's sentence: the worst problems in the words the Needs you rows use, then how many more there are. */
+export function attentionSummaryLine(items: AttentionItem[]): string {
+  if (items.length === 0) return "";
+  const shown = items.slice(0, 2).map((item) => item.title);
+  const hidden = items.slice(2).reduce((sum, item) => sum + item.count, 0);
+  return hidden > 0 ? `${shown.join(" · ")} · and ${hidden} more` : shown.join(" · ");
 }
 
 /** Which screen a web path belongs to, in the words the sidebar uses. */
@@ -150,9 +158,9 @@ const isStalled = (item: DownloadQueueItem) => item.status === "stalled";
 
 export function computeAttention(summary: DashboardSummary | undefined, lists: AttentionLists = {}, setup: SetupNeed[] = []): DashboardAttention {
   const items: AttentionItem[] = [];
-  const add = (item: Omit<AttentionItem, "count" | "sidebar"> & { count?: number; sidebar?: boolean }) => {
+  const add = (item: Omit<AttentionItem, "count"> & { count?: number }) => {
     const count = item.count ?? 1;
-    if (count > 0) items.push({ ...item, count, sidebar: item.sidebar ?? false });
+    if (count > 0) items.push({ ...item, count });
   };
 
   const na = needsAction({
@@ -183,6 +191,22 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   const indexerCount = lists.indexers !== undefined ? indexers.length : summary?.indexers?.failing ?? 0;
   const processors = (lists.processors ?? []).filter(processorUnhealthy);
   const processorCount = lists.processors !== undefined ? processors.length : summary?.processors?.failing ?? 0;
+
+  // The health board raises its own problem for a client, indexer or processor that is not answering
+  // (id `indexer:<id>`, `download-client:<id>`, `processor:<id>`). One that already has its own row
+  // here is the same problem, so it is that row and not a second one.
+  const covered = new Set<string>([
+    ...indexers.map((item) => `indexer:${item.id}`),
+    ...clients.map((item) => `download-client:${item.id}`),
+    ...processors.map((item) => `processor:${item.id}`)
+  ]);
+  /** With exactly one connection down, the row says which one and why, the way the health problem did. */
+  const only = <T extends { name: string }>(list: T[], why: (item: T) => string | null | undefined, fallback: string) =>
+    list.length === 1
+      ? { title: `${list[0].name} isn't answering`, text: why(list[0]) || fallback }
+      : null;
+  const indexerOnly = lists.indexers !== undefined ? only(indexers, (item) => item.lastHealthMessage, "Deluno can't search this site until it answers.") : null;
+  const processorOnly = lists.processors !== undefined ? only(processors, (item) => item.lastHealthMessage, "Finished downloads can't be cleaned until it answers.") : null;
 
   // A job that gave up is one Retry row. A failed import is on Downloads instead,
   // and a job Deluno will try again by itself is not a problem.
@@ -222,7 +246,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   add({
     id: "failed-downloads",
-    sidebar: true,
     tab: "overview",
     tone: "bad",
     title: `${plural(failedDownloadCount, "download")} failed`,
@@ -233,7 +256,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "queue-warnings",
-    sidebar: true,
     tab: "overview",
     tone: "warn",
     title: `${plural(otherQueue.length, "download has", "downloads have")} a warning`,
@@ -244,7 +266,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "leftovers",
-    sidebar: true,
     tab: "overview",
     tone: "warn",
     title: `${plural(na.orphanedDownloads.length, "leftover folder")} in the download folders`,
@@ -279,7 +300,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   // ------------------------------------------------------------------ downloads
   add({
     id: "stalled",
-    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(stalledCount, "download is", "downloads are")} stalled`,
@@ -300,18 +320,16 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "indexers",
-    sidebar: true,
     tab: "downloads",
     tone: "warn",
-    title: `${plural(indexerCount, "indexer")} not answering`,
-    text: "Deluno can't search a site until it answers.",
+    title: indexerOnly?.title ?? `${plural(indexerCount, "indexer")} not answering`,
+    text: indexerOnly?.text ?? "Deluno can't search a site until it answers.",
     to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    action: "Test again in Downloads",
     count: indexerCount
   });
   add({
     id: "recovery",
-    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(recoveryCount, "import needs", "imports need")} a look`,
@@ -322,7 +340,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "failed-imports",
-    sidebar: true,
     tab: "downloads",
     tone: "bad",
     title: `${plural(importJobsCount, "import")} didn't finish`,
@@ -333,7 +350,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "handoffs",
-    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(handoffCount, "hand-off")} to the processor failed`,
@@ -346,21 +362,21 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     id: "processors",
     tab: "downloads",
     tone: "warn",
-    title: `${plural(processorCount, "processor")} not answering`,
-    text: "Finished downloads can't be cleaned until it answers.",
+    title: processorOnly?.title ?? `${plural(processorCount, "processor")} not answering`,
+    text: processorOnly?.text ?? "Finished downloads can't be cleaned until it answers.",
     to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    action: "Test again in Downloads",
     count: processorCount
   });
 
   // ---------------------------------------------------------------------- system
   const health = summary?.health;
-  // A problem that is snoozed is not one the sidebar counts either.
-  const shownProblems = (health?.topProblems ?? []).filter((problem) => !problem.snoozed);
-  for (const problem of shownProblems) {
+  // A snoozed problem is not counted, and a problem a row above already stands for is not a second one.
+  const unsnoozedProblems = (health?.topProblems ?? []).filter((problem) => !problem.snoozed);
+  const healthListed = unsnoozedProblems.filter((problem) => !covered.has(problem.id));
+  for (const problem of healthListed) {
     add({
       id: `health:${problem.id}`,
-      sidebar: true,
       tab: "system",
       tone: "warn",
       title: problem.title,
@@ -369,13 +385,14 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       action: `Fix it in ${screenName(problem.link || "/system")}`
     });
   }
-  const shown = shownProblems.length;
+  // Every unsnoozed problem the summary carried is accounted for, listed or merged into a row above;
+  // only the ones it did not carry are "more".
+  const shown = unsnoozedProblems.length;
   const unsnoozed = lists.healthSummary?.unsnoozedProblemCount;
   const healthTotal = typeof unsnoozed === "number" ? unsnoozed : health?.problems ?? 0;
   if (health && healthTotal > shown) {
     add({
       id: "health:more",
-      sidebar: true,
       tab: "system",
       tone: "warn",
       title: `${plural(healthTotal - shown, "more problem")} to look at`,
@@ -387,7 +404,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   add({
     id: "failed-jobs",
-    sidebar: true,
     tab: "system",
     tone: "bad",
     title: `${plural(jobsGaveUp, "background job")} gave up`,
@@ -414,13 +430,11 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   // The Overview's own items were counted twice above.
   counts.overview -= items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0);
-  // The Overview's number is the sidebar card's number plus what only the Dashboard checks.
-  const dashboardOnly = items.filter((item) => !item.sidebar).reduce((sum, item) => sum + item.count, 0);
 
   return {
     items: [...items].sort((a, b) => Number(b.tone === "bad") - Number(a.tone === "bad")),
     counts,
-    dashboardOnly,
+    healthListed,
     downloads: { stalled, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,
     failingLanes
