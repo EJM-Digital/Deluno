@@ -223,13 +223,13 @@ public sealed class DelunoServer : IDisposable
         await _app.StartAsync(_cts.Token);
 
         var startedApp = _app;
-        startedApp.Lifetime.ApplicationStopped.Register(() =>
-        {
-            if (!_stopRequested && ReferenceEquals(_app, startedApp))
-            {
-                StoppedUnexpectedly?.Invoke();
-            }
-        });
+        // StopApplication() only cancels a token here (nothing waits on WaitForShutdown), so
+        // the guard stops the host itself, force-disposing it if it will not stop in time.
+        UnexpectedStopGuard.Attach(
+            startedApp,
+            () => _stopRequested || !ReferenceEquals(_app, startedApp),
+            () => StoppedUnexpectedly?.Invoke(),
+            TimeSpan.FromSeconds(15));
 
         ListeningPort = port;
         ReachableUrls = NetworkAccess.GetReachableUrls(port);
