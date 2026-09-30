@@ -25,7 +25,7 @@ import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
-import { connectDetectedApp, DetectedComponents, delunoConnectsItself, type BundledComponentStatus } from "../components/app/bundled-components-detected";
+import { DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
@@ -557,29 +557,6 @@ export function IndexersPage() {
     resetDrawerChrome();
     if (autoTest) setPendingAutoTest(true);
   }
-  async function openDetectedClient(status: BundledComponentStatus) {
-    // A client Deluno can sign in to itself is connected by Deluno: the sign-in the
-    // installer left (qBittorrent 5.2.1 will not start without one), or the login an
-    // installed NZBGet, Deluge or Transmission ships with. The sign-in never reaches
-    // the screen (#1061), so there is no form to fill in. When that login does not work
-    // nothing is saved, and the form opens with host and port filled in for the person
-    // to type their own.
-    if (delunoConnectsItself(status)) {
-      await run(`detected:${status.kind}`, async () => {
-        const result = await connectDetectedApp(status.kind);
-        if (result.healthy) {
-          toast.success(result.message);
-        } else if (result.needsSignIn) {
-          toast.error(result.message);
-          openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false);
-        } else {
-          toast.error(result.message);
-        }
-      });
-      return;
-    }
-    openPrefilledClient(status);
-  }
   const openRouting = useCallback((library: LibraryItem) => {
     const snapshot = routing.find((item) => item.libraryId === library.id);
     const sources = snapshot?.sources.map((source) => source.indexerId) ?? [];
@@ -1008,7 +985,8 @@ export function IndexersPage() {
           <DetectedComponents
             category="download-client"
             configuredKinds={clients.map((item) => item.protocol)}
-            onUse={(status) => void openDetectedClient(status)}
+            onUse={(status) => openPrefilledClient(status)}
+            onNeedsSignIn={(status, result) => openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false)}
           />
           <ListCard
             title="Download clients"

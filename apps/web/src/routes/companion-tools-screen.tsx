@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
-import { Copy, Eye, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
 import { useLiveInterval } from "../hooks/use-live-interval";
@@ -21,7 +21,8 @@ interface CompanionTool {
   description: string;
   state: "not-installed" | "installed" | "connected" | string;
   connectionName: string | null;
-  hasLogin: boolean;
+  /** Where the tool answers on this computer, when Deluno knows it. */
+  url?: string | null;
   job: { status: "queued" | "running" | "done" | "skipped" | "failed" | string; step: string; message: string; updatedUtc: string } | null;
 }
 
@@ -29,13 +30,6 @@ interface CompanionToolsResponse {
   availability: { available: boolean; reason: string | null };
   tools: CompanionTool[];
   uninstallNote: string;
-}
-
-interface CompanionLogin {
-  url: string;
-  username: string | null;
-  secret: string;
-  secretLabel: string;
 }
 
 export async function companionToolsLoader() {
@@ -67,7 +61,6 @@ export function CompanionToolsPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [login, setLogin] = useState<CompanionLogin | null>(null);
 
   useEffect(() => setData(loaded), [loaded]);
 
@@ -104,10 +97,6 @@ export function CompanionToolsPage() {
     }
   }
 
-  async function showLogin(tool: CompanionTool) {
-    setLogin(await fetchJson<CompanionLogin>(`/api/companion-tools/${tool.id}/login`).catch(() => null));
-  }
-
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
@@ -140,7 +129,7 @@ export function CompanionToolsPage() {
             {data.tools.map((tool) => {
               const chip = stateChip(tool);
               return (
-                <ListRow key={tool.id} onClick={() => { setOpenId(tool.id); setLogin(null); }} selected={openId === tool.id}>
+                <ListRow key={tool.id} onClick={() => { setOpenId(tool.id); }} selected={openId === tool.id}>
                   <ListNameCell name={tool.name} sub={tool.description} />
                   <ListCell
                     primary={tool.state === "connected" ? `Connected as “${tool.connectionName}”` : tool.state === "installed" ? "Installed" : "Not installed"}
@@ -170,13 +159,12 @@ export function CompanionToolsPage() {
         onOpenChange={(next) => {
           if (!next) {
             setOpenId(null);
-            setLogin(null);
             revalidator.revalidate();
           }
         }}
         title={open?.name ?? "Tool"}
         description={open?.description}
-        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => { setOpenId(null); setLogin(null); }} />}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => { setOpenId(null); }} />}
       >
         {open ? (
           <>
@@ -186,28 +174,19 @@ export function CompanionToolsPage() {
               </p>
               {open.job?.status === "running" ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-label="Working" /> : null}
             </DrawerSection>
-            {open.hasLogin ? (
-              <DrawerSection title="Login Deluno created">
-                <p className="text-[length:var(--type-caption)] text-muted-foreground">Kept encrypted. Use it to open {open.name} yourself.</p>
-                {login ? (
-                  <dl className="grid grid-cols-[120px_1fr] gap-x-[var(--grid-gap)] gap-y-2 text-[length:var(--type-body-sm)]">
-                    <dt className="text-muted-foreground">Address</dt>
-                    <dd className="font-mono text-foreground">{login.url}</dd>
-                    {login.username ? (<><dt className="text-muted-foreground">Username</dt><dd className="font-mono text-foreground">{login.username}</dd></>) : null}
-                    <dt className="text-muted-foreground">{login.secretLabel}</dt>
-                    <dd className="flex items-center gap-2 font-mono text-foreground">
-                      <span className="min-w-0 truncate">{login.secret}</span>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Copy ${login.secretLabel}`} onClick={() => void navigator.clipboard?.writeText(login.secret)}>
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </dd>
-                  </dl>
-                ) : (
-                  <Button type="button" variant="outline" size="sm" className="w-max" onClick={() => void showLogin(open)}>
-                    <Eye className="h-3.5 w-3.5" />
-                    Show login
+            {open.id === "weir" ? (
+              <DrawerSection title="Your Weir account">
+                <p className="text-[length:var(--type-caption)] text-muted-foreground">
+                  Weir asks you to create your account in Deluno's Connect step, or the first time you open it.
+                </p>
+                {open.url ? (
+                  <Button asChild variant="outline" size="sm" className="w-max">
+                    <a href={open.url} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open Weir
+                    </a>
                   </Button>
-                )}
+                ) : null}
               </DrawerSection>
             ) : null}
           </>

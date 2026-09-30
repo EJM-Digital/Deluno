@@ -621,3 +621,45 @@ export interface UpdateLibraryViewRequest {
   rulesJson: string;
   automationAction?: "search" | null;
 }
+
+/** One app the installer can put on this computer, as GET /api/system/bundled-components reports it (#1061). */
+export interface BundledComponentStatus {
+  kind: string;
+  displayName: string;
+  category: "download-client" | "processor" | string;
+  installed: boolean;
+  reachable: boolean;
+  defaultHost: string;
+  defaultPort: number;
+  /** Deluno already has a working connection to this app. */
+  connected?: boolean;
+  /** Weir only: Weir has no account yet, so the person creates one (username, password, confirm). */
+  needsAccount?: boolean;
+  /** Weir only: Weir already has an account, so the person signs in with it. */
+  accountExists?: boolean;
+}
+
+/** What connecting an installed app did. No app's sign-in is ever part of it (#1061). */
+export interface BundledComponentConnectResult {
+  kind?: string;
+  name: string;
+  healthy: boolean;
+  message: string;
+  /** Weir was skipped by "Connect all": it waits for the person's own account. */
+  needsAccount?: boolean;
+  /** Deluno could not sign in and saved nothing: open the connection form (host and port filled in, no password). */
+  needsSignIn?: boolean;
+  protocol?: string | null;
+  host?: string | null;
+  port?: number | null;
+}
+
+/** Body of a Weir connect: the person's own account, used once and never kept. */
+export interface BundledComponentConnectRequest {
+  username?: string;
+  password?: string;
+}
+
+export interface BundledComponentConnectAllResponse {
+  results: BundledComponentConnectResult[];
+}

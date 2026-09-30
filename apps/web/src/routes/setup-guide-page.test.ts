@@ -322,7 +322,7 @@ describe("setup guide two-stage journey (#1034)", () => {
 
   it("asks Stage 2's media questions in the guide's existing order", () => {
     const stage2Ids = STEPS.filter((step) => step.stage === 2).map((step) => step.id);
-    expect(stage2Ids).toEqual(["mode", "folders", "quality", "services", "automation", "finish"]);
+    expect(stage2Ids).toEqual(["mode", "folders", "quality", "services", "connectApps", "automation", "finish"]);
   });
 
   it("names both stages for the progress rail", () => {
