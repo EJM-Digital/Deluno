@@ -16,11 +16,18 @@ public sealed class CollectionExclusionMigrationHostedService(
     IUnifiedExclusionRepository unifiedExclusionRepository,
     ILogger<CollectionExclusionMigrationHostedService> logger,
     IBackgroundProblemReporter? problemReporter = null)
-    : IHostedService
+    : IHostedService, IBackgroundProblemRetry
 {
     internal const string ProblemKey = "startup:collection-exclusions";
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    string IBackgroundProblemRetry.ProblemKey => ProblemKey;
+
+    public async Task StartAsync(CancellationToken cancellationToken) => await TryRunAsync(cancellationToken);
+
+    /// <summary>The Health row's "Try again": runs the move now (#1080).</summary>
+    public Task<bool> RetryAsync(CancellationToken cancellationToken) => TryRunAsync(cancellationToken);
+
+    private async Task<bool> TryRunAsync(CancellationToken cancellationToken)
     {
         // This must not stop the host from starting (#1080), but it must not
         // be silent either: until it finishes, exclusions still sit in the old
@@ -29,6 +36,7 @@ public sealed class CollectionExclusionMigrationHostedService(
         {
             await RunAsync(cancellationToken);
             problemReporter?.Clear(ProblemKey);
+            return true;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -38,6 +46,7 @@ public sealed class CollectionExclusionMigrationHostedService(
                 "Collection exclusions were not moved",
                 "Deluno could not move your excluded collection movies to their new place when it started. They are still excluded in the old way, so check that none has been added back. Deluno tries again each time it starts.",
                 exception.Message);
+            return false;
         }
     }
 

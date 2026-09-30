@@ -17,17 +17,25 @@ public sealed class MovieRungRepairReportService(
     IActivityFeedRepository activityFeedRepository,
     ILogger<MovieRungRepairReportService> logger,
     IBackgroundProblemReporter? problemReporter = null)
-    : IHostedService
+    : IHostedService, IBackgroundProblemRetry
 {
     public const string ProblemKey = "startup:movie-rung-repair-report";
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    string IBackgroundProblemRetry.ProblemKey => ProblemKey;
+
+    public async Task StartAsync(CancellationToken cancellationToken) => await TryRunAsync(cancellationToken);
+
+    /// <summary>The Health row's "Try again": runs the report now (#1080).</summary>
+    public Task<bool> RetryAsync(CancellationToken cancellationToken) => TryRunAsync(cancellationToken);
+
+    private async Task<bool> TryRunAsync(CancellationToken cancellationToken)
     {
         // A tidy-up report must never stop the host from starting (#1080); it runs again next start.
         try
         {
             await RunAsync(cancellationToken);
             problemReporter?.Clear(ProblemKey);
+            return true;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -38,6 +46,7 @@ public sealed class MovieRungRepairReportService(
                 "A movie status repair was not reported",
                 "Deluno could not write the Activity line about movies it put back on Quality met when it started. Nothing was searched for. Deluno tries again each time it starts.",
                 exception.Message);
+            return false;
         }
     }
 

@@ -55,8 +55,12 @@ public static class MoviesServiceCollectionExtensions
         services.AddSingleton<IDispatchTitleUnmonitorComponent, MovieDispatchTitleUnmonitorService>();
         services.AddSingleton<IMigrationCatalogImporter, MovieMigrationCatalogImporter>();
         services.AddHostedService<MoviesSchemaInitializer>();
-        services.AddHostedService<CollectionExclusionMigrationHostedService>();
-        services.AddHostedService<MovieRungRepairReportService>();
+        services.AddSingleton<CollectionExclusionMigrationHostedService>();
+        services.AddHostedService(provider => provider.GetRequiredService<CollectionExclusionMigrationHostedService>());
+        services.AddSingleton<IBackgroundProblemRetry>(provider => provider.GetRequiredService<CollectionExclusionMigrationHostedService>());
+        services.AddSingleton<MovieRungRepairReportService>();
+        services.AddHostedService(provider => provider.GetRequiredService<MovieRungRepairReportService>());
+        services.AddSingleton<IBackgroundProblemRetry>(provider => provider.GetRequiredService<MovieRungRepairReportService>());
         return services;
     }
 }

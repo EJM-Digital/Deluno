@@ -13,3 +13,17 @@ public interface IBackgroundProblemReporter
     /// <summary>Removes the problem for <paramref name="key"/>, if it is showing.</summary>
     void Clear(string key);
 }
+
+/// <summary>
+/// A start-up step that failed and can be run again on request, so its Health row has a
+/// "Try again" button instead of only a Snooze (#1080). The step reports or clears its own
+/// problem when it runs.
+/// </summary>
+public interface IBackgroundProblemRetry
+{
+    /// <summary>The problem key this step reports under (for example "startup:collection-exclusions").</summary>
+    string ProblemKey { get; }
+
+    /// <summary>Runs the step again now. Returns true when it finished and its problem is cleared; never throws.</summary>
+    Task<bool> RetryAsync(CancellationToken cancellationToken);
+}

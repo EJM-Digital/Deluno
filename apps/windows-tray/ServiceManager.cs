@@ -133,7 +133,7 @@ public static class ServiceManager
         int? Run(string arguments, TimeSpan timeout);
     }
 
-    private sealed class ProcessScRunner : IScRunner
+    internal sealed class ProcessScRunner : IScRunner
     {
         public int? Run(string arguments, TimeSpan timeout)
         {
@@ -202,10 +202,10 @@ public static class ServiceManager
     /// directly with no permission prompt. When Windows refuses, a warning is logged and a
     /// Health note in plain words is raised (cleared by the next start that succeeds).
     /// </summary>
-    internal static Task EnsureFailureActionsInBackground(Action<string> logWarning, IBackgroundProblemReporter? reporter, IScRunner? runner = null, TimeSpan? timeout = null)
+    internal static Task EnsureFailureActionsInBackground(Action<string> logWarning, IBackgroundProblemReporter? reporter, ServiceManager.IScRunner? runner = null, TimeSpan? timeout = null)
         => Task.Run(() =>
         {
-            var problem = SetFailureActions(runner ?? new ProcessScRunner(), timeout ?? TimeSpan.FromSeconds(10));
+            var problem = SetFailureActions(runner ?? new ServiceManager.ProcessScRunner(), timeout ?? TimeSpan.FromSeconds(10));
             if (problem is null)
             {
                 reporter?.Clear(FailureActionsProblemKey);
@@ -249,4 +249,32 @@ public static class ServiceManager
         });
         p?.WaitForExit();
     }
+}
+
+/// <summary>
+/// The Health row's "Try again" for the restart-on-failure set-up (#1080): runs the same
+/// sc.exe calls again now and clears the problem when Windows accepts them.
+/// </summary>
+internal sealed class ServiceFailureActionsRetry(IBackgroundProblemReporter reporter, ServiceManager.IScRunner? runner = null, TimeSpan? timeout = null)
+    : IBackgroundProblemRetry
+{
+    public string ProblemKey => ServiceManager.FailureActionsProblemKey;
+
+    public Task<bool> RetryAsync(CancellationToken cancellationToken)
+        => Task.Run(() =>
+        {
+            var problem = ServiceManager.SetFailureActions(runner ?? new ServiceManager.ProcessScRunner(), timeout ?? TimeSpan.FromSeconds(10));
+            if (problem is null)
+            {
+                reporter.Clear(ServiceManager.FailureActionsProblemKey);
+                return true;
+            }
+
+            reporter.Report(
+                ServiceManager.FailureActionsProblemKey,
+                "Deluno may not restart itself",
+                ServiceManager.FailureActionsProblemMessage,
+                problem);
+            return false;
+        }, cancellationToken);
 }

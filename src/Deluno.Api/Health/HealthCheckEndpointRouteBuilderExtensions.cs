@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Deluno.Api.Health;
 
@@ -98,8 +99,56 @@ public static class HealthCheckEndpointRouteBuilderExtensions
             return Results.NoContent();
         });
 
+        // A start-up step that did not finish (#1080): run it again now, or clear the row. Only "startup:"
+        // problems: a job that keeps failing shows live and goes away when it works again.
+        write.MapPost("/background-problems/{key}/retry", async (
+            string key,
+            HttpContext httpContext,
+            [FromServices] IEnumerable<IBackgroundProblemRetry> retries,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var retry = retries.FirstOrDefault(item => string.Equals(item.ProblemKey, key, StringComparison.Ordinal));
+            if (retry is null)
+            {
+                return Results.NotFound();
+            }
+
+            var cleared = await retry.RetryAsync(cancellationToken);
+            return Results.Ok(new BackgroundProblemRetryResponse(
+                cleared,
+                cleared ? "It worked, so the note is gone." : "It still did not work. Deluno's logs say why; try again after fixing that."));
+        });
+
+        write.MapDelete("/background-problems/{key}", async (
+            string key,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            if (!key.StartsWith("startup:", StringComparison.Ordinal))
+            {
+                return Results.NotFound();
+            }
+
+            httpContext.RequestServices.GetService<IBackgroundProblemReporter>()?.Clear(key);
+            return Results.NoContent();
+        });
+
         return endpoints;
     }
 }
+
+public sealed record BackgroundProblemRetryResponse(bool Cleared, string Message);
 
 public sealed record SnoozeHealthCheckRequest(int? Hours);

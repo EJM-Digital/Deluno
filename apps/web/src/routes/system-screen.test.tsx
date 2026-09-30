@@ -260,3 +260,55 @@ describe("The unreachable-library note can confirm the files are gone (#1070)", 
     await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
   });
 });
+
+describe("A start-up step that did not finish can be run again or cleared (#1080)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
+    loaderData.monitoring = null;
+  });
+
+  const row = (id: string, name: string) => ({ id, category: "system", name, status: "problem", message: "Did not finish.", cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null });
+
+  it("Try again re-runs the step and Clear removes the row; a running job's row only snoozes", async () => {
+    loaderData.healthChecks = {
+      checks: [
+        row("system:background-problem:startup:service-restart-on-failure", "Deluno may not restart itself"),
+        row("system:background-problem:startup:collection-exclusions", "Collection exclusions were not moved"),
+        row("system:background-problem:lane:import", "Background jobs: import lane keeps failing")
+      ],
+      summary: { problemCount: 3 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) =>
+      jsonResponse(init?.method === "POST" ? { cleared: true, message: "It worked, so the note is gone." } : init?.method === "DELETE" ? {} : []));
+
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: /^Try again:/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /^Clear:/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Snooze 24h" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again: Deluno may not restart itself" }));
+    await waitFor(() =>
+      expect(authedFetchMock).toHaveBeenCalledWith(
+        "/api/system/health/background-problems/startup%3Aservice-restart-on-failure/retry",
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear: Collection exclusions were not moved" }));
+    await waitFor(() =>
+      expect(authedFetchMock).toHaveBeenCalledWith(
+        "/api/system/health/background-problems/startup%3Acollection-exclusions",
+        expect.objectContaining({ method: "DELETE" })
+      )
+    );
+  });
+});
