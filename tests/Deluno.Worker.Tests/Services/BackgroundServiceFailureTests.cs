@@ -213,6 +213,7 @@ public sealed class BackgroundServiceFailureTests
                 options.MaxRestarts = 1;
                 options.ExitDelay = TimeSpan.Zero;
                 options.StopWait = TimeSpan.FromSeconds(5);
+                options.ExitGrace = TimeSpan.Zero;
                 options.ExitProcess = code =>
                 {
                     stoppedBeforeExit = lifetime!.ApplicationStopped.IsCancellationRequested;
@@ -235,6 +236,54 @@ public sealed class BackgroundServiceFailureTests
     }
 
     [Fact]
+    public async Task Giving_up_sets_the_failing_service_exit_code_before_the_host_stops_and_a_normal_stop_never_does()
+    {
+        HealthCheckHostedService.Starts = 0;
+        HealthCheckHostedService.AlwaysFail = true;
+        try
+        {
+            var codes = new List<int>();
+            var stoppingWhenSet = new List<bool>();
+            var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            IHostApplicationLifetime? lifetime = null;
+            using var host = BuildCriticalHost(options =>
+            {
+                options.MaxRestarts = 1;
+                options.ExitDelay = TimeSpan.Zero;
+                options.ExitGrace = TimeSpan.Zero;
+                options.StopWait = TimeSpan.FromSeconds(5);
+                options.SetServiceExitCode = code =>
+                {
+                    codes.Add(code);
+                    stoppingWhenSet.Add(lifetime!.ApplicationStopping.IsCancellationRequested);
+                };
+                options.ExitProcess = code => exited.TrySetResult(code);
+            });
+            lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+            await host.StartAsync();
+            lifetime.ApplicationStopping.Register(() => _ = Task.Run(() => host.StopAsync()));
+            await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal([BackgroundServiceSafetyOptions.ServiceFailureExitCode], codes);
+            Assert.Equal(1067, codes[0]);
+            Assert.False(stoppingWhenSet[0]); // set before the stop began
+        }
+        finally
+        {
+            HealthCheckHostedService.AlwaysFail = false;
+        }
+
+        // A normal stop (no give-up) never touches the exit code.
+        HealthCheckHostedService.Starts = 0;
+        var normalCodes = new List<int>();
+        using var normalHost = BuildCriticalHost(options => options.SetServiceExitCode = normalCodes.Add);
+        await normalHost.StartAsync();
+        await HealthCheckHostedService.RunningSteadily.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await normalHost.StopAsync();
+        Assert.Empty(normalCodes);
+    }
+
+    [Fact]
     public async Task A_stop_that_arrives_while_giving_up_is_a_normal_stop_and_never_ends_the_process_as_a_crash()
     {
         HealthCheckHostedService.Starts = 0;
@@ -246,6 +295,8 @@ public sealed class BackgroundServiceFailureTests
             {
                 options.MaxRestarts = 1;
                 options.ExitDelay = TimeSpan.FromSeconds(1);
+                options.ExitGrace = TimeSpan.Zero;
+                options.SetServiceExitCode = _ => exited = true;
                 options.ExitProcess = _ => exited = true;
             });
             var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
