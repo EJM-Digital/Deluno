@@ -979,7 +979,7 @@ public sealed partial class ImportPipelineService(
             {
                 skippedFiles.Add(new TvPackSkippedFilePlan(
                     preview,
-                    "Left alone: every episode in this file was removed and is no longer wanted, so the pack does not bring it back.",
+                    "Left alone: every episode in this file was unmonitored or removed and is no longer wanted, so the pack does not bring it back.",
                     []));
                 continue;
             }

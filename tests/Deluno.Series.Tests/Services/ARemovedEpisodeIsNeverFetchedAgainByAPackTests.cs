@@ -79,6 +79,15 @@ public sealed class ARemovedEpisodeIsNeverFetchedAgainByAPackTests
         Assert.Equal([2], detail.SeasonsWithRemovedEpisodes());
     }
 
+    [Fact]
+    public void A_person_asking_for_a_season_search_gets_packs_even_when_they_unmonitored_an_episode_but_automatic_searches_do_not()
+    {
+        var detail = new SeriesInventoryDetail("andor", "Andor", 2022, 2, 10, 0, AndorSeasonTwo());
+
+        Assert.Null(SeasonSearchExecutor.SeasonsToProtectFromPacks(detail, "manual-season"));
+        Assert.Equal([2], SeasonSearchExecutor.SeasonsToProtectFromPacks(detail, "automatic-season"));
+    }
+
     private static AcquisitionDecisionRequest Request(IReadOnlyCollection<int>? seasonsWithRemoved)
         => new("Andor", 2022, "tv", null, null, [], [], SeasonsWithRemovedEpisodes: seasonsWithRemoved);
 

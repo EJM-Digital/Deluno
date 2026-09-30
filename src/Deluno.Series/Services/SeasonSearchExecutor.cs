@@ -54,6 +54,13 @@ public sealed class SeasonSearchExecutor(
     IMediaTagStore tagStore,
     IPlatformSettingsRepository? platformSettingsRepository = null) : ISeasonSearchExecutor
 {
+    /// <summary>
+    /// Seasons whose packs an automatic search must leave alone. A person who explicitly asks for a season search (a manual
+    /// trigger) gets the packs: they chose it, even when they had unmonitored an episode themselves (#1072).
+    /// </summary>
+    public static IReadOnlyCollection<int>? SeasonsToProtectFromPacks(Deluno.Series.Contracts.SeriesInventoryDetail? inventory, string triggeredBy)
+        => triggeredBy.StartsWith("manual", StringComparison.OrdinalIgnoreCase) ? null : inventory?.SeasonsWithRemovedEpisodes();
+
     public async Task<SeasonSearchOutcome> ExecuteAsync(
         string seriesId,
         int seasonNumber,
@@ -292,7 +299,7 @@ public sealed class SeasonSearchExecutor(
                 ImdbId: seriesItem.ImdbId,
                 Genres: seriesItem.Genres,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem.MetadataJson),
-                SeasonsWithRemovedEpisodes: inventory.SeasonsWithRemovedEpisodes()).WithProfile(profileRules),
+                SeasonsWithRemovedEpisodes: SeasonsToProtectFromPacks(inventory, triggeredBy)).WithProfile(profileRules),
             cancellationToken);
         var searchPlan = decisionPlan.SearchPlan;
         var bestCandidate = searchPlan.BestCandidate;
