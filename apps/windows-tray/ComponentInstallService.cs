@@ -318,18 +318,12 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName}'s installer did not finish cleanly (exit code {exitCode?.ToString() ?? "none"}).");
         }
 
-        await SeedConfigAsync(spec, cancellationToken);
-
         // From here the app is on this computer because the picker put it there, so the
         // running Deluno connects it (once), whether or not the start below succeeds (#1054).
-        try
-        {
-            _installedRecord.Value.MarkInstalled(spec.Kind, "localhost", spec.DefaultPort);
-        }
-        catch
-        {
-            // Not being able to record it only means the connection is made with "Use X".
-        }
+        // Recorded before the config is seeded, so a sign-in kept for the app never exists
+        // without the record that says the app is installed (#1061).
+        RecordInstalled(spec);
+        await SeedConfigAsync(spec, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(spec.PostInstallCommand))
         {
@@ -339,6 +333,27 @@ public sealed class ComponentInstallService(
         var result = await StartAndWaitForReadyAsync(spec, cancellationToken);
         await CaptureGeneratedCredentialsAsync(spec, cancellationToken);
         return result;
+    }
+
+    private void RecordInstalled(BundledComponentSpec spec)
+    {
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                _installedRecord.Value.MarkInstalled(spec.Kind, "localhost", spec.DefaultPort);
+                return;
+            }
+            catch when (attempt < 3)
+            {
+                Thread.Sleep(200);
+            }
+            catch
+            {
+                // Still not recorded: the connection is made with "Use X", and a kept
+                // sign-in is only removed for an app that is no longer installed.
+            }
+        }
     }
 
     /// <summary>
