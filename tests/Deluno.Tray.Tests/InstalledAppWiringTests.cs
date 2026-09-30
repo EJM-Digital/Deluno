@@ -28,6 +28,58 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
+    public async Task The_install_is_recorded_before_the_generated_sign_in_is_kept_so_there_is_no_gap_between_them()
+    {
+        var record = new RecordingInstalledRecord();
+        var store = new OrderCheckingStore(() => record.Entries.Count);
+
+        await InstallWithRecord(Load("qbittorrent"), record, store);
+
+        Assert.Equal(1, store.EntriesWhenSaved);
+    }
+
+    [Fact]
+    public async Task A_failed_write_of_the_install_record_is_tried_again()
+    {
+        var record = new FlakyInstalledRecord(failures: 2);
+
+        var result = await InstallWithRecord(Load("nzbget"), record, new RecordingCredentialStore(), template: "ControlIP=0.0.0.0");
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        Assert.Single(record.Entries);
+        Assert.Equal(3, record.Attempts);
+    }
+
+    private sealed class FlakyInstalledRecord(int failures) : RecordingInstalledRecord
+    {
+        public int Attempts { get; private set; }
+        public override void MarkInstalled(string kind, string host, int port)
+        {
+            if (++Attempts <= failures)
+            {
+                throw new IOException("locked");
+            }
+
+            base.MarkInstalled(kind, host, port);
+        }
+    }
+
+    private sealed class OrderCheckingStore(Func<int> entries) : IBundledComponentCredentialStore
+    {
+        public int? EntriesWhenSaved { get; private set; }
+        private readonly Dictionary<string, BundledComponentCredentials> _saved = new();
+        public bool Has(string kind) => _saved.ContainsKey(kind);
+        public BundledComponentCredentials? TryGet(string kind) => _saved.GetValueOrDefault(kind);
+        public void Save(string kind, BundledComponentCredentials credentials)
+        {
+            EntriesWhenSaved = entries();
+            _saved[kind] = credentials;
+        }
+
+        public void Remove(string kind) => _saved.Remove(kind);
+    }
+
+    [Fact]
     public async Task An_app_that_was_not_installed_is_not_recorded()
     {
         var record = new RecordingInstalledRecord();
@@ -91,7 +143,7 @@ public sealed partial class ComponentSetupTests
         Assert.DoesNotContain("{{", content, StringComparison.Ordinal);
     }
 
-    private static async Task<ComponentInstallResult> InstallWithRecord(BundledComponentSpec real, RecordingInstalledRecord record, RecordingCredentialStore store, string? template = null)
+    private static async Task<ComponentInstallResult> InstallWithRecord(BundledComponentSpec real, RecordingInstalledRecord record, IBundledComponentCredentialStore store, string? template = null)
     {
         var service = new ComponentInstallService(
             new FakePrograms(), new FakePorts(), new FixedDownloader(WriteTempFile(new byte[20], ".exe")), new AlwaysSigned(), new ElevatedRecordingRunner(),
@@ -105,11 +157,11 @@ public sealed partial class ComponentSetupTests
         return await service.InstallAsync(spec, CancellationToken.None);
     }
 
-    private sealed class RecordingInstalledRecord : IInstalledComponentRecord
+    private class RecordingInstalledRecord : IInstalledComponentRecord
     {
         public List<InstalledComponentEntry> Entries { get; } = [];
         public IReadOnlyList<InstalledComponentEntry> Read() => Entries;
-        public void MarkInstalled(string kind, string host, int port) => Entries.Add(new InstalledComponentEntry(kind, host, port, DateTimeOffset.UtcNow));
+        public virtual void MarkInstalled(string kind, string host, int port) => Entries.Add(new InstalledComponentEntry(kind, host, port, DateTimeOffset.UtcNow));
         public void MarkWired(string kind) { }
     }
 
