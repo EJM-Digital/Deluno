@@ -1,3 +1,4 @@
+import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
 import type { ProxyItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { DrawerDanger, DrawerSection } from "../../components/ui/drawer";
@@ -38,6 +39,7 @@ export function ProxyDrawerBody({
 }) {
   return (
     <>
+      <SecretUnreadableNotice item={editing} />
       <DrawerSection title="Basics">
         <Field label="Type" help="Deluno names the proxy from its type and address.">
           <Select value={form.proxyType} onChange={(event) => setForm((current) => ({ ...current, proxyType: event.target.value as ProxyForm["proxyType"] }))} options={PROXY_TYPE_OPTIONS} />

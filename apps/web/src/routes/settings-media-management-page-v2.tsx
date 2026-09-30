@@ -8,6 +8,7 @@
  * Contracts: PATCH /api/settings, PUT /api/libraries/{id}/workflow,
  * GET/POST/DELETE /api/integrations/processors/connections (+ /{id}/test).
  */
+import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
@@ -1134,6 +1135,7 @@ function ProcessingWorkflowPage() {
 
         {drawer.kind === "callback" ? (
           <>
+            <SecretUnreadableNotice item={drawer.editId ? processorConnections.find((connection) => connection.id === drawer.editId) : null} />
             <div className="rounded-[10px] border border-info/25 bg-info/[0.05] px-3 py-2.5">
               <p className="text-[length:var(--type-caption)] font-medium text-foreground">Two directions are involved</p>
               <p className="mt-1 text-[length:var(--type-caption)] leading-relaxed text-muted-foreground">
@@ -1222,7 +1224,8 @@ function workflowFrom(library: LibraryItem): WorkflowForm {
   };
 }
 /** The line under a processor's name; says so when there is no health-check address to test it with (#1055). */
-export function processorSub(connection: Pick<ProcessorConnectionItem, "secretConfigured" | "healthCheckUrl" | "healthStatus">): string {
+export function processorSub(connection: Pick<ProcessorConnectionItem, "secretConfigured" | "healthCheckUrl" | "healthStatus"> & { secretUnreadable?: boolean }): string {
+  if (connection.secretUnreadable) return "Saved token can't be read here · Enter it again (Edit)";
   const token = connection.secretConfigured ? "Token saved" : "No token";
   return !connection.healthCheckUrl && connection.healthStatus === "degraded" ? `${token} · Add a health check address (Edit) to test it fully` : token;
 }

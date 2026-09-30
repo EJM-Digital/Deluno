@@ -1,3 +1,4 @@
+import { SecretUnreadableNotice } from "../../components/app/secret-unreadable-notice";
 import { useState } from "react";
 import { TagPicker } from "../../components/app/tag-picker";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -81,6 +82,7 @@ export function IndexerDrawerBody({
 
   return (
     <>
+      <SecretUnreadableNotice item={editing} />
       <DrawerSection title="Basics">
         <FieldRow>
           <Field label="Protocol" help={editing ? undefined : preset.hint}>

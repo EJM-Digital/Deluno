@@ -1,3 +1,4 @@
+import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Loader2, Plus, Trash2, Wifi } from "lucide-react";
@@ -30,6 +31,9 @@ export interface MediaServerConnection {
   name: string;
   baseUrl: string;
   hasToken: boolean;
+  /** Saved on another computer and cannot be read here (#1094): listed as missing until entered again. */
+  secretUnreadable?: boolean;
+  secretProblem?: string | null;
   isEnabled: boolean;
   healthStatus: string;
   lastHealthMessage: string | null;
@@ -418,6 +422,7 @@ export function MediaServersPage() {
           />
         }
       >
+        <SecretUnreadableNotice item={editing} />
         <DrawerSection title="Basics">
           <FieldRow>
             <Field label="Server" error={errors.kind}>
