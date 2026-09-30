@@ -428,7 +428,7 @@ function ImportPolicyPage() {
         leftoverMinAgeHours: form.leftoverMinAgeHours,
         forceImportEnabled: form.forceImportEnabled,
         forceImportMaxTries: form.forceImportMaxTries,
-        forceImportMinimumMegabytes: form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : undefined,
+        forceImportMinimumMegabytes: form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : 0,
         unmatchedImportPolicy: form.unmatchedImportPolicy,
         unmatchedImportGiveUpDays: form.unmatchedImportGiveUpDays
       });
