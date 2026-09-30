@@ -27,8 +27,7 @@ public sealed class DownloadProgressPublisher(
     ILogger<DownloadProgressPublisher> logger,
     IServiceScopeFactory scopeFactory,
     IRealtimeEventPublisher realtimeEventPublisher,
-    TimeProvider timeProvider,
-    Deluno.Worker.Dashboard.IDashboardDownloadsSnapshot? dashboardSnapshot = null)
+    TimeProvider timeProvider)
     : BackgroundService
 {
     /// <summary>
@@ -116,8 +115,6 @@ public sealed class DownloadProgressPublisher(
         using var scope = scopeFactory.CreateScope();
         var telemetry = scope.ServiceProvider.GetRequiredService<IDownloadClientTelemetryService>();
         var overview = await telemetry.GetFreshOverviewAsync(DownloadTelemetryFreshness.Loop, cancellationToken);
-        // The Dashboard reads this reading instead of calling a client (#1081).
-        dashboardSnapshot?.Publish(overview);
 
         var live = overview.Clients
             .SelectMany(client => client.Queue)

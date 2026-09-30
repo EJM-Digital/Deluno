@@ -90,7 +90,6 @@ public static class WorkerServiceCollectionExtensions
         // and in-memory readings, and the background pieces that keep those
         // readings fresh so a request never calls a client or stats a disk.
         services.AddSingleton<Deluno.Worker.Services.JobLaneStateBoard>();
-        services.AddSingleton<Deluno.Worker.Dashboard.IDashboardDownloadsSnapshot, Deluno.Worker.Dashboard.DashboardDownloadsSnapshot>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardCountsStore>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardVolumeCache>();
         services.AddHostedService<Deluno.Worker.Dashboard.DashboardVolumeRefresher>();
