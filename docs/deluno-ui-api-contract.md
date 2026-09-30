@@ -60,6 +60,7 @@ Implemented REST endpoints:
 - `GET /api/monitoring/diagnostics?query=&category=&severity=&sinceUtc=&pageSize=&pageToken=`
 - `GET /api/monitoring/export/prometheus`
 - `GET /api/monitoring/export/influx`
+- `GET /api/dashboard/summary`: every Dashboard panel in one cached response (see "The Dashboard summary" below).
 - `GET /api/openapi/v1.json`
 - `GET /api/docs`
 
@@ -92,12 +93,81 @@ Implemented SignalR event names currently modeled in frontend/backend contracts:
 - `AutomationStateChanged`
 - `IndexerChanged`
 - `DownloadClientChanged`
+- `EpisodeChanged`
+- `IndexerProxyChanged`
+- `DashboardSummaryChanged` (`{ asOfUtc }`; at most every 2 seconds; refetch `GET /api/dashboard/summary`)
 
 Current gap:
 
 - entity-change events carry only `{ id }`; consumers refetch state rather than applying a second serialized copy
 - import/recovery and wanted-state coverage is still incomplete and should not be assumed to be authoritative everywhere
 - monitoring export endpoints are intentionally unauthenticated only inside Deluno's authenticated API boundary (no public scrape endpoint)
+
+### The Dashboard summary
+
+`GET /api/dashboard/summary` (Read) is the one request behind the Dashboard (#1082). It returns every panel's at-a-glance numbers in a single compact JSON document, so the screen asks for one thing instead of two dozen. Deluno's own rule for it (#1081): it is built only from stored rows and in-memory readings. It never calls a download client, indexer, media server or processor, never probes the internet, and never sizes a disk or walks a folder while a person waits.
+
+How it stays quick:
+
+- Every section is built at the same time, each with its own scope and a 3 second budget. A section whose source throws or runs long is `null` and named in `unavailableSections`; every other section is unaffected. An empty install answers with plain zeros, empty lists and `null` for things never measured; it is never an error.
+- The whole answer is remembered for 4 seconds and built once (single flight) however many screens ask at the same moment. Typical cost: about 30 ms building on 3,000 films, 300 shows and 10,000 queued jobs, and a few milliseconds when remembered.
+- Each section carries its own `asOfUtc`, because a cached reading is older than the response around it. The response is sent with `Cache-Control: no-store`.
+- Anything that would otherwise need a live call reads the last reading instead: the download queue and client rows come from the last reading the progress publisher took (`downloads.hasReading` is false until there is one, and the counts then mean "not measured", not "idle"); disk sizes come from a background reading refreshed about once a minute (`storage.readingUtc` is `null` before the first); the internet flag is the connectivity monitor's last verdict; leftover downloads are the last leftover scan's answer (`downloads.leftovers.scanned` is false until a scan has run); the automatic-search pause gate is decided from the last download reading.
+
+Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
+
+```
+{
+  asOfUtc, buildMilliseconds, unavailableSections: string[],
+  library?:    { asOfUtc, movies: Counts, shows: Counts, totalBytes, libraries: [{ id, name, mediaType, bytes }] },
+                 Counts = { total, monitored, unmonitored, missing, upgradable, qualityMet, upcoming,
+                            downloading, airing, fileBytes }   // the catalogue shelf's own facet counts
+  downloads?:  { asOfUtc, hasReading, readingUtc?, active, queued, stalled, processing, importReady,
+                 waitingForProcessor, downloadMbps, uploadMbps,
+                 clients: [{ id, name, protocol, reachable, paused?, version?, warnings, freeSpaceBytes?,
+                             healthStatus, active, queued }],
+                 sharingHolds, sharingExtraBytes,
+                 leftovers: { scanned, count, bytes, scannedUtc? }, failedDownloads },
+  pipeline?:   { asOfUtc, today: { grabbed, detected, imported, failed },
+                 totals: { grabbed, detected, imported, failedGrabs, failedImports, activeDispatches },
+                 averageGrabToDetectionSeconds?, averageDetectionToImportSeconds? },
+  imports?:    { asOfUtc, recoveryOpen, recoveryByKind: { [kind]: n }, failedImportJobs, failedProcessorHandoffs },
+  automation?: { asOfUtc, autoStartJobs,
+                 queuePause: { enabled, threshold, moviesPaused, tvPaused, moviesWaiting, tvWaiting,
+                               unreadable, unreadableReason? },
+                 libraries: [{ libraryId, name, mediaType, status, nextSearchUtc?, nextMissingSearchUtc?,
+                               nextUpgradeSearchUtc?, lastCompletedUtc?, lastError? }],
+                 lastSearchCycle?: { libraryId, libraryName, mediaType, status, planned, queued, skipped,
+                                     startedUtc, completedUtc? },
+                 tasks: [{ key, name, lastResult, lastCompletedUtc?, nextRunUtc? }] },
+  indexers?:   { asOfUtc, total, healthy, failing, rateLimited, disabled, queriesToday, failedQueriesToday,
+                 grabsToday, topFailing: [{ id, name, reason }] },
+  processors?: { asOfUtc, total, healthy, failing, handoffsToday, waiting },
+  retention?:  { asOfUtc, leavingSoon, nextLeaving: [{ entityId, title, mediaType, removeAfterUtc }] (3),
+                 readyToRemove, removedLast7Days, removedBytesLast7Days },
+  subtitles?:  { asOfUtc, wanted },
+  requests?:   { asOfUtc, seerrServers, seerrHealthy, seerrFailing,
+                 acquisitionsLast7Days: { [status]: n }, importLists, importListsByLastSync: { [status]: n } },
+  blocklist?:  { asOfUtc, count },
+  health?:     { asOfUtc, problems, unknown, suggestions, lastRunUtc?,
+                 topProblems: [{ id, title, category, message, sinceUtc?, link }] (5) },
+  storage?:    { asOfUtc, readingUtc?,
+                 volumes: [{ id, label, roles: ["data"|"library"|"downloads"|"processor"], paths, available,
+                             totalBytes?, freeBytes? }] },
+  system?:     { asOfUtc, version, updateAvailable, latestVersion?, uptimeSeconds,
+                 machine?: { capturedUtc, cpuPercent, memoryBytes, memoryPercent? },
+                 jobs: { running, queued, failed },
+                 lanes: [{ name, state: "running"|"idle"|"failing"|"restarting"|"disabled", activeJobs, lastError? }],
+                 lastBackupUtc?, nextBackupUtc?, backupsEnabled, internetOutage, outageSinceUtc?,
+                 notificationsUnread },
+  activity?:   { asOfUtc, windowHours, searchesRun, downloadsStarted, importsCompleted,
+                 cleanupRemovals, retentionRemovals }   // last 24 hours; the stream itself stays GET /api/activity
+}
+```
+
+Notes on the numbers: `library.*.total` counts every title; every other library count is over monitored titles, each title under exactly one rung, exactly as the shelf's chips count them. `fileBytes` and `libraries[].bytes` are the sum of the tracked file sizes Deluno already stores (no disk is read). `pipeline.today` is since local midnight on the machine running Deluno. `retention.removedLast7Days` and `...Bytes` add up every rule's confirmed and checked runs (previews removed nothing). `subtitles.wanted` is count-only and counts a title with its own language override as wanted, so it can read a little high for a library that uses overrides. `health.topProblems[].link` is the web path of the screen that clears that kind of problem (System for anything without a better home).
+
+Realtime: the hub sends one `DashboardSummaryChanged` event (`{ asOfUtc }`, no numbers) on the `dashboard` group, at most every 2 seconds, whenever a source the summary reads has changed (health, queue items, download progress, import state, search runs, activity, dispatch stages, and the automation, movie, series, episode, library, indexer, indexer proxy, download client, import list and settings change events). The first change after a quiet spell nudges at once; changes during the following two seconds fold into a single nudge. The web refetches this one endpoint instead of twenty-four.
 
 ## Movies
 

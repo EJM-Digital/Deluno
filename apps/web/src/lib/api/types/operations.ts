@@ -670,3 +670,298 @@ export interface BundledComponentConnectRequest {
 export interface BundledComponentConnectAllResponse {
   results: BundledComponentConnectResult[];
 }
+
+/* Dashboard summary (GET /api/dashboard/summary, #1082)
+ *
+ * One compact response for every Dashboard panel, built by the server from
+ * stored rows and in-memory readings only (#1081). Every section is null when
+ * its source failed (and is then named in `unavailableSections`); every
+ * section carries its own `asOfUtc`, because a cached reading (storage, the
+ * download queue) is older than the response around it.
+ */
+export interface DashboardSummary {
+  asOfUtc: string;
+  buildMilliseconds: number;
+  unavailableSections: string[];
+  library: DashboardLibrarySection | null;
+  downloads: DashboardDownloadsSection | null;
+  pipeline: DashboardPipelineSection | null;
+  imports: DashboardImportsSection | null;
+  automation: DashboardAutomationSection | null;
+  indexers: DashboardIndexersSection | null;
+  processors: DashboardProcessorsSection | null;
+  retention: DashboardRetentionSection | null;
+  subtitles: DashboardSubtitlesSection | null;
+  requests: DashboardRequestsSection | null;
+  blocklist: DashboardBlocklistSection | null;
+  health: DashboardHealthSection | null;
+  storage: DashboardStorageSection | null;
+  system: DashboardSystemSection | null;
+  activity: DashboardActivitySection | null;
+}
+
+export type DashboardSectionName = Exclude<keyof DashboardSummary, "asOfUtc" | "buildMilliseconds" | "unavailableSections">;
+
+export interface DashboardMediaCounts {
+  total: number;
+  monitored: number;
+  unmonitored: number;
+  missing: number;
+  upgradable: number;
+  qualityMet: number;
+  upcoming: number;
+  downloading: number;
+  airing: number;
+  fileBytes: number;
+}
+
+export interface DashboardLibraryBytes {
+  id: string;
+  name: string;
+  mediaType: string;
+  bytes: number;
+}
+
+export interface DashboardLibrarySection {
+  asOfUtc: string;
+  movies: DashboardMediaCounts;
+  shows: DashboardMediaCounts;
+  totalBytes: number;
+  libraries: DashboardLibraryBytes[];
+}
+
+export interface DashboardClientRow {
+  id: string;
+  name: string;
+  protocol: string;
+  reachable: boolean;
+  /** The client's own pause flag; null when its protocol has none or nothing has been read yet. */
+  paused: boolean | null;
+  version: string | null;
+  warnings: number;
+  freeSpaceBytes: number | null;
+  healthStatus: string;
+  active: number;
+  queued: number;
+}
+
+export interface DashboardLeftovers {
+  /** False until a leftover scan has run: the count is then unknown, not zero. */
+  scanned: boolean;
+  count: number;
+  bytes: number;
+  scannedUtc: string | null;
+}
+
+export interface DashboardDownloadsSection {
+  asOfUtc: string;
+  /** False until a download-client reading exists; the counts are then zero and mean "not measured". */
+  hasReading: boolean;
+  readingUtc: string | null;
+  active: number;
+  queued: number;
+  stalled: number;
+  processing: number;
+  importReady: number;
+  waitingForProcessor: number;
+  downloadMbps: number;
+  uploadMbps: number;
+  clients: DashboardClientRow[];
+  sharingHolds: number;
+  sharingExtraBytes: number;
+  leftovers: DashboardLeftovers;
+  failedDownloads: number;
+}
+
+export interface DashboardPipelineSection {
+  asOfUtc: string;
+  today: { grabbed: number; detected: number; imported: number; failed: number };
+  totals: {
+    grabbed: number;
+    detected: number;
+    imported: number;
+    failedGrabs: number;
+    failedImports: number;
+    activeDispatches: number;
+  };
+  averageGrabToDetectionSeconds: number | null;
+  averageDetectionToImportSeconds: number | null;
+}
+
+export interface DashboardImportsSection {
+  asOfUtc: string;
+  recoveryOpen: number;
+  recoveryByKind: Record<string, number>;
+  failedImportJobs: number;
+  failedProcessorHandoffs: number;
+}
+
+export interface DashboardQueuePauseGate {
+  enabled: boolean;
+  threshold: number;
+  moviesPaused: boolean;
+  tvPaused: boolean;
+  moviesWaiting: number;
+  tvWaiting: number;
+  unreadable: boolean;
+  unreadableReason: string | null;
+}
+
+export interface DashboardLibraryAutomation {
+  libraryId: string;
+  name: string;
+  mediaType: string;
+  status: string;
+  nextSearchUtc: string | null;
+  nextMissingSearchUtc: string | null;
+  nextUpgradeSearchUtc: string | null;
+  lastCompletedUtc: string | null;
+  lastError: string | null;
+}
+
+export interface DashboardSearchCycle {
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  status: string;
+  planned: number;
+  queued: number;
+  skipped: number;
+  startedUtc: string;
+  completedUtc: string | null;
+}
+
+export interface DashboardScheduledTask {
+  key: string;
+  name: string;
+  lastResult: string;
+  lastCompletedUtc: string | null;
+  nextRunUtc: string | null;
+}
+
+export interface DashboardAutomationSection {
+  asOfUtc: string;
+  autoStartJobs: boolean;
+  queuePause: DashboardQueuePauseGate;
+  libraries: DashboardLibraryAutomation[];
+  lastSearchCycle: DashboardSearchCycle | null;
+  tasks: DashboardScheduledTask[];
+}
+
+export interface DashboardIndexersSection {
+  asOfUtc: string;
+  total: number;
+  healthy: number;
+  failing: number;
+  rateLimited: number;
+  disabled: number;
+  queriesToday: number;
+  failedQueriesToday: number;
+  grabsToday: number;
+  topFailing: Array<{ id: string; name: string; reason: string }>;
+}
+
+export interface DashboardProcessorsSection {
+  asOfUtc: string;
+  total: number;
+  healthy: number;
+  failing: number;
+  handoffsToday: number;
+  waiting: number;
+}
+
+export interface DashboardRetentionSection {
+  asOfUtc: string;
+  leavingSoon: number;
+  nextLeaving: Array<{ entityId: string; title: string; mediaType: string; removeAfterUtc: string }>;
+  readyToRemove: number;
+  removedLast7Days: number;
+  removedBytesLast7Days: number;
+}
+
+export interface DashboardSubtitlesSection {
+  asOfUtc: string;
+  wanted: number;
+}
+
+export interface DashboardRequestsSection {
+  asOfUtc: string;
+  seerrServers: number;
+  seerrHealthy: number;
+  seerrFailing: number;
+  acquisitionsLast7Days: Record<string, number>;
+  importLists: number;
+  importListsByLastSync: Record<string, number>;
+}
+
+export interface DashboardBlocklistSection {
+  asOfUtc: string;
+  count: number;
+}
+
+export interface DashboardHealthProblem {
+  id: string;
+  title: string;
+  category: string;
+  message: string;
+  sinceUtc: string | null;
+  /** The screen that clears it, as a web path. */
+  link: string;
+}
+
+export interface DashboardHealthSection {
+  asOfUtc: string;
+  problems: number;
+  unknown: number;
+  suggestions: number;
+  lastRunUtc: string | null;
+  topProblems: DashboardHealthProblem[];
+}
+
+export interface DashboardVolume {
+  id: string;
+  label: string;
+  /** data, library, downloads or processor. */
+  roles: string[];
+  paths: string[];
+  /** False when the folder could not be read (offline share, missing folder). */
+  available: boolean;
+  totalBytes: number | null;
+  freeBytes: number | null;
+}
+
+export interface DashboardStorageSection {
+  asOfUtc: string;
+  /** When the disks were last read in the background; null before the first reading. */
+  readingUtc: string | null;
+  volumes: DashboardVolume[];
+}
+
+export type DashboardLaneState = "running" | "idle" | "failing" | "restarting" | "disabled";
+
+export interface DashboardSystemSection {
+  asOfUtc: string;
+  version: string;
+  updateAvailable: boolean;
+  latestVersion: string | null;
+  uptimeSeconds: number;
+  machine: { capturedUtc: string; cpuPercent: number; memoryBytes: number; memoryPercent: number | null } | null;
+  jobs: { running: number; queued: number; failed: number };
+  lanes: Array<{ name: string; state: DashboardLaneState; activeJobs: number; lastError: string | null }>;
+  lastBackupUtc: string | null;
+  nextBackupUtc: string | null;
+  backupsEnabled: boolean;
+  internetOutage: boolean;
+  outageSinceUtc: string | null;
+  notificationsUnread: number;
+}
+
+export interface DashboardActivitySection {
+  asOfUtc: string;
+  windowHours: number;
+  searchesRun: number;
+  downloadsStarted: number;
+  importsCompleted: number;
+  cleanupRemovals: number;
+  retentionRemovals: number;
+}
