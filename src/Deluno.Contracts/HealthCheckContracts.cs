@@ -11,6 +11,14 @@ public static class HealthCheckStatuses
 
     /// <summary>Deluno could not tell, and says so rather than guessing either way.</summary>
     public const string Unknown = "unknown";
+
+    /// <summary>
+    /// A setting that starts off under the "nothing on by default" rule (#936)
+    /// and is worth switching on. Not a problem (#1060): it never counts as
+    /// "needs a look", never turns Health from "All clear", and never writes a
+    /// health.problem Activity line or sends a notification.
+    /// </summary>
+    public const string Suggestion = "suggestion";
 }
 
 /// <summary>
@@ -108,6 +116,9 @@ public sealed record HealthCheckOutcome(
     public static HealthCheckOutcome Problem(string id, string category, string name, string message, string? cause, string? fix, string? detailsJson = null)
         => new(id, category, name, HealthCheckStatuses.Problem, message, cause, fix, detailsJson);
 
+    public static HealthCheckOutcome Suggestion(string id, string category, string name, string message, string? cause, string? fix, string? detailsJson = null)
+        => new(id, category, name, HealthCheckStatuses.Suggestion, message, cause, fix, detailsJson);
+
     public static HealthCheckOutcome Unknown(string id, string category, string name, string message, string? detailsJson = null)
         => new(id, category, name, HealthCheckStatuses.Unknown, message, DetailsJson: detailsJson);
 }
@@ -117,6 +128,7 @@ public sealed record HealthCheckSummary(
     int ProblemCount,
     int UnsnoozedProblemCount,
     int UnknownCount,
+    int SuggestionCount,
     DateTimeOffset? LastRunUtc);
 
 public sealed record HealthCheckListResponse(

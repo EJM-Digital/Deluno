@@ -13,7 +13,7 @@ namespace Deluno.Worker.Tests.HealthChecks.Checks;
 public sealed class AllowedHostsHealthCheckTests
 {
     [Fact]
-    public async Task Off_reports_a_problem_with_a_fix()
+    public async Task Off_reports_a_suggestion_with_a_fix()
     {
         var repository = new Mock<IAllowedHostsRepository>();
         repository.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(AllowedHostsSettings.Off);
@@ -22,7 +22,7 @@ public sealed class AllowedHostsHealthCheckTests
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
         Assert.Equal(AllowedHostsHealthCheck.Id, outcome.Id);
-        Assert.Equal(HealthCheckStatuses.Problem, outcome.Status);
+        Assert.Equal(HealthCheckStatuses.Suggestion, outcome.Status);
         Assert.Equal(HealthCheckCategories.System, outcome.Category);
         Assert.Contains("any address", outcome.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(outcome.Fix);

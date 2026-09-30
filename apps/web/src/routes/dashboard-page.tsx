@@ -595,7 +595,7 @@ export function DashboardPage() {
     // has for "something needs a decision" rather than a second card saying
     // the same kind of thing in a different box.
     ...(data.healthChecks?.checks ?? [])
-      .filter((check) => check.status !== "ok" && !(check.snoozedUntilUtc && new Date(check.snoozedUntilUtc).getTime() > Date.now()))
+      .filter((check) => check.status !== "ok" && check.status !== "suggestion" && !(check.snoozedUntilUtc && new Date(check.snoozedUntilUtc).getTime() > Date.now()))
       .map((check) => ({
         id: `health:${check.id}`,
         tone: (check.status === "problem" ? "warn" : "info") as SetupAttentionTone,

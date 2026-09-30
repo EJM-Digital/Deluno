@@ -13,7 +13,7 @@ namespace Deluno.Worker.Tests.HealthChecks.Checks;
 public sealed class DangerousFileCheckHealthCheckTests
 {
     [Fact]
-    public async Task Off_reports_a_problem_with_a_fix()
+    public async Task Off_reports_a_suggestion_with_a_fix()
     {
         var repository = new Mock<IDownloadHealthRepository>();
         repository.Setup(repo => repo.GetContentBlocklistSettingsAsync(It.IsAny<CancellationToken>()))
@@ -23,7 +23,7 @@ public sealed class DangerousFileCheckHealthCheckTests
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
         Assert.Equal(DangerousFileCheckHealthCheck.Id, outcome.Id);
-        Assert.Equal(HealthCheckStatuses.Problem, outcome.Status);
+        Assert.Equal(HealthCheckStatuses.Suggestion, outcome.Status);
         Assert.Equal(HealthCheckCategories.System, outcome.Category);
         Assert.Contains("dangerous or junk", outcome.Message, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(outcome.Fix);
