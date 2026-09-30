@@ -130,7 +130,7 @@ public sealed class IgnoredDownloadSkipsSeedingReclaimTests
             History: [],
             CapturedUtc: DateTimeOffset.UnixEpoch);
 
-        var telemetry = new Mock<IDownloadClientTelemetryService>();
+        var telemetry = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         telemetry.Setup(service => service.GetOverviewAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DownloadTelemetryOverview(
                 new DownloadTelemetrySummary(0, 0, 1, 0, 0, 0, 0),

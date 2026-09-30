@@ -108,7 +108,7 @@ public sealed class DownloadThroughputSampler(
         var settings = await platformSettingsRepository.GetAsync(cancellationToken);
         var interval = TimeSpan.FromMinutes(Math.Clamp(settings.DownloadThroughputSamplerIntervalMinutes, 1, 60));
 
-        var overview = await telemetry.GetOverviewAsync(cancellationToken);
+        var overview = await telemetry.GetFreshOverviewAsync(DownloadTelemetryFreshness.Loop, cancellationToken);
         var now = timeProvider.GetUtcNow();
 
         await repository.RecordSampleAsync(

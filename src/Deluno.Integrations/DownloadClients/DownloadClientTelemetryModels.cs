@@ -542,3 +542,12 @@ public sealed record DownloadHealthRemediationReport(
     int Skipped,
     IReadOnlyList<string> Notes,
     int ReleasesRefused = 0);
+
+/// <summary>
+/// What one real pass over the download clients found: the overview every screen
+/// shows and, from the same pass, the leftover-scan view that also knows the
+/// paths of items Deluno did not send (#1081).
+/// </summary>
+public sealed record DownloadTelemetryCapture(
+    DownloadTelemetryOverview Overview,
+    IReadOnlyList<DownloadClientTelemetrySnapshot> LeftoverSnapshots);

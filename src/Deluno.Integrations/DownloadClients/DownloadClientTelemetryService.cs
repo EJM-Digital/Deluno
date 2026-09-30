@@ -48,7 +48,10 @@ public sealed class DownloadClientTelemetryService(
     IMediaTagStore? mediaTagStore = null,
     // #1062: which clients have had their one look for dispatches still filed
     // under Transmission's old session numbers. A singleton in the app.
-    LegacyItemIdUpgradeMemory? legacyUpgradeMemory = null)
+    LegacyItemIdUpgradeMemory? legacyUpgradeMemory = null,
+    // #1081: the last capture, so a screen never waits on a live call. Null in a
+    // service built by hand, which then reads the clients itself.
+    IDownloadTelemetrySnapshotStore? snapshotStore = null)
     : IDownloadClientTelemetryService
 {
     private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
@@ -130,6 +133,70 @@ public sealed class DownloadClientTelemetryService(
         return built.Snapshots;
     }
 
+    /// <summary>
+    /// One real pass over the clients, for the overview and the leftover scan
+    /// together (#1081). The outside items are read in the same pass, so the
+    /// second live pass the leftover scan used to make is gone; the overview is
+    /// the same answer without the outside paths.
+    /// </summary>
+    public async Task<DownloadTelemetryCapture> CaptureAsync(CancellationToken cancellationToken)
+    {
+        var built = await BuildAnnotatedSnapshotsAsync(includeOutsideItems: true, cancellationToken);
+        var overviewClients = built.Snapshots
+            .Select(snapshot => snapshot.OutsideSourcePaths.Count == 0 ? snapshot : snapshot with { OutsideSourcePaths = [] })
+            .ToArray();
+        return new DownloadTelemetryCapture(
+            new DownloadTelemetryOverview(built.Summary, overviewClients, built.CapturedUtc),
+            built.Snapshots);
+    }
+
+    public async Task<DownloadTelemetryOverview> GetLatestOverviewAsync(TimeSpan maxAge, CancellationToken cancellationToken)
+    {
+        if (snapshotStore is null)
+        {
+            return await GetOverviewAsync(cancellationToken);
+        }
+
+        var entry = await snapshotStore.GetLatestAsync(maxAge, cancellationToken);
+        return entry?.Value.Overview ?? new DownloadTelemetryOverview(Summarize([]), [], timeProvider.GetUtcNow());
+    }
+
+    public async Task<DownloadTelemetryOverview> GetFreshOverviewAsync(TimeSpan reuseWithin, CancellationToken cancellationToken)
+    {
+        if (snapshotStore is null)
+        {
+            return await GetOverviewAsync(cancellationToken);
+        }
+
+        return (await snapshotStore.RefreshAsync(reuseWithin, cancellationToken)).Value.Overview;
+    }
+
+    public async Task<IReadOnlyList<DownloadClientTelemetrySnapshot>> GetFreshSnapshotsForLeftoverScanAsync(TimeSpan reuseWithin, CancellationToken cancellationToken)
+    {
+        if (snapshotStore is null)
+        {
+            return await GetSnapshotsForLeftoverScanAsync(cancellationToken);
+        }
+
+        return (await snapshotStore.RefreshAsync(reuseWithin, cancellationToken)).Value.LeftoverSnapshots;
+    }
+
+    /// <summary>How many download clients are asked at the same moment.</summary>
+    private const int MaxParallelClientCalls = 6;
+
+    private static async Task<T> RunBoundedAsync<T>(SemaphoreSlim gate, Func<Task<T>> work)
+    {
+        await gate.WaitAsync();
+        try
+        {
+            return await work();
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     private async Task<(
         IReadOnlyList<DownloadClientItem> OrderedClients,
         IReadOnlyList<DownloadClientTelemetrySnapshot> Snapshots,
@@ -172,21 +239,39 @@ public sealed class DownloadClientTelemetryService(
         // in. Fetching per client keeps each client's window its own.
         var dispatchesByClientId = new Dictionary<string, IReadOnlyList<DownloadDispatchItem>>(StringComparer.OrdinalIgnoreCase);
         var settledDispatchesByClientId = new Dictionary<string, IReadOnlyList<DownloadDispatchItem>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var client in orderedClients)
+        // Every client is asked at once (bounded), not one after another (#1081):
+        // the live call is by far the slowest step, and one slow client must not
+        // make the others wait behind it. The dispatch reads for each client run
+        // beside its live call. Everything that writes stays in the ordered loop
+        // below, so the results are applied exactly as before.
+        var liveByClientId = new Dictionary<string, Task<DownloadClientTelemetrySnapshot?>>(StringComparer.OrdinalIgnoreCase);
+        using var liveGate = new SemaphoreSlim(MaxParallelClientCalls);
+        foreach (var client in orderedClients.Where(item => item.IsEnabled))
         {
-            dispatchesByClientId[client.Id] = await jobQueueRepository.ListDownloadDispatchesAsync(
+            liveByClientId[client.Id] = RunBoundedAsync(liveGate, () => TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken));
+        }
+
+        var dispatchReads = orderedClients.Select(async client =>
+        {
+            var recent = await jobQueueRepository.ListDownloadDispatchesAsync(
                 DownloadClientTelemetryLimits.HistoryWindow,
                 null,
                 cancellationToken,
                 clientId: client.Id);
             // Housekeeping archives a finished record after a week, while the
             // torrent it describes can go on seeding for far longer.
-            settledDispatchesByClientId[client.Id] = await jobQueueRepository.ListDownloadDispatchesAsync(
+            var settled = await jobQueueRepository.ListDownloadDispatchesAsync(
                 DownloadClientTelemetryLimits.HistoryWindow,
                 null,
                 cancellationToken,
                 includeArchived: true,
                 clientId: client.Id);
+            return (client.Id, recent, settled);
+        }).ToArray();
+        foreach (var (clientId, recent, settled) in await Task.WhenAll(dispatchReads))
+        {
+            dispatchesByClientId[clientId] = recent;
+            settledDispatchesByClientId[clientId] = settled;
         }
 
         foreach (var client in orderedClients)
@@ -197,7 +282,7 @@ public sealed class DownloadClientTelemetryService(
                 continue;
             }
 
-            var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
+            var liveSnapshot = await liveByClientId[client.Id];
             if (liveSnapshot is not null)
             {
                 // Ownership is asked about the ids this client actually

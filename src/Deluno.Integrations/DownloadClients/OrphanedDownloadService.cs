@@ -14,7 +14,27 @@ namespace Deluno.Integrations.DownloadClients;
 /// </summary>
 public interface IOrphanedDownloadService
 {
+    /// <summary>
+    /// Scans the folders now, from the clients' live answer. What Keep, Remove and
+    /// the leftover clean-up decide from: an action never acts on a list that
+    /// might be a minute old.
+    /// </summary>
     Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Scans the folders from the latest client capture (#1081). Slow (it walks
+    /// folders), so only the background refresher calls it, never a request.
+    /// </summary>
+    Task<IReadOnlyList<OrphanedDownloadItem>> ScanAsync(CancellationToken cancellationToken)
+        => ListAsync(cancellationToken);
+
+    /// <summary>
+    /// What the last background scan found, returned at once (#1081): the
+    /// Transfers screen and the sidebar's poll read this and never wait on a
+    /// folder walk or a download client.
+    /// </summary>
+    Task<IReadOnlyList<OrphanedDownloadItem>> ListCachedAsync(CancellationToken cancellationToken)
+        => ListAsync(cancellationToken);
 
     Task<OrphanedDownloadAction> KeepAsync(string path, CancellationToken cancellationToken);
 
@@ -40,10 +60,28 @@ public sealed class OrphanedDownloadService(
     TimeProvider timeProvider,
     ILogger<OrphanedDownloadService> logger,
     IOutboundNotificationService? outboundNotificationService = null,
-    INotificationService? notificationPreferences = null)
+    INotificationService? notificationPreferences = null,
+    OrphanedDownloadCache? cache = null)
     : IOrphanedDownloadService
 {
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
+        => await ScanFromAsync(await telemetryService.GetSnapshotsForLeftoverScanAsync(cancellationToken), cancellationToken);
+
+    // Awaited, because a wrong list here would show a download the client still
+    // holds as an orphan: never the non-blocking read.
+    public async Task<IReadOnlyList<OrphanedDownloadItem>> ScanAsync(CancellationToken cancellationToken)
+        => await ScanFromAsync(
+            await telemetryService.GetFreshSnapshotsForLeftoverScanAsync(DownloadTelemetryFreshness.Relaxed, cancellationToken),
+            cancellationToken);
+
+    public async Task<IReadOnlyList<OrphanedDownloadItem>> ListCachedAsync(CancellationToken cancellationToken)
+        => cache is null
+            ? await ListAsync(cancellationToken)
+            : await cache.GetLatestAsync(OrphanedDownloadRefreshService.Interval, cancellationToken);
+
+    private async Task<IReadOnlyList<OrphanedDownloadItem>> ScanFromAsync(
+        IReadOnlyList<DownloadClientTelemetrySnapshot> clientSnapshots,
+        CancellationToken cancellationToken)
     {
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         // Deluno's own downloads decide which folders are scanned and are
@@ -51,7 +89,6 @@ public sealed class OrphanedDownloadService(
         // a client (#958, #1062) is never listed or scanned for, but its files
         // are still in use: those paths only ever protect them from being
         // swept up.
-        var clientSnapshots = await telemetryService.GetSnapshotsForLeftoverScanAsync(cancellationToken);
         var scans = DownloadFolders(libraries, clientSnapshots)
             .Select(folder => new DownloadFolderScan(folder.LibraryId, folder.LibraryName, folder.Path, ReadTopLevel(folder.Path)))
             .ToArray();
@@ -113,6 +150,7 @@ public sealed class OrphanedDownloadService(
         }
 
         await keptDownloadsRepository.KeepAsync(item.Path, cancellationToken);
+        cache?.Forget(item.Path);
         await activityFeedRepository.RecordActivityAsync(
             "download.orphan.kept",
             $"{item.Name} was kept in {item.LibraryName}'s download folder. Deluno will not count it again.",
@@ -159,6 +197,7 @@ public sealed class OrphanedDownloadService(
             return new OrphanedDownloadAction(false, $"Deluno could not remove {item.Name}: {exception.Message}");
         }
 
+        cache?.Forget(item.Path);
         var noticeSuffix = reason is { Length: > 0 } ? $", {reason}." : ".";
         var message = $"{item.Name} was removed from {item.LibraryName}'s download folder ({FormatSize(item.SizeBytes)}). No client, import or hand-off was using it{noticeSuffix}";
         await activityFeedRepository.RecordActivityAsync(

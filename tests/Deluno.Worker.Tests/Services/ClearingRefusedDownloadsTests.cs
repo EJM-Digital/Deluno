@@ -105,7 +105,7 @@ public sealed class ClearingRefusedDownloadsTests
     public async Task A_client_that_cannot_be_reached_is_tried_again_next_time()
     {
         var blocklist = Blocklist(Refused("hash-1"));
-        var clients = new Mock<IDownloadClientTelemetryService>();
+        var clients = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         clients.Setup(service => service.ExecuteActionAsync(
                 It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("The client is not answering."));
@@ -193,7 +193,7 @@ public sealed class ClearingRefusedDownloadsTests
     public async Task A_download_Deluno_never_sent_is_left_alone_and_the_row_is_closed_with_an_Activity_line()
     {
         var blocklist = Blocklist(Refused("hash-1"));
-        var clients = new Mock<IDownloadClientTelemetryService>();
+        var clients = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         clients.Setup(service => service.ExecuteActionAsync(
                 It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) =>
@@ -423,7 +423,7 @@ public sealed class ClearingRefusedDownloadsTests
 
     private static Mock<IDownloadClientTelemetryService> Clients()
     {
-        var clients = new Mock<IDownloadClientTelemetryService>();
+        var clients = new Mock<IDownloadClientTelemetryService> { CallBase = true };
         clients.Setup(service => service.ExecuteActionAsync(
                 It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) =>

@@ -339,7 +339,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            return denied ?? Results.Ok(await orphans.ListAsync(cancellationToken));
+            return denied ?? Results.Ok(await orphans.ListCachedAsync(cancellationToken));
         });
 
         endpoints.MapPost("/api/download-clients/orphans/keep", async (
@@ -386,11 +386,19 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return denied ?? Results.Ok(await leftoverCleanup.RunAsync(cancellationToken));
         });
 
+        // Served from the last capture the background refresher took (#1081): a
+        // screen never waits on a download client, whatever any client is doing.
+        // The reading's age is in CapturedUtc and, for convenience, a header.
         endpoints.MapGet("/api/download-clients/telemetry", async (
+            HttpContext httpContext,
             IDownloadClientTelemetryService telemetryService,
+            TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
-            var overview = await telemetryService.GetOverviewAsync(cancellationToken);
+            var overview = await telemetryService.GetLatestOverviewAsync(DownloadTelemetryFreshness.Screen, cancellationToken);
+            var age = timeProvider.GetUtcNow() - overview.CapturedUtc;
+            httpContext.Response.Headers["X-Deluno-Snapshot-Age-Ms"] =
+                Math.Max(0, (long)age.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
             return Results.Ok(overview);
         });
 

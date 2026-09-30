@@ -68,7 +68,7 @@ public sealed class SearchQueuePauseGate(
         var threshold = Math.Max(1, settings.PauseSearchWhenQueueLongThreshold);
         try
         {
-            var overview = await telemetry.GetOverviewAsync(cancellationToken);
+            var overview = await telemetry.GetLatestOverviewAsync(DownloadTelemetryFreshness.Acting, cancellationToken);
             var broken = overview.Clients.FirstOrDefault(client => client.LastFailure is not null);
             if (broken is not null)
             {
