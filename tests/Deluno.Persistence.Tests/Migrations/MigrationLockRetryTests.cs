@@ -125,6 +125,52 @@ public sealed class MigrationLockRetryTests
         Assert.Equal(2L, Convert.ToInt64(await check.ExecuteScalarAsync()));
     }
 
+    [Fact]
+    public async Task Remembering_indexer_names_before_the_update_waits_out_a_write_lock()
+    {
+        using var storage = TestStorage.Create();
+        var path = storage.Factory.GetDatabasePath(DelunoDatabaseNames.Platform);
+        await using (var setup = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform))
+        {
+            using var create = setup.CreateCommand();
+            create.CommandText =
+                """
+                CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);
+                INSERT INTO schema_migrations (version) VALUES (1);
+                CREATE TABLE indexer_sources (id TEXT PRIMARY KEY, name TEXT);
+                INSERT INTO indexer_sources (id, name) VALUES ('a', 'NZBgeek');
+                """;
+            await create.ExecuteNonQueryAsync();
+        }
+
+        using var holder = new SqliteConnection($"Data Source={path};Pooling=False");
+        holder.Open();
+        using (var begin = holder.CreateCommand())
+        {
+            begin.CommandText = "BEGIN IMMEDIATE;";
+            begin.ExecuteNonQuery();
+        }
+
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(6.5));
+            using var commit = holder.CreateCommand();
+            commit.CommandText = "COMMIT;";
+            commit.ExecuteNonQuery();
+        });
+
+        await IndexerIdentity.RememberNamesBeforeRenameAsync(
+            storage.Factory,
+            CancellationToken.None,
+            new MigrationLockRetryOptions { MaxWait = TimeSpan.FromSeconds(60), FirstPause = TimeSpan.FromMilliseconds(200), MaxPause = TimeSpan.FromSeconds(1) });
+        await release;
+
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+        using var check = connection.CreateCommand();
+        check.CommandText = "SELECT old_name FROM indexer_previous_names WHERE indexer_id = 'a';";
+        Assert.Equal("NZBgeek", Convert.ToString(await check.ExecuteScalarAsync()));
+    }
+
     private sealed class ProbeMigration(int version, string name, string sql) : SqliteSqlMigration
     {
         public override int Version => version;

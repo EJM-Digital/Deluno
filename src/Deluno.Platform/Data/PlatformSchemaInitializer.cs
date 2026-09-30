@@ -10,14 +10,15 @@ public sealed class PlatformSchemaInitializer(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IDelunoDatabaseMigrator migrator,
     ILogger<PlatformSchemaInitializer> logger,
-    IDelunoStartupGate? startupGate = null)
+    IDelunoStartupGate? startupGate = null,
+    MigrationLockRetryOptions? lockRetry = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await IndexerIdentity.RememberNamesBeforeRenameAsync(databaseConnectionFactory, cancellationToken);
+            await IndexerIdentity.RememberNamesBeforeRenameAsync(databaseConnectionFactory, cancellationToken, lockRetry, logger);
             await migrator.ApplyAsync(
                 DelunoDatabaseNames.Platform,
                 PlatformDatabaseMigrations.All,
