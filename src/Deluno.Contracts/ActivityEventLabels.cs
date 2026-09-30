@@ -233,6 +233,7 @@ public static class ActivityEventLabels
             ["metadata.movie.refreshed"] = "Film details refreshed",
             ["metadata.series.catalogue"] = "Show episode order chosen",
             ["metadata.series.catalogue.held"] = "Show episode order held for a decision",
+            ["metadata.series.catalogue.unreadable"] = "Show episode list could not be read",
             ["metadata.series.linked"] = "Linked a show to its details",
             ["metadata.series.overridden"] = "Show details changed by hand",
             ["metadata.series.provider-record-missing"] = "Show details no longer found",

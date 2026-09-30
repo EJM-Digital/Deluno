@@ -31,8 +31,30 @@ public sealed class SeriesMetadataRefreshJobHandler(
             return "TV metadata refresh skipped because the series no longer exists.";
         }
 
-        // Stamped regardless of outcome — see the movie handler for why.
-        await seriesCatalogRepository.RecordMetadataAttemptAsync(series.Id, cancellationToken);
+        // Stamped regardless of the outcome (see the movie handler), EXCEPT when the
+        // provider could not answer: a title whose refresh ends Unavailable must not
+        // wait 24 hours for an outage of a minute (#1090).
+        var providerUnavailable = false;
+        try
+        {
+            return await RefreshAsync(job, series, () => providerUnavailable = true, cancellationToken);
+        }
+        finally
+        {
+            if (!providerUnavailable)
+            {
+                await seriesCatalogRepository.RecordMetadataAttemptAsync(series.Id, CancellationToken.None);
+            }
+        }
+    }
+
+    private async Task<string> RefreshAsync(
+        JobQueueItem job,
+        SeriesListItem series,
+        Action markProviderUnavailable,
+        CancellationToken cancellationToken)
+    {
+        using var failureScope = metadataProvider.BeginFailureScope();
 
         MetadataSearchResult? match;
         if (!string.IsNullOrWhiteSpace(series.MetadataProviderId))
@@ -48,6 +70,11 @@ public sealed class SeriesMetadataRefreshJobHandler(
 
             if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
             {
+                if (lookup.Failure?.IsTransient != false)
+                {
+                    markProviderUnavailable();
+                }
+
                 return $"Could not verify metadata for {series.Title} because the provider is temporarily unavailable.";
             }
 
@@ -59,6 +86,12 @@ public sealed class SeriesMetadataRefreshJobHandler(
                 new MetadataLookupRequest(series.Title, "tv", series.StartYear, null),
                 cancellationToken);
             match = matches.FirstOrDefault();
+        }
+
+        if (match is null && failureScope?.Failure is not null)
+        {
+            markProviderUnavailable();
+            return $"Could not look up {series.Title} because the metadata service did not answer. Deluno will try again.";
         }
 
         if (match is not null && MetadataLinkPolicy.WouldDowngradeLink(series.MetadataProvider, match))
@@ -161,12 +194,15 @@ public sealed class SeriesMetadataRefreshJobHandler(
             return SeriesCatalogueSyncResult.None;
         }
 
+        using var failureScope = metadataProvider.BeginFailureScope();
+        var hadEpisodes = false;
         IReadOnlyList<MetadataSeason> seasons;
         try
         {
             // TheTVDB's list when it lines up with the episodes this show
             // already has, TMDb's when it would strand any of them.
             var inventory = await seriesCatalogRepository.GetInventoryDetailAsync(seriesId, cancellationToken);
+            hadEpisodes = (inventory?.Episodes?.Count ?? 0) > 0;
             var choice = await MetadataCatalogueChoice.ChooseAsync(
                 metadataProvider,
                 providerId,
@@ -187,6 +223,9 @@ public sealed class SeriesMetadataRefreshJobHandler(
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
+            // Used to vanish here with no word to anyone (#1090). The episodes Deluno
+            // has are left as they were; the show says so, and the note is clearable.
+            await NoteCatalogueProblemAsync(seriesId, seriesTitle, providerId, CatalogueUnreadable, jobId, cancellationToken);
             return SeriesCatalogueSyncResult.None;
         }
 
@@ -201,6 +240,26 @@ public sealed class SeriesMetadataRefreshJobHandler(
                 episode.AbsoluteNumber))
             .ToArray();
 
+        var failure = failureScope?.Failure;
+        if (episodes.Length == 0 && failure is not null)
+        {
+            // Empty because the service did not answer, not because the show has
+            // no episodes (#1090).
+            await NoteCatalogueProblemAsync(seriesId, seriesTitle, providerId, CatalogueUnreadable, jobId, cancellationToken);
+            return SeriesCatalogueSyncResult.None;
+        }
+
+        if (failure is not null && !hadEpisodes && MetadataCatalogueChoice.SourceName(seasons) == "tmdb")
+        {
+            // A new show synced while TheTVDB was not answering locks in TMDb's
+            // numbering; say so, so it is not a surprise later (#1090).
+            await NoteCatalogueProblemAsync(seriesId, seriesTitle, providerId, CatalogueTvdbSkipped, jobId, cancellationToken);
+        }
+        else if (failure is null)
+        {
+            await ClearCatalogueNoteAsync(seriesId, cancellationToken);
+        }
+
         return episodes.Length == 0
             ? SeriesCatalogueSyncResult.None
             : await seriesCatalogRepository.SyncEpisodeCatalogueAsync(
@@ -208,5 +267,57 @@ public sealed class SeriesMetadataRefreshJobHandler(
                 episodes,
                 MetadataCatalogueChoice.SourceName(seasons),
                 cancellationToken);
+    }
+
+    /// <summary>The episode list could not be read at all; the show's episodes are left as they were.</summary>
+    public const string CatalogueUnreadable = "catalogue-unreadable";
+
+    /// <summary>TheTVDB did not answer for a new show, so its episodes use TMDb's numbering.</summary>
+    public const string CatalogueTvdbSkipped = "catalogue-tvdb-unavailable";
+
+    /// <summary>
+    /// A title-scoped note on the show's own page, in the same place (and with
+    /// the same Clear) as the "no longer listed" note. One per show; a new day's
+    /// outage raises it again, the same day's does not.
+    /// </summary>
+    private async Task NoteCatalogueProblemAsync(
+        string seriesId,
+        string seriesTitle,
+        string? providerId,
+        string kind,
+        string? jobId,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var evidenceKey = $"tmdb:series:{providerId}:{kind}:{now:yyyy-MM-dd}";
+        var isNew = await seriesCatalogRepository.RecordMetadataProviderIssueAsync(
+            seriesId,
+            new MetadataProviderIssue(kind, "tmdb", providerId ?? string.Empty, evidenceKey, now, null),
+            cancellationToken);
+        if (!isNew)
+        {
+            return;
+        }
+
+        await activityFeedRepository.RecordActivityAsync(
+            "metadata.series.catalogue.unreadable",
+            kind == CatalogueTvdbSkipped
+                ? $"TheTVDB did not answer, so {seriesTitle}'s episodes use TMDb's numbering for now."
+                : $"Deluno could not read {seriesTitle}'s episode list because the metadata service did not answer. The episodes it has were left as they are.",
+            null,
+            jobId,
+            "series",
+            seriesId,
+            cancellationToken);
+    }
+
+    /// <summary>A refresh that read the list cleanly ends its own note; a different note (a missing record) is left alone.</summary>
+    private async Task ClearCatalogueNoteAsync(string seriesId, CancellationToken cancellationToken)
+    {
+        var issue = await seriesCatalogRepository.GetMetadataProviderIssueAsync(seriesId, cancellationToken);
+        if (issue is not null && issue.Kind is CatalogueUnreadable or CatalogueTvdbSkipped)
+        {
+            await seriesCatalogRepository.ClearMetadataProviderIssueAsync(seriesId, cancellationToken);
+        }
     }
 }
