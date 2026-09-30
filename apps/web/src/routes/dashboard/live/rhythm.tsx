@@ -9,12 +9,22 @@ import { CountUp } from "../../../components/ui/count-up";
 import { cn } from "../../../lib/utils";
 import { Panel, Plain } from "../parts";
 import { KIND_ORDER, KIND_STYLE } from "./kinds";
-import { bucketByHour, type RhythmRow } from "./series";
+import { addBuckets, bucketByHour, bucketsFromCounts, type HourCountRow, type RhythmRow } from "./series";
 import { useNow } from "./hooks";
 
-export function Rhythm({ rows }: { rows: RhythmRow[] }) {
+/**
+ * `counts` are the day's real counts by the hour (read at `countedAt`); `rows`
+ * are events to add: those that arrived since, or, with no counts, the newest
+ * page, in which case `capped` says it is only the latest events and never
+ * the day's total.
+ */
+export function Rhythm({ rows, counts, countedAt = 0, capped = false }: { rows: RhythmRow[]; counts?: HourCountRow[] | null; countedAt?: number; capped?: boolean }) {
   const now = useNow(60_000);
-  const buckets = useMemo(() => bucketByHour(rows, now), [rows, now]);
+  const buckets = useMemo(() => {
+    if (!counts) return bucketByHour(rows, now);
+    return addBuckets(bucketsFromCounts(counts), bucketByHour(rows.filter((row) => Date.parse(row.createdUtc) > countedAt), now));
+  }, [rows, counts, countedAt, now]);
+  const showsCap = capped && !counts;
   const total = buckets.reduce((sum, bucket) => sum + bucket.total, 0);
   const tallest = Math.max(1, ...buckets.map((bucket) => bucket.total));
   const currentHour = new Date(now).getHours();
@@ -23,7 +33,7 @@ export function Rhythm({ rows }: { rows: RhythmRow[] }) {
   return (
     <Panel
       title="Today"
-      count={<span className="whitespace-nowrap">{total > 0 ? <CountUp value={total} format={(value) => `${Math.round(value).toLocaleString("en-AU")} events`} /> : "by the hour"}</span>}
+      count={<span className="whitespace-nowrap">{showsCap ? "last 200 events" : total > 0 ? <CountUp value={total} format={(value) => `${Math.round(value).toLocaleString("en-AU")} events`} /> : "by the hour"}</span>}
       to="/activity"
       toLabel="Activity"
     >
@@ -31,7 +41,7 @@ export function Rhythm({ rows }: { rows: RhythmRow[] }) {
         <Plain>Quiet so far today. Each hour of Deluno&rsquo;s work shows here as it is done.</Plain>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] pb-2 pt-2">
-          <div role="img" aria-label={`${total} events today: ${byKind.map((entry) => `${entry.count} ${KIND_STYLE[entry.kind].label.toLowerCase()}`).join(", ")}.`} className="flex min-h-0 flex-1 items-end gap-[3px]">
+          <div role="img" aria-label={`${total} events today${showsCap ? " among the last 200" : ""}: ${byKind.map((entry) => `${entry.count} ${KIND_STYLE[entry.kind].label.toLowerCase()}`).join(", ")}.`} className="flex min-h-0 flex-1 items-end gap-[3px]">
             {buckets.map((bucket) => (
               <div key={bucket.hour} title={`${String(bucket.hour).padStart(2, "0")}:00, ${bucket.total} ${bucket.total === 1 ? "event" : "events"}`} className={cn("flex h-full min-w-0 flex-1 flex-col-reverse gap-px rounded-sm", bucket.hour === currentHour && "bg-primary/[0.07]")}>
                 {KIND_ORDER.map((kind) => {

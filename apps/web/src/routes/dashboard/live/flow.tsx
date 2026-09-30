@@ -27,6 +27,8 @@ import { STAGES, type JourneyCard, type Stage } from "./journey";
 
 interface LaneStyle {
   label: string;
+  /** The shorter name the lane header shows; the full `label` is its accessible name. */
+  short: string;
   icon: LucideIcon;
   /** The accent: a bar across the top of the lane and the glow of a card arriving. */
   accent: string;
@@ -36,12 +38,12 @@ interface LaneStyle {
 }
 
 const LANES: Record<Stage, LaneStyle> = {
-  searching: { label: "Searching", icon: Search, accent: "--stage-search", bar: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", to: "/search-cycles" },
-  grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--stage-grab", bar: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", to: "/queue" },
-  downloading: { label: "Downloading", icon: Download, accent: "--info", bar: "bg-info", text: "text-info", to: "/queue" },
-  processor: { label: "With the processor", icon: ShieldCheck, accent: "--stage-process", bar: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", to: "/queue" },
-  importing: { label: "Importing", icon: FolderInput, accent: "--stage-import", bar: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", to: "/queue" },
-  imported: { label: "In the library", icon: Library, accent: "--success", bar: "bg-success", text: "text-success", to: "/activity" }
+  searching: { label: "Searching", short: "Searching", icon: Search, accent: "--stage-search", bar: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", to: "/search-cycles" },
+  grabbed: { label: "Grabbed", short: "Grabbed", icon: HardDriveDownload, accent: "--stage-grab", bar: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", to: "/queue" },
+  downloading: { label: "Downloading", short: "Downloading", icon: Download, accent: "--info", bar: "bg-info", text: "text-info", to: "/queue" },
+  processor: { label: "With the processor", short: "Processing", icon: ShieldCheck, accent: "--stage-process", bar: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", to: "/queue" },
+  importing: { label: "Importing", short: "Importing", icon: FolderInput, accent: "--stage-import", bar: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", to: "/queue" },
+  imported: { label: "In the library", short: "In the library", icon: Library, accent: "--success", bar: "bg-success", text: "text-success", to: "/activity" }
 };
 
 const TONE_TEXT: Record<Tone, string> = { ok: "text-success", warn: "text-warning", bad: "text-destructive", info: "text-foreground", idle: "text-muted-foreground" };
@@ -78,10 +80,10 @@ function renderCard(card: JourneyCard, poster: string | undefined, arrived: bool
           <ArtworkImage src={poster} alt="" loading="lazy" className="h-11 w-7 shrink-0 rounded-md bg-surface-3 object-cover" fallback={<span aria-hidden className={cn("flex h-11 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-3.5 w-3.5" /></span>} />
         ) : null}
         <span className="min-w-0 flex-1">
-          <span title={card.title} className="block truncate text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{card.title}</span>
-          <span className={cn("mt-0.5 flex items-center gap-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
-            <StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} />
-            <span className="min-w-0 truncate">{card.state.label}</span>
+          <span title={card.title} className="line-clamp-2 break-words text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{card.title}</span>
+          <span className={cn("mt-0.5 flex items-start gap-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
+            <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
+            <span className="line-clamp-2 min-w-0 flex-1 break-words">{card.state.label}</span>
             {downloading && formatEta(card.etaSeconds) !== "–" ? <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{formatEta(card.etaSeconds)}</span> : null}
           </span>
           {downloading ? (
@@ -89,14 +91,14 @@ function renderCard(card: JourneyCard, poster: string | undefined, arrived: bool
               <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-surface-3">
                 <span className={cn("live-fill block h-full rounded-full", card.state.tone === "warn" ? "bg-warning" : "bg-info")} style={{ width: `${Math.round(card.progress ?? 0)}%` }} />
               </span>
-              <span className="mt-0.5 block truncate text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
+              <span className="mt-0.5 block text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
                 <CountUp value={Math.round(card.progress ?? 0)} format={(value) => `${Math.round(value)}%`} /> &middot; <CountUp value={card.speedMbps ?? 0} format={formatSpeed} />
               </span>
             </span>
           ) : null}
-          {meta ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground">{meta}</span> : null}
-          {route ? <span className="block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground">{route}</span> : null}
-          {!downloading && card.at && (card.stage === "imported" || card.stage === "searching") ? <span className="block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground">{ago(card.at)}</span> : null}
+          {meta ? <span className="mt-0.5 block break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">{meta}</span> : null}
+          {route ? <span title={route} className="line-clamp-2 break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">{route}</span> : null}
+          {!downloading && card.at && (card.stage === "imported" || card.stage === "searching") ? <span className="block text-[length:var(--type-caption)] leading-tight text-muted-foreground">{ago(card.at)}</span> : null}
         </span>
       </Link>
       {searchAgain && card.queueRef ? (
@@ -152,7 +154,7 @@ export function Flow({
               <div aria-hidden className={cn("h-0.5 w-full", lane.bar, count === 0 && "opacity-30")} />
               <Link to={lane.to} aria-label={`${lane.label}: ${count}`} className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                 <lane.icon aria-hidden className={cn("h-3.5 w-3.5 shrink-0", lane.text)} />
-                <span className="min-w-0 flex-1 truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{lane.label}</span>
+                <span className="min-w-0 flex-1 truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{lane.short}</span>
                 <span className={cn("text-[length:var(--type-body-sm)] font-semibold tabular-nums", count > 0 ? lane.text : "text-muted-foreground")}>
                   <CountUp value={count} format={(value) => Math.round(value).toLocaleString("en-AU")} />
                 </span>

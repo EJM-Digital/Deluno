@@ -37,33 +37,61 @@ export function useSummaryUpdatedAt(summary: DashboardSummary | undefined): numb
   return updatedAt;
 }
 
-/** The poster of each title on the board, read from its own stored record (cheap, cached). */
+/**
+ * The poster of each title on the board, asked for in one request per kind of
+ * media. The server answers only for titles that still exist, so a title that
+ * was deleted (its download is still in the history) is left out and its card
+ * keeps its stage icon, with no failing request. An older server without the
+ * batch answer is asked one title at a time instead.
+ */
 export function usePosters(cards: JourneyCard[]): ReadonlyMap<string, string> {
   const wanted = useMemo(() => {
-    const seen = new Map<string, { mediaType: "movie" | "tv"; id: string }>();
+    const movies = new Set<string>();
+    const shows = new Set<string>();
     for (const card of cards) {
       if (!card.entityId || card.mediaType === "other") continue;
-      seen.set(`${card.mediaType}:${card.entityId}`, { mediaType: card.mediaType, id: card.entityId });
+      (card.mediaType === "movie" ? movies : shows).add(card.entityId);
     }
-    return [...seen.entries()].slice(0, 24);
+    return [
+      { mediaType: "movie" as const, ids: [...movies].sort().slice(0, 24) },
+      { mediaType: "tv" as const, ids: [...shows].sort().slice(0, 24) }
+    ];
   }, [cards]);
   const results = useQueries({
-    queries: wanted.map(([key, item]) => ({
-      queryKey: ["dashboard", "poster", key],
-      queryFn: () => fetchJson<{ posterUrl?: string | null }>(item.mediaType === "movie" ? `/api/movies/${item.id}` : `/api/series/${item.id}`).then((record) => record.posterUrl ?? null),
+    queries: wanted.map(({ mediaType, ids }) => ({
+      queryKey: ["dashboard", "posters", mediaType, ids.join(",")],
+      enabled: ids.length > 0,
+      queryFn: () => fetchPosters(mediaType, ids),
       staleTime: 30 * 60_000,
       retry: false
     }))
   });
   return useMemo(() => {
     const map = new Map<string, string>();
-    wanted.forEach(([key], index) => {
-      const url = results[index]?.data;
-      if (url) map.set(key, url);
+    wanted.forEach(({ mediaType }, index) => {
+      for (const [id, url] of Object.entries(results[index]?.data ?? {})) if (url) map.set(`${mediaType}:${id}`, url);
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted, results.map((result) => result.data ?? "").join("|")]);
+  }, [wanted, results.map((result) => result.dataUpdatedAt).join("|")]);
+}
+
+async function fetchPosters(mediaType: "movie" | "tv", ids: string[]): Promise<Record<string, string | null>> {
+  const root = mediaType === "movie" ? "/api/movies" : "/api/series";
+  try {
+    return await fetchJson<Record<string, string | null>>(`${root}/posters?ids=${encodeURIComponent(ids.join(","))}`);
+  } catch {
+    // An older server: one title at a time, and a title that is gone simply has no poster.
+    const found: Record<string, string | null> = {};
+    await Promise.all(ids.map(async (id) => {
+      try {
+        found[id] = (await fetchJson<{ posterUrl?: string | null }>(`${root}/${id}`)).posterUrl ?? null;
+      } catch {
+        found[id] = null;
+      }
+    }));
+    return found;
+  }
 }
 
 /** How long a card keeps its arrival glow. */

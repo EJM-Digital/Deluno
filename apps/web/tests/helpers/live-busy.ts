@@ -105,5 +105,14 @@ export async function serveLiveBusy(page: Page) {
   await page.route(/\/api\/indexers(\?|$)/, (route) => route.fulfill(json(indexers)));
   await page.route(/\/api\/download-clients\/throughput/, (route) => route.fulfill(json({ hours: 6, samples })));
   await page.route(/\/api\/activity(\?|$)/, (route) => route.fulfill(json({ items: events, hasMore: false, nextPageToken: null })));
+  // The day's real count by the hour: far more than the 200 a page of events holds.
+  const byHour = Array.from({ length: 11 }, (_, n) => categories.map((category, k) => ({ hour: n + 1, category, count: 3 + ((n * 7 + k * 5) % 9) }))).flat();
+  await page.route(/\/api\/activity\/by-hour/, (route) => route.fulfill(json({ sinceUtc: at(-86_400_000), total: byHour.reduce((sum, row) => sum + row.count, 0), buckets: byHour })));
+  // One request answers every poster; a title that no longer exists is simply absent.
+  await page.route(/\/api\/movies\/posters/, (route) => {
+    const ids = (new URL(route.request().url()).searchParams.get("ids") ?? "").split(",").filter(Boolean);
+    return route.fulfill(json(Object.fromEntries(ids.map((id) => [id, poster(Number(id.replace(/\D/g, "")) || 1)]))));
+  });
+  await page.route(/\/api\/series\/posters/, (route) => route.fulfill(json({})));
   await page.route(/\/api\/movies\/m[0-9]+$/, (route) => route.fulfill(json({ id: "m", title: "x", posterUrl: poster(Number(route.request().url().match(/m([0-9]+)$/)?.[1] ?? 1)) })));
 }

@@ -118,7 +118,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const posters = usePosters(cards);
   const arrivals = useArrivals(cards);
   const stalledWithButton = useMemo(() => new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`)), [attention.downloads.stalled]);
-  const rhythmRows = useMemo(() => [...latest, ...(Array.isArray(data.activityToday) ? data.activityToday : NO_ROWS)], [latest, data.activityToday]);
+  const today = data.activityToday;
+  const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -158,7 +159,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           </div>
           <div className="grid min-h-0 flex-[3] gap-[var(--grid-gap)] sm:grid-cols-2 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr] [&>section]:min-h-0">
             <SpeedChart samples={data.throughput?.samples ?? []} summary={summary} />
-            <Rhythm rows={rhythmRows} />
+            <Rhythm rows={rhythmRows} counts={today?.counts} countedAt={today?.fetchedAt} capped={today?.capped} />
             <Countdowns summary={summary} />
             <Indexers indexers={data.indexers ?? NO_ROWS} summary={summary} now={now} />
           </div>
