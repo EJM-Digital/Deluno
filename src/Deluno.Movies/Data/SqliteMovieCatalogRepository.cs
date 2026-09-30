@@ -1324,6 +1324,14 @@ public sealed class SqliteMovieCatalogRepository(
         var now = timeProvider.GetUtcNow().ToString("O");
         foreach (var movieId in movieIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
+            long wasMonitored;
+            using (var before = connection.CreateCommand())
+            {
+                before.CommandText = "SELECT monitored FROM movie_entries WHERE id = @id;";
+                AddParameter(before, "@id", movieId);
+                wasMonitored = Convert.ToInt64(await before.ExecuteScalarAsync(cancellationToken) ?? 0L, CultureInfo.InvariantCulture);
+            }
+
             using var command = connection.CreateCommand();
             command.CommandText =
                 """
@@ -1337,10 +1345,12 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(command, "@updatedUtc", now);
             updated += await command.ExecuteNonQueryAsync(cancellationToken);
 
-            if (monitored)
+            if (monitored && wasMonitored == 0)
             {
-                // Watching the whole title again also brings back every library
-                // that was switched off on its own (#1065).
+                // Watching a title that was not watched at all brings back every
+                // library that was switched off on its own (#1065). A title that was
+                // already watched keeps its switched-off libraries: those come back
+                // only through "Want it again" for that library.
                 using var clear = connection.CreateCommand();
                 clear.CommandText =
                     "UPDATE movie_wanted_state SET not_wanted_here = 0, not_wanted_since_utc = NULL, updated_utc = @updatedUtc WHERE movie_id = @id AND not_wanted_here = 1;";
