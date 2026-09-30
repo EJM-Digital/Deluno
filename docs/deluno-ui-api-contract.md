@@ -49,6 +49,9 @@ Implemented REST endpoints:
 - `GET /api/libraries/{libraryId}/folder-chain`: the library's folders checked end to end. For each routed download client it shows the category Deluno sends, whether the client has it, the folder the client really saves it to (read from the client, through path mappings), and whether that is the library's downloads folder. Then come the downloads folder, the processor's ready folder when a processor is used, and the library root. Each link is `ok`, `problem` or `unknown`, with a message that says what to change.
 - `GET /api/movies/{id}/libraries/`: the libraries a film is in. `notWantedHere` is true for a library whose copy was deleted while another library still manages the film: Deluno stopped wanting it in that library only (#1065). `POST /api/movies/{id}/libraries/{libraryId}/want-again` switches that library back on and makes it Missing and searchable. Watching the whole title again does the same for every library.
 - `POST /api/trackers/cloudflare-helper/test` with `{ url }`: whether a FlareSolverr-compatible Cloudflare helper answers at that address. The address itself is the `cloudflareHelperUrl` platform setting, and the tracker engine uses it only for a tracker that answers with a Cloudflare check.
+- `GET /api/system/bundled-components`: the apps the installer added and whether each is installed and connected.
+- `POST /api/system/bundled-components/{kind}/connect` (Write): the Use button for an installed app. Deluno connects the app itself with the login it holds and answers `{ name, healthy, message }`. No route returns an installed app's password to anyone: the old bundled-components credentials route is gone (#1061). Only qBittorrent gets a generated login; NZBGet and Deluge keep their own defaults.
+- `POST /api/filesystem/libraries/{libraryId}/files-gone`: the answer "These files really are gone" to the unreachable-library note. A library whose folder looks unreachable (empty, or a share that dropped out) changes nothing and raises one clearable note; this call confirms a real mass delete and lets the check mark the missing files (#1070).
 - `POST /api/system/lan-access/allow`: adds Deluno's Windows Firewall rule for its port on every network profile. If Deluno lacks administrator rights, Windows asks for permission on the computer it runs on.
 - `GET /api/monitoring/dashboard`
 - `GET /api/monitoring/alerts`
@@ -504,7 +507,7 @@ Implemented download-client endpoints:
 
 Implemented webhook endpoints:
 
-- `POST /api/download-clients/{clientId}/webhook`
+- `POST /api/download-clients/{clientId}/webhook` (a webhook cannot change which client item a dispatch belongs to; an id already recorded stays). There is no `POST /api/download-clients/{id}/grab` any more: a grab goes through the release grab route, so it is routed, reserved by its hash and recorded like every other grab.
 - `GET|POST|PUT|DELETE /api/notification-webhooks`
 - `POST /api/notification-webhooks/{id}/test`
 
