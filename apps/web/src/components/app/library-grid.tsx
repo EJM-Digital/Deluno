@@ -287,14 +287,23 @@ function PosterCard({
         )}
       </button>
 
-      <button
-        type="button"
-        onClick={onSelect}
-        className="block w-full text-left"
-      >
+      {/*
+        The poster opens the title from anywhere on it. That click used to be a
+        <button> wrapped round the whole poster, which put the Search and
+        Refresh buttons inside another button: invalid HTML, and screen readers
+        read the lot as one control. The opener is now a full-size layer under
+        the artwork, and the actions sit above it as its neighbours.
+      */}
+      <div className="relative block w-full text-left">
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-label={`Open ${item.title}`}
+          className="absolute inset-0 z-[1] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
         <div
           className={cn(
-            "relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition-all duration-300",
+            "pointer-events-none relative aspect-[2/3] overflow-hidden rounded-xl bg-muted transition-all duration-300",
             "shadow-card group-hover:-translate-y-1 group-hover:shadow-lg",
             // `ring-inset`, so selection paints *inside* the poster.
             //
@@ -486,7 +495,7 @@ function PosterCard({
             ) : null}
           </div>
         </div>
-      </button>
+      </div>
 
       {/*
         Below-poster metadata — where everything you read once you have stopped
