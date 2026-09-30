@@ -6276,6 +6276,39 @@ public sealed class SqliteSeriesCatalogRepository(
             : null;
     }
 
+    public async Task<IReadOnlyList<(string EpisodeId, string SeriesId, int SeasonNumber, int EpisodeNumber)>> ListEpisodeNumbersAsync(
+        IReadOnlyList<string> episodeIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = episodeIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray();
+        var rows = new List<(string, string, int, int)>();
+        if (ids.Length == 0)
+        {
+            return rows;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        using var command = connection.CreateCommand();
+        var names = new List<string>(ids.Length);
+        for (var index = 0; index < ids.Length; index++)
+        {
+            names.Add($"@id{index}");
+            AddParameter(command, $"@id{index}", ids[index]);
+        }
+
+        command.CommandText = $"SELECT id, series_id, season_number, episode_number FROM episode_entries WHERE id IN ({string.Join(',', names)});";
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3)));
+        }
+
+        return rows;
+    }
+
     public async Task<string?> GetEpisodeSeriesIdAsync(string episodeId, CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(

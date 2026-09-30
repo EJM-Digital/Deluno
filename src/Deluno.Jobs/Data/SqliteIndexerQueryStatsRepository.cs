@@ -97,7 +97,8 @@ public sealed class SqliteIndexerQueryStatsRepository(
                     SUM(CASE WHEN query_kind = 'auth' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN outcome IN ('failed', 'invalid_url', 'circuit_open') THEN 1 ELSE 0 END),
                     AVG(elapsed_ms),
-                    SUM(candidate_count)
+                    SUM(candidate_count),
+                    MAX(created_utc)
                 FROM indexer_query_events
                 WHERE created_utc >= @fromUtc AND created_utc < @toUtc
                 GROUP BY indexer_id
@@ -118,7 +119,8 @@ public sealed class SqliteIndexerQueryStatsRepository(
                     AuthQueries: reader.GetInt64(5),
                     FailedQueries: reader.GetInt64(6),
                     AverageResponseMilliseconds: reader.IsDBNull(7) ? 0 : reader.GetDouble(7),
-                    CandidatesReturned: reader.GetInt64(8)));
+                    CandidatesReturned: reader.GetInt64(8),
+                    LastQueryUtc: !reader.IsDBNull(9) && DateTimeOffset.TryParse(reader.GetString(9), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var lastQuery) ? lastQuery : null));
             }
         }
 

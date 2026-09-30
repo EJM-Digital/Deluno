@@ -31,7 +31,8 @@ public sealed record IndexerQueryStatsItem(
     long AuthQueries,
     long FailedQueries,
     double AverageResponseMilliseconds,
-    long CandidatesReturned);
+    long CandidatesReturned,
+    DateTimeOffset? LastQueryUtc = null);
 
 /// <summary>
 /// Dispatch/grab telemetry for one indexer. Grabs are filed under the indexer's

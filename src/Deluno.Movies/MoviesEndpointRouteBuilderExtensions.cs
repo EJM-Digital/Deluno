@@ -286,6 +286,22 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(posters);
         });
 
+        // The name, year and poster of the titles on the Dashboard's Live board (#1096), one request for all of them. A title that no longer exists is simply absent.
+        movies.MapGet("/titles", async (
+            string? ids,
+            IMovieCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var titles = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in (ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).Take(48))
+            {
+                var item = await repository.GetByIdAsync(id, cancellationToken);
+                if (item is not null) titles[id] = new { title = item.Title, year = item.ReleaseYear, posterUrl = item.PosterUrl };
+            }
+
+            return Results.Ok(titles);
+        });
+
         movies.MapGet("/{id}/tags", async (
             string id,
             [FromServices] IMediaTagStore tagStore,
