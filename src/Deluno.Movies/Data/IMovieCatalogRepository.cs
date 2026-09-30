@@ -256,7 +256,7 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// <see cref="MarkTrackedFileMissingAsync"/>, for Deluno's own replacements,
     /// which keeps the movie monitored.
     /// </summary>
-    Task<bool> MarkTrackedFileGoneAsync(
+    Task<MovieFileGoneOutcome> MarkTrackedFileGoneAsync(
         string movieId,
         string libraryId,
         string filePath,
@@ -405,7 +405,17 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// (#782). Matched by <paramref name="filePath"/> so a row that changed
     /// since it was read is never cleared by mistake.
     /// </summary>
-    Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken);
+    Task<MovieFileGoneOutcome> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// "Want it again" for one library of a film that stopped being wanted there (#1065):
+    /// clears the per-library flag so that library's row is Missing and searchable again.
+    /// False when that library has no such row or it was not switched off.
+    /// </summary>
+    Task<bool> WantAgainInLibraryAsync(string movieId, string libraryId, CancellationToken cancellationToken);
+
+    /// <summary>The libraries this film was switched off in (#1065), for the title page.</summary>
+    Task<IReadOnlySet<string>> ListNotWantedLibraryIdsAsync(string movieId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Records a file's new on-disk location after the caller has physically

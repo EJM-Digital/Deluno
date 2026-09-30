@@ -246,6 +246,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             [FromBody] DeleteMovieFileRequest request,
             IMovieCatalogRepository repository,
             IMediaSubtitleRepository mediaSubtitleRepository,
+            Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             ILogger<MovieFileDeleteNotification> logger,
@@ -280,9 +281,10 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             }
 
             var wasPrimary = string.Equals(targetPath, primaryPath, StringComparison.OrdinalIgnoreCase);
+            MovieFileGoneOutcome goneOutcome = default;
             if (wasPrimary)
             {
-                await repository.ClearFileAsync(id, primaryPath, cancellationToken);
+                goneOutcome = await repository.ClearFileAsync(id, primaryPath, cancellationToken);
             }
             else
             {
@@ -291,10 +293,19 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 await mediaSubtitleRepository.ClearScansAsync(MediaKind.Movie, [id], cancellationToken);
             }
 
+            string primaryMessage = $"{movie.Title}'s file was deleted from disk, so Deluno stopped wanting it.";
+            if (wasPrimary && goneOutcome.OnlyThatLibrary)
+            {
+                // #1065: kept in two libraries, so only the library that lost its file is switched off.
+                var allLibraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+                string LibraryName(string? libraryId) => allLibraries.FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "that library";
+                primaryMessage = $"{movie.Title}'s file in {LibraryName(goneOutcome.LibraryId)} was deleted, so Deluno stopped wanting it in {LibraryName(goneOutcome.LibraryId)}. The {string.Join(" and ", (goneOutcome.OtherLibraryIds ?? []).Select(LibraryName))} copy is still managed.";
+            }
+
             await activityFeedRepository.RecordActivityAsync(
                 "library.movie.file-deleted",
                 wasPrimary
-                    ? $"{movie.Title}'s file was deleted from disk, so Deluno stopped wanting it."
+                    ? primaryMessage
                     : $"A file was deleted from {movie.Title}'s folder.",
                 null,
                 null,

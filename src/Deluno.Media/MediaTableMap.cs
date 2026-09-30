@@ -135,6 +135,27 @@ public sealed record MediaTableMap(
     /// </summary>
     string PreferenceEvaluationTable)
 {
+    /// <summary>
+    /// "Deluno is watching this library's copy": the title is monitored and, for
+    /// a film, the library's own row has not been switched off (#1065: a film
+    /// kept in two libraries can stop being wanted in one). A show has no such
+    /// per-library state, so for it this is just the title's flag.
+    /// </summary>
+    public string WantedHere(string wantedAlias = "w")
+        => WantedTable == "movie_wanted_state"
+            ? $"({EntryAlias}.monitored = 1 AND {wantedAlias}.not_wanted_here = 0)"
+            : $"{EntryAlias}.monitored = 1";
+
+    /// <summary>Only the library-row half of <see cref="WantedHere"/>, for counts that ignore the title flag.</summary>
+    public string RowWantedHere(string wantedAlias = "w")
+        => WantedTable == "movie_wanted_state" ? $"{wantedAlias}.not_wanted_here = 0" : "1 = 1";
+
+    /// <summary>The opposite of <see cref="WantedHere"/>: what the Unmonitored lists show.</summary>
+    public string NotWantedHere(string wantedAlias = "w")
+        => WantedTable == "movie_wanted_state"
+            ? $"({EntryAlias}.monitored = 0 OR {wantedAlias}.not_wanted_here = 1)"
+            : $"{EntryAlias}.monitored = 0";
+
     public static MediaTableMap For(MediaKind kind)
         => kind switch
         {

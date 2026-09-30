@@ -250,7 +250,7 @@ public sealed class TitleRescanTests : IDisposable
             Movies.Setup(m => m.StreamTrackedFilesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns((string _, CancellationToken _) => Array.Empty<MovieTrackedFileItem>().ToAsyncEnumerable());
             Movies.Setup(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
+                .ReturnsAsync(new Deluno.Movies.Contracts.MovieFileGoneOutcome(true));
 
             var activity = new Mock<IActivityFeedRepository>();
             activity.Setup(a => a.RecordActivityAsync(

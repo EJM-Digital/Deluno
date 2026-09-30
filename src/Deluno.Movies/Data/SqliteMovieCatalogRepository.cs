@@ -976,7 +976,7 @@ public sealed class SqliteMovieCatalogRepository(
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
             CatalogueLibraryFilter(libraryId),
-            CatalogueKeyset.MonitoredFilter(query.Monitored, "m"),
+            CatalogueKeyset.MonitoredFilter(query.Monitored, "m", CatalogueWantedState.NotWantedHere),
             CatalogueKeyset.StatusFilter(
                 status,
                 "m",
@@ -985,7 +985,8 @@ public sealed class SqliteMovieCatalogRepository(
                 CatalogueWantedIs(WantedStatuses.Covered),
                 CatalogueWantedIs(WantedStatuses.Upcoming),
                 CatalogueWantedIs(WantedStatuses.Downloading),
-                monitoredOnly: !query.IncludeUnmonitoredInStatus),
+                monitoredOnly: !query.IncludeUnmonitoredInStatus,
+                notWantedHere: CatalogueWantedState.NotWantedHere),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them. A title held
             // in two libraries has two files, and matching on either while
@@ -1176,7 +1177,8 @@ public sealed class SqliteMovieCatalogRepository(
             CatalogueWantedIs(WantedStatuses.Covered),
             CatalogueWantedIs(WantedStatuses.Upcoming),
             CatalogueWantedIs(WantedStatuses.Downloading),
-            CatalogueWantedIs(WantedStatuses.Airing));
+            CatalogueWantedIs(WantedStatuses.Airing),
+            CatalogueWantedState.NotWantedHere);
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1330,6 +1332,18 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(command, "@monitored", monitored ? 1 : 0);
             AddParameter(command, "@updatedUtc", now);
             updated += await command.ExecuteNonQueryAsync(cancellationToken);
+
+            if (monitored)
+            {
+                // Watching the whole title again also brings back every library
+                // that was switched off on its own (#1065).
+                using var clear = connection.CreateCommand();
+                clear.CommandText =
+                    "UPDATE movie_wanted_state SET not_wanted_here = 0, not_wanted_since_utc = NULL, updated_utc = @updatedUtc WHERE movie_id = @id AND not_wanted_here = 1;";
+                AddParameter(clear, "@id", movieId);
+                AddParameter(clear, "@updatedUtc", now);
+                await clear.ExecuteNonQueryAsync(cancellationToken);
+            }
         }
 
         return updated;
@@ -1588,7 +1602,7 @@ public sealed class SqliteMovieCatalogRepository(
         // retry ignores both, but an automatic targeted search (add-triggered,
         // health-replacement) ignores only the retry window and still must
         // never reach an unmonitored movie (#653).
-        var monitoredFilter = requireMonitored ? "AND m.monitored = 1" : string.Empty;
+        var monitoredFilter = requireMonitored ? "AND m.monitored = 1 AND w.not_wanted_here = 0" : string.Empty;
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1690,6 +1704,7 @@ public sealed class SqliteMovieCatalogRepository(
             WHERE w.library_id = @libraryId
               AND (@wantedStatus IS NULL OR w.wanted_status = @wantedStatus)
               AND m.monitored = 1
+              AND w.not_wanted_here = 0
               AND w.next_eligible_search_utc IS NOT NULL
               AND w.next_eligible_search_utc > @now;
             """;
@@ -1751,6 +1766,8 @@ public sealed class SqliteMovieCatalogRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = excluded.has_file,
+                not_wanted_here = CASE WHEN excluded.has_file = 1 THEN 0 ELSE movie_wanted_state.not_wanted_here END,
+                not_wanted_since_utc = CASE WHEN excluded.has_file = 1 THEN NULL ELSE movie_wanted_state.not_wanted_since_utc END,
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
@@ -1965,6 +1982,8 @@ public sealed class SqliteMovieCatalogRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = 1,
+                not_wanted_here = 0,
+                not_wanted_since_utc = NULL,
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
@@ -2106,20 +2125,20 @@ public sealed class SqliteMovieCatalogRepository(
         }
     }
 
-    public Task<bool> MarkTrackedFileMissingAsync(
+    public async Task<bool> MarkTrackedFileMissingAsync(
         string movieId,
         string libraryId,
         string filePath,
         CancellationToken cancellationToken)
-        => FileGoneAsync(
+        => (await FileGoneAsync(
             movieId,
             libraryId,
             filePath,
             "Reconciliation detected that the tracked library file is missing from disk.",
             unmonitor: false,
-            cancellationToken);
+            cancellationToken)).Cleared;
 
-    public Task<bool> MarkTrackedFileGoneAsync(
+    public Task<MovieFileGoneOutcome> MarkTrackedFileGoneAsync(
         string movieId,
         string libraryId,
         string filePath,
@@ -2132,7 +2151,7 @@ public sealed class SqliteMovieCatalogRepository(
             unmonitor: true,
             cancellationToken);
 
-    public Task<bool> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
+    public Task<MovieFileGoneOutcome> ClearFileAsync(string movieId, string filePath, CancellationToken cancellationToken)
         => FileGoneAsync(
             movieId,
             libraryId: null,
@@ -2149,8 +2168,14 @@ public sealed class SqliteMovieCatalogRepository(
     /// monitored, and a title with no file never keeps a stale quality or
     /// "cutoff met" from the file it no longer has. Matched by path so a row
     /// that changed since it was read is never cleared by mistake.
+    ///
+    /// <para>A film kept in two libraries stops being wanted only in the
+    /// library that lost its file: that library's row is switched off
+    /// (<c>not_wanted_here</c>) and the title stays monitored so the other copy
+    /// keeps being upgraded. A film with no other library still wanting it is
+    /// unmonitored title-wide, as it always was.</para>
     /// </summary>
-    private async Task<bool> FileGoneAsync(
+    private async Task<MovieFileGoneOutcome> FileGoneAsync(
         string movieId,
         string? libraryId,
         string filePath,
@@ -2163,6 +2188,29 @@ public sealed class SqliteMovieCatalogRepository(
             DelunoDatabaseNames.Movies,
             cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        string? clearedLibraryId;
+        using (var find = connection.CreateCommand())
+        {
+            find.Transaction = transaction;
+            find.CommandText =
+                """
+                SELECT library_id FROM movie_wanted_state
+                WHERE movie_id = @movieId
+                  AND (@libraryId IS NULL OR library_id = @libraryId)
+                  AND file_path = @filePath
+                LIMIT 1;
+                """;
+            AddParameter(find, "@movieId", movieId);
+            AddParameter(find, "@libraryId", libraryId);
+            AddParameter(find, "@filePath", filePath);
+            clearedLibraryId = await find.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        if (clearedLibraryId is null)
+        {
+            return MovieFileGoneOutcome.NotFound;
+        }
 
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -2182,32 +2230,106 @@ public sealed class SqliteMovieCatalogRepository(
                 last_verified_utc = @now,
                 updated_utc = @now
             WHERE movie_id = @movieId
-              AND (@libraryId IS NULL OR library_id = @libraryId)
+              AND library_id = @clearedLibraryId
               AND file_path = @filePath;
             """;
         AddParameter(command, "@movieId", movieId);
-        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@clearedLibraryId", clearedLibraryId);
         AddParameter(command, "@filePath", filePath);
         AddParameter(command, "@reason", reason);
         AddParameter(command, "@now", now);
         if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
         {
-            return false;
+            return MovieFileGoneOutcome.NotFound;
         }
 
+        var onlyThatLibrary = false;
+        var others = new List<string>();
         if (unmonitor)
         {
-            // Unmonitoring is title-wide: monitored lives on the title, not a library.
-            using var monitored = connection.CreateCommand();
-            monitored.Transaction = transaction;
-            monitored.CommandText = "UPDATE movie_entries SET monitored = 0, updated_utc = @now WHERE id = @movieId;";
-            AddParameter(monitored, "@movieId", movieId);
-            AddParameter(monitored, "@now", now);
-            await monitored.ExecuteNonQueryAsync(cancellationToken);
+            using (var stillWanted = connection.CreateCommand())
+            {
+                stillWanted.Transaction = transaction;
+                stillWanted.CommandText =
+                    """
+                    SELECT w.library_id
+                    FROM movie_wanted_state w
+                    INNER JOIN movie_entries e ON e.id = w.movie_id
+                    WHERE w.movie_id = @movieId
+                      AND w.library_id <> @clearedLibraryId
+                      AND w.not_wanted_here = 0
+                      AND e.monitored = 1;
+                    """;
+                AddParameter(stillWanted, "@movieId", movieId);
+                AddParameter(stillWanted, "@clearedLibraryId", clearedLibraryId);
+                using var reader = await stillWanted.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    others.Add(reader.GetString(0));
+                }
+            }
+
+            onlyThatLibrary = others.Count > 0;
+            using var stop = connection.CreateCommand();
+            stop.Transaction = transaction;
+            stop.CommandText = onlyThatLibrary
+                ? """
+                  UPDATE movie_wanted_state
+                  SET not_wanted_here = 1, not_wanted_since_utc = @now
+                  WHERE movie_id = @movieId AND library_id = @clearedLibraryId;
+                  """
+                // Unmonitoring is title-wide: monitored lives on the title, not a library.
+                : "UPDATE movie_entries SET monitored = 0, updated_utc = @now WHERE id = @movieId;";
+            AddParameter(stop, "@movieId", movieId);
+            if (onlyThatLibrary)
+            {
+                AddParameter(stop, "@clearedLibraryId", clearedLibraryId);
+            }
+
+            AddParameter(stop, "@now", now);
+            await stop.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return true;
+        return new MovieFileGoneOutcome(true, clearedLibraryId, onlyThatLibrary, others);
+    }
+
+    public async Task<bool> WantAgainInLibraryAsync(string movieId, string libraryId, CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE movie_wanted_state
+            SET not_wanted_here = 0, not_wanted_since_utc = NULL,
+                next_eligible_search_utc = NULL,
+                updated_utc = @now
+            WHERE movie_id = @movieId AND library_id = @libraryId AND not_wanted_here = 1;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
+    public async Task<IReadOnlySet<string>> ListNotWantedLibraryIdsAsync(string movieId, CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT library_id FROM movie_wanted_state WHERE movie_id = @movieId AND not_wanted_here = 1;";
+        AddParameter(command, "@movieId", movieId);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            ids.Add(reader.GetString(0));
+        }
+
+        return ids;
     }
 
     public async Task RecordSearchAttemptAsync(

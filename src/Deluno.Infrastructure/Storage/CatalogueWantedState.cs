@@ -62,6 +62,9 @@ public static class CatalogueWantedState
     ///
     /// The query must include <see cref="Join"/>.
     /// </summary>
+    /// <summary>"The picked film row was switched off for its library" (#1065). Films only: a show has no such column.</summary>
+    public const string NotWantedHere = "COALESCE(ws.not_wanted_here, 0) = 1";
+
     public static string Is(string wantedStatus) => $"COALESCE(ws.wanted_status, '') = '{wantedStatus}'";
 
     /// <summary>
