@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Data;
@@ -32,11 +33,55 @@ public static class SeriesCatalogueChoice
 
     public static string HoldHealthId(string seriesId) => $"notice:catalogue-held:{seriesId}";
 
+    /// <summary>One note for a whole TheTVDB outage, however many shows it holds.</summary>
+    public const string OutageHealthId = "notice:catalogue-held:tvdb-outage";
+
+    private sealed record HeldShow(string Id, string Title);
+
+    private sealed record HeldShows(List<HeldShow> Shows);
+
+    private static List<HeldShow> ReadHeldShows(HealthCheckResultItem? note)
+    {
+        if (note?.DetailsJson is not { Length: > 0 } json)
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<HeldShows>(json, JsonOptions)?.Shows ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private static HealthCheckOutcome OutageOutcome(IReadOnlyList<HeldShow> shows)
+    {
+        var names = string.Join(", ", shows.Take(8).Select(show => show.Title))
+            + (shows.Count > 8 ? $" and {shows.Count - 8} more" : "");
+        return HealthCheckOutcome.Problem(
+            OutageHealthId,
+            HealthCheckCategories.Notice,
+            "TheTVDB did not answer, so some episode lists were left as they are",
+            $"TheTVDB did not answer for {shows.Count} show{(shows.Count == 1 ? "" : "s")}, so their episode lists were left as they are: {names}. Deluno tries again at the next refresh.",
+            cause: "TheTVDB did not answer, and these shows' episodes are numbered by TheTVDB.",
+            fix: "Nothing to do: Deluno tries again at the next refresh, and this note goes away once it goes through. Clear it if you do not need it.",
+            detailsJson: JsonSerializer.Serialize(new HeldShows(shows.ToList()), JsonOptions));
+    }
+
     /// <summary>
     /// A held refresh writes one Activity line per hold, not one per refresh:
     /// the first time, it also leaves a Health note the person can clear, and
     /// while that note is there the hold is not written again. The note goes
     /// away by itself once a refresh goes through.
+    ///
+    /// <para>A TheTVDB outage holds every TheTVDB-numbered show at once, so it
+    /// gets one note and one Activity line for the whole outage (the note lists
+    /// the shows and how many). A wrong list for one show keeps its own note.</para>
     /// </summary>
     public static async Task RecordHoldAsync(
         IActivityFeedRepository activityFeedRepository,
@@ -47,6 +92,32 @@ public static class SeriesCatalogueChoice
         string? jobId,
         CancellationToken cancellationToken)
     {
+        if (hold == MetadataCatalogueHold.TvdbUnavailable && health is not null)
+        {
+            var existing = await health.GetAsync(OutageHealthId, cancellationToken);
+            var shows = ReadHeldShows(existing);
+            if (shows.Any(show => show.Id == seriesId))
+            {
+                return;
+            }
+
+            shows.Add(new HeldShow(seriesId, seriesTitle));
+            if (existing is null)
+            {
+                await activityFeedRepository.RecordActivityAsync(
+                    "metadata.series.catalogue.held",
+                    "TheTVDB did not answer, so the episode lists of the shows it numbers were left as they are. Deluno tries again at the next refresh; the Health screen lists the shows.",
+                    null,
+                    jobId,
+                    null,
+                    null,
+                    cancellationToken);
+            }
+
+            await health.UpsertResultsAsync([OutageOutcome(shows)], cancellationToken);
+            return;
+        }
+
         var id = HoldHealthId(seriesId);
         if (health is not null && await health.GetAsync(id, cancellationToken) is not null)
         {
@@ -92,6 +163,27 @@ public static class SeriesCatalogueChoice
         if (await health.GetAsync(id, cancellationToken) is not null)
         {
             await health.RemoveAsync(id, cancellationToken);
+        }
+
+        var outage = await health.GetAsync(OutageHealthId, cancellationToken);
+        if (outage is null)
+        {
+            return;
+        }
+
+        var shows = ReadHeldShows(outage);
+        if (shows.RemoveAll(show => show.Id == seriesId) == 0)
+        {
+            return;
+        }
+
+        if (shows.Count == 0)
+        {
+            await health.RemoveAsync(OutageHealthId, cancellationToken);
+        }
+        else
+        {
+            await health.UpsertResultsAsync([OutageOutcome(shows)], cancellationToken);
         }
     }
 }

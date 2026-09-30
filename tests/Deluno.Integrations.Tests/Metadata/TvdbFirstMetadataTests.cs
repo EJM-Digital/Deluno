@@ -260,7 +260,7 @@ public sealed class TvdbFirstMetadataTests : IDisposable
                     """
             }));
 
-        var seasons = await provider.GetSeriesCatalogueAsync("71006", CancellationToken.None);
+        var seasons = await provider.GetSeriesCatalogueAsync("71006", MetadataCatalogueSource.Preferred, CancellationToken.None);
 
         var season = Assert.Single(seasons);
         var one = season.Episodes[0];
@@ -288,7 +288,7 @@ public sealed class TvdbFirstMetadataTests : IDisposable
                 ["/v4/login"] = """{ "data": { "token": "t1" } }"""
             }));
 
-        var seasons = await provider.GetSeriesCatalogueAsync("71007", CancellationToken.None);
+        var seasons = await provider.GetSeriesCatalogueAsync("71007", MetadataCatalogueSource.Preferred, CancellationToken.None);
 
         var episode = Assert.Single(Assert.Single(seasons).Episodes);
         Assert.Equal("TMDb One", episode.Title);
@@ -375,7 +375,7 @@ public sealed class TvdbFirstMetadataTests : IDisposable
                     """
             }));
 
-        var seasons = await provider.GetSeriesCatalogueAsync("74001", CancellationToken.None);
+        var seasons = await provider.GetSeriesCatalogueAsync("74001", MetadataCatalogueSource.Preferred, CancellationToken.None);
         var groups = await provider.GetSeriesEpisodeGroupsAsync("74001", CancellationToken.None);
 
         var episode = Assert.Single(Assert.Single(seasons).Episodes);
@@ -490,13 +490,32 @@ public sealed class TvdbFirstMetadataTests : IDisposable
     }
 
     [Fact]
-    public async Task A_deliberate_relink_is_still_held_when_TheTVDB_gives_no_list_at_all()
+    public async Task A_deliberate_relink_to_a_record_with_no_TheTVDB_list_previews_TMDbs_list_instead_of_being_refused()
     {
         var air = DateTimeOffset.Parse("2020-01-01T00:00:00Z");
         var provider = new Mock<IMetadataProvider>();
         provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Season((null, 1, 1), (null, 1, 2))]);
         MetadataEpisodeIdentity[] existing = [new(1, 1, true, "Pilot", air, "tvdb"), new(1, 2, true, "Second", air.AddDays(7), "tvdb")];
+
+        var result = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", existing, CancellationToken.None, deliberateRelink: true);
+        Assert.Equal(MetadataCatalogueHold.None, result.Hold);
+        Assert.True(result.TvdbDisagreesButChosen);
+        Assert.Equal(2, result.Seasons.SelectMany(season => season.Episodes).Count());
+
+        // The same show on an unattended refresh is still held.
+        var refresh = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", existing, CancellationToken.None);
+        Assert.Equal(MetadataCatalogueHold.TvdbUnavailable, refresh.Hold);
+    }
+
+    [Fact]
+    public async Task A_deliberate_relink_is_held_when_nothing_answers_at_all()
+    {
+        var air = DateTimeOffset.Parse("2020-01-01T00:00:00Z");
+        var provider = new Mock<IMetadataProvider>();
+        provider.Setup(p => p.GetSeriesCatalogueAsync("1", MetadataCatalogueSource.Preferred, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        MetadataEpisodeIdentity[] existing = [new(1, 1, true, "Pilot", air, "tvdb")];
 
         var result = await MetadataCatalogueChoice.ChooseAsync(provider.Object, "1", existing, CancellationToken.None, deliberateRelink: true);
 

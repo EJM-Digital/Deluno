@@ -100,11 +100,6 @@ public sealed partial class TmdbMetadataProvider
         return localized;
     }
 
-    public Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
-        string providerId,
-        CancellationToken cancellationToken)
-        => GetSeriesCatalogueAsync(providerId, MetadataCatalogueSource.Preferred, cancellationToken);
-
     public async Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
         string providerId,
         MetadataCatalogueSource source,

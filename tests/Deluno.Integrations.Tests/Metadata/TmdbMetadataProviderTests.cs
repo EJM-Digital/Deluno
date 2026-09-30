@@ -1466,7 +1466,7 @@ public sealed class TmdbMetadataProviderTests : IDisposable
             new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
             NullLogger<TmdbMetadataProvider>.Instance);
 
-        var seasons = await provider.GetSeriesCatalogueAsync("1399", CancellationToken.None);
+        var seasons = await provider.GetSeriesCatalogueAsync("1399", MetadataCatalogueSource.Preferred, CancellationToken.None);
 
         var season = Assert.Single(seasons);
         var episode1 = season.Episodes.Single(episode => episode.EpisodeNumber == 1);

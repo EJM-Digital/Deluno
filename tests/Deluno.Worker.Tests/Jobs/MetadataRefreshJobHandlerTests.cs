@@ -280,8 +280,7 @@ public sealed class MetadataRefreshJobHandlerTests
             It.IsAny<string?>(), job.Id, "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    [Fact]
-    public async Task A_held_refresh_writes_Activity_once_and_leaves_one_clearable_Health_note_until_it_goes_through()
+    private static (Mock<Deluno.Contracts.IHealthCheckRepository> Health, Dictionary<string, Deluno.Contracts.HealthCheckResultItem> Rows) InMemoryHealth()
     {
         var rows = new Dictionary<string, Deluno.Contracts.HealthCheckResultItem>();
         var health = new Mock<Deluno.Contracts.IHealthCheckRepository>();
@@ -292,13 +291,22 @@ public sealed class MetadataRefreshJobHandlerTests
             {
                 foreach (var outcome in outcomes)
                 {
-                    rows[outcome.Id] = (Deluno.Contracts.HealthCheckResultItem)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(Deluno.Contracts.HealthCheckResultItem));
+                    rows[outcome.Id] = new Deluno.Contracts.HealthCheckResultItem(
+                        outcome.Id, outcome.Category, outcome.Name, outcome.Status, outcome.Message, outcome.Cause, outcome.Fix,
+                        outcome.DetailsJson, Now, Now, null);
                 }
             })
             .ReturnsAsync([]);
         health.Setup(repository => repository.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback((string id, CancellationToken _) => rows.Remove(id))
             .Returns(Task.CompletedTask);
+        return (health, rows);
+    }
+
+    [Fact]
+    public async Task A_held_refresh_writes_Activity_once_and_leaves_one_clearable_Health_note_until_it_goes_through()
+    {
+        var (health, rows) = InMemoryHealth();
         var (handler, _, activity, job) = BuildTvdbNumberedShow([TmdbSeason()], [TmdbSeason()], health.Object);
 
         await handler.HandleAsync(job, CancellationToken.None);
@@ -306,11 +314,47 @@ public sealed class MetadataRefreshJobHandlerTests
         await handler.HandleAsync(job, CancellationToken.None);
 
         activity.Verify(repository => repository.RecordActivityAsync(
-            "metadata.series.catalogue.held", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), "series", "series-1", It.IsAny<CancellationToken>()), Times.Once);
+            "metadata.series.catalogue.held", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         health.Verify(repository => repository.UpsertResultsAsync(
             It.Is<IReadOnlyList<Deluno.Contracts.HealthCheckOutcome>>(items => items.Count == 1
-                && items[0].Id == "notice:catalogue-held:series-1" && items[0].Category == Deluno.Contracts.HealthCheckCategories.Notice),
+                && items[0].Id == Deluno.Series.Services.SeriesCatalogueChoice.OutageHealthId && items[0].Category == Deluno.Contracts.HealthCheckCategories.Notice),
             It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Single(rows);
+    }
+
+    [Fact]
+    public async Task A_TheTVDB_outage_over_many_shows_is_one_Health_note_and_one_Activity_line_that_go_when_they_recover()
+    {
+        var (health, rows) = InMemoryHealth();
+        var activity = new Mock<IActivityFeedRepository>();
+
+        foreach (var index in Enumerable.Range(1, 30))
+        {
+            await Deluno.Series.Services.SeriesCatalogueChoice.RecordHoldAsync(
+                activity.Object, health.Object, MetadataCatalogueHold.TvdbUnavailable, $"s{index}", $"Show {index}", null, CancellationToken.None);
+            // A second refresh of the same show adds nothing.
+            await Deluno.Series.Services.SeriesCatalogueChoice.RecordHoldAsync(
+                activity.Object, health.Object, MetadataCatalogueHold.TvdbUnavailable, $"s{index}", $"Show {index}", null, CancellationToken.None);
+        }
+
+        var note = Assert.Single(rows.Values);
+        Assert.Contains("30 shows", note.Message, StringComparison.Ordinal);
+        activity.Verify(repository => repository.RecordActivityAsync(
+            "metadata.series.catalogue.held", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+
+        // A wrong list for one show still has its own note.
+        await Deluno.Series.Services.SeriesCatalogueChoice.RecordHoldAsync(
+            activity.Object, health.Object, MetadataCatalogueHold.TvdbDisagrees, "s99", "Other Show", null, CancellationToken.None);
+        Assert.Equal(2, rows.Count);
+
+        foreach (var index in Enumerable.Range(1, 29))
+        {
+            await Deluno.Series.Services.SeriesCatalogueChoice.ClearHoldAsync(health.Object, $"s{index}", CancellationToken.None);
+        }
+
+        Assert.Contains("1 show,", rows[Deluno.Series.Services.SeriesCatalogueChoice.OutageHealthId].Message, StringComparison.Ordinal);
+        await Deluno.Series.Services.SeriesCatalogueChoice.ClearHoldAsync(health.Object, "s30", CancellationToken.None);
+        Assert.DoesNotContain(Deluno.Series.Services.SeriesCatalogueChoice.OutageHealthId, rows.Keys);
     }
 
     [Fact]
