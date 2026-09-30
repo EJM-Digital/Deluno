@@ -6,6 +6,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 using Deluno.Platform.Migration;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -89,7 +90,10 @@ public sealed class DelunoBackupService(
             var targetPath = Path.Combine(EffectiveBackupFolder(state), $"{id}.zip");
             var dataFiles = EnumerateDataFiles().ToArray();
             var archived = new List<string>(dataFiles.Length);
+            var snapshotFolder = Path.Combine(DataRoot, SnapshotFolderName, Guid.NewGuid().ToString("N"));
 
+            try
+            {
             using (var fileStream = File.Create(targetPath))
             using (var archive = new ZipArchive(fileStream, ZipArchiveMode.Create))
             {
@@ -106,11 +110,18 @@ public sealed class DelunoBackupService(
                     FileStream sourceStream;
                     try
                     {
-                        sourceStream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                        // A database is snapshotted through SQLite itself, so
+                        // the copy is one consistent moment and never a file
+                        // (or its -wal) caught half-written. Anything else is
+                        // copied as it is.
+                        sourceStream = IsSqliteDatabase(file)
+                            ? SnapshotDatabase(file, snapshotFolder)
+                            : new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                     }
                     catch (Exception exception) when (exception is FileNotFoundException
                                                           or DirectoryNotFoundException
                                                           or IOException
+                                                          or SqliteException
                                                           or UnauthorizedAccessException)
                     {
                         // One file Deluno could not read is not a reason to have
@@ -150,6 +161,12 @@ public sealed class DelunoBackupService(
                 {
                     await JsonSerializer.SerializeAsync(manifestStream, manifest, JsonOptions, cancellationToken);
                 }
+            }
+            }
+            finally
+            {
+                TryDeleteFolder(snapshotFolder);
+                TryDeleteFolder(Path.Combine(DataRoot, SnapshotFolderName), onlyIfEmpty: true);
             }
 
             state.LastRunUtc = now;
@@ -400,6 +417,80 @@ public sealed class DelunoBackupService(
     private static readonly DateTime ZipFirstMoment = new(1980, 1, 1, 0, 0, 0, DateTimeKind.Local);
     private static readonly DateTime ZipLastMoment = new(2107, 12, 31, 23, 59, 58, DateTimeKind.Local);
 
+    private const string SnapshotFolderName = "backup-snapshots";
+
+    private static bool IsSqliteDatabase(string file)
+    {
+        if (!file.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> header = stackalloc byte[16];
+            return stream.Read(header) == 16
+                && header.SequenceEqual("SQLite format 3\0"u8);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Copies one database with SQLite's own online-backup API into the
+    /// snapshot folder and opens the copy. The copy is a whole, checkpointed
+    /// database with no -wal beside it, taken while Deluno keeps writing.
+    /// </summary>
+    private static FileStream SnapshotDatabase(string file, string snapshotFolder)
+    {
+        Directory.CreateDirectory(snapshotFolder);
+        var target = Path.Combine(snapshotFolder, Guid.NewGuid().ToString("N") + ".db");
+
+        var sourceString = new SqliteConnectionStringBuilder
+        {
+            DataSource = file,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
+            DefaultTimeout = 30
+        }.ToString();
+        var targetString = new SqliteConnectionStringBuilder
+        {
+            DataSource = target,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false
+        }.ToString();
+
+        using (var source = new SqliteConnection(sourceString))
+        using (var destination = new SqliteConnection(targetString))
+        {
+            source.Open();
+            destination.Open();
+            source.BackupDatabase(destination);
+            using var journal = destination.CreateCommand();
+            journal.CommandText = "PRAGMA journal_mode = DELETE;";
+            journal.ExecuteNonQuery();
+        }
+
+        return new FileStream(target, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.DeleteOnClose);
+    }
+
+    private static void TryDeleteFolder(string folder, bool onlyIfEmpty = false)
+    {
+        try
+        {
+            if (Directory.Exists(folder) && (!onlyIfEmpty || !Directory.EnumerateFileSystemEntries(folder).Any()))
+            {
+                Directory.Delete(folder, recursive: !onlyIfEmpty);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     private IEnumerable<string> EnumerateDataFiles()
     {
         Directory.CreateDirectory(DataRoot);
@@ -407,6 +498,7 @@ public sealed class DelunoBackupService(
         {
             Path.Combine(DataRoot, "backups"),
             Path.Combine(DataRoot, "restore-staging"),
+            Path.Combine(DataRoot, SnapshotFolderName),
             // The application log (DelunoFileLoggerProvider). Weeks of lines
             // would swell every backup, and a restore would write an old log
             // back over the one that explains why the restore was needed.
@@ -417,7 +509,10 @@ public sealed class DelunoBackupService(
             .EnumerateFiles(DataRoot, "*", SearchOption.AllDirectories)
             .Where(file => excludedRoots.All(excluded => !Path.GetFullPath(file).StartsWith(Path.GetFullPath(excluded), StringComparison.OrdinalIgnoreCase)))
             .Where(file => !file.EndsWith(".pre-restore", StringComparison.OrdinalIgnoreCase))
-            .Where(file => !file.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase));
+            // The write-ahead log and its index belong to the live connection.
+            // The database is snapshotted whole, so neither goes in.
+            .Where(file => !file.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase))
+            .Where(file => !file.EndsWith(".db-wal", StringComparison.OrdinalIgnoreCase));
     }
 
     private BackupItem? ReadBackupItem(string file)
