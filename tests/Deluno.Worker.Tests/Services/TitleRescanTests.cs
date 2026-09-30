@@ -247,6 +247,8 @@ public sealed class TitleRescanTests : IDisposable
                 .ReturnsAsync(new MovieListItem(
                     "movie-1", "Arrival", 2016, null, true, true, null, null, null, null, null, null, null, [],
                     null, null, null, null, now, now, FilePath: filePath, LibraryId: libraryIdOverride));
+            Movies.Setup(m => m.StreamTrackedFilesAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns((string _, CancellationToken _) => Array.Empty<MovieTrackedFileItem>().ToAsyncEnumerable());
             Movies.Setup(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 

@@ -30,7 +30,8 @@ public sealed record FilesystemReconciliationRepairRequest(
 public sealed record FilesystemReconciliationRepairResult(
     bool Repaired,
     string Action,
-    string Message);
+    string Message,
+    bool LibraryUnreachable = false);
 
 public sealed record TitleRescanMissingFile(string FileName, string Path, bool MarkedMissing);
 

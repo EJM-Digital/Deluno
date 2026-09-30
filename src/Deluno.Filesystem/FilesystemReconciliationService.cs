@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -17,7 +18,8 @@ public sealed class FilesystemReconciliationService(
     IMovieCatalogRepository movieCatalogRepository,
     ISeriesCatalogRepository seriesCatalogRepository,
     IActivityFeedRepository activityFeedRepository,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IHealthCheckRepository? healthChecks = null)
     : IFilesystemReconciliationService
 {
     private static readonly string[] ArtifactMarkers =
@@ -76,6 +78,7 @@ public sealed class FilesystemReconciliationService(
                 continue;
             }
 
+            var missingHere = new List<FilesystemReconciliationIssue>();
             foreach (var tracked in trackedList)
             {
                 var fullPath = Path.GetFullPath(tracked.Path);
@@ -91,8 +94,19 @@ public sealed class FilesystemReconciliationService(
                     continue;
                 }
 
-                issues.Add(CreateMissingTrackedFileIssue(library, tracked));
+                missingHere.Add(CreateMissingTrackedFileIssue(library, tracked));
             }
+
+            // A large share missing in one pass is a share that dropped out,
+            // not that many people deleting files at once (#1065).
+            if (LooksLikeDropout(missingHere.Count, trackedList.Count))
+            {
+                await RaiseUnreachableNoticeAsync(library, missingHere.Count, trackedList.Count, cancellationToken);
+                issues.Add(CreateUnreachableLibraryIssue(library, rootPath));
+                continue;
+            }
+
+            issues.AddRange(missingHere);
 
             issues.AddRange(FindOrphanFiles(library, rootPath, knownTrackedPaths));
             issues.AddRange(FindPartialImportArtifacts(library, rootPath));
@@ -148,32 +162,40 @@ public sealed class FilesystemReconciliationService(
             // downloaded again. Cleanup sheet row K2, #931, #1065. For a movie
             // the file fields, status and monitored flag change in one
             // transaction (MarkTrackedFileGoneAsync).
+            // One missed sighting must never unmonitor a title (#1065): look
+            // again, immediately before the write. The file must still be
+            // gone and the library's root must still be there and not empty,
+            // or a drive that dropped out mid-scan would unmonitor whatever
+            // was left in the queue.
+            if (File.Exists(token.Path))
+            {
+                return new FilesystemReconciliationRepairResult(
+                    false,
+                    action,
+                    "The file is back on disk, so nothing was changed.");
+            }
+
+            var rootFull = string.IsNullOrWhiteSpace(library.RootPath) ? null : Path.GetFullPath(library.RootPath);
+            if (rootFull is not null && (!Directory.Exists(rootFull) || IsRootEmptyOrUnreadable(rootFull)))
+            {
+                await RaiseUnreachableNoticeAsync(library, null, null, cancellationToken);
+                return new FilesystemReconciliationRepairResult(
+                    false,
+                    action,
+                    $"{library.Name} looks unreachable, so nothing was changed.",
+                    LibraryUnreachable: true);
+            }
+
             bool repaired;
             if (token.MediaType == "tv")
             {
-                repaired = await seriesCatalogRepository.MarkTrackedFileMissingAsync(
+                // Clear the file, mark it missing and unmonitor in one transaction.
+                repaired = await seriesCatalogRepository.MarkTrackedFileGoneAsync(
                     token.EntityId,
                     token.EpisodeId,
                     token.LibraryId,
                     token.Path,
                     cancellationToken);
-                if (repaired)
-                {
-                    if (!string.IsNullOrWhiteSpace(token.EpisodeId))
-                    {
-                        await seriesCatalogRepository.UpdateEpisodeMonitoredAsync(
-                            [token.EpisodeId],
-                            monitored: false,
-                            cancellationToken);
-                    }
-                    else
-                    {
-                        await seriesCatalogRepository.UpdateMonitoredAsync(
-                            [token.EntityId],
-                            monitored: false,
-                            cancellationToken);
-                    }
-                }
             }
             else
             {
@@ -328,6 +350,7 @@ public sealed class FilesystemReconciliationService(
         var trackedFullPaths = new HashSet<string>(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         var missing = new List<TitleRescanMissingFile>();
+        bool? dropout = null;
         foreach (var (episodeId, path) in tracked)
         {
             trackedFullPaths.Add(Path.GetFullPath(path));
@@ -345,13 +368,28 @@ public sealed class FilesystemReconciliationService(
             }
 
             var displayTitle = episodeId is null ? title : $"{title} ({Path.GetFileName(path)})";
+
+            // A whole share dropping out looks like this title's files gone
+            // too: ask a sample of the library's other files before writing.
+            dropout ??= await LibraryOthersLookMissingAsync(library, trackedFullPaths, cancellationToken);
+            if (dropout == true)
+            {
+                return await UnreachableRescanAsync(
+                    library, normalizedType, titleId, title, tracked.Count, cancellationToken);
+            }
+
             var issueId = EncodeIssueToken(
                 "missingTrackedFile", normalizedType, library.Id, titleId, episodeId, path, displayTitle);
-            var repaired = (await RepairAsync(
+            var repair = await RepairAsync(
                 new FilesystemReconciliationRepairRequest(issueId, "mark-missing"),
-                cancellationToken)).Repaired;
+                cancellationToken);
+            if (repair.LibraryUnreachable)
+            {
+                return await UnreachableRescanAsync(
+                    library, normalizedType, titleId, title, tracked.Count, cancellationToken);
+            }
 
-            missing.Add(new TitleRescanMissingFile(Path.GetFileName(path), path, repaired));
+            missing.Add(new TitleRescanMissingFile(Path.GetFileName(path), path, repair.Repaired));
         }
 
         // Look only in the title's own folder, and never in a library root
@@ -394,6 +432,115 @@ public sealed class FilesystemReconciliationService(
             DescribeRescan(title, tracked.Count, present, missing, untracked.Count));
         await RecordRescanAsync(result, cancellationToken);
         return result;
+    }
+
+    /// <summary>
+    /// Asks a sample of the library's other tracked files whether they are
+    /// there. True when a large share of them is not: the library dropped out.
+    /// </summary>
+    private async Task<bool> LibraryOthersLookMissingAsync(
+        LibraryItem library,
+        HashSet<string> ownPaths,
+        CancellationToken cancellationToken)
+    {
+        const int sampleSize = 200;
+        var checkedCount = 0;
+        var missingCount = 0;
+        await foreach (var other in StreamTrackedFilesAsync(library, cancellationToken))
+        {
+            if (ownPaths.Contains(Path.GetFullPath(other.Path)))
+            {
+                continue;
+            }
+
+            checkedCount++;
+            if (!File.Exists(other.Path) && !IsBeingReplacedByAnImport(other.Path))
+            {
+                missingCount++;
+            }
+
+            if (checkedCount >= sampleSize)
+            {
+                break;
+            }
+        }
+
+        return LooksLikeDropout(missingCount, checkedCount);
+    }
+
+    private async Task<TitleRescanResult> UnreachableRescanAsync(
+        LibraryItem library,
+        string mediaType,
+        string titleId,
+        string title,
+        int trackedCount,
+        CancellationToken cancellationToken)
+    {
+        await RaiseUnreachableNoticeAsync(library, null, null, cancellationToken);
+        var result = new TitleRescanResult(
+            mediaType, titleId, title, "library-unreachable", trackedCount, 0, [], [], null,
+            $"{library.Name} looks unreachable, so Deluno changed nothing. Nothing was marked missing and {title} is still monitored. Check the drive is mounted and try again.");
+        await RecordRescanAsync(result, cancellationToken);
+        return result;
+    }
+
+    /// <summary>The fewest missing files that can look like a dropout.</summary>
+    public const int DropoutMinimumMissing = 20;
+
+    /// <summary>
+    /// A large share of a library's tracked files missing in one pass is a
+    /// drive or share that dropped out, not a person deleting that many files
+    /// at once: at least 20 files and at least a quarter of what was checked.
+    /// Consistent with an empty root meaning "not mounted" (#1070).
+    /// </summary>
+    public static bool LooksLikeDropout(int missing, int total)
+        => total > 0 && missing >= DropoutMinimumMissing && missing * 4 >= total;
+
+    /// <summary>
+    /// One Health note and one Activity line, in plain words, that the library
+    /// looks unreachable and nothing was changed. The note can be cleared from
+    /// System, Health. Raised once: while the note is still there, a repeat
+    /// pass adds nothing.
+    /// </summary>
+    private async Task RaiseUnreachableNoticeAsync(
+        LibraryItem library,
+        int? missing,
+        int? total,
+        CancellationToken cancellationToken)
+    {
+        var id = $"notice:library-unreachable:{library.Id}";
+        if (healthChecks is not null)
+        {
+            var existing = await healthChecks.GetAsync(id, cancellationToken);
+            if (existing is not null && string.Equals(existing.Status, HealthCheckStatuses.Problem, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+
+        var message = missing is not null && total is not null
+            ? $"{library.Name} looks unreachable: {missing} of {total} files could not be found. Nothing was changed."
+            : $"{library.Name} looks unreachable: its files could not be found while Deluno was checking it. Nothing was changed.";
+        await activityFeedRepository.RecordActivityAsync(
+            "library.unreachable",
+            message,
+            JsonSerializer.Serialize(new { LibraryId = library.Id, Missing = missing, Total = total }),
+            null,
+            "library",
+            library.Id,
+            cancellationToken);
+        if (healthChecks is not null)
+        {
+            await healthChecks.UpsertResultsAsync(
+                [HealthCheckOutcome.Problem(
+                    id,
+                    HealthCheckCategories.Notice,
+                    $"{library.Name} looks unreachable",
+                    message,
+                    cause: "Most of the library's files could not be found at once, which usually means the drive or share is not mounted.",
+                    fix: "Check the drive or share is mounted. Deluno will look again on its next check. Clear this note once it is back.")],
+                cancellationToken);
+        }
     }
 
     /// <summary>

@@ -54,11 +54,27 @@ public sealed class LibraryFileCheckService(
         var unreachable = report.Issues.Count(issue => issue.Kind == "libraryRootUnreachable");
 
         var corrected = 0;
+        var droppedOut = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var issue in missing)
         {
+            // A library whose root vanished part-way through the pass: every
+            // repair re-checks the root right before writing, and once one
+            // refuses, the rest of that library are not even tried (#1065).
+            if (droppedOut.Contains(issue.LibraryId))
+            {
+                continue;
+            }
+
             var repair = await reconciliation.RepairAsync(
                 new FilesystemReconciliationRepairRequest(issue.Id, "mark-missing"),
                 cancellationToken);
+            if (repair.LibraryUnreachable)
+            {
+                droppedOut.Add(issue.LibraryId);
+                unreachable++;
+                continue;
+            }
+
             if (repair.Repaired)
             {
                 corrected++;

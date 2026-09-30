@@ -342,6 +342,17 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string filePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// File gone from disk outside Deluno: clears the file, sets Missing and
+    /// unmonitors the episode (or show) in one transaction, matched by path (#1065).
+    /// </summary>
+    Task<bool> MarkTrackedFileGoneAsync(
+        string seriesId,
+        string? episodeId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken);
+
     Task RecordSearchAttemptAsync(
         string seriesId,
         string? episodeId,
