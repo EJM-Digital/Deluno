@@ -4,6 +4,7 @@
  * the other screens cache; nothing here reaches a client while the screen waits.
  */
 import { Chip } from "../../components/ui/chip";
+import { CountUp } from "../../components/ui/count-up";
 import { ListCell, ListNameCell, ListRow, ListTable } from "../../components/ui/list-card";
 import type { DownloadQueueItem, DownloadTelemetryOverview } from "../../lib/api";
 import type { DashboardSummary } from "../../lib/api/types/operations";
@@ -12,6 +13,7 @@ import { cn } from "../../lib/utils";
 import { ActionButton, Panel, PanelNote, formatEta, formatSpeed, plural, useAction } from "./downloads-kit";
 import { FitList } from "./parts";
 import type { DashboardAttention } from "./attention";
+import type { LiveProgress } from "./live-events";
 
 type Action = ReturnType<typeof useAction>;
 
@@ -19,10 +21,22 @@ type Action = ReturnType<typeof useAction>;
 
 const WORKING = ["downloading", "stalled", "queued", "notTransferring", "paused"];
 
-function nowRows(telemetry: DownloadTelemetryOverview | undefined): DownloadQueueItem[] {
+/**
+ * The download queue as the clients last reported it, with any reading the
+ * server has pushed since laid over it. A pushed reading is only trusted over
+ * the stored queue while it is newer than the queue, so a download that has
+ * since finished never shows an old figure.
+ */
+function nowRows(telemetry: DownloadTelemetryOverview | undefined, live: ReadonlyMap<string, LiveProgress>): DownloadQueueItem[] {
   const rank = (status: string) => WORKING.indexOf(status);
+  const storedAt = Date.parse(telemetry?.capturedUtc ?? "");
   return (telemetry?.clients ?? [])
     .flatMap((client) => client.queue)
+    .map((item) => {
+      const reading = live.get(item.id);
+      if (!reading || !(reading.at > (Number.isFinite(storedAt) ? storedAt : 0))) return item;
+      return { ...item, progress: reading.progress, speedMbps: reading.speedMbps, status: WORKING.includes(reading.status) ? reading.status : item.status };
+    })
     .filter((item) => WORKING.includes(item.status))
     .sort((a, b) => rank(a.status) - rank(b.status) || b.progress - a.progress);
 }
@@ -32,10 +46,12 @@ function percent(progress: number): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
-export function DownloadsNow({ summary, telemetry, attention, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; attention: DashboardAttention; action: Action }) {
+const NO_READINGS: ReadonlyMap<string, LiveProgress> = new Map();
+
+export function DownloadsNow({ summary, telemetry, attention, action, live = NO_READINGS }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; attention: DashboardAttention; action: Action; live?: ReadonlyMap<string, LiveProgress> }) {
   // A stalled download that an import case is about is that case, which has the buttons.
   const stalledWithButton = new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`));
-  const rows = nowRows(telemetry);
+  const rows = nowRows(telemetry, live);
   const downloads = summary?.downloads;
   const imported = summary?.pipeline?.today.imported ?? 0;
   let empty: string;
@@ -46,7 +62,7 @@ export function DownloadsNow({ summary, telemetry, attention, action }: { summar
   return (
     <Panel
       title="Downloads now"
-      count={rows.length > 0 ? plural(rows.length, "download") : undefined}
+      count={rows.length > 0 ? <CountUp value={rows.length} format={(value) => plural(Math.round(value), "download")} /> : undefined}
       to="/queue"
       linkLabel="Transfers"
     >
@@ -77,7 +93,7 @@ export function DownloadsNow({ summary, telemetry, attention, action }: { summar
               <ListCell>
                 <span className="flex items-center gap-2">
                   <span aria-hidden className="block h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
-                    <span className={cn("block h-full rounded-full", item.status === "stalled" ? "bg-warning" : "bg-info")} style={{ width: `${percent(item.progress)}%` }} />
+                    <span className={cn("block h-full rounded-full transition-[width] duration-700 ease-out", item.status === "stalled" ? "bg-warning" : "bg-info")} style={{ width: `${percent(item.progress)}%` }} />
                   </span>
                   <span className="w-9 text-right tabular-nums">{percent(item.progress)}%</span>
                 </span>
@@ -86,7 +102,7 @@ export function DownloadsNow({ summary, telemetry, attention, action }: { summar
                 </span>
               </ListCell>
               <ListCell align="end" numeric>
-                <span className="block truncate text-foreground">{item.status === "queued" ? "Queued" : formatSpeed(item.speedMbps)}</span>
+                <span className="block truncate text-foreground">{item.status === "queued" ? "Queued" : <CountUp value={item.speedMbps} format={formatSpeed} />}</span>
                 {item.status === "stalled" ? (
                   <span className="mt-0.5 flex justify-end"><Chip tone="warn" dot={false}>Stalled</Chip></span>
                 ) : null}

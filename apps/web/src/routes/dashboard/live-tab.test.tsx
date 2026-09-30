@@ -105,7 +105,7 @@ describe("Live", () => {
       handoffs: lists["/api/integrations/processors/handoffs"] as never,
       telemetry: lists["/api/download-clients/telemetry"] as never
     }).counts.live;
-    await waitFor(() => expect(within(needs).getByText(String(now))).toBeInTheDocument());
+    await waitFor(() => expect(within(needs).getAllByText(String(now)).length).toBeGreaterThan(0));
 
     // The setup problems are on the other tab, not repeated here.
     expect(screen.queryByRole("button", { name: "Test Nyaa.si again" })).toBeNull();

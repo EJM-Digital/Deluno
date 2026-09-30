@@ -12,6 +12,7 @@
  */
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
+import { CountUp } from "../../components/ui/count-up";
 import { StatusLed } from "../../components/ui/status-led";
 import { dismissFailedJob } from "../../lib/failed-jobs";
 import { canTryAgain, isVanished, type RecoveryCaseRow } from "../../lib/needs-action";
@@ -200,7 +201,7 @@ export function NeedsYou({ attention, action }: { attention: DashboardAttention;
   return (
     <Panel
       title="Needs you"
-      count={total > 0 ? String(total) : undefined}
+      count={total > 0 ? <CountUp value={total} /> : undefined}
       to="/queue"
       linkLabel="Transfers"
       className="min-h-0"

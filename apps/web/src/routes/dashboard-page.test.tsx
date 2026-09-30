@@ -118,7 +118,7 @@ describe("DashboardPage tabs", () => {
     // Each number counts its own tab only: Live does not add System's problems to its own.
     expect(expected.system).toBeGreaterThan(0);
     expect(expected.live).toBeGreaterThan(0);
-    const listed = Number(within(screen.getByRole("region", { name: /^needs you/i })).getByText(/^[0-9]+$/).textContent);
+    const listed = Number(within(screen.getByRole("region", { name: /^needs you/i })).getAllByText(/^[0-9]+$/)[0].textContent);
     expect(listed).toBeGreaterThanOrEqual(expected.live);
   });
 
