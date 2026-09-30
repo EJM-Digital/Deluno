@@ -14,7 +14,7 @@ import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-statu
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
-import { ArrowLeft, ArrowUpDown, LoaderCircle, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
+import { ArrowLeft, ArrowUpDown, LoaderCircle, Pencil, RefreshCw, Search, Trash2, ShieldCheck, ShieldOff
 } from "lucide-react";
 import {
   fetchJson, fetchPageItems,
@@ -74,7 +74,6 @@ import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleSynopsis } from "../components/app/title-synopsis";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
-import { ActionMenu } from "../components/ui/action-menu";
 import { TitleActionGrid } from "../components/app/title-action-grid";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
@@ -1258,13 +1257,14 @@ export function ShowDetailPage() {
                 onChanged={() => revalidator.revalidate()}
                 disabled={busyAction !== null}
               />
-              {/* Rarely used, so behind one button (#1058). */}
-              <ActionMenu
-                items={[
-                  { label: "Edit metadata", onSelect: () => setIsMetadataOpen(true) },
-                  { label: "Remove from Deluno", icon: <Trash2 className="h-4 w-4" />, destructive: true, disabled: busyAction !== null, onSelect: () => setIsRemoveConfirmationOpen(true) }
-                ]}
-              />
+              <Button variant="outline" className="w-full" onClick={() => setIsMetadataOpen(true)}>
+                <Pencil className="h-4 w-4" />
+                Edit metadata
+              </Button>
+              <Button variant="destructive" className="w-full" disabled={busyAction !== null} onClick={() => setIsRemoveConfirmationOpen(true)}>
+                <Trash2 className="h-4 w-4" />
+                Remove from Deluno
+              </Button>
               </TitleActionGrid>
             </aside>
           </div>
