@@ -45,7 +45,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
                 {/* The engine sometimes records the same sentence as both reason and
                     outcome; showing it twice in one row reads as a rendering fault. */}
                 <ListNameCell name={item.reason} sub={item.outcome === item.reason ? undefined : item.outcome} />
-                <ListCell primary={item.scope} mobile />
+                <ListCell primary={item.scopeLabel} mobile />
                 <ListCell primary={formatDateTime(item.occurredUtc, preferences)} />
                 <ListCell>
                   <Chip tone={statusTone(item.status)}>{formatStatus(item.status)}</Chip>
@@ -62,7 +62,7 @@ export function DecisionExplanationList({ decisions }: { decisions: DecisionExpl
           if (!next) setOpenId(null);
         }}
         title={open?.reason ?? "Decision"}
-        description={open ? `${open.scope} · ${formatDateTime(open.occurredUtc, preferences)}` : undefined}
+        description={open ? `${open.scopeLabel} · ${formatDateTime(open.occurredUtc, preferences)}` : undefined}
         footer={
           <DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenId(null)} />
         }

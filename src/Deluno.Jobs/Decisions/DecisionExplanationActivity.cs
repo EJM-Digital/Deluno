@@ -23,7 +23,9 @@ public static class DecisionExplanationActivity
         var normalized = payload with { Reason = reason };
         return repository.RecordActivityAsync(
             Category,
-            $"{normalized.Scope}: {reason}",
+            // The reason alone: the event is already named "Why Deluno chose a release",
+            // and the scope is a code (#1086). It stays in the details for the drawer.
+            reason,
             JsonSerializer.Serialize(normalized, JsonOptions),
             relatedJobId,
             relatedEntityType,
@@ -86,7 +88,11 @@ public sealed record DecisionExplanationItem(
     IReadOnlyList<DecisionAlternativeExplanation> Alternatives,
     string? RelatedJobId,
     string? RelatedEntityType,
-    string? RelatedEntityId);
+    string? RelatedEntityId)
+{
+    /// <summary>What the decision was about, in plain words (#1086); screens show this, never <see cref="Scope"/>.</summary>
+    public string ScopeLabel => Deluno.Contracts.DecisionScopeLabels.For(Scope);
+}
 
 public sealed record DecisionAlternativeExplanation(
     string Name,

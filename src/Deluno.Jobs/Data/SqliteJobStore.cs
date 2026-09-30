@@ -468,7 +468,7 @@ public sealed class SqliteJobStore(
             connection,
             transaction,
             category: DecisionExplanationActivity.Category,
-            message: $"job.retry: {DescribeRetry(requeued, failedJobs.Count)}",
+            message: $"{DescribeRetry(requeued, failedJobs.Count)}",
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.retry",
                 Status: "requeued",
@@ -1260,8 +1260,8 @@ public sealed class SqliteJobStore(
             transaction,
             category: DecisionExplanationActivity.Category,
             message: shouldDeadLetter
-                ? $"job.failure: {JobTypeLabels.For(job.JobType)} moved to dead-letter after exhausting retries."
-                : $"job.failure: {JobTypeLabels.For(job.JobType)} will retry after {nextAttemptUtc:O}.",
+                ? $"{JobTypeLabels.For(job.JobType)} moved to dead-letter after exhausting retries."
+                : $"{JobTypeLabels.For(job.JobType)} will retry after {nextAttemptUtc:O}.",
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.failure",
                 Status: nextStatus,

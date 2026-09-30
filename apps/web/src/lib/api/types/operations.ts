@@ -148,6 +148,8 @@ export interface DecisionExplanationItem {
   id: string;
   occurredUtc: string;
   scope: string;
+  /** What the decision was about, in plain words (#1086); show this, never `scope`. */
+  scopeLabel: string;
   status: string;
   reason: string;
   inputs: Record<string, string | null>;

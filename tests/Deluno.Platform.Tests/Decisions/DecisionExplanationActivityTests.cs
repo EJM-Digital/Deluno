@@ -1,5 +1,7 @@
 using Deluno.Jobs.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Jobs.Decisions;
+using Moq;
 
 namespace Deluno.Platform.Tests.Decisions;
 
@@ -62,5 +64,56 @@ public sealed class DecisionExplanationActivityTests
             DateTimeOffset.Parse("2026-04-29T00:00:00Z"));
 
         Assert.Null(DecisionExplanationActivity.FromActivity(activity));
+    }
+
+    [Fact]
+    public void An_older_decision_row_reads_as_its_reason_without_the_scope_code()
+    {
+        // #1086: rows written before the fix start with the scope code.
+        var activity = new ActivityEventItem(
+            "activity-3",
+            DecisionExplanationActivity.Category,
+            "series.season-search: Best feed candidate is Lioness.2023.S02E01 from althub.co.za targeting WEB 1080p.",
+            null,
+            null,
+            "series",
+            "series-1",
+            DateTimeOffset.Parse("2026-09-30T00:00:00Z"));
+
+        Assert.Equal("Best feed candidate is Lioness.2023.S02E01 from althub.co.za targeting WEB 1080p.", activity.Message);
+    }
+
+    [Fact]
+    public void Another_kind_of_event_keeps_a_leading_name_with_a_colon()
+    {
+        var activity = new ActivityEventItem(
+            "activity-4",
+            "retention.removed",
+            "Big.Buck.Bunny.2008: removed under the rule.",
+            null,
+            null,
+            "movie",
+            "movie-1",
+            DateTimeOffset.Parse("2026-09-30T00:00:00Z"));
+
+        Assert.Equal("Big.Buck.Bunny.2008: removed under the rule.", activity.Message);
+    }
+
+    [Fact]
+    public async Task A_new_decision_row_is_written_as_its_reason_alone()
+    {
+        string? written = null;
+        var feed = new Mock<IActivityFeedRepository>();
+        feed.Setup(repository => repository.RecordActivityAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback((string _, string message, string? _, string? _, string? _, string? _, CancellationToken _) => written = message)
+            .ReturnsAsync((ActivityEventItem)null!);
+
+        await feed.Object.RecordDecisionAsync(
+            new DecisionExplanationPayload("series.season-search", "matched", "Best feed candidate is X.", new Dictionary<string, string?>(), "Grabbed.", []),
+            null, "series", "series-1", CancellationToken.None);
+
+        Assert.Equal("Best feed candidate is X.", written);
     }
 }
