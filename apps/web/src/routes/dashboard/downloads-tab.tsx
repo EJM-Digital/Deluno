@@ -209,11 +209,11 @@ function DownloadsNow({ summary, telemetry, attention, action }: { summary: Dash
             <ListTable
               chevron={false}
               columns={[
-                { label: "Title", width: "minmax(0,1.5fr)", mobile: true },
-                { label: "Client", width: "minmax(0,1.3fr)" },
-                { label: "Progress", width: "7.5rem" },
-                { label: "Speed", width: "5rem", align: "end" },
-                { label: "Fix", width: "7.5rem", srOnly: true, mobile: true }
+                { label: "Title", width: "minmax(0,1.35fr)", mobile: true },
+                { label: "Client", width: "minmax(0,1.5fr)" },
+                { label: "Progress", width: "6.5rem" },
+                { label: "Speed", width: "4.5rem", align: "end" },
+                { label: "Fix", width: "7rem", srOnly: true, mobile: true }
               ]}
             >
               {shown}

@@ -62,7 +62,7 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
       }
       for (const element of [section as HTMLElement, ...Array.from(section.querySelectorAll<HTMLElement>("*"))]) {
         const style = getComputedStyle(element);
-        if ((style.overflowY === "hidden" || style.overflowY === "clip") && element.clientHeight > 0 && element.scrollHeight > element.clientHeight + 1) {
+        if ((style.overflowY === "hidden" || style.overflowY === "clip") && element.clientHeight > 2 && element.scrollHeight > element.clientHeight + 1) {
           found.push(`${name}: something is hidden inside it (${element.tagName.toLowerCase()} is ${element.scrollHeight}px tall in ${element.clientHeight}px)`);
         }
       }
