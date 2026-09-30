@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { metadataPreferencesIgnored } from "./settings-metadata-page";
+import { metadataKeysUnreadable, metadataPreferencesIgnored } from "./settings-metadata-page";
 import type { MetadataProviderStatus } from "../lib/api/types/metadata";
 
 /**
@@ -32,5 +32,19 @@ describe("metadata language and region note (#736)", () => {
     expect(metadataPreferencesIgnored(status("direct"))).toBe(false);
     expect(metadataPreferencesIgnored(status("direct-fallback"))).toBe(false);
     expect(metadataPreferencesIgnored(null)).toBe(false);
+  });
+});
+
+describe("metadata keys saved on another computer (#1094)", () => {
+  it("asks for the key again only when one is unreadable here", () => {
+    expect(metadataKeysUnreadable({})).toBe(false);
+    expect(metadataKeysUnreadable({ metadataTmdbApiKeyUnreadable: true })).toBe(true);
+    expect(metadataKeysUnreadable({ mdbListApiKeyUnreadable: true })).toBe(true);
+  });
+
+  it("shows the plain sentence and a way to enter the key again", () => {
+    const source = readFileSync(resolve(__dirname, "settings-metadata-page.tsx"), "utf8");
+    expect(source).toContain("SecretUnreadableNotice");
+    expect(source).toContain("Save keys");
   });
 });
