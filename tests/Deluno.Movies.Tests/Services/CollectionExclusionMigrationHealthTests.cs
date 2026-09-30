@@ -40,4 +40,23 @@ public sealed class CollectionExclusionMigrationHealthTests
         Assert.Equal("database is locked", reported.Reason);
         Assert.Empty(reporter.Cleared);
     }
+
+    [Fact]
+    public async Task Try_again_runs_the_move_now_and_reports_again_when_it_still_fails()
+    {
+        var factory = new Mock<IDelunoDatabaseConnectionFactory>();
+        factory
+            .Setup(f => f.OpenConnectionAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Throws(new InvalidOperationException("database is locked"));
+        var reporter = new RecordingReporter();
+        IBackgroundProblemRetry retry = new CollectionExclusionMigrationHostedService(
+            factory.Object,
+            Mock.Of<IUnifiedExclusionRepository>(),
+            NullLogger<CollectionExclusionMigrationHostedService>.Instance,
+            reporter);
+
+        Assert.Equal("startup:collection-exclusions", retry.ProblemKey);
+        Assert.False(await retry.RetryAsync(CancellationToken.None));
+        Assert.Equal("database is locked", Assert.Single(reporter.Reported).Reason);
+    }
 }

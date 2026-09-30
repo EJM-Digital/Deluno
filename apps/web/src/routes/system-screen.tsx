@@ -53,9 +53,9 @@ import {
   type UpdatePreferencesResponse,
   type UpdateStatusResponse, readErrorText } from "../lib/api";
 import { authedFetch } from "../lib/use-auth";
+import { toast } from "../components/shell/toaster";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
-import { toast } from "../components/shell/toaster";
 import { describeCleanup, type RecycleBinCleanupPreview } from "../lib/recycle-bin-words";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
@@ -1546,6 +1546,14 @@ export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolea
   return check.id.startsWith("notice:");
 }
 
+/** A start-up step that did not finish (#1080): its problem key, or null for any other row. These can be run again or cleared, not only snoozed. */
+export function startupProblemKey(check: Pick<HealthCheckResultItem, "id">): string | null {
+  const prefix = "system:background-problem:";
+  if (!check.id.startsWith(prefix)) return null;
+  const key = check.id.slice(prefix.length);
+  return key.startsWith("startup:") ? key : null;
+}
+
 /**
  * How many missing files an "unreachable" note counts (#1070). The note holds
  * only the library, a count and when; a note raised by an older build listed
@@ -1642,6 +1650,43 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
       }
     } catch {
       // The note simply stays; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function retryStartupProblem(check: HealthCheckResultItem) {
+    const key = startupProblemKey(check);
+    if (!key) return;
+    setBusyId(check.id);
+    try {
+      const response = await authedFetch(`/api/system/health/background-problems/${encodeURIComponent(key)}/retry`, { method: "POST" });
+      if (response.ok) {
+        const result = (await response.json()) as { cleared: boolean; message: string };
+        if (result.cleared) toast.success(result.message);
+        else toast.error(result.message);
+        onChanged();
+      } else {
+        toast.error("Deluno could not try that again. Check its logs.");
+      }
+    } catch {
+      // The row simply stays; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function clearStartupProblem(check: HealthCheckResultItem) {
+    const key = startupProblemKey(check);
+    if (!key) return;
+    setBusyId(check.id);
+    try {
+      const response = await authedFetch(`/api/system/health/background-problems/${encodeURIComponent(key)}`, { method: "DELETE" });
+      if (response.ok) {
+        onChanged();
+      }
+    } catch {
+      // The row simply stays; nothing silently succeeded.
     } finally {
       setBusyId(null);
     }
@@ -1801,6 +1846,35 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                           onClick={(event) => {
                             event.stopPropagation();
                             void clearNotice(check);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    ) : startupProblemKey(check) ? (
+                      <div className="flex gap-1.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          aria-label={`Try again: ${check.name}`}
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void retryStartupProblem(check);
+                          }}
+                        >
+                          Try again
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          aria-label={`Clear: ${check.name}`}
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void clearStartupProblem(check);
                           }}
                         >
                           Clear

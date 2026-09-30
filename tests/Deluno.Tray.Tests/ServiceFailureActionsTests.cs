@@ -107,4 +107,20 @@ public sealed class ServiceFailureActionsTests
             return 0;
         }
     }
+
+    [Fact]
+    public async Task Try_again_sets_the_settings_now_and_clears_the_note_only_when_Windows_accepts_them()
+    {
+        var reporter = new Reporter();
+
+        var refused = await new ServiceFailureActionsRetry(reporter, new FakeSc(5)).RetryAsync(CancellationToken.None);
+        Assert.False(refused);
+        Assert.Equal(ServiceManager.FailureActionsProblemKey, Assert.Single(reporter.Reported).Key);
+        Assert.Empty(reporter.Cleared);
+
+        var accepted = await new ServiceFailureActionsRetry(reporter, new FakeSc(0)).RetryAsync(CancellationToken.None);
+        Assert.True(accepted);
+        Assert.Equal([ServiceManager.FailureActionsProblemKey], reporter.Cleared);
+        Assert.Equal(ServiceManager.FailureActionsProblemKey, new ServiceFailureActionsRetry(reporter).ProblemKey);
+    }
 }

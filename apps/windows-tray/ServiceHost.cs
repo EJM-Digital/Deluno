@@ -59,6 +59,9 @@ public static class ServiceHost
             ExitProcess = code => Environment.Exit(code)
         };
         builder.Services.AddSingleton(safetyOptions);
+        // The Health row for a failed restart-on-failure set-up gets a "Try again" (#1080).
+        builder.Services.AddSingleton<Deluno.Contracts.IBackgroundProblemRetry>(provider =>
+            new ServiceFailureActionsRetry(provider.GetRequiredService<Deluno.Contracts.IBackgroundProblemReporter>()));
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
