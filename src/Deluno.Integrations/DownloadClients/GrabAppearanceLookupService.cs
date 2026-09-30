@@ -76,13 +76,16 @@ public sealed class GrabAppearanceLookupService(
                 Detail: snapshot?.LastHealthMessage);
         }
 
-        bool Matches(string? id, string? name)
-            => (!string.IsNullOrWhiteSpace(torrentHashOrItemId) && string.Equals(id, torrentHashOrItemId, StringComparison.OrdinalIgnoreCase))
-               || (!string.IsNullOrWhiteSpace(name) && string.Equals(name, releaseName, StringComparison.OrdinalIgnoreCase));
+        // By the id Deluno recorded for this grab, and only by that: a release
+        // name is not proof that an item is the one Deluno sent (a same-named
+        // item may have been added outside Deluno, and Deluno never adopts
+        // one by name - James, 30 Sep 2026).
+        bool Matches(string? id)
+            => !string.IsNullOrWhiteSpace(torrentHashOrItemId) && string.Equals(id?.Trim(), torrentHashOrItemId.Trim(), StringComparison.OrdinalIgnoreCase);
 
         // The live queue first — it is the current truth, and a torrent
         // client's history is often only what the queue itself implies.
-        var queueMatch = snapshot.Queue.FirstOrDefault(item => Matches(item.Id, item.ReleaseName));
+        var queueMatch = snapshot.Queue.FirstOrDefault(item => Matches(item.Id));
         if (queueMatch is not null)
         {
             var foundElsewhere = !string.IsNullOrWhiteSpace(expectedCategory)
@@ -94,7 +97,7 @@ public sealed class GrabAppearanceLookupService(
                 QueueItemId: queueMatch.Id);
         }
 
-        var historyMatch = history.FirstOrDefault(item => Matches(item.ExternalId, item.ReleaseName));
+        var historyMatch = history.FirstOrDefault(item => Matches(item.ExternalId));
         if (historyMatch is not null)
         {
             if (string.Equals(historyMatch.Outcome, DownloadClientHistoryOutcomes.Duplicate, StringComparison.OrdinalIgnoreCase))

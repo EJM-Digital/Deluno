@@ -67,6 +67,19 @@ public sealed class AWebhookCannotBindAnIdToADispatchTests
         Assert.Equal("SENT-HASH", dispatch!.TorrentHashOrItemId);
     }
 
+    [Fact]
+    public async Task A_name_alone_no_longer_reaches_a_dispatch_sent_days_ago()
+    {
+        using var world = await World.CreateAsync(clientShowsHash: "x", clientShowsName: Release);
+        await world.SendAsync(existingId: null);
+        world.Advance(TimeSpan.FromDays(2));
+
+        var stale = await world.Webhook.HandleAsync(
+            world.ClientId, new DownloadClientWebhookRequest("completed", null, null, Release, null, 10, null), CancellationToken.None);
+
+        Assert.False(stale.Accepted);
+    }
+
     private sealed class World : IDisposable
     {
         private readonly TestStorage _storage;
@@ -74,8 +87,11 @@ public sealed class AWebhookCannotBindAnIdToADispatchTests
         private readonly string _libraryId;
         private readonly string _clientName;
 
-        private World(TestStorage storage, SqliteJobStore jobs, SqliteDownloadDispatchesRepository dispatches, DownloadClientWebhookService webhook, string clientId, string clientName)
+        private readonly FixedTimeProvider _time;
+
+        private World(TestStorage storage, SqliteJobStore jobs, SqliteDownloadDispatchesRepository dispatches, DownloadClientWebhookService webhook, string clientId, string clientName, FixedTimeProvider time)
         {
+            _time = time;
             _storage = storage;
             _jobs = jobs;
             Dispatches = dispatches;
@@ -90,6 +106,8 @@ public sealed class AWebhookCannotBindAnIdToADispatchTests
         public DownloadClientWebhookService Webhook { get; }
 
         public string ClientId { get; }
+
+        public void Advance(TimeSpan duration) => _time.Advance(duration);
 
         public async Task<string> SendAsync(string? existingId)
         {
@@ -119,7 +137,7 @@ public sealed class AWebhookCannotBindAnIdToADispatchTests
             var registry = new DownloadClientRegistry([new Client(client, clientShowsHash, clientShowsName)]);
             var webhook = new DownloadClientWebhookService(
                 dispatches, NullLogger<DownloadClientWebhookService>.Instance, connections, registry, time);
-            return new World(storage, jobs, dispatches, webhook, client.Id, client.Name);
+            return new World(storage, jobs, dispatches, webhook, client.Id, client.Name, time);
         }
 
         public void Dispose() => _storage.Dispose();

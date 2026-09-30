@@ -231,15 +231,6 @@ public sealed class RefusedDownloadCleanupService(
             var forget = new DownloadClientActionRequest(DownloadClientActions.Forget, queueItemId);
             var result = await downloadClients.ExecuteActionAsync(clientId, forget, cancellationToken);
 
-            if (result.Refused &&
-                await downloadClients.AdoptClientItemIdAsync(clientId, queueItemId, release.ReleaseName, cancellationToken))
-            {
-                // Deluno did send this release, but the client never handed
-                // back its id, so the dispatch had none. The blocked row names
-                // the release and the id; the dispatch now carries it too.
-                result = await downloadClients.ExecuteActionAsync(clientId, forget, cancellationToken);
-            }
-
             if (result.Refused)
             {
                 // Deluno never sent this download (added by hand, or by another

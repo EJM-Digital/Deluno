@@ -500,7 +500,6 @@ Implemented download-client endpoints:
 - `POST /api/download-clients/{clientId}/queue/{queueItemId}/remove` — the Queue's "why" dialog (cleanup sheet J1/J2, #924): body is `{ reason }`, one of `failed` ("It's bad": remove from the client, delete its files, blocklist the release everywhere, search again), `unwanted` ("I don't want it": remove from the client and delete its files, no blocklist), or `forget` ("Just stop tracking it": Deluno forgets the download; the client keeps it and its files untouched). This replaces the old single confirm and the "Allow removing client queue entries" setting that used to gate removal — every reason now acts without a separate on/off gate.
 - `GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview` — the ownership/threshold opinion behind a removal: whether Deluno can prove it owns this client item and its payload before removing them
 - `POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore` — snoozes one download-health finding for that queue item
-- `POST /api/download-clients/{clientId}/grab`
 - `POST /api/download-clients/{clientId}/categories/check` — verifies a library-specific category against SABnzbd or qBittorrent and reports `ready`, `missing`, `unreachable`, `configuration`, or `unsupported` without claiming the route is ready when it cannot be verified
 
 Implemented webhook endpoints:

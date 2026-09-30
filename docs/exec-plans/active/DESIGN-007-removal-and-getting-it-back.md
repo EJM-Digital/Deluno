@@ -81,7 +81,6 @@ are out of scope here. They delete a row and own nothing on disk.
 | `POST /api/{movies,series}/bulk/search` | The same, many titles | **No** |
 | `POST /api/libraries/{id}/search-now` | The same, whole library | **No** |
 | `POST /api/{movies,series}/{id}/grab` | Sends one chosen release to a client | **No** |
-| `POST /api/download-clients/{clientId}/grab` | Sends a release straight to a client | **No** |
 | `POST /api/v1/download-dispatches/{dispatchId}/retry` | Refuses unless the grab status is `failed`; enqueues a library search job with `maxItems: 1` | **No** — so it walks into the same wall the first attempt hit |
 | `POST /api/integrations/processors/handoffs/{id}/retry` | Re-submits a hand-off *(inferred)* | n/a |
 | `POST /api/jobs/retry-failed` | Re-runs failed jobs | **No** |

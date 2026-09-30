@@ -215,32 +215,6 @@ public sealed class ClearingRefusedDownloadsTests
     }
 
     /// <summary>
-    /// #1062 residual: Deluno did send it, but the client never handed back an
-    /// id, so the dispatch has none. The blocked row names the id; the
-    /// dispatch is given it and the download is cleaned up, not left for ever.
-    /// </summary>
-    [Fact]
-    public async Task A_release_Deluno_sent_whose_dispatch_never_got_the_clients_id_is_given_it_and_cleaned_up()
-    {
-        var blocklist = Blocklist(Refused("hash-1"));
-        var clients = new Mock<IDownloadClientTelemetryService>();
-        var adopted = false;
-        clients.Setup(service => service.AdoptClientItemIdAsync("qbittorrent-main", "hash-1", "Arrival.2016.2160p", It.IsAny<CancellationToken>()))
-            .Returns(() => { adopted = true; return Task.FromResult(true); });
-        clients.Setup(service => service.ExecuteActionAsync(
-                It.IsAny<string>(), It.IsAny<DownloadClientActionRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string clientId, DownloadClientActionRequest request, CancellationToken _) => adopted
-                ? new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, true, "forgotten")
-                : new DownloadClientActionResult(clientId, request.QueueItemId, request.Action, false, "Deluno did not send it.") { Refused = true });
-
-        var outcome = await Cleanup(blocklist.Object, clients.Object, Sharing())
-            .CleanUpOneAsync("block-1", CancellationToken.None);
-
-        Assert.Equal(RefusedDownloadCleanupOutcomes.Cleared, outcome);
-        blocklist.Verify(list => list.MarkCleanedUpAsync("block-1", It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    /// <summary>
     /// #882/#883/#885, cleanup sheet D1/D2/D4: a release the client itself
     /// reported as failed (missing articles, an encrypted archive, a damaged
     /// unpack) is removed from the client with its data once the user's own

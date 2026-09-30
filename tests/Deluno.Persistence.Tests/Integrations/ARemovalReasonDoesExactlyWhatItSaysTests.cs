@@ -308,9 +308,9 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
         Assert.Equal(2, typeof(DownloadClientActionRequest).GetConstructors().Single().GetParameters().Length);
     }
 
-    /// <summary>#1062: a forced re-download holds its own dispatch, even when the client id was never recorded - as long as the client shows that item under that release name.</summary>
+    /// <summary>#1062 (James, 30 Sep 2026): a dispatch with no id is never matched to a client item by release name, even when the client shows an item under exactly that name.</summary>
     [Fact]
-    public async Task A_dispatch_the_client_never_gave_an_id_for_can_forget_the_item_the_client_shows_for_it()
+    public async Task A_dispatch_the_client_never_gave_an_id_for_is_not_matched_to_a_same_named_item()
     {
         using var world = await World.CreateAsync("sabnzbd", TitleKind.Movie);
         var idLessDispatch = await world.RecordDispatchWithoutIdAsync("Other.Movie.2024.1080p.WEB-DL-GROUP");
@@ -318,10 +318,10 @@ public sealed class ARemovalReasonDoesExactlyWhatItSaysTests
 
         var own = await world.ActForDispatchAsync("id-the-client-gave-later", DownloadClientActions.Forget, idLessDispatch);
 
-        Assert.True(own.Succeeded);
-        Assert.Equal(DownloadClientActions.Forget, world.Client.LastAction);
-        // ...and the dispatch now carries the id, so the download stays Deluno's.
-        Assert.True((await world.CheckOwnershipAsync("id-the-client-gave-later")).Owned);
+        Assert.True(own.Refused);
+        Assert.Null(world.Client.LastAction);
+        // ...and nothing was adopted: the item is still not Deluno's.
+        Assert.False((await world.CheckOwnershipAsync("id-the-client-gave-later")).Owned);
     }
 
     [Fact]

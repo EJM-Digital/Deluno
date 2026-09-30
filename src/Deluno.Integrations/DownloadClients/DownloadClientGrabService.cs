@@ -162,6 +162,8 @@ public sealed class DownloadClientGrabService(
 
         grabResult = WithoutARetryPromise(grabResult);
 
+        grabResult = await LeaveAnOutsideDuplicateAloneAsync(client, request, grabResult, cancellationToken);
+
         await RecordUTorrentNoHashAsync(client, request, grabResult, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.DispatchId))
@@ -232,6 +234,40 @@ public sealed class DownloadClientGrabService(
             logger?.LogWarning(exception, "Could not work out {Client}'s save folder for {Release}; the client's own folder applies.", client.Name, request.ReleaseName);
             return request;
         }
+    }
+
+    /// <summary>
+    /// The download client answers a grab by saying it already has that exact
+    /// torrent (#877). If Deluno has its own dispatch record for that hash or id
+    /// (any status, archived included) the copy is Deluno's and is followed as
+    /// normal. Otherwise it was added outside Deluno: Deluno leaves it alone
+    /// (no import, no adoption, no cleanup), and the release is failed with a
+    /// plain reason so the search tries another one (James, 30 Sep 2026). The
+    /// item is never adopted by name.
+    /// </summary>
+    private async Task<DownloadClientGrabResult> LeaveAnOutsideDuplicateAloneAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        DownloadClientGrabResult grabResult,
+        CancellationToken cancellationToken)
+    {
+        if (!grabResult.Succeeded || !grabResult.IsDuplicateFollow || string.IsNullOrWhiteSpace(grabResult.ExternalId))
+        {
+            return grabResult;
+        }
+
+        // The dispatch this very grab belongs to does not count as proof: it is
+        // the one being asked about.
+        var records = await dispatchesRepository.FindDispatchesByClientItemIdsAsync(client.Id, [grabResult.ExternalId], cancellationToken);
+        if (records.Any(dispatch => !string.Equals(dispatch.Id, request.DispatchId, StringComparison.Ordinal)))
+        {
+            return grabResult;
+        }
+
+        return DownloadClientHelpers.DeadReleaseGrabFailure(
+            client,
+            request,
+            $"{client.Name} already has this one from elsewhere.");
     }
 
     /// <summary>
