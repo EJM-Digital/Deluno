@@ -347,6 +347,83 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Covered, PageSize: 50), CancellationToken.None)).Items);
     }
 
+    private static async Task<string?> ReadStoredRungAsync(TestStorage storage, string seriesId)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT wanted_status FROM series_wanted_state WHERE series_id = @seriesId;";
+        AddParam(command, "@seriesId", seriesId);
+        return (string?)await command.ExecuteScalarAsync(CancellationToken.None);
+    }
+
+    private static async Task<(TestStorage Storage, SqliteSeriesCatalogRepository Repository, string SeriesId, Dictionary<(int Season, int Episode), string> Ids)> SeedRungShowAsync(
+        DateTimeOffset now,
+        params CatalogueEpisodeItem[] episodes)
+    {
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        await repository.SyncEpisodeCatalogueAsync(seriesId, episodes, source: "tmdb", CancellationToken.None);
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "covered", wantedReason: "Seeded.", currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: true, filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 1,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 1)],
+            CancellationToken.None);
+        return (storage, repository, seriesId, await GetEpisodeIdsAsync(storage, seriesId));
+    }
+
+    [Fact]
+    public async Task Season_pass_moves_the_stored_rung_so_a_re_monitored_season_is_searched_again()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        var (storage, repository, seriesId, _) = await SeedRungShowAsync(
+            now,
+            new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)),
+            new CatalogueEpisodeItem(2, 1, "Two", null, now.AddDays(-10)));
+        using var _s = storage;
+        Assert.Equal(WantedStatuses.Missing, await ReadStoredRungAsync(storage, seriesId));
+
+        await repository.SetSeasonPassMonitoringAsync([new SeasonPassScope(seriesId, null)], monitored: false, CancellationToken.None);
+        Assert.Equal(WantedStatuses.Covered, await ReadStoredRungAsync(storage, seriesId));
+
+        await repository.SetSeasonPassMonitoringAsync([new SeasonPassScope(seriesId, 2)], monitored: true, CancellationToken.None);
+        Assert.Equal(WantedStatuses.Missing, await ReadStoredRungAsync(storage, seriesId));
+        var card = Assert.Single((await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None)).Items);
+        Assert.Equal(WantedStatuses.Missing, card.WantedStatus);
+    }
+
+    [Fact]
+    public async Task A_tracked_episode_file_gone_moves_the_stored_rung_with_it()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        var (storage, repository, seriesId, _) = await SeedRungShowAsync(
+            now,
+            new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)),
+            new CatalogueEpisodeItem(1, 2, "Two", null, now.AddDays(7)));
+        using var _s = storage;
+        Assert.Equal(WantedStatuses.Upgrade, await ReadStoredRungAsync(storage, seriesId));
+        var episodeId = (await GetEpisodeIdsAsync(storage, seriesId))[(1, 1)];
+
+        Assert.True(await repository.MarkTrackedFileGoneAsync(seriesId, episodeId, "series-main", @"C:\media\s01e01.mkv", CancellationToken.None));
+
+        // Nothing aired is wanted now; only the coming episode is.
+        Assert.Equal(WantedStatuses.Upcoming, await ReadStoredRungAsync(storage, seriesId));
+    }
+
+    [Fact]
+    public async Task A_tracked_episode_file_found_missing_moves_the_stored_rung_to_missing()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        var (storage, repository, seriesId, ids) = await SeedRungShowAsync(
+            now,
+            new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)));
+        using var _s = storage;
+        Assert.Equal(WantedStatuses.Upgrade, await ReadStoredRungAsync(storage, seriesId));
+
+        Assert.True(await repository.MarkTrackedFileMissingAsync(seriesId, ids[(1, 1)], "series-main", @"C:\media\s01e01.mkv", CancellationToken.None));
+
+        Assert.Equal(WantedStatuses.Missing, await ReadStoredRungAsync(storage, seriesId));
+    }
+
     [Fact]
     public async Task SyncEpisodeCatalogueAsync_ReSync_updates_metadata_but_never_clobbers_disk_state()
     {
