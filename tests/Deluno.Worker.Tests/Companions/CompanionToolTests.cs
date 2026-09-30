@@ -133,6 +133,20 @@ public sealed class CompanionToolTests : IDisposable
         Assert.Equal(0, system.Elevated);
     }
 
+
+    [Fact]
+    public void An_installed_qBittorrent_and_SABnzbd_say_where_they_answer_for_an_Open_link()
+    {
+        var system = new FakeSystem(installed: true);
+        system.Files[Path.Combine(system.RoamingAppData, "qBittorrent", "qBittorrent.ini")] = "[Preferences]\nWebUI\Port=8081\n";
+        system.Files[Path.Combine(system.LocalAppData, "sabnzbd", "sabnzbd.ini")] = "[misc]\nport = 8085\n";
+
+        ICompanionTool qbit = new QbittorrentCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
+        ICompanionTool sab = new SabnzbdCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
+
+        Assert.Equal("http://localhost:8081", qbit.LocalUrl());
+        Assert.Equal("http://localhost:8085", sab.LocalUrl());
+    }
     /// <summary>#553: Deluno starting Weir never opens a browser window on the computer Deluno runs on.</summary>
     [Fact]
     public void Weir_is_started_without_opening_a_browser()
