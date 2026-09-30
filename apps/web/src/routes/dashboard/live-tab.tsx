@@ -98,7 +98,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const attention = useDashboardAttention(summary, setup.needs);
   const { data } = useRouteSources({ ...attentionSources, ...liveSources });
   const liveProgress = useLiveProgress();
-  const latest = useLiveActivity(summary?.activity?.recent ?? []);
+  const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
   const work = useWorkingNow(summary);
   const now = useNow(60_000);
   const updatedAt = useSummaryUpdatedAt(summary);

@@ -107,6 +107,8 @@ export const liveSources = defineSources({
   // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
   throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
   // Today's activity for the hourly bars: the day's real counts by the hour; live events are added as they arrive.
+  // The newest Activity, for the Latest stream: read from the stored list, refreshed behind realtime as a safety net. The summary carries only eight rows, most of them routine.
+  latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []), refetchInterval: 120_000 },
   activityToday: { ...source<ActivityToday | null>("dashboard-activity-today", "Today's activity", fetchActivityToday, null), refetchInterval: 120_000 }
 });
 

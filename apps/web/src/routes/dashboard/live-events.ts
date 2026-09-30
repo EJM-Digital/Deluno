@@ -75,7 +75,7 @@ const LIVE_ACTIVITY_LIMIT = 60;
  * one row however it reached the screen, so the summary catching up with an
  * event that already slid in does not show it twice.
  */
-export function useLiveActivity(recent: DashboardActivityItem[]): LiveActivityRow[] {
+export function useLiveActivity(recent: Array<Pick<DashboardActivityItem, "id" | "category" | "message" | "relatedEntityType" | "relatedEntityId" | "createdUtc"> & { label?: string | null; severity?: string | null }>): LiveActivityRow[] {
   const [arrived, setArrived] = useState<LiveActivityRow[]>([]);
 
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
@@ -96,7 +96,7 @@ export function useLiveActivity(recent: DashboardActivityItem[]): LiveActivityRo
     for (const item of recent) {
       if (seen.has(item.id)) continue;
       seen.add(item.id);
-      rows.push({ id: item.id, message: item.message, label: item.label, category: item.category, createdUtc: item.createdUtc, relatedEntityType: item.relatedEntityType, relatedEntityId: item.relatedEntityId, fresh: false });
+      rows.push({ id: item.id, message: item.message, label: item.label, severity: item.severity, category: item.category, createdUtc: item.createdUtc, relatedEntityType: item.relatedEntityType, relatedEntityId: item.relatedEntityId, fresh: false });
     }
     return rows;
   }, [arrived, recent]);

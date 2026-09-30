@@ -9,6 +9,7 @@ import { byStage, laneCounts, type JourneyCard } from "./journey";
 import { Indexers } from "./indexers";
 import { Rhythm } from "./rhythm";
 import { SpeedChart } from "./speed-chart";
+import { ActivityStream } from "./stream";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
 vi.mock("../../../lib/use-signalr", async (importOriginal) => ({
@@ -193,5 +194,40 @@ describe("the journey board", () => {
     expect(reduced.container.querySelector(".live-card-arrive")).toBeNull();
     // The numbers stay.
     expect(within(reduced.container).getAllByText("40%").length).toBeGreaterThan(0);
+  });
+});
+
+describe("what Today and Latest show", () => {
+  const row = (id: string, category: string, message: string, createdUtc = inMs(-60_000)) => ({ id, category, message, createdUtc, fresh: false });
+
+  it("leaves routine background work out of Latest and says so once, quietly", () => {
+    withRouter(
+      <ActivityStream
+        rows={[
+          row("1", "movies.release.grabbed", "Grabbed Dune Part Two (2024) from NZBgeek."),
+          row("2", "job.started", "Task started"),
+          row("3", "job.completed", "Task finished"),
+          row("4", "metadata.artwork.cleanup", "Artwork cache cleanup found nothing to remove.")
+        ]}
+      />
+    );
+    expect(screen.getByText(/Grabbed Dune Part Two/)).toBeInTheDocument();
+    expect(screen.queryByText("Task started")).toBeNull();
+    expect(screen.queryByText(/Artwork cache/)).toBeNull();
+    expect(screen.getByText(/and 3 routine background events, left out/)).toBeInTheDocument();
+  });
+
+  it("names each colour of Today in words and keeps routine work out of the bars", () => {
+    vi.useFakeTimers({ now: NOW });
+    const counts = [
+      { hour: 3, category: "wanted.search.completed", count: 135 },
+      { hour: 4, category: "movies.release.grabbed", count: 2 },
+      { hour: 5, category: "filesystem.import.completed", count: 6 },
+      { hour: 6, category: "job.completed", count: 471 }
+    ];
+    const { container } = withRouter(<Rhythm rows={[]} counts={counts} countedAt={NOW.getTime()} />);
+    expect(screen.getByRole("img", { name: /143 events today/ })).toBeInTheDocument();
+    for (const words of ["searches", "grabbed", "imported", "routine"]) expect(screen.getByText(words)).toBeInTheDocument();
+    expect(container.querySelectorAll(".live-bar")).toHaveLength(3);
   });
 });
