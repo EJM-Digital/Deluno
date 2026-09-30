@@ -20,6 +20,8 @@ export interface LibraryMembership {
   wantedStatus: string;
   canRemove: boolean;
   canMove: boolean;
+  /** Its file here was deleted, so Deluno stopped wanting the film in this library only (#1065). */
+  notWantedHere?: boolean;
 }
 
 type Pending = { kind: "keep" } | { kind: "move"; from: LibraryMembership };
@@ -110,11 +112,24 @@ export function LibraryMembershipCard({
         <ListTable chevron={false} columns={[{ label: "Library" }, { label: "Copy" }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true, srOnly: true }]}>
           {memberships.map((membership) => {
             const chip = membership.hasFile ? STATUS_PRESENTATION["transfer.imported"] : { tone: "idle" as const, label: "No file" };
+            const stoppedHere = membership.notWantedHere === true;
             return (
               <ListRow key={membership.libraryId}>
-                <ListNameCell name={membership.libraryName} sub={memberships.length > 1 && membership.libraryId === selectedLibraryId ? "Search and download go through this library" : undefined} />
-                <ListCell primary={<Chip tone={chip.tone}>{membership.hasFile ? "Has a file" : chip.label}</Chip>} />
+                <ListNameCell name={membership.libraryName} sub={stoppedHere ? "Its file was deleted, so Deluno stopped wanting it here. The other copy is still managed." : memberships.length > 1 && membership.libraryId === selectedLibraryId ? "Search and download go through this library" : undefined} />
+                <ListCell primary={<Chip tone={chip.tone}>{stoppedHere ? "Not wanted here" : membership.hasFile ? "Has a file" : chip.label}</Chip>} />
                 <div role="cell" className="flex justify-end gap-2">
+                  {stoppedHere ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      aria-label={`Want it again in ${membership.libraryName}`}
+                      onClick={() => void send(`${route}/${mediaId}/libraries/${membership.libraryId}/want-again`, "POST", null, `Deluno wants it again in ${membership.libraryName}.`)}
+                      disabled={busy}
+                    >
+                      Want it again
+                    </Button>
+                  ) : null}
                   {memberships.length > 1 && membership.libraryId !== selectedLibraryId ? (
                     <Button type="button" size="sm" variant="ghost" onClick={() => onSelect(membership.libraryId)} disabled={busy}>Use for search</Button>
                   ) : null}
