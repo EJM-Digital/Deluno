@@ -101,10 +101,16 @@ public sealed class FilesystemReconciliationService(
             // not that many people deleting files at once (#1065).
             if (LooksLikeDropout(missingHere.Count, trackedList.Count))
             {
-                await RaiseUnreachableNoticeAsync(library, missingHere.Count, trackedList.Count, cancellationToken);
+                await RaiseUnreachableNoticeAsync(
+                    library, missingHere.Count, trackedList.Count, cancellationToken,
+                    missingHere.Select(item => item.Id).ToArray());
                 issues.Add(CreateUnreachableLibraryIssue(library, rootPath));
                 continue;
             }
+
+            // The library is healthy again (files present at the normal rate):
+            // a note that said it looked unreachable is no longer true.
+            await ClearUnreachableNoticeAsync(library, cancellationToken);
 
             issues.AddRange(missingHere);
 
@@ -379,7 +385,7 @@ public sealed class FilesystemReconciliationService(
             if (dropout == true)
             {
                 return await UnreachableRescanAsync(
-                    library, normalizedType, titleId, title, tracked.Count, cancellationToken);
+                    library, normalizedType, titleId, title, tracked.Count, cancellationToken, describeSet: true);
             }
 
             var issueId = EncodeIssueToken(
@@ -478,14 +484,161 @@ public sealed class FilesystemReconciliationService(
         string titleId,
         string title,
         int trackedCount,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool describeSet = false)
     {
-        await RaiseUnreachableNoticeAsync(library, null, null, cancellationToken);
+        if (describeSet)
+        {
+            // Put the missing files on the note so "These files really are
+            // gone" has something to act on, even when the scheduled check has
+            // not run yet.
+            var ids = new List<string>();
+            var total = 0;
+            await foreach (var other in StreamTrackedFilesAsync(library, cancellationToken))
+            {
+                total++;
+                if (!File.Exists(other.Path) && !IsBeingReplacedByAnImport(other.Path))
+                {
+                    ids.Add(CreateMissingTrackedFileIssue(library, other).Id);
+                }
+            }
+
+            await RaiseUnreachableNoticeAsync(library, ids.Count, total, cancellationToken, ids);
+        }
+        else
+        {
+            await RaiseUnreachableNoticeAsync(library, null, null, cancellationToken);
+        }
+
         var result = new TitleRescanResult(
             mediaType, titleId, title, "library-unreachable", trackedCount, 0, [], [], null,
-            $"{library.Name} looks unreachable, so Deluno changed nothing. Nothing was marked missing and {title} is still monitored. Check the drive is mounted and try again.");
+            $"Deluno changed nothing: most of {library.Name}'s files could not be found at once, so {title} was not marked missing and is still monitored. "
+            + "If the drive or share dropped out, reconnect it and rescan. If you deleted these files, open System, Health and choose These files really are gone.");
         await RecordRescanAsync(result, cancellationToken);
         return result;
+    }
+
+    public const string UnreachableNoticePrefix = "notice:library-unreachable:";
+
+    private async Task ClearUnreachableNoticeAsync(LibraryItem library, CancellationToken cancellationToken)
+    {
+        if (healthChecks is null)
+        {
+            return;
+        }
+
+        var id = UnreachableNoticePrefix + library.Id;
+        if (await healthChecks.GetAsync(id, cancellationToken) is null)
+        {
+            return;
+        }
+
+        await healthChecks.RemoveAsync(id, cancellationToken);
+        await activityFeedRepository.RecordActivityAsync(
+            "library.reachable",
+            $"{library.Name} is back: its files were found again, so the unreachable note was cleared.",
+            JsonSerializer.Serialize(new { LibraryId = library.Id }),
+            null,
+            "library",
+            library.Id,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The user's answer to the unreachable note when they really did delete
+    /// the files: apply the missing-file rule to exactly the files the pass
+    /// that raised the note found missing, each re-checked at apply time.
+    /// </summary>
+    public async Task<LibraryFilesGoneResult?> ConfirmFilesGoneAsync(string libraryId, CancellationToken cancellationToken)
+    {
+        var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+        var library = libraries.FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase));
+        var noticeId = UnreachableNoticePrefix + libraryId;
+        var notice = healthChecks is null ? null : await healthChecks.GetAsync(noticeId, cancellationToken);
+        if (library is null || notice is null)
+        {
+            return null;
+        }
+
+        var ids = ReadMissingSet(notice.DetailsJson);
+        if (ids.Count == 0)
+        {
+            return new LibraryFilesGoneResult(0, 0, 0, false,
+                $"Deluno has no list of missing files for {library.Name}. Run a file check first, then choose These files really are gone.");
+        }
+
+        // The root has to be readable now: a share that is still down proves nothing.
+        var root = string.IsNullOrWhiteSpace(library.RootPath) ? null : Path.GetFullPath(library.RootPath);
+        if (root is null || !Directory.Exists(root) || IsRootEmptyOrUnreadable(root))
+        {
+            return new LibraryFilesGoneResult(0, 0, 0, true,
+                $"{library.Name} is still not reachable, so Deluno changed nothing.");
+        }
+
+        var marked = 0;
+        var cameBack = 0;
+        var refused = 0;
+        foreach (var issueId in ids)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var token = DecodeIssueToken(issueId);
+            if (!string.Equals(token.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                refused++;
+                continue;
+            }
+
+            if (File.Exists(token.Path))
+            {
+                cameBack++;
+                continue;
+            }
+
+            var repair = await RepairAsync(new FilesystemReconciliationRepairRequest(issueId, "mark-missing"), cancellationToken);
+            if (repair.Repaired)
+            {
+                marked++;
+            }
+            else
+            {
+                refused++;
+            }
+        }
+
+        var message = $"{library.Name}: {marked} file{(marked == 1 ? "" : "s")} marked as gone"
+            + (cameBack > 0 ? $", {cameBack} came back and {(cameBack == 1 ? "was" : "were")} left alone" : "")
+            + (refused > 0 ? $", {refused} could not be changed" : "")
+            + ".";
+        await activityFeedRepository.RecordActivityAsync(
+            "library.files-gone",
+            message,
+            JsonSerializer.Serialize(new { LibraryId = library.Id, Marked = marked, CameBack = cameBack, Refused = refused }),
+            null,
+            "library",
+            library.Id,
+            cancellationToken);
+        await healthChecks!.RemoveAsync(noticeId, cancellationToken);
+        return new LibraryFilesGoneResult(marked, cameBack, refused, false, message);
+    }
+
+    private static IReadOnlyList<string> ReadMissingSet(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(detailsJson);
+            return doc.RootElement.TryGetProperty("issueIds", out var array) && array.ValueKind == JsonValueKind.Array
+                ? array.EnumerateArray().Select(e => e.GetString()).OfType<string>().ToArray()
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     /// <summary>The fewest missing files that can look like a dropout.</summary>
@@ -510,39 +663,62 @@ public sealed class FilesystemReconciliationService(
         LibraryItem library,
         int? missing,
         int? total,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? missingIssueIds = null)
     {
-        var id = $"notice:library-unreachable:{library.Id}";
+        var id = UnreachableNoticePrefix + library.Id;
+        var alreadyThere = false;
         if (healthChecks is not null)
         {
             var existing = await healthChecks.GetAsync(id, cancellationToken);
-            if (existing is not null && string.Equals(existing.Status, HealthCheckStatuses.Problem, StringComparison.Ordinal))
+            alreadyThere = existing is not null
+                && string.Equals(existing.Status, HealthCheckStatuses.Problem, StringComparison.Ordinal);
+            // A note that already lists the missing files is left as it is; one
+            // raised without a list (a root that vanished mid-repair) gets the
+            // list when a pass finds one.
+            if (alreadyThere && (missingIssueIds is not { Count: > 0 } || ReadMissingSet(existing!.DetailsJson).Count > 0))
             {
                 return;
             }
         }
 
+        var canConfirm = missingIssueIds is { Count: > 0 };
         var message = missing is not null && total is not null
-            ? $"{library.Name} looks unreachable: {missing} of {total} files could not be found. Nothing was changed."
-            : $"{library.Name} looks unreachable: its files could not be found while Deluno was checking it. Nothing was changed.";
-        await activityFeedRepository.RecordActivityAsync(
-            "library.unreachable",
-            message,
-            JsonSerializer.Serialize(new { LibraryId = library.Id, Missing = missing, Total = total }),
-            null,
-            "library",
-            library.Id,
-            cancellationToken);
+            ? $"{library.Name}: {missing} of {total} files could not be found, so Deluno changed nothing. "
+                + "If the drive or share dropped out, reconnect it and this clears by itself."
+                + (canConfirm ? " If you deleted these files, choose These files really are gone." : "")
+            : $"{library.Name}: its files could not be found while Deluno was checking, so Deluno changed nothing. "
+                + "If the drive or share dropped out, reconnect it and this clears by itself.";
+        if (!alreadyThere)
+        {
+            await activityFeedRepository.RecordActivityAsync(
+                "library.unreachable",
+                message,
+                JsonSerializer.Serialize(new { LibraryId = library.Id, Missing = missing, Total = total }),
+                null,
+                "library",
+                library.Id,
+                cancellationToken);
+        }
+
         if (healthChecks is not null)
         {
+            // The list of files this pass found missing rides on the note, so
+            // "These files really are gone" acts on exactly them.
+            var details = JsonSerializer.Serialize(new
+            {
+                libraryId = library.Id,
+                issueIds = missingIssueIds ?? []
+            });
             await healthChecks.UpsertResultsAsync(
                 [HealthCheckOutcome.Problem(
                     id,
                     HealthCheckCategories.Notice,
                     $"{library.Name} looks unreachable",
                     message,
-                    cause: "Most of the library's files could not be found at once, which usually means the drive or share is not mounted.",
-                    fix: "Check the drive or share is mounted. Deluno will look again on its next check. Clear this note once it is back.")],
+                    cause: null,
+                    fix: null,
+                    detailsJson: details)],
                 cancellationToken);
         }
     }

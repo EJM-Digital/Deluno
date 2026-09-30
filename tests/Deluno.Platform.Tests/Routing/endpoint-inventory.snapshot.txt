@@ -339,6 +339,7 @@ POST /api/filesystem/import/jobs
 POST /api/filesystem/import/preview
 POST /api/filesystem/import/scan-folder
 POST /api/filesystem/import/season-pack/leftovers/delete
+POST /api/filesystem/libraries/{libraryId}/files-gone
 POST /api/filesystem/native-folder-picker
 POST /api/filesystem/path-diagnostics
 POST /api/filesystem/reconciliation/repair

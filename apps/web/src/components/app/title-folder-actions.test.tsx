@@ -53,7 +53,7 @@ describe("TitleFolderActions", () => {
   });
 
   it("confirms that an unmounted or unknown library changed nothing", async () => {
-    for (const [outcome, line] of [["library-unreachable", /Mount the drive/], ["library-unknown", /Put the title back in a library/]] as const) {
+    for (const [outcome, line] of [["library-unreachable", /Reconnect the drive/], ["library-unknown", /Put the title back in a library/]] as const) {
       fetchMock.mockImplementation(() => json({
         outcome, title: "Arrival", filesChecked: 0, filesPresent: 0, missing: [], untracked: [], summary: "Deluno changed nothing."
       }));

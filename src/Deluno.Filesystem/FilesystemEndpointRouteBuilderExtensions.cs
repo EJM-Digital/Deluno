@@ -409,6 +409,17 @@ public static class FilesystemEndpointRouteBuilderExtensions
             return result.Repaired ? Results.Ok(result) : Results.Conflict(result);
         });
 
+        // The answer to the "library looks unreachable" note when the files
+        // really were deleted (#1070).
+        filesystem.MapPost("/libraries/{libraryId}/files-gone", async (
+            string libraryId,
+            IFilesystemReconciliationService reconciliationService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await reconciliationService.ConfirmFilesGoneAsync(libraryId, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         // The manual half of the scheduled file check. DESIGN-007: "everything
         // we have decided as far as a lot of the behaviour can have manual
         // overrides like if a file is missing and the schedule hasn't run, a
