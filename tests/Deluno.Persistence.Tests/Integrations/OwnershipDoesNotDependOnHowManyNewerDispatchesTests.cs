@@ -35,9 +35,9 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
         var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
 
         var client = Assert.Single(overview.Clients);
-        // Shown (the id is matched ignoring case) and the outside item is not.
-        var shown = Assert.Single(client.Queue);
-        Assert.Equal(OldSeedingHash.ToLowerInvariant(), shown.Id);
+        // Shown (the id is matched ignoring case); the outside items are not.
+        Assert.Contains(client.Queue, item => item.Id == OldSeedingHash.ToLowerInvariant());
+        Assert.DoesNotContain(client.Queue, item => item.Id == OutsideHash);
     }
 
     [Fact]
@@ -46,12 +46,28 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
         using var world = await World.CreateAsync(newerDispatches: 260);
 
         var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
-        var listed = Assert.Single(Assert.Single(overview.Clients).Queue);
+        var listed = Assert.Single(Assert.Single(overview.Clients).Queue, item => item.Id == OldSeedingHash.ToLowerInvariant());
         var own = await world.Service.CheckOwnershipAsync(world.ClientId, listed.Id, CancellationToken.None);
         var outside = await world.Service.CheckOwnershipAsync(world.ClientId, OutsideHash, CancellationToken.None);
 
         Assert.True(own.Owned);
         Assert.False(outside.Owned);
+    }
+
+    [Fact]
+    public async Task A_dispatch_recorded_under_Transmissions_old_number_moves_to_the_hash_only_when_the_name_agrees()
+    {
+        using var world = await World.CreateAsync();
+
+        var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
+
+        var queue = Assert.Single(overview.Clients).Queue;
+        // Number 7 named the same release: now filed under its hash, and Deluno's own.
+        Assert.Contains(queue, item => item.Id == "legacy-hash");
+        Assert.True((await world.Service.CheckOwnershipAsync(world.ClientId, "legacy-hash", CancellationToken.None)).Owned);
+        // Number 9 is now a different torrent: not claimed on the number alone.
+        Assert.DoesNotContain(queue, item => item.Id == "other-hash");
+        Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, "other-hash", CancellationToken.None)).Owned);
     }
 
     [Fact]
@@ -84,7 +100,7 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
 
         public string ClientId { get; }
 
-        public static async Task<World> CreateAsync(int newerDispatches)
+        public static async Task<World> CreateAsync(int newerDispatches = 0)
         {
             var storage = TestStorage.Create();
             var time = new FixedTimeProvider(Now.AddDays(-90));
@@ -111,6 +127,14 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
                 cancellationToken: CancellationToken.None);
             await dispatches.RecordDetectionAsync(old, OldSeedingHash, 1024, completed: true, CancellationToken.None);
             await dispatches.ArchiveDispatchAsync(old, "imported long ago", CancellationToken.None);
+
+            // Recorded under Transmission's numeric id, before Deluno keyed it on the hash.
+            await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-legacy", "Legacy.Transmission.Movie.2026.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None, clientExternalId: "7");
+            await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-renumbered", "Was.Number.Nine.2026.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None, clientExternalId: "9");
 
             // Hundreds of dispatches on the same client since.
             time.Advance(TimeSpan.FromDays(89));
@@ -158,7 +182,9 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
             var queue = new List<DownloadQueueItem>
             {
                 Item(OldSeedingHash.ToLowerInvariant(), "Old.Seeding.Movie.2026.1080p.WEB"),
-                Item(OutsideHash, "Someone.Elses.Download.2026.1080p.WEB")
+                Item(OutsideHash, "Someone.Elses.Download.2026.1080p.WEB"),
+                Item("legacy-hash", "Legacy.Transmission.Movie.2026.1080p.WEB") with { LegacyId = "7", Status = DownloadQueueStatuses.Downloading, Progress = 0.4 },
+                Item("other-hash", "Another.Torrent.Entirely.2026.1080p.WEB") with { LegacyId = "9" }
             };
             return Task.FromResult<DownloadClientTelemetrySnapshot?>(new DownloadClientTelemetrySnapshot(
                 client.Id, client.Name, Protocol, null, "healthy", null,

@@ -89,7 +89,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
                 ? "Transmission already holds this release. Deluno is following the copy it has instead of sending another."
                 : request.TorrentFile is null ? "Release URL sent to Transmission." : "Torrent file sent to Transmission.") with
         {
-            ExternalId = added?.Id?.ToString(CultureInfo.InvariantCulture),
+            ExternalId = added?.HashString?.Trim().ToLowerInvariant() is { Length: > 0 } hashString ? hashString : added?.Id?.ToString(CultureInfo.InvariantCulture),
             IsDuplicateFollow = duplicate is not null
         };
     }
@@ -116,10 +116,10 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // 0 until then. Read together so LastActivityUtc below reflects
             // whichever is more recent, the same "most recent evidence of
             // life" a person actually wants from "last activity".
-            ["fields"] = new[] { "id", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "activityDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate", "trackerStats", "queuePosition", "seedRatioMode", "seedRatioLimit", "seedIdleMode", "seedIdleLimit" }
+            ["fields"] = new[] { "id", "hashString", "name", "status", "percentDone", "rateDownload", "rateUpload", "eta", "totalSize", "downloadedEver", "peersConnected", "peersSendingToUs", "addedDate", "activityDate", "doneDate", "downloadDir", "labels", "error", "errorString", "isStalled", "uploadRatio", "secondsSeeding", "isPrivate", "trackerStats", "queuePosition", "seedRatioMode", "seedRatioLimit", "seedIdleMode", "seedIdleLimit" }
         }), cancellationToken);
         var queue = (response.Arguments?.Torrents ?? []).Select(item => new DownloadQueueItem(
-            item.Id?.ToString(CultureInfo.InvariantCulture) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
+            StableId(item) ?? item.Name ?? Guid.CreateVersion7().ToString("N"), client.Id, client.Name, client.Protocol,
             DownloadClientHelpers.InferMediaType(client, item.Labels?.FirstOrDefault()), DownloadClientHelpers.CleanReleaseTitle(item.Name ?? "Unknown Transmission item"),
             item.Name ?? "Unknown Transmission item", item.Labels?.FirstOrDefault() ?? string.Empty, Status(item),
             Math.Clamp(Math.Round((item.PercentDone ?? 0) * 100, 1), 0, 100), Math.Round((item.RateDownload ?? 0) / 1_000_000d, 1), Math.Max(0, item.Eta ?? 0),
@@ -148,7 +148,8 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             // #1026: queuePosition counts from 0 in Transmission; the screen counts from 1.
             // The seed limits are the torrent's own mode and limit, in plain words.
             QueuePosition: item.QueuePosition is >= 0 ? item.QueuePosition + 1 : null,
-            SeedLimit: SeedLimitText.ForTransmission(item.SeedRatioMode, item.SeedRatioLimit, item.SeedIdleMode, item.SeedIdleLimit)))
+            SeedLimit: SeedLimitText.ForTransmission(item.SeedRatioMode, item.SeedRatioLimit, item.SeedIdleMode, item.SeedIdleLimit),
+            LegacyId: string.IsNullOrWhiteSpace(item.HashString) ? null : item.Id?.ToString(CultureInfo.InvariantCulture)))
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(client, baseUri, cancellationToken);
@@ -157,6 +158,38 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             freeSpaceBytes,
             null);
         return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+    }
+
+    /// <summary>
+    /// The id Deluno files a torrent under: its info-hash (#1062). Transmission's
+    /// numeric <c>id</c> belongs to the running session and is handed out
+    /// again after a restart, so it cannot say who a torrent is; the hash never
+    /// changes. Falls back to the number only for a daemon that sends no hash.
+    /// </summary>
+    private static string? StableId(TransmissionTorrent item)
+        => !string.IsNullOrWhiteSpace(item.HashString)
+            ? item.HashString.Trim().ToLowerInvariant()
+            : item.Id?.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// What goes in a request's <c>ids</c> list: Transmission accepts either a
+    /// number or an info-hash string there. An id that is neither is refused
+    /// before anything is sent.
+    /// </summary>
+    internal static object? RpcId(string queueItemId)
+    {
+        var value = queueItemId?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
+        {
+            return number;
+        }
+
+        return value.Length is 40 or 64 && value.All(Uri.IsHexDigit) ? value.ToLowerInvariant() : null;
     }
 
     /// <summary>
@@ -231,7 +264,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
     public override async Task<IReadOnlyList<string>?> GetFilesAsync(DownloadClientItem client, string queueItemId, CancellationToken cancellationToken)
     {
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
-        if (baseUri is null || !int.TryParse(queueItemId, out var id)) return null;
+        if (baseUri is null || RpcId(queueItemId) is not { } id) return null;
 
         try
         {
@@ -280,7 +313,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         if (method is null) return DownloadClientHelpers.Unsupported(client, queueItemId, action, "Transmission");
         var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
         if (baseUri is null) return DownloadClientHelpers.MissingAddress(client, queueItemId, action);
-        if (!DownloadClientHelpers.TryParseId(queueItemId, out var torrentId))
+        if (RpcId(queueItemId) is not { } torrentId)
         {
             return DownloadClientHelpers.UnreadableId(client, queueItemId, action, "Transmission");
         }
@@ -426,7 +459,7 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
         [property: JsonPropertyName("size-bytes")] long? SizeBytes = null,
         [property: JsonPropertyName("rpc-version")] int? RpcVersion = null);
     private sealed record TransmissionAdded([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("hashString")] string? HashString);
-    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null);
+    private sealed record TransmissionTorrent([property: JsonPropertyName("id")] int? Id, [property: JsonPropertyName("name")] string? Name, [property: JsonPropertyName("status")] int? Status, [property: JsonPropertyName("percentDone")] double? PercentDone, [property: JsonPropertyName("rateDownload")] long? RateDownload, [property: JsonPropertyName("rateUpload")] long? RateUpload, [property: JsonPropertyName("eta")] int? Eta, [property: JsonPropertyName("totalSize")] long? TotalSize, [property: JsonPropertyName("downloadedEver")] long? DownloadedEver, [property: JsonPropertyName("peersConnected")] int? PeersConnected, [property: JsonPropertyName("addedDate")] long? AddedDate, [property: JsonPropertyName("downloadDir")] string? DownloadDir, [property: JsonPropertyName("labels")] IReadOnlyList<string>? Labels, [property: JsonPropertyName("error")] int? Error, [property: JsonPropertyName("errorString")] string? ErrorString, [property: JsonPropertyName("peersSendingToUs")] int? PeersSendingToUs = null, [property: JsonPropertyName("isStalled")] bool? IsStalled = null, [property: JsonPropertyName("uploadRatio")] double? UploadRatio = null, [property: JsonPropertyName("secondsSeeding")] long? SecondsSeeding = null, [property: JsonPropertyName("isPrivate")] bool? IsPrivate = null, [property: JsonPropertyName("trackerStats")] IReadOnlyList<TransmissionTrackerStat>? TrackerStats = null, [property: JsonPropertyName("files")] IReadOnlyList<TransmissionFile>? Files = null, [property: JsonPropertyName("activityDate")] long? ActivityDate = null, [property: JsonPropertyName("doneDate")] long? DoneDate = null, [property: JsonPropertyName("queuePosition")] int? QueuePosition = null, [property: JsonPropertyName("seedRatioMode")] int? SeedRatioMode = null, [property: JsonPropertyName("seedRatioLimit")] double? SeedRatioLimit = null, [property: JsonPropertyName("seedIdleMode")] int? SeedIdleMode = null, [property: JsonPropertyName("seedIdleLimit")] int? SeedIdleLimit = null, [property: JsonPropertyName("hashString")] string? HashString = null);
 
     /// <summary>One tracker's own last-announce result, from Transmission's <c>trackerStats</c> (#878).</summary>
     private sealed record TransmissionTrackerStat(

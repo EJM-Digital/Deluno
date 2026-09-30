@@ -161,6 +161,17 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Moves a dispatch from an id the client used to file the item under (a
+    /// Transmission torrent number) to the id it is filed under now (its
+    /// hash). Only when the dispatch still holds exactly <paramref name="oldId"/>.
+    /// </summary>
+    Task<bool> ReplaceClientItemIdAsync(
+        string dispatchId,
+        string oldId,
+        string newId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records the client's own id on a dispatch that has none. Never
     /// overwrites an id that is already there.
     /// </summary>

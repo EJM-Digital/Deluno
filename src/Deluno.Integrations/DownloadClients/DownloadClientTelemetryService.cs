@@ -199,6 +199,7 @@ public sealed class DownloadClientTelemetryService(
                 // on how many newer dispatches came after Deluno sent a
                 // long-seeding torrent (#1062). The recent window stays as
                 // the base for everything that is about recent activity.
+                await UpgradeLegacyItemIdsAsync(client.Id, liveSnapshot, cancellationToken);
                 var reported = await FindDispatchesForReportedIdsAsync(client.Id, liveSnapshot, cancellationToken);
                 var settledForClient = MergeDispatches(
                     settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
@@ -363,13 +364,58 @@ public sealed class DownloadClientTelemetryService(
             : await dispatchesRepository.FindDispatchesByClientItemIdsAsync(clientId, ids, cancellationToken);
     }
 
+    /// <summary>
+    /// A dispatch recorded before Deluno keyed Transmission on the torrent's
+    /// hash holds the session's numeric id. When the client shows an item that
+    /// still carries that number as its old id, under the same release name as
+    /// that dispatch, the dispatch is moved to the item's hash so it stays
+    /// Deluno's. Nothing is claimed that has no dispatch of its own (#1062).
+    /// </summary>
+    private async Task UpgradeLegacyItemIdsAsync(
+        string clientId,
+        DownloadClientTelemetrySnapshot live,
+        CancellationToken cancellationToken)
+    {
+        var legacy = live.Queue.Where(item => !string.IsNullOrWhiteSpace(item.LegacyId)).ToArray();
+        if (legacy.Length == 0)
+        {
+            return;
+        }
+
+        static string Plain(string? name)
+            => string.Concat((name ?? string.Empty).Where(char.IsLetterOrDigit)).ToLowerInvariant();
+
+        try
+        {
+            var found = await dispatchesRepository.FindDispatchesByClientItemIdsAsync(
+                clientId, legacy.Select(item => item.LegacyId!).ToArray(), cancellationToken);
+            foreach (var item in legacy)
+            {
+                var dispatch = found.FirstOrDefault(candidate =>
+                    string.Equals(candidate.TorrentHashOrItemId?.Trim(), item.LegacyId!.Trim(), StringComparison.Ordinal)
+                    && Plain(candidate.ReleaseName).Length > 0
+                    && Plain(candidate.ReleaseName) == Plain(item.ReleaseName));
+                if (dispatch is not null)
+                {
+                    await dispatchesRepository.ReplaceClientItemIdAsync(
+                        dispatch.Id, dispatch.TorrentHashOrItemId!, item.Id, cancellationToken);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The next poll tries again; nothing is claimed meanwhile.
+        }
+    }
+
+    // The newer read (second) wins for a dispatch that is in both.
     private static IReadOnlyList<DownloadDispatchItem> MergeDispatches(
         IEnumerable<DownloadDispatchItem> first,
         IEnumerable<DownloadDispatchItem> second)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var merged = new List<DownloadDispatchItem>();
-        foreach (var dispatch in first.Concat(second))
+        foreach (var dispatch in second.Concat(first))
         {
             if (seen.Add(dispatch.Id))
             {

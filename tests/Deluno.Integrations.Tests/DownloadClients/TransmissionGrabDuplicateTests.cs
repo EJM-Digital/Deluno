@@ -24,7 +24,7 @@ public sealed class TransmissionGrabDuplicateTests
             .GrabAsync(Client(), Request(), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("7", result.ExternalId);
+        Assert.Equal("abc", result.ExternalId);
         Assert.True(result.IsDuplicateFollow);
         Assert.Contains("already holds this release", result.Message, StringComparison.Ordinal);
     }

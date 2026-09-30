@@ -966,6 +966,29 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
     }
 
+    public async Task<bool> ReplaceClientItemIdAsync(
+        string dispatchId,
+        string oldId,
+        string newId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE download_dispatches
+            SET torrent_hash_or_item_id = @newId
+            WHERE id = @dispatchId
+              AND torrent_hash_or_item_id = @oldId
+            """;
+        AddParameter(command, "@dispatchId", dispatchId);
+        AddParameter(command, "@oldId", oldId);
+        AddParameter(command, "@newId", newId);
+        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
+
     public async Task RecordClientItemIdAsync(
         string dispatchId,
         string clientItemId,
