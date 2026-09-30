@@ -475,7 +475,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             BestCandidate = best,
             Candidates = kept,
             Summary = best is null
-                ? "Only a season pack was offered, and it would download episodes that were removed. New episodes are fetched one at a time."
+                ? "Only a season pack was offered, and it would download episodes that were unmonitored or removed. New episodes are fetched one at a time."
                 : plan.Summary,
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
