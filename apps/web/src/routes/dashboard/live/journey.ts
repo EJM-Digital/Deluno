@@ -36,6 +36,8 @@ export interface JourneyCard {
   etaSeconds?: number;
   /** When it reached this stage or finished, for "2 min ago". */
   at?: string | null;
+  /** The download in its client, when it is one (for its Search again button). */
+  queueRef?: { clientId: string; itemId: string };
   /** Where to act on it. */
   to: string;
 }
@@ -127,6 +129,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     const mediaType = mediaKind(dispatch?.mediaType ?? item.mediaType);
     cards.push({
       key: `${item.clientId}:${item.id}`,
+      queueRef: { clientId: item.clientId, itemId: item.id },
       stage,
       title: item.title || titleFromRelease(item.releaseName),
       mediaType,

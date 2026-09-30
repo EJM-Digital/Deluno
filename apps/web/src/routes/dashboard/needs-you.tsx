@@ -87,7 +87,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
       if (item.id === "recovery") {
         return recoveryCases.map((entry) => (
           <li key={`recovery:${entry.mediaType}:${entry.id}`} className={row}>
-            <StatusLed tone="warn" />
+            <StatusLed tone="warn" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{entry.title}</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{recoveryLabel(entry)}: {entry.summary}</span>
@@ -99,7 +99,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
       if (item.id === "failed-imports") {
         return failedImportJobs.map((job, index) => (
           <li key={`import:${job.id}`} className={row}>
-            <StatusLed tone="bad" />
+            <StatusLed tone="bad" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">An import didn{"’"}t finish</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{job.lastError ?? "It stopped without saying why."}</span>
@@ -127,7 +127,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
       if (item.id === "handoffs") {
         return handoffs.map((handoff) => (
           <li key={`handoff:${handoff.id}`} className={row}>
-            <StatusLed tone="bad" />
+            <StatusLed tone="bad" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{handoff.releaseName}</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`}</span>
@@ -155,7 +155,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
       // A stalled download or one with a warning: the download is in Downloads now, the button is in Transfers.
       return [
         <li key={item.id} className={row}>
-          <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
+          <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} pulse />
           <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
             <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
             <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
@@ -178,7 +178,7 @@ export function setupProblemRows(attention: DashboardAttention): ReactElement[] 
     .filter((item) => item.tab === "system")
     .map((item) => (
       <li key={item.id} className={row}>
-        <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
+        <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} pulse />
         <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
           <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
           <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>

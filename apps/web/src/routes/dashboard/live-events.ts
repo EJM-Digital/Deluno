@@ -59,6 +59,7 @@ export interface LiveActivityRow {
   id: string;
   message: string;
   label?: string | null;
+  severity?: string | null;
   category: string;
   createdUtc: string;
   relatedEntityType?: string | null;
@@ -67,7 +68,7 @@ export interface LiveActivityRow {
   fresh: boolean;
 }
 
-const LIVE_ACTIVITY_LIMIT = 30;
+const LIVE_ACTIVITY_LIMIT = 60;
 
 /**
  * The newest activity: what arrived live above what the summary holds. A row is
@@ -80,7 +81,7 @@ export function useLiveActivity(recent: DashboardActivityItem[]): LiveActivityRo
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     setArrived((current) => {
       if (current.some((row) => row.id === event.id)) return current;
-      return [{ id: event.id, message: event.message, label: event.label, category: event.category, createdUtc: event.createdUtc, fresh: true }, ...current].slice(0, LIVE_ACTIVITY_LIMIT);
+      return [{ id: event.id, message: event.message, label: event.label, severity: event.severity, category: event.category, createdUtc: event.createdUtc, fresh: true }, ...current].slice(0, LIVE_ACTIVITY_LIMIT);
     });
   });
 
