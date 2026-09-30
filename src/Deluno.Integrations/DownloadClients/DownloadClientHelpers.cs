@@ -529,5 +529,44 @@ internal static class DownloadClientHelpers
         return ("degraded", $"{baseMessage} Only {freeGb.ToString(CultureInfo.InvariantCulture)} GB free — downloads will start failing once it runs out.");
     }
 
+    /// <summary>
+    /// Free space on the drive holding <paramref name="path"/>, measured at the
+    /// nearest folder on that path that already exists (#1060). A download
+    /// folder a client creates itself on its first download does not exist
+    /// yet on a fresh install, and asking the client about it (or the drive
+    /// about a folder that is not there) answers nothing, which Health showed
+    /// as "could not read free space". The space a future download will use
+    /// is the space of the drive it will be created on, so this walks up to the
+    /// first folder that exists. Null only when the path is not a rooted path
+    /// on this machine, or the drive cannot report.
+    /// </summary>
+    internal static long? FreeSpaceOfNearestExistingFolder(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var current = path.Trim();
+            if (!Path.IsPathRooted(current))
+            {
+                return null;
+            }
+
+            current = Path.GetFullPath(current);
+            while (!string.IsNullOrEmpty(current) && !Directory.Exists(current))
+            {
+                current = Path.GetDirectoryName(current.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            }
+
+            return string.IsNullOrEmpty(current) ? null : new DriveInfo(Path.GetPathRoot(current) ?? current).AvailableFreeSpace;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
     private const long LowDiskSpaceThresholdBytes = 5_000_000_000L;
 }

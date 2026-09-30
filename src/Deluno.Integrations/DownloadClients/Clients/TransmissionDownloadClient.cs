@@ -215,7 +215,9 @@ public sealed class TransmissionDownloadClient(IHttpClientFactory httpClientFact
             }
 
             var freeSpace = await SendAsync(client, baseUri, new TransmissionRequest("free-space", new() { ["path"] = downloadDir }), cancellationToken);
-            return freeSpace.Arguments?.SizeBytes;
+            // #1060: a download folder that does not exist yet answers nothing; measure the drive it will be created on.
+            return freeSpace.Arguments?.SizeBytes
+                ?? (ClientSaveFolders.IsSameMachine(client) ? DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(downloadDir) : null);
         }
         catch (Exception exception) when (exception is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {

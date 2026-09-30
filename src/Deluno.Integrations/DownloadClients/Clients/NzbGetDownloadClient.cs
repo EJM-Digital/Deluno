@@ -87,6 +87,14 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         }).ToArray();
         var history = await GetHistoryCoreAsync(http, client, baseUri, capturedUtc, cancellationToken);
         var freeSpaceBytes = status?.FreeDiskSpaceMB is > 0 ? status.FreeDiskSpaceMB.Value * 1_000_000L : (long?)null;
+        // #1060: NZBGet reports 0 (FreeDiskSpaceLo/Hi all ones) while its
+        // DestDir does not exist, which it only creates on the first download.
+        // When it runs on this machine, measure the nearest folder on that
+        // path that does exist instead of leaving Health "unknown".
+        if (freeSpaceBytes is null && ClientSaveFolders.IsSameMachine(client))
+        {
+            freeSpaceBytes = DownloadClientHelpers.FreeSpaceOfNearestExistingFolder(await GetDestDirAsync(http, baseUri, cancellationToken));
+        }
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to NZBGet at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
@@ -334,6 +342,26 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
         return (await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<NzbGetStatus>>(http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("status", []), cancellationToken))?.Result;
     }
 
+    /// <summary>NZBGet's configured DestDir with ${MainDir}-style references resolved, or null when it cannot be read.</summary>
+    private static async Task<string?> GetDestDirAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<IReadOnlyList<NzbGetOption>>>(
+                http, new Uri(baseUri, "jsonrpc"), new NzbGetRequest("config", []), cancellationToken);
+            var options = (response?.Result ?? []).Where(option => option.Name is not null)
+                .GroupBy(option => option.Name!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+            var destDir = System.Text.RegularExpressions.Regex.Replace(
+                options.GetValueOrDefault("DestDir") ?? string.Empty, @"\$\{(\w+)\}",
+                match => options.TryGetValue(match.Groups[1].Value, out var inner) ? inner : match.Value);
+            return string.IsNullOrWhiteSpace(destDir) ? null : destDir;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
     // #812: version() is its own RPC method, distinct from status(). A
     // failure here should never take down the whole snapshot.
     private static async Task<string?> GetVersionAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
