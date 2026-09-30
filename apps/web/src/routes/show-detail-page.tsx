@@ -107,6 +107,7 @@ import { TitleMarkLabel } from "../components/ui/title-mark";
 import { formatAirDateTime, formatDateTime as formatPreferenceDateTime, formatRuntime, formatShortDate, useDisplayPreferences } from "../lib/display-preferences";
 import { readAlternateTitles, readArtworkExtras, readReleaseFactsByCountry, selectCountryFacts } from "../lib/ui-adapters";
 import { seasonMonitorState } from "./season-pass-page";
+import { parseSearchCandidates, searchCandidateCount } from "../lib/search-history";
 
 interface ShowDetailLoaderData {
   acquisitionBlockers: AcquisitionBlockersResponse | null;
@@ -2368,10 +2369,10 @@ export function ShowDetailPage() {
               />
             </DrawerSection>
 
-            {parseSearchCandidates(openSearch.detailsJson).length ? (
+            {parseSearchCandidates(openSearch.detailsJson, normalizeSearchCandidate).length ? (
               <DrawerSection title="Release outcomes" aside={`${searchCandidateCount(openSearch.detailsJson)} considered`}>
                 <DrawerFacts
-                  items={parseSearchCandidates(openSearch.detailsJson)
+                  items={parseSearchCandidates(openSearch.detailsJson, normalizeSearchCandidate)
                     .slice(0, 6)
                     .map((candidate) => ({
                       label: candidate.releaseName,
@@ -2601,36 +2602,6 @@ function SortHeader({ label, active, direction, onClick }: { label: string; acti
       <ArrowUpDown aria-hidden className={cn("h-3 w-3", active && (direction === "asc" ? "rotate-180" : ""))} />
     </button>
   );
-}
-
-function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[] {
-  if (!detailsJson) return [];
-
-  try {
-    const parsed = JSON.parse(detailsJson) as { candidates?: unknown };
-    if (!Array.isArray(parsed.candidates)) return [];
-    return parsed.candidates
-      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-      .map((item) => normalizeSearchCandidate(item));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * How many releases the search compared. A stored search keeps only the first few
- * (#1083) and says how many there were; older rows list them all.
- */
-function searchCandidateCount(detailsJson: string | null): number {
-  const listed = parseSearchCandidates(detailsJson).length;
-  if (!detailsJson) return listed;
-  try {
-    const parsed = JSON.parse(detailsJson) as { candidateCount?: unknown; CandidateCount?: unknown };
-    const stored = Number(parsed.candidateCount ?? parsed.CandidateCount);
-    return Number.isFinite(stored) && stored > listed ? stored : listed;
-  } catch {
-    return listed;
-  }
 }
 
 function normalizeSearchCandidate(value: Record<string, unknown>): SearchPlanCandidate {
