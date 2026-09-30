@@ -86,4 +86,38 @@ public sealed class SeriesBulkRenamePersistenceTests
         var after = (await repository.ListEpisodeFilePathsAsync(series.Id, CancellationToken.None)).Single();
         Assert.Equal(newPath, after.FilePath);
     }
+
+    [Fact]
+    public async Task UpdateEpisodeFileLocationsAsync_moves_the_shows_own_remembered_path_with_the_episodes()
+    {
+        var now = DateTimeOffset.Parse("2026-09-26T00:00:00Z");
+        var storage = TestStorage.Create();
+        using var _ = storage;
+        var timeProvider = new FixedTimeProvider(now);
+        await new SeriesSchemaInitializer(storage.Factory, new SqliteDatabaseMigrator(storage.Factory, timeProvider), NullLogger<SeriesSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+
+        var series = await repository.AddAsync(new CreateSeriesRequest("The Expanse", 2015, "tt3230854"), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(series.Id, [new CatalogueEpisodeItem(1, 1, "Dulcinea", null, now.AddDays(-40))], source: "tmdb", CancellationToken.None);
+        var oldPath = @"C:\tv-main\The Expanse (2015)\Season 01\S01E01.mkv";
+        await repository.ImportExistingAsync(
+            "tv-main", "The Expanse", 2015, "covered", "Imported.", "WEB 1080p", "WEB 1080p", true,
+            filePath: oldPath, fileSizeBytes: 1,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: oldPath, FileSizeBytes: 1)],
+            CancellationToken.None);
+        var episodeId = (await repository.ListEpisodeFilePathsAsync(series.Id, CancellationToken.None)).Single().EpisodeId;
+        var newPath = @"C:\tv-main\The Expanse (2015) [renamed]\Season 01\S01E01.mkv";
+
+        await repository.UpdateEpisodeFileLocationsAsync([(episodeId, oldPath, newPath)], CancellationToken.None);
+
+        await using var connection = await storage.Factory.OpenConnectionAsync("series", CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT file_path FROM series_wanted_state WHERE series_id = @id;";
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@id";
+        parameter.Value = series.Id;
+        command.Parameters.Add(parameter);
+        Assert.Equal(newPath, (string?)await command.ExecuteScalarAsync(CancellationToken.None));
+    }
 }

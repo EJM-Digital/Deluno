@@ -4787,6 +4787,21 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(command, "@previousFilePath", previousFilePath);
             AddParameter(command, "@newFilePath", newFilePath);
             await command.ExecuteNonQueryAsync(cancellationToken);
+
+            // The show's own row remembers one file's path too (real imports fill it, and the file-gone check reads it). It
+            // follows the rename in the same transaction, or the next check finds "its file" gone and unmonitors the show (#1072).
+            using var wanted = connection.CreateCommand();
+            wanted.Transaction = transaction;
+            wanted.CommandText =
+                """
+                UPDATE series_wanted_state SET file_path = @newFilePath
+                WHERE file_path = @previousFilePath COLLATE NOCASE
+                  AND series_id = (SELECT series_id FROM episode_entries WHERE id = @episodeId);
+                """;
+            AddParameter(wanted, "@episodeId", episodeId);
+            AddParameter(wanted, "@previousFilePath", previousFilePath);
+            AddParameter(wanted, "@newFilePath", newFilePath);
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
