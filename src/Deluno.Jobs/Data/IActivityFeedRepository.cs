@@ -70,4 +70,16 @@ public interface IActivityFeedRepository
         DateTimeOffset sinceUtc,
         int windowHours,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Counts of Activity rows since <paramref name="sinceUtc"/> by the hour of the day
+    /// (shifted by <paramref name="offsetMinutes"/> from UTC) and category, for the
+    /// Dashboard's "Today" bars (#1096). One indexed range read and a small GROUP BY.
+    /// </summary>
+    // Default empty so test doubles need not implement it; SqliteJobStore does the real work.
+    Task<IReadOnlyList<ActivityHourCount>> GetActivityCountsByHourAsync(
+        DateTimeOffset sinceUtc,
+        int offsetMinutes,
+        CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<ActivityHourCount>>([]);
 }
