@@ -73,6 +73,7 @@ import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
+import { ActionMenu } from "../components/ui/action-menu";
 import { TitleActionGrid } from "../components/app/title-action-grid";
 import { DecisionExplanationList } from "../components/app/decision-explanation-list";
 import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
@@ -1233,14 +1234,19 @@ export function ShowDetailPage() {
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-0.5 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-2"><RatingStrip ratings={series.ratings} fallbackRating={series.rating} /></div>
-              <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
-                <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{series.imdbId ?? "—"}</span></div>
+              {/* Source, IMDb and TheTVDB on one line (#1058): the panel may not outgrow the poster. */}
+              <div className="mt-3 flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap border-t border-hairline pt-3 text-xs">
+                {series.metadataProvider ? <SourceMark source={series.metadataProvider.toLowerCase()} label={series.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}
+                <span aria-hidden className="text-muted-foreground">·</span>
+                <span className="flex min-w-0 items-center gap-1.5"><SourceMark source="imdb" label="IMDb" /><span className="truncate font-mono font-medium text-foreground">{series.imdbId ?? "—"}</span></span>
                 {(series.tvDbId ?? metaText("TvDbId")) ? (
-                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">TheTVDB</span><span className="font-mono text-xs font-medium text-foreground">{series.tvDbId ?? metaText("TvDbId")}</span></div>
+                  <>
+                    <span aria-hidden className="text-muted-foreground">·</span>
+                    <span className="flex min-w-0 items-center gap-1.5"><span className="text-muted-foreground">TheTVDB</span><span className="truncate font-mono font-medium text-foreground">{series.tvDbId ?? metaText("TvDbId")}</span></span>
+                  </>
                 ) : null}
               </div>
-              {metaText("TvDbId") ? <TvdbAttribution className="mt-2" /> : null}
+              {metaText("TvDbId") ? <TvdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" /> : null}
               <TitleActionGrid>
               <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -1253,18 +1259,13 @@ export function ShowDetailPage() {
                 onChanged={() => revalidator.revalidate()}
                 disabled={busyAction !== null}
               />
-              <Button variant="outline" className="w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
-              {/* Destructive, so it sits with the other "manage this title" controls
-                  rather than beside the two searches in the toolbar. */}
-              <Button
-                variant="ghost"
-                className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setIsRemoveConfirmationOpen(true)}
-                disabled={busyAction !== null}
-              >
-                <Trash2 className="h-4 w-4" />
-                Remove from Deluno
-              </Button>
+              {/* Rarely used, so behind one button (#1058). */}
+              <ActionMenu
+                items={[
+                  { label: "Edit metadata", onSelect: () => setIsMetadataOpen(true) },
+                  { label: "Remove from Deluno", icon: <Trash2 className="h-4 w-4" />, destructive: true, disabled: busyAction !== null, onSelect: () => setIsRemoveConfirmationOpen(true) }
+                ]}
+              />
               </TitleActionGrid>
             </aside>
           </div>

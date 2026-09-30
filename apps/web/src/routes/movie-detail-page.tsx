@@ -51,6 +51,7 @@ import { BlockReleaseAction } from "../components/app/block-release-action";
 import { RemoveDownloadAction } from "../components/app/remove-download-action";
 import { TitleTagsEditor } from "../components/app/title-tags-editor";
 import { TitleFolderActions } from "../components/app/title-folder-actions";
+import { ActionMenu } from "../components/ui/action-menu";
 import { TitleActionGrid } from "../components/app/title-action-grid";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -956,9 +957,11 @@ export function MovieDetailPage() {
               <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Ratings &amp; IDs</p>
               <p className="mt-0.5 text-xs text-muted-foreground">The metadata Deluno is using</p>
               <div className="mt-2"><RatingStrip ratings={movie.ratings} fallbackRating={movie.rating} /></div>
-              <div className="mt-3 space-y-2 border-t border-hairline pt-3 text-sm">
-                <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Source</span>{movie.metadataProvider ? <SourceMark source={movie.metadataProvider.toLowerCase()} label={movie.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}</div>
-                <div className="flex items-center justify-between gap-3"><SourceMark source="imdb" label="IMDb" /><span className="font-mono text-xs font-medium text-foreground">{movie.imdbId ?? "—"}</span></div>
+              {/* Source, IMDb and TheTVDB on one line (#1058): the panel may not outgrow the poster. */}
+              <div className="mt-3 flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap border-t border-hairline pt-3 text-xs">
+                {movie.metadataProvider ? <SourceMark source={movie.metadataProvider.toLowerCase()} label={movie.metadataProvider.toUpperCase()} /> : <span className="font-medium text-foreground">Not linked</span>}
+                <span aria-hidden className="text-muted-foreground">·</span>
+                <span className="flex min-w-0 items-center gap-1.5"><SourceMark source="imdb" label="IMDb" /><span className="truncate font-mono font-medium text-foreground">{movie.imdbId ?? "—"}</span></span>
               </div>
               <TitleActionGrid>
               <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
@@ -972,26 +975,14 @@ export function MovieDetailPage() {
                 onChanged={() => revalidator.revalidate()}
                 disabled={busyAction !== null}
               />
-              <Button variant="outline" className="w-full" onClick={() => setIsMetadataOpen(true)}>Edit metadata</Button>
-              {/*
-                Separate from Edit metadata (#784): that drawer covers only
-                descriptive fields, and monitored state, quality profile and
-                path had no in-page edit surface at all — only the separate
-                bulk tools, which meant a single-title change needed the
-                multi-select flow.
-              */}
-              <Button variant="outline" className="w-full" onClick={() => setIsEditOpen(true)}>Edit movie</Button>
-              {/* Destructive, so it sits with the other "manage this title" controls
-                  rather than beside the two searches in the toolbar. */}
-              <Button
-                variant="ghost"
-                className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setIsRemoveConfirmationOpen(true)}
-                disabled={busyAction !== null}
-              >
-                <Trash2 className="h-4 w-4" />
-                Remove from Deluno
-              </Button>
+              {/* Rarely used, so behind one button (#1058). */}
+              <ActionMenu
+                items={[
+                  { label: "Edit metadata", onSelect: () => setIsMetadataOpen(true) },
+                  { label: "Edit movie", onSelect: () => setIsEditOpen(true) },
+                  { label: "Remove from Deluno", icon: <Trash2 className="h-4 w-4" />, destructive: true, disabled: busyAction !== null, onSelect: () => setIsRemoveConfirmationOpen(true) }
+                ]}
+              />
               </TitleActionGrid>
             </aside>
           </div>
