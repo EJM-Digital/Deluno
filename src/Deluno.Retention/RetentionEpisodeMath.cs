@@ -82,8 +82,16 @@ public sealed class RetentionEpisodeMath
         return inSeason.Length == 0 ? null : inSeason.Any(episode => episode.Monitored);
     }
 
+    /// <summary>
+    /// Still to come, for retention's "still airing" protection: a future air date, or no air date and no file yet (a season
+    /// announced with dates to be announced). An undated episode that already has a file is not to come. This is separate from the
+    /// rung, where an undated episode is Missing (#1072).
+    /// </summary>
+    public static bool StillToCome(SeriesEpisodeInventoryItem episode, DateTimeOffset now)
+        => EpisodeUpcoming(episode, now) || (episode.AirDateUtc is null && !episode.HasFile);
+
     private bool HasToCome(int season)
-        => _episodes.Any(episode => episode.SeasonNumber == season && (episode.AirDateUtc is null || episode.AirDateUtc > _now));
+        => _episodes.Any(episode => episode.SeasonNumber == season && StillToCome(episode, _now));
 
     private SeriesEpisodeInventoryItem? LastOf(int season)
         => _episodes.Where(episode => episode.SeasonNumber == season).OrderByDescending(episode => episode.EpisodeNumber).FirstOrDefault();
