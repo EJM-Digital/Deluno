@@ -470,6 +470,24 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             return cleared ? Results.Ok() : Results.BadRequest(new { message = "Could not clear this client's warnings." });
         });
 
+        // Resumes a client that is paused as a whole (SABnzbd, NZBGet). Not the
+        // per-item resume in queue/actions.
+        endpoints.MapPost("/api/download-clients/{clientId}/resume", async (
+            string clientId,
+            HttpContext httpContext,
+            IDownloadClientTelemetryService telemetryService,
+            CancellationToken cancellationToken) =>
+        {
+            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
+            if (denied is not null)
+            {
+                return denied;
+            }
+
+            var result = await telemetryService.ResumeClientAsync(clientId, cancellationToken);
+            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
+        });
+
         // The Queue's "why" behind removing a download (cleanup sheet J1/J2,
         // #924): one of QueueRemovalReasons, in plain words on the dialog
         // that asks it. Replaces the old single confirm and the "Allow

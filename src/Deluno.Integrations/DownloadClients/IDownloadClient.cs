@@ -73,4 +73,14 @@ public interface IDownloadClient
     /// </summary>
     Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
         => Task.FromResult(false);
+
+    /// <summary>
+    /// Resumes a client that has been paused as a whole (the snapshot&apos;s
+    /// <c>ClientPaused</c>): SABnzbd&apos;s <c>mode=resume</c>, NZBGet&apos;s
+    /// <c>resumedownload</c>, <c>resumepost</c> and <c>resumescan</c>. Not the
+    /// per-item resume. Torrent clients and the rest report no client-wide
+    /// pause, so they answer &quot;not supported&quot;.
+    /// </summary>
+    Task<ClientResumeResult> ResumeClientAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult(ClientResumeResult.NotSupported);
 }

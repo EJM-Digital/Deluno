@@ -149,6 +149,28 @@ public sealed class NzbGetDownloadClient(IHttpClientFactory httpClientFactory) :
     }
 
     /// <summary>
+    /// Resumes NZBGet as a whole. Its pause is three separate switches (downloads,
+    /// post-processing, folder scan), and status reports the client paused when
+    /// any of them is on, so all three are released.
+    /// </summary>
+    public override async Task<ClientResumeResult> ResumeClientAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null) return new ClientResumeResult(true, false, "NZBGet's address is missing.");
+        var http = CreateHttp(client);
+        var endpoint = new Uri(baseUri, "jsonrpc");
+        foreach (var method in new[] { "resumedownload", "resumepost", "resumescan" })
+        {
+            var response = await DownloadClientHelpers.PostJsonAsync<NzbGetResponse<bool?>>(http, endpoint, new NzbGetRequest(method, []), cancellationToken);
+            if (response is null) return new ClientResumeResult(true, false, "NZBGet did not answer when asked to resume.");
+            if (response.Error is { } error) return new ClientResumeResult(true, false, $"NZBGet would not resume: {error.Message ?? "no reason given"}.");
+            if (response.Result == false) return new ClientResumeResult(true, false, "NZBGet would not resume.");
+        }
+
+        return new ClientResumeResult(true, true, "NZBGet is downloading again.");
+    }
+
+    /// <summary>
     /// One NZBGet command per Deluno verb, and every one of them acting on the
     /// download the caller named.
     ///
