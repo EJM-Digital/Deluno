@@ -414,6 +414,16 @@ public sealed class RetentionRuleFieldTests
     }
 
     [Fact]
+    public void An_undated_special_or_an_unmonitored_episode_never_keeps_a_finished_show_airing()
+    {
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("sp", 0, 1, null, false), Now));
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("sp2", 0, 2, Now.AddDays(3), false), Now));
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("removed", 1, 5, null, false, monitored: false), Now));
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("later", 1, 6, Now.AddDays(3), false, monitored: false), Now));
+        Assert.True(RetentionEpisodeMath.StillToCome(Episode("next", 1, 7, Now.AddDays(3), false), Now));
+    }
+
+    [Fact]
     public void Still_to_come_is_a_future_date_or_no_date_and_no_file_and_every_finished_check_uses_it()
     {
         Assert.True(RetentionEpisodeMath.StillToCome(Episode("f", 1, 1, Now.AddDays(3), false), Now));
