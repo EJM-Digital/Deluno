@@ -3024,7 +3024,8 @@ public sealed class SqliteJobStore(
             transaction,
             category: activityCategory,
             message: activityMessage,
-            detailsJson: notesJson,
+            // The line names the release and the client; the full candidate list stays on the dispatch itself (#1083).
+            detailsJson: SearchHistoryDetails.Trim(notesJson),
             relatedJobId: null,
             relatedEntityType: entityType,
             relatedEntityId: entityId,
@@ -3419,6 +3420,43 @@ public sealed class SqliteJobStore(
 
         var recorded = await RecordActivityBatchAsync([activity], cancellationToken);
         return recorded[0];
+    }
+
+    public async Task<ActivityEventItem?> RecordActivityOnChangeAsync(
+        string category,
+        string message,
+        string? detailsJson,
+        string? relatedJobId,
+        string? relatedEntityType,
+        string? relatedEntityId,
+        CancellationToken cancellationToken)
+    {
+        await using (var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs,
+            cancellationToken))
+        {
+            using var latest = connection.CreateCommand();
+            latest.CommandText =
+                """
+                SELECT message
+                FROM activity_events
+                WHERE category = @category
+                  AND related_entity_type IS @relatedEntityType
+                  AND related_entity_id IS @relatedEntityId
+                ORDER BY created_utc DESC, id DESC
+                LIMIT 1;
+                """;
+            AddParameter(latest, "@category", category);
+            AddParameter(latest, "@relatedEntityType", relatedEntityType);
+            AddParameter(latest, "@relatedEntityId", relatedEntityId);
+            var previous = await latest.ExecuteScalarAsync(cancellationToken) as string;
+            if (string.Equals(previous, message, StringComparison.Ordinal))
+            {
+                return null;
+            }
+        }
+
+        return await RecordActivityAsync(category, message, detailsJson, relatedJobId, relatedEntityType, relatedEntityId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(

@@ -26,6 +26,15 @@ public interface IDelunoDatabaseMigration
     /// </summary>
     IReadOnlyCollection<string> SupersededChecksums => [];
 
+    /// <summary>
+    /// True for a migration that deletes or rewrites a large share of a table (#1083).
+    /// Once it has been applied and recorded, the migrator runs one VACUUM on the
+    /// database so the space goes back to the disk. VACUUM cannot run inside a
+    /// transaction, so it is a step after the commit; because the migration is
+    /// recorded, it never runs again.
+    /// </summary>
+    bool CompactsDatabaseAfterApply => false;
+
     Task UpAsync(
         DbConnection connection,
         DbTransaction transaction,

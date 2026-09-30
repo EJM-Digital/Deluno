@@ -1775,7 +1775,7 @@ export function MovieDetailPage() {
             </DrawerSection>
 
             {parseSearchCandidates(openSearch.detailsJson).length ? (
-              <DrawerSection title="Release outcomes" aside={`${parseSearchCandidates(openSearch.detailsJson).length} considered`}>
+              <DrawerSection title="Release outcomes" aside={`${searchCandidateCount(openSearch.detailsJson)} considered`}>
                 <DrawerFacts
                   items={parseSearchCandidates(openSearch.detailsJson)
                     .slice(0, 6)
@@ -1914,6 +1914,22 @@ function parseSearchCandidates(detailsJson: string | null): SearchPlanCandidate[
       .map((item) => normalizeSearchCandidate(item));
   } catch {
     return [];
+  }
+}
+
+/**
+ * How many releases the search compared. A stored search keeps only the first few
+ * (#1083) and says how many there were; older rows list them all.
+ */
+function searchCandidateCount(detailsJson: string | null): number {
+  const listed = parseSearchCandidates(detailsJson).length;
+  if (!detailsJson) return listed;
+  try {
+    const parsed = JSON.parse(detailsJson) as { candidateCount?: unknown; CandidateCount?: unknown };
+    const stored = Number(parsed.candidateCount ?? parsed.CandidateCount);
+    return Number.isFinite(stored) && stored > listed ? stored : listed;
+  } catch {
+    return listed;
   }
 }
 

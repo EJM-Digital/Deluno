@@ -737,7 +737,7 @@ public sealed class WorkPlanner(
 
             if (outcome.WouldReclaim)
             {
-                await activityFeedRepository.RecordActivityAsync(
+                await activityFeedRepository.RecordActivityOnChangeAsync(
                     "download.sharing.reclaim-previewed",
                     $"[Dry run] Would remove {item.Title} from {item.ClientName}: it finished sharing. {outcome.Reason}",
                     null,
@@ -750,7 +750,7 @@ public sealed class WorkPlanner(
 
             if (outcome.Reclaimed)
             {
-                await activityFeedRepository.RecordActivityAsync(
+                await activityFeedRepository.RecordActivityOnChangeAsync(
                     "download.sharing.reclaimed",
                     $"{item.Title} finished sharing and was removed from {item.ClientName}. {outcome.Reason}",
                     null,
@@ -766,7 +766,7 @@ public sealed class WorkPlanner(
                 // Discharged the same as a reclaim, but the entry and its
                 // files stay in the client — nothing about the library, and
                 // nothing left for this pass to keep tracking (#821).
-                await activityFeedRepository.RecordActivityAsync(
+                await activityFeedRepository.RecordActivityOnChangeAsync(
                     "download.sharing.stopped",
                     $"{item.Title} finished sharing. Seeding was stopped on {item.ClientName}, and the download was left in place. {outcome.Reason}",
                     null,
@@ -1182,7 +1182,7 @@ public sealed class WorkPlanner(
                     var waitingMessage = submission?.IsAccepted == true
                         ? $"Deluno submitted {item.Title} to {connection!.Name} and is waiting for a cleaned output."
                         : $"{item.Title} is complete in {item.ClientName}; Deluno is waiting for {library.ProcessorName ?? "the configured processor"} to produce a cleaned output.";
-                    await activityFeedRepository.RecordActivityAsync(
+                    await activityFeedRepository.RecordActivityOnChangeAsync(
                         "processing.waiting",
                         waitingMessage,
                         JsonSerializer.Serialize(new

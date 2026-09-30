@@ -2541,7 +2541,7 @@ public sealed class SqliteMovieCatalogRepository(
             AddParameter(history, "@releaseName", releaseName);
             AddParameter(history, "@indexerName", indexerName);
             AddParameter(history, "@indexerId", indexerId);
-            AddParameter(history, "@detailsJson", detailsJson);
+            AddParameter(history, "@detailsJson", SearchHistoryDetails.Trim(detailsJson));
             AddParameter(history, "@createdUtc", now.ToString("O"));
             await history.ExecuteNonQueryAsync(cancellationToken);
         }

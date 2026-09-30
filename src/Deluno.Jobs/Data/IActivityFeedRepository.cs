@@ -26,6 +26,23 @@ public interface IActivityFeedRepository
         string? relatedEntityId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Writes a line about a condition that holds for as long as it holds (#1083):
+    /// once when it starts, again only when what it says changes, never on every
+    /// check cycle. A line is skipped when the newest line of the same category
+    /// about the same item already says exactly this. Returns null when skipped.
+    /// </summary>
+    // Default records every time, so a test double need not implement the check; SqliteJobStore does.
+    async Task<ActivityEventItem?> RecordActivityOnChangeAsync(
+        string category,
+        string message,
+        string? detailsJson,
+        string? relatedJobId,
+        string? relatedEntityType,
+        string? relatedEntityId,
+        CancellationToken cancellationToken)
+        => await RecordActivityAsync(category, message, detailsJson, relatedJobId, relatedEntityType, relatedEntityId, cancellationToken);
+
     Task<IReadOnlyList<ActivityEventItem>> RecordActivityBatchAsync(
         IReadOnlyList<ActivityEventItem> activities,
         CancellationToken cancellationToken);
