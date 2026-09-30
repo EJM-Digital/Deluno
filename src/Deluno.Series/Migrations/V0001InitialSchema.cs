@@ -61,7 +61,8 @@ public static class SeriesDatabaseMigrations
         new V0050SeriesSubtitleAttemptHistory(),
         new V0051SeriesSubtitleAttemptHistoryScore(),
         new V0052SeriesSearchHistoryIndexerId(),
-        new V0053SeriesScreenQueryIndexes()
+        new V0053SeriesScreenQueryIndexes(),
+        new V0054TrimSeriesSearchHistory()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

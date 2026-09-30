@@ -2218,7 +2218,7 @@ public sealed class DownloadClientTelemetryService(
     /// would have saved it, so Deluno imported it without asking (#927 stage 2).
     /// </summary>
     private async Task RecordFoundOnDiskAsync(DownloadDispatchItem dispatch, string sourcePath, CancellationToken cancellationToken)
-        => await activityFeedRepository.RecordActivityAsync(
+        => await activityFeedRepository.RecordActivityOnChangeAsync(
             "download.vanished.recovered",
             $"{dispatch.ReleaseName} was no longer in {dispatch.DownloadClientName}'s list, but Deluno found its files at {sourcePath} and is importing them as normal.",
             null,

@@ -89,6 +89,41 @@ public sealed class SqliteDatabaseMigrator(
             await migration.UpAsync(connection, transaction, cancellationToken);
             await RecordAppliedMigrationAsync(connection, transaction, migration, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+
+            if (migration.CompactsDatabaseAfterApply)
+            {
+                await CompactAsync(connection, databaseName, migration, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One VACUUM after a trimming migration, so the file shrinks. A failure is logged
+    /// and does not stop start-up: the data is right, the file is only larger than it
+    /// needs to be.
+    /// </summary>
+    private async Task CompactAsync(
+        DbConnection connection,
+        string databaseName,
+        IDelunoDatabaseMigration migration,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            logger?.LogInformation("Compacting the {Database} database after {Migration}.", databaseName, migration.Name);
+            using var vacuum = connection.CreateCommand();
+            vacuum.CommandTimeout = 0;
+            vacuum.CommandText = "VACUUM;";
+            await vacuum.ExecuteNonQueryAsync(cancellationToken);
+
+            using var checkpoint = connection.CreateCommand();
+            checkpoint.CommandTimeout = 0;
+            checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            await checkpoint.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(ex, "Could not compact the {Database} database after {Migration}; it works, the file is just larger than it needs to be.", databaseName, migration.Name);
         }
     }
 

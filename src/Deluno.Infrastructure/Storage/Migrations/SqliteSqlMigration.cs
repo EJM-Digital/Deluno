@@ -46,6 +46,9 @@ public abstract class SqliteSqlMigration : IDelunoDatabaseMigration
 
     protected abstract string Sql { get; }
 
+    /// <summary>See <see cref="IDelunoDatabaseMigration.CompactsDatabaseAfterApply"/>.</summary>
+    public virtual bool CompactsDatabaseAfterApply => false;
+
     public async Task UpAsync(
         DbConnection connection,
         DbTransaction transaction,
