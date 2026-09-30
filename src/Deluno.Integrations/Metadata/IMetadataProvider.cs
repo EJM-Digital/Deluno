@@ -29,23 +29,19 @@ public interface IMetadataProvider
 
     /// <summary>
     /// The full season/episode catalogue for a series, from the provider rather
-    /// than from disk. Returns an empty list when the provider cannot answer.
-    /// </summary>
-    Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
-        string providerId,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// The same catalogue with the source chosen by the caller. A show whose
-    /// episodes already exist on TMDb's numbering asks for
+    /// than from disk, with the source chosen by the caller. Returns an empty
+    /// list when the provider cannot answer. There is deliberately no call
+    /// without a source: callers reach this only through
+    /// <see cref="MetadataCatalogueChoice"/>, which holds a show back when
+    /// TheTVDB does not answer or answers with another show's episodes. A show
+    /// whose episodes already exist on TMDb's numbering asks for
     /// <see cref="MetadataCatalogueSource.TmdbOnly"/> when TheTVDB's aired
     /// numbering would not line up with them.
     /// </summary>
     Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
         string providerId,
         MetadataCatalogueSource source,
-        CancellationToken cancellationToken)
-        => GetSeriesCatalogueAsync(providerId, cancellationToken);
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Every alternate episode ordering TMDb's episode_groups endpoint

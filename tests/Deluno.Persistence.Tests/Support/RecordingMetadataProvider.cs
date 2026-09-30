@@ -62,6 +62,7 @@ internal sealed class RecordingMetadataProvider(
 
     public Task<IReadOnlyList<MetadataSeason>> GetSeriesCatalogueAsync(
         string providerId,
+        MetadataCatalogueSource source,
         CancellationToken cancellationToken)
         => throw new NotSupportedException();
 

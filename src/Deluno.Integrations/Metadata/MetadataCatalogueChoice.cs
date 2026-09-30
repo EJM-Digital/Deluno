@@ -48,6 +48,15 @@ public static class MetadataCatalogueChoice
 
         if (existingEpisodes.Count > 0 && onTvdb && !preferredHasTvdb)
         {
+            if (deliberateRelink && preferred.Count > 0)
+            {
+                // A person choosing a record that has no TheTVDB list (usually to correct a wrong
+                // TheTVDB link) is not an unattended refresh: they see the preview of what
+                // changes, and the apply rules still refuse a list that lacks an episode Deluno
+                // already has. TMDb's list for the record they chose goes through, flagged.
+                return new MetadataCatalogueChoiceResult(preferred, TvdbDisagreesButChosen: true);
+            }
+
             return new MetadataCatalogueChoiceResult([], MetadataCatalogueHold.TvdbUnavailable);
         }
 
