@@ -230,7 +230,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
 
     private static async Task<DashboardDownloadsSection> DownloadsAsync(IServiceProvider sp, DateTimeOffset now)
     {
-        var reading = sp.GetRequiredService<IDashboardDownloadsSnapshot>().Latest;
+        var reading = sp.GetRequiredService<IDownloadTelemetrySnapshotStore>().Current?.Overview;
         var clientsTask = sp.GetRequiredService<Deluno.Connections.Data.IConnectionsRepository>().ListDownloadClientsAsync(CancellationToken.None);
         var sharingTask = sp.GetRequiredService<IDownloadSharingRepository>().GetSnapshotAsync(CancellationToken.None);
         var failedTask = sp.GetRequiredService<DashboardCountsStore>().CountFailedDownloadsAsync(CancellationToken.None);
@@ -401,7 +401,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             return new DashboardQueuePauseGate(false, limit, false, false, 0, 0, false, null);
         }
 
-        var reading = sp.GetRequiredService<IDashboardDownloadsSnapshot>().Latest;
+        var reading = sp.GetRequiredService<IDownloadTelemetrySnapshotStore>().Current?.Overview;
         if (reading is null)
         {
             // Nothing read yet: the gate cannot say either way, and does not pretend to.

@@ -19,6 +19,24 @@ using Xunit.Abstractions;
 
 namespace Deluno.Persistence.Tests.Api;
 
+/// <summary>A snapshot store that already holds one capture and never asks a client.</summary>
+internal sealed class HeldSnapshotStore(DownloadTelemetryCapture capture, DateTimeOffset capturedUtc) : IDownloadTelemetrySnapshotStore
+{
+    public DownloadTelemetryCapture? Current => capture;
+
+    public DateTimeOffset? CapturedUtc => capturedUtc;
+
+    public Task<SnapshotEntry<DownloadTelemetryCapture>?> GetLatestAsync(TimeSpan maxAge, CancellationToken cancellationToken)
+        => Task.FromResult<SnapshotEntry<DownloadTelemetryCapture>?>(new SnapshotEntry<DownloadTelemetryCapture>(capture, capturedUtc));
+
+    public Task<SnapshotEntry<DownloadTelemetryCapture>> RefreshAsync(TimeSpan reuseWithin, CancellationToken cancellationToken)
+        => Task.FromResult(new SnapshotEntry<DownloadTelemetryCapture>(capture, capturedUtc));
+
+    public void MarkStale()
+    {
+    }
+}
+
 /// <summary>
 /// GET /api/dashboard/summary (#1082, #1081): one compact response for every
 /// Dashboard panel, from stored rows and in-memory readings only.
@@ -148,19 +166,22 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_last_download_reading_fills_the_downloads_panel_without_a_client_call()
+    public async Task The_held_download_snapshot_fills_the_downloads_panel_without_a_client_call()
     {
+        // The same snapshot Downloads Now and /api/download-clients/telemetry read: held, never a live call,
+        // and no progress publisher has run (#1082).
         var telemetry = DispatchProxy.Create<IDownloadClientTelemetryService, CallCountingProxy>();
         var calls = (CallCountingProxy)(object)telemetry;
-        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
-            services.AddScoped(_ => telemetry));
-
         var capturedUtc = DateTimeOffset.UtcNow.AddSeconds(-5);
         var summaryOf = new DownloadTelemetrySummary(
             ActiveCount: 3, QueuedCount: 4, CompletedCount: 1, StalledCount: 2, ProcessingCount: 5,
             ImportReadyCount: 6, TotalSpeedMbps: 12.3, WaitingForProcessorCount: 1, TotalUploadSpeedMbps: 0.5);
-        app.Services.GetRequiredService<IDashboardDownloadsSnapshot>()
-            .Publish(new DownloadTelemetryOverview(summaryOf, [], capturedUtc));
+        var held = new HeldSnapshotStore(new DownloadTelemetryCapture(new DownloadTelemetryOverview(summaryOf, [], capturedUtc), []), capturedUtc);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.AddScoped(_ => telemetry);
+            services.AddSingleton<IDownloadTelemetrySnapshotStore>(held);
+        });
 
         var summary = await GetSummaryAsync(app);
         var downloads = summary.GetProperty("downloads");
