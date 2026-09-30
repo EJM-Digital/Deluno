@@ -9,6 +9,9 @@ import { useMemo } from "react";
 import {
   emptyPlatformSettingsSnapshot,
   fetchJson,
+  fetchPageItems,
+  type ActivityEventItem,
+  type DownloadThroughputWindow,
   type DashboardSummary,
   type PolicySetItem,
   type QualityProfileItem,
@@ -59,7 +62,15 @@ export const setupSources = defineSources({
 
 /** What only the Now tab reads beyond the summary and the download queue. */
 export const liveSources = defineSources({
-  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), [])
+  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), []),
+  // The journey of each title (#1096): the sent downloads, the processor hand-offs and the indexers, all stored lists the other screens already keep.
+  dispatches: { ...sharedSources.dispatches, fallback: [] },
+  handoffs: { ...sharedSources.handoffs, fallback: [] },
+  indexers: { ...sharedSources.indexers, fallback: [] },
+  // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
+  throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
+  // Today's activity for the hourly bars: the newest stored events; live ones are added as they arrive.
+  activityToday: { ...source<ActivityEventItem[]>("dashboard-activity-today", "Today's activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"), []), refetchInterval: 120_000 }
 });
 
 export interface SetupState {
