@@ -348,7 +348,19 @@ const EPISODE_GROUP_DVD = 3;
 export async function lookupEpisodeGroups(providerId, apiKey, request = fetch) {
   const listUrl = new URL(`https://api.themoviedb.org/3/tv/${providerId}/episode_groups`);
   listUrl.searchParams.set("api_key", apiKey);
-  const summary = await getJson(listUrl, request);
+  // TMDb answers 404 here for a show that simply has no episode groups (Lioness,
+  // 113962, whose catalogue answers fine). The show is known to the caller, so
+  // that is "no other orderings", not "no such show".
+  let summary;
+  try {
+    summary = await getJson(listUrl, request);
+  } catch (error) {
+    if (error instanceof TmdbRequestError && error.status === 404) {
+      summary = { results: [] };
+    } else {
+      throw error;
+    }
+  }
   const candidates = (Array.isArray(summary?.results) ? summary.results : [])
     .filter((entry) => typeof entry?.id === "string" && entry.id.trim()
       && typeof entry?.name === "string" && entry.name.trim()

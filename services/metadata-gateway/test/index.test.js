@@ -509,6 +509,10 @@ test("a show with no episode groups answers an empty list, and an unavailable gr
   const none = await lookupEpisodeGroups("5", "key", stubTmdb({ "/3/tv/5/episode_groups": { results: [] } }).fetch);
   assert.deepEqual(none.groups, []);
 
+  // TMDb's own answer for Lioness (113962): 404 on the groups list of a show that exists.
+  const tmdbSaysNone = await lookupEpisodeGroups("113962", "key", stubTmdb({ "/3/tv/113962/episode_groups": 404 }).fetch);
+  assert.deepEqual(tmdbSaysNone.groups, []);
+
   const partial = await lookupEpisodeGroups("6", "key", stubTmdb({
     "/3/tv/6/episode_groups": { results: [{ id: "gone", name: "DVD", type: 3, episode_count: 2 }] },
     "/3/tv/episode_group/gone": 404
@@ -578,8 +582,12 @@ test("the gateway serves episode groups and popular lists, caches them, and keep
   assert.equal(popular.status, 200);
   assert.equal((await popular.json()).results[0].title, "Film");
 
-  const missing = await viaGateway("/metadata/tv/9/episode-groups", tmdb);
-  assert.equal(missing.status, 404);
+  // TMDb answers 404 on the groups list both for a show with no groups and for
+  // an id it doesn't know; Deluno only asks about shows it already has, so
+  // either way the answer is "no other orderings".
+  const none = await viaGateway("/metadata/tv/9/episode-groups", tmdb);
+  assert.equal(none.status, 200);
+  assert.deepEqual((await none.json()).groups, []);
   const busy = await viaGateway("/metadata/tv/popular", stubTmdb({ "/3/tv/popular": 429 }));
   assert.equal(busy.status, 503);
   assert.equal(busy.headers.get("Retry-After"), "60");
