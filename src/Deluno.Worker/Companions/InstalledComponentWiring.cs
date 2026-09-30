@@ -319,7 +319,8 @@ public sealed class InstalledComponentWirer(
             try
             {
                 var check = await implementation.CheckCategoryAsync(client, category, cancellationToken);
-                if (SafeCategoryFolderToCreate(check.SavePath, category) is { } folder && !Directory.Exists(folder))
+                if ((SafeCategoryFolderToCreate(check.SavePath, category) ?? SafeDownloadFolderToCreate(check.SavePath, Directory.Exists)) is { } folder
+                    && !Directory.Exists(folder) && !created.Contains(folder, StringComparer.OrdinalIgnoreCase))
                 {
                     Directory.CreateDirectory(folder);
                     created.Add(folder);
@@ -365,6 +366,41 @@ public sealed class InstalledComponentWirer(
         var parent = path[..(path.Length - name.Length)].TrimEnd('/', '\\');
         // The download folder itself must be a real folder, never a drive root.
         return parent.Length == 0 || (parent.Length == 2 && parent[1] == ':') ? null : path;
+    }
+
+    /// <summary>
+    /// A client that keeps every category in its own download folder (NZBGet's DestDir, #1060)
+    /// reports that folder, which it only creates on its first download. It is made one level deep
+    /// only: a local folder whose parent already exists (the client's own data folder), never a
+    /// drive root, a share or a path with "..".
+    /// </summary>
+    internal static string? SafeDownloadFolderToCreate(string? savePath, Func<string, bool> directoryExists)
+    {
+        if (string.IsNullOrWhiteSpace(savePath))
+        {
+            return null;
+        }
+
+        var path = savePath.Trim().TrimEnd('/', '\\');
+        if (!ClientPaths.IsFullClientPath(path) || path.StartsWith(@"\\", StringComparison.Ordinal) || path.StartsWith("//", StringComparison.Ordinal)
+            || path.Contains("..", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var cut = Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+        if (cut <= 0)
+        {
+            return null;
+        }
+
+        var parent = path[..cut];
+        if (parent.Length == 0 || (parent.Length == 2 && parent[1] == ':'))
+        {
+            return null;
+        }
+
+        return directoryExists(parent) ? path : null;
     }
 
     private string? SabnzbdKey()
