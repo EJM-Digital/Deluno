@@ -5,21 +5,18 @@ namespace Deluno.Integrations.DownloadClients;
 /// <summary>
 /// A folder or file in a library's completed-download folder that nothing
 /// claims (#588): no download client lists it, no import or hand-off is using
-/// it, and it is not a folder Deluno configured for something else.
+/// it, and it is not a folder Deluno configured for something else. Only
+/// entries Deluno can prove it downloaded are ever returned (#1062): its name,
+/// less a client's duplicate suffix such as <c>.1</c>, is the name of a release
+/// Deluno grabbed. What another tool put in a shared folder is invisible.
 /// </summary>
-/// <param name="DelunoGrabbedIt">
-/// Whether Deluno can prove it downloaded this: its name, less a client's
-/// duplicate suffix such as <c>.1</c>, is the name of a release Deluno grabbed.
-/// Only then may Deluno remove it, and only when a person asks.
-/// </param>
 public sealed record OrphanedDownloadItem(
     string Path,
     string Name,
     string LibraryId,
     string LibraryName,
     long SizeBytes,
-    DateTimeOffset LastWrittenUtc,
-    bool DelunoGrabbedIt);
+    DateTimeOffset LastWrittenUtc);
 
 /// <summary>One entry found at the top of a completed-download folder.</summary>
 public sealed record DownloadFolderEntry(string Path, bool IsDirectory, long SizeBytes, DateTimeOffset LastWrittenUtc);
@@ -46,7 +43,7 @@ public static partial class OrphanedDownloads
     /// downloads). An entry is claimed if it is one of them, holds one of them,
     /// or sits inside one of them.
     /// </param>
-    /// <param name="grabbedReleaseNames">The names of releases Deluno has grabbed.</param>
+    /// <param name="grabbedReleaseNames">The names of releases Deluno has grabbed (any dispatch, archived included). An entry matching none is never returned.</param>
     /// <param name="kept">Paths a person chose to keep.</param>
     public static IReadOnlyList<OrphanedDownloadItem> Find(
         IEnumerable<DownloadFolderScan> scans,
@@ -90,14 +87,19 @@ public static partial class OrphanedDownloads
                     continue;
                 }
 
+                // Not Deluno's own grab: not listed, not counted, not touched (#1062).
+                if (!WasGrabbed(entry.IsDirectory ? name : System.IO.Path.GetFileNameWithoutExtension(name), grabbed))
+                {
+                    continue;
+                }
+
                 found.Add(new OrphanedDownloadItem(
                     entry.Path,
                     name,
                     scan.LibraryId,
                     scan.LibraryName,
                     entry.SizeBytes,
-                    entry.LastWrittenUtc,
-                    WasGrabbed(entry.IsDirectory ? name : System.IO.Path.GetFileNameWithoutExtension(name), grabbed)));
+                    entry.LastWrittenUtc));
             }
         }
 

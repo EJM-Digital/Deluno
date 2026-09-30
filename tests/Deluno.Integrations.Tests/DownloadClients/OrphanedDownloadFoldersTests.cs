@@ -16,6 +16,7 @@ public sealed class OrphanedDownloadFoldersTests
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-09-23T14:00:00Z");
     private const string Tv = @"C:\Deluno\Downloads-Complete\TV";
     private const string Grabbed = "Breaking.Bad.S01E01.1080p.WEB-DL.x264-DELUNO";
+    private static readonly string[] AllGrabbed = [Grabbed, "Left.Behind.S01E01", "Show.S01E01", "Show.S01E01.nfo", "Recent.Enough"];
 
     [Fact]
     public void An_unclaimed_duplicate_of_a_grab_is_an_orphan_Deluno_downloaded()
@@ -24,8 +25,27 @@ public sealed class OrphanedDownloadFoldersTests
 
         var orphan = Assert.Single(found);
         Assert.Equal($"{Grabbed}.1", orphan.Name);
-        Assert.True(orphan.DelunoGrabbedIt);
         Assert.Equal("TV", orphan.LibraryName);
+    }
+
+    /// <summary>#1062: a folder shared with Radarr or Sonarr shows their leftovers, and Deluno must not list, count or offer to keep them.</summary>
+    [Fact]
+    public void An_entry_Deluno_did_not_grab_is_never_returned()
+    {
+        var found = Find([Entry($@"{Tv}\Radarr.Left.Behind.2020.1080p"), Entry($@"{Tv}\{Grabbed}.1")], claimed: []);
+
+        Assert.Equal($"{Grabbed}.1", Assert.Single(found).Name);
+    }
+
+    [Fact]
+    public void A_leftover_of_a_release_whose_dispatch_was_archived_is_still_returned()
+    {
+        // Archived dispatches are read too (includeArchived), so their names are in the grabbed list.
+        var found = OrphanedDownloads.Find(
+            [new DownloadFolderScan("library-tv", "TV", Tv, [Entry($@"{Tv}\Archived.Show.S01E01")])],
+            [], ["Archived.Show.S01E01"], [], Now);
+
+        Assert.Single(found);
     }
 
     [Fact]
@@ -46,10 +66,10 @@ public sealed class OrphanedDownloadFoldersTests
     [Fact]
     public void The_download_folder_itself_or_a_folder_holding_it_claims_nothing_in_it()
     {
-        var found = Find([Entry($@"{Tv}\Left.Behind.S01E01")], claimed: [Tv, @"C:\Deluno"]);
+        var found = Find([Entry($@"{Tv}\{Grabbed}")], claimed: [Tv,@"C:\Deluno"]);
 
         var orphan = Assert.Single(found);
-        Assert.False(orphan.DelunoGrabbedIt);
+        Assert.Equal(Grabbed, orphan.Name);
     }
 
     [Fact]
@@ -82,7 +102,7 @@ public sealed class OrphanedDownloadFoldersTests
 
         var found = OrphanedDownloads.Find(
             [new DownloadFolderScan("library-tv", "TV", Tv, entries)],
-            [], [Grabbed], [], Now,
+            [], AllGrabbed, [], Now,
             excludePatterns: OrphanedDownloads.ParseExcludePatterns("*.nfo, Thumbs.db"));
 
         Assert.Equal("Left.Behind.S01E01", Assert.Single(found).Name);
@@ -93,7 +113,7 @@ public sealed class OrphanedDownloadFoldersTests
     {
         var entries = new[] { Entry($@"{Tv}\Show.S01E01.nfo"), Entry($@"{Tv}\Just.Finished", age: TimeSpan.FromMinutes(90)) };
 
-        var found = OrphanedDownloads.Find([new DownloadFolderScan("library-tv", "TV", Tv, entries)], [], [Grabbed], [], Now);
+        var found = OrphanedDownloads.Find([new DownloadFolderScan("library-tv", "TV", Tv, entries)], [], AllGrabbed, [], Now);
 
         Assert.Equal("Show.S01E01.nfo", Assert.Single(found).Name);
     }
@@ -104,8 +124,8 @@ public sealed class OrphanedDownloadFoldersTests
         var entries = new[] { Entry($@"{Tv}\Recent.Enough", age: TimeSpan.FromHours(3)) };
         var scans = new[] { new DownloadFolderScan("library-tv", "TV", Tv, entries) };
 
-        Assert.Single(OrphanedDownloads.Find(scans, [], [Grabbed], [], Now, minAge: TimeSpan.FromHours(2)));
-        Assert.Empty(OrphanedDownloads.Find(scans, [], [Grabbed], [], Now, minAge: TimeSpan.FromHours(6)));
+        Assert.Single(OrphanedDownloads.Find(scans, [], AllGrabbed, [], Now, minAge: TimeSpan.FromHours(2)));
+        Assert.Empty(OrphanedDownloads.Find(scans, [], AllGrabbed, [], Now, minAge: TimeSpan.FromHours(6)));
     }
 
     [Theory]

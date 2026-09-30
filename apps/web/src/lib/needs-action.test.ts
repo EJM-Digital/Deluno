@@ -159,8 +159,7 @@ describe("needsAction", () => {
       libraryId: "library-tv",
       libraryName: "TV",
       sizeBytes: 2_800_000_000,
-      lastWrittenUtc: "2026-09-15T23:10:00Z",
-      delunoGrabbedIt: true
+      lastWrittenUtc: "2026-09-15T23:10:00Z"
     };
 
     const result = needsAction({ orphans: [orphan] });

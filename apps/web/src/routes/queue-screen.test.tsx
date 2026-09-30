@@ -481,17 +481,14 @@ describe("leftover downloads: select all", () => {
       libraryName: "TV",
       sizeBytes: 1_073_741_824,
       lastWrittenUtc: new Date().toISOString(),
-      delunoGrabbedIt: true,
       ...overrides
     };
   }
 
-  it("shows the select-all button and selects every leftover Deluno can prove it downloaded", () => {
+  it("shows the select-all button and selects every leftover", () => {
     queueLoaderData.orphans = [
       orphan({ path: "C:\\Downloads\\Complete\\First.S01E01", name: "First.S01E01" }),
-      orphan({ path: "C:\\Downloads\\Complete\\Second.S01E02", name: "Second.S01E02" }),
-      // Not Deluno's own grab: never selectable, so select-all must skip it.
-      orphan({ path: "C:\\Downloads\\Complete\\Not.Deluno.S01E03", name: "Not.Deluno.S01E03", delunoGrabbedIt: false })
+      orphan({ path: "C:\\Downloads\\Complete\\Second.S01E02", name: "Second.S01E02" })
     ];
 
     render(
@@ -502,9 +499,6 @@ describe("leftover downloads: select all", () => {
 
     const selectAll = screen.getByRole("button", { name: "Select all leftovers" });
     expect(selectAll).toBeVisible();
-    // The item Deluno cannot prove it downloaded gets no checkbox at all.
-    expect(screen.queryByRole("switch", { name: "Select Not.Deluno.S01E03" })).not.toBeInTheDocument();
-
     fireEvent.click(selectAll);
 
     expect(screen.getByRole("switch", { name: "Select First.S01E01" })).toBeChecked();
@@ -522,8 +516,8 @@ describe("leftover downloads: select all", () => {
     expect(screen.getByText("Deluno only shows downloads it sent.")).toBeVisible();
   });
 
-  it("offers no select-all button when there is nothing Deluno can remove", () => {
-    queueLoaderData.orphans = [orphan({ delunoGrabbedIt: false })];
+  it("offers no select-all button when there are no leftovers", () => {
+    queueLoaderData.orphans = [];
 
     render(
       <MemoryRouter>
