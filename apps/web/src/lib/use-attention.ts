@@ -46,7 +46,9 @@ const empty: AttentionSnapshot = {
  * downloads on Transfers asking for Try again or Dismiss (#556).
  */
 export function attentionTotal(snapshot: AttentionSnapshot): number {
-  return snapshot.failedJobs + snapshot.indexerAlerts + snapshot.downloadsNeedingAction + snapshot.healthProblems;
+  // A failed import is one of the failed jobs and also one of the downloads Transfers lists: it is one problem.
+  const failedJobsNotImports = Math.max(0, snapshot.failedJobs - snapshot.failedImportJobs);
+  return failedJobsNotImports + snapshot.indexerAlerts + snapshot.downloadsNeedingAction + snapshot.healthProblems;
 }
 
 /**

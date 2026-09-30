@@ -23,6 +23,7 @@ import {
   type DownloadDispatchItem,
   type DownloadQueueItem,
   type DownloadTelemetryOverview,
+  type HealthCheckSummary,
   type IndexerItem,
   type JobQueueItem,
   type MovieImportRecoverySummary,
@@ -52,7 +53,10 @@ export const attentionSources = defineSources({
     key: ["processor-connections"],
     label: "Processors",
     fetch: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections")
-  }
+  },
+  // The two the sidebar also reads, so the counts never depend on which tab was opened first.
+  orphans: sharedSources.orphans,
+  healthSummary: sharedSources.healthSummary
 });
 
 export interface AttentionLists {
@@ -64,8 +68,8 @@ export interface AttentionLists {
   dispatches?: DownloadDispatchItem[];
   indexers?: IndexerItem[];
   processors?: ProcessorConnectionItem[];
-  /** Read from the cache only: finding them walks folders on the server. */
   orphans?: OrphanedDownloadItem[];
+  healthSummary?: HealthCheckSummary | null;
 }
 
 export interface SetupNeed {
@@ -90,12 +94,16 @@ export interface AttentionItem {
   action: string;
   /** How many rows with a button this item is on its tab. */
   count: number;
+  /** True when the sidebar's "Needs a look" card counts this too (same source, same rule). */
+  sidebar: boolean;
 }
 
 export interface DashboardAttention {
   /** Every problem, worst first. The Overview's Needs you list. */
   items: AttentionItem[];
   counts: Record<DashboardTab, number>;
+  /** How many of the Overview's problems only the Dashboard checks; the sidebar card does not count them. */
+  dashboardOnly: number;
   /** The rows the tabs draw with buttons, already free of duplicates. */
   downloads: {
     stalled: DownloadQueueItem[];
@@ -142,9 +150,9 @@ const isStalled = (item: DownloadQueueItem) => item.status === "stalled";
 
 export function computeAttention(summary: DashboardSummary | undefined, lists: AttentionLists = {}, setup: SetupNeed[] = []): DashboardAttention {
   const items: AttentionItem[] = [];
-  const add = (item: Omit<AttentionItem, "count"> & { count?: number }) => {
+  const add = (item: Omit<AttentionItem, "count" | "sidebar"> & { count?: number; sidebar?: boolean }) => {
     const count = item.count ?? 1;
-    if (count > 0) items.push({ ...item, count });
+    if (count > 0) items.push({ ...item, count, sidebar: item.sidebar ?? false });
   };
 
   const na = needsAction({
@@ -214,6 +222,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   add({
     id: "failed-downloads",
+    sidebar: true,
     tab: "overview",
     tone: "bad",
     title: `${plural(failedDownloadCount, "download")} failed`,
@@ -224,6 +233,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "queue-warnings",
+    sidebar: true,
     tab: "overview",
     tone: "warn",
     title: `${plural(otherQueue.length, "download has", "downloads have")} a warning`,
@@ -234,6 +244,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "leftovers",
+    sidebar: true,
     tab: "overview",
     tone: "warn",
     title: `${plural(na.orphanedDownloads.length, "leftover folder")} in the download folders`,
@@ -268,6 +279,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   // ------------------------------------------------------------------ downloads
   add({
     id: "stalled",
+    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(stalledCount, "download is", "downloads are")} stalled`,
@@ -288,6 +300,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "indexers",
+    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(indexerCount, "indexer")} not answering`,
@@ -298,6 +311,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "recovery",
+    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(recoveryCount, "import needs", "imports need")} a look`,
@@ -308,6 +322,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "failed-imports",
+    sidebar: true,
     tab: "downloads",
     tone: "bad",
     title: `${plural(importJobsCount, "import")} didn't finish`,
@@ -318,6 +333,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "handoffs",
+    sidebar: true,
     tab: "downloads",
     tone: "warn",
     title: `${plural(handoffCount, "hand-off")} to the processor failed`,
@@ -339,9 +355,12 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
 
   // ---------------------------------------------------------------------- system
   const health = summary?.health;
-  for (const problem of health?.topProblems ?? []) {
+  // A problem that is snoozed is not one the sidebar counts either.
+  const shownProblems = (health?.topProblems ?? []).filter((problem) => !problem.snoozed);
+  for (const problem of shownProblems) {
     add({
       id: `health:${problem.id}`,
+      sidebar: true,
       tab: "system",
       tone: "warn",
       title: problem.title,
@@ -350,21 +369,25 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       action: `Fix it in ${screenName(problem.link || "/system")}`
     });
   }
-  const shown = health?.topProblems.length ?? 0;
-  if (health && health.problems > shown) {
+  const shown = shownProblems.length;
+  const unsnoozed = lists.healthSummary?.unsnoozedProblemCount;
+  const healthTotal = typeof unsnoozed === "number" ? unsnoozed : health?.problems ?? 0;
+  if (health && healthTotal > shown) {
     add({
       id: "health:more",
+      sidebar: true,
       tab: "system",
       tone: "warn",
-      title: `${plural(health.problems - shown, "more problem")} to look at`,
+      title: `${plural(healthTotal - shown, "more problem")} to look at`,
       text: "The health checks found more than fit here.",
       to: "/system",
       action: "See them in System",
-      count: health.problems - shown
+      count: healthTotal - shown
     });
   }
   add({
     id: "failed-jobs",
+    sidebar: true,
     tab: "system",
     tone: "bad",
     title: `${plural(jobsGaveUp, "background job")} gave up`,
@@ -391,10 +414,13 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   // The Overview's own items were counted twice above.
   counts.overview -= items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0);
+  // The Overview's number is the sidebar card's number plus what only the Dashboard checks.
+  const dashboardOnly = items.filter((item) => !item.sidebar).reduce((sum, item) => sum + item.count, 0);
 
   return {
     items: [...items].sort((a, b) => Number(b.tone === "bad") - Number(a.tone === "bad")),
     counts,
+    dashboardOnly,
     downloads: { stalled, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,
     failingLanes

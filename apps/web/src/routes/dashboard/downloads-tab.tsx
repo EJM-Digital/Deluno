@@ -30,6 +30,7 @@ import { submitQueueRemoval } from "../../lib/remove-download";
 import { cn } from "../../lib/utils";
 import {
   ActionButton,
+  FactRow,
   Panel,
   PanelLink,
   PanelNote,
@@ -43,6 +44,7 @@ import {
   until,
   useAction
 } from "./downloads-kit";
+import { FitList } from "./parts";
 import { attentionSources, indexerNeedsButton, processorUnhealthy, type DashboardAttention } from "./attention";
 import { useDashboardAttention } from "./use-dashboard-attention";
 
@@ -174,8 +176,6 @@ function nowRows(telemetry: DownloadTelemetryOverview | undefined): DownloadQueu
     .sort((a, b) => rank(a.status) - rank(b.status) || b.progress - a.progress);
 }
 
-const ROW_LIMIT = 14;
-
 /** Progress arrives as 0 to 100. */
 function percent(progress: number): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
@@ -185,7 +185,6 @@ function DownloadsNow({ summary, telemetry, attention, action }: { summary: Dash
   // A stalled download that an import case is about is that case, which has the buttons.
   const stalledWithButton = new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`));
   const rows = nowRows(telemetry);
-  const shown = rows.slice(0, ROW_LIMIT);
   const downloads = summary?.downloads;
   const imported = summary?.pipeline?.today.imported ?? 0;
   let empty: string;
@@ -199,26 +198,31 @@ function DownloadsNow({ summary, telemetry, attention, action }: { summary: Dash
       count={rows.length > 0 ? plural(rows.length, "download") : undefined}
       to="/queue"
       linkLabel="Transfers"
-      footer={rows.length > shown.length ? <Link className="text-primary hover:underline" to="/queue">{`and ${rows.length - shown.length} more on Transfers`}</Link> : undefined}
     >
-      {shown.length === 0 ? (
+      {rows.length === 0 ? (
         <PanelNote>{empty}</PanelNote>
       ) : (
-        <ListTable
-          chevron={false}
-          columns={[
-            { label: "Title", width: "minmax(0,1.8fr)", mobile: true },
-            { label: "Client", width: "minmax(0,0.8fr)" },
-            { label: "Progress", width: "minmax(0,1fr)" },
-            { label: "Speed", width: "5.5rem", align: "end" },
-            { label: "Left", width: "5.5rem", align: "end" },
-            { label: "Fix", width: "7.5rem", srOnly: true, mobile: true }
-          ]}
-        >
-          {shown.map((item) => (
+        <FitList
+          moreTo="/queue"
+          moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Transfers`}
+          wrap={(shown) => (
+            <ListTable
+              chevron={false}
+              columns={[
+                { label: "Title", width: "minmax(0,1.5fr)", mobile: true },
+                { label: "Client", width: "minmax(0,1.3fr)" },
+                { label: "Progress", width: "7.5rem" },
+                { label: "Speed", width: "5rem", align: "end" },
+                { label: "Fix", width: "7.5rem", srOnly: true, mobile: true }
+              ]}
+            >
+              {shown}
+            </ListTable>
+          )}
+          rows={rows.map((item) => (
             <ListRow key={`${item.clientId}:${item.id}`} className="min-h-[2.5rem] py-1">
               <ListNameCell name={item.title} sub={item.status === "stalled" ? item.errorMessage ?? "No one is sharing it, or its data is missing" : item.releaseName} />
-              <ListCell primary={item.clientName} />
+              <ListCell primary={<span title={item.clientName}>{item.clientName}</span>} />
               <ListCell>
                 <span className="flex items-center gap-2">
                   <span aria-hidden className="block h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
@@ -226,31 +230,35 @@ function DownloadsNow({ summary, telemetry, attention, action }: { summary: Dash
                   </span>
                   <span className="w-9 text-right tabular-nums">{percent(item.progress)}%</span>
                 </span>
+                <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">
+                  {formatEta(item.etaSeconds) === "–" ? "no time left given" : `${formatEta(item.etaSeconds)} left`}
+                </span>
               </ListCell>
-              <ListCell align="end" numeric primary={item.status === "queued" ? "Queued" : formatSpeed(item.speedMbps)} />
-              <ListCell align="end" numeric primary={formatEta(item.etaSeconds)} />
-              <ListCell align="end" mobile>
+              <ListCell align="end" numeric>
+                <span className="block truncate text-foreground">{item.status === "queued" ? "Queued" : formatSpeed(item.speedMbps)}</span>
                 {item.status === "stalled" ? (
-                  <span className="flex items-center justify-end gap-1.5">
-                    <Chip tone="warn" dot={false}>Stalled</Chip>
-                    {stalledWithButton.has(`${item.clientId}:${item.id}`) ? <ActionButton
-                      label="Search again"
-                      name={`Search again for ${item.title}`}
-                      busyKey={`stalled:${item.clientId}:${item.id}`}
-                      state={action}
-                      onClick={() =>
-                        void action.run(`stalled:${item.clientId}:${item.id}`, async () => {
-                          const result = await submitQueueRemoval(item.clientId, item.id, "failed");
-                          return result.message;
-                        })
-                      }
-                    /> : null}
-                  </span>
+                  <span className="mt-0.5 flex justify-end"><Chip tone="warn" dot={false}>Stalled</Chip></span>
+                ) : null}
+              </ListCell>
+              <ListCell align="end" mobile>
+                {item.status === "stalled" && stalledWithButton.has(`${item.clientId}:${item.id}`) ? (
+                  <ActionButton
+                    label="Search again"
+                    name={`Search again for ${item.title}`}
+                    busyKey={`stalled:${item.clientId}:${item.id}`}
+                    state={action}
+                    onClick={() =>
+                      void action.run(`stalled:${item.clientId}:${item.id}`, async () => {
+                        const result = await submitQueueRemoval(item.clientId, item.id, "failed");
+                        return result.message;
+                      })
+                    }
+                  />
                 ) : null}
               </ListCell>
             </ListRow>
           ))}
-        </ListTable>
+        />
       )}
     </Panel>
   );
@@ -277,8 +285,8 @@ function Clients({ summary, action }: { summary: DashboardSummary | undefined; a
       {clients.length === 0 ? (
         <PanelNote>No download client is set up. Add one and Deluno hands releases to it.</PanelNote>
       ) : (
-        <ul>
-          {clients.map((client) => {
+        <FitList moreTo="/indexers/download-clients" moreLabel={(hidden) => `and ${hidden} more clients`} rows={
+          clients.map((client) => {
             const state = clientState(client);
             return (
               <li key={client.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
@@ -338,8 +346,7 @@ function Clients({ summary, action }: { summary: DashboardSummary | undefined; a
                 ) : null}
               </li>
             );
-          })}
-        </ul>
+          })} />
       )}
     </Panel>
   );
@@ -381,8 +388,8 @@ function Indexers({
       {empty ? (
         <PanelNote>No indexer is set up, so Deluno has nowhere to look for releases.</PanelNote>
       ) : (
-        <ul>
-          {rows.map((item) => {
+        <FitList moreTo="/indexers/indexers" moreLabel={(hidden) => `and ${hidden} more indexers`} rows={
+          rows.map((item) => {
             const failing = item.isEnabled && /unreach|unhealth|fail|error/i.test(item.healthStatus);
             const needsTest = indexerNeedsButton(item);
             const limited = item.isEnabled && !failing && Boolean(item.rateLimitedUntilUtc) && Date.parse(item.rateLimitedUntilUtc ?? "") > Date.now();
@@ -410,8 +417,7 @@ function Indexers({
                 ) : null}
               </li>
             );
-          })}
-        </ul>
+          })} />
       )}
     </Panel>
   );
@@ -445,8 +451,8 @@ function ImportsAndRecovery({ summary, attention: all, action }: { summary: Dash
       {open === 0 ? (
         <PanelNote>Nothing needs a hand. Every finished download has been filed or is on its way.</PanelNote>
       ) : (
-        <ul>
-          {attention.recoveryCases.map((item) => (
+        <FitList moreTo="/queue" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Transfers`} rows={[
+          ...attention.recoveryCases.map((item) => (
             <li key={`${item.mediaType}:${item.id}`} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="warn" />
               <div className="min-w-0 flex-1 leading-tight">
@@ -455,8 +461,8 @@ function ImportsAndRecovery({ summary, attention: all, action }: { summary: Dash
               </div>
               <RecoveryButtons item={item} action={action} />
             </li>
-          ))}
-          {attention.failedImportJobs.map((job, index) => (
+          )),
+          ...attention.failedImportJobs.map((job, index) => (
             <li key={job.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="bad" />
               <div className="min-w-0 flex-1 leading-tight">
@@ -484,8 +490,8 @@ function ImportsAndRecovery({ summary, attention: all, action }: { summary: Dash
                 onClick={() => void action.run(`job-dismiss:${job.id}`, async () => { await dismissFailedJob(job.id); return "Import dismissed"; })}
               />
             </li>
-          ))}
-          {attention.failedHandoffs.map((handoff) => (
+          )),
+          ...attention.failedHandoffs.map((handoff) => (
             <li key={handoff.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="bad" />
               <div className="min-w-0 flex-1 leading-tight">
@@ -508,8 +514,8 @@ function ImportsAndRecovery({ summary, attention: all, action }: { summary: Dash
                 onClick={() => void action.run(`handoff-dismiss:${handoff.id}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
               />
             </li>
-          ))}
-        </ul>
+          ))
+        ]} />
       )}
     </Panel>
   );
@@ -601,16 +607,8 @@ function ProcessorPanel({
             );
           })}
           <div className="border-t border-hairline py-1">
-            <div className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] py-1 text-[length:var(--type-body-sm)]">
-              <span className="text-muted-foreground">Handed over today</span>
-              <span className="font-medium tabular-nums text-foreground">{(section?.handoffsToday ?? 0).toLocaleString("en-AU")}</span>
-            </div>
-            <div className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] py-1 text-[length:var(--type-body-sm)]">
-              <span className="text-muted-foreground">Last one back</span>
-              <span className="min-w-0 truncate text-right font-medium text-foreground">
-                {latest ? `${latest.releaseName}, ${ago(latest.updatedUtc)}` : "Nothing handed over yet"}
-              </span>
-            </div>
+            <FactRow label="Handed over today">{(section?.handoffsToday ?? 0).toLocaleString("en-AU")}</FactRow>
+            <FactRow label="Last one back">{latest ? `${latest.releaseName}, ${ago(latest.updatedUtc)}` : "Nothing handed over yet"}</FactRow>
           </div>
         </div>
       )}

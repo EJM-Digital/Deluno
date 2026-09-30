@@ -100,8 +100,8 @@ export function fullSummary(): DashboardSummary {
   summary.health = {
     asOfUtc: NOW, problems: 7, unknown: 0, suggestions: 0, lastRunUtc: NOW,
     topProblems: [
-      { id: "h1", title: "Nyaa.si isn't answering", category: "indexer", message: "It stopped answering 14 minutes ago.", sinceUtc: NOW, link: "/indexers/indexers" },
-      { id: "h2", title: "A drive is nearly full", category: "storage", message: "Less than 5% is free.", sinceUtc: NOW, link: "/system" }
+      { id: "h1", title: "Nyaa.si isn't answering", category: "indexer", message: "It stopped answering 14 minutes ago.", sinceUtc: NOW, link: "/indexers/indexers", snoozed: false },
+      { id: "h2", title: "A drive is nearly full", category: "storage", message: "Less than 5% is free.", sinceUtc: NOW, link: "/system", snoozed: false }
     ]
   };
   summary.storage = {

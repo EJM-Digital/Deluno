@@ -56,6 +56,29 @@ describe("computeAttention", () => {
     expect(attention.downloads.clients.map((c) => c.id)).toEqual(["c1"]);
   });
 
+  it("does not count a snoozed health problem, and takes the total from the same summary the sidebar reads", () => {
+    const summary = fullSummary();
+    summary.health!.topProblems = [
+      { id: "a", title: "A", category: "system", message: "m", sinceUtc: null, link: "/system", snoozed: true },
+      { id: "b", title: "B", category: "system", message: "m", sinceUtc: null, link: "/system", snoozed: false }
+    ];
+    summary.health!.problems = 5;
+    const attention = computeAttention(summary, { healthSummary: { problemCount: 5, unsnoozedProblemCount: 3, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } });
+    expect(attention.items.some((item) => item.id === "health:a")).toBe(false);
+    expect(attention.items.find((item) => item.id === "health:b")?.count).toBe(1);
+    // Three are not snoozed: one is listed, two more are on Health.
+    expect(attention.items.find((item) => item.id === "health:more")?.count).toBe(2);
+  });
+
+  it("says which of the Overview's problems only the Dashboard checks, so it can differ from the sidebar in words", () => {
+    const summary = emptySummary();
+    summary.system = { ...summary.system!, internetOutage: true };
+    const attention = computeAttention(summary, { orphans: [{ name: "x" }, { name: "y" }] as never });
+    // Two leftover folders are the sidebar's too; the outage is the Dashboard's own.
+    expect(attention.counts.overview).toBe(3);
+    expect(attention.dashboardOnly).toBe(1);
+  });
+
   it("puts the tab's own rows and the Needs you rows on the same count", () => {
     const attention = computeAttention(fullSummary());
     for (const tab of ["library", "downloads", "system"] as const) {

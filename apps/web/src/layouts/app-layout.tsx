@@ -928,7 +928,7 @@ function attentionSummary(attention: AttentionSnapshot): string {
 function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity" | "transfers") {
   if (key === "movies") return attention.movieWanted;
   // What Transfers lists under Needs attention (#556).
-  if (key === "transfers") return attention.downloadsNeedingAction + attention.failedImportJobs;
+  if (key === "transfers") return attention.downloadsNeedingAction;
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;
   if (key === "activity") return attention.failedJobs;

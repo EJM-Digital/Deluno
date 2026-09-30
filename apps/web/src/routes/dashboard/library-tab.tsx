@@ -4,7 +4,7 @@
  * The strip holds the counts; the panels beneath say what is behind them and
  * never restate the strip's numbers.
  */
-import { useState, type JSX } from "react";
+import { useState, type JSX, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { MetricChart } from "../../components/ui/metric-chart";
 import { Button } from "../../components/ui/button";
@@ -17,7 +17,7 @@ import { refetchSources, useRouteSources } from "../../lib/route-cache";
 import { wantedStatusPresentation } from "../../lib/status-tones";
 import { authedFetch } from "../../lib/use-auth";
 import { ago, bytesText, plural, total, until } from "./format";
-import { Bar, Group, Line, Panel, Plain } from "./parts";
+import { Bar, FitList, Group, Line, Panel, Plain } from "./parts";
 import { libraryTabSources } from "./sources";
 
 interface WantedRow {
@@ -63,22 +63,27 @@ function wantedRows(movies: MovieWantedItem[], shows: SeriesWantedItem[]): Wante
   ].sort((left, right) => Number(right.status === "missing") - Number(left.status === "missing"));
 }
 
-function MixGroup({ title, entries }: { title: string; entries: DashboardMixEntry[] }) {
-  if (entries.length === 0) return null;
+/** One caption and its bars, as flat rows a FitList can count; the caption is flagged so it is never left alone. */
+function mixRows(title: string, entries: DashboardMixEntry[]): { rows: ReactElement[]; headings: boolean[] } {
+  if (entries.length === 0) return { rows: [], headings: [] };
   const top = Math.max(...entries.map((entry) => entry.count), 1);
-  return (
-    <>
-      <Group>{title}</Group>
-      {entries.slice(0, 5).map((entry) => (
-        <div key={entry.label} className="grid grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-[var(--card-pad-x)] py-1">
+  const shown = entries.slice(0, 5);
+  return {
+    rows: [
+      <Group key={`${title}:title`}>{title}</Group>,
+      ...shown.map((entry) => (
+        <div key={`${title}:${entry.label}`} className="grid grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-[var(--card-pad-x)] py-1">
           <span className="truncate text-[length:var(--type-body-sm)] text-foreground">{entry.label}</span>
           <Bar fraction={entry.count / top} />
           <span className="text-right text-[length:var(--type-body-sm)] font-medium tabular-nums text-foreground">{entry.count}</span>
         </div>
-      ))}
-    </>
-  );
+      ))
+    ],
+    headings: [true, ...shown.map(() => false)]
+  };
 }
+
+const divWrap = (shown: ReactElement[]) => <div>{shown}</div>;
 
 function episodeCode(item: SeriesUpcomingEpisodeItem): string {
   return `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`;
@@ -132,6 +137,12 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
   const mix = library?.mix;
   const mixEmpty = !mix || [mix.movieQuality, mix.movieCodec, mix.episodeQuality, mix.showCodec].every((entries) => entries.length === 0);
   const upcoming = data.upcoming;
+  const mixParts = [
+    mixRows("Movie quality", mix?.movieQuality ?? []),
+    mixRows("Movie video", mix?.movieCodec ?? []),
+    mixRows("Episode quality", mix?.episodeQuality ?? []),
+    mixRows("Show video", mix?.showCodec ?? [])
+  ].reduce((all, part) => ({ rows: [...all.rows, ...part.rows], headings: [...all.headings, ...part.headings] }), { rows: [] as ReactElement[], headings: [] as boolean[] });
 
   return (
     <div className="grid gap-[var(--grid-gap)] lg:h-full lg:min-h-0 lg:grid-cols-4 lg:grid-rows-[auto_minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.75fr)]">
@@ -161,18 +172,25 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
               : "Nothing is being looked for. Every monitored title has what you asked for."}
           </Plain>
         ) : (
-          <>
-            <ListTable
-              chevron={false}
-              columns={[
-                { label: "Title" },
-                { label: "State", width: "7.5rem" },
-                { label: "Have to want" },
-                { label: "Searched", width: "minmax(0,0.9fr)" },
-                { label: "Search now", width: "7rem", srOnly: true }
-              ]}
-            >
-              {rows.map((row) => {
+          <FitList
+            moreTo="/search-cycles/missing"
+            moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more in Automation & Recovery`}
+            extra={Math.max(0, wantedTotal - rows.length)}
+            wrap={(shown) => (
+              <ListTable
+                chevron={false}
+                columns={[
+                  { label: "Title" },
+                  { label: "State", width: "7.5rem" },
+                  { label: "Has and wants" },
+                  { label: "Searched", width: "minmax(0,0.9fr)" },
+                  { label: "Search now", width: "7rem", srOnly: true }
+                ]}
+              >
+                {shown}
+              </ListTable>
+            )}
+            rows={rows.map((row) => {
                 const mark = wantedStatusPresentation(row.status);
                 return (
                   <ListRow key={row.key}>
@@ -188,7 +206,7 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
                         {mark.label}
                       </span>
                     </ListCell>
-                    <ListCell primary={`${row.have ?? "nothing yet"} to ${row.want ?? "your profile"}`} />
+                    <ListCell primary={`Has ${row.have ?? "nothing yet"}`} secondary={`Wants ${row.want ?? "what your profile says"}`} />
                     <ListCell primary={row.lastSearchUtc ? ago(row.lastSearchUtc) : "not yet"} secondary={row.nextSearchUtc ? `next ${until(row.nextSearchUtc)}` : "next not scheduled"} />
                     <ListCell align="end">
                       <Button type="button" size="sm" variant="outline" disabled={searching.has(row.key)} onClick={() => void searchNow(row)} aria-label={`Search now: ${row.title}`}>
@@ -198,14 +216,7 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
                   </ListRow>
                 );
               })}
-            </ListTable>
-            {wantedTotal > rows.length ? (
-              <p className="px-[var(--card-pad-x)] py-2 text-[length:var(--type-caption)] text-muted-foreground">
-                and {(wantedTotal - rows.length).toLocaleString("en-AU")} more.{" "}
-                <Link to="/search-cycles/missing" className="text-primary hover:underline">See them all in Automation &amp; Recovery</Link>
-              </p>
-            ) : null}
-          </>
+          />
         )}
       </Panel>
 
@@ -227,12 +238,13 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
         {mixEmpty ? (
           <Plain>Nothing to count until files are in the library.</Plain>
         ) : (
-          <>
-            <MixGroup title="Movie quality" entries={mix?.movieQuality ?? []} />
-            <MixGroup title="Movie video" entries={mix?.movieCodec ?? []} />
-            <MixGroup title="Episode quality" entries={mix?.episodeQuality ?? []} />
-            <MixGroup title="Show video" entries={mix?.showCodec ?? []} />
-          </>
+          <FitList
+            wrap={divWrap}
+            moreTo={(hidden) => (/^(Episode|Show)/.test(String(hidden[0]?.key)) ? "/tv" : "/movies")}
+            moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more`}
+            isHeading={(index) => mixParts.headings[index] ?? false}
+            rows={mixParts.rows}
+          />
         )}
       </Panel>
 
@@ -240,15 +252,19 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
         {upcoming.length === 0 ? (
           <Plain>Nothing airs in the next 72 hours.</Plain>
         ) : (
-          upcoming.map((item) => (
-            <Line
-              key={item.episodeId}
-              to={`/tv/${item.seriesId}`}
-              label={item.title}
-              hint={`${episodeCode(item)}${item.episodeTitle ? ` · ${item.episodeTitle}` : ""}`}
-              value={until(item.airDateUtc)}
-            />
-          ))
+          <FitList
+            wrap={divWrap}
+            moreTo="/calendar"
+            rows={upcoming.map((item) => (
+              <Line
+                key={item.episodeId}
+                to={`/tv/${item.seriesId}`}
+                label={item.title}
+                hint={`${episodeCode(item)}${item.episodeTitle ? ` · ${item.episodeTitle}` : ""}`}
+                value={until(item.airDateUtc)}
+              />
+            ))}
+          />
         )}
       </Panel>
 
@@ -256,16 +272,21 @@ export function LibraryTab({ summary }: { summary: DashboardSummary | undefined 
         {!retention || (retention.leavingSoon === 0 && retention.readyToRemove === 0 && retention.removedLast7Days === 0) ? (
           <Plain>Nothing is due to leave. Titles only leave under a rule you have turned on.</Plain>
         ) : (
-          <>
-            {retention.nextLeaving.length > 0 ? <Group>Leaving soon</Group> : null}
-            {retention.nextLeaving.map((item) => (
-              <Line key={item.entityId} to={item.mediaType.toLowerCase().includes("movie") ? `/movies/${item.entityId}` : `/tv/${item.entityId}`} label={item.title} value={until(item.removeAfterUtc)} />
-            ))}
-            {retention.readyToRemove > 0 ? <Line label={`${plural(retention.readyToRemove, "title")} ready to remove`} /> : null}
-            {retention.removedLast7Days > 0 ? (
-              <Line label="Removed this week" value={`${plural(retention.removedLast7Days, "title")}, ${bytesText(retention.removedBytesLast7Days)}`} />
-            ) : null}
-          </>
+          <FitList
+            wrap={divWrap}
+            moreTo="/search-cycles/retention"
+            isHeading={(index) => retention.nextLeaving.length > 0 && index === 0}
+            rows={[
+              ...(retention.nextLeaving.length > 0 ? [<Group key="leaving-soon">Leaving soon</Group>] : []),
+              ...retention.nextLeaving.map((item) => (
+                <Line key={item.entityId} to={item.mediaType.toLowerCase().includes("movie") ? `/movies/${item.entityId}` : `/tv/${item.entityId}`} label={item.title} value={until(item.removeAfterUtc)} />
+              )),
+              ...(retention.readyToRemove > 0 ? [<Line key="ready" label={`${plural(retention.readyToRemove, "title")} ready to remove`} />] : []),
+              ...(retention.removedLast7Days > 0
+                ? [<Line key="removed" label="Removed this week" value={`${plural(retention.removedLast7Days, "title")}, ${bytesText(retention.removedBytesLast7Days)}`} />]
+                : [])
+            ]}
+          />
         )}
       </Panel>
 

@@ -1,8 +1,9 @@
 /**
  * Small shared pieces for the Dashboard's Downloads and System tabs (#1082).
  *
- * A panel is a ListCard that fills its grid cell and scrolls its own body, so
- * the tab never scrolls the page. `useAction` runs one button's request, says
+ * A panel is a ListCard that fills its grid cell and clips its own body (a list
+ * puts its rows in a `FitList`, which shows whole rows only), so the tab never
+ * scrolls the page. `useAction` runs one button's request, says
  * what happened in plain words and refreshes the stored answers behind the
  * screen. Nothing here reaches a client, indexer or disk while a screen waits:
  * every call is a person pressing a button.
@@ -49,7 +50,7 @@ export function Panel({
 }) {
   return (
     <ListCard title={title} count={count} actions={<PanelLink to={to}>{linkLabel}</PanelLink>} className={cn("flex min-h-0 flex-col", className)}>
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       {footer ? <div className="border-t border-hairline px-[var(--card-pad-x)] py-2 text-[length:var(--type-caption)] text-muted-foreground">{footer}</div> : null}
     </ListCard>
   );
@@ -64,7 +65,7 @@ export function PanelNote({ children }: { children: ReactNode }) {
 export function FactRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 px-[var(--card-pad-x)] py-1.5 text-[length:var(--type-body-sm)]">
-      <span className="text-muted-foreground">{label}</span>
+      <span className="shrink-0 whitespace-nowrap text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right font-medium text-foreground">{children}</span>
     </div>
   );
