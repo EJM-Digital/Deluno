@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
 import { buildJourney, byStage, laneCounts, movedCards, titleFromRelease, type Stage } from "./journey";
-import { activityKind } from "./kinds";
+import { activityKind, isRoutine } from "./kinds";
 import { addBuckets, bucketByHour, bucketsFromCounts, linePath, shapeSpeedSeries } from "./series";
 import { heartbeatState } from "./status";
 import { fullSummary } from "../downloads-fixtures";
@@ -131,6 +131,10 @@ describe("activity per hour today", () => {
     expect(activityKind("intake.list.synced")).toBe("lists");
     expect(activityKind("whatever.happened", "error")).toBe("failed");
     expect(activityKind("something.else")).toBe("other");
+    expect(activityKind("processing.completed")).toBe("process");
+    expect(activityKind("processing.timed-out")).toBe("failed");
+    for (const routine of ["job.queued", "job.started", "job.completed", "metadata.artwork.cleanup", "library.title.rescanned", "external.file-changed"]) expect(isRoutine(activityKind(routine))).toBe(true);
+    expect(isRoutine(activityKind("movies.release.grabbed"))).toBe(false);
   });
 });
 
