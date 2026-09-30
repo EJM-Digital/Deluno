@@ -93,7 +93,7 @@ test.describe("indexer and download client CRUD", () => {
 
     try {
       await page.goto("/indexers/indexers");
-      await expect(page.getByText(uniqueName).first()).toBeVisible();
+      await expect(page.locator("#main-content").getByText(uniqueName).first()).toBeVisible();
     } finally {
       // Cleanup
       await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
@@ -123,7 +123,7 @@ test.describe("indexer and download client CRUD", () => {
 
     // Verify it shows
     await page.goto("/indexers/indexers");
-    await expect(page.getByText(uniqueName).first()).toBeVisible();
+    await expect(page.locator("#main-content").getByText(uniqueName).first()).toBeVisible();
 
     // Delete via API
     const deleteResp = await page.request.delete(`/api/indexers/${indexer.id}`, { headers: authHeaders() });
@@ -131,7 +131,7 @@ test.describe("indexer and download client CRUD", () => {
 
     // Reload and verify gone
     await page.reload();
-    await expect(page.getByText(uniqueName)).toHaveCount(0);
+    await expect(page.locator("#main-content").getByText(uniqueName)).toHaveCount(0);
   });
 
   test("sources page opens the indexer drawer with every protocol available", async ({ page }) => {
@@ -373,7 +373,7 @@ test.describe("indexer and download client CRUD", () => {
 
     try {
       await page.goto("/indexers/download-clients");
-      await expect(page.getByText(uniqueName).first()).toBeVisible();
+      await expect(page.locator("#main-content").getByText(uniqueName).first()).toBeVisible();
     } finally {
       await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
     }
@@ -404,12 +404,12 @@ test.describe("indexer and download client CRUD", () => {
     const client = await createResp.json() as { id: string };
 
     await page.goto("/indexers/download-clients");
-    await expect(page.getByText(uniqueName).first()).toBeVisible();
+    await expect(page.locator("#main-content").getByText(uniqueName).first()).toBeVisible();
 
     await page.request.delete(`/api/download-clients/${client.id}`, { headers: authHeaders() });
 
     await page.reload();
-    await expect(page.getByText(uniqueName)).toHaveCount(0);
+    await expect(page.locator("#main-content").getByText(uniqueName)).toHaveCount(0);
   });
 
   test("sources page provides the download connection flow", async ({ page }) => {
