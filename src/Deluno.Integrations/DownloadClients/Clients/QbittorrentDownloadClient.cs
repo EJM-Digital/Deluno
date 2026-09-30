@@ -138,6 +138,28 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
         // pick an item out of by position.
         var knownHash = DownloadClientHelpers.KnownHashOf(request);
         var after = await WaitForNewHashAsync(http, before, knownHash, cancellationToken);
+
+        // A hash still unlisted after the 6 second window, on an answer that was not
+        // a plain "Ok.", is looked for once more at about 30 seconds: a client that
+        // answers something else and never lists the torrent rejected it silently,
+        // and waiting out the 2 hour grab timeout to learn that helps nobody (#1062).
+        if (knownHash is not null && after is not null && !after.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
+            && !payload.StartsWith("Ok", StringComparison.OrdinalIgnoreCase))
+        {
+            await Task.Delay(ExtendedConfirmationDelay, cancellationToken);
+            after = await ListHashesAsync(http, cancellationToken) ?? after;
+            if (!after.Contains(knownHash, StringComparer.OrdinalIgnoreCase))
+            {
+                return DownloadClientHelpers.GrabFailure(
+                    client,
+                    request,
+                    $"qBittorrent answered \"{payload.Trim()}\" and never listed the torrent, so it turned the release down. Its log says why.") with
+                {
+                    ResponseCode = (int)response.StatusCode,
+                    ResponseJson = payload
+                };
+            }
+        }
         if (knownHash is not null && before is not null && before.Contains(knownHash, StringComparer.OrdinalIgnoreCase)
             || knownHash is null && before is not null && after is not null && !after.Except(before).Any())
         {
@@ -219,6 +241,9 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             ExternalId = added
         };
     }
+
+    /// <summary>How much longer than the first 6 second window a silent rejection is waited on.</summary>
+    internal static TimeSpan ExtendedConfirmationDelay { get; set; } = TimeSpan.FromSeconds(24);
 
     private static bool HasShareLimits(DownloadClientItem client)
         => client.ShareRatioLimit is not null

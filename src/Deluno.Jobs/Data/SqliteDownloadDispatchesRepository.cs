@@ -965,7 +965,7 @@ public sealed class SqliteDownloadDispatchesRepository(
         using (var sweep = connection.CreateCommand())
         {
             sweep.CommandText = "DELETE FROM download_grab_reservations WHERE created_utc < @cutoff";
-            AddParameter(sweep, "@cutoff", now.AddDays(-2).ToString("O"));
+            AddParameter(sweep, "@cutoff", now.AddMinutes(-15).ToString("O"));
             await sweep.ExecuteNonQueryAsync(cancellationToken);
         }
 

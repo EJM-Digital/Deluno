@@ -93,6 +93,7 @@ public sealed class DownloadClientGrabService(
 
         // Before the client's circuit: a tracker that will not hand over a
         // release says nothing about the client.
+        var originalTorrentFile = request.TorrentFile;
         var resolved = await ResolveTrackerReleaseAsync(request, cancellationToken);
         if (resolved.Problem is { } problem)
         {
@@ -104,123 +105,152 @@ public sealed class DownloadClientGrabService(
         // #1062: the torrent's info-hash is known before anything is sent, from
         // the magnet, or from the .torrent Deluno fetches itself, so the grab is
         // known by its id and no client is asked to name it.
-        var prepared = await PrepareKnownInfoHashAsync(client, request, cancellationToken);
+        PreparedRelease prepared;
+        try
+        {
+            prepared = await PrepareKnownInfoHashAsync(client, request, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Outside the resilience wrapper below, so nothing may escape from here.
+            logger?.LogWarning(exception, "Could not prepare {Release} for {Client}.", request.ReleaseName, client.Name);
+            prepared = new PreparedRelease(request, Failed(client.Id, request, "unavailable", "Deluno could not prepare this release to send it.", category: "indexer"));
+        }
+
         request = prepared.Request;
+        var fetchedTorrentFile = originalTorrentFile is null && request.TorrentFile is { Length: > 0 and <= MaxCarriedTorrentBytes } fetchedBytes ? fetchedBytes : null;
         request = await WithSaveFolderAsync(client, request, cancellationToken);
 
         // Deluno's own record of this send, written before it goes out, so a
         // second grab of the same release sees it (#1062).
         var reservationId = prepared.Failure is null ? await ReserveAsync(client, request, cancellationToken) : null;
 
-        DownloadClientGrabResult grabResult;
-        if (prepared.Failure is { } notSent)
+        try
         {
-            grabResult = notSent;
-        }
-        else
-        {
-            await realtimeEventPublisher.PublishDispatchGrabAttemptAsync(
-                request.DispatchId ?? "unknown",
-                request.ReleaseName,
-                client.Id,
-                client.Name,
-                cancellationToken);
-
-            var result = await resiliencePolicy.ExecuteAsync(
-                new IntegrationResilienceRequest(
-                    DownloadClientHelpers.BuildResilienceKey(client, "grab"),
-                    "grab",
-                    MaxAttempts: 1,
-                    FailureThreshold: 3,
-                    ServiceType: "download-client",
-                    ServiceId: client.Id,
-                    ServiceName: client.Name),
-                token => GrabCoreAsync(client, request, token),
-                value => value.Succeeded
-                    ? IntegrationResilienceOutcome.Success
-                    : value.Status == "failed"
-                        ? IntegrationResilienceOutcome.RetryableFailure
-                        : IntegrationResilienceOutcome.NonRetryableFailure,
-                cancellationToken);
-
-            if (result.CircuitOpen)
+            DownloadClientGrabResult grabResult;
+            if (prepared.Failure is { } notSent)
             {
-                await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
+                grabResult = notSent;
+            }
+            else
+            {
+                await realtimeEventPublisher.PublishDispatchGrabAttemptAsync(
                     request.DispatchId ?? "unknown",
                     request.ReleaseName,
                     client.Id,
-                    false,
-                    "Circuit breaker open",
+                    client.Name,
                     cancellationToken);
 
-                await ReleaseReservationAsync(reservationId, cancellationToken);
-                return Failed(
-                    client.Id,
-                    request,
-                    "circuitOpen",
-                    "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.",
-                    result.Failure);
-            }
-
-            grabResult = result.Value ?? Failed(client.Id, request, "failed", result.FailureMessage ?? "Download client grab failed.");
-            if (!grabResult.Succeeded && grabResult.Failure is null)
-            {
-                grabResult = grabResult with
-                {
-                    Failure = result.Failure ?? IntegrationFailureFactory.FromLegacy(
-                        "download-client",
-                        client.Id,
-                        client.Name,
+                var result = await resiliencePolicy.ExecuteAsync(
+                    new IntegrationResilienceRequest(
+                        DownloadClientHelpers.BuildResilienceKey(client, "grab"),
                         "grab",
-                        grabResult.Status,
-                        grabResult.Message,
-                        grabResult.ResponseCode,
-                        attempts: result.Attempts,
-                        code: grabResult.FailureCode,
-                        upstreamDetail: grabResult.ResponseJson)
-                };
+                        MaxAttempts: 1,
+                        FailureThreshold: 3,
+                        ServiceType: "download-client",
+                        ServiceId: client.Id,
+                        ServiceName: client.Name),
+                    token => GrabCoreAsync(client, request, token),
+                    value => value.Succeeded
+                        ? IntegrationResilienceOutcome.Success
+                        : value.Status == "failed"
+                            ? IntegrationResilienceOutcome.RetryableFailure
+                            : IntegrationResilienceOutcome.NonRetryableFailure,
+                    cancellationToken);
+
+                if (result.CircuitOpen)
+                {
+                    await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
+                        request.DispatchId ?? "unknown",
+                        request.ReleaseName,
+                        client.Id,
+                        false,
+                        "Circuit breaker open",
+                        cancellationToken);
+
+                    await ReleaseReservationAsync(reservationId, cancellationToken);
+                    return Failed(
+                        client.Id,
+                        request,
+                        "circuitOpen",
+                        "Deluno paused grabs for this client after repeated failures. Test the client connection before sending another release.",
+                        result.Failure);
+                }
+
+                grabResult = result.Value ?? Failed(client.Id, request, "failed", result.FailureMessage ?? "Download client grab failed.");
+                if (!grabResult.Succeeded && grabResult.Failure is null)
+                {
+                    grabResult = grabResult with
+                    {
+                        Failure = result.Failure ?? IntegrationFailureFactory.FromLegacy(
+                            "download-client",
+                            client.Id,
+                            client.Name,
+                            "grab",
+                            grabResult.Status,
+                            grabResult.Message,
+                            grabResult.ResponseCode,
+                            attempts: result.Attempts,
+                            code: grabResult.FailureCode,
+                            upstreamDetail: grabResult.ResponseJson)
+                    };
+                }
+
             }
 
+            grabResult = WithoutARetryPromise(grabResult);
+            if (!grabResult.Succeeded && fetchedTorrentFile is not null)
+            {
+                grabResult = grabResult with { FetchedTorrentFile = fetchedTorrentFile };
+            }
+
+            grabResult = await LeaveAnOutsideDuplicateAloneAsync(client, request, grabResult, reservationId, cancellationToken);
+            if (!grabResult.Succeeded)
+            {
+                await ReleaseReservationAsync(reservationId, cancellationToken);
+            }
+
+            await FollowUpDeadReleaseAsync(client, request, grabResult, cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(request.DispatchId))
+            {
+                await dispatchesRepository.RecordGrabAsync(
+                    request.DispatchId,
+                    grabResult.Status,
+                    grabResult.ResponseCode,
+                    grabResult.Message,
+                    grabResult.Failure?.Code ?? grabResult.FailureCode,
+                    grabResult.ResponseJson,
+                    cancellationToken,
+                    failure: grabResult.Failure,
+                    externalId: grabResult.ExternalId);
+
+                // The dispatch row is Deluno's record now; the reservation is spent.
+                await ReleaseReservationAsync(reservationId, cancellationToken);
+
+                await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
+                    request.DispatchId,
+                    request.ReleaseName,
+                    client.Id,
+                    grabResult.Succeeded,
+                    grabResult.Message,
+                    cancellationToken);
+            }
+
+            if (grabResult.Succeeded)
+            {
+                await ConfirmSavePathAsync(client, request, cancellationToken);
+            }
+
+            return grabResult;
         }
-
-        grabResult = WithoutARetryPromise(grabResult);
-
-        grabResult = await LeaveAnOutsideDuplicateAloneAsync(client, request, grabResult, reservationId, cancellationToken);
-        if (!grabResult.Succeeded)
+        catch (Exception)
         {
-            await ReleaseReservationAsync(reservationId, cancellationToken);
+            // Cancelled or thrown part-way: the send may or may not have gone out, but
+            // this grab no longer holds its place either way (#1062).
+            await ReleaseReservationAsync(reservationId, CancellationToken.None);
+            throw;
         }
-
-        await FollowUpDeadReleaseAsync(client, request, grabResult, cancellationToken);
-
-        if (!string.IsNullOrWhiteSpace(request.DispatchId))
-        {
-            await dispatchesRepository.RecordGrabAsync(
-                request.DispatchId,
-                grabResult.Status,
-                grabResult.ResponseCode,
-                grabResult.Message,
-                grabResult.Failure?.Code ?? grabResult.FailureCode,
-                grabResult.ResponseJson,
-                cancellationToken,
-                failure: grabResult.Failure,
-                externalId: grabResult.ExternalId);
-
-            await realtimeEventPublisher.PublishDispatchGrabCompletedAsync(
-                request.DispatchId,
-                request.ReleaseName,
-                client.Id,
-                grabResult.Succeeded,
-                grabResult.Message,
-                cancellationToken);
-        }
-
-        if (grabResult.Succeeded)
-        {
-            await ConfirmSavePathAsync(client, request, cancellationToken);
-        }
-
-        return grabResult;
     }
 
     /// <summary>
@@ -279,9 +309,21 @@ public sealed class DownloadClientGrabService(
         string? reservationId,
         CancellationToken cancellationToken)
     {
-        if (!grabResult.Succeeded || !grabResult.IsDuplicateFollow || string.IsNullOrWhiteSpace(grabResult.ExternalId))
+        if (!grabResult.Succeeded || !grabResult.IsDuplicateFollow)
         {
             return grabResult;
+        }
+
+        if (string.IsNullOrWhiteSpace(grabResult.ExternalId))
+        {
+            // A client that said "already have it" without naming it (SABnzbd, no
+            // id): followed only when Deluno has its own record of this release.
+            var known = string.IsNullOrWhiteSpace(request.DispatchId)
+                ? await dispatchesRepository.FindGrabbedReleaseNamesAsync([request.ReleaseName], cancellationToken)
+                : [];
+            return known.Count > 0
+                ? grabResult
+                : DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"{client.Name} already has this one from elsewhere.");
         }
 
         // The dispatch this very grab belongs to does not count as proof: it is
@@ -572,6 +614,9 @@ public sealed class DownloadClientGrabService(
         }
     }
 
+    /// <summary>The largest fetched .torrent kept for a connectivity retry.</summary>
+    private const int MaxCarriedTorrentBytes = 1024 * 1024;
+
     private sealed record PreparedRelease(DownloadClientGrabRequest Request, DownloadClientGrabResult? Failure);
 
     /// <summary>
@@ -616,6 +661,19 @@ public sealed class DownloadClientGrabService(
             var fetched = await torrentFetcher.FetchAsync(indexer, request.DownloadUrl, cancellationToken);
             if (!fetched.Succeeded)
             {
+                if (fetched.AuthFailed && indexerAuthFailureRecorder is not null && indexer is not null)
+                {
+                    // A bad API key on a Torznab/Jackett fetch shows on Health like any other (#754, #1062).
+                    try
+                    {
+                        await indexerAuthFailureRecorder.RecordAsync(indexer.Id, indexer.Name, "grab", fetched.Problem!, null, cancellationToken);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        logger?.LogDebug(exception, "Could not record the fetch failure of {Indexer}.", indexer.Name);
+                    }
+                }
+
                 return new PreparedRelease(
                     request,
                     fetched.ReleaseIsGone
@@ -633,7 +691,7 @@ public sealed class DownloadClientGrabService(
                 known = TorrentInfoHash.FromTorrentFile(fetched.TorrentFile!, out var problem);
                 if (known is null)
                 {
-                    return new PreparedRelease(request, DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"This release's torrent file could not be read: {problem}."));
+                    return new PreparedRelease(request, DownloadClientHelpers.DeadReleaseGrabFailure(client, request, $"The indexer sent a file that isn't a torrent ({problem})."));
                 }
 
                 request = request with { TorrentFile = fetched.TorrentFile };
@@ -646,6 +704,12 @@ public sealed class DownloadClientGrabService(
             logger?.LogInformation(
                 "{Release}: the indexer listed hash {Reported} but the release itself is {Known}; Deluno uses the release's own.",
                 request.ReleaseName, reported, known);
+        }
+
+        if (known is null && reported is null && request.DownloadUrl.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+        {
+            // #1062: a magnet naming no torrent cannot be followed in any client.
+            return new PreparedRelease(request, DownloadClientHelpers.DeadReleaseGrabFailure(client, request, "The magnet link names no torrent."));
         }
 
         return new PreparedRelease(request with { KnownInfoHash = known ?? reported }, null);
@@ -751,7 +815,7 @@ public sealed class DownloadClientGrabService(
                 "download-client",
                 clientId,
                 clientId,
-                "grab",
+                category == "indexer" ? "fetch" : "grab",
                 category ?? status,
                 message)
         });

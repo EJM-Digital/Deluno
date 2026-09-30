@@ -14,6 +14,28 @@ namespace Deluno.Jobs.Data;
 /// search at the same title the same way, instead of each growing its own
 /// copy of the season-pack-vs-single-title branch.
 /// </summary>
+public static class DispatchTargets
+{
+    /// <summary>
+    /// The plain-words reason shown wherever Deluno would otherwise search for
+    /// another copy of a download the person chose themselves on Search (#1062).
+    /// </summary>
+    public const string ChosenOnSearchNote =
+        "You chose this release on Search, so Deluno won't pick another; choose one on Search again.";
+
+    /// <summary>
+    /// Whether a dispatch belongs to a title Deluno can search for. A release
+    /// grabbed from the Search page is recorded as entity type "release" with
+    /// a GUID and no title: nothing is searched for it, and the release is
+    /// never blocklisted on the person's behalf.
+    /// </summary>
+    public static bool HasTitle(string? entityType)
+        => !string.IsNullOrEmpty(entityType) && ReplacementSearchQueuer.Supports(entityType);
+
+    public static bool IsChosenOnSearch(string? entityType)
+        => string.Equals(entityType, "release", StringComparison.OrdinalIgnoreCase);
+}
+
 public static class ReplacementSearchQueuer
 {
     /// <summary>

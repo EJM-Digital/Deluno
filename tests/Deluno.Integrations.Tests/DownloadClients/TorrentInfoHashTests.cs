@@ -91,6 +91,41 @@ public sealed class TorrentInfoHashTests
         Assert.False(string.IsNullOrWhiteSpace(problem));
     }
 
+    [Theory]
+    [InlineData("2147483647")]
+    [InlineData("2147483646")]
+    [InlineData("2147483640")]
+    [InlineData("4294967295")]
+    [InlineData("99999999999")]
+    [InlineData("-1")]
+    public void A_string_length_near_the_int_limit_is_a_file_that_is_not_a_torrent_and_never_throws(string length)
+    {
+        var file = Latin1("d4:infod4:name" + length + ":shorte");
+        var hash = TorrentInfoHash.FromTorrentFile(file, out var problem);
+
+        Assert.Null(hash);
+        Assert.False(string.IsNullOrWhiteSpace(problem));
+    }
+
+    [Fact]
+    public void Random_bytes_and_a_torrent_with_every_byte_cut_never_throw()
+    {
+        var random = new Random(1062);
+        for (var round = 0; round < 500; round++)
+        {
+            var bytes = new byte[random.Next(0, 200)];
+            random.NextBytes(bytes);
+            Assert.Null(Record.Exception(() => TorrentInfoHash.FromTorrentFile(bytes, out _)));
+        }
+
+        var whole = Torrent(V1Info());
+        for (var cut = 0; cut < whole.Length; cut++)
+        {
+            var part = whole[..cut];
+            Assert.Null(Record.Exception(() => TorrentInfoHash.FromTorrentFile(part, out _)));
+        }
+    }
+
     [Fact]
     public void A_deeply_nested_file_is_refused_rather_than_overflowing_the_stack()
     {

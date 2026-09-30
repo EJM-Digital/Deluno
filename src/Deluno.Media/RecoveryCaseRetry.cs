@@ -278,6 +278,17 @@ public static class RecoveryCaseRetry
             return RecoveryRetryOutcome.Refused("The library this download was for no longer exists. Dismiss this.");
         }
 
+        if (!DispatchTargets.HasTitle(dispatch.EntityType))
+        {
+            // #1062: a release chosen on Search has no title to search for.
+            if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
+            {
+                await dispatches.ArchiveDispatchAsync(dispatch.Id, "retried", cancellationToken);
+            }
+
+            return RecoveryRetryOutcome.Done($"Deluno ended the download {dispatch.DownloadClientName} never showed. {DispatchTargets.ChosenOnSearchNote}");
+        }
+
         var now = timeProvider.GetUtcNow();
         if (!string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase))
         {

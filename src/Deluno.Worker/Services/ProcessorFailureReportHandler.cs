@@ -121,6 +121,16 @@ public sealed class ProcessorFailureReportHandler(
             return new ProcessorRejectionOutcome(true, enough, blocked.Id, null);
         }
 
+        if (!DispatchTargets.HasTitle(dispatch.EntityType))
+        {
+            // A release chosen on Search has no title to search for (#1062).
+            return new ProcessorRejectionOutcome(
+                true,
+                $"{report.ProcessorName} could not process {dispatch.ReleaseName} and removed it. {DispatchTargets.ChosenOnSearchNote}",
+                blocked.Id,
+                null);
+        }
+
         var search = await AnotherCopySearch.EnqueueAsync(
             jobScheduler, dispatch, report.Library.Name, "processor-rejected", handoff.Id, cancellationToken);
 

@@ -220,7 +220,8 @@ internal static class SearchExecutionSupport
             request,
             attemptNumber: 1,
             cancellationToken,
-            torrentHashOrItemId);
+            torrentHashOrItemId,
+            grabResult.FetchedTorrentFile);
 
         await activityFeedRepository.RecordActivityAsync(
             "download.client.connectivity-retry-scheduled",
@@ -252,7 +253,8 @@ internal static class SearchExecutionSupport
         DownloadClientGrabRequest request,
         int attemptNumber,
         CancellationToken cancellationToken,
-        string? torrentHashOrItemId = null)
+        string? torrentHashOrItemId = null,
+        byte[]? carriedTorrentFile = null)
     {
         var retryAt = timeProvider.GetUtcNow() + ConnectivityRetryDelay;
         var payload = new JobPayloads.DownloadClientRetryGrabPayload(
@@ -271,7 +273,7 @@ internal static class SearchExecutionSupport
             request.DispatchId,
             request.Priority,
             request.Password,
-            request.TorrentFile,
+            request.TorrentFile ?? carriedTorrentFile,
             attemptNumber,
             torrentHashOrItemId);
 

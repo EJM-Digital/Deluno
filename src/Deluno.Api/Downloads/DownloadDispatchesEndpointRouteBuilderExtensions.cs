@@ -189,6 +189,16 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             });
         }
 
+        if (!DispatchTargets.HasTitle(dispatch.EntityType))
+        {
+            // #1062: a release chosen on Search has no title to search for.
+            return Results.BadRequest(new
+            {
+                code = "CHOSEN_ON_SEARCH",
+                message = DispatchTargets.ChosenOnSearchNote
+            });
+        }
+
         var library = (await libraries.ListLibrariesAsync(cancellationToken))
             .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.Ordinal));
         if (library is null)

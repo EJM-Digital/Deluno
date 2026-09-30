@@ -119,6 +119,14 @@ public static class TorrentInfoHash
             problem = exception.Message;
             return null;
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Anything else a hostile or broken file can provoke is still just
+            // a file that is not a torrent (#1062).
+            _ = exception;
+            problem = "the file is not a torrent";
+            return null;
+        }
     }
 
     private static byte[]? FromBase32(string text)
@@ -327,7 +335,7 @@ public static class TorrentInfoHash
             }
 
             var start = colon + 1;
-            if (start + length > data.Length)
+            if (length > data.Length - start)
             {
                 throw new FormatException("a string runs past the end of the torrent");
             }

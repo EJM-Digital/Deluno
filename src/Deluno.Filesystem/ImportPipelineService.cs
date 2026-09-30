@@ -3460,7 +3460,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = false,
                 CatalogId = null,
                 Dispatch = dispatch,
-                EntityId = dispatch?.EntityId,
+                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken),
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -3510,7 +3510,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = false,
                 CatalogId = null,
                 Dispatch = dispatch,
-                EntityId = dispatch?.EntityId,
+                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken),
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -3601,7 +3601,7 @@ public sealed partial class ImportPipelineService(
                 Dispatch = dispatch,
                 // The show, not the grab: an episode search's grab names the episode,
                 // and the show's History is where this import belongs (#595).
-                EntityId = knownSeriesId ?? request.SeriesId ?? dispatch?.EntityId,
+                EntityId = knownSeriesId ?? request.SeriesId ?? await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: true, cancellationToken),
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
@@ -3639,7 +3639,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = false,
                 CatalogId = null,
                 Dispatch = dispatch,
-                EntityId = dispatch?.EntityId ?? request.SeriesId,
+                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken) ?? request.SeriesId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -3677,7 +3677,7 @@ public sealed partial class ImportPipelineService(
                 CatalogUpdated = false,
                 CatalogId = null,
                 Dispatch = dispatch,
-                EntityId = dispatch?.EntityId ?? request.SeriesId,
+                EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: false, cancellationToken) ?? request.SeriesId,
                 ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
                 PreferenceEvaluations = preferenceEvaluations,
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan)
@@ -3713,7 +3713,7 @@ public sealed partial class ImportPipelineService(
             CatalogUpdated = movieResult,
             CatalogId = movieResult ? catalogId : null,
             Dispatch = dispatch,
-            EntityId = dispatch?.EntityId ?? request.SeriesId,
+            EntityId = await EntityIdForImportAsync(dispatch, mediaType, title, request, imported: true, cancellationToken) ?? request.SeriesId,
             ReleaseNameEvidence = dispatchReleaseName ?? preview.SourcePath,
             PreferenceEvaluations = preferenceEvaluations,
             MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
@@ -3743,6 +3743,35 @@ public sealed partial class ImportPipelineService(
             && await seriesCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken) is { } grabbed
                 ? grabbed.Id
                 : null;
+    }
+
+    /// <summary>
+    /// The catalogue entity an import is filed under. A grab's own entity is
+    /// used as before; a release chosen on Search (#1062) is recorded against
+    /// a GUID that names no title, so its import is filed under the film or
+    /// show the file was matched to, found by the same lookup the import used.
+    /// </summary>
+    private async Task<string?> EntityIdForImportAsync(
+        DownloadDispatchItem? dispatch,
+        string mediaType,
+        string title,
+        ImportPreviewRequest request,
+        bool imported,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch is null || !DispatchTargets.IsChosenOnSearch(dispatch.EntityType))
+        {
+            return dispatch?.EntityId;
+        }
+
+        if (!imported)
+        {
+            return null;
+        }
+
+        return mediaType == "tv"
+            ? await seriesCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken)
+            : await movieCatalogRepository.FindExistingIdAsync(title, request.Year, request.ImdbId, null, null, cancellationToken);
     }
 
     private async Task<string?> KnownMovieIdAsync(DownloadDispatchItem? dispatch, CancellationToken cancellationToken)

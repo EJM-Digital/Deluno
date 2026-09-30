@@ -64,4 +64,11 @@ describe("DownloadDispatchDrawer", () => {
     expect(screen.getByText("Retry scheduled")).toBeVisible();
     expect(screen.getByText(/Next eligible attempt/)).toBeVisible();
   });
+
+  it("says a release chosen on Search was chosen there, not a generated id (#1062)", () => {
+    render(<DownloadDispatchDrawer dispatch={{ ...failedGrab, entityType: "release", entityId: "0a1b2c3d4e5f" }} onClose={() => undefined} />);
+
+    expect(screen.getByText("Chosen on Search")).toBeVisible();
+    expect(screen.queryByText(/0a1b2c3d4e5f/)).not.toBeInTheDocument();
+  });
 });
