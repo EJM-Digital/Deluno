@@ -117,6 +117,70 @@ public sealed class MetadataRefreshJobHandlerTests
     }
 
     [Fact]
+    public async Task MoviesMetadataRefreshJobHandler_never_moves_a_tmdb_linked_title_onto_omdb()
+    {
+        var movie = new MovieListItem(
+            "movie-1", "Arrival", 2016, "tt2543164", true, true,
+            "tmdb", null, null, null, null, null, null, [], null, null, null, null, Now, Now);
+        var metadataProvider = new Mock<IMetadataProvider>();
+        metadataProvider
+            .Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MetadataSearchResult("omdb", "tt2543164", "movies", "Arrival", null, 2016, "overview", null, null, 7.6, [], [], "tt2543164", null)]);
+        var movieCatalogRepository = new Mock<IMovieCatalogRepository>();
+        movieCatalogRepository.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>())).ReturnsAsync(movie);
+        var handler = new MoviesMetadataRefreshJobHandler(metadataProvider.Object, movieCatalogRepository.Object, new Mock<IActivityFeedRepository>().Object);
+
+        var message = await handler.HandleAsync(TestJobs.Create("movies.metadata.refresh", relatedEntityId: "movie-1"), CancellationToken.None);
+
+        Assert.Contains("Fix match", message, StringComparison.Ordinal);
+        movieCatalogRepository.Verify(repository => repository.UpdateMetadataAsync(
+            It.IsAny<string>(), It.IsAny<MetadataSearchResult>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SeriesMetadataRefreshJobHandler_never_moves_a_tvdb_linked_show_onto_omdb()
+    {
+        var series = new SeriesListItem(
+            "series-1", "Severance", 2022, "tt11280740", true, true,
+            "tvdb", null, null, null, null, null, null, [], null, null, null, null, Now, Now);
+        var metadataProvider = new Mock<IMetadataProvider>();
+        metadataProvider
+            .Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MetadataSearchResult("omdb", "tt11280740", "tv", "Severance", null, 2022, "overview", null, null, 8.7, [], [], "tt11280740", null)]);
+        var seriesCatalogRepository = new Mock<ISeriesCatalogRepository>();
+        seriesCatalogRepository.Setup(repository => repository.GetByIdAsync("series-1", It.IsAny<CancellationToken>())).ReturnsAsync(series);
+        var handler = new SeriesMetadataRefreshJobHandler(metadataProvider.Object, seriesCatalogRepository.Object, new Mock<IActivityFeedRepository>().Object);
+
+        var message = await handler.HandleAsync(TestJobs.Create("series.metadata.refresh", relatedEntityId: "series-1"), CancellationToken.None);
+
+        Assert.Contains("Fix match", message, StringComparison.Ordinal);
+        seriesCatalogRepository.Verify(repository => repository.UpdateMetadataAsync(
+            It.IsAny<string>(), It.IsAny<MetadataSearchResult>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MoviesMetadataRefreshJobHandler_an_unlinked_title_may_still_be_matched_on_omdb()
+    {
+        var movie = new MovieListItem(
+            "movie-1", "Arrival", 2016, "tt2543164", true, true,
+            null, null, null, null, null, null, null, [], null, null, null, null, Now, Now);
+        var metadataProvider = new Mock<IMetadataProvider>();
+        metadataProvider
+            .Setup(provider => provider.SearchAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new MetadataSearchResult("omdb", "tt2543164", "movies", "Arrival", null, 2016, "overview", null, null, 7.6, [], [], "tt2543164", null)]);
+        var movieCatalogRepository = new Mock<IMovieCatalogRepository>();
+        movieCatalogRepository.Setup(repository => repository.GetByIdAsync("movie-1", It.IsAny<CancellationToken>())).ReturnsAsync(movie);
+        movieCatalogRepository
+            .Setup(repository => repository.UpdateMetadataAsync("movie-1", It.IsAny<MetadataSearchResult>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(movie);
+        var handler = new MoviesMetadataRefreshJobHandler(metadataProvider.Object, movieCatalogRepository.Object, new Mock<IActivityFeedRepository>().Object);
+
+        var message = await handler.HandleAsync(TestJobs.Create("movies.metadata.refresh", relatedEntityId: "movie-1"), CancellationToken.None);
+
+        Assert.Equal("Refreshed metadata for Arrival.", message);
+    }
+
+    [Fact]
     public async Task SeriesMetadataRefreshJobHandler_no_related_series_skips_without_calling_the_provider()
     {
         var metadataProvider = new Mock<IMetadataProvider>(MockBehavior.Strict);

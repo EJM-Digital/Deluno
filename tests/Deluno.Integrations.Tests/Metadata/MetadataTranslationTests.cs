@@ -141,6 +141,34 @@ public sealed class MetadataTranslationTests : IDisposable
     }
 
     [Fact]
+    public async Task A_translation_that_could_not_be_fetched_does_not_put_the_english_text_over_the_stored_translation()
+    {
+        var provider = await CreateProviderAsync("direct", string.Empty, "fr", request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/translations", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                : Route(request, new() { ["/3/movie/88010"] = MovieDetail(88010) }));
+
+        var lookup = await provider.ResolveProviderRecordAsync(new MetadataLookupRequest("Some Film", "movies", 2001, "88010"), CancellationToken.None);
+
+        // Found, but without the untranslated overview: the write keeps the stored text where this is empty.
+        Assert.Equal(MetadataProviderRecordStatus.Found, lookup.Status);
+        Assert.Null(lookup.Result!.Overview);
+        Assert.Null(lookup.Result.Tagline);
+        Assert.Equal("Some Film", lookup.Result.Title);
+    }
+
+    [Fact]
+    public void Withholding_untranslated_text_leaves_every_other_field_alone()
+    {
+        var withheld = TmdbMetadataProvider.WithholdUntranslatedText(Result());
+
+        Assert.Null(withheld.Overview);
+        Assert.Null(withheld.Tagline);
+        Assert.Equal("The Matrix", withheld.Title);
+        Assert.Equal(["Matrix Reloaded Alias"], withheld.AlternateTitles);
+    }
+
+    [Fact]
     public async Task Through_the_broker_the_gateways_compact_list_is_used()
     {
         var provider = await CreateProviderAsync("broker", "https://broker.example.test", "pt-BR", request => Route(request, new()

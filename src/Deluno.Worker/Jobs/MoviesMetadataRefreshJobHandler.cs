@@ -61,6 +61,11 @@ public sealed class MoviesMetadataRefreshJobHandler(
             match = matches.FirstOrDefault();
         }
 
+        if (match is not null && MetadataLinkPolicy.WouldDowngradeLink(movie.MetadataProvider, match))
+        {
+            return $"Kept {movie.Title} linked to {movie.MetadataProvider?.ToUpperInvariant()}; the refresh only found it on OMDb, and changing the source is left to Fix match.";
+        }
+
         if (match is null)
         {
             return $"No metadata match found for {movie.Title}.";

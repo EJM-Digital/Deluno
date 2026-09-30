@@ -46,6 +46,7 @@ public sealed partial class TmdbMetadataProvider
     /// </summary>
     private async Task<MetadataSearchResult> ApplyLanguageAsync(MetadataSearchResult result, CancellationToken cancellationToken)
     {
+        var translationWanted = false;
         try
         {
             var settings = await platformRepository.GetAsync(cancellationToken);
@@ -57,6 +58,7 @@ public sealed partial class TmdbMetadataProvider
                 return result;
             }
 
+            translationWanted = true;
             var isTv = string.Equals(NormalizeMediaType(result.MediaType), "tv", StringComparison.Ordinal);
             TvdbTranslation? tvdb = null;
             if (isTv && !string.IsNullOrWhiteSpace(result.TvDbId))
@@ -65,14 +67,27 @@ public sealed partial class TmdbMetadataProvider
             }
 
             var tmdbList = await TmdbTranslationsAsync(result, isTv, cancellationToken);
-            return ApplyTranslation(result, language, tvdb, tmdbList);
+            // A translation that could not be fetched is not the same as one that
+            // does not exist: the English text must not go on top of wording an
+            // earlier refresh already translated (#1091).
+            return tmdbList is null && tvdb is null
+                ? WithholdUntranslatedText(result)
+                : ApplyTranslation(result, language, tvdb, tmdbList);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogInformation(exception, "Translations for {ProviderId} were unavailable; keeping the original wording.", result.ProviderId);
-            return result;
+            logger.LogInformation(exception, "Translations for {ProviderId} were unavailable; keeping what is stored.", result.ProviderId);
+            return translationWanted ? WithholdUntranslatedText(result) : result;
         }
     }
+
+    /// <summary>
+    /// The result without its untranslated wording, for when a translation was
+    /// wanted but could not be fetched. The write keeps the text already stored
+    /// where a field arrives empty, so the stored translation survives.
+    /// </summary>
+    internal static MetadataSearchResult WithholdUntranslatedText(MetadataSearchResult result)
+        => result with { Overview = null, Tagline = null };
 
     /// <summary>
     /// The fallback chain, kept pure so it can be tested: TheTVDB, then TMDb,
@@ -158,7 +173,7 @@ public sealed partial class TmdbMetadataProvider
     }
 
     /// <summary>Every translation TMDb has for a title: the broker first, then this install's own key (never in broker-only mode).</summary>
-    private async Task<IReadOnlyList<MetadataTranslation>> TmdbTranslationsAsync(
+    private async Task<IReadOnlyList<MetadataTranslation>?> TmdbTranslationsAsync(
         MetadataSearchResult result,
         bool isTv,
         CancellationToken cancellationToken)
@@ -172,8 +187,10 @@ public sealed partial class TmdbMetadataProvider
 
         var config = await GetMetadataConfigurationAsync(cancellationToken);
         IReadOnlyList<MetadataTranslation>? translations = null;
+        var attempted = false;
         if (config.ProviderMode is "broker" or "hybrid" && !string.IsNullOrWhiteSpace(config.BrokerUrl))
         {
+            attempted = true;
             var url = $"{BuildGatewayBaseUrl(config.BrokerUrl)}/{kind}/{Uri.EscapeDataString(result.ProviderId)}/translations";
             var response = await GetJsonWithResilienceAsync<JsonElement?>(
                 url,
@@ -188,18 +205,26 @@ public sealed partial class TmdbMetadataProvider
             var apiKey = config.TmdbApiKey ?? await GetApiKeyAsync(cancellationToken);
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
+                attempted = true;
                 var response = await GetJsonWithResilienceAsync<JsonElement?>(
                     $"https://api.themoviedb.org/3/{kind}/{Uri.EscapeDataString(result.ProviderId)}/translations?api_key={Uri.EscapeDataString(apiKey)}",
                     "metadata:tmdb:translations",
                     "metadata.tmdb.translations",
                     cancellationToken);
                 translations = ReadTranslations(response, direct: true);
+                if (translations is null && response is null && LastFailure?.HttpStatus == 404)
+                {
+                    // TMDb answering "not found" means it has no translations for
+                    // this title, which is an answer, not a failed lookup.
+                    translations = [];
+                }
             }
         }
 
         if (translations is null)
         {
-            return [];
+            // Null says the lookup failed; an empty list says TMDb has none.
+            return attempted ? null : [];
         }
 
         TmdbTranslationMemory[key] = (timeProvider.GetUtcNow().Add(TranslationsTtl), translations);

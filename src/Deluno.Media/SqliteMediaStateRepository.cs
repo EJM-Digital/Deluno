@@ -1430,11 +1430,14 @@ public sealed class SqliteMediaStateRepository(
                 metadata_provider = @metadataProvider,
                 metadata_provider_id = @metadataProviderId,
                 original_title = @originalTitle,
-                overview = @overview,
-                poster_url = @posterUrl,
-                backdrop_url = @backdropUrl,
-                rating = @rating,
-                genres = @genres,
+                -- A refresh never replaces a stored poster, backdrop, overview,
+                -- genres or rating with an empty value (#1091); a real new value
+                -- still wins. A person's override or re-link says so.
+                overview = CASE WHEN @replaceWithEmpty = 1 THEN @overview ELSE COALESCE(@overview, overview) END,
+                poster_url = CASE WHEN @replaceWithEmpty = 1 THEN @posterUrl ELSE COALESCE(@posterUrl, poster_url) END,
+                backdrop_url = CASE WHEN @replaceWithEmpty = 1 THEN @backdropUrl ELSE COALESCE(@backdropUrl, backdrop_url) END,
+                rating = CASE WHEN @replaceWithEmpty = 1 THEN @rating ELSE COALESCE(NULLIF(@rating, 0), rating) END,
+                genres = CASE WHEN @replaceWithEmpty = 1 THEN @genres ELSE COALESCE(@genres, genres) END,
                 external_url = @externalUrl,
                 metadata_json = @metadataJson,
                 runtime_minutes = COALESCE(@runtimeMinutes, runtime_minutes),
@@ -1456,6 +1459,7 @@ public sealed class SqliteMediaStateRepository(
             """;
 
         AddParameter(command, "@id", update.Id);
+        AddParameter(command, "@replaceWithEmpty", update.ReplaceWithEmpty ? 1 : 0);
         AddParameter(command, "@title", NormalizeText(update.Title));
         AddParameter(command, "@year", update.Year);
         AddParameter(command, "@runtimeMinutes", update.RuntimeMinutes);

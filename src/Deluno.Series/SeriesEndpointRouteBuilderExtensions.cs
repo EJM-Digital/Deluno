@@ -1609,7 +1609,8 @@ public static class SeriesEndpointRouteBuilderExtensions
                     // alone rather than blanked: the write COALESCEs them.
                     RuntimeMinutes: null,
                     Popularity: null,
-                    VoteCount: null),
+                    VoteCount: null,
+                    ReplaceWithEmpty: true),
                 cancellationToken);
 
             await activityFeedRepository.RecordActivityAsync(
@@ -4116,7 +4117,10 @@ public static class SeriesEndpointRouteBuilderExtensions
             CatalogueMetadata.ToUpdate(seriesId, result, result.Network) with
             {
                 Title = replaceIdentity ? result.Title : null,
-                Year = replaceIdentity ? result.Year : null
+                Year = replaceIdentity ? result.Year : null,
+                // A person's Fix match re-links to a different title: what the
+                // new one lacks must not keep the old one's artwork.
+                ReplaceWithEmpty = replaceIdentity
             },
             cancellationToken);
 

@@ -795,6 +795,86 @@ public sealed class TmdbMetadataProviderTests : IDisposable
         Assert.DoesNotContain("/search/", requestedUrls[0], StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("""{"error":"provider_record_missing","provider":"tmdb","providerId":"1"}""", true)]
+    [InlineData("""{"error":"provider_unavailable"}""", false)]
+    [InlineData("<html>404 Not Found</html>", false)]
+    [InlineData("", false)]
+    public void Only_the_gateways_own_reason_counts_as_a_missing_record(string body, bool expected)
+        => Assert.Equal(expected, TmdbMetadataProvider.IsProviderRecordMissingBody(body));
+
+    [Theory]
+    [InlineData("""{"error":"provider_record_missing","provider":"tmdb","providerId":"1603343"}""", MetadataProviderRecordStatus.Missing)]
+    [InlineData("Not Found", MetadataProviderRecordStatus.Unavailable)]
+    public async Task A_broker_404_is_a_missing_record_only_when_the_gateway_says_so(string body, MetadataProviderRecordStatus expected)
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("broker", "https://metadata.deluno.test"));
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json")
+            })),
+            new ConfigurationBuilder().Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest("State of Siege", "movies", 2021, "1603343"),
+            CancellationToken.None);
+
+        Assert.Equal(expected, lookup.Status);
+    }
+
+    [Fact]
+    public async Task A_broker_5xx_is_temporarily_unavailable_never_missing()
+    {
+        var settings = new Mock<IPlatformSettingsRepository>();
+        settings.Setup(repo => repo.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateSettingsSnapshot("broker", "https://metadata.deluno.test"));
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-14T00:00:00Z"));
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = new StringContent("""{"error":"provider_unavailable"}""", Encoding.UTF8, "application/json")
+            })),
+            new ConfigurationBuilder().Build(),
+            settings.Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new IntegrationResiliencePolicy(timeProvider, factory, NullLogger<IntegrationResiliencePolicy>.Instance),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var lookup = await provider.ResolveProviderRecordAsync(
+            new MetadataLookupRequest("State of Siege", "movies", 2021, "1603343"),
+            CancellationToken.None);
+
+        Assert.Equal(MetadataProviderRecordStatus.Unavailable, lookup.Status);
+    }
+
     [Fact]
     public async Task ResolveProviderRecordAsync_retries_a_transient_503_and_never_calls_it_a_deletion()
     {

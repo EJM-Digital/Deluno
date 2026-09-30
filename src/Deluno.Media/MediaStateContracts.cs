@@ -147,7 +147,14 @@ public sealed record MediaMetadataUpdate(
     /// cannot overwrite user-owned identity fields without confirmation.
     /// </summary>
     string? Title = null,
-    int? Year = null);
+    int? Year = null,
+    /// <summary>
+    /// True when a person chose this write (a manual override or a reviewed
+    /// re-link), so an empty poster, backdrop, overview, genres or rating is
+    /// meant and clears the stored one. False for every automatic refresh,
+    /// which keeps what is stored rather than blanking it (#1091).
+    /// </summary>
+    bool ReplaceWithEmpty = false);
 
 /// <summary>
 /// One source's score for one title, on the way to its own column.
