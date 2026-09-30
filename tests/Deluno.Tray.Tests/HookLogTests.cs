@@ -84,4 +84,17 @@ public sealed class HookLogTests : IDisposable
     [InlineData("--service", false)]
     public void Velopack_hook_invocations_are_recognised(string arg, bool expected)
         => Assert.Equal(expected, Program.IsVelopackHookInvocation([arg, "1.0.0"]));
+
+    /// <summary>
+    /// #968: the install and update hooks answer before Velopack loads, so a
+    /// busy first boot cannot push them past Setup's 30 second limit; the
+    /// uninstall hook still goes through Velopack to remove the firewall rule.
+    /// </summary>
+    [Theory]
+    [InlineData("--veloapp-install", true)]
+    [InlineData("--veloapp-updated", true)]
+    [InlineData("--veloapp-uninstall", false)]
+    [InlineData("--service", false)]
+    public void Only_the_install_and_update_hooks_exit_before_Velopack_loads(string arg, bool expected)
+        => Assert.Equal(expected, Program.IsFastExitInstallHook([arg, "1.0.0"]));
 }
