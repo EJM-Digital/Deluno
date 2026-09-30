@@ -1672,7 +1672,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var now = timeProvider.GetUtcNow().ToString("O");
         var idParameters = string.Join(", ", items.Select((_, index) => $"@id{index}"));
 
-        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir, bool HasUndated)>(items.Count);
+        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir, bool HasUndated, int Monitored)>(items.Count);
 
         using (var command = connection.CreateCommand())
         {
@@ -1681,11 +1681,12 @@ public sealed class SqliteSeriesCatalogRepository(
                 SELECT
                     e.series_id,
                     COUNT(*),
-                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
                     MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END),
-                    MAX(CASE WHEN e.air_date_utc IS NULL THEN 1 ELSE 0 END)
+                    MAX(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NULL THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN e.monitored = 1 THEN 1 ELSE 0 END)
                 FROM episode_entries e
                 WHERE e.series_id IN ({idParameters})
                 GROUP BY e.series_id;
@@ -1706,7 +1707,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
                     reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
-                    !reader.IsDBNull(6) && reader.GetInt32(6) == 1);
+                    !reader.IsDBNull(6) && reader.GetInt32(6) == 1,
+                    reader.IsDBNull(7) ? 0 : reader.GetInt32(7));
             }
         }
 
@@ -1742,7 +1744,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     counts.AiredWithFile,
                     counts.AiredUpgradable,
                     counts.NextAir is not null,
-                    counts.HasUndated)
+                    counts.HasUndated,
+                    nothingWanted: counts.Total > 0 && counts.Monitored == 0)
             });
         }
 
@@ -2056,23 +2059,56 @@ public sealed class SqliteSeriesCatalogRepository(
             cancellationToken);
 
         var updated = 0;
-        var now = timeProvider.GetUtcNow().ToString("O");
+        var now = timeProvider.GetUtcNow();
+        var stamp = now.ToString("O");
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var touched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var episodeId in episodeIds.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             using var command = connection.CreateCommand();
+            command.Transaction = transaction;
             command.CommandText =
                 """
                 UPDATE episode_entries
                 SET monitored = @monitored,
                     updated_utc = @updatedUtc
-                WHERE id = @id;
+                WHERE id = @id
+                RETURNING series_id;
                 """;
             AddParameter(command, "@id", episodeId);
             AddParameter(command, "@monitored", monitored ? 1 : 0);
-            AddParameter(command, "@updatedUtc", now);
-            updated += await command.ExecuteNonQueryAsync(cancellationToken);
+            AddParameter(command, "@updatedUtc", stamp);
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                updated++;
+                touched.Add(reader.GetString(0));
+            }
         }
 
+        // An unmonitored episode is not wanted, so not missing: the show's stored rung moves with it (#1072).
+        foreach (var seriesId in touched)
+        {
+            var libraryIds = new List<string>();
+            using (var libraries = connection.CreateCommand())
+            {
+                libraries.Transaction = transaction;
+                libraries.CommandText = "SELECT DISTINCT library_id FROM series_wanted_state WHERE series_id = @seriesId;";
+                AddParameter(libraries, "@seriesId", seriesId);
+                using var libraryReader = await libraries.ExecuteReaderAsync(cancellationToken);
+                while (await libraryReader.ReadAsync(cancellationToken))
+                {
+                    libraryIds.Add(libraryReader.GetString(0));
+                }
+            }
+
+            foreach (var libraryId in libraryIds)
+            {
+                await RefreshSeriesRungAsync(connection, transaction, seriesId, libraryId, now, cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
         return updated;
     }
 
@@ -3524,6 +3560,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var airedUpgradable = 0;
         var hasFutureAirDate = false;
         var hasUndated = false;
+        var nothingWanted = false;
 
         using (var rollup = connection.CreateCommand())
         {
@@ -3531,11 +3568,13 @@ public sealed class SqliteSeriesCatalogRepository(
             rollup.CommandText =
                 """
                 SELECT
-                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(MAX(CASE WHEN air_date_utc > @now THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN air_date_utc IS NULL THEN 1 ELSE 0 END), 0)
+                    COALESCE(MAX(CASE WHEN monitored = 1 AND air_date_utc IS NULL THEN 1 ELSE 0 END), 0),
+                    COUNT(*),
+                    COALESCE(SUM(CASE WHEN monitored = 1 THEN 1 ELSE 0 END), 0)
                 FROM episode_entries
                 WHERE series_id = @seriesId;
                 """;
@@ -3550,10 +3589,11 @@ public sealed class SqliteSeriesCatalogRepository(
                 airedUpgradable = reader.GetInt32(2);
                 hasFutureAirDate = reader.GetInt32(3) == 1;
                 hasUndated = reader.GetInt32(4) == 1;
+                nothingWanted = reader.GetInt32(5) > 0 && reader.GetInt32(6) == 0;
             }
         }
 
-        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate, hasUndated);
+        var status = SeriesRung.From(aired, airedWithFile, airedUpgradable, hasFutureAirDate, hasUndated, nothingWanted);
 
         using var update = connection.CreateCommand();
         update.Transaction = transaction;

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Persistence.Tests.Support;
 using Deluno.Series.Contracts;
@@ -306,6 +307,44 @@ public sealed class SeriesCatalogueSyncPersistenceTests
 
         Assert.Equal("WEB 1080p", episode.CurrentQuality);
         Assert.True(episode.QualityCutoffMet);
+    }
+
+    [Fact]
+    public async Task A_show_whose_aired_episodes_were_all_removed_is_not_missing_and_an_unmonitored_gap_is_not_counted()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        var (storage, repository, _, seriesId) = await CreateSeriesAsync(now);
+        using var _ = storage;
+        await repository.SyncEpisodeCatalogueAsync(
+            seriesId,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, now.AddDays(-23)),
+                new CatalogueEpisodeItem(1, 3, "Three", null, now.AddDays(-16)),
+            ],
+            source: "tmdb",
+            CancellationToken.None);
+        await repository.ImportExistingAsync(
+            libraryId: "series-main", title: "Severance", startYear: 2022,
+            wantedStatus: "covered", wantedReason: "Seeded.", currentQuality: "WEB 1080p", targetQuality: "WEB 1080p",
+            qualityCutoffMet: true, filePath: @"C:\media\s01e01.mkv", fileSizeBytes: 1,
+            episodes: [new ImportedEpisodeItem(1, 1, HasFile: true, FilePath: @"C:\media\s01e01.mkv", FileSizeBytes: 1)],
+            CancellationToken.None);
+        var ids = await GetEpisodeIdsAsync(storage, seriesId);
+
+        // Episodes 2 and 3 have no file. With episode 2 wanted it is Missing; unmonitor 3 and it is still one short.
+        await repository.UpdateEpisodeMonitoredAsync([ids[(1, 3)]], monitored: false, CancellationToken.None);
+        var missing = Assert.Single((await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None)).Items);
+        Assert.Equal(WantedStatuses.Missing, missing.WantedStatus);
+        Assert.Equal(2, missing.AiredEpisodeCount);
+        Assert.Equal(1, missing.AiredWithFileCount);
+
+        // Retention trims the show: nothing is wanted now, so nothing is missing, on the shelf and in the stored chip.
+        await repository.UpdateEpisodeMonitoredAsync([ids[(1, 1)], ids[(1, 2)]], monitored: false, CancellationToken.None);
+        var trimmed = Assert.Single((await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None)).Items);
+        Assert.Equal(WantedStatuses.Covered, trimmed.WantedStatus);
+        Assert.Empty((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Missing, PageSize: 50), CancellationToken.None)).Items);
+        Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Covered, PageSize: 50), CancellationToken.None)).Items);
     }
 
     [Fact]

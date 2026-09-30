@@ -27,19 +27,20 @@ export function hasAired(episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc">
  * come is `upcoming`, which is a different fact and gets its own count.
  */
 export function isEpisodeMissing(
-  episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile" | "wantedStatus">,
+  episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile" | "wantedStatus"> & { monitored?: boolean },
   now: Date = new Date()
 ): boolean {
-  if (episode.hasFile) return false;
+  // An episode nobody wants (removed by retention or unmonitored) is not missing, only not wanted.
+  if (episode.monitored === false || episode.hasFile) return false;
   return hasAired(episode, now) || !episode.airDateUtc;
 }
 
 /** Only an episode with a future air date is Upcoming; an undated one is Missing. */
 export function isEpisodeUpcoming(
-  episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile">,
+  episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile"> & { monitored?: boolean },
   now: Date = new Date()
 ): boolean {
-  return !episode.hasFile && !!episode.airDateUtc && !hasAired(episode, now);
+  return episode.monitored !== false && !episode.hasFile && !!episode.airDateUtc && !hasAired(episode, now);
 }
 
 export interface EpisodeProgress {
@@ -56,7 +57,7 @@ export interface EpisodeProgress {
 }
 
 export function summariseEpisodes(
-  episodes: readonly Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile" | "wantedStatus">[],
+  episodes: readonly (Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile" | "wantedStatus"> & { monitored?: boolean })[],
   now: Date = new Date()
 ): EpisodeProgress {
   let aired = 0;
@@ -66,6 +67,9 @@ export function summariseEpisodes(
   let upgradable = 0;
 
   for (const episode of episodes) {
+    // Counted over the episodes Deluno wants: an unmonitored one is not missing, upcoming, held or upgradable.
+    if (episode.monitored === false) continue;
+
     if (hasAired(episode, now)) {
       aired++;
       if (episode.hasFile) held++;
