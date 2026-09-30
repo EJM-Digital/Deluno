@@ -247,10 +247,18 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
+            var before = (await repository.ListIndexersAsync(cancellationToken))
+                .FirstOrDefault(indexer => string.Equals(indexer.Id, id, StringComparison.OrdinalIgnoreCase));
             var item = await repository.UpdateIndexerAsync(id, request, cancellationToken);
             if (item is not null)
             {
-                item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+                // Only an address or key that changed is worth asking the aggregator about again;
+                // an enable/pause toggle or a priority change makes no request (#1076).
+                if (before is null || AggregatorIndexerNames.LookupNeeded(before, item))
+                {
+                    item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+                }
+
                 await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
                 await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Indexer, cancellationToken);
             }
@@ -289,7 +297,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             using var proxiedClient = await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken);
             var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
-            await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken, proxiedClient);
+            await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
             var result = await repository.UpdateIndexerHealthAsync(
                 id,
                 health.HealthStatus,
@@ -1361,8 +1369,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         IndexerItem item,
         IConnectionsRepository repository,
         IIndexerProxyHttpClientFactory? proxyHttpClientFactory,
-        CancellationToken cancellationToken,
-        HttpClient? existingClient = null)
+        CancellationToken cancellationToken)
     {
         if (ConnectionNames.AggregatorOf(item.BaseUrl) is null)
         {
@@ -1371,10 +1378,24 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
         try
         {
-            using var ownClient = existingClient is null
-                ? await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken)
-                : null;
-            var discovered = await AggregatorIndexerNames.DiscoverAsync(item, existingClient ?? ownClient!, cancellationToken);
+            // Its own client that never follows a redirect: the key goes only to the address the
+            // person typed, and a redirect just means "no name" (#1076).
+            ProxyItem? proxy = null;
+            if (proxyHttpClientFactory is not null && !string.IsNullOrWhiteSpace(item.ProxyId))
+            {
+                proxy = await IndexerProxyResolver.ResolveAsync(item, repository, cancellationToken);
+            }
+
+            var webProxy = IndexerProxyWebProxy.Build(proxy);
+            using var handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                Proxy = webProxy,
+                UseProxy = webProxy is not null,
+                ConnectTimeout = TimeSpan.FromSeconds(5)
+            };
+            using var client = new HttpClient(handler, disposeHandler: false) { Timeout = TimeSpan.FromSeconds(8) };
+            var discovered = await AggregatorIndexerNames.DiscoverAsync(item, client, cancellationToken);
             return discovered is null ? item : await repository.SetDiscoveredIndexerNameAsync(item.Id, discovered, cancellationToken) ?? item;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)

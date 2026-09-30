@@ -203,8 +203,8 @@ public sealed class ConnectionNamesTests
     [InlineData("http://localhost:9117/api/v2.0/indexers/1337x/results/torznab/", "1337x")]
     [InlineData("http://192.168.1.5:9117/api/v2.0/indexers/yts/results/torznab", "yts")]
     [InlineData("http://jackett:9117/api/v2.0/indexers/all/results/torznab/", null)]
-    [InlineData("http://localhost:9696/12/api", "Prowlarr indexer 12")]
-    [InlineData("http://prowlarr.lan:9696/7/api/", "Prowlarr indexer 7")]
+    [InlineData("http://localhost:9696/12/api", null)]
+    [InlineData("http://prowlarr.lan:9696/7/api/", null)]
     [InlineData("https://api.nzbgeek.info", null)]
     public void An_indexer_behind_jackett_or_prowlarr_is_named_after_its_tracker_not_the_shared_host(string address, string? tracker)
     {
@@ -226,8 +226,9 @@ public sealed class ConnectionNamesTests
 
         Assert.Equal("1337x", one.Name);
         Assert.Equal("eztv", two.Name);
-        Assert.Equal("Prowlarr indexer 4", three.Name);
-        Assert.Equal("Prowlarr indexer 9", four.Name);
+        Assert.Equal(ConnectionNames.SiteName("http://localhost:9696/4/api"), three.Name);
+        Assert.StartsWith(ConnectionNames.SiteName("http://localhost:9696/9/api"), four.Name);
+        Assert.NotEqual(three.Name, four.Name);
     }
 
     [Fact]
@@ -351,6 +352,37 @@ public sealed class ConnectionNamesTests
         Assert.Contains("t=caps", Assert.Single(handler.Requests).RequestUri!.Query);
     }
 
+
+    [Fact]
+    public async Task A_redirect_is_no_name_and_is_never_followed()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Redirect)
+        {
+            Headers = { Location = new Uri("http://elsewhere.example/api/v1/indexer/3") }
+        });
+        using var client = new HttpClient(handler);
+
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(Aggregated("http://media.lan:9696/3/api", "prow-key"), client, CancellationToken.None));
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task An_ordinary_newznab_site_with_a_digits_api_path_is_not_taken_for_prowlarr()
+    {
+        // Not Prowlarr's answer: no name, and the address-derived name is the site's host, never "Prowlarr indexer N".
+        using var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("[1,2]") }));
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(Aggregated("https://usenet.example.com/5/api"), client, CancellationToken.None));
+        Assert.Equal("usenet.example.com", ConnectionNames.SiteName("https://usenet.example.com/5/api"));
+    }
+
+    [Fact]
+    public void Only_a_changed_address_or_key_is_worth_asking_the_aggregator_again()
+    {
+        var before = Aggregated("http://media.lan:9696/3/api", "key");
+        Assert.False(AggregatorIndexerNames.LookupNeeded(before, before with { IsEnabled = false, Priority = 50 }));
+        Assert.True(AggregatorIndexerNames.LookupNeeded(before, before with { ApiKey = "other" }));
+        Assert.True(AggregatorIndexerNames.LookupNeeded(before, before with { BaseUrl = "http://media.lan:9696/4/api" }));
+    }
     [Fact]
     public async Task A_failing_or_unreachable_aggregator_leaves_no_name_and_never_throws()
     {
@@ -372,7 +404,7 @@ public sealed class ConnectionNamesTests
         using var _ = storage;
         var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
         var one = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9696/3/api"), CancellationToken.None);
-        Assert.Equal("Prowlarr indexer 3", one.Name);
+        Assert.Equal(ConnectionNames.SiteName("http://localhost:9696/3/api"), one.Name);
 
         var named = await repository.SetDiscoveredIndexerNameAsync(one.Id, "NZBgeek", CancellationToken.None);
         Assert.Equal("NZBgeek", named!.Name);
@@ -385,7 +417,7 @@ public sealed class ConnectionNamesTests
         var same = await repository.UpdateIndexerAsync(one.Id, new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null), CancellationToken.None);
         Assert.Equal("NZBgeek", same!.Name);
         var moved = await repository.UpdateIndexerAsync(one.Id, new UpdateIndexerRequest(null, null, null, "http://localhost:9696/4/api", null, null, null, null, null, null), CancellationToken.None);
-        Assert.Equal("Prowlarr indexer 4", moved!.Name);
+        Assert.Equal(ConnectionNames.SiteName("http://localhost:9696/4/api"), moved!.Name);
         Assert.Equal(0, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
     }
 
