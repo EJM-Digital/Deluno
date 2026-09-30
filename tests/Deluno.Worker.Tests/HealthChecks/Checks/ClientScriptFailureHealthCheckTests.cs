@@ -1,6 +1,7 @@
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 using Deluno.Worker.HealthChecks.Checks;
@@ -24,7 +25,7 @@ public sealed class ClientScriptFailureHealthCheckTests
         var health = HealthReturning(
             new DownloadHealthRecord("client-1", "q1", "Sintel", "sintel-key", DownloadHealthStrikes.ClientStalled,
                 "critical", "No progress for 30 minutes.", Now, Now, 1, null));
-        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning());
+        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(), OwnDispatches("q1"));
 
         var outcomes = await check.RunAsync(CancellationToken.None);
 
@@ -38,7 +39,7 @@ public sealed class ClientScriptFailureHealthCheckTests
             new DownloadHealthRecord("client-1", "q1", "Big Buck Bunny", "bbb-key", DownloadHealthStrikes.ClientScriptFailed,
                 "critical", "Your client's script \"extract.sh\" failed.", Now, Now, 1, null));
         var client = Client("client-1", "My NZBGet");
-        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(client));
+        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(client), OwnDispatches("q1"));
 
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
@@ -57,7 +58,7 @@ public sealed class ClientScriptFailureHealthCheckTests
         var health = HealthReturning(
             new DownloadHealthRecord("client-1", "q1", "Sintel", "sintel-key", DownloadHealthStrikes.ClientScriptFailed,
                 "warning", "Your client's script \"cleanup.sh\" warned.", Now, Now, 1, null));
-        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(Client("client-1", "SABnzbd")));
+        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(Client("client-1", "SABnzbd")), OwnDispatches("q1"));
 
         var outcome = Assert.Single(await check.RunAsync(CancellationToken.None));
 
@@ -74,12 +75,44 @@ public sealed class ClientScriptFailureHealthCheckTests
         // then reports nothing for that id, and HealthCheckRunner prunes the
         // stale row for a category it just ran (#914-style pruning).
         var health = HealthReturning();
-        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(Client("client-1", "My NZBGet")));
+        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(Client("client-1", "My NZBGet")), OwnDispatches("q1"));
 
         var outcomes = await check.RunAsync(CancellationToken.None);
 
         Assert.Empty(outcomes);
     }
+
+    [Fact]
+    public async Task A_script_failure_recorded_for_a_download_Deluno_did_not_send_is_not_shown()
+    {
+        var health = HealthReturning(
+            new DownloadHealthRecord("client-1", "outside", "Someone Elses Show", "outside-key", DownloadHealthStrikes.ClientScriptFailed,
+                "critical", "Your client's script \"x.sh\" failed.", Now, Now, 1, null));
+        var check = new ClientScriptFailureHealthCheck(health, ConnectionsReturning(Client("client-1", "My NZBGet")), OwnDispatches("q1"));
+
+        Assert.Empty(await check.RunAsync(CancellationToken.None));
+    }
+
+    private static IDownloadDispatchesRepository OwnDispatches(params string[] ownIds)
+    {
+        var repository = new Mock<IDownloadDispatchesRepository>();
+        repository.Setup(instance => instance.FindDispatchesByClientItemIdsAsync(It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string clientId, IReadOnlyCollection<string> ids, CancellationToken _) => (IReadOnlyList<Deluno.Jobs.Contracts.DownloadDispatchItem>)ids
+                .Where(id => ownIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                .Select(id => Dispatch(clientId, id))
+                .ToArray());
+        return repository.Object;
+    }
+
+    private static Deluno.Jobs.Contracts.DownloadDispatchItem Dispatch(string clientId, string id)
+        => new(
+            Id: "dispatch-" + id, LibraryId: "library-1", MediaType: "movies", EntityType: "movie", EntityId: "movie-1",
+            ReleaseName: "Release", IndexerName: "Fixture", DownloadClientId: clientId, DownloadClientName: "Client", Status: "sent",
+            NotesJson: null, CreatedUtc: DateTimeOffset.UnixEpoch, GrabStatus: "succeeded", GrabAttemptedUtc: DateTimeOffset.UnixEpoch,
+            GrabResponseCode: 200, GrabMessage: null, GrabFailureCode: null, GrabResponseJson: null, DetectedUtc: null,
+            TorrentHashOrItemId: id, DownloadedBytes: null, ImportStatus: null, ImportDetectedUtc: null, ImportCompletedUtc: null,
+            ImportedFilePath: null, ImportFailureCode: null, ImportFailureMessage: null, CircuitOpenUntilUtc: null,
+            NextRetryEligibleUtc: null, AttemptCount: 1);
 
     private static IDownloadHealthRepository HealthReturning(params DownloadHealthRecord[] records)
     {

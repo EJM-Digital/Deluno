@@ -16,21 +16,82 @@ namespace Deluno.Integrations.DownloadClients;
 public static class DownloadClientEndpointRouteBuilderExtensions
 {
     /// <summary>The strike records for downloads Deluno sent; anything written for someone else's download is left out (#1062).</summary>
-    internal static async Task<IReadOnlyList<DownloadHealthRecord>> OwnHealthRecordsAsync(
+    public static async Task<IReadOnlyList<DownloadHealthRecord>> OwnHealthRecordsAsync(
         IReadOnlyList<DownloadHealthRecord> records,
         IDownloadDispatchesRepository dispatches,
         CancellationToken cancellationToken)
     {
         var own = new List<DownloadHealthRecord>(records.Count);
-        foreach (var record in records)
+        foreach (var byClient in records.GroupBy(record => record.ClientId, StringComparer.OrdinalIgnoreCase))
         {
-            if (await dispatches.FindAnyDispatchByHashAsync(record.ClientId, record.QueueItemId, cancellationToken) is not null)
+            var known = await dispatches.FindDispatchesByClientItemIdsAsync(
+                byClient.Key, byClient.Select(record => record.QueueItemId).ToArray(), cancellationToken);
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var dispatch in known)
             {
-                own.Add(record);
+                if (!string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId))
+                {
+                    ids.Add(dispatch.TorrentHashOrItemId.Trim());
+                }
+
+                ids.Add(dispatch.Id);
             }
+
+            own.AddRange(byClient.Where(record => ids.Contains(record.QueueItemId?.Trim() ?? string.Empty)));
         }
 
         return own;
+    }
+
+    /// <summary>How many strike records a person can see: only downloads Deluno sent (#1062).</summary>
+    internal static async Task<int> CountOwnHealthRecordsAsync(
+        IDownloadHealthRepository health,
+        IDownloadDispatchesRepository dispatches,
+        CancellationToken cancellationToken)
+    {
+        var count = 0;
+        string? cursor = null;
+        do
+        {
+            var page = await OwnHealthRecordsPageAsync(health, dispatches, 100, cursor, cancellationToken);
+            count += page.Items.Count;
+            cursor = page.NextPageToken;
+        }
+        while (cursor is not null);
+
+        return count;
+    }
+
+    /// <summary>
+    /// One page of strike records for downloads Deluno sent. The ownership
+    /// filter runs before the page is cut, not after: it reads more pages until
+    /// it has a full page of Deluno's own (or none are left), so a page is
+    /// never short or empty just because outside records sat in front of it.
+    /// </summary>
+    internal static async Task<Page<DownloadHealthRecord>> OwnHealthRecordsPageAsync(
+        IDownloadHealthRepository health,
+        IDownloadDispatchesRepository dispatches,
+        int pageSize,
+        string? pageToken,
+        CancellationToken cancellationToken)
+    {
+        var own = new List<DownloadHealthRecord>();
+        var token = pageToken;
+        string? next = null;
+        for (var pass = 0; pass < 50; pass++)
+        {
+            var page = await health.ListDownloadHealthRecordsPageAsync(new PageRequest(pageSize, token), cancellationToken);
+            own.AddRange(await OwnHealthRecordsAsync(page.Items, dispatches, cancellationToken));
+            next = page.NextPageToken;
+            if (next is null || own.Count >= pageSize)
+            {
+                break;
+            }
+
+            token = next;
+        }
+
+        return Page<DownloadHealthRecord>.Of(own, next);
     }
 
     public static IEndpointRouteBuilder MapDelunoDownloadClientIntegrationEndpoints(this IEndpointRouteBuilder endpoints)
@@ -49,13 +110,11 @@ public static class DownloadClientEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var page = await platformRepository.ListDownloadHealthRecordsPageAsync(
-                new PageRequest(pageSize ?? 30, pageToken), cancellationToken);
-
             // #1062: Deluno only ever shows downloads it sent. A strike written
-            // for someone else's download before that was the rule is not listed.
-            var own = await OwnHealthRecordsAsync(page.Items, dispatches, cancellationToken);
-            return Results.Ok(Page<DownloadHealthRecord>.Of(own, page.NextPageToken));
+            // for someone else's download before that was the rule is not listed,
+            // and is filtered out before the page is cut.
+            return Results.Ok(await OwnHealthRecordsPageAsync(
+                platformRepository, dispatches, pageSize ?? 30, pageToken, cancellationToken));
         });
 
         // Its own Settings screen (#905): the rule set Deluno holds for what
@@ -186,6 +245,7 @@ public static class DownloadClientEndpointRouteBuilderExtensions
         endpoints.MapPost("/api/download-health/purge-strikes", async (
             HttpContext httpContext,
             IDownloadHealthRepository platformRepository,
+            IDownloadDispatchesRepository dispatches,
             IActivityFeedRepository activityFeedRepository,
             IOutboundNotificationService outboundNotificationService,
             INotificationService notificationPreferences,
@@ -194,7 +254,11 @@ public static class DownloadClientEndpointRouteBuilderExtensions
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
             if (denied is not null) return denied;
 
-            var purged = await platformRepository.PurgeAllDownloadHealthStrikesAsync(cancellationToken);
+            // Only the records a person can see are counted (#1062): strikes kept for
+            // someone else's downloads are cleared too, but were never on any screen.
+            var visible = await CountOwnHealthRecordsAsync(platformRepository, dispatches, cancellationToken);
+            await platformRepository.PurgeAllDownloadHealthStrikesAsync(cancellationToken);
+            var purged = visible;
             // #826: irreversible, so it is said in plain words the same way
             // every other destructive action Deluno takes on its own already
             // is - here, one this installation's one person asked for directly.
@@ -482,23 +546,6 @@ public static class DownloadClientEndpointRouteBuilderExtensions
 
             var libraries = await folderChain.ListDestinationsAsync(libraryId, cancellationToken);
             return libraries is null ? Results.NotFound() : Results.Ok(new { libraries });
-        });
-
-        endpoints.MapPost("/api/download-clients/{clientId}/grab", async (
-            string clientId,
-            HttpContext httpContext,
-            [FromBody] DownloadClientGrabRequest request,
-            IDownloadClientGrabService grabService,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var result = await grabService.GrabAsync(clientId, request, cancellationToken);
-            return result.Succeeded ? Results.Ok(result) : Results.BadRequest(result);
         });
 
         endpoints.MapPost("/api/download-clients/{clientId}/categories/check", async (

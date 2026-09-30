@@ -22,7 +22,7 @@ namespace Deluno.Persistence.Tests.Integrations;
 /// client's queue or history.
 ///
 /// <para>One client reports two downloads Deluno sent (one by its recorded id,
-/// one still waiting for its id and recognised by name), two nobody at Deluno
+/// one with no id yet that a same-named outside item must not be mistaken for), two nobody at Deluno
 /// sent, and the same again in its own history. Everything downstream is
 /// driven through the real <c>GetOverviewAsync</c> pipeline.</para>
 /// </summary>
@@ -43,10 +43,10 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
         var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
 
         var client = Assert.Single(overview.Clients);
-        Assert.Equal(new[] { OwnId, PendingId }.Order(StringComparer.Ordinal).ToArray(), client.Queue.Select(item => item.Id).Order(StringComparer.Ordinal).ToArray());
-        // Counted: two of Deluno's own are downloading; the two outside ones are not in any number.
-        Assert.Equal(2, client.Summary.ActiveCount);
-        Assert.Equal(2, overview.Summary.ActiveCount);
+        Assert.Equal(new[] { OwnId }, client.Queue.Select(item => item.Id).ToArray());
+        // Counted: only Deluno's own is downloading; the outside ones (one of them same-named as a dispatch with no id) are not in any number.
+        Assert.Equal(1, client.Summary.ActiveCount);
+        Assert.Equal(1, overview.Summary.ActiveCount);
         Assert.Equal(0, client.Summary.StalledCount);
     }
 
@@ -126,6 +126,63 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
     }
 
     [Fact]
+    public async Task An_old_strike_for_an_outside_download_the_client_still_lists_is_cleared_by_the_next_pass()
+    {
+        using var world = await World.CreateAsync();
+        await world.Health.RecordDownloadHealthObservationsAsync(
+            world.ClientId,
+            [ForeignId],
+            [new DownloadHealthObservation(world.ClientId, ForeignId, "Someone.Elses.Download", "stalled", "warning", "old", null, null, null, null)],
+            TimeSpan.FromMinutes(30), TimeSpan.FromHours(24), CancellationToken.None);
+        Assert.Contains((await world.Health.ListDownloadHealthRecordsPageAsync(new PageRequest(50, null), CancellationToken.None)).Items, record => record.QueueItemId == ForeignId);
+
+        await world.Service.GetOverviewAsync(CancellationToken.None);
+
+        // Gone from the store itself, not only hidden from the screen.
+        var records = await world.Health.ListDownloadHealthRecordsPageAsync(new PageRequest(50, null), CancellationToken.None);
+        Assert.DoesNotContain(records.Items, record => record.QueueItemId == ForeignId);
+    }
+
+    [Fact]
+    public async Task The_strike_list_is_filtered_before_it_is_cut_into_pages_and_the_purge_counts_only_what_is_shown()
+    {
+        using var world = await World.CreateAsync();
+        var outside = Enumerable.Range(0, 5).Select(index => $"outside-{index}").ToArray();
+        await world.Health.RecordDownloadHealthObservationsAsync(
+            world.ClientId,
+            [OwnId, .. outside],
+            [
+                .. outside.Select(id => new DownloadHealthObservation(world.ClientId, id, "Outside." + id, "stalled", "warning", "old", null, null, null, null)),
+                new DownloadHealthObservation(world.ClientId, OwnId, "Own.Movie.2026.1080p.WEB", "stalled", "warning", "old", null, null, null, null)
+            ],
+            TimeSpan.FromMinutes(30), TimeSpan.FromHours(24), CancellationToken.None);
+
+        // A page of two would have been all outside records, or a short page, if it were cut first.
+        var page = await DownloadClientEndpointRouteBuilderExtensions.OwnHealthRecordsPageAsync(
+            world.Health, world.Dispatches, 2, null, CancellationToken.None);
+        var count = await DownloadClientEndpointRouteBuilderExtensions.CountOwnHealthRecordsAsync(
+            world.Health, world.Dispatches, CancellationToken.None);
+
+        Assert.Equal(OwnId, Assert.Single(page.Items).QueueItemId);
+        Assert.Null(page.NextPageToken);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task A_dispatch_with_no_id_is_refused_even_when_the_client_shows_its_release_name()
+    {
+        using var world = await World.CreateAsync();
+        var pending = await world.Dispatches.FindDispatchByReleaseNameAsync(world.ClientId, PendingRelease, CancellationToken.None);
+        Assert.NotNull(pending);
+
+        var result = await world.Service.ExecuteActionForDispatchAsync(
+            world.ClientId, new DownloadClientActionRequest("pause", PendingId), pending!, CancellationToken.None);
+
+        Assert.True(result.Refused);
+        Assert.Equal(0, world.ActionsReachedTheClient);
+    }
+
+    [Fact]
     public async Task An_outside_item_gets_no_strike()
     {
         using var world = await World.CreateAsync();
@@ -137,15 +194,16 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
     }
 
     [Fact]
-    public async Task A_download_recognised_by_name_while_waiting_for_its_id_is_given_the_id_so_it_stays_Delunos()
+    public async Task A_same_named_item_is_never_adopted_by_a_dispatch_that_has_no_id()
     {
         using var world = await World.CreateAsync();
 
+        var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
         await world.Service.GetOverviewAsync(CancellationToken.None);
 
-        var adopted = await world.Dispatches.FindAnyDispatchByHashAsync(world.ClientId, PendingId, CancellationToken.None);
-        Assert.NotNull(adopted);
-        Assert.Equal(PendingRelease, adopted!.ReleaseName);
+        Assert.DoesNotContain(Assert.Single(overview.Clients).Queue, item => item.Id == PendingId);
+        Assert.Null(await world.Dispatches.FindAnyDispatchByHashAsync(world.ClientId, PendingId, CancellationToken.None));
+        Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, PendingId, CancellationToken.None)).Owned);
     }
 
     [Fact]
@@ -183,10 +241,10 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             CancellationToken.None);
         var gate = new SearchQueuePauseGate(world.Settings, world.Service, new SearchQueuePauseMemory());
 
-        // Two of Deluno's own are waiting (not over 2); four items are in the client.
+        // Only Deluno's own download is waiting (not over 2); four items are in the client.
         var decision = await gate.EvaluateAsync("movies", CancellationToken.None);
 
-        Assert.Equal(2, decision.Waiting);
+        Assert.Equal(1, decision.Waiting);
         Assert.False(decision.Paused);
     }
 

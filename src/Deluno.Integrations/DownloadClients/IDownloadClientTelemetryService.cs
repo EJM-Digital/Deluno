@@ -36,19 +36,6 @@ public interface IDownloadClientTelemetryService
         CancellationToken cancellationToken)
         => ExecuteActionAsync(clientId, request, cancellationToken);
 
-    /// <summary>
-    /// A Deluno download can be sent before the client hands back its id, and
-    /// then never record one. Gives the newest such dispatch for this release
-    /// the client's id, so the download stays Deluno's own. False when there is
-    /// no such dispatch.
-    /// </summary>
-    Task<bool> AdoptClientItemIdAsync(
-        string clientId,
-        string queueItemId,
-        string releaseName,
-        CancellationToken cancellationToken)
-        => Task.FromResult(false);
-
     Task<DownloadCleanupPreview?> PreviewCleanupAsync(
         string clientId,
         string queueItemId,

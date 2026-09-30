@@ -47,14 +47,15 @@ public sealed class GrabAppearanceLookupServiceTests
     }
 
     [Fact]
-    public async Task Found_by_name_alone_when_no_hash_is_known_yet()
+    public async Task A_same_named_item_is_never_matched_when_no_hash_is_known()
     {
         var client = ReturningSnapshot(Queue([Item("Example.Release.2026", "some-other-hash", "movies")]));
 
         var result = await new GrabAppearanceLookupService(client.Connections, client.Registry, TimeProvider.System)
             .LookupAsync(ClientId, "movies", "movies", torrentHashOrItemId: null, "Example.Release.2026", CancellationToken.None);
 
-        Assert.Equal(GrabAppearanceOutcome.FoundAsExpected, result.Outcome);
+        // Deluno never adopts an item by name (the owner, 30 Sep 2026): with no recorded id nothing is found.
+        Assert.Equal(GrabAppearanceOutcome.NotThere, result.Outcome);
     }
 
     [Fact]

@@ -151,16 +151,6 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// The newest dispatch (archived or not) for this client and release name
-    /// that never recorded the client's own id for it. Used to give such a
-    /// dispatch the id once the client shows the item (#1062).
-    /// </summary>
-    Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
-        string clientId,
-        string releaseName,
-        CancellationToken cancellationToken);
-
-    /// <summary>
     /// Moves a dispatch from an id the client used to file the item under (a
     /// Transmission torrent number) to the id it is filed under now (its
     /// hash). Only when the dispatch still holds exactly <paramref name="oldId"/>.
@@ -181,7 +171,7 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Find the most recent grabbed-but-undetected dispatch matching a release name for a client.
+    /// Find the most recent grabbed-but-undetected dispatch matching a release name for a client, sent within the last day (a name alone is thin proof, #1062).
     /// </summary>
     Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
         string clientId,

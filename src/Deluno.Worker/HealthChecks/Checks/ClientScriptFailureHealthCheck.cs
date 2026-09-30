@@ -1,5 +1,7 @@
 using Deluno.Connections.Data;
 using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Data;
 using Deluno.Platform.Contracts;
 using Deluno.Platform.Data;
 
@@ -23,14 +25,18 @@ namespace Deluno.Worker.HealthChecks.Checks;
 /// </summary>
 public sealed class ClientScriptFailureHealthCheck(
     IDownloadHealthRepository downloadHealth,
-    IConnectionsRepository connections) : IHealthCheck
+    IConnectionsRepository connections,
+    IDownloadDispatchesRepository dispatches) : IHealthCheck
 {
     public string Category => HealthCheckCategories.DownloadClient;
 
     public async Task<IReadOnlyList<HealthCheckOutcome>> RunAsync(CancellationToken cancellationToken)
     {
         var records = await downloadHealth.ListDownloadHealthRecordsAsync(200, cancellationToken);
-        var findings = records
+        // Only a download Deluno sent is Deluno's to report on (#1062): a script
+        // failure recorded for someone else's download is not shown.
+        var own = await DownloadClientEndpointRouteBuilderExtensions.OwnHealthRecordsAsync(records, dispatches, cancellationToken);
+        var findings = own
             .Where(record => string.Equals(record.Kind, DownloadHealthStrikes.ClientScriptFailed, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (findings.Length == 0)

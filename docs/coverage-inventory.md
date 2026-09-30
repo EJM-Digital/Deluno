@@ -11,7 +11,7 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 371 | 167 | **204** |
+| API routes | 370 | 167 | **203** |
 | Web screens | 66 | 60 | **6** |
 
 ## API routes no test mentions
@@ -117,7 +117,6 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/destination-rules/resolve` |
 | POST | `/api/download-clients/test` |
 | POST | `/api/download-clients/{clientId}/categories/check` |
-| POST | `/api/download-clients/{clientId}/grab` |
 | POST | `/api/download-clients/{clientId}/webhook` |
 | POST | `/api/download-clients/{id}/path-mappings/{mappingId}/test` |
 | POST | `/api/download-clients/{id}/test` |

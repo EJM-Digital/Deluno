@@ -15,11 +15,10 @@ namespace Deluno.Persistence.Tests.Integrations;
 /// was managing.</para>
 ///
 /// <para><c>IsDelunosOwnDownload</c> is the one test the Queue's rows pass
-/// through: matched first against the dispatch Deluno recorded when it
+/// through: matched against the dispatch Deluno recorded when it
 /// grabbed the release - the hash, NZB id or client item id the client gave
-/// back. A client that has not yet handed that id back still lets Deluno
-/// claim the item, but only through the dispatch record itself: the same
-/// client, the same release name, recorded recently. It never falls back to
+/// back. There is no fallback by release name (the owner, 30 Sep 2026): an item
+/// with no dispatch carrying its id is never Deluno's. It never falls back to
 /// category or label alone any more - that was the defect #933 found: a
 /// category is a convention a person can reuse by hand, so on its own it
 /// proves nothing about who actually sent an item, and a hand-added download
@@ -36,34 +35,26 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
         var item = Queue(id: "abc123", category: "not-deluno");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: "abc123") };
 
-        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches));
     }
 
     [Fact]
-    public void An_item_whose_id_the_client_has_not_reported_yet_is_still_matched_by_the_recent_dispatch()
+    public void A_same_named_item_is_never_claimed_by_a_dispatch_that_has_no_id_however_recent()
     {
-        // The grab succeeded a minute ago; the client has not yet handed the
-        // hash back to a poll, so the dispatch still has no
-        // TorrentHashOrItemId. Deluno still claims it, by the dispatch record
-        // itself: same client, same release name, recent.
+        // the owner, 30 Sep 2026: Deluno never adopts an outside item by name. A
+        // dispatch without an id proves nothing about any item, so a same-named
+        // item added by hand a minute after the grab is not Deluno's.
         var item = Queue(id: "not-yet-known-to-deluno", category: "not-deluno");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddMinutes(-1)) };
 
-        Assert.True(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnHistoryItem(
+            new DownloadClientHistoryItem(
+                "history-1", "client-1", "Fixture Client", "qbittorrent", "movies", "Example", "Example.2026.1080p.WEB",
+                "deluno-movies", "completed", "Fixture", 1000, Now, null),
+            dispatches));
     }
 
-    [Fact]
-    public void A_stale_dispatch_still_missing_its_id_no_longer_claims_a_same_named_item()
-    {
-        // Long past the window a client should have reported an id in: this
-        // is not "Deluno's grab, id still pending" any more, it is a stale
-        // record that must not reach out and claim an unrelated later item
-        // just because the release name happens to match.
-        var item = Queue(id: "someone-elses-torrent", category: "not-deluno");
-        var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddDays(-3)) };
-
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
-    }
 
     [Fact]
     public void A_hand_added_item_sitting_in_Delunos_own_category_is_not_Delunos()
@@ -73,7 +64,7 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
         // client must not be enough to claim it.
         var item = Queue(id: "someone-elses-torrent", category: "deluno-movies", mediaType: "movies");
 
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, [], Now));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, []));
     }
 
     [Fact]
@@ -82,7 +73,7 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
         var item = Queue(id: "someone-elses-torrent", category: "manual-downloads", mediaType: "movies");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: "a-different-hash") };
 
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches));
     }
 
     [Fact]
@@ -93,7 +84,7 @@ public sealed class TheQueueShowsOnlyDelunosOwnDownloadsTests
         var item = Queue(id: "someone-elses-torrent", category: "not-deluno", releaseName: "Someone.Elses.Download.2026.1080p.WEB");
         var dispatches = new[] { Dispatch(torrentHashOrItemId: null, createdUtc: Now.AddMinutes(-1)) };
 
-        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches, Now));
+        Assert.False(DownloadClientTelemetryService.IsDelunosOwnDownload(item, dispatches));
     }
 
     // ------------------------------------------------------------------ helpers
