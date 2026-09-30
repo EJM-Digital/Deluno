@@ -1,13 +1,14 @@
 /**
  * Small hooks the Live board shares (#1096): the clock that countdowns tick
- * from, when the summary last arrived, the posters of the titles on the board,
+ * from, when the summary last arrived, the library titles on the board,
  * and which cards have just arrived or changed lane.
  */
-import { useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchJson, type DashboardSummary } from "../../../lib/api";
+import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
+import { fetchMovieTitles, fetchSeriesTitles, NO_TITLES, wantedTitles, type TitleLookup } from "./titles";
 
 /** The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden). */
 export function useNow(intervalMs = 1000): number {
@@ -38,60 +39,43 @@ export function useSummaryUpdatedAt(summary: DashboardSummary | undefined): numb
 }
 
 /**
- * The poster of each title on the board, asked for in one request per kind of
- * media. The server answers only for titles that still exist, so a title that
- * was deleted (its download is still in the history) is left out and its card
- * keeps its stage icon, with no failing request. An older server without the
- * batch answer is asked one title at a time instead.
+ * The library title behind each card on the board (its name, year, poster and
+ * episode number), asked for in one request per kind of media. The server
+ * answers only for titles that still exist, so a title that was deleted (its
+ * download is still in the history) is left out and its card keeps the
+ * release's own name and its stage icon, with no failing request.
  */
-export function usePosters(cards: JourneyCard[]): ReadonlyMap<string, string> {
-  const wanted = useMemo(() => {
-    const movies = new Set<string>();
-    const shows = new Set<string>();
-    for (const card of cards) {
-      if (!card.entityId || card.mediaType === "other") continue;
-      (card.mediaType === "movie" ? movies : shows).add(card.entityId);
-    }
-    return [
-      { mediaType: "movie" as const, ids: [...movies].sort().slice(0, 24) },
-      { mediaType: "tv" as const, ids: [...shows].sort().slice(0, 24) }
-    ];
-  }, [cards]);
-  const results = useQueries({
-    queries: wanted.map(({ mediaType, ids }) => ({
-      queryKey: ["dashboard", "posters", mediaType, ids.join(",")],
-      enabled: ids.length > 0,
-      queryFn: () => fetchPosters(mediaType, ids),
-      staleTime: 30 * 60_000,
-      retry: false
-    }))
+export function useTitles(cards: JourneyCard[]): TitleLookup {
+  const wanted = useMemo(() => wantedTitles(cards), [cards]);
+  const movieIds = wanted.movies.join(",");
+  const showIds = wanted.series.join(",");
+  const episodeIds = wanted.episodes.join(",");
+  const movies = useQuery({
+    queryKey: ["dashboard", "titles", "movies", movieIds],
+    enabled: wanted.movies.length > 0,
+    queryFn: () => fetchMovieTitles(wanted.movies),
+    staleTime: 30 * 60_000,
+    // While a new set of ids is asked for, the last answer stays on screen (titles already known never blink back to release names).
+    placeholderData: keepPreviousData,
+    retry: false
+  });
+  const series = useQuery({
+    queryKey: ["dashboard", "titles", "series", showIds, episodeIds],
+    enabled: wanted.series.length > 0 || wanted.episodes.length > 0,
+    queryFn: () => fetchSeriesTitles(wanted.series, wanted.episodes),
+    staleTime: 30 * 60_000,
+    // While a new set of ids is asked for, the last answer stays on screen (titles already known never blink back to release names).
+    placeholderData: keepPreviousData,
+    retry: false
   });
   return useMemo(() => {
-    const map = new Map<string, string>();
-    wanted.forEach(({ mediaType }, index) => {
-      for (const [id, url] of Object.entries(results[index]?.data ?? {})) if (url) map.set(`${mediaType}:${id}`, url);
-    });
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wanted, results.map((result) => result.dataUpdatedAt).join("|")]);
-}
-
-async function fetchPosters(mediaType: "movie" | "tv", ids: string[]): Promise<Record<string, string | null>> {
-  const root = mediaType === "movie" ? "/api/movies" : "/api/series";
-  try {
-    return await fetchJson<Record<string, string | null>>(`${root}/posters?ids=${encodeURIComponent(ids.join(","))}`);
-  } catch {
-    // An older server: one title at a time, and a title that is gone simply has no poster.
-    const found: Record<string, string | null> = {};
-    await Promise.all(ids.map(async (id) => {
-      try {
-        found[id] = (await fetchJson<{ posterUrl?: string | null }>(`${root}/${id}`)).posterUrl ?? null;
-      } catch {
-        found[id] = null;
-      }
-    }));
-    return found;
-  }
+    if (!movies.data && !series.data) return NO_TITLES;
+    return {
+      movies: new Map(Object.entries(movies.data ?? {})),
+      series: new Map(Object.entries(series.data?.series ?? {})),
+      episodes: new Map(Object.entries(series.data?.episodes ?? {}))
+    };
+  }, [movies.data, series.data]);
 }
 
 /** How long a card keeps its arrival glow. */

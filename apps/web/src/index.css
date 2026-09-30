@@ -1308,6 +1308,39 @@ html .text-\[64px\] {
   transition: width 700ms var(--ease-emphasis);
 }
 
+/* "Show them" on a Needs you line: the lane it points at is outlined for a moment, so the place is shown, not only named. */
+@keyframes live-lane-flash {
+  0%, 100% { box-shadow: inset 0 0 0 0 hsl(var(--destructive) / 0); }
+  30%, 70% { box-shadow: inset 0 0 0 2px hsl(var(--destructive) / 0.7); }
+}
+.live-lane-flash {
+  box-shadow: inset 0 0 0 2px hsl(var(--destructive) / 0.7);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-lane-flash {
+    animation: live-lane-flash 1.8s ease-in-out both;
+  }
+}
+
+/* A download bar shimmers only while bytes are really moving (its card adds the class only with a speed above zero). */
+@media (prefers-reduced-motion: no-preference) {
+  .live-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .live-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, hsl(0 0% 100% / 0.45) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: live-shimmer 1.8s ease-in-out infinite;
+  }
+  @keyframes live-shimmer {
+    to { transform: translateX(100%); }
+  }
+}
+
 /* The speed trace draws in once, and its newest reading glows. */
 @keyframes live-trace-draw {
   from { stroke-dashoffset: 1; }

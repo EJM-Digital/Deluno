@@ -12,6 +12,7 @@
  */
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "../../components/ui/button";
 import { CountUp } from "../../components/ui/count-up";
 import { StatusLed } from "../../components/ui/status-led";
 import { dismissFailedJob } from "../../lib/failed-jobs";
@@ -21,6 +22,20 @@ import { FitList } from "./parts";
 import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
+
+/** What the Live board already shows, each with its own buttons: the downloads (as `clientId:id`) and the failed processor hand-offs. */
+export interface OnBoard {
+  queueKeys: ReadonlySet<string>;
+  handoffIds: ReadonlySet<string>;
+}
+
+/** Draws the eye to a lane of the board for a moment, so "on the board" is shown and not only said. */
+export function flashLane(stage: string): void {
+  const lane = document.getElementById(`live-lane-${stage}`);
+  if (!lane) return;
+  lane.classList.add("live-lane-flash");
+  window.setTimeout(() => lane.classList.remove("live-lane-flash"), 1800);
+}
 
 const row = "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
 const linkButton =
@@ -79,11 +94,29 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
  * with its button. The Dashboard's Live tab and the bell's panel both draw these
  * rows, so they are one list.
  */
-export function needsYouRows(attention: DashboardAttention, action: Action): ReactElement[] {
-  const { recoveryCases, failedImportJobs, handoffs } = attention.downloads;
+export function needsYouRows(attention: DashboardAttention, action: Action, onBoard?: OnBoard): ReactElement[] {
+  const { recoveryCases, failedImportJobs, handoffs, queueAttention } = attention.downloads;
+  // What the journey board already shows, with its own buttons, is not listed a second time: one line says so and points at it.
+  const coveredDownloads = onBoard ? queueAttention.filter((entry) => onBoard.queueKeys.has(`${entry.clientId}:${entry.id}`)).length : 0;
+  const collapseDownloads = queueAttention.length > 0 && coveredDownloads === queueAttention.length;
+  let downloadsLine = false;
   return attention.items
     .filter((item) => item.tab === "live")
     .flatMap((item) => {
+      if (collapseDownloads && (item.id === "stalled" || item.id === "queue-warnings")) {
+        if (downloadsLine) return [];
+        downloadsLine = true;
+        return [
+          <li key="downloads-on-board" className={row}>
+            <StatusLed tone="warn" pulse />
+            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
+              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{queueAttention.length === 1 ? "1 download is stuck or needs a look" : `${queueAttention.length.toLocaleString("en-AU")} downloads are stuck or need a look`}</span>
+              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">They are on the board, each with its button.</span>
+            </div>
+            <RowActions primary={<Button type="button" variant="outline" size="sm" aria-label="Show the stuck downloads on the board" onClick={() => flashLane("stuck")}>Show them</Button>} />
+          </li>
+        ];
+      }
       if (item.id === "recovery") {
         return recoveryCases.map((entry) => (
           <li key={`recovery:${entry.mediaType}:${entry.id}`} className={row}>
@@ -125,7 +158,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
         ));
       }
       if (item.id === "handoffs") {
-        return handoffs.map((handoff) => (
+        return handoffs.filter((handoff) => !onBoard?.handoffIds.has(handoff.id)).map((handoff) => (
           <li key={`handoff:${handoff.id}`} className={row}>
             <StatusLed tone="bad" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
@@ -213,9 +246,9 @@ export function AlsoWorthALook({ attention }: { attention: DashboardAttention })
   );
 }
 
-export function NeedsYou({ attention, action }: { attention: DashboardAttention; action: Action }) {
+export function NeedsYou({ attention, action, onBoard }: { attention: DashboardAttention; action: Action; onBoard?: OnBoard }) {
   const total = attention.counts.live;
-  const rows = needsYouRows(attention, action);
+  const rows = needsYouRows(attention, action, onBoard);
   const { leftovers, suggestions } = attention.alsoWorthALook;
 
   return (

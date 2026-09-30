@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
-import { buildJourney, byStage, laneCounts, movedCards, titleFromRelease, type Stage } from "./journey";
+import { buildJourney, byStage, episodeFromRelease, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { faceOf, NO_TITLES, wantedTitles } from "./titles";
 import { activityKind, isRoutine } from "./kinds";
 import { addBuckets, bucketByHour, bucketsFromCounts, linePath, shapeSpeedSeries } from "./series";
 import { heartbeatState } from "./status";
@@ -188,7 +189,8 @@ describe("the journey of a title", () => {
     const grouped = byStage(buildJourney({ ...base, queue: [queue({ id: "a", status: "queued" })] }));
     const counts = laneCounts(grouped, fullSummary);
     expect(counts.grabbed).toBe(1);
-    expect(counts.downloading).toBe(6);
+    expect(counts.downloading).toBe(fullSummary.downloads!.active);
+    expect(counts.stuck).toBe(fullSummary.downloads!.stalled);
     expect(counts.imported).toBe(4);
   });
 
@@ -203,5 +205,79 @@ describe("the journey of a title", () => {
     expect(titleFromRelease("Sintel.2010.1080p.BluRay.x264")).toBe("Sintel (2010)");
     expect(titleFromRelease("The.Kid.1921.REMASTERED")).toBe("The Kid (1921)");
     expect(titleFromRelease("Some Show S01E02")).toBe("Some Show S01E02");
+    // A site's banner in front of the name is not part of the title.
+    expect(titleFromRelease("www Torrenting com The Wild Robot 2024 1080p")).toBe("The Wild Robot (2024)");
+    expect(titleFromRelease("www.UIndex.org - Say.Yes.to.the.Dress.2007.S04E02")).toBe("Say Yes to the Dress (2007)");
+  });
+
+  it("reads the episode or season of a release", () => {
+    expect(episodeFromRelease("Say.Yes.to.the.Dress.2007.S04E02.720p")).toBe("S04E02");
+    expect(episodeFromRelease("Some.Show.S02.COMPLETE")).toBe("Season 2");
+    expect(episodeFromRelease("A.Film.2001.1080p")).toBeNull();
+  });
+});
+
+describe("stuck downloads", () => {
+  const queue = (overrides: Record<string, unknown>) => ({
+    id: "q", clientId: "c1", clientName: "Deluge on WIN-7K3", protocol: "torrent", mediaType: "movie", title: "x", releaseName: "Sintel.2010.1080p", category: "", status: "downloading",
+    progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 2e9, downloadedBytes: 2e9, peers: 0, indexerName: "Deluge on WIN-7K3", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null, ...overrides
+  }) as never;
+  const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
+  const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge on WIN-7K3", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p", torrentHashOrItemId: "q" } as never;
+
+  it("puts a stalled download, or one its client has a problem with, in Stuck and not in Downloading", () => {
+    const cards = buildJourney({
+      ...base,
+      queue: [
+        queue({ id: "a", status: "stalled", releaseName: "A.2001" }),
+        queue({ id: "b", errorMessage: "missing or invalid torrent data", releaseName: "B.2002" }),
+        queue({ id: "c", status: "downloading", progress: 40, speedMbps: 3, releaseName: "C.2003" })
+      ]
+    });
+    const grouped = byStage(cards);
+    expect(grouped.stuck.map((card) => card.key)).toEqual(["c1:a", "c1:b"]);
+    expect(grouped.stuck[0]).toMatchObject({ state: { tone: "bad", label: "Stuck" }, canSearchAgain: true, reason: "It has stopped moving in the download client." });
+    expect(grouped.stuck[1].reason).toBe("missing or invalid torrent data");
+    expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:c"]);
+    const counts = laneCounts(grouped, undefined);
+    expect(counts.stuck).toBe(2);
+    expect(counts.downloading).toBe(1);
+  });
+
+  it("finds the library title from the sent download, and keeps the release as the quiet line", () => {
+    const [card] = buildJourney({ ...base, queue: [queue({ status: "downloading", speedMbps: 2 })], dispatches: [dispatch] });
+    expect(card.entity).toEqual({ kind: "movie", id: "m1" });
+    expect(card.release).toBe("Sintel.2010.1080p");
+    const lookup = { movies: new Map([["m1", { title: "Sintel", year: 2010, posterUrl: "/poster.jpg" }]]), series: new Map(), episodes: new Map() };
+    expect(faceOf(card, lookup)).toMatchObject({ title: "Sintel (2010)", poster: "/poster.jpg", linked: true, to: "/movies/m1" });
+    // A title that is gone keeps the release's own name.
+    expect(faceOf(card, NO_TITLES)).toMatchObject({ title: "Sintel (2010)", linked: false, to: "/movies/m1" });
+    expect(wantedTitles([card])).toEqual({ movies: ["m1"], series: [], episodes: [] });
+  });
+
+  it("names an episode as its show plus SxxEyy, and a season pack from its release", () => {
+    const episode = { ...(dispatch as object), entityType: "episode", entityId: "e9", releaseName: "Show.S04E02.720p" } as never;
+    const pack = { ...(dispatch as object), id: "d2", entityType: "series", entityId: "s1", releaseName: "Show.S04.COMPLETE", torrentHashOrItemId: "p" } as never;
+    const cards = buildJourney({ ...base, queue: [queue({ id: "q", releaseName: "Show.S04E02.720p" }), queue({ id: "p", releaseName: "Show.S04.COMPLETE" })], dispatches: [episode, pack] });
+    const lookup = { movies: new Map(), series: new Map([["s1", { title: "Show", posterUrl: null }]]), episodes: new Map([["e9", { seriesId: "s1", season: 4, episode: 2 }]]) };
+    expect(faceOf(cards[0], lookup)).toMatchObject({ title: "Show S04E02", to: "/tv/s1" });
+    expect(faceOf(cards[1], lookup)).toMatchObject({ title: "Show Season 4", to: "/tv/s1" });
+  });
+
+  it("writes the route as indexer, client, processor with short names and no stop twice", () => {
+    const [card] = buildJourney({ ...base, queue: [queue({ status: "waitingForProcessor" })], dispatches: [dispatch], handoffs: [{ id: "h", queueItemId: "q", releaseName: "Sintel.2010.1080p", processorName: "Cleaner on WIN-7K3", status: "started", libraryId: "l", mediaType: "movie", clientId: "c1", sourcePath: "", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-1), updatedUtc: iso(-1) } as never] });
+    expect(routeOf(card)).toBe("NZBgeek → Deluge → Cleaner");
+    expect(routeOf({ indexer: "Deluge", client: "Deluge", processor: null })).toBe("Deluge");
+    // With two machines the suffix is kept, so they can be told apart.
+    const name = shortNamer(["Deluge on WIN-A", "Deluge on NAS"]);
+    expect(name("Deluge on WIN-A")).toBe("Deluge on WIN-A");
+    expect(shortNamer(["Deluge on WIN-A"])("Deluge on WIN-A")).toBe("Deluge");
+  });
+
+  it("puts a failed hand-off's Retry and Give up on its card, with problems first in the lane", () => {
+    const handoff = (id: string, status: string) => ({ id, queueItemId: "gone", releaseName: `Film.${id}.2000`, processorName: "Cleaner", status, libraryId: "l", mediaType: "movie", clientId: "c1", sourcePath: "", outputPath: null, importJobId: null, failureMessage: status === "failed" ? "timed out" : null, createdUtc: iso(-1), updatedUtc: iso(-60_000) }) as never;
+    const grouped = byStage(buildJourney({ ...base, handoffs: [handoff("ok", "started"), handoff("bad", "failed")] }));
+    expect(grouped.processor[0]).toMatchObject({ failedHandoffId: "bad", state: { tone: "bad" } });
+    expect(grouped.processor[1].failedHandoffId).toBeUndefined();
   });
 });

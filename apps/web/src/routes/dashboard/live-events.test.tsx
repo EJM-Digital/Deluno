@@ -111,7 +111,7 @@ describe("Live follows real changes", () => {
     renderTab(emptySummary);
     const board = screen.getByRole("region", { name: /^every title/i });
     // Idle says something true rather than nothing.
-    expect(within(board).getByText(/No search has run yet\./)).toBeInTheDocument();
+    expect(within(within(board).getByRole("group", { name: "Searching" })).getByText("None yet")).toBeInTheDocument();
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
     const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });

@@ -8,6 +8,7 @@
 import { useMemo } from "react";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { DownloadThroughputSample } from "../../../lib/api";
+import { CountUp } from "../../../components/ui/count-up";
 import { formatSpeed } from "../downloads-kit";
 import { Panel } from "../parts";
 import { useNow } from "./hooks";
@@ -39,6 +40,13 @@ export function SpeedChart({ samples, summary }: { samples: DownloadThroughputSa
   return (
     <Panel title="Speed" count={<span className="whitespace-nowrap">last {HOURS} hours</span>} to="/queue" toLabel="Transfers">
       <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] pb-2 pt-2">
+        <div className="mb-1 flex items-baseline gap-x-2 whitespace-nowrap">
+          <span className="text-[length:var(--type-card-title)] font-semibold leading-none tabular-nums text-foreground"><CountUp value={live.down} format={formatSpeed} /></span>
+          <span className="text-[length:var(--type-caption)] text-muted-foreground">
+            {downloads?.hasReading === false ? "waiting for the first reading" : live.down > 0 ? `now, ${(downloads?.active ?? 0).toLocaleString("en-AU")} downloading` : "now, nothing moving"}
+          </span>
+          {live.up > 0 ? <span className="ml-auto text-[length:var(--type-caption)] tabular-nums text-success">up {formatSpeed(live.up)}</span> : null}
+        </div>
         <div className="mb-1.5 flex flex-wrap items-center gap-x-4 text-[length:var(--type-caption)] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-info" />Download peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakDown)}</span></span>
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-success" />Upload peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakUp)}</span></span>
