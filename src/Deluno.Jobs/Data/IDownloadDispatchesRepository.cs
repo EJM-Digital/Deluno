@@ -128,6 +128,17 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Which of these release names Deluno has a dispatch for, any status,
+    /// archived included, whatever the number of dispatches (#1062). Names are
+    /// matched ignoring case; the release names as recorded are returned.
+    /// Asked by the leftover scan with the names it found on disk, so there is
+    /// no recent-dispatches window to fall outside.
+    /// </summary>
+    Task<IReadOnlyList<string>> FindGrabbedReleaseNamesAsync(
+        IReadOnlyCollection<string> candidateNames,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// The newest dispatch (archived or not) for this client and release name
     /// that never recorded the client's own id for it. Used to give such a
     /// dispatch the id once the client shows the item (#1062).

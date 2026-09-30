@@ -63,7 +63,11 @@ public sealed class OrphanedDownloadService(
         var settings = await platformSettingsRepository.GetAsync(cancellationToken);
         var jobs = await jobQueueRepository.ListAsync(600, cancellationToken);
         var handoffs = await processorRepository.ListProcessorHandoffsAsync(null, 500, cancellationToken);
-        var dispatches = await jobQueueRepository.ListDownloadDispatchesAsync(1000, null, cancellationToken, includeArchived: true);
+        // Asked by the names on disk, archived dispatches included, so it does not
+        // matter how many newer dispatches there are (#1062).
+        var grabbedNames = await jobQueueRepository.FindGrabbedReleaseNamesAsync(
+            scans.SelectMany(scan => scan.Entries).SelectMany(OrphanedDownloads.CandidateNames).ToArray(),
+            cancellationToken);
 
         var claimed = new List<string>();
         foreach (var client in clientSnapshots)
@@ -85,7 +89,7 @@ public sealed class OrphanedDownloadService(
         var found = OrphanedDownloads.Find(
             scans,
             claimed,
-            dispatches.Select(dispatch => dispatch.ReleaseName),
+            grabbedNames,
             await keptDownloadsRepository.ListAsync(cancellationToken),
             timeProvider.GetUtcNow(),
             // #1001: the person's skip list and how long an entry must have

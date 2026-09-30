@@ -211,6 +211,11 @@ public interface IJobQueueRepository
         bool includeArchived = false,
         string? clientId = null);
 
+    /// <inheritdoc cref="IDownloadDispatchesRepository.FindGrabbedReleaseNamesAsync"/>
+    Task<IReadOnlyList<string>> FindGrabbedReleaseNamesAsync(
+        IReadOnlyCollection<string> candidateNames,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// The downloads still on their way, so a search does not send a title or a
     /// release a second time (#555).

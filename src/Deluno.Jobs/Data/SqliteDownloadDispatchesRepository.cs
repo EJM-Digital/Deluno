@@ -843,6 +843,46 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
     }
 
+    public async Task<IReadOnlyList<string>> FindGrabbedReleaseNamesAsync(
+        IReadOnlyCollection<string> candidateNames,
+        CancellationToken cancellationToken)
+    {
+        var names = candidateNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (names.Length == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        var found = new List<string>();
+        // SQLite caps bound parameters per statement, so ask in batches.
+        foreach (var batch in names.Chunk(500))
+        {
+            using var command = connection.CreateCommand();
+            var placeholders = string.Join(", ", batch.Select((_, index) => $"@n{index}"));
+            command.CommandText =
+                $"SELECT DISTINCT release_name FROM download_dispatches WHERE release_name COLLATE NOCASE IN ({placeholders})";
+            for (var index = 0; index < batch.Length; index++)
+            {
+                AddParameter(command, $"@n{index}", batch[index]);
+            }
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                found.Add(reader.GetString(0));
+            }
+        }
+
+        return found;
+    }
+
     public async Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
         string clientId,
         string releaseName,

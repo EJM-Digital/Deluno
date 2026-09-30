@@ -110,6 +110,21 @@ public static partial class OrphanedDownloads
     }
 
     /// <summary>
+    /// The release names a scanned entry could be a copy of, for looking up
+    /// Deluno's dispatches by name (#1062): its name as <see cref="Find"/>
+    /// matches it, and that name less a client's duplicate suffix. Both ways,
+    /// because a release name can itself end in ".1".
+    /// </summary>
+    public static IEnumerable<string> CandidateNames(DownloadFolderEntry entry)
+    {
+        var key = Key(entry.Path);
+        var name = key[(key.LastIndexOf('/') + 1)..];
+        var matched = (entry.IsDirectory ? name : System.IO.Path.GetFileNameWithoutExtension(name)).Trim();
+        yield return matched;
+        yield return DuplicateSuffix().Replace(matched, string.Empty);
+    }
+
+    /// <summary>
     /// The skip list as typed: names or globs (<c>*.nfo</c>, <c>Thumbs.db</c>,
     /// <c>Sample?</c>) separated by commas, semicolons or new lines (#1001).
     /// </summary>

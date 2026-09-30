@@ -173,10 +173,12 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
 
         var jobQueue = new Mock<IJobQueueRepository>();
         jobQueue.Setup(instance => instance.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        jobQueue.Setup(instance => instance.ListDownloadDispatchesAsync(
-                It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<bool>(), It.IsAny<string?>()))
-            .ReturnsAsync((int _, string? _, CancellationToken _, bool includeArchived, string? _) =>
-                (IReadOnlyList<DownloadDispatchItem>)dispatches.Where(item => includeArchived || item.Status != "archived").ToArray());
+        jobQueue.Setup(instance => instance.FindGrabbedReleaseNamesAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<string> names, CancellationToken _) =>
+                (IReadOnlyList<string>)dispatches
+                    .Select(item => item.ReleaseName)
+                    .Where(release => names.Contains(release, StringComparer.OrdinalIgnoreCase))
+                    .ToArray());
 
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(instance => instance.ListProcessorHandoffsAsync(It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
