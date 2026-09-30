@@ -155,7 +155,7 @@ public static class TitleFolderGuard
                 "That folder holds one of your library folders, not just this title, so Deluno leaves it alone.");
         }
 
-        if (roots.Count > 0 && !roots.Any(root => IsUnder(trimmed, root)))
+        if (!roots.Any(root => IsUnder(trimmed, root)))
         {
             return TitleFolderTarget.Refuse(
                 "outside-library",
