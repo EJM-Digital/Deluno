@@ -103,6 +103,8 @@ export interface ActivityEventAddedEvent {
   id: string;
   message: string;
   category: string;
+  /** Plain-words name of the event kind (#1086). */
+  label?: string;
   severity: "info" | "warning" | "error" | "success";
   createdUtc: string;
 }

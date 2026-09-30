@@ -216,7 +216,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   const [liveEvents, setLiveEvents] = useState<TimelineEvent[]>([]);
   useSignalREvent("ActivityEventAdded", RealtimeGroups.Activity, (event) => {
     setLiveEvents((prev) => [
-      { id: event.id, message: event.message, category: event.category, severity: event.severity, createdUtc: event.createdUtc },
+      { id: event.id, message: event.message, category: event.category, label: event.label, severity: event.severity, createdUtc: event.createdUtc },
       ...prev.slice(0, 49)
     ]);
   });

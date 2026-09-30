@@ -105,6 +105,8 @@ export interface SearchRetryWindowItem {
 export interface ActivityEventItem {
   id: string;
   category: string;
+  /** The kind of event in plain words (#1086); show this, never `category`. */
+  label?: string;
   message: string;
   severity?: "info" | "success" | "warning" | "error";
   detail?: string;

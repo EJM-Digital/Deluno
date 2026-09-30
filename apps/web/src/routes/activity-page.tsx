@@ -57,7 +57,7 @@ import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } fro
 import {
   ACTIVITY_EVENT_TYPE_LABELS,
   activityEventType,
-  categoryLabel,
+  eventLabel,
   foldCrossMediaJobRuns,
   foldRoutineJobEvents,
   type ActivityEventType
@@ -450,7 +450,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                         : event.detail
                     }
                   />
-                  {eventColumns.isVisible("category") ? <ListCell primary={categoryLabel(event.category)} mobile /> : null}
+                  {eventColumns.isVisible("category") ? <ListCell primary={eventLabel(event)} mobile /> : null}
                   {eventColumns.isVisible("type") ? <ListCell primary={ACTIVITY_EVENT_TYPE_LABELS[activityEventType(event)]} /> : null}
                   {eventColumns.isVisible("related") ? (
                     <ListCell {...relatedEntityLabel(event.relatedEntityType, event.relatedEntityId)} />
@@ -575,7 +575,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           }
         }}
         title={openEvent?.message ?? "Event"}
-        description={openEvent ? `${openEvent.category} · ${formatPreferenceDateTime(openEvent.createdUtc, preferences)}` : undefined}
+        description={openEvent ? `${eventLabel(openEvent)} · ${formatPreferenceDateTime(openEvent.createdUtc, preferences)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenEventId(null)} />}
       >
         {openEvent ? (

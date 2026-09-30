@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { activityEventType, categoryLabel, foldCrossMediaJobRuns, foldRoutineJobEvents, mattersToTheBell } from "./activity-format";
+import { activityEventType, categoryLabel, eventLabel, foldCrossMediaJobRuns, foldRoutineJobEvents, mattersToTheBell } from "./activity-format";
+
+describe("eventLabel (#1086)", () => {
+  it("shows the plain-words label the backend sent", () => {
+    expect(eventLabel({ category: "download.vanished.recovered", label: "Found its files after it left the client" })).toBe(
+      "Found its files after it left the client"
+    );
+  });
+
+  it("still says something in words, never the code, when no label arrived", () => {
+    expect(eventLabel({ category: "download.something.new" })).toBe("Downloads activity");
+    expect(eventLabel({ category: "zzz.unknown", label: "  " })).toBe("Activity");
+    expect(eventLabel({ category: "processing.waiting" })).not.toContain(".");
+  });
+});
 
 describe("activity category labels", () => {
   it("names the area in plain words, never the internal code", () => {
