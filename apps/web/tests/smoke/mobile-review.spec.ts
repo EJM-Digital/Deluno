@@ -98,14 +98,14 @@ test.describe("mobile review", () => {
       });
 
       // Stacked on a phone, the list of things asking for a decision has to come
-      // before the list of areas. Side by side they read left-to-right and the
+      // before the list of what is coming up. Side by side they read left-to-right and the
       // order is the other way round, so this only holds below the breakpoint
-      // (#278, #1082).
+      // (#278, #1087).
       let stackedOrder: { needsYouTop: number; systemPulseTop: number } | null = null;
       if (target.path === "/") {
         stackedOrder = await page.evaluate(() => {
           const sections = [...document.querySelectorAll("section")];
-          const pulse = sections.find((s) => s.innerText.toLowerCase().startsWith("areas"));
+          const pulse = sections.find((s) => s.innerText.toLowerCase().startsWith("coming up"));
           // innerText reflects CSS text-transform in Chrome, so the card's own
           // title casing is not what comes back here.
           const needs = sections.find((s) => s.innerText.toLowerCase().startsWith("needs you"));
@@ -120,7 +120,7 @@ test.describe("mobile review", () => {
         if (stackedOrder) {
           expect(
             stackedOrder.needsYouTop,
-            "on a phone, Needs you must come before the areas"
+            "on a phone, Needs you must come before Coming up"
           ).toBeLessThan(stackedOrder.systemPulseTop);
         }
       }

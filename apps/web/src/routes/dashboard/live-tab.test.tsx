@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { computeAttention } from "./attention";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
-import { buildNowCells, NowTab } from "./now-tab";
+import { buildLiveCells, LiveTab } from "./live-tab";
 import * as library from "./summary-fixtures";
 
 const authedFetchMock = vi.fn();
@@ -50,7 +50,7 @@ function renderTab(summary: typeof fullSummary | undefined) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <NowTab summary={summary} />
+        <LiveTab summary={summary} />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -63,9 +63,9 @@ beforeEach(() => {
   for (const key of Object.keys(lists)) delete lists[key];
 });
 
-describe("the Now strip", () => {
+describe("the Live strip", () => {
   it("states each fact once: the library counts, the speed and the next search", () => {
-    const cells = buildNowCells(library.fullSummary());
+    const cells = buildLiveCells(library.fullSummary());
     const value = (label: string) => cells.find((cell) => cell.label === label)?.value;
     expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable", "Speed now", "Next search"]);
     expect(value("Movies")).toBe("20");
@@ -77,15 +77,15 @@ describe("the Now strip", () => {
   });
 
   it("always reads a speed, and says what is true on a new install", () => {
-    const cells = buildNowCells(library.emptySummary());
+    const cells = buildLiveCells(library.emptySummary());
     expect(cells.find((cell) => cell.label === "Speed now")).toMatchObject({ value: "0 MB/s", help: "waiting for the first reading" });
     expect(cells.find((cell) => cell.label === "Next search")).toMatchObject({ value: "Not scheduled", help: "no search has run yet" });
-    expect(buildNowCells(undefined).find((cell) => cell.label === "Speed now")?.value).toBe("0 MB/s");
+    expect(buildLiveCells(undefined).find((cell) => cell.label === "Speed now")?.value).toBe("0 MB/s");
     expect(JSON.stringify(cells)).not.toMatch(/undefined|NaN/);
   });
 });
 
-describe("Now", () => {
+describe("Live", () => {
   it("lists the real problems about downloads, imports and titles, each with its own button", async () => {
     seedBusy();
     renderTab(fullSummary);
@@ -104,7 +104,7 @@ describe("Now", () => {
       failedJobs: lists["/api/jobs"] as never,
       handoffs: lists["/api/integrations/processors/handoffs"] as never,
       telemetry: lists["/api/download-clients/telemetry"] as never
-    }).counts.now;
+    }).counts.live;
     await waitFor(() => expect(within(needs).getByText(String(now))).toBeInTheDocument());
 
     // The setup problems are on the other tab, not repeated here.
@@ -161,7 +161,9 @@ describe("Now", () => {
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
     expect(screen.queryByText(/Also worth a look/)).toBeNull();
     expect(screen.getByText("Nothing is downloading.")).toBeInTheDocument();
-    expect(screen.getByText(/Nothing airs in the next 72 hours/)).toBeInTheDocument();
+    // An empty library says so and offers the next step, where the next episodes would be.
+    expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
     expect(screen.getByText(/Nothing has happened yet/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

@@ -1,5 +1,5 @@
 /**
- * Dashboard, Now (#1087): everything that is moving.
+ * Dashboard, Live (#1087): everything that is moving.
  *
  * One strip across the top with the library counts, the speed and the next
  * search, one short fact each. Beneath it, Needs you (the real problems about
@@ -7,7 +7,7 @@
  * up and Latest (what Deluno just did, in plain words).
  *
  * Each fact appears once: the strip holds the numbers; the panels say what is
- * behind them. The connection, storage and system problems are on Setup health.
+ * behind them. The connection, storage and system problems are on System.
  *
  * Where the numbers come from: the Dashboard summary (a prop) and stored lists
  * the other screens already cache (the download queue, the next episodes).
@@ -17,6 +17,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
+import { Button } from "../../components/ui/button";
 import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
 import type { DashboardActivityItem, DashboardSummary, SeriesUpcomingEpisodeItem } from "../../lib/api";
 import { useRouteSources } from "../../lib/route-cache";
@@ -27,7 +28,7 @@ import { ago, until } from "./format";
 import { NeedsYou } from "./needs-you";
 import { FitList, Line, Panel, Plain } from "./parts";
 import { attentionSources } from "./attention";
-import { nowSources, useSetupState } from "./sources";
+import { liveSources, useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
 
 function episodeCode(item: SeriesUpcomingEpisodeItem): string {
@@ -43,7 +44,7 @@ function entityLink(item: DashboardActivityItem): string {
 }
 
 /** The strip: the library counts, the speed (always a reading) and the next search. */
-export function buildNowCells(summary: DashboardSummary | undefined): SummaryCell[] {
+export function buildLiveCells(summary: DashboardSummary | undefined): SummaryCell[] {
   const library = summary?.library;
   const downloads = summary?.downloads;
   const movies = library?.movies;
@@ -76,13 +77,14 @@ export function buildNowCells(summary: DashboardSummary | undefined): SummaryCel
   ];
 }
 
-export function NowTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
+export function LiveTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
   const action = useAction();
   const attention = useDashboardAttention(summary, setup.needs);
-  const { data } = useRouteSources({ ...attentionSources, ...nowSources });
+  const { data } = useRouteSources({ ...attentionSources, ...liveSources });
   const latest = summary?.activity?.recent ?? [];
   const upcoming = data.upcoming ?? [];
+  const emptyLibrary = summary?.library ? summary.library.movies.total + summary.library.shows.total === 0 : false;
   const showSetup = setup.ready && !setup.status.isComplete;
 
   function dismissOnboarding() {
@@ -102,14 +104,23 @@ export function NowTab({ summary }: { summary: DashboardSummary | undefined }): 
         </div>
       ) : null}
 
-      <SummaryStrip className="shrink-0 lg:grid-cols-6" cells={buildNowCells(summary)} />
+      <SummaryStrip className="shrink-0 lg:grid-cols-6" cells={buildLiveCells(summary)} />
 
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <NeedsYou attention={attention} action={action} />
 
         <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
           {upcoming.length === 0 ? (
-            <Plain>Nothing airs in the next 72 hours.</Plain>
+            emptyLibrary ? (
+              <div className="flex flex-wrap items-center gap-3 px-[var(--card-pad-x)] py-3">
+                <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Nothing in your library yet.</p>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/movies?add=true">Add a movie</Link>
+                </Button>
+              </div>
+            ) : (
+              <Plain>Nothing airs in the next 72 hours.</Plain>
+            )
           ) : (
             <FitList
               wrap={(shown) => <div>{shown}</div>}

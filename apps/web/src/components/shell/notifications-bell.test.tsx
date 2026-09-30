@@ -113,7 +113,7 @@ describe("notifications bell (#907)", () => {
     const bell = screen.getByRole("button", { name: `Notifications — ${snapshot.total} things need a look` });
     expect(bell.textContent).toBe(String(snapshot.total));
     // The number is the two Dashboard badges added together; leftovers and suggestions are not in it.
-    expect(snapshot.total).toBe(snapshot.needs.counts.now + snapshot.needs.counts.setup);
+    expect(snapshot.total).toBe(snapshot.needs.counts.live + snapshot.needs.counts.system);
     expect(snapshot.needs.alsoWorthALook.leftovers).toBe(2);
   });
 
@@ -130,7 +130,7 @@ describe("notifications bell (#907)", () => {
     expect(within(needs).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
     // A setup problem is reachable from here too, by a button that goes to where it is cleared.
-    expect(within(needs).getAllByRole("link", { name: /Setup health/ })[0]).toHaveAttribute("href", "/?tab=setup");
+    expect(within(needs).getAllByRole("link", { name: /System/ })[0]).toHaveAttribute("href", "/?tab=system");
     // The quiet line is there and is a link, not a count.
     expect(within(needs).getByRole("link", { name: "2 leftover folders" })).toHaveAttribute("href", "/queue");
 

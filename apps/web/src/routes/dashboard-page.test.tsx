@@ -48,84 +48,85 @@ beforeEach(() => {
 });
 
 describe("tabFromSearch", () => {
-  it("reads the tab from the address, and anything else is Now", () => {
-    expect(tabFromSearch("?tab=setup")).toBe("setup");
-    expect(tabFromSearch("?tab=now")).toBe("now");
-    expect(tabFromSearch("")).toBe("now");
-    expect(tabFromSearch("?tab=nonsense")).toBe("now");
+  it("reads the tab from the address, and anything else is Live", () => {
+    expect(tabFromSearch("?tab=system")).toBe("system");
+    expect(tabFromSearch("?tab=now")).toBe("live");
+    expect(tabFromSearch("")).toBe("live");
+    expect(tabFromSearch("?tab=nonsense")).toBe("live");
   });
 
   it("opens the tab an older link's content moved to", () => {
-    expect(tabFromSearch("?tab=overview")).toBe("now");
-    expect(tabFromSearch("?tab=library")).toBe("now");
-    expect(tabFromSearch("?tab=downloads")).toBe("now");
-    expect(tabFromSearch("?tab=system")).toBe("setup");
+    expect(tabFromSearch("?tab=overview")).toBe("live");
+    expect(tabFromSearch("?tab=library")).toBe("live");
+    expect(tabFromSearch("?tab=downloads")).toBe("live");
+    expect(tabFromSearch("?tab=setup-health")).toBe("system");
+    expect(tabFromSearch("?tab=system")).toBe("system");
   });
 });
 
 describe("DashboardPage tabs", () => {
-  it("has exactly two tabs, opens on Now and switches through the address, with no reload", async () => {
+  it("has exactly two tabs, opens on Live and switches through the address, with no reload", async () => {
     const user = userEvent.setup();
     open("/");
 
     expect(await screen.findByRole("region", { name: /^needs you/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Now", "Setup health"]);
-    expect(screen.getByRole("tab", { name: /^Now/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Live", "System"]);
+    expect(screen.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("address").textContent).toBe("/");
 
-    await user.click(screen.getByRole("tab", { name: /^Setup health/ }));
-    expect(screen.getByLabelText("address").textContent).toBe("/?tab=setup");
-    expect(screen.getByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
+    await user.click(screen.getByRole("tab", { name: /^System/ }));
+    expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
+    expect(screen.getByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: /^download clients/i })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
 
-    // Now carries no tab at all.
-    await user.click(screen.getByRole("tab", { name: /^Now/ }));
+    // Live carries no tab at all.
+    await user.click(screen.getByRole("tab", { name: /^Live/ }));
     expect(screen.getByLabelText("address").textContent).toBe("/");
     // Switching tabs never asked for the summary again: it was already there.
     expect(api.fetchJson.mock.calls.filter(([path]) => path === "/api/dashboard/summary")).toHaveLength(1);
   });
 
   it("can be linked straight to a tab, and an old link opens the tab its content moved to", async () => {
-    const first = open("/?tab=setup");
-    expect(await screen.findByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
+    const first = open("/?tab=system");
+    expect(await screen.findByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
     first.unmount();
 
     const old = open("/?tab=system");
-    expect(await screen.findByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     old.unmount();
 
     open("/?tab=downloads");
-    expect(await screen.findByRole("tab", { name: /^Now/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("badges each tab with the real problems on it, once, and the Now badge is not a total", async () => {
+  it("badges each tab with the real problems on it, once, and the Live badge is not a total", async () => {
     open("/");
-    await screen.findByRole("tab", { name: /^Now/ });
+    await screen.findByRole("tab", { name: /^Live/ });
     // The same count the Needs you list and the sidebar read.
     // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
     const none = [] as never;
     const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
     const expected = attention.counts;
-    expect(attention.total).toBe(expected.now + expected.setup);
+    expect(attention.total).toBe(expected.live + expected.system);
     const label = (tab: string) => within(screen.getByRole("tab", { name: new RegExp(`^${tab}`) })).queryByLabelText(/need a look|needs a look/)?.getAttribute("aria-label") ?? null;
     const words = (n: number) => (n === 1 ? "1 thing needs a look" : `${n} things need a look`);
     // The stored lists arrive after the summary; the badges settle on them.
-    await waitFor(() => expect(label("Setup health")).toBe(expected.setup === 0 ? null : words(expected.setup)));
-    expect(label("Now")).toBe(expected.now === 0 ? null : words(expected.now));
-    // Each number counts its own tab only: Now does not add Setup health's problems to its own.
-    expect(expected.setup).toBeGreaterThan(0);
-    expect(expected.now).toBeGreaterThan(0);
+    await waitFor(() => expect(label("System")).toBe(expected.system === 0 ? null : words(expected.system)));
+    expect(label("Live")).toBe(expected.live === 0 ? null : words(expected.live));
+    // Each number counts its own tab only: Live does not add System's problems to its own.
+    expect(expected.system).toBeGreaterThan(0);
+    expect(expected.live).toBeGreaterThan(0);
     const listed = Number(within(screen.getByRole("region", { name: /^needs you/i })).getByText(/^[0-9]+$/).textContent);
-    expect(listed).toBeGreaterThanOrEqual(expected.now);
+    expect(listed).toBeGreaterThanOrEqual(expected.live);
   });
 
   it("shows no badges on a new install", async () => {
     api.summary.mockReturnValue(emptySummary());
     open("/");
-    await screen.findByRole("tab", { name: /^Now/ });
-    for (const name of [/^Now/, /^Setup health/]) {
+    await screen.findByRole("tab", { name: /^Live/ });
+    for (const name of [/^Live/, /^System/]) {
       expect(within(screen.getByRole("tab", { name })).queryByLabelText(/need/)).toBeNull();
     }
   });
@@ -139,7 +140,7 @@ describe("dashboardShouldRevalidate", () => {
   });
 
   it("does not re-run the loader when only the tab changes", () => {
-    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: new URL("http://deluno.local/?tab=setup"), defaultShouldRevalidate: true })).toBe(false);
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: new URL("http://deluno.local/?tab=system"), defaultShouldRevalidate: true })).toBe(false);
   });
 
   it("still revalidates after a form submission", () => {

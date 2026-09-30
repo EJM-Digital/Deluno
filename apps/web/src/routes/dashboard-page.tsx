@@ -1,13 +1,13 @@
 /**
- * The Dashboard (#1087): two tabs in the page header, Now and Setup health.
+ * The Dashboard (#1087): two tabs in the page header, Live and System.
  * Each tab fits one screen. Both read one summary request
  * (`GET /api/dashboard/summary`, built from stored numbers only) and refetch it
  * when the server says it changed, so switching a tab never asks for anything
  * and never blanks the page (#1081).
  *
- * The tab is in the address (`?tab=setup`), so a tab can be linked; Now carries
+ * The tab is in the address (`?tab=system`), so a tab can be linked; Live carries
  * no `tab` at all. The four old values still work: `overview`, `library` and
- * `downloads` open Now, and `system` opens Setup health.
+ * `downloads` open Live, and `setup-health` opens System.
  */
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -19,28 +19,28 @@ import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, startSources } from "../lib/route-cache";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
-import { NowTab } from "./dashboard/now-tab";
-import { SetupTab } from "./dashboard/setup-tab";
+import { LiveTab } from "./dashboard/live-tab";
+import { SystemTab } from "./dashboard/system-tab";
 import type { DashboardSummary } from "../lib/api";
-import { nowSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
+import { liveSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
 import { useDashboardAttention } from "./dashboard/use-dashboard-attention";
 
-export const DASHBOARD_TABS = ["now", "setup"] as const;
+export const DASHBOARD_TABS = ["live", "system"] as const;
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 const TAB_LABELS: Record<DashboardTab, string> = {
-  now: "Now",
-  setup: "Setup health"
+  live: "Live",
+  system: "System"
 };
 
 /** The tab each older tab name now opens. */
-const OLD_TABS: Record<string, DashboardTab> = { overview: "now", library: "now", downloads: "now", system: "setup" };
+const OLD_TABS: Record<string, DashboardTab> = { now: "live", overview: "live", library: "live", downloads: "live", "setup-health": "system", setup: "system" };
 
-/** An unknown or missing `?tab=` is Now; an old tab name opens the tab its content moved to. */
+/** An unknown or missing `?tab=` is Live; an old tab name opens the tab its content moved to. */
 export function tabFromSearch(search: string | URLSearchParams): DashboardTab {
   const value = (typeof search === "string" ? new URLSearchParams(search) : search).get("tab") ?? "";
   if ((DASHBOARD_TABS as readonly string[]).includes(value)) return value as DashboardTab;
-  return OLD_TABS[value] ?? "now";
+  return OLD_TABS[value] ?? "live";
 }
 
 /**
@@ -67,7 +67,7 @@ export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, def
 export function dashboardLoader(args?: { request?: Request }) {
   void queryClient.prefetchQuery(summaryQuery);
   startSources(setupSources);
-  if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "now") startSources(nowSources);
+  if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "live") startSources(liveSources);
   return { cached: true as const };
 }
 
@@ -155,7 +155,7 @@ function useFitToScreen(element: HTMLDivElement | null) {
 }
 
 function TabBody({ tab, summary }: { tab: DashboardTab; summary: DashboardSummary | undefined }): ReactNode {
-  return tab === "setup" ? <SetupTab summary={summary} /> : <NowTab summary={summary} />;
+  return tab === "system" ? <SystemTab summary={summary} /> : <LiveTab summary={summary} />;
 }
 
 export function DashboardPage() {
@@ -186,7 +186,7 @@ export function DashboardPage() {
   const select = useCallback((next: DashboardTab) => {
     setSearchParams((current) => {
       const params = new URLSearchParams(current);
-      if (next === "now") params.delete("tab");
+      if (next === "live") params.delete("tab");
       else params.set("tab", next);
       return params;
     }, { replace: false });

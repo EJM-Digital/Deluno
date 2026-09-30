@@ -9,21 +9,21 @@ const job = (over: Record<string, unknown>) => ({
 
 describe("computeAttention", () => {
   it("is zero everywhere on a new install and with no summary", () => {
-    expect(computeAttention(emptySummary()).counts).toEqual({ now: 0, setup: 0 });
-    expect(computeAttention(undefined).counts).toEqual({ now: 0, setup: 0 });
+    expect(computeAttention(emptySummary()).counts).toEqual({ live: 0, system: 0 });
+    expect(computeAttention(undefined).counts).toEqual({ live: 0, system: 0 });
     expect(computeAttention(emptySummary()).total).toBe(0);
   });
 
   it("counts each problem on one tab only, and the total is the two badges added together", () => {
     const attention = computeAttention(fullSummary(), {}, [{ id: "a", title: "t", text: "x", to: "/", action: "Go" }]);
-    const { now, setup } = attention.counts;
-    expect(attention.total).toBe(now + setup);
+    const { live, system } = attention.counts;
+    expect(attention.total).toBe(live + system);
     expect(attention.total).toBe(attention.items.reduce((sum, item) => sum + item.count, 0));
-    for (const tab of ["now", "setup"] as const) {
+    for (const tab of ["live", "system"] as const) {
       expect(attention.counts[tab]).toBe(attention.items.filter((item) => item.tab === tab).reduce((sum, item) => sum + item.count, 0));
     }
-    // The setup step is a Setup health row with its button.
-    expect(attention.items.find((item) => item.id === "setup:a")?.tab).toBe("setup");
+    // The setup step is a System row with its button.
+    expect(attention.items.find((item) => item.id === "setup:a")?.tab).toBe("system");
   });
 
   it("does not count leftover folders, suggestions, a failed download Deluno is searching again for, or a snoozed problem", () => {
@@ -40,7 +40,7 @@ describe("computeAttention", () => {
     expect(attention.alsoWorthALook).toEqual({ leftovers: 2, suggestions: 2 });
   });
 
-  it("counts a failed import once, on Now, and not again as a job that gave up", () => {
+  it("counts a failed import once, on Live, and not again as a job that gave up", () => {
     const attention = computeAttention(fullSummary(), { failedJobs: [job({ id: "imp" }), job({ id: "other", jobType: "library.scan" })] });
     expect(attention.downloads.failedImportJobs.map((j) => j.id)).toEqual(["imp"]);
     expect(attention.jobsGaveUp).toBe(1);
@@ -61,7 +61,7 @@ describe("computeAttention", () => {
     const attention = computeAttention(emptySummary(), { handoffs: [handoff], movieRecovery: withCase });
     expect(attention.downloads.handoffs).toHaveLength(1);
     expect(attention.downloads.recoveryCases).toHaveLength(0);
-    expect(attention.counts.now).toBe(1);
+    expect(attention.counts.live).toBe(1);
   });
 
   it("counts a client once however many buttons it has, and a stalled download a case covers only as the case", () => {
@@ -97,10 +97,10 @@ describe("computeAttention", () => {
       const summary = emptySummary();
       summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i1", "Nyaa.si (indexer)")] };
       const attention = computeAttention(summary, { indexers: [indexer], healthSummary: { problemCount: 1, unsnoozedProblemCount: 1, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } });
-      expect(attention.counts).toEqual({ now: 0, setup: 1 });
+      expect(attention.counts).toEqual({ live: 0, system: 1 });
       expect(attention.items).toHaveLength(1);
       // The one row says which indexer and why, and its button is where Test again is.
-      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in Setup health" });
+      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in System" });
       expect(attention.healthListed).toHaveLength(0);
     });
 
@@ -129,7 +129,7 @@ describe("computeAttention", () => {
       summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i9", "Other (indexer)")] };
       const attention = computeAttention(summary, { indexers: [{ ...(indexer as object), healthStatus: "healthy" } as never] });
       expect(attention.healthListed).toHaveLength(1);
-      expect(attention.counts.setup).toBe(1);
+      expect(attention.counts.system).toBe(1);
     });
   });
 });

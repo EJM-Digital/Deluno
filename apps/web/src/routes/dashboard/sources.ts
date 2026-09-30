@@ -58,7 +58,7 @@ export const setupSources = defineSources({
 });
 
 /** What only the Now tab reads beyond the summary and the download queue. */
-export const nowSources = defineSources({
+export const liveSources = defineSources({
   upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), [])
 });
 
