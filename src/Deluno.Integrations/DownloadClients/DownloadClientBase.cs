@@ -9,6 +9,11 @@ public abstract class DownloadClientBase : IDownloadClient
 
     public abstract DownloadClientTelemetryCapabilities Capabilities { get; }
 
+    // Declared here, not left to the interface's default: a client class that
+    // inherits the interface through this base could otherwise declare its own
+    // property and never be asked (#1073).
+    public virtual bool SetsSaveFolderPerGrab => false;
+
     public abstract Task<DownloadClientGrabResult> GrabAsync(
         DownloadClientItem client,
         DownloadClientGrabRequest request,

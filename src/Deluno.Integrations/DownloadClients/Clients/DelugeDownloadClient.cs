@@ -11,7 +11,7 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
     public override string Protocol => "deluge";
     public override DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, false, true, true, true, true, "password", SupportsQueueReorder: true);
 
-    public bool SetsSaveFolderPerGrab => true;
+    public override bool SetsSaveFolderPerGrab => true;
 
     public override async Task<DownloadClientGrabResult> GrabAsync(DownloadClientItem client, DownloadClientGrabRequest request, CancellationToken cancellationToken)
     {
