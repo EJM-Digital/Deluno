@@ -3,6 +3,7 @@ using Deluno.Contracts;
 using Deluno.Integrations.Metadata;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
+using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
 
 namespace Deluno.Worker.Jobs;
@@ -28,11 +29,33 @@ public sealed class MoviesMetadataRefreshJobHandler(
             return "Movie metadata refresh skipped because the movie no longer exists.";
         }
 
-        // Stamped before the provider call and regardless of the outcome. The
-        // backfill selects on staleness, and staleness was previously only
-        // cleared by a successful match — so a title the provider cannot match
-        // stayed stale forever and was re-queued on every pass.
-        await movieCatalogRepository.RecordMetadataAttemptAsync(movie.Id, cancellationToken);
+        // Stamped regardless of the outcome, so a title the provider cannot match is
+        // not re-queued on every pass - EXCEPT when the provider could not answer
+        // at all. A title whose refresh ends Unavailable, or comes back empty only
+        // because the service failed, is not stamped: that would make it wait 24
+        // hours for an outage of a minute and report it as "No metadata match"
+        // (#1090).
+        var providerUnavailable = false;
+        try
+        {
+            return await RefreshAsync(job, movie, () => providerUnavailable = true, cancellationToken);
+        }
+        finally
+        {
+            if (!providerUnavailable)
+            {
+                await movieCatalogRepository.RecordMetadataAttemptAsync(movie.Id, CancellationToken.None);
+            }
+        }
+    }
+
+    private async Task<string> RefreshAsync(
+        JobQueueItem job,
+        MovieListItem movie,
+        Action markProviderUnavailable,
+        CancellationToken cancellationToken)
+    {
+        using var failureScope = metadataProvider.BeginFailureScope();
 
         MetadataSearchResult? match;
         if (!string.IsNullOrWhiteSpace(movie.MetadataProviderId))
@@ -48,6 +71,13 @@ public sealed class MoviesMetadataRefreshJobHandler(
 
             if (lookup.Status == MetadataProviderRecordStatus.Unavailable)
             {
+                // A setup problem (no key, a bad stored id) is stamped like any other
+                // outcome; only a service that did not answer is worth trying again soon.
+                if (lookup.Failure?.IsTransient != false)
+                {
+                    markProviderUnavailable();
+                }
+
                 return $"Could not verify metadata for {movie.Title} because the provider is temporarily unavailable.";
             }
 
@@ -59,6 +89,12 @@ public sealed class MoviesMetadataRefreshJobHandler(
                 new MetadataLookupRequest(movie.Title, "movies", movie.ReleaseYear, null),
                 cancellationToken);
             match = matches.FirstOrDefault();
+        }
+
+        if (match is null && failureScope?.Failure is not null)
+        {
+            markProviderUnavailable();
+            return $"Could not look up {movie.Title} because the metadata service did not answer. Deluno will try again.";
         }
 
         if (match is not null && MetadataLinkPolicy.WouldDowngradeLink(movie.MetadataProvider, match))

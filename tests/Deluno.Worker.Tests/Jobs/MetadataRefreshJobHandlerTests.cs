@@ -87,6 +87,7 @@ public sealed class MetadataRefreshJobHandlerTests
                 "metadata", "tmdb", "tmdb", "metadata.provider.resolve", "notfound", "HTTP 404", 404));
 
         var metadataProvider = new Mock<IMetadataProvider>(MockBehavior.Strict);
+        metadataProvider.Setup(provider => provider.BeginFailureScope()).Returns(NoMetadataFailureScope.Instance);
         metadataProvider
             .Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(lookup);
@@ -231,6 +232,7 @@ public sealed class MetadataRefreshJobHandlerTests
                 "metadata", "tmdb", "tmdb", "metadata.provider.resolve", "notfound", "HTTP 404", 404));
 
         var metadataProvider = new Mock<IMetadataProvider>(MockBehavior.Strict);
+        metadataProvider.Setup(provider => provider.BeginFailureScope()).Returns(NoMetadataFailureScope.Instance);
         metadataProvider
             .Setup(provider => provider.ResolveProviderRecordAsync(It.IsAny<MetadataLookupRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(lookup);
