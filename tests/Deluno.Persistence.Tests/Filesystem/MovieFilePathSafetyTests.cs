@@ -136,4 +136,38 @@ public sealed class MovieFilePathSafetyTests
             Path.Combine(root, "Heat (1995).mkv"),
             Path.Combine(root, "Other", "Heat (1995).en.srt")));
     }
+
+    [Theory]
+    [InlineData("Heat (1995).en.hearing_impaired.srt", true)]
+    [InlineData("Heat (1995).foreign.srt", true)]
+    [InlineData("Heat (1995).English.srt", true)]
+    [InlineData("Heat (1995).pt-BR.srt", true)]
+    [InlineData("Heat (1995).Man.srt", false)]
+    [InlineData("Heat (1995).Extra.srt", false)]
+    public void A_flat_film_reads_subtitle_names_with_the_subtitle_scans_own_rule(string fileName, bool expected)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        Assert.Equal(expected, MovieFilePathSafety.BelongsToFlatFilm(Path.Combine(root, "Heat (1995).mkv"), Path.Combine(root, fileName)));
+    }
+
+    [Fact]
+    public void A_companion_without_the_quality_tag_belongs_when_the_title_year_base_is_offered()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        var primary = Path.Combine(root, "Movie (2020) - 1080p.mkv");
+        var nfo = Path.Combine(root, "Movie (2020).nfo");
+        Assert.False(MovieFilePathSafety.BelongsToFlatFilm(primary, nfo));
+        Assert.True(MovieFilePathSafety.BelongsToFlatFilm(primary, nfo, ["Movie (2020)"]));
+    }
+
+    [Fact]
+    public void A_folder_holding_another_tracked_file_is_shared_but_a_folder_of_its_own_is_not()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        var heat = Path.Combine(root, "Action", "Heat.mkv");
+        Assert.True(MovieFilePathSafety.IsSharedFolder(heat, [root], [Path.Combine(root, "Action", "Ronin.mkv")]));
+        Assert.True(MovieFilePathSafety.IsSharedFolder(heat, [root], [Path.Combine(root, "Action", "S01E01.mkv")]));
+        Assert.False(MovieFilePathSafety.IsSharedFolder(heat, [root], [Path.Combine(root, "Drama", "Ronin.mkv"), heat]));
+        Assert.True(MovieFilePathSafety.IsSharedFolder(heat, [root], [], libraryStillExists: false));
+    }
 }

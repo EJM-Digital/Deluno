@@ -114,7 +114,40 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
         "hi", "sdh", "cc", "hearingimpaired", "hearing_impaired"
     };
 
+    /// <summary>
+    /// Tags that mark a subtitle variant without changing which language or
+    /// flag it is. Known to the parser so a file carrying only these is still
+    /// read as a subtitle's name and not as somebody else's file.
+    /// </summary>
+    private static readonly HashSet<string> NeutralTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "default", "full", "signs"
+    };
+
     private static readonly char[] TokenSeparators = [' ', '_', '-'];
+
+    /// <summary>
+    /// True when every dot-separated part of <paramref name="tagsWithoutExtension"/>
+    /// (the part of a subtitle's name after the video's base name, without the
+    /// extension) is something <see cref="ReadTags"/> understands: a language
+    /// or a forced / hearing-impaired flag. The one rule for "this reads like
+    /// a subtitle's own tags", shared with the Files tab so the two never
+    /// disagree about which files are a film's subtitles.
+    /// </summary>
+    internal static bool AreAllTagsRecognised(string tagsWithoutExtension)
+    {
+        foreach (var part in tagsWithoutExtension.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tokens = part.Split(TokenSeparators, StringSplitOptions.RemoveEmptyEntries);
+            var recognised = IsKnownTag(part) || (tokens.Length > 0 && tokens.All(IsKnownTag));
+            if (!recognised)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// The paths of the subtitle files beside a video, without probing the
@@ -338,6 +371,12 @@ public sealed class SubtitleInventoryService(IMediaProbeService mediaProbeServic
 
         return new SubtitleFileTags(language, forced, hearingImpaired);
     }
+
+    private static bool IsKnownTag(string token)
+        => (SubtitleLanguages.Normalize(token) is { } code && code != SubtitleLanguages.Unknown)
+            || ForcedTags.Contains(token)
+            || HearingImpairedTags.Contains(token)
+            || NeutralTags.Contains(token);
 
     private static bool LooksForced(string? title)
         => title is not null && ForcedTags.Any(tag => title.Contains(tag, StringComparison.OrdinalIgnoreCase));

@@ -4,6 +4,7 @@ using Deluno.Jobs.Data;
 using Deluno.Media;
 using Deluno.Movies.Contracts;
 using Deluno.Movies.Data;
+using Deluno.Series.Data;
 using Deluno.Notifications;
 using Deluno.Notifications.Contracts;
 using Microsoft.AspNetCore.Builder;
@@ -42,6 +43,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             string id,
             IMovieCatalogRepository repository,
             Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
+            ISeriesCatalogRepository seriesRepository,
             ISubtitleInventoryService subtitleInventoryService,
             CancellationToken cancellationToken) =>
         {
@@ -66,7 +68,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 
             var labelled = copies.Count > 1;
             var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
-            var libraryRoots = libraries.Select(item => item.RootPath).ToArray();
+            var sharing = await LoadSharingAsync(movie, libraries, repository, seriesRepository, cancellationToken);
             var items = new List<MovieFileItem>();
             foreach (var copy in copies)
             {
@@ -78,7 +80,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 var libraryName = labelled
                     ? libraries.FirstOrDefault(item => string.Equals(item.Id, copy.LibraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "Removed library"
                     : null;
-                items.AddRange(await FilesForCopyAsync(copy, copy.LibraryId, libraryName, MovieFilePathSafety.IsFiledFlat(copy.FilePath, libraryRoots), subtitleInventoryService, cancellationToken));
+                items.AddRange(await FilesForCopyAsync(copy, copy.LibraryId, libraryName, sharing.IsOwnFilesOnly(copy.FilePath, copy.LibraryId) ? sharing : null, subtitleInventoryService, cancellationToken));
             }
 
             return Results.Ok(items);
@@ -125,6 +127,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             [FromBody] UpdateMovieFileLanguageRequest request,
             IMovieCatalogRepository repository,
             Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
+            ISeriesCatalogRepository seriesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
@@ -135,8 +138,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var libraryRoots = (await librariesRepository.ListLibrariesAsync(cancellationToken)).Select(item => item.RootPath).ToArray();
-            if (!TryResolveWithinMovieFolder(primaryPath, libraryRoots, request.Path, out var subtitlePath) || !File.Exists(subtitlePath))
+            var sharing = await LoadSharingAsync(movie, await librariesRepository.ListLibrariesAsync(cancellationToken), repository, seriesRepository, cancellationToken);
+            if (!TryResolveWithinMovieFolder(primaryPath, movie.LibraryId, sharing, request.Path, out var subtitlePath) || !File.Exists(subtitlePath))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -189,6 +192,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             IMovieCatalogRepository repository,
             IMediaSubtitleRepository mediaSubtitleRepository,
             Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
+            ISeriesCatalogRepository seriesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             ILogger<MovieFileDeleteNotification> logger,
@@ -212,7 +216,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 copies.Add(new MovieLibraryFile(movie.LibraryId ?? string.Empty, soleFile, movie.FileSizeBytes, movie.CurrentQuality, movie.VideoCodec, movie.AudioCodec, movie.AudioChannels));
             }
 
-            var libraryRoots = (await librariesRepository.ListLibrariesAsync(cancellationToken)).Select(item => item.RootPath).ToArray();
+            var sharing = await LoadSharingAsync(movie, await librariesRepository.ListLibrariesAsync(cancellationToken), repository, seriesRepository, cancellationToken);
             MovieLibraryFile? chosen;
             if (!string.IsNullOrWhiteSpace(request.LibraryId))
             {
@@ -220,7 +224,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             }
             else
             {
-                chosen = copies.FirstOrDefault(copy => TryResolveWithinMovieFolder(copy.FilePath, libraryRoots, request.Path, out _));
+                chosen = copies.FirstOrDefault(copy => TryResolveWithinMovieFolder(copy.FilePath, copy.LibraryId, sharing, request.Path, out _));
             }
 
             if (chosen is null)
@@ -235,7 +239,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 
             var primaryPath = chosen.FilePath;
 
-            if (!TryResolveWithinMovieFolder(primaryPath, libraryRoots, request.Path, out var targetPath) || !File.Exists(targetPath))
+            if (!TryResolveWithinMovieFolder(primaryPath, chosen.LibraryId, sharing, request.Path, out var targetPath) || !File.Exists(targetPath))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -317,7 +321,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         MovieLibraryFile copy,
         string libraryId,
         string? libraryName,
-        bool filedFlat,
+        FolderSharing? ownFilesOnly,
         ISubtitleInventoryService subtitleInventoryService,
         CancellationToken cancellationToken)
     {
@@ -336,7 +340,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         var accountedFor = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primaryPath };
         foreach (var subtitle in inventory.Subtitles)
         {
-            if (filedFlat && subtitle.Path is { Length: > 0 } flatSubtitle && !MovieFilePathSafety.BelongsToFlatFilm(primaryPath, flatSubtitle))
+            if (ownFilesOnly is not null && subtitle.Path is { Length: > 0 } flatSubtitle && !ownFilesOnly.Owns(primaryPath, flatSubtitle))
             {
                 continue;
             }
@@ -372,9 +376,9 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         {
             // A flat film shares its folder with every other title, so only its own
             // named companions are its files; never walk the shared folder.
-            restOfFolder = filedFlat
+            restOfFolder = ownFilesOnly is not null
                 ? Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
-                    .Where(path => MovieFilePathSafety.BelongsToFlatFilm(primaryPath, path))
+                    .Where(path => ownFilesOnly.Owns(primaryPath, path))
                 : Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories);
         }
         catch (IOException)
@@ -434,7 +438,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             LibraryId: libraryId,
             LibraryName: libraryName);
 
-    private static bool TryResolveWithinMovieFolder(string primaryFilePath, IReadOnlyCollection<string> libraryRoots, string? requestedPath, out string resolved)
+    private static bool TryResolveWithinMovieFolder(string primaryFilePath, string? libraryId, FolderSharing sharing, string? requestedPath, out string resolved)
     {
         var folder = Path.GetDirectoryName(primaryFilePath);
         if (folder is null)
@@ -448,10 +452,11 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             return false;
         }
 
-        // Filed flat in the library root: the folder is everyone's, so only this
-        // film's own files count as its files.
-        if (MovieFilePathSafety.IsFiledFlat(primaryFilePath, libraryRoots)
-            && !MovieFilePathSafety.BelongsToFlatFilm(primaryFilePath, resolved))
+        // A folder shared with anything else (a library's root, a subfolder holding
+        // another film or an episode, a library that has since been removed): the
+        // folder is everyone's, so only this film's own files count as its files.
+        if (sharing.IsOwnFilesOnly(primaryFilePath, libraryId)
+            && !sharing.Owns(primaryFilePath, resolved))
         {
             resolved = string.Empty;
             return false;
@@ -459,7 +464,58 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 
         return true;
     }
+
+    private static async Task<FolderSharing> LoadSharingAsync(
+        MovieListItem movie,
+        IReadOnlyList<Deluno.Libraries.Contracts.LibraryItem> libraries,
+        IMovieCatalogRepository repository,
+        ISeriesCatalogRepository seriesRepository,
+        CancellationToken cancellationToken)
+    {
+        var others = new List<string>();
+        others.AddRange(await repository.ListAllPrimaryFilePathsAsync(cancellationToken));
+        others.AddRange(await seriesRepository.ListAllEpisodeFilePathsAsync(cancellationToken));
+
+        // A companion without the release's quality tag ("Movie (2020).nfo" beside
+        // "Movie (2020) - 1080p.mkv") is still this film's: accept the title-year base too.
+        var alternates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(movie.Title))
+        {
+            var titleYear = movie.ReleaseYear is { } year ? $"{movie.Title} ({year})" : movie.Title;
+            alternates.Add(titleYear);
+            var stripped = string.Concat(titleYear.Where(character => Array.IndexOf(Path.GetInvalidFileNameChars(), character) < 0));
+            if (!string.Equals(stripped, titleYear, StringComparison.Ordinal))
+            {
+                alternates.Add(stripped);
+            }
+        }
+
+        return new FolderSharing(
+            libraries.Select(item => item.RootPath).ToArray(),
+            others,
+            libraries.Select(item => item.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            alternates);
+    }
+
+    /// <summary>What decides whether a film's folder is its own: every library root, every other tracked primary file, which libraries still exist.</summary>
+    private sealed record FolderSharing(
+        IReadOnlyList<string> LibraryRoots,
+        IReadOnlyList<string> OtherPrimaryPaths,
+        IReadOnlySet<string> LibraryIds,
+        IReadOnlyList<string> AlternateBaseNames)
+    {
+        public bool IsOwnFilesOnly(string primaryFilePath, string? libraryId)
+            => MovieFilePathSafety.IsSharedFolder(
+                primaryFilePath,
+                LibraryRoots,
+                OtherPrimaryPaths,
+                string.IsNullOrWhiteSpace(libraryId) || LibraryIds.Contains(libraryId));
+
+        public bool Owns(string primaryFilePath, string candidatePath)
+            => MovieFilePathSafety.BelongsToFlatFilm(primaryFilePath, candidatePath, AlternateBaseNames);
+    }
 }
+
 
 /// <summary>Log-category marker for the movie Files tab's delete endpoint (#856); the endpoint class itself is static and cannot be an ILogger&lt;T&gt; argument.</summary>
 public sealed class MovieFileDeleteNotification;

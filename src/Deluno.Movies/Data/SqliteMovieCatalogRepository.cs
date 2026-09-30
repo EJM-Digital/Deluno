@@ -2394,6 +2394,23 @@ public sealed class SqliteMovieCatalogRepository(
         return ids;
     }
 
+    public async Task<IReadOnlyList<string>> ListAllPrimaryFilePathsAsync(CancellationToken cancellationToken)
+    {
+        var paths = new List<string>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT file_path FROM movie_wanted_state WHERE has_file = 1 AND file_path IS NOT NULL;";
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
     public async Task<IReadOnlyList<MovieLibraryFile>> ListLibraryFilesAsync(string movieId, CancellationToken cancellationToken)
     {
         var files = new List<MovieLibraryFile>();

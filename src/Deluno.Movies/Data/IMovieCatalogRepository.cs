@@ -429,6 +429,12 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     Task<IReadOnlyList<MovieLibraryFile>> ListLibraryFilesAsync(string movieId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Every tracked primary file path across all films and libraries. Lets the Files tab tell a film's
+    /// own folder from a folder several titles share (#1065).
+    /// </summary>
+    Task<IReadOnlyList<string>> ListAllPrimaryFilePathsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Records a file's new on-disk location after the caller has physically
     /// renamed or moved it - matched by <paramref name="previousFilePath"/>
     /// rather than movie id alone, so a stale or already-changed row is never
