@@ -50,6 +50,15 @@ public sealed class TitleFolderGuardTests
     }
 
     [Fact]
+    public async Task With_no_library_folders_known_nothing_is_renameable()
+    {
+        var target = await TitleFolderGuard.ForMovieAsync(Path.Combine(Root, "Dune", "Dune.mkv"), [], Nobody, default);
+
+        Assert.False(target.IsSafe);
+        Assert.Equal("outside-library", target.Code);
+    }
+
+    [Fact]
     public async Task A_folder_with_another_titles_file_is_not_the_titles_own()
     {
         var target = await TitleFolderGuard.ForMovieAsync(Path.Combine(Root, "Mixed", "Dune.mkv"), Roots, Somebody, default);
@@ -87,13 +96,14 @@ public sealed class TitleFolderGuardTests
     }
 
     [Fact]
-    public async Task A_show_with_one_season_and_no_known_library_still_steps_up_out_of_the_season()
+    public async Task A_show_with_no_known_library_is_refused_rather_than_guessed_at()
     {
         var show = Path.Combine(Path.GetTempPath(), "guard-loose", "The Wire");
         var target = await TitleFolderGuard.ForSeriesAsync(
             [Path.Combine(show, "Season 1", "e1.mkv")], [], Nobody, default);
 
-        Assert.Equal(show, target.Folder);
+        Assert.False(target.IsSafe);
+        Assert.Equal("outside-library", target.Code);
     }
 
     [Fact]
