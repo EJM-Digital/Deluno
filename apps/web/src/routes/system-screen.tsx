@@ -329,7 +329,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           {jobs.slice(0, 12).map((job) => (
             <ListRow key={job.id}>
               <ListNameCell name={job.label} sub={job.attempts > 1 ? `Tried ${job.attempts} times` : "Tried once"} />
-              <ListCell primary={job.source} secondary={job.lastError ?? undefined} />
+              <ListCell primary={job.sourceLabel} secondary={job.lastError ?? undefined} />
               <ListCell numeric primary={formatWhen(job.createdUtc, preferences)} />
               <ListCell mobile>
                 <Chip tone={jobTone(job.status)}>{job.status}</Chip>

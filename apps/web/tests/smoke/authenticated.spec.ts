@@ -104,13 +104,18 @@ test.describe("authenticated app smoke", () => {
   const rawEventCode =
     /\b(job|jobs|movies|media-servers|download-client|download|downloads|processing|processor|filesystem|library|metadata|retention|intake|release|health|tags|trackers|subtitle|connectivity|seerr|movie|series|episode|external|collection|quality|activity)\.[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*\b/;
 
+  // A job's source is a code too (#1086): what started it must read in words.
+  // The codes the mocked jobs carry, so the check can name them exactly (a
+  // hyphenated word alone in a cell is too ordinary to catch with a pattern).
+  const rawSourceCode = /(grab-rejected|download-health|queue-derived|existing-library-import|library-media-probe|download-integrity-failed|processor-rejected)/;
+
   const smokeJobs = [
-    ["series.search.season", "Search for a season", "completed"],
-    ["episode.search", "Search for an episode", "failed"],
-    ["library.search.tv", "Search the TV library", "completed"],
-    ["movies.metadata.refresh", "Refresh film details", "completed"]
-  ].map(([jobType, label, status], index) => ({
-    id: `smoke-job-${index}`, jobType, label, source: "automation", status, payloadJson: "{}", attempts: 1,
+    ["series.search.season", "Search for a season", "A refused release", "grab-rejected", "completed"],
+    ["episode.search", "Search for an episode", "The download health check", "download-health", "failed"],
+    ["library.search.tv", "Search the TV library", "A download in the queue", "queue-derived", "completed"],
+    ["movies.metadata.refresh", "Refresh film details", "A scan of a folder you already had", "existing-library-import", "completed"]
+  ].map(([jobType, label, sourceLabel, source, status], index) => ({
+    id: `smoke-job-${index}`, jobType, label, source, sourceLabel, status, payloadJson: "{}", attempts: 1,
     createdUtc: "2026-09-30T00:00:00Z", scheduledUtc: "2026-09-30T00:00:00Z", startedUtc: "2026-09-30T00:00:00Z",
     completedUtc: "2026-09-30T00:01:00Z", leasedUntilUtc: null, workerId: null, lastError: status === "failed" ? "The indexer did not answer." : null,
     relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
@@ -123,6 +128,7 @@ test.describe("authenticated app smoke", () => {
 
   for (const path of ["/", "/activity", "/system", "/system/audit"]) {
     test(`shows no internal event code on ${path}`, async ({ page }) => {
+      await mockJobsAndEvents(page);
       await page.goto(path);
       await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
       if (path === "/activity") {
@@ -135,6 +141,37 @@ test.describe("authenticated app smoke", () => {
       await page.waitForTimeout(1_500);
       const text = await page.locator("body").innerText();
       expect(text).not.toMatch(rawEventCode);
+      expect(text).not.toMatch(rawSourceCode);
+    });
+  }
+
+  for (const path of ["/activity", "/system"]) {
+    test(`names what started each job in words on ${path}`, async ({ page }) => {
+      await mockJobsAndEvents(page);
+      await page.goto(path);
+      if (path === "/activity") {
+        await page.getByRole("radio", { name: "Jobs & downloads" }).click();
+      }
+      // The System list hides this column on a phone, so it is enough that the words are on the page.
+      await expect(page.getByText("A refused release").first()).toBeAttached({ timeout: 15_000 });
+      const text = await page.locator("body").innerText();
+      expect(text).not.toMatch(rawSourceCode);
+    });
+  }
+
+  async function mockJobsAndEvents(page: import("@playwright/test").Page) {
+    await page.route("**/api/jobs?**", async (route) => {
+      const failedOnly = route.request().url().includes("failed=true");
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ items: failedOnly ? smokeJobs.filter((job) => job.status === "failed") : smokeJobs, hasMore: false, nextPageToken: null })
+      });
+    });
+    await page.route("**/api/activity?**", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ items: smokeEvents, hasMore: false, nextPageToken: null })
+      });
     });
   }
 

@@ -4524,7 +4524,7 @@ public sealed class SqliteJobStore(
 
         return JobTypeWords.TryGetValue(jobType, out var words)
             ? $"Added {words.Queued}{MediaKindSuffix(jobType, relatedEntityType)} to the queue."
-            : $"Added a background task from {FormatSourceName(source)}.";
+            : $"Added a background task. Started by {JobSourceLabels.ForSentence(source)}.";
     }
 
     private static string FormatStartedMessage(string jobType, string? payloadJson, string? relatedEntityType = null)
@@ -4708,17 +4708,6 @@ public sealed class SqliteJobStore(
 
     /// <summary>The one shared rule (Deluno.Contracts), so Jobs and Monitoring cannot drift apart again.</summary>
     private static string SeverityForCategory(string category) => ActivityEventSeverity.For(category);
-
-    private static string FormatSourceName(string source)
-    {
-        return source switch
-        {
-            "movies" => "Movies",
-            "series" => "TV Shows",
-            "tv" => "TV Shows",
-            _ => "Deluno"
-        };
-    }
 
     private static LibrarySearchPayload? ParseLibraryPayload(string? payloadJson)
     {
