@@ -379,6 +379,7 @@ public sealed record DownloadQueueItem(
     /// to the current one, when the client shows the item under that dispatch's
     /// own release name (#1062).
     /// </summary>
+    [property: System.Text.Json.Serialization.JsonIgnore]
     string? LegacyId = null);
 
 /// <summary>

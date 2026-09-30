@@ -4,6 +4,7 @@ using Deluno.Contracts;
 using Deluno.Infrastructure.Resilience;
 using Deluno.Infrastructure.Storage.Migrations;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
@@ -70,6 +71,130 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
         Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, "other-hash", CancellationToken.None)).Owned);
     }
 
+    /// <summary>
+    /// #1062: a session number is only good for the session that handed it out.
+    /// An archived dispatch that holds a number is never re-bound to whatever
+    /// torrent now carries that number, even when the name looks the same.
+    /// </summary>
+    [Fact]
+    public async Task An_archived_dispatch_holding_a_transmission_number_is_never_moved_to_a_hash()
+    {
+        using var world = await World.CreateAsync();
+
+        var overview = await world.Service.GetOverviewAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(Assert.Single(overview.Clients).Queue, item => item.Id == "archived-hash");
+        Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, "archived-hash", CancellationToken.None)).Owned);
+        var stillNumbered = Assert.Single(await world.Dispatches.FindDispatchesByClientItemIdsAsync(world.ClientId, ["11"], CancellationToken.None));
+        Assert.Equal("archived", stillNumbered.Status);
+    }
+
+    /// <summary>
+    /// #1062: only the first poll after Deluno starts looks for dispatches filed
+    /// under numbers. A torrent that shows up carrying a number later is not
+    /// claimed on it: by then the numbers may name different torrents.
+    /// </summary>
+    [Fact]
+    public async Task A_number_is_only_upgraded_on_the_first_poll_after_start()
+    {
+        using var world = await World.CreateAsync();
+        await world.Service.GetOverviewAsync(CancellationToken.None);
+        world.Client.ShowLateItem = true;
+
+        var second = await world.Service.GetOverviewAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(Assert.Single(second.Clients).Queue, item => item.Id == "late-hash");
+        var stillNumbered = Assert.Single(await world.Dispatches.FindDispatchesByClientItemIdsAsync(world.ClientId, ["13"], CancellationToken.None));
+        Assert.Equal("13", stillNumbered.TorrentHashOrItemId);
+    }
+
+    /// <summary>
+    /// #1062: the number tolerates case, punctuation and separators in the name,
+    /// and a dispatch's health records (strikes, ignore, progress clock) move
+    /// with it to the hash.
+    /// </summary>
+    [Fact]
+    public async Task An_upgraded_dispatch_takes_its_health_records_to_the_hash()
+    {
+        using var world = await World.CreateAsync();
+        await world.Health.RecordDownloadProgressAsync(world.ClientId, [("7", 1024)], CancellationToken.None);
+        world.Time.Advance(TimeSpan.FromHours(3));
+
+        await world.Service.GetOverviewAsync(CancellationToken.None);
+
+        var moved = await world.Health.RecordDownloadProgressAsync(world.ClientId, [("legacy-hash", 1024)], CancellationToken.None);
+        // The clock it had under the number, not a fresh one started now.
+        Assert.True(moved["legacy-hash"] < world.Time.GetUtcNow().AddHours(-2));
+    }
+
+    /// <summary>
+    /// #1062: NZBGet files an item under a small number it can reuse. An archived
+    /// dispatch holding that number is proof only when the client shows the same
+    /// release under it now: an additional check, never adoption by name alone.
+    /// </summary>
+    [Fact]
+    public async Task A_number_held_by_an_archived_dispatch_needs_the_same_release_name_to_be_Delunos()
+    {
+        using var world = await World.CreateAsync();
+
+        // The client shows a different download under number 11 by now.
+        world.Client.NumericItemName = "Someone.Elses.Download.2026.1080p.WEB";
+        Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, "11", CancellationToken.None)).Owned);
+
+        // Nothing under that number at all: nothing to say it is the same one.
+        world.Client.NumericItemName = null;
+        Assert.False((await world.Service.CheckOwnershipAsync(world.ClientId, "11", CancellationToken.None)).Owned);
+
+        // The same release (case, punctuation and separators aside): Deluno's own.
+        world.Client.NumericItemName = "archived legacy movie 2026 1080p web.nzb";
+        Assert.True((await world.Service.CheckOwnershipAsync(world.ClientId, "11", CancellationToken.None)).Owned);
+    }
+
+    [Theory]
+    [InlineData("archived", "12", "Some.Movie.2026", "Some Movie 2026", true)]
+    [InlineData("archived", "12", "Some.Movie.2026", "Some.Movie.2026.nzb", true)]
+    [InlineData("archived", "12", "Some.Movie.2026", "A.Different.Movie.2026", false)]
+    [InlineData("archived", "12", "Some.Movie.2026", null, false)]
+    [InlineData("sent", "12", "Some.Movie.2026", "A.Different.Movie.2026", true)]
+    [InlineData("archived", "0123456789abcdef0123456789abcdef01234567", "Some.Movie.2026", "A.Different.Movie.2026", true)]
+    public void An_archived_dispatch_with_a_number_needs_the_name_and_nothing_else_does(
+        string status, string id, string dispatchName, string? itemName, bool owned)
+    {
+        var dispatch = new DownloadDispatchItem(
+            Id: "d-1",
+            LibraryId: "l-1",
+            MediaType: "movies",
+            EntityType: "movie",
+            EntityId: "m-1",
+            ReleaseName: dispatchName,
+            IndexerName: "Fixture",
+            DownloadClientId: "c-1",
+            DownloadClientName: "Client",
+            Status: status,
+            NotesJson: null,
+            CreatedUtc: DateTimeOffset.UnixEpoch,
+            GrabStatus: "succeeded",
+            GrabAttemptedUtc: DateTimeOffset.UnixEpoch,
+            GrabResponseCode: 200,
+            GrabMessage: null,
+            GrabFailureCode: null,
+            GrabResponseJson: null,
+            DetectedUtc: null,
+            TorrentHashOrItemId: id,
+            DownloadedBytes: null,
+            ImportStatus: null,
+            ImportDetectedUtc: null,
+            ImportCompletedUtc: null,
+            ImportedFilePath: null,
+            ImportFailureCode: null,
+            ImportFailureMessage: null,
+            CircuitOpenUntilUtc: null,
+            NextRetryEligibleUtc: null,
+            AttemptCount: 1);
+
+        Assert.Equal(owned, DownloadClientTelemetryService.DispatchProvesItem(dispatch, id, itemName));
+    }
+
     [Fact]
     public async Task Asking_for_ids_returns_archived_dispatches_ignoring_case_beyond_any_window()
     {
@@ -86,13 +211,22 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
     {
         private readonly TestStorage _storage;
 
-        private World(TestStorage storage, DownloadClientTelemetryService service, SqliteDownloadDispatchesRepository dispatches, string clientId)
+        private World(TestStorage storage, DownloadClientTelemetryService service, SqliteDownloadDispatchesRepository dispatches, string clientId, Client fake, SqliteDownloadHealthRepository health, FixedTimeProvider time)
         {
             _storage = storage;
             Service = service;
             Dispatches = dispatches;
             ClientId = clientId;
+            Client = fake;
+            Health = health;
+            Time = time;
         }
+
+        public Client Client { get; }
+
+        public SqliteDownloadHealthRepository Health { get; }
+
+        public FixedTimeProvider Time { get; }
 
         public DownloadClientTelemetryService Service { get; }
 
@@ -136,6 +270,16 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
                 library.Id, "movies", "movie", "movie-renumbered", "Was.Number.Nine.2026.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
                 cancellationToken: CancellationToken.None, clientExternalId: "9");
 
+            // An older grab, since archived, that still holds a session number, and one
+            // in flight that the client only shows once the numbers have moved on.
+            var archivedLegacy = await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-archived-legacy", "Archived.Legacy.Movie.2026.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None, clientExternalId: "11");
+            await dispatches.ArchiveDispatchAsync(archivedLegacy, "imported long ago", CancellationToken.None);
+            await jobs.RecordDownloadDispatchAsync(
+                library.Id, "movies", "movie", "movie-late-legacy", "Late.Legacy.Movie.2026.1080p.WEB", "Fixture", client.Id, client.Name, "sent", null,
+                cancellationToken: CancellationToken.None, clientExternalId: "13");
+
             // Hundreds of dispatches on the same client since.
             time.Advance(TimeSpan.FromDays(89));
             for (var index = 0; index < newerDispatches; index++)
@@ -152,7 +296,8 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
             var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var resilience = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
-            var registry = new DownloadClientRegistry([new Client(client)]);
+            var fake = new Client(client);
+            var registry = new DownloadClientRegistry([fake]);
 
             var service = new DownloadClientTelemetryService(
                 settings, health, libraries, connections, jobs, registry, time, resilience,
@@ -160,7 +305,7 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
                 dispatchAlertRepository: alerts);
 
-            return new World(storage, service, dispatches, client.Id);
+            return new World(storage, service, dispatches, client.Id, fake, health, time);
         }
 
         public void Dispose() => _storage.Dispose();
@@ -168,6 +313,10 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
 
     private sealed class Client(DownloadClientItem client) : IDownloadClient
     {
+        public bool ShowLateItem { get; set; }
+
+        public string? NumericItemName { get; set; }
+
         public string Protocol => "qbittorrent";
 
         public DownloadClientTelemetryCapabilities Capabilities { get; } = new(true, true, true, true, true, true, "none");
@@ -184,8 +333,18 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
                 Item(OldSeedingHash.ToLowerInvariant(), "Old.Seeding.Movie.2026.1080p.WEB"),
                 Item(OutsideHash, "Someone.Elses.Download.2026.1080p.WEB"),
                 Item("legacy-hash", "Legacy.Transmission.Movie.2026.1080p.WEB") with { LegacyId = "7", Status = DownloadQueueStatuses.Downloading, Progress = 0.4 },
-                Item("other-hash", "Another.Torrent.Entirely.2026.1080p.WEB") with { LegacyId = "9" }
+                Item("other-hash", "Another.Torrent.Entirely.2026.1080p.WEB") with { LegacyId = "9" },
+                Item("archived-hash", "ARCHIVED legacy movie 2026 1080p WEB") with { LegacyId = "11" }
             };
+            if (NumericItemName is not null)
+            {
+                queue.Add(Item("11", NumericItemName));
+            }
+
+            if (ShowLateItem)
+            {
+                queue.Add(Item("late-hash", "Late.Legacy.Movie.2026.1080p.WEB") with { LegacyId = "13" });
+            }
             return Task.FromResult<DownloadClientTelemetrySnapshot?>(new DownloadClientTelemetrySnapshot(
                 client.Id, client.Name, Protocol, null, "healthy", null,
                 Capabilities,

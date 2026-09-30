@@ -82,6 +82,7 @@ public static class IntegrationsServiceCollectionExtensions
         // singleton, and every dependency it takes (the connections repository,
         // the client registry) already is one.
         services.AddSingleton<Deluno.Contracts.IGrabAppearanceLookupService, GrabAppearanceLookupService>();
+        services.AddSingleton<LegacyItemIdUpgradeMemory>();
         services.AddScoped<IDownloadClientTelemetryService, DownloadClientTelemetryService>();
         services.AddSingleton<SearchQueuePauseMemory>();
         services.AddScoped<ISearchQueuePauseGate, SearchQueuePauseGate>();

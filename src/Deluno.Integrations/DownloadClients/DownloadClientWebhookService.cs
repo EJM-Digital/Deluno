@@ -1,4 +1,3 @@
-using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
@@ -8,10 +7,7 @@ namespace Deluno.Integrations.DownloadClients;
 
 public sealed class DownloadClientWebhookService(
     IDownloadDispatchesRepository dispatchesRepository,
-    ILogger<DownloadClientWebhookService> logger,
-    IConnectionsRepository? connectionsRepository = null,
-    IDownloadClientRegistry? downloadClientRegistry = null,
-    TimeProvider? timeProvider = null)
+    ILogger<DownloadClientWebhookService> logger)
     : IDownloadClientWebhookService
 {
     public async Task<DownloadClientWebhookResult> HandleAsync(
@@ -61,7 +57,10 @@ public sealed class DownloadClientWebhookService(
 
         await dispatchesRepository.RecordDetectionAsync(
             dispatch.Id,
-            torrentHashOrItemId: await IdToRecordAsync(dispatch, request, cancellationToken),
+            // A webhook is a caller's claim: it can report that a download of
+            // Deluno's finished, but never binds an id to a dispatch (#1062).
+            // Every dispatch already has the id Deluno knew when it sent it.
+            torrentHashOrItemId: dispatch.TorrentHashOrItemId,
             downloadedBytes: request.SizeBytes,
             completed: true,
             cancellationToken);
@@ -82,69 +81,6 @@ public sealed class DownloadClientWebhookService(
             dispatch.Id, dispatch.ReleaseName);
 
         return new DownloadClientWebhookResult(true, dispatch.Id, "Download completion recorded.");
-    }
-
-    /// <summary>
-    /// The id to keep on the dispatch (#1062). A webhook is a caller's claim,
-    /// so it can never change an id the dispatch already has, and it can only
-    /// give an id to a dispatch that has none when the client itself shows
-    /// that id under the dispatch's own release name.
-    /// </summary>
-    private async Task<string?> IdToRecordAsync(
-        DownloadDispatchItem dispatch,
-        DownloadClientWebhookRequest request,
-        CancellationToken cancellationToken)
-    {
-        if (!string.IsNullOrWhiteSpace(dispatch.TorrentHashOrItemId)
-            || string.IsNullOrWhiteSpace(request.Hash))
-        {
-            return dispatch.TorrentHashOrItemId;
-        }
-
-        return await ClientShowsHashUnderThisNameAsync(dispatch, request.Hash.Trim(), cancellationToken)
-            ? request.Hash.Trim()
-            : null;
-    }
-
-    private async Task<bool> ClientShowsHashUnderThisNameAsync(
-        DownloadDispatchItem dispatch,
-        string hash,
-        CancellationToken cancellationToken)
-    {
-        if (connectionsRepository is null || downloadClientRegistry is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
-                .FirstOrDefault(item => string.Equals(item.Id, dispatch.DownloadClientId, StringComparison.OrdinalIgnoreCase));
-            if (client is null || !downloadClientRegistry.TryGet(client.Protocol, out var implementation))
-            {
-                return false;
-            }
-
-            var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
-            var snapshot = await implementation.GetSnapshotAsync(client, now, cancellationToken);
-            if (snapshot is null)
-            {
-                return false;
-            }
-
-            bool SameName(string? name)
-                => string.Equals(name, dispatch.ReleaseName, StringComparison.OrdinalIgnoreCase);
-            bool SameId(string? id)
-                => string.Equals(id?.Trim(), hash, StringComparison.OrdinalIgnoreCase);
-
-            return snapshot.Queue.Any(item => SameId(item.Id) && SameName(item.ReleaseName))
-                || snapshot.History.Any(item => (SameId(item.Id) || SameId(item.ExternalId)) && SameName(item.ReleaseName));
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogDebug(exception, "Webhook: could not ask {ClientId} whether it shows {Hash}.", dispatch.DownloadClientId, hash);
-            return false;
-        }
     }
 
     private async Task<DownloadClientWebhookResult> HandleFailureAsync(
@@ -205,15 +141,12 @@ public sealed class DownloadClientWebhookService(
             }
         }
 
+        // A hash or id Deluno already recorded for this client. Never a name:
+        // a name alone proves nothing (#1062).
         if (!string.IsNullOrWhiteSpace(request.Hash))
         {
             var dispatch = await dispatchesRepository.FindDispatchByHashAsync(clientId, request.Hash, cancellationToken);
             if (dispatch is not null) return dispatch;
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Name))
-        {
-            return await dispatchesRepository.FindDispatchByReleaseNameAsync(clientId, request.Name, cancellationToken);
         }
 
         return null;
