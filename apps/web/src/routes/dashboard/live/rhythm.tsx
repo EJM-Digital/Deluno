@@ -28,7 +28,7 @@ export function Rhythm({ rows }: { rows: RhythmRow[] }) {
       toLabel="Activity"
     >
       {total === 0 ? (
-        <Plain>Nothing has happened yet today. Each hour of Deluno&rsquo;s work shows here as it is done.</Plain>
+        <Plain>Quiet so far today. Each hour of Deluno&rsquo;s work shows here as it is done.</Plain>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] pb-2 pt-2">
           <div role="img" aria-label={`${total} events today: ${byKind.map((entry) => `${entry.count} ${KIND_STYLE[entry.kind].label.toLowerCase()}`).join(", ")}.`} className="flex min-h-0 flex-1 items-end gap-[3px]">

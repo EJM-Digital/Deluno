@@ -10,7 +10,7 @@ import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } fr
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { isProcessorFailure, isWithProcessor } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
-import type { LiveProgress } from "../live-events";
+import type { LiveProgress, WorkItem } from "../live-events";
 
 export type Stage = "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
@@ -82,6 +82,8 @@ export interface JourneyInput {
   now: number;
   /** What the clients last reported, so a pushed reading is only trusted over a stored one when newer. */
   queueCapturedUtc?: string;
+  /** A grab on its way to a client or an import under way, from the events that start and end them. */
+  work?: WorkItem[];
 }
 
 function sameLocalDay(a: number, b: number): boolean {
@@ -91,7 +93,7 @@ function sameLocalDay(a: number, b: number): boolean {
 }
 
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   for (const dispatch of dispatches) {
@@ -174,6 +176,26 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       processor: handoff.processorName,
       at: handoff.updatedUtc,
       to: "/queue"
+    });
+  }
+
+  // A grab on its way to a client, or an import under way, that the lists have not caught up with yet.
+  for (const item of work) {
+    if (!item.release || seenReleases.has(releaseKey(item.release))) continue;
+    seenReleases.add(releaseKey(item.release));
+    const dispatch = dispatchByRelease.get(releaseKey(item.release));
+    const mediaType = mediaKind(dispatch?.mediaType);
+    cards.push({
+      key: `work:${item.key}`,
+      stage: item.kind === "grab" ? "grabbed" : "importing",
+      title: titleFromRelease(item.release),
+      mediaType,
+      entityId: dispatch?.entityId,
+      state: item.kind === "grab" ? { tone: "info", label: item.client ? `Sending to ${item.client}` : "Sending to the client" } : { tone: "info", label: "Importing now" },
+      quality: dispatch?.decisionQuality ?? null,
+      indexer: dispatch?.indexerName ?? null,
+      client: item.client ?? dispatch?.downloadClientName ?? null,
+      to: item.to
     });
   }
 

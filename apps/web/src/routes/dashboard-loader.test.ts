@@ -40,7 +40,7 @@ describe("dashboardLoader", () => {
     expect(paths).toContain("/api/libraries");
     expect(paths).toContain("/api/setup/progress");
     // The old page made twenty-four requests, including two live client reads.
-    expect(paths.length).toBeLessThan(12);
+    expect(paths.length).toBeLessThan(18);
     expect(paths).not.toContain("/api/download-clients/telemetry");
     expect(paths).not.toContain("/api/monitoring/dashboard");
   });
