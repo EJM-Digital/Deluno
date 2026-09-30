@@ -107,6 +107,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IHealthCheckRepository healthChecks,
+            IEnumerable<IMetadataServiceReset> metadataReset,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -121,7 +122,19 @@ public static class PlatformEndpointRouteBuilderExtensions
                 return Results.ValidationProblem(errors);
             }
 
+            var before = await repository.GetAsync(cancellationToken);
             var snapshot = await repository.SaveAsync(request, cancellationToken);
+            // A corrected URL or key must not wait out a pause earned by the old one (#1090).
+            if (!string.Equals(before.MetadataProviderMode, request.MetadataProviderMode, StringComparison.Ordinal)
+                || !string.Equals(before.MetadataBrokerUrl, request.MetadataBrokerUrl, StringComparison.Ordinal)
+                || !string.IsNullOrWhiteSpace(request.MetadataTmdbApiKey)
+                || !string.IsNullOrWhiteSpace(request.MetadataOmdbApiKey))
+            {
+                foreach (var reset in metadataReset)
+                {
+                    await reset.ResetAsync(cancellationToken);
+                }
+            }
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
             // #909: the library free-space thresholds live on this settings
             // record, so any save might have changed them. Asking the library
@@ -141,6 +154,7 @@ public static class PlatformEndpointRouteBuilderExtensions
             IPlatformSettingsRepository repository,
             IRealtimeEventPublisher realtimeEventPublisher,
             IHealthCheckRepository healthChecks,
+            IEnumerable<IMetadataServiceReset> metadataReset,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -158,6 +172,14 @@ public static class PlatformEndpointRouteBuilderExtensions
             }
 
             var snapshot = await repository.SaveAsync(merged, cancellationToken);
+            if (request.MetadataProviderMode is not null || request.MetadataBrokerUrl is not null
+                || request.MetadataTmdbApiKey is not null || request.MetadataOmdbApiKey is not null)
+            {
+                foreach (var reset in metadataReset)
+                {
+                    await reset.ResetAsync(cancellationToken);
+                }
+            }
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Metadata, cancellationToken);

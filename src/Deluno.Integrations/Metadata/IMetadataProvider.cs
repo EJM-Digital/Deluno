@@ -15,6 +15,21 @@ public interface IMetadataProvider
     /// </summary>
     Task<MetadataProviderStatus> CheckReachabilityAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Starts watching the metadata calls made by the work that follows (until
+    /// the scope is disposed) for the failure that made it come back empty, so
+    /// "the service did not answer" is never mistaken for "nothing found"
+    /// (#1090). Providers that cannot fail return a scope that never reports one.
+    /// </summary>
+    IMetadataFailureScope BeginFailureScope() => NoMetadataFailureScope.Instance;
+
+    /// <summary>
+    /// Forgets the last failure and closes the metadata circuits, so the next
+    /// call goes out instead of waiting for a pause that may already be over.
+    /// Check now and saving the metadata settings call this (#1090).
+    /// </summary>
+    Task ClearServiceTroubleAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     Task<IReadOnlyList<MetadataSearchResult>> SearchAsync(
         MetadataLookupRequest request,
         CancellationToken cancellationToken);

@@ -503,7 +503,9 @@ public sealed partial class TmdbMetadataProvider
         }
 
         var config = await GetMetadataConfigurationAsync(cancellationToken);
-        var failureBefore = LastFailure;
+        var failureBefore = Volatile.Read(ref _lastFailure);
+        var quietBefore = QuietCalls.Value;
+        QuietCalls.Value = true;
         T? value = default;
         try
         {
@@ -529,10 +531,12 @@ public sealed partial class TmdbMetadataProvider
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogInformation(exception, "TheTVDB request failed; TMDb will be used instead.");
+            ReportToScope(IntegrationFailureFactory.FromException("metadata", "tvdb", "TheTVDB", "metadata.tvdb", exception));
             value = default;
         }
         finally
         {
+            QuietCalls.Value = quietBefore;
             Interlocked.Exchange(ref _lastFailure, failureBefore);
         }
 
