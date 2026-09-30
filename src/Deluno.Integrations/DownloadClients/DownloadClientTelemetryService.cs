@@ -194,13 +194,25 @@ public sealed class DownloadClientTelemetryService(
             var liveSnapshot = await TryGetLiveSnapshotAsync(client, capturedUtc, cancellationToken);
             if (liveSnapshot is not null)
             {
-                var clientDispatches = dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>());
+                // Ownership is asked about the ids this client actually
+                // reports, archived dispatches included, so it never depends
+                // on how many newer dispatches came after Deluno sent a
+                // long-seeding torrent (#1062). The recent window stays as
+                // the base for everything that is about recent activity.
+                var reported = await FindDispatchesForReportedIdsAsync(client.Id, liveSnapshot, cancellationToken);
+                var settledForClient = MergeDispatches(
+                    settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    reported);
+                settledDispatchesByClientId[client.Id] = settledForClient;
+                var clientDispatches = MergeDispatches(
+                    dispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    reported.Where(dispatch => !string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)));
                 // Deluno only ever sees what it sent (#1062): what the client
                 // holds that Deluno did not send is set aside here, before
                 // any stall clock, count, strike or action can look at it.
                 var split = await SplitOutsideItemsAsync(
                     liveSnapshot,
-                    settledDispatchesByClientId.GetValueOrDefault(client.Id, Array.Empty<DownloadDispatchItem>()),
+                    settledForClient,
                     capturedUtc,
                     cancellationToken);
                 if (includeOutsideItems && (split.OutsideQueue.Count > 0 || split.OutsideHistory.Count > 0))
@@ -313,6 +325,59 @@ public sealed class DownloadClientTelemetryService(
         }
 
         return (orderedClients, result, settledDispatchesByClientId, overviewSummary, capturedUtc);
+    }
+
+    /// <summary>
+    /// The dispatches (archived included) behind every id this client reports
+    /// in its queue and history - what ownership is decided from (#1062).
+    /// </summary>
+    private async Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesForReportedIdsAsync(
+        string clientId,
+        DownloadClientTelemetrySnapshot live,
+        CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in live.Queue)
+        {
+            if (!string.IsNullOrWhiteSpace(item.Id))
+            {
+                ids.Add(item.Id.Trim());
+            }
+        }
+
+        foreach (var item in live.History)
+        {
+            if (!string.IsNullOrWhiteSpace(item.Id))
+            {
+                ids.Add(item.Id.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.ExternalId))
+            {
+                ids.Add(item.ExternalId.Trim());
+            }
+        }
+
+        return ids.Count == 0
+            ? []
+            : await dispatchesRepository.FindDispatchesByClientItemIdsAsync(clientId, ids, cancellationToken);
+    }
+
+    private static IReadOnlyList<DownloadDispatchItem> MergeDispatches(
+        IEnumerable<DownloadDispatchItem> first,
+        IEnumerable<DownloadDispatchItem> second)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var merged = new List<DownloadDispatchItem>();
+        foreach (var dispatch in first.Concat(second))
+        {
+            if (seen.Add(dispatch.Id))
+            {
+                merged.Add(dispatch);
+            }
+        }
+
+        return merged;
     }
 
     private readonly record struct OutsideSplit(

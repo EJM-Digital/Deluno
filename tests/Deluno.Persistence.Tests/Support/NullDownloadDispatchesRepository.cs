@@ -133,6 +133,12 @@ public sealed class NullDownloadDispatchesRepository : IDownloadDispatchesReposi
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<string>>([]);
 
+    public Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesByClientItemIdsAsync(
+        string clientId,
+        IReadOnlyCollection<string> clientItemIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DownloadDispatchItem>>([]);
+
     public Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
         string clientId,
         string releaseName,

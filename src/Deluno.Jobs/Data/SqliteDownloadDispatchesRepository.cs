@@ -803,7 +803,7 @@ public sealed class SqliteDownloadDispatchesRepository(
                 {DispatchColumns}
             FROM download_dispatches
             WHERE download_client_id = @clientId
-              AND torrent_hash_or_item_id = @hash
+              AND torrent_hash_or_item_id = @hash COLLATE NOCASE
               AND status != 'archived'
             ORDER BY created_utc DESC
             LIMIT 1
@@ -831,7 +831,7 @@ public sealed class SqliteDownloadDispatchesRepository(
                 {DispatchColumns}
             FROM download_dispatches
             WHERE download_client_id = @clientId
-              AND torrent_hash_or_item_id = @hash
+              AND torrent_hash_or_item_id = @hash COLLATE NOCASE
             ORDER BY created_utc DESC
             LIMIT 1
             """;
@@ -881,6 +881,61 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         return found;
+    }
+
+    public async Task<IReadOnlyList<DownloadDispatchItem>> FindDispatchesByClientItemIdsAsync(
+        string clientId,
+        IReadOnlyCollection<string> clientItemIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = clientItemIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        var found = new Dictionary<string, DownloadDispatchItem>(StringComparer.Ordinal);
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Jobs, cancellationToken);
+
+        // SQLite caps the number of bound variables, so ask in batches.
+        foreach (var batch in ids.Chunk(400))
+        {
+            using var command = connection.CreateCommand();
+            var names = new List<string>(batch.Length);
+            for (var index = 0; index < batch.Length; index++)
+            {
+                names.Add($"@id{index}");
+                AddParameter(command, $"@id{index}", batch[index]);
+            }
+
+            var list = string.Join(", ", names);
+            command.CommandText =
+                $"""
+                SELECT
+                    {DispatchColumns}
+                FROM download_dispatches
+                WHERE download_client_id = @clientId
+                  AND (torrent_hash_or_item_id COLLATE NOCASE IN ({list})
+                       OR id COLLATE NOCASE IN ({list}))
+                """;
+            AddParameter(command, "@clientId", clientId);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var dispatch = ReadDispatch(reader);
+                found[dispatch.Id] = dispatch;
+            }
+        }
+
+        return found.Values
+            .OrderByDescending(item => item.GrabAttemptedUtc ?? item.CreatedUtc)
+            .ToArray();
     }
 
     public async Task<DownloadDispatchItem?> FindDispatchWithoutClientIdByReleaseNameAsync(
