@@ -37,6 +37,19 @@ internal static class Program
         AppDomain.CurrentDomain.UnhandledException += HookUnhandledException;
         TaskScheduler.UnobservedTaskException += (_, e) => HookLog.Write($"unobserved task exception: {e.Exception}");
         HookLog.Write($"Main starting: args=[{string.Join(' ', args)}].");
+
+        // The install and update hooks only log (the firewall rule and the
+        // picker run on first start), yet Setup kills the hook after 30
+        // seconds, and on a freshly booted PC busy with Windows servicing and
+        // Defender, Velopack's own start-up before it reaches the callback took
+        // longer than that (#968, clean-VM runs 10 and 11). So those two hooks
+        // answer here, before Velopack is loaded at all.
+        if (IsFastExitInstallHook(args))
+        {
+            HookLog.Write("after install/update: done; the firewall step and the picker run on first start.");
+            return 0;
+        }
+
         LogColdStart();
 
         // Setup.exe and Update.exe run these per user, without administrator
@@ -200,6 +213,15 @@ internal static class Program
     /// <summary>True when Velopack started this process for one of its install lifecycle hooks.</summary>
     internal static bool IsVelopackHookInvocation(string[] args)
         => args.Any(a => a.StartsWith("--veloapp-", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Velopack's after-install and after-update hooks, which Deluno answers
+    /// straight away. The uninstall hook still goes through Velopack, since it
+    /// removes the firewall rule.
+    /// </summary>
+    internal static bool IsFastExitInstallHook(string[] args)
+        => args.Any(a => a.Equals("--veloapp-install", StringComparison.OrdinalIgnoreCase)
+                         || a.Equals("--veloapp-updated", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Logs any exception that would otherwise kill the process without a
