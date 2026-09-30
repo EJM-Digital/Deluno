@@ -77,6 +77,9 @@ public sealed class BackgroundServiceSafetyOptions
 
     /// <summary>How long to wait after the last log line before <see cref="ExitProcess"/> is called, so the log file catches up.</summary>
     public TimeSpan ExitDelay { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long to let the host finish stopping (hosted services' StopAsync) before <see cref="ExitProcess"/> is called anyway.</summary>
+    public TimeSpan StopWait { get; set; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>
@@ -223,6 +226,27 @@ public sealed class BackgroundServiceFailureMonitor(
                     catch (Exception)
                     {
                         // The pause only lets the log catch up.
+                    }
+
+                    // A person's stop (or an update's) that arrived meanwhile is a normal stop:
+                    // never turn it into a crash the service manager would restart.
+                    if (lifetime.ApplicationStopping.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    // Stop the host properly first so hosted services run their StopAsync and
+                    // in-flight work ends, then end the process with the failing exit code.
+                    var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var registration = lifetime.ApplicationStopped.Register(() => stopped.TrySetResult());
+                    lifetime.StopApplication();
+                    try
+                    {
+                        await stopped.Task.WaitAsync(_options.StopWait).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException)
+                    {
+                        logger.LogWarning("Deluno did not finish stopping within {Wait}; ending the process now.", _options.StopWait);
                     }
 
                     exitProcess(1);

@@ -206,25 +206,57 @@ public sealed class BackgroundServiceFailureTests
         try
         {
             var exitCode = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var stoppedBeforeExit = false;
+            IHostApplicationLifetime? lifetime = null;
             using var host = BuildCriticalHost(options =>
             {
                 options.MaxRestarts = 1;
                 options.ExitDelay = TimeSpan.Zero;
-                options.ExitProcess = code => exitCode.TrySetResult(code);
+                options.StopWait = TimeSpan.FromSeconds(5);
+                options.ExitProcess = code =>
+                {
+                    stoppedBeforeExit = lifetime!.ApplicationStopped.IsCancellationRequested;
+                    exitCode.TrySetResult(code);
+                };
+            });
+            lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+            await host.StartAsync();
+            // What Host.Run does when the host is asked to stop: finish stopping the hosted services.
+            lifetime.ApplicationStopping.Register(() => _ = Task.Run(() => host.StopAsync()));
+            Assert.Equal(1, await exitCode.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            // A graceful stop first, so hosted services ran their StopAsync, and only then the failing exit.
+            Assert.True(lifetime.ApplicationStopping.IsCancellationRequested);
+            Assert.True(stoppedBeforeExit);
+        }
+        finally
+        {
+            HealthCheckHostedService.AlwaysFail = false;
+        }
+    }
+
+    [Fact]
+    public async Task A_stop_that_arrives_while_giving_up_is_a_normal_stop_and_never_ends_the_process_as_a_crash()
+    {
+        HealthCheckHostedService.Starts = 0;
+        HealthCheckHostedService.AlwaysFail = true;
+        try
+        {
+            var exited = false;
+            using var host = BuildCriticalHost(options =>
+            {
+                options.MaxRestarts = 1;
+                options.ExitDelay = TimeSpan.FromSeconds(1);
+                options.ExitProcess = _ => exited = true;
             });
             var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
             await host.StartAsync();
-            try
-            {
-                Assert.Equal(1, await exitCode.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-                // The host was not asked to stop gracefully: a graceful stop is what
-                // the service manager would report as a clean stop.
-                Assert.False(lifetime.ApplicationStopping.IsCancellationRequested);
-            }
-            finally
-            {
-                await host.StopAsync();
-            }
+
+            // A person stops the service (or an update does) before the exit delay ends.
+            lifetime.StopApplication();
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            await host.StopAsync();
+
+            Assert.False(exited);
         }
         finally
         {
