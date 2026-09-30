@@ -249,7 +249,6 @@ GET /api/subtitle-languages
 GET /api/subtitle-providers/
 GET /api/subtitles/wanted
 GET /api/system/bundled-components
-GET /api/system/bundled-components/{kind}/credentials
 GET /api/system/connectivity
 GET /api/system/health/
 GET /api/system/health/summary
@@ -502,6 +501,7 @@ POST /api/setup/completed
 POST /api/sharing-rules/
 POST /api/subtitle-providers/{key}/test
 POST /api/subtitles/wanted/search-all
+POST /api/system/bundled-components/{kind}/connect
 POST /api/system/health/{id}/snooze
 POST /api/system/health/{id}/unsnooze
 POST /api/system/lan-access/allow
