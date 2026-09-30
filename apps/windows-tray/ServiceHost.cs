@@ -54,10 +54,11 @@ public static class ServiceHost
         // process with a failing exit (#1080). A graceful host stop is reported
         // to the service manager as a clean stop, so its restart actions would
         // never run; a process that dies while the service is Running does.
-        builder.Services.AddSingleton(new BackgroundServiceSafetyOptions
+        var safetyOptions = new BackgroundServiceSafetyOptions
         {
             ExitProcess = code => Environment.Exit(code)
-        });
+        };
+        builder.Services.AddSingleton(safetyOptions);
 
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
@@ -72,6 +73,17 @@ public static class ServiceHost
             Path.Combine(settings.DataRoot, "secrets", "master.key"));
 
         var app = builder.Build();
+
+        // The Windows service lifetime reports its ServiceBase.ExitCode (default 0) to the
+        // service manager when the host stops. On a give-up set it non-zero first, so the
+        // stop counts as a failure (sc failureflag 1) and the restart actions run (#1080).
+        safetyOptions.SetServiceExitCode = code =>
+        {
+            if (app.Services.GetService<Microsoft.Extensions.Hosting.IHostLifetime>() is System.ServiceProcess.ServiceBase serviceBase)
+            {
+                serviceBase.ExitCode = code;
+            }
+        };
 
         // Services installed by earlier builds have no restart-on-failure actions; set
         // them again on every start (sc failure is idempotent). Off the start path, once

@@ -75,6 +75,20 @@ public sealed class BackgroundServiceSafetyOptions
     /// </summary>
     public Action<int>? ExitProcess { get; set; }
 
+    /// <summary>
+    /// Called with <see cref="ServiceFailureExitCode"/> just before the host is stopped
+    /// on a give-up, so the Windows service lifetime reports that non-zero code to the
+    /// service manager when it stops (with <c>failureflag 1</c> that runs the restart
+    /// actions after a graceful stop). Never called for a normal stop.
+    /// </summary>
+    public Action<int>? SetServiceExitCode { get; set; }
+
+    /// <summary>Win32 ERROR_PROCESS_ABORTED: what the service manager is told when Deluno stops itself because a critical service would not stay up.</summary>
+    public const int ServiceFailureExitCode = 1067;
+
+    /// <summary>After the host has stopped, how long the process is given to end (and tell the service manager) on its own before <see cref="ExitProcess"/> is called.</summary>
+    public TimeSpan ExitGrace { get; set; } = TimeSpan.FromSeconds(3);
+
     /// <summary>How long to wait after the last log line before <see cref="ExitProcess"/> is called, so the log file catches up.</summary>
     public TimeSpan ExitDelay { get; set; } = TimeSpan.FromSeconds(2);
 
@@ -239,10 +253,23 @@ public sealed class BackgroundServiceFailureMonitor(
                     // in-flight work ends, then end the process with the failing exit code.
                     var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     using var registration = lifetime.ApplicationStopped.Register(() => stopped.TrySetResult());
+                    try
+                    {
+                        // The service lifetime reports this code when the host stops, so the
+                        // service manager sees a failure and runs the restart actions.
+                        _options.SetServiceExitCode?.Invoke(BackgroundServiceSafetyOptions.ServiceFailureExitCode);
+                    }
+                    catch (Exception exitCodeFailure)
+                    {
+                        logger.LogWarning(exitCodeFailure, "Deluno could not set the service's failing exit code; the process is ended below instead.");
+                    }
+
                     lifetime.StopApplication();
                     try
                     {
                         await stopped.Task.WaitAsync(_options.StopWait).ConfigureAwait(false);
+                        // Let the process end and report the stop by itself; end it only if it has not.
+                        await Task.Delay(_options.ExitGrace).ConfigureAwait(false);
                     }
                     catch (TimeoutException)
                     {
