@@ -213,6 +213,19 @@ public interface IMediaSubtitleRepository
         bool pictureBasedCounts,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// How many files are short of a language, counted in SQL and never listed
+    /// (the Dashboard's total). Same held-or-waiting test as
+    /// <see cref="ListWantedAsync"/>.
+    /// </summary>
+    Task<int> CountWantedAsync(
+        MediaKind kind,
+        string libraryId,
+        IReadOnlyList<string> languages,
+        bool embeddedCounts,
+        bool pictureBasedCounts,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<MediaSubtitleWantedItem>> ListWantedAsync(
         MediaKind kind,
         string libraryId,

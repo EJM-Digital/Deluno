@@ -86,6 +86,16 @@ public static class WorkerServiceCollectionExtensions
         services.AddHostedService<MachineTelemetrySampler>();
         services.AddHostedService<DownloadProgressPublisher>();
 
+        // The Dashboard summary (#1082, #1081): one memoized read of stored rows
+        // and in-memory readings, and the background pieces that keep those
+        // readings fresh so a request never calls a client or stats a disk.
+        services.AddSingleton<Deluno.Worker.Services.JobLaneStateBoard>();
+        services.AddSingleton<Deluno.Worker.Dashboard.IDashboardDownloadsSnapshot, Deluno.Worker.Dashboard.DashboardDownloadsSnapshot>();
+        services.AddSingleton<Deluno.Worker.Dashboard.DashboardCountsStore>();
+        services.AddSingleton<Deluno.Worker.Dashboard.DashboardVolumeCache>();
+        services.AddHostedService<Deluno.Worker.Dashboard.DashboardVolumeRefresher>();
+        services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService, Deluno.Worker.Dashboard.DashboardSummaryService>();
+
         // #909: every check registers itself here, once, so the runner and the
         // "run right after it changes" scheduler always see the same list.
         services.AddScoped<IHealthCheck, DownloadClientHealthCheck>();

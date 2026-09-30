@@ -92,6 +92,7 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddHostedService<OrphanedDownloadRefreshService>();
         services.AddSingleton<SearchQueuePauseMemory>();
         services.AddScoped<ISearchQueuePauseGate, SearchQueuePauseGate>();
+        services.AddSingleton<LeftoverScanMemory>();
         services.AddScoped<IOrphanedDownloadService, OrphanedDownloadService>();
         services.AddScoped<ILeftoverDownloadCleanupService, LeftoverDownloadCleanupService>();
         services.AddScoped<IIndexerTorrentFetcher, IndexerTorrentFetcher>();

@@ -274,6 +274,95 @@ public sealed class SqliteMediaSubtitleRepository(
         return items;
     }
 
+    /// <summary>
+    /// How many files are short of a language the library asked for: the same
+    /// held-or-waiting test <see cref="ListWantedAsync"/> applies in SQL, counted
+    /// rather than listed, so the Dashboard can print a total without the capped
+    /// list. A title with its own language override counts as wanted here (its
+    /// exact missing languages are only resolved per row when listed), so the
+    /// number can read a little high for a library that uses overrides.
+    /// </summary>
+    public async Task<int> CountWantedAsync(
+        MediaKind kind,
+        string libraryId,
+        IReadOnlyList<string> languages,
+        bool embeddedCounts,
+        bool pictureBasedCounts,
+        CancellationToken cancellationToken)
+    {
+        if (languages.Count == 0)
+        {
+            return 0;
+        }
+
+        var map = MediaTableMap.For(kind);
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
+            map.DatabaseName,
+            cancellationToken);
+
+        var allOverrideLanguages = new List<string>();
+        using (var overrideLanguagesCommand = connection.CreateCommand())
+        {
+            overrideLanguagesCommand.CommandText = $"SELECT languages FROM {map.SubtitleOverrideTable};";
+            using var overrideReader = await overrideLanguagesCommand.ExecuteReaderAsync(cancellationToken);
+            while (await overrideReader.ReadAsync(cancellationToken))
+            {
+                allOverrideLanguages.AddRange(overrideReader.GetString(0)
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+        }
+
+        var matchLanguages = languages
+            .Concat(allOverrideLanguages)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var languageParameters = string.Join(", ", Enumerable.Range(0, matchLanguages.Length).Select(index => $"@lang{index}"));
+        var heldPredicate = CatalogueSubtitleRollup.HeldPredicate(embeddedCounts, pictureBasedCounts);
+        var settledPredicate = $"{heldPredicate} AND (sub.source = '{SubtitleSources.Embedded}' OR sub.match_rung >= @cutoff)";
+
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT COUNT(*)
+            FROM {map.SubtitleFileSource}
+            {map.SubtitleSearchJoin}
+            {map.SubtitleFileLibraryJoin}
+            LEFT JOIN {map.SubtitleOverrideTable} ov ON ov.{map.TagMediaIdColumn} = {map.SubtitleOverrideFileTitleIdColumn}
+            WHERE {map.SubtitleFileLibraryFilter}
+              AND f.has_file = 1
+              AND f.file_path IS NOT NULL
+              AND (
+                    ov.languages IS NOT NULL
+                    OR (
+                          SELECT COUNT(*) FROM (
+                              SELECT sub.language AS language
+                              FROM {map.SubtitleTable} sub
+                              WHERE sub.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                                AND {settledPredicate}
+                                AND sub.language IN ({languageParameters})
+                              UNION
+                              SELECT att.language
+                              FROM {map.SubtitleAttemptTable} att
+                              WHERE att.{map.SubtitleMediaIdColumn} = {map.SubtitleFileIdColumn}
+                                AND att.language IN ({languageParameters})
+                                AND att.next_eligible_search_utc > @now
+                          )
+                    ) < @languageCount
+              );
+            """;
+
+        AddParameter(command, "@libraryId", libraryId);
+        AddParameter(command, "@languageCount", languages.Count);
+        AddParameter(command, "@cutoff", (int)SubtitleCutoff.Rung);
+        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        for (var index = 0; index < matchLanguages.Length; index++)
+        {
+            AddParameter(command, $"@lang{index}", matchLanguages[index]);
+        }
+
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? 0 : Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     /// <summary>Parses the <c>json_object(...)</c> row <see cref="ListWantedAsync"/> reads its latest attempt from.</summary>
     private static MediaSubtitleAttemptHistoryEntry? ReadLastAttempt(string json)
     {

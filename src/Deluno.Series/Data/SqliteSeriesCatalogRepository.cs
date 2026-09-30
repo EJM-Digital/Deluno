@@ -5684,6 +5684,33 @@ public sealed class SqliteSeriesCatalogRepository(
         return (items, total);
     }
 
+    public async Task<MediaDashboardCounts> GetDashboardCountsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+
+        var facets = await CountCatalogueFacetsAsync(connection, null, null, "all", null, null, cancellationToken);
+
+        var byLibrary = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT w.library_id, COALESCE(SUM(e.file_size_bytes), 0)
+            FROM episode_entries e
+            INNER JOIN episode_wanted_state w ON w.episode_id = e.id
+            WHERE e.has_file = 1
+            GROUP BY w.library_id;
+            """;
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            byLibrary[reader.GetString(0)] = reader.GetInt64(1);
+        }
+
+        return new MediaDashboardCounts(facets, byLibrary.Values.Sum(), byLibrary);
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         DateOnly fromDate,
         DateOnly toDate,

@@ -367,6 +367,101 @@ public sealed class SignalRRealtimeEventPublisher(
                 [new KeyValuePair<string, object?>("event.name", eventName)]);
             logger.LogDebug("Realtime event {EventName} was dropped because the outbound queue is saturated.", eventName);
         }
+
+        if (!string.Equals(eventName, "DashboardSummaryChanged", StringComparison.Ordinal))
+        {
+            NoteDashboardChange(eventName);
+        }
+    }
+
+    /// <summary>
+    /// The events whose change can move a Dashboard number (#1082). Anything
+    /// else (a search-page event, the nudge itself) never asks the Dashboard to
+    /// refetch.
+    /// </summary>
+    private static readonly HashSet<string> DashboardSourceEvents = new(StringComparer.Ordinal)
+    {
+        "HealthChanged",
+        "DownloadProgress",
+        "ActivityEventAdded",
+        "QueueItemAdded",
+        "QueueItemRemoved",
+        "QueueItemStatusChanged",
+        "SearchRunCompleted",
+        "ImportStateChanged",
+        "DispatchGrabAttempt",
+        "DispatchGrabCompleted",
+        "DispatchDetected",
+        "DispatchImportStarted",
+        "DispatchImportCompleted",
+        "AutomationStateChanged",
+        "MovieChanged",
+        "SeriesChanged",
+        "EpisodeChanged",
+        "IndexerChanged",
+        "DownloadClientChanged",
+        "IndexerProxyChanged",
+        "LibraryChanged",
+        "IntakeSourceChanged",
+        "SettingsChanged"
+    };
+
+    /// <summary>The least time between two Dashboard nudges, however many things changed.</summary>
+    public static readonly TimeSpan DashboardNudgeInterval = TimeSpan.FromSeconds(2);
+
+    private int _nudgePending;
+    private long _lastNudgeUtcTicks;
+
+    /// <summary>
+    /// One <c>DashboardSummaryChanged</c> on the dashboard group, at most every
+    /// <see cref="DashboardNudgeInterval"/>, whenever something the Dashboard
+    /// reads has changed (#1082). The first change after a quiet spell nudges at
+    /// once; changes during the wait fold into the single nudge that follows it,
+    /// so a busy queue costs the web one refetch every two seconds, not one per
+    /// progress tick. The event carries no numbers: the web refetches
+    /// <c>/api/dashboard/summary</c>.
+    /// </summary>
+    private void NoteDashboardChange(string eventName)
+    {
+        if (!DashboardSourceEvents.Contains(eventName)
+            || Interlocked.CompareExchange(ref _nudgePending, 1, 0) != 0)
+        {
+            return;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var last = Interlocked.Read(ref _lastNudgeUtcTicks);
+        var wait = last == 0
+            ? TimeSpan.Zero
+            : new DateTimeOffset(last, TimeSpan.Zero) + DashboardNudgeInterval - now;
+
+        if (wait <= TimeSpan.Zero)
+        {
+            EmitDashboardNudge();
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(wait, timeProvider);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            EmitDashboardNudge();
+        });
+    }
+
+    private void EmitDashboardNudge()
+    {
+        var now = timeProvider.GetUtcNow();
+        Interlocked.Exchange(ref _lastNudgeUtcTicks, now.UtcTicks);
+        Interlocked.Exchange(ref _nudgePending, 0);
+        Enqueue("DashboardSummaryChanged", RealtimeGroups.Dashboard, new { asOfUtc = now.ToString("O") });
     }
 
     private void AddToResumeWindow(RealtimeEnvelope envelope)

@@ -61,7 +61,8 @@ public sealed class OrphanedDownloadService(
     ILogger<OrphanedDownloadService> logger,
     IOutboundNotificationService? outboundNotificationService = null,
     INotificationService? notificationPreferences = null,
-    OrphanedDownloadCache? cache = null)
+    OrphanedDownloadCache? cache = null,
+    LeftoverScanMemory? scanMemory = null)
     : IOrphanedDownloadService
 {
     public async Task<IReadOnlyList<OrphanedDownloadItem>> ListAsync(CancellationToken cancellationToken)
@@ -80,6 +81,16 @@ public sealed class OrphanedDownloadService(
             : await cache.GetLatestAsync(OrphanedDownloadRefreshService.Interval, cancellationToken);
 
     private async Task<IReadOnlyList<OrphanedDownloadItem>> ScanFromAsync(
+        IReadOnlyList<DownloadClientTelemetrySnapshot> clientSnapshots,
+        CancellationToken cancellationToken)
+    {
+        var found = await ScanCoreAsync(clientSnapshots, cancellationToken);
+        // Remembered for the Dashboard, which never walks a folder itself.
+        scanMemory?.Record(found.Count, found.Sum(item => item.SizeBytes), timeProvider.GetUtcNow());
+        return found;
+    }
+
+    private async Task<IReadOnlyList<OrphanedDownloadItem>> ScanCoreAsync(
         IReadOnlyList<DownloadClientTelemetrySnapshot> clientSnapshots,
         CancellationToken cancellationToken)
     {
