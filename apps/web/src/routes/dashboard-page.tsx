@@ -1,221 +1,50 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
-import { queryClient } from "../lib/route-cache";
+/**
+ * The Dashboard (#1082): Overview, Library, Downloads and System, as tabs in the
+ * page header. Each tab fits one screen. All four read one summary request
+ * (`GET /api/dashboard/summary`, built from stored numbers only) and refetch it
+ * when the server says it changed, so switching a tab never asks for anything
+ * and never blanks the page (#1081).
+ *
+ * The tab is in the address (`?tab=library`), so a tab can be linked; Overview
+ * carries no `tab` at all.
+ */
+import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import { RouteSkeleton } from "../components/shell/skeleton";
-import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
-import {
-  emptyPlatformSettingsSnapshot,
-  fetchJson, fetchPageItems,
-  type ActivityEventItem,
-  type ActivityStatsSnapshot,
-  type DownloadClientItem,
-  type DownloadSharingSnapshot,
-  type DownloadTelemetryOverview,
-  type DownloadThroughputWindow,
-  type IndexerItem,
-  type LibraryItem,
-  type LibraryAutomationStateItem,
-  type CataloguePage,
-  type MonitoringDashboardSnapshot,
-  type HealthCheckListResponse,
-  type MovieListItem,
-  type MovieWantedSummary,
-  type PlatformSettingsSnapshot,
-  type PolicySetItem,
-  type ProcessorConnectionItem,
-  type QualityProfileItem,
-  type SearchCycleRunItem,
-  type SearchRetryWindowItem,
-  type SeriesUpcomingEpisodeItem,
-  type SeriesListItem,
-  type SeriesWantedSummary,
-  type SetupProgressItem
-} from "../lib/api";
-import { adaptIndexerHealth, adaptMovieItems, adaptSeriesItems, adaptTelemetryDownloads } from "../lib/ui-adapters";
-import { authedFetch } from "../lib/use-auth";
-import { buildSetupStatus, type SetupAttentionTone, type SetupStatusModel } from "../lib/setup-status";
-import { cn } from "../lib/utils";
-import { AcquisitionPipeline } from "../components/app/acquisition-pipeline";
-import { ActivityTicker } from "../components/app/activity-ticker";
-import { DashboardHero } from "../components/app/dashboard-hero";
-import { LibraryComposition } from "../components/app/library-composition";
-import { SystemPulse } from "../components/app/system-pulse";
-import { OnboardingBanner } from "../components/shell/onboarding-banner";
-import { SetupProgressLadder } from "../components/shell/setup-progress-ladder";
 import { Button } from "../components/ui/button";
-import { ListCard, ListEmpty } from "../components/ui/list-card";
-import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
-import { SegmentedControl } from "../components/ui/segmented-control";
-import { TitleBars } from "../components/ui/title-mark";
-import {
-  HISTORY_RANGES,
-  readStoredHistoryDays,
-  windowLabel,
-  writeStoredHistoryDays,
-  type HistoryDays
-} from "../lib/dashboard-history-range";
+import { ListEmpty } from "../components/ui/list-card";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
-import { StatusLed, type LedTone } from "../components/ui/status-led";
+import { queryClient, startSources } from "../lib/route-cache";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
-import {
-  displayPreferencesFromSettings,
-  formatTime,
-  formatWeekday,
-  type DisplayPreferences
-} from "../lib/display-preferences";
+import { cn } from "../lib/utils";
+import { DownloadsTab, downloadsTabAttention } from "./dashboard/downloads-tab";
+import { LibraryTab, libraryTabAttention } from "./dashboard/library-tab";
+import { OverviewTab, overviewTabAttention } from "./dashboard/overview-tab";
+import { libraryTabSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
+import { SystemTab, systemTabAttention } from "./dashboard/system-tab";
 
-interface OutcomeSeries {
-  succeeded: MetricPoint[];
-  failed: MetricPoint[];
-}
+export const DASHBOARD_TABS = ["overview", "library", "downloads", "system"] as const;
+export type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
-/** `/api/dashboard/metrics` — counts of stored rows grouped by day. */
-interface DashboardMetrics {
-  days: number;
-  from: string;
-  to: string;
-  librarySize: MetricPoint[];
-  titlesAdded: MetricPoint[];
-  searches: OutcomeSeries;
-  jobs: OutcomeSeries;
-  importFailures: MetricPoint[];
-  grabs: MetricPoint[];
-}
-
-interface DashboardLoaderData {
-  sources: DashboardSources;
-  metrics: DashboardMetrics | null;
-  /** Operational state — readiness, storage, service health, latency. */
-  monitoring: MonitoringDashboardSnapshot | null;
-  /** Every health check's latest result (#909) — the same read System -> Health and the bell use. */
-  healthChecks: HealthCheckListResponse | null;
-  /** Seeds the live ticker so it is populated before the first push arrives. */
-  activity: ActivityEventItem[];
-  /** The same facts as activity, counted over the last 24 hours (#827). */
-  activityStats: ActivityStatsSnapshot;
-  /** Whether any post-processor connection is enabled. */
-  hasProcessor: boolean;
-  /** Stored throughput readings for the speed chart. */
-  throughput: DownloadThroughputWindow | null;
-  /** Finished downloads the clients are still sharing, and what they cost. */
-  sharing: DownloadSharingSnapshot;
-  /** Combined client throughput right now, in MB/s, both directions. */
-  speedMbps: number;
-  uploadMbps: number;
-  activeDownloads: ActiveDownload[];
-  activeDownloadCount: number;
-  /** Finished in the client and waiting on import — in the pipeline, not transferring. */
-  importReadyCount: number;
-  indexerHealth: IndexerHealthItem[];
-  indexerHealthPercent: number | null;
-  configuredLibraryCount: number;
-  missingCount: number;
-  movieCount: number;
-  movieMissingCount: number;
-  monitoredCount: number;
-  recentlyAdded: MediaItem[];
-  totalCount: number;
-  showCount: number;
-  showMissingCount: number;
-  upcoming: DashboardUpcomingItem[];
-  upgradeCount: number;
-  coveredCount: number;
-  upcomingCount: number;
-  automation: LibraryAutomationStateItem[];
-  searchCycles: SearchCycleRunItem[];
-  retryWindows: SearchRetryWindowItem[];
-  setupProgress: SetupProgressItem;
-  setupStatus: SetupStatusModel;
-}
-
-interface DashboardSources {
-  moviePage: CataloguePage<MovieListItem>;
-  movieWanted: MovieWantedSummary;
-  showPage: CataloguePage<SeriesListItem>;
-  showWanted: SeriesWantedSummary;
-  telemetry: DownloadTelemetryOverview;
-  indexers: IndexerItem[];
-  clients: DownloadClientItem[];
-  libraries: LibraryItem[];
-  automation: LibraryAutomationStateItem[];
-  searchCycles: SearchCycleRunItem[];
-  retryWindows: SearchRetryWindowItem[];
-  upcomingEpisodes: SeriesUpcomingEpisodeItem[];
-  setupProgress: SetupProgressItem;
-  settings: PlatformSettingsSnapshot;
-  policySets: PolicySetItem[];
-  qualityProfiles: QualityProfileItem[];
-  metrics: DashboardMetrics | null;
-  monitoring: MonitoringDashboardSnapshot | null;
-  healthChecks: HealthCheckListResponse | null;
-  activity: ActivityEventItem[];
-  activityStats: ActivityStatsSnapshot;
-  /** Only used to decide whether the pipeline has a Processing stage at all. */
-  processors: ProcessorConnectionItem[];
-  /** Stored throughput readings — what the speed has been, not what it is now. */
-  throughput: DownloadThroughputWindow | null;
-  /** What the download clients still hold after import, and why (#288). */
-  sharing: DownloadSharingSnapshot;
-}
-
-function emptyDashboardSources(): DashboardSources {
-  return {
-    moviePage: { items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null },
-    movieWanted: EMPTY_MOVIE_WANTED,
-    showPage: { items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null },
-    showWanted: EMPTY_SERIES_WANTED,
-    telemetry: EMPTY_TELEMETRY,
-    indexers: [], clients: [], libraries: [], automation: [], searchCycles: [], retryWindows: [], upcomingEpisodes: [],
-    setupProgress: EMPTY_SETUP_PROGRESS,
-    settings: emptyPlatformSettingsSnapshot,
-    policySets: [], qualityProfiles: [], metrics: null, monitoring: null, healthChecks: null, activity: [], activityStats: EMPTY_ACTIVITY_STATS, processors: [], throughput: null,
-    sharing: EMPTY_SHARING
-  };
-}
-
-interface DashboardUpcomingItem {
-  id: string;
-  day: string;
-  title: string;
-  episode: string;
-  dateLabel: string;
-  network: string;
-  poster: string | null;
-  href: string;
-  startsAt: string;
-}
-
-const EMPTY_MOVIE_WANTED: MovieWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: [] };
-const EMPTY_SERIES_WANTED: SeriesWantedSummary = { totalWanted: 0, missingCount: 0, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: [] };
-const EMPTY_TELEMETRY: DownloadTelemetryOverview = {
-  summary: { activeCount: 0, queuedCount: 0, completedCount: 0, stalledCount: 0, processingCount: 0, importReadyCount: 0, totalSpeedMbps: 0, totalUploadSpeedMbps: 0, waitingForProcessorCount: 0 },
-  clients: [],
-  capturedUtc: new Date(0).toISOString()
+const TAB_LABELS: Record<DashboardTab, string> = {
+  overview: "Overview",
+  library: "Library",
+  downloads: "Downloads",
+  system: "System"
 };
-const EMPTY_SHARING: DownloadSharingSnapshot = { holds: [], extraBytes: 0, driveNote: null, observedUtc: null };
-const EMPTY_SETUP_PROGRESS: SetupProgressItem = { lastCompletedStep: 0, isSkipped: false, isCompleted: false, updatedUtc: new Date(0).toISOString() };
-const EMPTY_ACTIVITY_STATS: ActivityStatsSnapshot = {
-  sinceUtc: new Date(0).toISOString(),
-  generatedUtc: new Date(0).toISOString(),
-  windowHours: 24,
-  searchesRun: 0,
-  downloadsStarted: 0,
-  importsCompleted: 0,
-  cleanupRemovals: 0,
-  retentionRemovals: 0
-};
+
+/** An unknown or missing `?tab=` is the Overview. */
+export function tabFromSearch(search: string | URLSearchParams): DashboardTab {
+  const value = (typeof search === "string" ? new URLSearchParams(search) : search).get("tab");
+  return (DASHBOARD_TABS as readonly string[]).includes(value ?? "") ? (value as DashboardTab) : "overview";
+}
 
 /**
- * The loader only seeds the page's queries: every field is read through its own
- * `useQuery` with the loader's answer as `initialData`, which React Query uses
- * only while the cache is empty. So once the page is mounted, re-running the
- * loader for the same address fetches all twenty-two sources and changes
- * nothing on screen. The page's own `useSignalRResync` refetches the queries
- * that matter, so the app-wide revalidation after a reconnect gap would fetch
- * every source twice (seen on the rig while working on #641). A form submission or a change of address still
- * revalidates as React Router would by default.
+ * Only a change of screen reloads the Dashboard's data. Switching a tab changes
+ * the query string and nothing else, and every tab already reads what the page
+ * holds, so the router has nothing to fetch. A form submission still
+ * revalidates, as React Router would by default.
  */
 export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, defaultShouldRevalidate }: {
   currentUrl: URL;
@@ -223,989 +52,195 @@ export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, def
   formMethod?: string;
   defaultShouldRevalidate: boolean;
 }): boolean {
-  if (formMethod || currentUrl.href !== nextUrl.href) return defaultShouldRevalidate;
-  return false;
+  if (formMethod) return defaultShouldRevalidate;
+  if (currentUrl.pathname === nextUrl.pathname) return false;
+  return defaultShouldRevalidate;
 }
 
 /**
- * The loader starts every request the Dashboard reads and returns at once
- * (#1081). It used to wait for all twenty-four, in two serial waves, before the
- * page could open. Now the page opens on what the cache already holds from the
- * last visit (nothing, the first time) and each panel fills in as its own
- * answer arrives, every source refreshed behind what is already showing.
+ * Starts what the page reads and returns at once (#1081): the summary, what the
+ * setup checklist needs, and what the chosen tab reads beyond the summary.
  */
-export function dashboardLoader() {
-  for (const query of Object.values(dashboardQueries) as { queryKey: readonly unknown[]; queryFn: () => Promise<unknown>; staleTime: number }[]) {
-    void queryClient.prefetchQuery(query);
-  }
-  void queryClient.prefetchQuery(dashboardMetricsQuery(readStoredHistoryDays()));
+export function dashboardLoader(args?: { request?: Request }) {
+  void queryClient.prefetchQuery(summaryQuery);
+  startSources(setupSources);
+  if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "library") startSources(libraryTabSources);
   return { cached: true as const };
 }
 
-/**
- * The two catalogue calls are independently sorted. Recently added is one
- * mixed shelf, so it must be merged before taking the limit or a large movie
- * library can hide newer TV additions simply because movies were concatenated
- * first.
- */
-export function newestDashboardItems(
-  movies: MediaItem[],
-  shows: MediaItem[],
-  limit = 12
-): MediaItem[] {
-  return [...movies, ...shows]
-    .map((item, index) => {
-      const parsed = Date.parse(item.addedUtc ?? "");
-      return { item, index, addedTime: Number.isFinite(parsed) ? parsed : 0 };
-    })
-    .sort((left, right) => right.addedTime - left.addedTime || left.index - right.index)
-    .slice(0, limit)
-    .map(({ item }) => item);
-}
-
-function buildDashboardData(sources: DashboardSources): DashboardLoaderData {
-  const {
-    moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
-    libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing
-  } = sources;
-  const displayPreferences = displayPreferencesFromSettings(settings);
-  const adaptedMovies = adaptMovieItems(moviePage.items);
-  const adaptedShows = adaptSeriesItems(showPage.items);
-  const activeDownloads = adaptTelemetryDownloads(telemetry);
-  const indexerHealth = adaptIndexerHealth(indexers, clients);
-  const monitoredCount = (moviePage.facets?.monitored ?? 0) + (showPage.facets?.monitored ?? 0);
-  const healthyCount = indexerHealth.filter((item) => item.status === "healthy").length;
-
-  return {
-    sources,
-    metrics,
-    monitoring,
-    healthChecks,
-    activity,
-    activityStats,
-    // A Processing stage only makes sense where something is actually
-    // refining media before import.
-    hasProcessor: processors.some((processor) => processor.isEnabled),
-    throughput,
-    sharing,
-    speedMbps: telemetry.summary.totalSpeedMbps,
-    uploadMbps: telemetry.summary.totalUploadSpeedMbps ?? 0,
-    activeDownloads,
-    // Downloading means downloading. Counting import-ready items here made
-    // the stat read "1" with nothing transferring, beside a card row sitting
-    // at 100% and 0.0 MB/s (#258). Finished-but-not-imported work is counted
-    // separately below and shown on Transfers.
-    activeDownloadCount: telemetry.summary.activeCount + telemetry.summary.queuedCount,
-    importReadyCount: telemetry.summary.importReadyCount,
-    indexerHealth,
-    indexerHealthPercent: indexerHealth.length ? Math.round((healthyCount / indexerHealth.length) * 100) : null,
-    configuredLibraryCount: libraries.length,
-    missingCount: movieWanted.missingCount + showWanted.missingCount,
-    movieCount: moviePage.totalCount ?? 0,
-    movieMissingCount: movieWanted.missingCount,
-    monitoredCount,
-    recentlyAdded: newestDashboardItems(adaptedMovies, adaptedShows),
-    totalCount: (moviePage.totalCount ?? 0) + (showPage.totalCount ?? 0),
-    showCount: showPage.totalCount ?? 0,
-    showMissingCount: showWanted.missingCount,
-    upcoming: buildDashboardUpcoming(upcomingEpisodes, showWanted, movieWanted, displayPreferences),
-    upgradeCount: movieWanted.upgradeCount + showWanted.upgradeCount,
-    coveredCount: movieWanted.coveredCount + showWanted.coveredCount,
-    upcomingCount: movieWanted.upcomingCount + showWanted.upcomingCount,
-    automation,
-    searchCycles,
-    retryWindows,
-    setupProgress,
-    setupStatus: buildSetupStatus({ downloadClients: clients, indexers, libraries, policySets, qualityProfiles, settings })
-  };
-}
-
-const DASHBOARD_REFRESH = {
-  // A safety net: realtime drives normal freshness, and this heartbeat
-  // recovers from a missed envelope. It keeps running while the tab is hidden
-  // (refetchIntervalInBackground is a QueryClient-wide default, #937,
-  // app-layout.tsx), so the Dashboard is current the moment it is looked at
-  // again (#641).
-  staleTime: 60_000,
-  refetchInterval: 60_000,
-  refetchOnMount: "always"
-} as const;
-
-/**
- * Health moves on its own clock. Realtime nudges already invalidate this along
- * with everything else, so the interval is only the floor for the things no
- * event announces — a drive filling up, a client that quietly stopped
- * answering. Twice the shared heartbeat, and no faster: the readiness check
- * behind it writes a probe file, so polling it hard would be a real cost for
- * numbers that do not move in seconds.
- */
-const MONITORING_REFRESH = {
-  staleTime: 30_000,
-  refetchInterval: 30_000,
-  refetchOnMount: "always"
-} as const;
-
-/**
- * Every dashboard query, defined once (#1081) so the route loader can start
- * them before the page exists and the page can read them from the same cache.
- * Each keeps its own type, its own cadence and its own options (#281).
- * `refetchOnMount: "always"` is what makes a revisit show the last answer and
- * ask again behind it, however fresh that answer still is.
- */
-const EMPTY_DASHBOARD_SOURCES: DashboardSources = emptyDashboardSources();
-
-const dashboardQueries = {
-  moviePage: { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage) },
-  movieWanted: { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED) },
-  showPage: { ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage) },
-  showWanted: { ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED) },
-  indexers: { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []) },
-  clients: { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []) },
-  libraries: { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []) },
-  automation: { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []) },
-  searchCycles: { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []) },
-  retryWindows: { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []) },
-  upcomingEpisodes: { ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []) },
-  setupProgress: { ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS) },
-  settings: { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot) },
-  policySets: { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []) },
-  qualityProfiles: { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []) },
-  activity: { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []) },
-  activityStats: { ...DASHBOARD_REFRESH, queryKey: ["activity-stats", "24h"], queryFn: () => fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS) },
-  processors: { ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []) },
-  monitoring: { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null) },
-  healthChecks: { ...MONITORING_REFRESH, queryKey: ["health-checks"], queryFn: () => fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null) },
-  throughput: { ...MONITORING_REFRESH, queryKey: ["download-throughput"], queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null) },
-  sharing: { ...DASHBOARD_REFRESH, queryKey: ["download-sharing"], queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING) },
-  telemetry: {
-    ...DASHBOARD_REFRESH,
-    queryKey: ["telemetry"],
-    queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY)
+/** The badge count for each tab: what on it needs a person. Zero shows no badge. */
+export function tabBadge(tab: DashboardTab, summary: Parameters<typeof libraryTabAttention>[0], setupCount: number): number {
+  switch (tab) {
+    case "overview": return overviewTabAttention(summary, setupCount);
+    case "library": return libraryTabAttention(summary);
+    case "downloads": return downloadsTabAttention(summary);
+    case "system": return systemTabAttention(summary);
   }
-};
-
-/** The window is part of the cache key, so every range keeps its own entry. */
-function dashboardMetricsQuery(historyDays: HistoryDays) {
-  return {
-    ...DASHBOARD_REFRESH,
-    queryKey: ["dashboard-metrics", historyDays],
-    queryFn: () => fetchJson<DashboardMetrics>(`/api/dashboard/metrics?days=${historyDays}`).catch(() => null)
-  };
 }
 
-/**
- * Every dashboard query, one hook each (#281).
- *
- * These used to be one `useQueries` tuple. TanStack infers that tuple element
- * by element, and past roughly twenty entries — or the moment one entry gains
- * an options callback — the inference collapses and *every* result silently
- * widens to `{}`. It is a cliff, not a slope, and it cost two debugging
- * sessions: nothing errors, the data still arrives, and the types quietly stop
- * protecting anything.
- *
- * So the tuple is gone. The only thing it ever bought was brevity, and each
- * hook now keeps its own type, its own cadence and its own options with no
- * ceiling to hit. Adding the next one cannot break the ones already here.
- *
- * The typed boundary below is deliberate and worth keeping: `buildDashboardData`
- * takes strongly typed parameters, which is the only reason the collapse was
- * ever visible rather than silent.
- */
-function useDashboardData(historyDays: HistoryDays) {
-  const source = EMPTY_DASHBOARD_SOURCES;
-
-  const moviePage = useQuery(dashboardQueries.moviePage);
-  const movieWanted = useQuery(dashboardQueries.movieWanted);
-  const showPage = useQuery(dashboardQueries.showPage);
-  const showWanted = useQuery(dashboardQueries.showWanted);
-  const indexers = useQuery(dashboardQueries.indexers);
-  const clients = useQuery(dashboardQueries.clients);
-  const libraries = useQuery(dashboardQueries.libraries);
-  const automation = useQuery(dashboardQueries.automation);
-  const searchCycles = useQuery(dashboardQueries.searchCycles);
-  const retryWindows = useQuery(dashboardQueries.retryWindows);
-  const upcomingEpisodes = useQuery(dashboardQueries.upcomingEpisodes);
-  const setupProgress = useQuery(dashboardQueries.setupProgress);
-  const settings = useQuery(dashboardQueries.settings);
-  const policySets = useQuery(dashboardQueries.policySets);
-  const qualityProfiles = useQuery(dashboardQueries.qualityProfiles);
-  const activity = useQuery(dashboardQueries.activity);
-  const activityStats = useQuery(dashboardQueries.activityStats);
-  const processors = useQuery(dashboardQueries.processors);
-  const monitoring = useQuery(dashboardQueries.monitoring);
-  const healthChecks = useQuery(dashboardQueries.healthChecks);
-  const throughput = useQuery(dashboardQueries.throughput);
-  const sharing = useQuery(dashboardQueries.sharing);
-  const metrics = useQuery(dashboardMetricsQuery(historyDays));
-  const telemetry = useQuery(dashboardQueries.telemetry);
-
-  // What the first paint cannot honestly be drawn without: a page that said
-  // "add a library" for the half second before the libraries arrived would be
-  // wrong, not just empty. Everything else fills in as it comes.
-  const ready = [libraries, clients, indexers, settings, moviePage, showPage, telemetry].every((query) => query.data !== undefined);
-
-  const data = buildDashboardData({
-    moviePage: moviePage.data ?? source.moviePage,
-    movieWanted: movieWanted.data ?? source.movieWanted,
-    showPage: showPage.data ?? source.showPage,
-    showWanted: showWanted.data ?? source.showWanted,
-    telemetry: telemetry.data ?? source.telemetry,
-    indexers: indexers.data ?? source.indexers,
-    clients: clients.data ?? source.clients,
-    libraries: libraries.data ?? source.libraries,
-    automation: automation.data ?? source.automation,
-    searchCycles: searchCycles.data ?? source.searchCycles,
-    retryWindows: retryWindows.data ?? source.retryWindows,
-    upcomingEpisodes: upcomingEpisodes.data ?? source.upcomingEpisodes,
-    setupProgress: setupProgress.data ?? source.setupProgress,
-    settings: settings.data ?? source.settings,
-    policySets: policySets.data ?? source.policySets,
-    qualityProfiles: qualityProfiles.data ?? source.qualityProfiles,
-    metrics: metrics.data ?? source.metrics,
-    monitoring: monitoring.data ?? source.monitoring,
-    healthChecks: healthChecks.data ?? source.healthChecks,
-    activity: activity.data ?? source.activity,
-    activityStats: activityStats.data ?? source.activityStats,
-    processors: processors.data ?? source.processors,
-    throughput: throughput.data ?? source.throughput,
-    sharing: sharing.data ?? source.sharing
-  });
-  return { data, ready };
-}
-
-export function DashboardPage() {
-  const [historyDays, setHistoryDays] = useState<HistoryDays>(readStoredHistoryDays);
-  const { data, ready } = useDashboardData(historyDays);
-  if (!ready) return <RouteSkeleton />;
-  return <DashboardBody data={data} historyDays={historyDays} setHistoryDays={setHistoryDays} />;
-}
-
-function DashboardBody({ data, historyDays, setHistoryDays }: { data: DashboardLoaderData; historyDays: HistoryDays; setHistoryDays: (days: HistoryDays) => void }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);
-  // The newest reading per download-client queue item, laid over what telemetry
-  // last returned. Cleared down to whatever telemetry still knows about, so a
-  // finished transfer cannot leave a stale bar behind (#273).
-  const [liveProgress, setLiveProgress] = useState<Record<string, { progress: number; speedMbps: number; status: string }>>({});
-  // Upload has no realtime publisher of its own, so it follows the telemetry
-  // poll rather than being held in state pretending otherwise.
-  const liveUploadMbps = data.uploadMbps;
-  const librarySubjects = useMemo(
-    () => data.sources.libraries.map((library) => RealtimeGroups.Library(library.id)),
-    [data.sources.libraries]
-  );
-  const invalidate = useCallback((keys: ReadonlyArray<readonly string[]>) => {
-    keys.forEach((queryKey) => { void queryClient.invalidateQueries({ queryKey }); });
-  }, [queryClient]);
-
-  // Action events can arrive in a burst; coalesce their broad fallback refresh.
-  // The 60-second visible-only query heartbeat remains the safety net.
-  const nudge = useCoalescedRevalidate(() => { void queryClient.invalidateQueries(); }, 5_000);
-  useSignalREvent("SearchRunCompleted", librarySubjects, nudge);
-  useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, nudge);
-  useSignalREvent("QueueItemAdded", RealtimeGroups.Queue, nudge);
-  useSignalREvent("QueueItemRemoved", RealtimeGroups.Queue, nudge);
-  useSignalREvent("QueueItemStatusChanged", RealtimeGroups.Queue, nudge);
-  useSignalREvent("ImportStateChanged", RealtimeGroups.Queue, nudge);
-  useSignalREvent("MovieChanged", RealtimeGroups.Dashboard, () => invalidate([["movies"], ["movies", "wanted"], ["dashboard-metrics"]]));
-  useSignalREvent("SeriesChanged", RealtimeGroups.Dashboard, () => invalidate([["series"], ["series", "wanted"], ["series", "upcoming"], ["dashboard-metrics"]]));
-  useSignalREvent("LibraryChanged", librarySubjects, () => invalidate([["libraries"], ["library-automation"]]));
-  useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, () => invalidate([["settings"], ["setup-progress"]]));
-  useSignalREvent("QualityProfileChanged", RealtimeGroups.Dashboard, () => invalidate([["quality-profiles"], ["setup-progress"]]));
-  useSignalREvent("PolicySetChanged", RealtimeGroups.Dashboard, () => invalidate([["policy-sets"], ["setup-progress"]]));
-  useSignalREvent("IntakeSourceChanged", RealtimeGroups.Dashboard, () => invalidate([["setup-progress"]]));
-  useSignalREvent("AutomationStateChanged", RealtimeGroups.Dashboard, () => invalidate([["library-automation"], ["search-cycles"], ["search-retry-windows"]]));
-  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, () => invalidate([["indexers"], ["dashboard-metrics"]]));
-  useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, () => invalidate([["download-clients"], ["telemetry"], ["dashboard-metrics"]]));
-  useSignalRResync(() => { void queryClient.invalidateQueries(); });
-  // Real readings from the download client, keyed by its own queue-item id
-  // (#273). They are applied over the telemetry rows rather than triggering a
-  // refetch: a bar that only moves when the poll comes round is a bar that
-  // jumps, and asking the client again on every event would undo the point of
-  // being told.
-  useSignalREvent("DownloadProgress", RealtimeGroups.Queue, (event) => {
-    setLiveProgress((current) => {
-      // A transfer changing *stage* moves the counts above the rows, and those
-      // come from telemetry rather than from this event — so a status change is
-      // the one reading worth a refetch. Progress never is: that is the whole
-      // reason for being told rather than asking.
-      if (current[event.id] && current[event.id].status !== event.status) {
-        invalidate([["telemetry"]]);
-      }
-
-      return {
-        ...current,
-        [event.id]: { progress: event.progress, speedMbps: event.speedMbps, status: event.status }
-      };
-    });
-  });
-
-  useEffect(() => {
-    setLiveSpeedMbps(data.speedMbps);
-  }, [data.speedMbps]);
-
-  // Telemetry is the authority on which transfers exist; events are only the
-  // authority on how far along they are. Dropping overlays for rows telemetry
-  // no longer lists is what stops a completed download lingering at 87%.
-  const inFlightIds = data.activeDownloads.map((download) => download.id).join(",");
-  useEffect(() => {
-    const alive = new Set(inFlightIds ? inFlightIds.split(",") : []);
-    setLiveProgress((current) => {
-      const next = Object.fromEntries(Object.entries(current).filter(([id]) => alive.has(id)));
-      return Object.keys(next).length === Object.keys(current).length ? current : next;
-    });
-  }, [inFlightIds]);
-
-  // The live speed the card shows is the sum of what the client last said about
-  // each transfer, so it moves with the bars rather than with the poll.
-  const eventSpeedMbps = data.activeDownloads.reduce(
-    (total, download) => total + (liveProgress[download.id]?.speedMbps ?? download.speedMbps),
-    0
-  );
-
-  useEffect(() => {
-    writeStoredHistoryDays(historyDays);
-  }, [historyDays]);
-
-  // Progress events feed the wave directly; it keeps its own rolling window on
-  // an animation clock, so there is no series to accumulate here any more.
-  const healthIssues = data.indexerHealth.filter((item) => item.status !== "healthy").length;
-  const upcomingGroups = groupDashboardUpcoming(data.upcoming);
-  const setupProgress = data.setupProgress;
-  const heroState = describeSystem(data, healthIssues);
-
-  /**
-   * Everything that wants a decision from you, in one list, most urgent first.
-   * Monitoring alerts lead: a failing readiness check or a drive about to fill
-   * outranks a missing episode, and until now they were only visible in System.
-   */
-  const attention = [
-    ...(data.monitoring?.alerts ?? []).map((alert) => ({
-      id: `alert:${alert.code}`,
-      // The endpoint returns open alerts only, so every one of them is asking
-      // for something — there is no "suggestion" tier here.
-      tone: "warn" as SetupAttentionTone,
-      title: alert.summary,
-      text: alert.details,
-      href: "/system",
-      action: "Open System"
-    })),
-    // The Dashboard tile #909 asks for: the same health checks System ->
-    // Health and the bell read, folded into the one list this screen already
-    // has for "something needs a decision" rather than a second card saying
-    // the same kind of thing in a different box.
-    ...(data.healthChecks?.checks ?? [])
-      .filter((check) => check.status !== "ok" && check.status !== "suggestion" && !(check.snoozedUntilUtc && new Date(check.snoozedUntilUtc).getTime() > Date.now()))
-      .map((check) => ({
-        id: `health:${check.id}`,
-        tone: (check.status === "problem" ? "warn" : "info") as SetupAttentionTone,
-        title: check.name,
-        text: [check.message, check.fix].filter(Boolean).join(" "),
-        href: "/system",
-        action: "Open System"
-      })),
-    // Setup belongs to the ladder above, not here. Both lists were built from
-    // the same `attentionItems`, so a part-configured install stated the same
-    // three things twice on one screen, about 200px apart (#275). The ladder is
-    // the better home for them: it carries the order they have to happen in,
-    // and it takes itself off the page the moment the basics are done — at
-    // which point this list is the only one left and loses nothing.
-    //
-    // What remains from setup is only what the ladder has no step for --
-    // "Connection health needs review" is raised against connections that are
-    // configured and unhealthy, which no ladder step covers.
-    ...data.setupStatus.attentionItems
-      .filter((item) => !data.setupStatus.steps.some((step) => step.id === item.id))
-      .map((item) => ({
-        id: `setup:${item.id}`,
-        tone: item.tone,
-        title: item.title,
-        text: item.text,
-        href: item.href,
-        action: item.action
-      })),
-    // Two entries used to sit here and neither needed a person (#302).
-    //
-    // A count of missing titles, amber: Deluno searches for those on its own
-    // schedule, and the count is already in the strip above in the Missing red.
-    // And a count of pending retry windows, amber, described in its own text as
-    // "waiting before it tries again" — the same self-resolving state the audit
-    // ruled blue for a rate-limited indexer.
-    //
-    // Between them they made this card read **2** on an install where the
-    // sidebar was simultaneously saying "All good · Nothing needs you". A badge
-    // that lights up when nothing is wrong is how people learn to stop looking
-    // at it. What is left here genuinely stops until somebody acts.
-  ];
-
-  function dismissOnboarding() {
-    void authedFetch("/api/setup/progress", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        lastCompletedStep: setupProgress.lastCompletedStep,
-        isSkipped: true,
-        isCompleted: setupProgress.isCompleted
-      })
-    }).catch(() => undefined);
-  }
-
+function TabBar({ active, badges, onSelect, className }: {
+  active: DashboardTab;
+  badges: Record<DashboardTab, number>;
+  onSelect: (tab: DashboardTab) => void;
+  className?: string;
+}) {
   return (
-    <div className="flex flex-col gap-[var(--page-gap)]">
-      {/* The guided prompt is the action-oriented entry point. The ladder below
-          it is authoritative and can be used after the prompt is dismissed.
-
-          An install the ladder calls complete is set up, whichever way it got
-          there. The prompt used to ask only whether the guide had been finished
-          or skipped, so an install configured through Settings was invited to
-          "build your media library" for good, pointing at a ladder that had
-          already taken itself off the page. */}
-      <OnboardingBanner
-        isSetupSuppressed={setupProgress.isSkipped || setupProgress.isCompleted || data.setupStatus.isComplete}
-        onDismiss={dismissOnboarding}
-      />
-      <SetupProgressLadder status={data.setupStatus} />
-
-      {/* The opening statement: how the whole system is, at a glance. */}
-      <DashboardHero
-        headline={heroState.headline}
-        detail={heroState.detail}
-        tone={heroState.tone}
-        // Nothing in the library is the one state where the dashboard has a
-        // single obvious next step, so it says so where the headline already is.
-        action={data.totalCount === 0 ? { label: "Add a movie", to: "/movies?add=true" } : undefined}
-        stats={[
-          {
-            label: "In your library",
-            value: data.totalCount,
-            help: data.totalCount > 0 ? `${data.movieCount} movies · ${data.showCount} shows` : data.configuredLibraryCount > 0 ? "no media yet" : "no library set up yet",
-            href: "/movies"
-          },
-          // The mark's names, not three of this page's own. "Watching for",
-          // "Still missing" and "Could be upgraded" were invented here for
-          // states the rest of Deluno already names — and *Still missing* was
-          // amber, the signal that means a person has to act, for titles being
-          // searched for on schedule (#302, DESIGN-001).
-          {
-            label: "Quality met",
-            value: data.coveredCount,
-            help: data.coveredCount === 0 ? "nothing at target yet" : "Deluno has stopped looking",
-            mark: "covered" as const,
-            href: "/movies?status=covered"
-          },
-          {
-            label: "Upgradable",
-            value: data.upgradeCount,
-            help: data.upgradeCount === 0 ? "everything meets its profile" : "a better release would be accepted",
-            mark: "upgrade" as const,
-            href: "/search-cycles/upgrades"
-          },
-          {
-            label: "Missing",
-            value: data.missingCount,
-            help: data.missingCount === 0 ? "nothing missing" : "no acceptable release yet",
-            mark: "missing" as const,
-            href: "/search-cycles/missing"
-          }
-        ]}
-      />
-
-      {/* THE PANE. Two grid rows carrying everything that answers "what is
-          happening and what needs me", sized to sit on one screen: health and
-          decisions above, then the three live panels. Each list panel caps its
-          own height and scrolls inside itself, so one busy panel cannot push
-          the rest of the board off the bottom of the page (#270). */}
-      {/* Side by side these read left-to-right: how it is, then what wants you.
-          Stacked on a phone they read top-to-bottom, and a diagnostics panel
-          above the list of things asking for a decision is the wrong way round —
-          so the two swap below the breakpoint and nowhere else (#278). */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-        <SystemPulse snapshot={data.monitoring} className="order-2 xl:order-1 xl:col-span-2" />
-
-        <ListCard
-          title="Needs you"
-          count={attention.length === 0 ? "nothing right now" : `${attention.length}`}
-          className="order-1 xl:order-2 xl:row-span-1"
-        >
-          {attention.length === 0 ? (
-            <ListEmpty title="Nothing needs a decision" description="Deluno will raise anything that wants your attention here." />
-          ) : (
-            <div className="max-h-[164px] overflow-y-auto">
-              {attention.map((item) => (
-                <Link
-                  key={item.id}
-                  to={item.href}
-                  className="flex min-h-[52px] items-center gap-2.5 border-b border-hairline px-[var(--card-pad-x)] py-2 transition-colors last:border-b-0 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                >
-                  <StatusLed tone={item.tone === "warn" ? "warn" : item.tone === "success" ? "ok" : "info"} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.title}</span>
-                    <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
-                  </span>
-                  <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                </Link>
-              ))}
-            </div>
-          )}
-        </ListCard>
-      </div>
-
-      {/* Acquisition in flight, in the order it happens: bytes arrive before
-          anything can be imported, so the throughput chart leads and the stage
-          strip that consumes it follows. The strip takes the wider half: it
-          carries five labelled stages, and a line chart reads at any width
-          while "Ready to import" does not.
-
-          The chart is a 48-hour sampled series, which is the one question the
-          hero's live wave cannot answer — that window starts empty every time
-          the page opens, so "was it slow overnight" needs stored readings. */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-        {/* One speed surface, both directions (#289, #276).
-            The reading is live and the shape behind it is stored, so the same
-            card answers "what is it doing now" and "was it slow overnight" —
-            the two questions that used to need two cards saying "Idle" at each
-            other. Upload is here because Deluno now holds files back so a
-            site's sharing rule can be met, which makes "am I actually seeding?"
-            a question it has to be able to answer. */}
-        <MetricChart
-          label="Speed"
-          value={`${formatSpeed(data.activeDownloads.length ? eventSpeedMbps : liveSpeedMbps)} down`}
-          help={`${formatSpeed(liveUploadMbps)} up · peak ${formatSpeed(peakSpeed(data.throughput))} over the last ${data.throughput?.hours ?? 6} hours`}
-          series={throughputSeries(data.throughput, "down")}
-          compare={{
-            series: throughputSeries(data.throughput, "up"),
-            label: "upload",
-            tone: "primary",
-            value: "upload"
-          }}
-          tone="success"
-          size="lg"
-          axis="time"
-          formatValue={(tenths) => `${(tenths / 10).toFixed(1)} MB/s`}
-          emptyLabel="Nothing has moved in either direction in this window"
-        />
-        <AcquisitionPipeline
-          className="xl:col-span-2"
-          summary={data.sources.telemetry.summary}
-          performance={data.monitoring?.performance}
-          inFlight={data.activeDownloads.map((download) => ({ ...download, ...liveProgress[download.id] }))}
-          sharing={data.sharing}
-          showProcessing={data.hasProcessor}
-        />
-
-      </div>
-
-      {/* What just happened, what is expected next, and what you hold as a
-          result — the three answers that follow the pipeline above, and the
-          ring leads straight into Recently added below it. */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-        <ActivityTicker seed={data.activity} limit={6} stats={data.activityStats} />
-
-        <ListCard
-          // This card carries episode air dates *and* scheduled search retries,
-          // including for movies — so "Airing soon / Show / Episode" filed a
-          // movie under a TV heading with an episode of "Retry" (#258).
-          title="Coming up"
-          count="next 72 hours"
-          actions={
-            <Button asChild type="button" variant="outline" size="sm">
-              <Link to="/calendar">Schedule</Link>
-            </Button>
-          }
-        >
-          {upcomingGroups.length === 0 ? (
-            <ListEmpty title="Nothing scheduled" description="Air dates and release dates appear here as Deluno learns them." />
-          ) : (
-            <div className="max-h-[232px] overflow-y-auto">
-              {upcomingGroups.flatMap((group) =>
-                group.entries.slice(0, 3).map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => navigate(entry.href)}
-                    className="flex min-h-[52px] w-full items-center gap-2.5 border-b border-hairline px-[var(--card-pad-x)] py-2 text-left transition-colors last:border-b-0 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{entry.title}</span>
-                      <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{entry.episode}</span>
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span className="block text-[length:var(--type-caption)] font-medium text-foreground">{group.day}</span>
-                      <span className="block text-[length:var(--type-micro)] tabular-nums text-muted-foreground">{entry.dateLabel}</span>
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </ListCard>
-        <LibraryComposition
-          // `covered` is on the payload and always was. This used to subtract
-          // its way to a bucket it called "On disk" — a word DESIGN-001 retired,
-          // and one that spanned two rungs, so it could never tell you which of
-          // them still had work outstanding.
-          covered={data.coveredCount}
-          missing={data.missingCount}
-          upgradable={data.upgradeCount}
-          upcoming={data.upcomingCount}
-          movieCount={data.movieCount}
-          showCount={data.showCount}
-        />
-      </div>
-
-      {/* The payoff, and the only band that answers "what did Deluno actually
-          get me". That outranks the analytics below it, so it sits above them
-          rather than in the basement.
-
-          It renders only when there is something in it: the hero already says
-          "In your library — 0, no media yet" and offers the add action, so an
-          empty full-width band here would be the same sentence a second time
-          on one screen (#270). */}
-      {data.recentlyAdded.length > 0 ? (
-        <ListCard
-          title="Recently added"
-          count={`${data.recentlyAdded.length} newest`}
-          actions={
-            <Button asChild type="button" variant="outline" size="sm">
-              <Link to="/movies">Browse library</Link>
-            </Button>
-          }
-        >
-          <div className="dashboard-poster-grid p-[var(--card-pad-x)]">
-            {data.recentlyAdded.map((item) => (
-              <PosterPreview key={`${item.type}-${item.id}`} item={item} />
-            ))}
-          </div>
-        </ListCard>
-      ) : null}
-
-      {/* Below the fold on purpose: history, not the live board. Charts at the
-          large size here — this is where someone comes to read a trend, not to
-          glance at one.
-
-          Everything in this band shares one day axis and one window, so the
-          range control governs the whole thing and nothing in it has to opt
-          out. Three columns matching the live board at the same breakpoint, so
-          every band on the page breaks to one column at the same width and the
-          card edges line up all the way down. */}
-      {data.metrics ? (
-        <section className="flex flex-col gap-[var(--grid-gap)]">
-          <header className="flex items-center justify-between gap-3">
-            <h2 className="text-[length:var(--type-card-title)] font-semibold text-foreground">Trends</h2>
-            <SegmentedControl
-              aria-label="Trend range"
-              value={historyDays}
-              onValueChange={setHistoryDays}
-              options={HISTORY_RANGES.map((range) => ({ value: range.value, label: range.label }))}
-              className="w-auto shrink-0"
-            />
-          </header>
-          <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
-            <MetricChart
-              label="Searches"
-              value={formatRate(data.metrics.searches)}
-              help={`${sumSeries(data.metrics.searches.succeeded)} matched a release in ${windowLabel(data.metrics.days)}`}
-              series={data.metrics.searches.succeeded}
-              compare={{ series: data.metrics.searches.failed, label: "no match", tone: "warning" }}
-              tone="success"
-              size="lg"
-            />
-            <MetricChart
-              label="Grabs"
-              value={sumSeries(data.metrics.grabs).toLocaleString()}
-              help={`sent to a download client in ${windowLabel(data.metrics.days)}`}
-              series={data.metrics.grabs}
-              compare={{ series: data.metrics.importFailures, label: "failed to import", tone: "danger" }}
-              tone="primary"
-              size="lg"
-            />
-            <MetricChart
-              label="Background work"
-              value={formatRate(data.metrics.jobs)}
-              help={`${sumSeries(data.metrics.jobs.succeeded).toLocaleString()} jobs finished cleanly in ${windowLabel(data.metrics.days)}`}
-              series={data.metrics.jobs.succeeded}
-              compare={{ series: data.metrics.jobs.failed, label: "failed", tone: "danger" }}
-              tone="success"
-              size="lg"
-            />
-          </div>
-        </section>
-      ) : null}
-
+    <div role="tablist" aria-label="Dashboard sections" className={cn("flex items-center gap-1", className)}>
+      {DASHBOARD_TABS.map((tab) => {
+        const selected = tab === active;
+        const count = badges[tab];
+        return (
+          <Button
+            key={tab}
+            type="button"
+            role="tab"
+            id={`dashboard-tab-${tab}`}
+            aria-selected={selected}
+            aria-controls="dashboard-tabpanel"
+            variant="ghost"
+            size="sm"
+            onClick={() => onSelect(tab)}
+            className={cn(
+              "px-3.5",
+              selected ? "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary" : "border border-transparent"
+            )}
+          >
+            {TAB_LABELS[tab]}
+            {count > 0 ? (
+              <span
+                aria-label={`${count} ${count === 1 ? "thing needs" : "things need"} a look`}
+                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-warning/20 px-1.5 text-[length:var(--type-micro)] font-bold tabular-nums text-warning"
+              >
+                {count}
+              </span>
+            ) : null}
+          </Button>
+        );
+      })}
     </div>
   );
 }
 
+/** The header has a slot for the tabs; a page rendered without the header shows them inline. */
+function useHeaderSlot(): HTMLElement | null {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setSlot(document.getElementById("topbar-page-tabs"));
+  }, []);
+  return slot;
+}
+
 /**
- * The one sentence at the top of the pane. Ranked by what would stop Deluno
- * working, so the headline is always the most consequential true statement —
- * never a cheerful default sitting above a broken system.
+ * On a wide screen the page is exactly as tall as the window, so a tab that has
+ * too much to show scrolls inside its own panels rather than pushing the page
+ * down. On a phone it flows and scrolls as any page does, and a window shorter
+ * than 720px scrolls rather than crushing the panels.
  */
-function describeSystem(data: DashboardLoaderData, healthIssues: number): { headline: string; detail: string; tone: LedTone } {
-  const services = data.monitoring?.services;
-  const readiness = data.monitoring?.readiness;
-
-  if (readiness && !readiness.ready) {
-    return {
-      headline: "Deluno is not ready",
-      detail: `${readiness.failedChecks} of ${readiness.totalChecks} readiness checks are failing. Nothing will be searched or imported until they pass.`,
-      tone: "bad"
+function useFitToScreen(element: HTMLDivElement | null) {
+  useLayoutEffect(() => {
+    if (!element) return undefined;
+    const fit = () => {
+      if (window.innerWidth < 1024) {
+        element.style.height = "";
+        return;
+      }
+      const top = element.getBoundingClientRect().top + window.scrollY;
+      const main = element.closest("main");
+      const below = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+      element.style.height = `${Math.max(720, Math.floor(window.innerHeight - top - below))}px`;
     };
-  }
-
-  if (data.monitoring?.storage.lowStorage) {
-    return {
-      headline: "Running out of space",
-      detail: "The drive holding your library is nearly full. Imports will start failing before it is completely gone.",
-      tone: "bad"
+    fit();
+    window.addEventListener("resize", fit);
+    // A banner above the page (an outage, say) moves it without a resize.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", fit);
+      observer?.disconnect();
     };
-  }
+  }, [element]);
+}
 
-  if (services && services.failedJobs > 0) {
-    return {
-      headline: `${services.failedJobs} ${services.failedJobs === 1 ? "job has" : "jobs have"} failed`,
-      detail: "Deluno stopped retrying these. Open Activity to see what happened and put them back in the queue.",
-      tone: "warn"
-    };
+function TabBody({ tab, summary }: { tab: DashboardTab; summary: Parameters<typeof libraryTabAttention>[0] }): ReactNode {
+  switch (tab) {
+    case "library": return <LibraryTab summary={summary} />;
+    case "downloads": return <DownloadsTab summary={summary} />;
+    case "system": return <SystemTab summary={summary} />;
+    default: return <OverviewTab summary={summary} />;
   }
+}
 
-  if (healthIssues > 0) {
-    return {
-      headline: `${healthIssues} ${healthIssues === 1 ? "connection needs" : "connections need"} a look`,
-      detail: "A search source or download client is not answering, so releases cannot be found or sent anywhere.",
-      tone: "warn"
-    };
-  }
+export function DashboardPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = tabFromSearch(searchParams);
+  const summaryQ = useDashboardSummary();
+  const summary = summaryQ.data;
+  const setup = useSetupState();
+  const slot = useHeaderSlot();
+  // The page is not drawn until the summary arrives, so the element is kept in
+  // state: the fit has to start when it appears, not when the page mounts.
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  useFitToScreen(root);
 
-  if (data.activeDownloadCount > 0 || data.importReadyCount > 0) {
-    const parts = [
-      data.activeDownloadCount > 0 ? `${data.activeDownloadCount} downloading` : null,
-      data.importReadyCount > 0 ? `${data.importReadyCount} waiting to import` : null
-    ].filter(Boolean);
-    return {
-      headline: "Working on it",
-      detail: `${parts.join(" · ")}. Everything else is watched and up to date.`,
-      tone: "ok"
-    };
-  }
+  // The server says when the summary changed, at most every two seconds; a few
+  // events close together fold into one refetch. Setup reads a few lists that
+  // change on their own events, so those events refresh the setup lists too.
+  const nudge = useCoalescedRevalidate(() => { void refreshSummary(); }, 500);
+  useSignalREvent("DashboardSummaryChanged", RealtimeGroups.Dashboard, nudge);
+  const refreshSetup = useCoalescedRevalidate(() => { void queryClient.invalidateQueries({ queryKey: ["src"] }); }, 1_000);
+  useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, refreshSetup);
+  useSignalREvent("QualityProfileChanged", RealtimeGroups.Dashboard, refreshSetup);
+  useSignalREvent("PolicySetChanged", RealtimeGroups.Dashboard, refreshSetup);
+  useSignalREvent("IndexerChanged", RealtimeGroups.Dashboard, refreshSetup);
+  useSignalREvent("DownloadClientChanged", RealtimeGroups.Dashboard, refreshSetup);
+  useSignalRResync(() => { void queryClient.invalidateQueries({ queryKey: ["dashboard"] }); void queryClient.invalidateQueries({ queryKey: ["src"] }); });
 
-  if (data.totalCount === 0) {
-    return {
-      // Deliberately not "Nothing in the library yet" — that sentence already
-      // belongs to the Recently added card lower down, and saying it twice on
-      // one screen reads as a bug rather than emphasis.
-      headline: "Ready and waiting",
-      detail: "Deluno is set up and idle. Add a movie or a show and it will start watching for releases straight away.",
-      tone: "idle"
-    };
-  }
+  const select = useCallback((next: DashboardTab) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current);
+      if (next === "overview") params.delete("tab");
+      else params.set("tab", next);
+      return params;
+    }, { replace: false });
+  }, [setSearchParams]);
 
-  return {
-    headline: "Everything is running",
-    detail: data.missingCount > 0
-      ? `${data.monitoredCount.toLocaleString()} titles are being watched for, and ${data.missingCount} of them have no acceptable release yet.`
-      : `${data.monitoredCount.toLocaleString()} titles are being watched for and nothing is missing.`,
-    tone: "ok"
+  const badges: Record<DashboardTab, number> = {
+    overview: tabBadge("overview", summary, setup.needs.length),
+    library: tabBadge("library", summary, 0),
+    downloads: tabBadge("downloads", summary, 0),
+    system: tabBadge("system", summary, 0)
   };
-}
 
-function PosterPreview({ item }: { item: MediaItem }) {
-  return (
-    <Link to={item.type === "show" ? `/tv/${item.id}` : `/movies/${item.id}`} className="group min-w-0">
-      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-hairline bg-surface-2 shadow-card transition duration-200 group-hover:border-primary/40 group-hover:shadow-lg">
-        <Artwork src={item.poster} title={item.title} className="h-full w-full" />
-        <TitleBars item={item} showMediaText showSubtitleText />
-      </div>
-      <div className="mt-2 min-w-0 text-center">
-        <p className="truncate text-[length:var(--type-body-sm)] font-semibold text-foreground" title={item.title}>{item.title}</p>
-        <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-          {item.type === "show" ? "TV" : "Movie"} · {item.year ?? "Unknown"}
-        </p>
-      </div>
-    </Link>
-  );
-}
-
-function Artwork({
-  src,
-  title,
-  className
-}: {
-  src: string | null;
-  title: string;
-  className?: string;
-}) {
-  if (src) {
-    return <img src={src} alt={title} className={cn("object-cover", className)} loading="lazy" />;
+  // Nothing to draw the first time until the summary arrives. After that the
+  // last answer stays on screen while a newer one is fetched behind it.
+  if (summary === undefined && summaryQ.isError) {
+    return (
+      <ListEmpty
+        title="The Dashboard could not load"
+        description="Deluno did not answer. Check that it is running, then try again."
+        actions={<Button type="button" onClick={() => { void summaryQ.refetch(); }}>Try again</Button>}
+      />
+    );
   }
+  if (summary === undefined) return <RouteSkeleton />;
+
+  const bar = <TabBar active={tab} badges={badges} onSelect={select} />;
 
   return (
-    <span className={cn("flex items-center justify-center bg-gradient-to-br from-surface-2 to-surface-3 text-center text-muted-foreground", className)}>
-      <span className="px-2 font-display text-lg font-bold tracking-tight">{title.slice(0, 2).toUpperCase()}</span>
-    </span>
+    <div ref={setRoot} className="flex flex-col gap-[var(--grid-gap)]">
+      {slot ? (
+        <>
+          {createPortal(<TabBar active={tab} badges={badges} onSelect={select} />, slot)}
+          <div className="lg:hidden">{bar}</div>
+        </>
+      ) : (
+        bar
+      )}
+      <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="min-h-0 flex-1 lg:relative">
+        <div className="lg:absolute lg:inset-0 lg:overflow-hidden">
+          <TabBody tab={tab} summary={summary} />
+        </div>
+      </div>
+    </div>
   );
-}
-
-function buildDashboardUpcoming(
-  episodes: SeriesUpcomingEpisodeItem[],
-  seriesWanted: SeriesWantedSummary,
-  movieWanted: MovieWantedSummary,
-  preferences: DisplayPreferences
-): DashboardUpcomingItem[] {
-  const now = Date.now();
-  const horizon = now + 1000 * 60 * 60 * 72;
-
-  const episodeItems = episodes
-    .map((episode) => ({ episode, time: new Date(episode.airDateUtc).getTime() }))
-    .filter(({ time }) => time >= now && time <= horizon)
-    .map(({ episode, time }) => ({
-      id: episode.episodeId,
-      day: formatDashboardDay(new Date(time), preferences),
-      title: episode.title,
-      episode: `S${String(episode.seasonNumber).padStart(2, "0")}E${String(episode.episodeNumber).padStart(2, "0")}`,
-      dateLabel: formatDashboardTime(new Date(time), preferences),
-      network: episode.episodeTitle ?? "Upcoming episode",
-      poster: episode.posterUrl ?? null,
-      href: `/tv/${episode.seriesId}`,
-      startsAt: episode.airDateUtc
-    }));
-
-  const retryItems = [
-    ...seriesWanted.recentItems
-      .filter(isDueForRetry)
-      .map((item) => ({
-        id: `series-retry-${item.seriesId}`,
-        time: new Date(item.nextEligibleSearchUtc!).getTime(),
-        title: item.title,
-        episode: retryIntent(item.wantedStatus),
-        network: item.wantedReason,
-        poster: null,
-        href: `/tv/${item.seriesId}`,
-        startsAt: item.nextEligibleSearchUtc!
-      })),
-    ...movieWanted.recentItems
-      .filter(isDueForRetry)
-      .map((item) => ({
-        id: `movie-retry-${item.movieId}`,
-        time: new Date(item.nextEligibleSearchUtc!).getTime(),
-        title: item.title,
-        episode: retryIntent(item.wantedStatus),
-        network: item.wantedReason,
-        poster: null,
-        href: `/movies/${item.movieId}`,
-        startsAt: item.nextEligibleSearchUtc!
-      }))
-  ]
-    .filter((item) => item.time >= now && item.time <= horizon)
-    .map((item) => ({
-      id: item.id,
-      day: formatDashboardDay(new Date(item.time), preferences),
-      title: item.title,
-      episode: item.episode,
-      dateLabel: formatDashboardTime(new Date(item.time), preferences),
-      network: item.network,
-      poster: item.poster,
-      href: item.href,
-      startsAt: item.startsAt
-    }));
-
-  return [...episodeItems, ...retryItems]
-    .sort((left, right) => new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime())
-    .slice(0, 12);
-}
-
-/**
- * A retry window outlives the reason it was opened. A title that has since been
- * satisfied still carries `nextEligibleSearchUtc`, and listing it produced the
- * contradiction "Search retry — this movie already meets your target quality"
- * (#270). Only `missing` and `upgrade` titles are still being looked for.
- */
-function isDueForRetry(item: { wantedStatus: string; nextEligibleSearchUtc: string | null }) {
-  return Boolean(item.nextEligibleSearchUtc) && (item.wantedStatus === "missing" || item.wantedStatus === "upgrade");
-}
-
-function retryIntent(wantedStatus: string) {
-  return wantedStatus === "upgrade" ? "Looking for a better release" : "Looking for this title";
-}
-
-function groupDashboardUpcoming(items: DashboardUpcomingItem[]) {
-  const groups: Array<{ day: string; entries: DashboardUpcomingItem[] }> = [];
-
-  for (const item of items) {
-    const existing = groups.find((group) => group.day === item.day);
-    if (existing) {
-      existing.entries.push(item);
-    } else {
-      groups.push({ day: item.day, entries: [item] });
-    }
-  }
-
-  return groups;
-}
-
-function formatDashboardDay(date: Date, preferences: DisplayPreferences) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((target.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (preferences.showRelativeDates && diffDays === 0) return "Today";
-  if (preferences.showRelativeDates && diffDays === 1) return "Tomorrow";
-
-  return formatWeekday(date, preferences);
-}
-
-function formatDashboardTime(date: Date, preferences: DisplayPreferences) {
-  return formatTime(date, preferences);
-}
-
-/**
- * Stored throughput readings as chart points. `MetricPoint.value` is an int, so
- * the series is tenths of a megabyte per second — a chart cannot show more
- * precision than that anyway, and rounding to whole MB/s would flatten every
- * slow transfer to zero.
- */
-/**
- * `MetricPoint.value` is an integer, so a series in MB/s is carried in tenths
- * and scaled back by the chart's own `formatValue`.
- */
-function throughputSeries(window: DownloadThroughputWindow | null, direction: "down" | "up"): MetricPoint[] {
-  return (window?.samples ?? []).map((sample) => ({
-    date: sample.capturedUtc,
-    value: Math.round((direction === "down" ? sample.speedMbps : sample.uploadMbps ?? 0) * 10)
-  }));
-}
-
-function peakSpeed(window: DownloadThroughputWindow | null) {
-  const samples = window?.samples ?? [];
-  return samples.length === 0
-    ? 0
-    : Math.max(...samples.map((sample) => Math.max(sample.speedMbps, sample.uploadMbps ?? 0)));
-}
-
-/**
- * Always a reading, never a word. "Idle" was the same sentence the hero was
- * already saying a foot higher (#276), and it hid the difference between
- * nothing downloading and nothing at all: a seeding install is not idle.
- */
-function formatSpeed(mbps: number) {
-  return `${Math.max(0, mbps).toFixed(1)} MB/s`;
-}
-
-/** Totals a day series. */
-function sumSeries(points: MetricPoint[]) {
-  return points.reduce((total, point) => total + point.value, 0);
-}
-
-/**
- * A hit rate only means something once something was tried, so with no searches
- * this says so rather than printing a confident 0%.
- */
-function formatRate(outcome: { succeeded: MetricPoint[]; failed: MetricPoint[] }) {
-  const matched = sumSeries(outcome.succeeded);
-  const attempts = matched + sumSeries(outcome.failed);
-  return attempts === 0 ? "None yet" : `${Math.round((matched / attempts) * 100)}%`;
 }

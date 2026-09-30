@@ -404,7 +404,7 @@ describe("the retired words stay retired", () => {
 /**
  * The bug that got past both of the guards above, and past me.
  *
- * `dashboard-hero.tsx` coloured a count with
+ * the old Dashboard hero coloured a count with
  * `TITLE_MARK_PRESENTATION[mark].dot.replace("bg-", "text-")`. It reads like it
  * cannot drift — it is derived from the one table — but the class name it
  * produces appears nowhere in the source, and Tailwind only generates the

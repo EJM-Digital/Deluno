@@ -816,12 +816,17 @@ function ContentTopbar({
           <AppMark />
         </NavLink>
 
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
+        <div className="min-w-0 shrink">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. */}
           <TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle>
+        </div>
+
+        {/* A page that has tabs (the Dashboard) puts them here, beside its title. */}
+        <div id="topbar-page-tabs" className="hidden shrink-0 empty:hidden lg:block" />
         </div>
 
         {/*
