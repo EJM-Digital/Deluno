@@ -1239,6 +1239,15 @@ public sealed class SqliteSeriesCatalogRepository(
     /// wanted-state row the page shows (<see cref="CatalogueWantedState.Join"/>),
     /// so a show held in two libraries is on one rung, not two (#1048).
     /// </summary>
+    /// <summary>
+    /// A show whose episodes are catalogued but none is monitored: nothing in it is wanted, so it counts as Unmonitored on the
+    /// pill, the filter and the card alike, even when the show itself is switched on (#1072). A show with no catalogued episodes yet
+    /// is unknown, not unwanted.
+    /// </summary>
+    private const string NothingWantedInShow =
+        "(EXISTS (SELECT 1 FROM episode_entries ne WHERE ne.series_id = s.id) "
+        + "AND NOT EXISTS (SELECT 1 FROM episode_entries me WHERE me.series_id = s.id AND me.monitored = 1))";
+
     private static string CatalogueWantedIs(string wantedStatus) => CatalogueWantedState.Is(wantedStatus);
 
     /// <summary>
@@ -1492,7 +1501,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
             CatalogueLibraryFilter(libraryId),
-            CatalogueKeyset.MonitoredFilter(query.Monitored, "s"),
+            CatalogueKeyset.MonitoredFilter(query.Monitored, "s", NothingWantedInShow),
             CatalogueKeyset.StatusFilter(
                 status,
                 "s",
@@ -1507,7 +1516,8 @@ public sealed class SqliteSeriesCatalogRepository(
                 // beside it — computed a few lines down with this same
                 // expression already present — correctly counted zero (#934).
                 CatalogueWantedIs(WantedStatuses.Airing),
-                monitoredOnly: !query.IncludeUnmonitoredInStatus),
+                monitoredOnly: !query.IncludeUnmonitoredInStatus,
+                notWantedHere: NothingWantedInShow),
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
@@ -1672,7 +1682,7 @@ public sealed class SqliteSeriesCatalogRepository(
         var now = timeProvider.GetUtcNow().ToString("O");
         var idParameters = string.Join(", ", items.Select((_, index) => $"@id{index}"));
 
-        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir, bool HasUndated, int Monitored)>(items.Count);
+        var progress = new Dictionary<string, (int Total, int Aired, int AiredWithFile, int AiredUpgradable, string? NextAir, bool HasUndated, int Monitored, bool HasMonitoredFuture)>(items.Count);
 
         using (var command = connection.CreateCommand())
         {
@@ -1686,7 +1696,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     SUM(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NOT NULL AND e.air_date_utc <= @now AND e.has_file = 1 AND e.quality_cutoff_met = 0 THEN 1 ELSE 0 END),
                     MIN(CASE WHEN e.air_date_utc > @now THEN e.air_date_utc END),
                     MAX(CASE WHEN e.monitored = 1 AND e.air_date_utc IS NULL THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN e.monitored = 1 THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN e.monitored = 1 THEN 1 ELSE 0 END),
+                    MAX(CASE WHEN e.monitored = 1 AND e.air_date_utc > @now THEN 1 ELSE 0 END)
                 FROM episode_entries e
                 WHERE e.series_id IN ({idParameters})
                 GROUP BY e.series_id;
@@ -1708,7 +1719,8 @@ public sealed class SqliteSeriesCatalogRepository(
                     reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5),
                     !reader.IsDBNull(6) && reader.GetInt32(6) == 1,
-                    reader.IsDBNull(7) ? 0 : reader.GetInt32(7));
+                    reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
+                    !reader.IsDBNull(8) && reader.GetInt32(8) == 1);
             }
         }
 
@@ -1725,6 +1737,7 @@ public sealed class SqliteSeriesCatalogRepository(
 
             attached.Add(item with
             {
+                Monitored = item.Monitored && (counts.Total == 0 || counts.Monitored > 0),
                 EpisodeCount = counts.Total,
                 AiredEpisodeCount = counts.Aired,
                 AiredWithFileCount = counts.AiredWithFile,
@@ -1743,7 +1756,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     counts.Aired,
                     counts.AiredWithFile,
                     counts.AiredUpgradable,
-                    counts.NextAir is not null,
+                    counts.HasMonitoredFuture,
                     counts.HasUndated,
                     nothingWanted: counts.Total > 0 && counts.Monitored == 0)
             });
@@ -1845,7 +1858,8 @@ public sealed class SqliteSeriesCatalogRepository(
             CatalogueWantedIs(WantedStatuses.Covered),
             CatalogueWantedIs(WantedStatuses.Upcoming),
             CatalogueWantedIs(WantedStatuses.Downloading),
-            CatalogueWantedIs(WantedStatuses.Airing));
+            CatalogueWantedIs(WantedStatuses.Airing),
+            NothingWantedInShow);
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -3587,7 +3601,7 @@ public sealed class SqliteSeriesCatalogRepository(
                     COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN monitored = 1 AND air_date_utc IS NOT NULL AND air_date_utc <= @now AND has_file = 1 AND quality_cutoff_met = 0 THEN 1 ELSE 0 END), 0),
-                    COALESCE(MAX(CASE WHEN air_date_utc > @now THEN 1 ELSE 0 END), 0),
+                    COALESCE(MAX(CASE WHEN monitored = 1 AND air_date_utc > @now THEN 1 ELSE 0 END), 0),
                     COALESCE(MAX(CASE WHEN monitored = 1 AND air_date_utc IS NULL THEN 1 ELSE 0 END), 0),
                     COUNT(*),
                     COALESCE(SUM(CASE WHEN monitored = 1 THEN 1 ELSE 0 END), 0)

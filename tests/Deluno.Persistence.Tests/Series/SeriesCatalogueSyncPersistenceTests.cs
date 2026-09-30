@@ -344,7 +344,10 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         var trimmed = Assert.Single((await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None)).Items);
         Assert.Equal(WantedStatuses.Covered, trimmed.WantedStatus);
         Assert.Empty((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Missing, PageSize: 50), CancellationToken.None)).Items);
-        Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Covered, PageSize: 50), CancellationToken.None)).Items);
+        // Nothing in it is wanted, so it lives under Unmonitored rather than on a status pill (#1072).
+        Assert.Empty((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Covered, PageSize: 50), CancellationToken.None)).Items);
+        Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Monitored: false, PageSize: 50), CancellationToken.None)).Items);
+        Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Status: CatalogueStatusFilters.Covered, IncludeUnmonitoredInStatus: true, PageSize: 50), CancellationToken.None)).Items);
     }
 
     private static async Task<string?> ReadStoredRungAsync(TestStorage storage, string seriesId)
@@ -422,6 +425,40 @@ public sealed class SeriesCatalogueSyncPersistenceTests
         Assert.True(await repository.MarkTrackedFileMissingAsync(seriesId, ids[(1, 1)], "series-main", @"C:\media\s01e01.mkv", CancellationToken.None));
 
         Assert.Equal(WantedStatuses.Missing, await ReadStoredRungAsync(storage, seriesId));
+    }
+
+    [Fact]
+    public async Task A_show_with_no_monitored_episodes_reads_covered_and_unmonitored_on_the_card_the_pills_and_the_filter()
+    {
+        var now = DateTimeOffset.Parse("2026-09-25T12:00:00Z");
+        var (storage, repository, seriesId, ids) = await SeedRungShowAsync(
+            now,
+            new CatalogueEpisodeItem(1, 1, "One", null, now.AddDays(-30)),
+            new CatalogueEpisodeItem(1, 2, "Two", null, now.AddDays(7)));
+        using var _s = storage;
+
+        // Nothing is wanted, though the future-dated episode is still on the calendar and the show itself is switched on.
+        await repository.UpdateEpisodeMonitoredAsync([ids[(1, 1)], ids[(1, 2)]], monitored: false, CancellationToken.None);
+
+        Assert.Equal(WantedStatuses.Covered, await ReadStoredRungAsync(storage, seriesId));
+        var page = await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None);
+        var card = Assert.Single(page.Items);
+        Assert.Equal(WantedStatuses.Covered, card.WantedStatus);
+        Assert.False(card.Monitored);
+        Assert.Equal(1, page.Facets!.Unmonitored);
+        Assert.Equal(0, page.Facets.Monitored);
+        Assert.Equal(0, page.Facets.Upcoming);
+        Assert.Equal(0, page.Facets.Covered);
+        Assert.Single((await repository.ListPageAsync(new CatalogueQuery(Monitored: false, PageSize: 50), CancellationToken.None)).Items);
+        Assert.Empty((await repository.ListPageAsync(new CatalogueQuery(Monitored: true, PageSize: 50), CancellationToken.None)).Items);
+
+        // Wanting the coming episode again makes it Upcoming and Monitored everywhere at once.
+        await repository.UpdateEpisodeMonitoredAsync([ids[(1, 2)]], monitored: true, CancellationToken.None);
+        Assert.Equal(WantedStatuses.Upcoming, await ReadStoredRungAsync(storage, seriesId));
+        var again = await repository.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None);
+        Assert.True(Assert.Single(again.Items).Monitored);
+        Assert.Equal(1, again.Facets!.Monitored);
+        Assert.Equal(1, again.Facets.Upcoming);
     }
 
     [Fact]
