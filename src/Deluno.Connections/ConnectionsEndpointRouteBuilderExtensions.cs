@@ -1707,17 +1707,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = timeout };
         if (!string.IsNullOrWhiteSpace(item.Username) || !string.IsNullOrWhiteSpace(item.Secret))
         {
-            using var login = await client.PostAsync(
-                "api/v2/auth/login",
-                new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["username"] = item.Username ?? string.Empty,
-                    ["password"] = item.Secret ?? string.Empty
-                }),
-                cancellationToken);
-            if (!login.IsSuccessStatusCode)
+            // The same sign-in every later call uses (#1061), so a test that passes cannot be followed by a refusal.
+            var login = await QbittorrentSignIn.SignInAsync(client, item.Username, item.Secret, cancellationToken);
+            if (!login.SignedIn)
             {
-                return ("degraded", $"qBittorrent rejected the login with {(int)login.StatusCode}.", "auth");
+                return ("degraded", login.Rejected ? "qBittorrent rejected the configured username/password." : $"qBittorrent rejected the login with {(int)login.Status}.", "auth");
             }
         }
 
