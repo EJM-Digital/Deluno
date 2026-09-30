@@ -161,6 +161,32 @@ offers. When the broker has no episode groups for a title (including when it
 does not implement this route at all), hybrid and direct modes fall back to
 TMDb directly, the same as every other broker call in this contract.
 
+The managed gateway serves this route from TMDb (`/tv/{id}/episode_groups` and
+each DVD or absolute group's detail), in the shape above, cached six hours under
+`episode-groups:v1:{id}` with the same rate limit and error codes as the
+catalogue route (`not_found`, `provider_busy`, `provider_unavailable`). A show
+with no alternate orderings answers `{ "groups": [] }`.
+
+## Popular lists (Discover, #785)
+
+`GET /metadata/{movies|tv}/popular?page=N` (`movie` is accepted for `movies`;
+page is clamped to 1-500) returns TMDb's popular list, trimmed, in TMDb's own
+field names because the app parses it as a TMDb list:
+
+```json
+{
+  "page": 1,
+  "results": [
+    { "id": 603, "title": "The Matrix", "name": null, "original_title": "The Matrix", "original_name": null,
+      "overview": "...", "poster_path": "/p.jpg", "backdrop_path": "/b.jpg", "release_date": "1999-03-30",
+      "first_air_date": null, "vote_average": 8.2, "vote_count": 25000, "popularity": 90.1 }
+  ]
+}
+```
+
+Cached three hours per media type and page, with the same rate limit and error
+codes as the other catalogue routes.
+
 ## Managed gateway deployment
 
 The Deluno-managed Cloudflare Worker is deployed at

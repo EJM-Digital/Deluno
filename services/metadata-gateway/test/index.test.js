@@ -4,6 +4,9 @@ import {
   buildCacheKey,
   enforceRateLimit,
   lookupMovieReleaseDates,
+  lookupEpisodeGroups,
+  lookupPopular,
+  parsePopularPage,
   lookupMovieCollection,
   lookupPersonImdbId,
   lookupSeriesCatalogue,
@@ -469,4 +472,133 @@ test("lists each language's title, overview and tagline once per title, leaving 
 
   const show = await lookupTranslations("tv", "1396", "key", tmdb.fetch);
   assert.equal(show.translations[0].title, "Breaking Bad");
+});
+
+test("routes episode groups and popular lists", () => {
+  assert.deepEqual(matchRoute("/metadata/tv/113962/episode-groups"), { kind: "episode-groups", id: "113962" });
+  assert.deepEqual(matchRoute("/metadata/movies/popular"), { kind: "popular", mediaType: "movies" });
+  assert.deepEqual(matchRoute("/metadata/movie/popular"), { kind: "popular", mediaType: "movies" });
+  assert.deepEqual(matchRoute("/metadata/tv/popular"), { kind: "popular", mediaType: "tv" });
+  assert.equal(matchRoute("/metadata/movie/1/episode-groups"), null);
+  assert.equal(matchRoute("/metadata/tv/abc/episode-groups"), null);
+  assert.equal(matchRoute("/metadata/tv/popular/extra"), null);
+});
+
+test("builds DVD and absolute orderings from TMDb episode groups, and names the rest", async () => {
+  const tmdb = stubTmdb({
+    "/3/tv/1396/episode_groups": {
+      results: [
+        { id: "dvd-small", name: "DVD small", type: 3, episode_count: 1 },
+        { id: "dvd-big", name: "DVD Order", type: 3, episode_count: 3 },
+        { id: "abs", name: "Absolute", type: 2, episode_count: 3 },
+        { id: "arc", name: "Story arcs", type: 5, episode_count: 3 }
+      ]
+    },
+    "/3/tv/episode_group/dvd-big": {
+      groups: [
+        { episodes: [{ season_number: 1, episode_number: 2 }, { season_number: 1, episode_number: 1 }] },
+        { episodes: [{ season_number: 2, episode_number: 1 }] }
+      ]
+    },
+    "/3/tv/episode_group/abs": {
+      groups: [{ episodes: [{ season_number: 1, episode_number: 1 }, { season_number: 2, episode_number: 1 }] }]
+    }
+  });
+
+  const result = await lookupEpisodeGroups("1396", "key", tmdb.fetch);
+
+  assert.equal(result.groups.length, 3);
+  const dvd = result.groups.find((group) => group.type === 3);
+  assert.equal(dvd.providerGroupId, "dvd-big");
+  assert.deepEqual(dvd.episodes[0], { originalSeasonNumber: 1, originalEpisodeNumber: 2, groupSeasonNumber: 1, groupEpisodeNumber: 1 });
+  assert.deepEqual(dvd.episodes[2], { originalSeasonNumber: 2, originalEpisodeNumber: 1, groupSeasonNumber: 2, groupEpisodeNumber: 1 });
+  const absolute = result.groups.find((group) => group.type === 2);
+  assert.deepEqual(absolute.episodes[1], { originalSeasonNumber: 2, originalEpisodeNumber: 1, groupSeasonNumber: 1, groupEpisodeNumber: 2 });
+  const arc = result.groups.find((group) => group.type === 5);
+  assert.deepEqual(arc, { type: 5, providerGroupId: "arc", name: "Story arcs", episodes: [] });
+  assert.ok(!tmdb.calls.includes("/3/tv/episode_group/dvd-small"), "only the fullest group of a type is fetched");
+});
+
+test("a show with no episode groups answers an empty list, and an unavailable group keeps the rest", async () => {
+  const none = await lookupEpisodeGroups("5", "key", stubTmdb({ "/3/tv/5/episode_groups": { results: [] } }).fetch);
+  assert.deepEqual(none.groups, []);
+
+  const partial = await lookupEpisodeGroups("6", "key", stubTmdb({
+    "/3/tv/6/episode_groups": { results: [{ id: "gone", name: "DVD", type: 3, episode_count: 2 }] },
+    "/3/tv/episode_group/gone": 404
+  }).fetch);
+  assert.equal(partial.groups.length, 1);
+  assert.deepEqual(partial.groups[0].episodes, []);
+});
+
+test("a popular list keeps TMDb's field names and drops entries with no title", async () => {
+  const tmdb = stubTmdb({
+    "/3/tv/popular": {
+      results: [
+        { id: 1, name: "Show", original_name: "Show", poster_path: "/p.jpg", first_air_date: "2020-01-01", vote_average: 8.1, popularity: 99.5, junk: "x" },
+        { id: 2 }
+      ]
+    }
+  });
+
+  const result = await lookupPopular("tv", 3, "key", tmdb.fetch);
+
+  assert.equal(result.page, 3);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].name, "Show");
+  assert.equal(result.results[0].poster_path, "/p.jpg");
+  assert.equal(result.results[0].junk, undefined);
+  assert.equal(parsePopularPage(new URLSearchParams("page=9999")), 500);
+  assert.equal(parsePopularPage(new URLSearchParams("page=abc")), 1);
+  assert.equal(parsePopularPage(new URLSearchParams("page=0")), 1);
+});
+
+function memoryKv() {
+  const store = new Map();
+  return {
+    get: async (key, type) => {
+      const value = store.get(key);
+      if (value === undefined) return null;
+      return type === "json" ? JSON.parse(value) : value;
+    },
+    put: async (key, value) => { store.set(key, value); }
+  };
+}
+
+async function viaGateway(path, tmdb, env = {}) {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = tmdb.fetch;
+  try {
+    return await metadataGateway.fetch(new Request(`https://gw.example${path}`), { TMDB_API_KEY: "k", METADATA_CACHE: memoryKv(), ...env });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+test("the gateway serves episode groups and popular lists, caches them, and keeps the error codes", async () => {
+  const tmdb = stubTmdb({
+    "/3/tv/1396/episode_groups": { results: [{ id: "a", name: "Arcs", type: 5 }] },
+    "/3/movie/popular": { results: [{ id: 7, title: "Film" }] }
+  });
+  const kv = memoryKv();
+
+  const groups = await viaGateway("/metadata/tv/1396/episode-groups", tmdb, { METADATA_CACHE: kv });
+  assert.equal(groups.status, 200);
+  assert.equal((await groups.json()).groups[0].name, "Arcs");
+  await viaGateway("/metadata/tv/1396/episode-groups", tmdb, { METADATA_CACHE: kv });
+  assert.equal(tmdb.calls.filter((path) => path === "/3/tv/1396/episode_groups").length, 1, "second answer comes from the cache");
+
+  const popular = await viaGateway("/metadata/movies/popular?page=2", tmdb);
+  assert.equal(popular.status, 200);
+  assert.equal((await popular.json()).results[0].title, "Film");
+
+  const missing = await viaGateway("/metadata/tv/9/episode-groups", tmdb);
+  assert.equal(missing.status, 404);
+  const busy = await viaGateway("/metadata/tv/popular", stubTmdb({ "/3/tv/popular": 429 }));
+  assert.equal(busy.status, 503);
+  assert.equal(busy.headers.get("Retry-After"), "60");
+  const unavailable = await viaGateway("/metadata/tv/popular", stubTmdb({ "/3/tv/popular": 500 }));
+  assert.equal((await unavailable.json()).error, "provider_unavailable");
+  const unconfigured = await viaGateway("/metadata/tv/popular", tmdb, { TMDB_API_KEY: "" });
+  assert.equal(unconfigured.status, 503);
 });
