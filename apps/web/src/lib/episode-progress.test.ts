@@ -44,14 +44,13 @@ describe("counting a show's episodes", () => {
     expect(isEpisodeUpcoming(aired, NOW)).toBe(false);
   });
 
-  it("counts an episode with no air date as not aired rather than missing", () => {
-    // Announced but unscheduled. Deluno cannot search for it and should not
-    // report it as a shortfall.
+  it("counts an episode with no air date as missing, not upcoming", () => {
+    // the owner, 30 Sep (#1072): only a future air date is Upcoming.
     const unscheduled = episode({ airDateUtc: null });
 
     expect(hasAired(unscheduled, NOW)).toBe(false);
-    expect(isEpisodeMissing(unscheduled, NOW)).toBe(false);
-    expect(isEpisodeUpcoming(unscheduled, NOW)).toBe(true);
+    expect(isEpisodeMissing(unscheduled, NOW)).toBe(true);
+    expect(isEpisodeUpcoming(unscheduled, NOW)).toBe(false);
   });
 
   it("never calls an episode you already have missing", () => {

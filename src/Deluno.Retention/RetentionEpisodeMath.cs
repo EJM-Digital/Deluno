@@ -52,26 +52,26 @@ public sealed class RetentionEpisodeMath
 
     /// <summary>
     /// Monitored episodes that have aired and have no file. Specials only count in a season of their own.
-    /// An episode with no air date has not aired, so it is Upcoming, not missing (#1072).
+    /// An episode with no air date counts as Missing; only an episode with a future air date is Upcoming (the owner, 30 Sep, #1072).
     /// </summary>
     public int? Missing(int? season)
-        => _episodes.Count(episode => (season is null ? episode.SeasonNumber > 0 : episode.SeasonNumber == season) && episode.Monitored && !episode.HasFile && episode.AirDateUtc <= _now);
+        => _episodes.Count(episode => (season is null ? episode.SeasonNumber > 0 : episode.SeasonNumber == season) && episode.Monitored && !episode.HasFile && !EpisodeUpcoming(episode, _now));
 
     /// <summary>
-    /// Upcoming, the word movies use: an episode that has not aired yet or has no air date. Retention never acts on
-    /// it, and "missing episodes" counts only episodes that have aired.
+    /// Upcoming, the word movies use: an episode with a future air date. An episode with no air date is Missing, not
+    /// Upcoming. Retention never acts on anything Upcoming.
     /// </summary>
     public static bool EpisodeUpcoming(SeriesEpisodeInventoryItem episode, DateTimeOffset now)
-        => episode.AirDateUtc is not { } aired || aired > now;
+        => episode.AirDateUtc is { } aired && aired > now;
 
-    /// <summary>A season none of whose episodes has aired (the rule the TV Upcoming pill uses: nothing aired yet, something listed).</summary>
+    /// <summary>A season every one of whose episodes has a future air date.</summary>
     public bool SeasonUpcoming(int season)
     {
         var inSeason = _episodes.Where(episode => episode.SeasonNumber == season).ToArray();
         return inSeason.Length > 0 && inSeason.All(episode => EpisodeUpcoming(episode, _now));
     }
 
-    /// <summary>A show none of whose episodes has aired.</summary>
+    /// <summary>A show every one of whose episodes has a future air date.</summary>
     public bool ShowUpcoming()
         => _episodes.Count > 0 && _episodes.All(episode => EpisodeUpcoming(episode, _now));
 

@@ -20,8 +20,8 @@ public sealed record RetentionTitleFacts(
     int? EpisodeRank = null,
     int? SeasonRank = null,
     /// <summary>
-    /// Upcoming: an episode that has not aired or has no air date, a season or show none of whose episodes has
-    /// aired. The word movies use, from the same rule the TV "Upcoming" pill uses. Retention never acts on it.
+    /// Upcoming: an episode with a future air date, or a season or show every one of whose episodes has one (an
+    /// undated episode is Missing, not Upcoming). The word movies use. Retention never acts on it.
     /// </summary>
     bool Upcoming = false);
 
