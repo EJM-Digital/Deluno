@@ -564,6 +564,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Records several episodes' new file locations in one transaction: either every row follows
+    /// the folder or none does (#1067).
+    /// </summary>
+    Task UpdateEpisodeFileLocationsAsync(
+        IReadOnlyList<(string EpisodeId, string PreviousFilePath, string NewFilePath)> changes,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Write the provider's season/episode catalogue over the series' inventory.
     /// Adds episodes nobody has a file for, fills in titles and air dates, and
     /// leaves every file-derived column alone.

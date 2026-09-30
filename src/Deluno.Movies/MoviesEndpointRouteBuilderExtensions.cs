@@ -2924,6 +2924,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             var moveFailureTitles = new List<string>();
             var moveFailureReasons = new List<string>();
             var untrackedTravelled = new List<string>();
+            var movedForUndo = new List<(string MovieId, string Title, bool WholeFolder, string FilePath, string Source, string Destination)>();
             var movieSettings = await platformSettingsRepository.GetAsync(cancellationToken);
             foreach (var movieId in request.MovieIds)
             {
@@ -2935,6 +2936,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                     continue;
                 }
 
+                string? attemptSource = null;
+                string? attemptDestination = null;
                 try
                 {
                     // The whole title folder moves, not only the tracked file -
@@ -2973,6 +2976,8 @@ public static class MoviesEndpointRouteBuilderExtensions
                         continue;
                     }
 
+                    attemptSource = plan.SourceDirectory;
+                    attemptDestination = plan.DestinationDirectory;
                     if (plan.MovesWholeFolder && Directory.Exists(plan.DestinationDirectory))
                     {
                         failedMovieIds.Add(movieId);
@@ -3011,19 +3016,10 @@ public static class MoviesEndpointRouteBuilderExtensions
                             // The folder has already moved but the database could not follow. The
                             // batch carries on with the next film, and this one is put back where it
                             // was if it can be; otherwise the message says exactly where it is.
-                            var putBack = false;
-                            try
-                            {
-                                Directory.Move(plan.DestinationDirectory, plan.SourceDirectory);
-                                putBack = true;
-                            }
-                            catch (Exception moveBack) when (moveBack is IOException or UnauthorizedAccessException)
-                            {
-                            }
-
-                            var failure = putBack
-                                ? $"{movie.Title}: Deluno could not update its records for the move, so the folder was put back and nothing changed."
-                                : $"{movie.Title}: the folder is now at {plan.DestinationDirectory}, but Deluno could not update its records ({exception.Message}). Move it back to {plan.SourceDirectory}, or run Rescan folder on {toLibrary.Name}.";
+                            var putBack = FolderMoveRecovery.TryPutBack(plan.SourceDirectory, plan.DestinationDirectory);
+                            var failure = FolderMoveRecovery.Describe(
+                                movie.Title, plan.SourceDirectory, plan.DestinationDirectory, putBack, exception.Message,
+                                $"run Rescan folder on {toLibrary.Name}");
                             failedMovieIds.Add(movieId);
                             moveFailureTitles.Add(movie.Title);
                             moveFailureReasons.Add(failure);
@@ -3050,16 +3046,17 @@ public static class MoviesEndpointRouteBuilderExtensions
                     }
 
                     movedFilePaths[movieId] = Path.Combine(plan.DestinationDirectory, Path.GetFileName(filePath));
+                    movedForUndo.Add((movieId, movie.Title, plan.MovesWholeFolder, filePath, plan.SourceDirectory, plan.DestinationDirectory));
                 }
-                catch (IOException)
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
                     failedMovieIds.Add(movieId);
                     moveFailureTitles.Add(movie.Title);
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    failedMovieIds.Add(movieId);
-                    moveFailureTitles.Add(movie.Title);
+                    moveFailureReasons.Add(FolderMoveRecovery.DescribeDiskFailure(
+                        movie.Title,
+                        attemptSource ?? Path.GetDirectoryName(filePath) ?? filePath,
+                        attemptDestination ?? toLibrary.RootPath,
+                        exception));
                 }
             }
 
@@ -3067,10 +3064,78 @@ public static class MoviesEndpointRouteBuilderExtensions
             // file did not move, so the database must not say it did.
             var idsToReassign = request.MovieIds.Where(id => !failedMovieIds.Contains(id)).ToArray();
 
-            var count = idsToReassign.Length == 0
-                ? 0
-                : await repository.ReassignLibraryAsync(
-                    idsToReassign, request.FromLibraryId, request.ToLibraryId, movedFilePaths, cancellationToken);
+            var count = 0;
+            if (idsToReassign.Length > 0)
+            {
+                try
+                {
+                    count = await repository.ReassignLibraryAsync(
+                        idsToReassign, request.FromLibraryId, request.ToLibraryId, movedFilePaths, cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    // Nothing was reassigned, so every folder that moved must go back or be named,
+                    // otherwise the records say one place and the disk says another.
+                    var reasons = new List<string>();
+                    foreach (var moved in movedForUndo.Where(item => idsToReassign.Contains(item.MovieId)))
+                    {
+                        string? note = null;
+                        if (moved.WholeFolder)
+                        {
+                            if (FolderMoveRecovery.TryPutBack(moved.Source, moved.Destination))
+                            {
+                                try
+                                {
+                                    await repository.RelocateTrackedFilePathsAsync(
+                                        moved.MovieId, moved.Destination, moved.Source, CancellationToken.None);
+                                }
+                                catch (Exception)
+                                {
+                                    note = $"{moved.Title}: the folder is back at {moved.Source}, but Deluno could not update its records to match. Run Rescan folder on {fromLibrary.Name}.";
+                                }
+                            }
+                            else
+                            {
+                                note = FolderMoveRecovery.Describe(moved.Title, moved.Source, moved.Destination, false, exception.Message, $"run Rescan folder on {toLibrary.Name}");
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                File.Move(Path.Combine(moved.Destination, Path.GetFileName(moved.FilePath)), moved.FilePath, overwrite: false);
+                            }
+                            catch (Exception moveBack) when (moveBack is IOException or UnauthorizedAccessException)
+                            {
+                                note = $"{moved.Title}: the file is now at {Path.Combine(moved.Destination, Path.GetFileName(moved.FilePath))}, but Deluno could not update its records ({exception.Message}). Move it back to {moved.FilePath}, or run Rescan folder on {toLibrary.Name}.";
+                            }
+                        }
+
+                        if (note is not null)
+                        {
+                            reasons.Add(note);
+                        }
+                    }
+
+                    var summary = $"Deluno could not move the records of {idsToReassign.Length} movie{(idsToReassign.Length == 1 ? "" : "s")} to {toLibrary.Name} ({exception.Message}), so they stayed in {fromLibrary.Name}."
+                        + (reasons.Count == 0 ? " Any folders that had been moved were put back." : $" {string.Join(" ", reasons)}");
+                    await activityFeedRepository.RecordActivityAsync(
+                        "library.movie.move-records-failed",
+                        summary,
+                        JsonSerializer.Serialize(new { movieIds = idsToReassign, reasons }),
+                        null,
+                        "library",
+                        request.ToLibraryId,
+                        cancellationToken);
+                    return Results.Ok(new
+                    {
+                        reassigned = 0,
+                        filesMoved = 0,
+                        moveFailures = movedForUndo.Where(item => idsToReassign.Contains(item.MovieId)).Select(item => item.Title).Concat(moveFailureTitles).ToArray(),
+                        moveFailureReasons = moveFailureReasons.Concat(new[] { summary }).ToArray()
+                    });
+                }
+            }
 
             if (count > 0)
             {
@@ -3385,8 +3450,30 @@ public static class MoviesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                var newFilePath = Path.Combine(destinationDir, Path.GetFileName(filePath));
-                await repository.UpdateFileLocationAsync(id, filePath, newFilePath, cancellationToken);
+                try
+                {
+                    // Every tracked path under the folder follows (file, subtitles, scan rows), in one
+                    // transaction, exactly as a reassign does (#1067).
+                    await repository.RelocateTrackedFilePathsAsync(id, sourceDir, destinationDir, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The folder has already been renamed but the database could not follow. Put it
+                    // back, or say exactly where it is, record it, and carry on with the next title.
+                    var putBack = FolderMoveRecovery.TryPutBack(sourceDir, destinationDir);
+                    var reason = FolderMoveRecovery.Describe(movie.Title, sourceDir, destinationDir, putBack, ex.Message);
+                    failures.Add(new { movieId = id, movie.Title, reason });
+                    await activityFeedRepository.RecordActivityAsync(
+                        "library.movie.rename-records-failed",
+                        reason,
+                        JsonSerializer.Serialize(new { movieId = id, source = sourceDir, destination = destinationDir, putBack }),
+                        null,
+                        "movie",
+                        id,
+                        cancellationToken);
+                    continue;
+                }
+
                 await realtimeEventPublisher.PublishEntityChangedAsync("Movie", id, cancellationToken);
                 renamed.Add(new { movieId = id, movie.Title, from = Path.GetFileName(sourceDir), to = proposedName });
             }

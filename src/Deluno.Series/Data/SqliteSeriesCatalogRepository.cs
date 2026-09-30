@@ -4724,6 +4724,34 @@ public sealed class SqliteSeriesCatalogRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task UpdateEpisodeFileLocationsAsync(
+        IReadOnlyList<(string EpisodeId, string PreviousFilePath, string NewFilePath)> changes,
+        CancellationToken cancellationToken)
+    {
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        foreach (var (episodeId, previousFilePath, newFilePath) in changes)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                "UPDATE episode_entries SET file_path = @newFilePath WHERE id = @episodeId AND file_path = @previousFilePath;";
+            AddParameter(command, "@episodeId", episodeId);
+            AddParameter(command, "@previousFilePath", previousFilePath);
+            AddParameter(command, "@newFilePath", newFilePath);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     /// <summary>The scores a page row carries, read straight from their columns.</summary>
     private static IReadOnlyList<MetadataRatingItem> ReadRatingColumns(System.Data.Common.DbDataReader reader)
     {
