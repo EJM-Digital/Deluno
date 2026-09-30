@@ -735,6 +735,8 @@ A worked example: Deluno on Windows, a Deluge reachable at `/downloads`, and a p
 
 Here the processor watches `/data/downloads/Movies` for finished downloads (`C:\Downloads\Completed\Movies` through the first mapping) and writes clean output to `/data/ready/Movies`.
 
+**When Deluno names a folder to Transmission or Deluge.** A download client with a path mapping for the library's downloads folder is told the folder through that mapping. Without a mapping, Deluno names the host folder only when it has evidence the client sees the same file system: the client is on this computer, Deluno itself is not in a container, the client answered its own check with a folder, that folder is written in the same style as the library folder (drive letter or slash), and it exists on this computer as a directory. A client that did not answer, one in Docker or WSL (a "/downloads" that is not a folder here), or one on another computer is sent no folder, saves to its own default, and the folder check says so and asks for a path mapping.
+
 #### Telling the processor what became of the file
 
 If `…/intake/capabilities` lists `handoff-outcome`, Deluno tells the processor what became of each file it handed back, so the processor can let go of its copy:

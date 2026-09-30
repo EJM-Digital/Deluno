@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
@@ -14,8 +15,8 @@ namespace Deluno.Integrations.DownloadClients;
 /// The one-time note after an upgrade that Transmission and Deluge now save each
 /// grab into the library's downloads folder (#1073). An install that already used
 /// either client kept their downloads wherever the client itself was set to save;
-/// a processor watching that old folder would stop seeing them. Written once, on
-/// the first start of a build that has this behaviour, as one Activity line and a
+/// a processor watching that old folder would stop seeing them. Written on the
+/// first start of a build that has this behaviour, as one Activity line and a
 /// Health note that can be cleared from System, Health.
 /// </summary>
 public sealed class DownloadFolderChangeNoticeService(
@@ -24,6 +25,35 @@ public sealed class DownloadFolderChangeNoticeService(
     ILogger<DownloadFolderChangeNoticeService> logger) : BackgroundService
 {
     public const string HealthId = "notice:download-folders";
+
+    /// <summary>How many starts the note waits for a client that does not answer before it stops waiting for it.</summary>
+    public const int MaxAttempts = 3;
+
+    /// <summary>What earlier starts already covered, so a client is covered once and the note is not repeated.</summary>
+    private sealed class NoticeState
+    {
+        public int Attempts { get; set; }
+
+        public List<string> Covered { get; set; } = [];
+
+        public List<string> Changes { get; set; } = [];
+    }
+
+    private static readonly JsonSerializerOptions StateJson = new(JsonSerializerDefaults.Web);
+
+    private static async Task<NoticeState> ReadStateAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize<NoticeState>(await File.ReadAllTextAsync(path, cancellationToken), StateJson) ?? new NoticeState()
+                : new NoticeState();
+        }
+        catch (Exception exception) when (exception is JsonException or IOException)
+        {
+            return new NoticeState();
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -52,7 +82,13 @@ public sealed class DownloadFolderChangeNoticeService(
         }
     }
 
-    /// <summary>Does the check once. Returns true when a note was written. Writes the marker either way, so it never runs twice.</summary>
+    /// <summary>
+    /// Does the check. Returns true when a note was written. One client that does not answer
+    /// never holds back the note for the others: the clients that answered are covered now, and
+    /// the silent ones are asked again on the next start, up to <see cref="MaxAttempts"/> starts,
+    /// after which the note stops waiting for them. The marker is written once every client has
+    /// answered or the attempts are used up.
+    /// </summary>
     public static async Task<bool> RunOnceAsync(
         ILibrariesRepository libraries,
         IConnectionsRepository connections,
@@ -67,8 +103,11 @@ public sealed class DownloadFolderChangeNoticeService(
             return false;
         }
 
-        var changes = new List<string>();
-        var unreachable = false;
+        var statePath = markerPath + ".state";
+        var state = await ReadStateAsync(statePath, cancellationToken);
+        var newChanges = new List<string>();
+        var unreachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var answered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var clients = await connections.ListDownloadClientsAsync(cancellationToken);
         var mappings = await connections.ListDownloadClientPathMappingsAsync(null, cancellationToken);
         foreach (var library in await libraries.ListLibrariesAsync(cancellationToken))
@@ -87,6 +126,11 @@ public sealed class DownloadFolderChangeNoticeService(
                     continue;
                 }
 
+                if (state.Covered.Contains(client.Id, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var category = ClientSaveFolders.RoutedCategory(client, library, link.Category);
                 var clientMappings = mappings.Where(item => string.Equals(item.DownloadClientId, client.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
                 DownloadClientCategoryCheckResult? check = null;
@@ -94,6 +138,13 @@ public sealed class DownloadFolderChangeNoticeService(
                     => check ??= await FolderChainService.CheckCategoryBoundedAsync(implementation, client, category, FolderChainService.DefaultStepTimeout, cancellationToken);
                 var named = await ClientSaveFolders.ResolveAsync(libraries, client, library.MediaType, category, clientMappings, cancellationToken,
                     async _ => (await CheckAsync()).SavePath);
+                if (check is not null && string.Equals(check.Status, DownloadClientCategoryStatuses.Unreachable, StringComparison.OrdinalIgnoreCase))
+                {
+                    // The client did not answer (still starting after the upgrade reboot): ask again next start.
+                    unreachable.Add(client.Id);
+                    continue;
+                }
+
                 if (named?.ClientFolder is null)
                 {
                     continue;
@@ -102,28 +153,31 @@ public sealed class DownloadFolderChangeNoticeService(
                 check = await CheckAsync();
                 if (string.Equals(check.Status, DownloadClientCategoryStatuses.Unreachable, StringComparison.OrdinalIgnoreCase))
                 {
-                    // The client did not answer (still starting after the upgrade reboot): try again next start.
-                    unreachable = true;
+                    unreachable.Add(client.Id);
                     continue;
                 }
 
+                answered.Add(client.Id);
                 var old = DownloadClientTelemetryService.TranslateRemotePath(check.SavePath, clientMappings);
                 if (!string.IsNullOrWhiteSpace(old) && !FolderChainService.SamePath(old, named.HostFolder))
                 {
-                    changes.Add($"{client.Name} used to save {library.Name} downloads to {old}; they now go to {named.HostFolder}");
+                    newChanges.Add($"{client.Name} used to save {library.Name} downloads to {old}; they now go to {named.HostFolder}");
                 }
             }
         }
 
-        if (unreachable)
+        // A client that answered for one library and not for another is asked again.
+        foreach (var id in answered.Where(id => !unreachable.Contains(id)))
         {
-            // Nothing written, no marker: the next start looks again.
-            return false;
+            state.Covered.Add(id);
         }
 
-        if (changes.Count > 0)
+        state.Attempts++;
+        state.Changes.AddRange(newChanges.Distinct(StringComparer.OrdinalIgnoreCase));
+        var wroteNote = newChanges.Count > 0;
+        if (wroteNote)
         {
-            var list = string.Join("; ", changes.Distinct(StringComparer.OrdinalIgnoreCase).Take(5));
+            var list = string.Join("; ", state.Changes.Distinct(StringComparer.OrdinalIgnoreCase).Take(5));
             var message = $"Downloads from Transmission and Deluge now go to the library's downloads folder instead of the client's own folder: {list}. "
                 + "If a processor watches the old folder, point it at the library's downloads folder.";
             await activity.RecordActivityAsync("downloads.folder-changed", message, null, null, "download-client", null, cancellationToken);
@@ -139,7 +193,19 @@ public sealed class DownloadFolderChangeNoticeService(
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(markerPath)!);
-        await File.WriteAllTextAsync(markerPath, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
-        return changes.Count > 0;
+        if (unreachable.Count == 0 || state.Attempts >= MaxAttempts)
+        {
+            await File.WriteAllTextAsync(markerPath, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
+            if (File.Exists(statePath))
+            {
+                File.Delete(statePath);
+            }
+        }
+        else
+        {
+            await File.WriteAllTextAsync(statePath, JsonSerializer.Serialize(state, StateJson), cancellationToken);
+        }
+
+        return wroteNote;
     }
 }

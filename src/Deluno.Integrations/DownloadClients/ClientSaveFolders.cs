@@ -19,7 +19,7 @@ public static class ClientSaveFolders
     public sealed record Resolved(string HostFolder, string? ClientFolder);
 
     public const string NeedsMappingMessage =
-        "Deluno can't name this folder for a client on another machine without a path mapping. Add one for the library's downloads folder, and Deluno will send each download there.";
+        "Deluno can't tell that this client sees the same folders it does (it may be on another machine, in Docker or WSL, or not answering), so it names no folder and the client saves to its own default. Add a path mapping for the library's downloads folder, and Deluno will send each download there.";
 
     public enum PathStyle { Unknown, Windows, Posix }
 
@@ -48,11 +48,30 @@ public static class ClientSaveFolders
     /// Whether an unmapped host folder can be named to a client Deluno believes
     /// is on this machine (#1073). "Localhost" is not proof: a client in Docker
     /// Desktop or WSL2, or a container using the host network, answers on the
-    /// same address yet has its own file system. So the client's own reported
-    /// folder must be written in the same path style as the host folder, and a
-    /// Deluno running in a container never shares its folders without a mapping.
+    /// same address yet has its own file system. Deluno therefore names the
+    /// folder only with evidence, and otherwise names none (the client's own
+    /// default applies):
+    /// <list type="bullet">
+    /// <item>a Deluno running in a container never shares its folders without a mapping;</item>
+    /// <item>the client must have reported a folder of its own (its save path), and a client
+    /// that did not answer, or reported nothing usable, is treated as not sharing;</item>
+    /// <item>that folder must be written in the same path style as the host folder;</item>
+    /// <item>and it must exist on this host as a directory: a container's own
+    /// "/downloads" normally does not exist on the machine that runs it, even
+    /// when both sides are POSIX (a native Linux Deluno with a Docker client on
+    /// localhost).</item>
+    /// </list>
+    /// When the evidence is missing, a path mapping is the way to say the folders are shared.
     /// </summary>
-    public static bool CanShareHostFolder(bool sameMachine, bool delunoInContainer, string hostFolder, string? clientReportedPath)
+    /// <summary>Tests replace the "does this folder exist on this host" answer for the code under test, and only for it.</summary>
+    public static readonly AsyncLocal<Func<string, bool>?> DirectoryExistsOverride = new();
+
+    public static bool CanShareHostFolder(
+        bool sameMachine,
+        bool delunoInContainer,
+        string hostFolder,
+        string? clientReportedPath,
+        Func<string, bool>? directoryExists = null)
     {
         if (!sameMachine || delunoInContainer)
         {
@@ -61,7 +80,12 @@ public static class ClientSaveFolders
 
         var clientStyle = StyleOf(clientReportedPath);
         var hostStyle = StyleOf(hostFolder);
-        return clientStyle == PathStyle.Unknown || hostStyle == PathStyle.Unknown || clientStyle == hostStyle;
+        if (clientStyle == PathStyle.Unknown || hostStyle == PathStyle.Unknown || clientStyle != hostStyle)
+        {
+            return false;
+        }
+
+        return (directoryExists ?? DirectoryExistsOverride.Value ?? Directory.Exists)(clientReportedPath!.Trim());
     }
 
     /// <summary>True when the client runs on this machine: localhost, a loopback or local address, or this computer's own name.</summary>
