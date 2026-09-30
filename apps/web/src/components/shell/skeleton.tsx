@@ -7,6 +7,7 @@ export function Skeleton({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-skeleton
       className={cn(
         "relative overflow-hidden rounded-md bg-surface-2",
         "before:absolute before:inset-0 before:-translate-x-full before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent before:animate-shimmer",
@@ -64,7 +65,7 @@ export function PosterSkeleton() {
  */
 export function RouteSkeleton() {
   return (
-    <div className="space-y-[var(--page-gap)]" aria-busy="true" aria-live="polite">
+    <div className="space-y-[var(--page-gap)]" aria-busy="true" aria-live="polite" data-route-skeleton>
       <div className="space-y-3">
         <Skeleton className="h-3 w-32" />
         <Skeleton className="h-9 w-2/3 max-w-xl" />

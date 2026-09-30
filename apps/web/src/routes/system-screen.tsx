@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { defineSources, queryClient, refetchSources, sourceLoader, useRouteSources, type RouteSource, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { sharedSources } from "../lib/shared-sources";
+import { RouteSourceGate } from "../components/shell/route-source-gate";
 import {
   Activity,
   BellRing,
@@ -28,7 +31,6 @@ import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { categoryLabel } from "../lib/activity-format";
 import {
-  emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
   type ActivityEventItem,
   type BackupItem,
@@ -42,7 +44,6 @@ import {
   type LibraryItem,
   type LibraryAutomationStateItem,
   type MonitoringDashboardSnapshot,
-  type PlatformSettingsSnapshot,
   type RestorePreviewResponse,
   type RecycleBinItem,
   type RecycleBinSettings,
@@ -71,30 +72,6 @@ import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
 import { formatDateTime, type DisplayPreferences, useDisplayPreferences } from "../lib/display-preferences";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 
-interface SystemLoaderData {
-  activity: ActivityEventItem[];
-  downloadClients: DownloadClientItem[];
-  processors: ProcessorConnectionItem[];
-  indexers: IndexerItem[];
-  jobs: JobQueueItem[];
-  libraries: LibraryItem[];
-  settings: PlatformSettingsSnapshot;
-  backups: BackupItem[];
-  backupSettings: BackupSettingsSnapshot;
-  updateStatus: UpdateStatusResponse;
-  automation: LibraryAutomationStateItem[];
-  searchCycles: SearchCycleRunItem[];
-  retryWindows: SearchRetryWindowItem[];
-  monitoring: MonitoringDashboardSnapshot;
-  systemTasks: SystemTaskItem[];
-  recycleBin: RecycleBinItem[];
-  recycleBinSettings: RecycleBinSettings;
-  lanAccess: LanAccessStatus | null;
-  healthChecks: HealthCheckListResponse;
-  systemInfo: SystemInstallationInfo | null;
-  activityDisplaySettings: { pageSize: number };
-}
-
 /** GET /api/system/info (#869): uptime, runtime, and app-data details for the "This installation" card. */
 interface SystemInstallationInfo {
   processStartUtc: string;
@@ -106,50 +83,82 @@ interface SystemInstallationInfo {
   appDataPath: string;
 }
 
-export async function systemLoader(): Promise<SystemLoaderData> {
+/**
+ * System opens on what it last showed and asks again behind it (#1081). The
+ * lists and small answers fill in as they arrive; what the page cannot be
+ * drawn without (settings, health, monitoring, backups, updates, the recycle
+ * bin setting) is waited for, in one wave rather than three.
+ */
+const emptyActivityDisplaySettings = { pageSize: 500 };
+
+const activityDisplaySettingsSource: RouteSource<{ pageSize: number }> = {
+  key: ["src", "activity-display-settings"],
+  label: "Timeline size",
   // #871: how many rows the timeline fetches and shows is a user setting now,
   // not a fixed 500-row cap.
-  const activityDisplaySettings = await fetchJson<{ pageSize: number }>("/api/activity/display-settings").catch(() => ({ pageSize: 500 }));
-  const [settings, libraries, jobs, activity, indexers, downloadClients, processors, backups, backupSettings, updateStatus, automation, searchCycles, retryWindows, monitoring, systemTasks, recycleBin, recycleBinSettings, lanAccess, healthChecks, systemInfo] = await Promise.all([
-    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"),
-    fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${activityDisplaySettings.pageSize}`),
-    fetchJson<IndexerItem[]>("/api/indexers"),
-    fetchJson<DownloadClientItem[]>("/api/download-clients"),
-    // A processor holds every file mid-import, and its health used to show on
-    // one settings chip and nowhere else (#577).
-    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections"),
-    fetchJson<BackupItem[]>("/api/backups"),
-    fetchJson<BackupSettingsSnapshot>("/api/backups/settings"),
-    fetchJson<UpdateStatusResponse>("/api/updates/status"),
-    fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"),
-    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=12"),
-    fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=12"),
-    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard"),
-    fetchJson<SystemTaskItem[]>("/api/system/tasks"),
-    fetchJson<RecycleBinItem[]>("/api/recycle-bin"),
-    fetchJson<RecycleBinSettings>("/api/recycle-bin/settings"),
-    // "Listening on" below used to echo the stored host.bindAddress/host.port
-    // as if they were live; Kestrel actually binds from Server:Port /
-    // Server:AllowLan configuration, so this reads the same effective values
-    // LanAccessNotice does (#736).
-    fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null),
+  fetch: () => fetchJson<{ pageSize: number }>("/api/activity/display-settings").catch(() => emptyActivityDisplaySettings),
+  fallback: emptyActivityDisplaySettings
+};
+
+export const systemSources = defineSources({
+  settings: sharedSources.settings,
+  healthChecks: {
     // #909: every health check's latest result, read by System -> Health, the
     // Dashboard tile, the bell and outbound notifications alike.
-    fetchJson<HealthCheckListResponse>("/api/system/health"),
-    // #869: uptime, process start, OS/runtime version, and app-data path,
-    // read live rather than hardcoded at build time.
-    fetchJson<SystemInstallationInfo>("/api/system/info").catch(() => null)
-  ]);
+    key: ["src", "system-health"], label: "Health checks", fetch: () => fetchJson<HealthCheckListResponse>("/api/system/health")
+  },
+  monitoring: { key: ["src", "monitoring"], label: "Monitoring", fetch: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard") },
+  backupSettings: { key: ["src", "backup-settings"], label: "Backup settings", fetch: () => fetchJson<BackupSettingsSnapshot>("/api/backups/settings") },
+  updateStatus: { key: ["src", "update-status"], label: "Update status", fetch: () => fetchJson<UpdateStatusResponse>("/api/updates/status") },
+  recycleBinSettings: { key: ["src", "recycle-bin-settings"], label: "Recycle bin settings", fetch: () => fetchJson<RecycleBinSettings>("/api/recycle-bin/settings") },
+  libraries: { ...sharedSources.libraries, fallback: [] as LibraryItem[] },
+  jobs: { key: ["src", "jobs-25"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"), fallback: [] as JobQueueItem[] },
+  activityDisplaySettings: activityDisplaySettingsSource,
+  activity: {
+    key: ["src", "system-activity"],
+    label: "Timeline",
+    fetch: async () => {
+      const { pageSize } = await queryClient.fetchQuery({ queryKey: activityDisplaySettingsSource.key, queryFn: activityDisplaySettingsSource.fetch, staleTime: 3_000 });
+      return fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${pageSize}`);
+    },
+    fallback: [] as ActivityEventItem[]
+  },
+  indexers: { ...sharedSources.indexers, fallback: [] as IndexerItem[] },
+  downloadClients: { ...sharedSources.downloadClients, fallback: [] as DownloadClientItem[] },
+  // A processor holds every file mid-import, and its health used to show on
+  // one settings chip and nowhere else (#577).
+  processors: { key: ["src", "processor-connections-system"], label: "Processors", fetch: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections"), fallback: [] as ProcessorConnectionItem[] },
+  backups: { key: ["src", "backups"], label: "Backups", fetch: () => fetchJson<BackupItem[]>("/api/backups"), fallback: [] as BackupItem[] },
+  automation: { key: ["src", "library-automation-50"], label: "Automation state", fetch: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50"), fallback: [] as LibraryAutomationStateItem[] },
+  searchCycles: { key: ["src", "search-cycles-12"], label: "Search runs", fetch: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=12"), fallback: [] as SearchCycleRunItem[] },
+  retryWindows: { key: ["src", "retry-windows-12"], label: "Retry windows", fetch: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=12"), fallback: [] as SearchRetryWindowItem[] },
+  systemTasks: { key: ["src", "system-tasks"], label: "Background tasks", fetch: () => fetchJson<SystemTaskItem[]>("/api/system/tasks"), fallback: [] as SystemTaskItem[] },
+  recycleBin: { key: ["src", "recycle-bin"], label: "Recycle bin", fetch: () => fetchJson<RecycleBinItem[]>("/api/recycle-bin"), fallback: [] as RecycleBinItem[] },
+  // "Listening on" below used to echo the stored host.bindAddress/host.port
+  // as if they were live; Kestrel actually binds from Server:Port /
+  // Server:AllowLan configuration, so this reads the same effective values
+  // LanAccessNotice does (#736).
+  lanAccess: { key: ["src", "lan-access"], label: "Network access", fetch: () => fetchJson<LanAccessStatus>("/api/system/lan-access").catch(() => null), fallback: null as LanAccessStatus | null },
+  // #869: uptime, process start, OS/runtime version, and app-data path,
+  // read live rather than hardcoded at build time.
+  systemInfo: { key: ["src", "system-info"], label: "This installation", fetch: () => fetchJson<SystemInstallationInfo>("/api/system/info").catch(() => null), fallback: null as SystemInstallationInfo | null }
+});
 
-  return { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus };
-}
+export const systemLoader = sourceLoader(systemSources);
+
+type SystemLoaderData = RouteSourceData<typeof systemSources>;
 
 export function SystemPage() {
+  const state = useRouteSources(systemSources);
+  return (
+    <RouteSourceGate state={state}>
+      {() => <SystemPageBody data={state.data} revalidator={state.revalidator} />}
+    </RouteSourceGate>
+  );
+}
+
+function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderData; revalidator: RouteSourceState<typeof systemSources>["revalidator"] }) {
   const location = useLocation();
-  const revalidator = useRevalidator();
-  const loaderData = useLoaderData() as SystemLoaderData;
   const { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
@@ -533,7 +542,7 @@ interface LeftoverCleanupRunResult {
 
 function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
   const { preferences } = useDisplayPreferences();
-  const revalidator = useRevalidator();
+  const revalidator = { revalidate: () => { void refetchSources(systemSources); } };
   const [running, setRunning] = useState<string | null>(null);
   const [said, setSaid] = useState<{ key: string; message: string } | null>(null);
 

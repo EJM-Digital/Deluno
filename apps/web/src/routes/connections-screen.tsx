@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { defineSources, queryClient, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { sharedSources } from "../lib/shared-sources";
+import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { ListChecks, Loader2, Plus, Wifi } from "lucide-react";
 import {
+  emptyPlatformSettingsSnapshot,
   fetchJson,
   readValidationProblem,
   type DownloadClientItem,
@@ -73,20 +77,6 @@ const PROXY_TYPE_LABELS: Record<string, string> = {
   flaresolverr: "FlareSolverr / Byparr"
 };
 
-interface LoaderData {
-  clients: DownloadClientItem[];
-  pathMappings: DownloadClientPathMappingItem[];
-  indexers: IndexerItem[];
-  libraries: LibraryItem[];
-  routing: LibraryRoutingSnapshot[];
-  settings: PlatformSettingsSnapshot;
-  telemetry: DownloadTelemetryOverview | null;
-  outboundThrottle: OutboundThrottleSnapshot;
-  scoreboard: IndexerScoreboardSnapshot;
-  proxies: ProxyItem[];
-  qbittorrentBlocklistSync: Record<string, QbittorrentBlocklistSyncState>;
-}
-
 type RouteCategories = Record<string, string>;
 /** Per indexer, the tags a title must carry (required) or must not carry (excluded) for this library to search it. */
 type RouteSourceTags = Record<string, { required: string; excluded: string }>;
@@ -100,31 +90,95 @@ function sameRouteCategories(left: RouteCategories, right: RouteCategories) {
   return [...keys].every((key) => (left[key] ?? "") === (right[key] ?? ""));
 }
 
-export async function indexersLoader(): Promise<LoaderData> {
-  const [indexers, clients, libraries, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync, pathMappings] = await Promise.all([
-    fetchJson<IndexerItem[]>("/api/indexers"),
-    fetchJson<DownloadClientItem[]>("/api/download-clients"),
-    fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
-    fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => ({ hosts: [] })),
-    fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard()),
-    fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => []),
-    // #822: the qBittorrent "Excluded file names" sync's own last-attempt
-    // state per client, for the Connections screen's client drawer.
-    fetchJson<Record<string, QbittorrentBlocklistSyncState>>("/api/download-health/content-blocklist/qbittorrent-sync-status").catch(() => ({})),
-    // The one shared list (#809): every mapping, across every host, rather
-    // than each client's own drawer view flattened together — which would
-    // show the same mapping twice the moment two clients share a host.
-    fetchJson<DownloadClientPathMappingItem[]>("/api/download-clients/path-mappings").catch(() => [])
-  ]);
-  const routing = await Promise.all(
-    libraries.map((lib) =>
-      fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${lib.id}/routing`).catch(() => ({ libraryId: lib.id, libraryName: lib.name, sources: [], downloadClients: [] }))
-    )
-  );
-  return { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync };
+/** Which tab of Find & Download an address opens. */
+export function indexersSectionFor(pathname: string): Section {
+  return pathname.endsWith("/scoreboard") ? "scoreboard" : pathname.endsWith("/download-clients") ? "clients" : pathname.endsWith("/path-mappings") ? "pathMappings" : pathname.endsWith("/library-routing") ? "routing" : pathname.endsWith("/proxies") ? "proxies" : "indexers";
 }
+
+const emptyOutboundThrottle: OutboundThrottleSnapshot = { hosts: [] };
+
+/**
+ * One set of cached sources behind every tab of Find & Download (#1081). A tab
+ * reads only what it shows: routing is read on Library Routing, the
+ * scoreboard on Scoreboard, the mappings on the two tabs that list them. The
+ * lists every tab needs (indexers, clients, libraries) are shared, so moving
+ * between tabs asks for nothing that is already there.
+ */
+export const indexersSources = defineSources({
+  indexers: sharedSources.indexers,
+  clients: sharedSources.downloadClients,
+  libraries: sharedSources.libraries,
+  settings: { ...sharedSources.settings, fallback: emptyPlatformSettingsSnapshot },
+  telemetry: {
+    key: ["src", "telemetry-soft"],
+    label: "Download activity",
+    fetch: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => null),
+    fallback: null as DownloadTelemetryOverview | null,
+    sections: ["clients"]
+  },
+  outboundThrottle: {
+    key: ["src", "outbound-throttle"],
+    label: "Search limits",
+    fetch: () => fetchJson<OutboundThrottleSnapshot>("/api/integrations/outbound-throttle").catch(() => emptyOutboundThrottle),
+    fallback: emptyOutboundThrottle,
+    sections: ["indexers"]
+  },
+  scoreboard: {
+    key: ["src", "indexer-scoreboard-30"],
+    label: "Indexer scoreboard",
+    fetch: () => fetchJson<IndexerScoreboardSnapshot>("/api/indexers/scoreboard?days=30").catch(() => emptyScoreboard()),
+    fallback: emptyScoreboard(),
+    sections: ["scoreboard"],
+    requiredIn: ["scoreboard"]
+  },
+  proxies: {
+    key: ["src", "indexer-proxies"],
+    label: "Proxies",
+    fetch: () => fetchJson<ProxyItem[]>("/api/indexer-proxies").catch(() => [] as ProxyItem[]),
+    fallback: [] as ProxyItem[],
+    sections: ["indexers", "proxies"],
+    requiredIn: ["proxies"]
+  },
+  // #822: the qBittorrent "Excluded file names" sync's own last-attempt
+  // state per client, for the Connections screen's client drawer.
+  qbittorrentBlocklistSync: {
+    key: ["src", "qbittorrent-blocklist-sync"],
+    label: "qBittorrent file-name sync",
+    fetch: () => fetchJson<Record<string, QbittorrentBlocklistSyncState>>("/api/download-health/content-blocklist/qbittorrent-sync-status").catch(() => ({} as Record<string, QbittorrentBlocklistSyncState>)),
+    fallback: {} as Record<string, QbittorrentBlocklistSyncState>,
+    sections: ["clients"]
+  },
+  // The one shared list (#809): every mapping, across every host, rather
+  // than each client's own drawer view flattened together, which would
+  // show the same mapping twice the moment two clients share a host.
+  pathMappings: {
+    key: ["src", "path-mappings"],
+    label: "Remote path mappings",
+    fetch: () => fetchJson<DownloadClientPathMappingItem[]>("/api/download-clients/path-mappings").catch(() => [] as DownloadClientPathMappingItem[]),
+    fallback: [] as DownloadClientPathMappingItem[],
+    sections: ["clients", "pathMappings"],
+    requiredIn: ["pathMappings"]
+  },
+  // Which libraries search which sources: needs the library list first, then
+  // one small request per library, all in the background of the tabs that
+  // only mention it.
+  routing: {
+    key: ["src", "library-routing"],
+    label: "Library routing",
+    fetch: async () => {
+      const libraries = await queryClient.fetchQuery({ queryKey: sharedSources.libraries.key, queryFn: sharedSources.libraries.fetch, staleTime: 3_000 });
+      return Promise.all(
+        libraries.map((lib) =>
+          fetchJson<LibraryRoutingSnapshot>(`/api/libraries/${lib.id}/routing`).catch((): LibraryRoutingSnapshot => ({ libraryId: lib.id, libraryName: lib.name, sources: [], downloadClients: [] }))
+        )
+      );
+    },
+    fallback: [] as LibraryRoutingSnapshot[],
+    requiredIn: ["routing"]
+  }
+});
+
+export const indexersLoader = sourceLoader(indexersSources, (request) => indexersSectionFor(new URL(request.url).pathname));
 
 function emptyScoreboard(): IndexerScoreboardSnapshot {
   return {
@@ -309,15 +363,24 @@ export function buildProxySavePayload(form: ProxyForm) {
 }
 
 export function IndexersPage() {
-  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync } = useLoaderData() as LoaderData;
+  const { pathname } = useLocation();
+  const state = useRouteSources(indexersSources, indexersSectionFor(pathname));
+  return (
+    <RouteSourceGate state={state}>
+      {() => <IndexersPageBody data={state.data} revalidator={state.revalidator} />}
+    </RouteSourceGate>
+  );
+}
+
+function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof indexersSources>; revalidator: RouteSourceState<typeof indexersSources>["revalidator"] }) {
+  const { clients, pathMappings, indexers, libraries, routing, settings, telemetry, outboundThrottle, scoreboard, proxies, qbittorrentBlocklistSync } = data;
   const location = useLocation();
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
   const settingsMutation = useApiMutation<PlatformSettingsPatch, PlatformSettingsSnapshot>("/api/settings", "PATCH");
   const lastTelemetryRefresh = useRef(0);
   const [liveOutboundThrottle, setLiveOutboundThrottle] = useState(outboundThrottle);
 
-  const section: Section = location.pathname.endsWith("/scoreboard") ? "scoreboard" : location.pathname.endsWith("/download-clients") ? "clients" : location.pathname.endsWith("/path-mappings") ? "pathMappings" : location.pathname.endsWith("/library-routing") ? "routing" : location.pathname.endsWith("/proxies") ? "proxies" : "indexers";
+  const section: Section = indexersSectionFor(location.pathname);
 
   useEffect(() => {
     setLiveOutboundThrottle(outboundThrottle);
@@ -333,11 +396,13 @@ export function IndexersPage() {
       .catch(() => undefined);
   }, 5000);
 
+  // Download progress only moves the figures of the download clients, so it
+  // asks for those and nothing else: not the indexers, the libraries or the routing.
   useSignalREvent("DownloadProgress", RealtimeGroups.Queue, () => {
     const now = Date.now();
-    if (revalidator.state === "idle" && now - lastTelemetryRefresh.current > 5000) {
+    if (section === "clients" && now - lastTelemetryRefresh.current > 5000) {
       lastTelemetryRefresh.current = now;
-      revalidator.revalidate();
+      void queryClient.invalidateQueries({ queryKey: indexersSources.telemetry.key, exact: true });
     }
   });
 

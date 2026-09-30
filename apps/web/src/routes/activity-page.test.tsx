@@ -124,9 +124,15 @@ const loaderData = {
 const revalidateMock = vi.fn();
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => loaderData,
-  useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" })
 }));
+
+vi.mock("../lib/route-cache", async (importOriginal) => {
+  const { readyRouteSources } = await import("../test/route-sources");
+  return {
+    ...(await importOriginal<typeof import("../lib/route-cache")>()),
+    useRouteSources: () => readyRouteSources(loaderData, revalidateMock)
+  };
+});
 
 const { ActivityPage } = await import("./activity-page");
 

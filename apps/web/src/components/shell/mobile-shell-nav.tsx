@@ -7,6 +7,7 @@ import { cn } from "../../lib/utils";
 import type { AttentionSnapshot } from "../../lib/use-attention";
 import { configurationNavAreas, maintenanceNavItems } from "../app/settings-shell";
 import { DelunoNavGlyph, type DelunoNavGlyphKind } from "./deluno-nav-glyph";
+import { prefetchHandlers } from "../../lib/route-prefetch";
 
 /** The shape both sidebar area lists share. */
 interface MobileNavArea {
@@ -100,12 +101,13 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                   to={tab.to}
                   end={tab.end}
                   style={NAV_ACCENT_STYLE}
-                  className={({ isActive }) =>
+                  {...prefetchHandlers(tab.to)}
+                  className={({ isActive, isPending }) =>
                     cn(
                       "relative flex min-w-0 w-full flex-col items-center justify-center gap-0.5 px-0.5",
                       "text-[length:var(--shell-subtle-size)] font-semibold leading-tight tracking-tight text-muted-foreground transition-colors",
                       "active:bg-muted/40 tap-target",
-                      isActive && "text-[var(--nav-accent)]"
+                      (isActive || isPending) && "text-[var(--nav-accent)]"
                     )
                   }
                 >
@@ -204,6 +206,7 @@ export function MobileShellNav({ attention, user, onLogout }: MobileShellNavProp
                         <NavLink
                           to={item.to}
                           style={NAV_ACCENT_STYLE}
+                          {...prefetchHandlers(item.to)}
                           className={cn(
                             "relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-dynamic-base font-medium transition-colors",
                             isActive
@@ -280,6 +283,7 @@ function MobileAreaRow({
           <NavLink
             to={area.to}
             style={NAV_ACCENT_STYLE}
+            {...prefetchHandlers(area.to)}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 text-dynamic-base font-bold transition-colors",
               isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"

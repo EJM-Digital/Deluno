@@ -17,10 +17,12 @@
  */
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router-dom";
+import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { emptyRecovery, sharedSources } from "../lib/shared-sources";
+import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { RefreshCw } from "lucide-react";
 import {
-  fetchJson, fetchPageItems,
+  fetchPageItems,
   type ActivityEventItem,
   type DownloadDispatchItem,
   type JobQueueItem,
@@ -28,7 +30,7 @@ import {
   type SeriesImportRecoverySummary
 } from "../lib/api";
 import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
-import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
+import { dismissFailedJob } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -50,7 +52,6 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
-import { useLiveInterval } from "../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import {
@@ -72,15 +73,6 @@ import {
   SEASON_PACK_LEFTOVERS_DELETED_CATEGORY
 } from "../lib/season-pack-leftovers";
 
-interface ActivityLoaderData {
-  activity: ActivityEventItem[];
-  dispatches: DownloadDispatchItem[];
-  failedJobs: JobQueueItem[];
-  jobs: JobQueueItem[];
-  movieRecovery: MovieImportRecoverySummary;
-  seriesRecovery: SeriesImportRecoverySummary;
-}
-
 type Section = "jobs" | "events" | "imports";
 
 /** Persisted column choice for the Events table (#798). Category and When are
@@ -92,22 +84,35 @@ const EVENT_OPTIONAL_COLUMNS: readonly ColumnDefinition[] = [
   { key: "when", label: "When", defaultVisible: true }
 ];
 
-export async function activityLoader(): Promise<ActivityLoaderData> {
-  const [jobs, failedJobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
-    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24&includePayload=true"),
-    fetchFailedJobs(),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"),
-    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
-    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500")
-  ]);
+/**
+ * Active work needs a short refresh, so only the lists that move (jobs,
+ * failures, events, sends) are asked again every ten seconds, and only while
+ * the tab is on screen (#1081). Everything else is read when the screen opens
+ * and when something it shows changes. The screen opens on what it last showed.
+ */
+const ACTIVE_REFRESH = { refetchInterval: 10_000, pauseWhenHidden: true } as const;
 
-  return { activity, dispatches, failedJobs, jobs, movieRecovery, seriesRecovery };
-}
+export const activitySources = defineSources({
+  jobs: { key: ["src", "jobs-24"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24&includePayload=true"), ...ACTIVE_REFRESH },
+  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[], ...ACTIVE_REFRESH },
+  activity: { key: ["src", "activity-40"], label: "Events", fetch: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"), ...ACTIVE_REFRESH },
+  dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[], ...ACTIVE_REFRESH },
+  movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
+  seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary }
+});
+
+export const activityLoader = sourceLoader(activitySources);
 
 export function ActivityPage() {
-  const loaderData = useLoaderData() as ActivityLoaderData;
-  const revalidator = useRevalidator();
+  const state = useRouteSources(activitySources);
+  return (
+    <RouteSourceGate state={state}>
+      {() => <ActivityPageBody data={state.data} revalidator={state.revalidator} />}
+    </RouteSourceGate>
+  );
+}
+
+function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSourceData<typeof activitySources>; revalidator: RouteSourceState<typeof activitySources>["revalidator"] }) {
   const lastDispatchRefresh = useRef(0);
   const [section, setSection] = useState<Section>("jobs");
   const [openJobId, setOpenJobId] = useState<string | null>(null);
@@ -120,10 +125,6 @@ export function ActivityPage() {
   const [deletingLeftovers, setDeletingLeftovers] = useState(false);
   const { preferences } = useDisplayPreferences();
   const eventColumns = useColumnVisibility("activity-page.events-columns", EVENT_OPTIONAL_COLUMNS);
-
-  // Active work needs a short refresh, and it keeps running while the tab is
-  // hidden so the screen is already current when it is looked at (#641).
-  useLiveInterval(() => revalidator.revalidate(), 10_000);
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();

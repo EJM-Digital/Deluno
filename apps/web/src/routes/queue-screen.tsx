@@ -19,10 +19,14 @@
  */
 import { statusPresentation, statusTone } from "../lib/status-tones";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLoaderData, useRevalidator, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
+import { emptyRecovery, sharedSources } from "../lib/shared-sources";
+import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { ArrowDownToLine, ArrowUpToLine, ChevronDown, ChevronUp, Loader2, Pause, Play, RefreshCw, RotateCw, Trash2, Upload, Zap } from "lucide-react";
 import {
   ApiRequestError,
+  emptyPlatformSettingsSnapshot,
   fetchJson, fetchPageItems,
   type DownloadCleanupPreview,
   type DownloadDispatchDetail,
@@ -55,7 +59,7 @@ import { authedFetch } from "../lib/use-auth";
 import { formatBytes } from "../lib/utils";
 import { resolveImportSourcePath } from "../lib/import-source";
 import { fileProvenanceFromTimeline } from "../lib/dispatch-provenance";
-import { dismissFailedJob, fetchFailedJobs } from "../lib/failed-jobs";
+import { dismissFailedJob } from "../lib/failed-jobs";
 import { JOB_STATUS, isJobActive, isJobDeadLettered, isJobFailed, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { clientHistoryOutcomeLabel, downloadQueueStatuses, isImportReadyStatus, isProcessingStatus, queueStatusLabel } from "../lib/download-telemetry";
 import { parseImportJobPayload } from "../lib/import-job-payload";
@@ -129,49 +133,38 @@ interface FolderScanRow {
   checking: boolean;
 }
 
-interface QueueLoaderData {
-  telemetry: DownloadTelemetryOverview;
-  dispatches: DownloadDispatchItem[];
-  movieRecovery: MovieImportRecoverySummary;
-  seriesRecovery: SeriesImportRecoverySummary;
-  libraries: LibraryItem[];
-  settings: PlatformSettingsSnapshot;
-  jobs: JobQueueItem[];
-  failedJobs: JobQueueItem[];
-  healthRecords: DownloadHealthRecord[];
-  processorConnections: ProcessorConnectionItem[];
-  processorHandoffs: ProcessorHandoffItem[];
-  activityEvents: ActivityEventItem[];
-  orphans: OrphanedDownloadItem[];
-}
+/**
+ * Transfers opens on the answers it already has and asks again behind them
+ * (#1081). Only the downloads and what was sent are waited for; everything else
+ * fills in as it arrives, and a source that fails says so on the screen with a
+ * Retry rather than taking the whole page to the error screen.
+ */
+export const queueSources = defineSources({
+  telemetry: sharedSources.telemetry,
+  dispatches: sharedSources.dispatches,
+  movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
+  seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary },
+  libraries: { ...sharedSources.libraries, fallback: [] as LibraryItem[] },
+  settings: { ...sharedSources.settings, fallback: emptyPlatformSettingsSnapshot },
+  jobs: { key: ["src", "jobs-80"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80&includePayload=true"), fallback: [] as JobQueueItem[] },
+  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
+  healthRecords: { key: ["src", "download-health-30"], label: "Download health", fetch: () => fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"), fallback: [] as DownloadHealthRecord[] },
+  processorConnections: {
+    key: ["src", "processor-connections"],
+    label: "Processors",
+    fetch: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((error) => {
+      if (error instanceof ApiRequestError && error.status === 404) return [];
+      throw error;
+    }),
+    fallback: [] as ProcessorConnectionItem[]
+  },
+  processorHandoffs: { ...sharedSources.handoffs, fallback: [] as ProcessorHandoffItem[] },
+  activityEvents: { key: ["src", "activity-dispatch-80"], label: "What happened to each download", fetch: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch"), fallback: [] as ActivityEventItem[] },
+  // Orphaned download folders (#588). An older API without the endpoint shows none.
+  orphans: { ...sharedSources.orphans, fallback: [] as OrphanedDownloadItem[] }
+});
 
-export async function queueLoader(): Promise<QueueLoaderData> {
-  const [telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans] = await Promise.all([
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
-    fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=60"),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
-    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500"),
-    fetchJson<LibraryItem[]>("/api/libraries"),
-    fetchJson<PlatformSettingsSnapshot>("/api/settings"),
-    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=80&includePayload=true"),
-    fetchFailedJobs(),
-    fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=30"),
-    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((error) => {
-      if (error instanceof ApiRequestError && error.status === 404) return [];
-      throw error;
-    }),
-    fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=30").catch((error) => {
-      // Permit a newly deployed web build to remain usable during a rolling upgrade
-      // while an older local API is still running. Other failures remain visible.
-      if (error instanceof ApiRequestError && error.status === 404) return [];
-      throw error;
-    }),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80&relatedEntityType=download_dispatch"),
-    // Orphaned download folders (#588). An older API without the endpoint shows none.
-    fetchJson<OrphanedDownloadItem[]>("/api/download-clients/orphans").catch(() => [])
-  ]);
-  return { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans };
-}
+export const queueLoader = sourceLoader(queueSources);
 
 /** One row shape for every kind of thing that has already happened. */
 interface ActivityEntry {
@@ -189,9 +182,16 @@ interface ActivityEntry {
 type DrawerMode = { kind: "queue"; id: string } | { kind: "manual" } | { kind: "activity"; id: string } | { kind: "dispatch"; id: string } | null;
 
 export function QueuePage() {
-  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans } =
-    useLoaderData() as QueueLoaderData;
-  const revalidator = useRevalidator();
+  const state = useRouteSources(queueSources);
+  return (
+    <RouteSourceGate state={state}>
+      {() => <QueuePageBody data={state.data} revalidator={state.revalidator} />}
+    </RouteSourceGate>
+  );
+}
+
+function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof queueSources>; revalidator: RouteSourceState<typeof queueSources>["revalidator"] }) {
+  const { telemetry, dispatches, movieRecovery, seriesRecovery, libraries, settings, jobs, failedJobs, healthRecords, processorConnections, processorHandoffs, activityEvents, orphans } = data;
   const lastDispatchRefresh = useRef(0);
   const { preferences } = useDisplayPreferences();
   const queueColumns = useColumnVisibility("queue-screen.columns", QUEUE_OPTIONAL_COLUMNS);

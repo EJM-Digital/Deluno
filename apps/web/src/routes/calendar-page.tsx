@@ -9,7 +9,9 @@
  * Contracts: GET /api/series/calendar?from&to, GET /api/movies/calendar?from&to.
  */
 import { useMemo, useState } from "react";
-import { useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { defineSources, sourceLoader, useRouteSources } from "../lib/route-cache";
+import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { CalendarPlus, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { fetchJson } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -80,7 +82,9 @@ interface CalendarLoaderData {
 const WINDOW_DAYS_BACK = 45;
 const WINDOW_DAYS_FORWARD = 120;
 
-export async function calendarLoader(): Promise<CalendarLoaderData> {
+const calendarSourceSets = new Map<string, ReturnType<typeof buildCalendarSources>>();
+
+function buildCalendarSources() {
   const from = new Date();
   from.setDate(from.getDate() - WINDOW_DAYS_BACK);
   const to = new Date();
@@ -89,12 +93,34 @@ export async function calendarLoader(): Promise<CalendarLoaderData> {
   const range = `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
   const movieRange = `from=${isoDate(from)}&to=${isoDate(to)}`;
 
-  const [episodes, movies] = await Promise.all([
-    fetchJson<SeriesCalendarEpisode[]>(`/api/series/calendar?${range}`).catch(() => []),
-    fetchJson<MovieCalendarEntry[]>(`/api/movies/calendar?${movieRange}`).catch(() => [])
-  ]);
+  return defineSources({
+    episodes: {
+      key: ["src", "calendar-episodes", isoDate(from), isoDate(to)],
+      label: "Upcoming episodes",
+      fetch: () => fetchJson<SeriesCalendarEpisode[]>(`/api/series/calendar?${range}`).catch(() => [] as SeriesCalendarEpisode[])
+    },
+    movies: {
+      key: ["src", "calendar-movies", isoDate(from), isoDate(to)],
+      label: "Upcoming movies",
+      fetch: () => fetchJson<MovieCalendarEntry[]>(`/api/movies/calendar?${movieRange}`).catch(() => [] as MovieCalendarEntry[])
+    }
+  });
+}
 
-  return { episodes, movies };
+/** The window moves with the day, so each day has its own set of sources. */
+function calendarSources() {
+  const today = isoDate(new Date());
+  let sources = calendarSourceSets.get(today);
+  if (!sources) {
+    sources = buildCalendarSources();
+    calendarSourceSets.clear();
+    calendarSourceSets.set(today, sources);
+  }
+  return sources;
+}
+
+export function calendarLoader() {
+  return sourceLoader(calendarSources())();
 }
 
 /**
@@ -160,9 +186,16 @@ interface CalendarEntry {
 }
 
 export function CalendarPage() {
-  const loaderData = useLoaderData() as CalendarLoaderData;
+  const state = useRouteSources(calendarSources());
+  return (
+    <RouteSourceGate state={state}>
+      {() => <CalendarPageBody data={state.data} revalidator={state.revalidator} />}
+    </RouteSourceGate>
+  );
+}
+
+function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoaderData; revalidator: { revalidate: () => void; state: "idle" | "loading" } }) {
   const navigate = useNavigate();
-  const revalidator = useRevalidator();
   const [scope, setScope] = useState<Scope>("month");
   const [view, setView] = useState<View>("grid");
   const [offset, setOffset] = useState(0);
