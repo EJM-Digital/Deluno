@@ -81,9 +81,11 @@ function renderCard(card: JourneyCard, poster: string | undefined, arrived: bool
         ) : null}
         <span className="min-w-0 flex-1">
           <span title={card.title} className="line-clamp-2 break-words text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{card.title}</span>
-          <span className={cn("mt-0.5 flex items-start gap-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
-            <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
-            <span className="line-clamp-2 min-w-0 flex-1 break-words">{card.state.label}</span>
+          <span className={cn("mt-0.5 flex flex-wrap items-start gap-x-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
+            <span className="flex min-w-0 max-w-full items-start gap-1.5">
+              <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
+              <span className="line-clamp-2 min-w-0 break-words">{card.state.label}</span>
+            </span>
             {downloading && formatEta(card.etaSeconds) !== "–" ? <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{formatEta(card.etaSeconds)}</span> : null}
           </span>
           {downloading ? (
