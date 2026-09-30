@@ -88,7 +88,36 @@ public sealed class SqliteSecurityRepository(
             CreatedUtc: ParseTimestamp(reader.GetString(6)));
     }
 
+    // Every authenticated request looks its user up here. The row only changes on a
+    // password change, a sign-out-everywhere or first-run setup, all of which go
+    // through this repository and drop the cache, so a short-lived copy is safe (#1081).
+    private static readonly TimeSpan UserCacheLifetime = TimeSpan.FromSeconds(30);
+    private readonly ConcurrentDictionary<string, (UserItem User, DateTimeOffset ExpiresUtc)> userCache = new();
+
     public async Task<UserItem?> GetUserByIdAsync(
+        string id,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        if (userCache.TryGetValue(id, out var hit) && hit.ExpiresUtc > now)
+        {
+            return hit.User;
+        }
+
+        var user = await ReadUserByIdAsync(id, cancellationToken);
+        if (user is null)
+        {
+            userCache.TryRemove(id, out _);
+        }
+        else
+        {
+            userCache[id] = (user, now + UserCacheLifetime);
+        }
+
+        return user;
+    }
+
+    private async Task<UserItem?> ReadUserByIdAsync(
         string id,
         CancellationToken cancellationToken)
     {
@@ -334,7 +363,9 @@ public sealed class SqliteSecurityRepository(
         AddParameter(updateCommand, "@securityStamp", CreateSecurityStamp());
         AddParameter(updateCommand, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
 
-        return await updateCommand.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var changed = await updateCommand.ExecuteNonQueryAsync(cancellationToken) > 0;
+        userCache.Clear();
+        return changed;
     }
 
     public async Task<bool> RevokeUserAccessTokensAsync(
@@ -357,7 +388,9 @@ public sealed class SqliteSecurityRepository(
         AddParameter(command, "@securityStamp", CreateSecurityStamp());
         AddParameter(command, "@updatedUtc", timeProvider.GetUtcNow().ToString("O"));
 
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var changed = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        userCache.Clear();
+        return changed;
     }
 
     public async Task<UserItem> BootstrapUserAsync(

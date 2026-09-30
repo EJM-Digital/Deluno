@@ -11,6 +11,7 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> InitializationLocks = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, byte> InitializedPaths = new(StringComparer.OrdinalIgnoreCase);
+    private const long ConfiguredBusyTimeoutMs = 5000;
 
     private static readonly IReadOnlyDictionary<string, DatabaseDescriptor> DatabaseLookup =
         DelunoStorageLayout.Databases.ToDictionary(database => database.Key, StringComparer.OrdinalIgnoreCase);
@@ -128,7 +129,24 @@ public sealed class SqliteDatabaseConnectionFactory(IOptions<StoragePathOptions>
 
         try
         {
+            // A connection handed back by the pool keeps the pragmas set the first time it
+            // was opened, and Microsoft.Data.Sqlite opens every connection with busy_timeout
+            // at the command timeout (30 s), never at ConfiguredBusyTimeoutMs. So when this
+            // connection already reads back our value, the batch below has been applied and
+            // repeating it on every open is seven wasted statements (#1081).
             using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA busy_timeout;";
+            var current = await command.ExecuteScalarAsync(cancellationToken);
+            if (current is long currentTimeout && currentTimeout == ConfiguredBusyTimeoutMs)
+            {
+                if (applyInitializationPragmas)
+                {
+                    InitializedPaths.TryAdd(databasePath, 0);
+                }
+
+                return connection;
+            }
+
 
             // Per-connection pragmas. These do not persist in the file, so
             // every connection has to set them. journal_mode and

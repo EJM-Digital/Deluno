@@ -1,3 +1,4 @@
+using Deluno.Host;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Deluno.Api;
@@ -117,6 +118,8 @@ var loginWindowSeconds = builder.Configuration.GetValue<int?>("Security:Login:Wi
 // does by opening tabs.
 var apiPermitLimit = builder.Configuration.GetValue<int?>("Security:Api:PermitLimit") ?? ApiRateLimitDefaults.DefaultPermitLimit;
 var apiWindowSeconds = builder.Configuration.GetValue<int?>("Security:Api:WindowSeconds") ?? ApiRateLimitDefaults.DefaultWindowSeconds;
+
+builder.Services.AddDelunoResponseCompression();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -294,8 +297,15 @@ app.Use(async (context, next) =>
 });
 
 app.UseRateLimiter();
+// JSON and the UI bundle are text, so Brotli/Gzip at the fastest level cuts the bytes
+// sent for every screen (#1081). Live event streams are not in the compressible MIME
+// list, so SignalR and server-sent events pass through untouched.
+app.UseResponseCompression();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = DelunoStaticFileCaching.Apply
+});
 app.UseDelunoApiUnmatchedPathGuard();
 app.UseDelunoCorrelation();
 app.UseAuthentication();
@@ -367,6 +377,7 @@ app.MapFallback(async context =>
     // guess and renders index.html as plain text. Every client-side route comes
     // through here, so the whole app looks like raw source until it is set.
     context.Response.ContentType = "text/html; charset=utf-8";
+    context.Response.Headers.CacheControl = DelunoStaticFileCaching.HtmlCacheControl;
     await context.Response.SendFileAsync(indexPath);
 });
 
