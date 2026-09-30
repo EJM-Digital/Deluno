@@ -70,4 +70,70 @@ public sealed class MovieFilePathSafetyTests
         Assert.False(MovieFilePathSafety.TryResolveWithinFolder(folder, "", out _));
         Assert.False(MovieFilePathSafety.TryResolveWithinFolder(folder, "   ", out _));
     }
+
+    [Fact]
+    public void A_symlink_inside_the_folder_that_leads_outside_is_refused()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "deluno-links-" + Guid.NewGuid().ToString("N"));
+        var folder = Path.Combine(root, "Dune");
+        var outside = Path.Combine(root, "Elsewhere");
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(outside, "secret.mkv"), "x");
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(Path.Combine(folder, "link"), outside);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+            {
+                return; // no privilege to create links on this machine
+            }
+
+            Assert.False(MovieFilePathSafety.TryResolveWithinFolder(folder, Path.Combine(folder, "link", "secret.mkv"), out _));
+            Assert.True(MovieFilePathSafety.TryResolveWithinFolder(folder, Path.Combine(folder, "real.mkv"), out _));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_film_filed_directly_in_the_library_root_is_detected_as_flat()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        Assert.True(MovieFilePathSafety.IsFiledFlat(Path.Combine(root, "Heat (1995).mkv"), [root + Path.DirectorySeparatorChar]));
+        Assert.False(MovieFilePathSafety.IsFiledFlat(Path.Combine(root, "Heat (1995)", "Heat (1995).mkv"), [root]));
+    }
+
+    [Theory]
+    [InlineData("Heat (1995).mkv", true)]
+    [InlineData("Heat (1995).en.srt", true)]
+    [InlineData("Heat (1995).en.forced.srt", true)]
+    [InlineData("Heat (1995).nfo", true)]
+    [InlineData("Heat (1995)-poster.jpg", true)]
+    [InlineData("Heat (1995).sample.mkv", false)]
+    [InlineData("Ronin (1998).mkv", false)]
+    [InlineData("Ronin (1998).en.srt", false)]
+    [InlineData("Heat (1995) Extended.en.srt", false)]
+    [InlineData("Heat (1995).Extended.en.srt", false)]
+    [InlineData("Heat (1995).Directors.Cut.mkv", false)]
+    public void A_flat_film_only_owns_its_own_named_files(string fileName, bool expected)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        var primary = Path.Combine(root, "Heat (1995).mkv");
+
+        Assert.Equal(expected, MovieFilePathSafety.BelongsToFlatFilm(primary, Path.Combine(root, fileName)));
+    }
+
+    [Fact]
+    public void A_flat_film_does_not_own_files_in_a_subfolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "movies");
+        Assert.False(MovieFilePathSafety.BelongsToFlatFilm(
+            Path.Combine(root, "Heat (1995).mkv"),
+            Path.Combine(root, "Other", "Heat (1995).en.srt")));
+    }
 }

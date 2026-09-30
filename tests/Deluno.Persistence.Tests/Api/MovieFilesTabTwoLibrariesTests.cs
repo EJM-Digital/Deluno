@@ -90,6 +90,41 @@ public sealed class MovieFilesTabTwoLibrariesTests
         Assert.Empty(await movies.ListNotWantedLibraryIdsAsync(film.MovieId, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task A_film_filed_flat_in_the_library_root_lists_and_deletes_only_its_own_files()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var root = Directory.CreateDirectory(Path.Combine(app.DataRoot, "FlatFilms")).FullName;
+        var library = await CreateLibraryAsync(app, "Flat films", root);
+        var heat = Path.Combine(root, "Heat (1995).mkv");
+        var heatSubtitle = Path.Combine(root, "Heat (1995).en.srt");
+        var ronin = Path.Combine(root, "Ronin (1998).mkv");
+        var roninSubtitle = Path.Combine(root, "Ronin (1998).en.srt");
+        foreach (var path in new[] { heat, heatSubtitle, ronin, roninSubtitle })
+        {
+            await File.WriteAllBytesAsync(path, [1, 2, 3, 4]);
+        }
+
+        var movies = app.Services.GetRequiredService<IMovieCatalogRepository>();
+        await movies.ImportExistingAsync(library, "Heat", 1995, "covered", "x", "Bluray-1080p", "Bluray-1080p", true, heat, 4, CancellationToken.None);
+        var movieId = Assert.Single(await movies.ListAsync(CancellationToken.None)).Id;
+
+        var response = await app.Client.GetAsync($"/api/movies/{movieId}/files");
+        Assert.True(response.IsSuccessStatusCode, await response.Content.ReadAsStringAsync());
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var listed = document.RootElement.EnumerateArray().Select(item => item.GetProperty("path").GetString()!).ToArray();
+        Assert.DoesNotContain(listed, path => path.Contains("Ronin", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(listed, path => string.Equals(path, heat, StringComparison.OrdinalIgnoreCase));
+
+        Assert.False((await DeleteAsync(app, movieId, ronin, library)).IsSuccessStatusCode);
+        Assert.False((await DeleteAsync(app, movieId, roninSubtitle, library)).IsSuccessStatusCode);
+        Assert.True(File.Exists(ronin));
+        Assert.True(File.Exists(roninSubtitle));
+
+        Assert.True((await DeleteAsync(app, movieId, heatSubtitle, library)).IsSuccessStatusCode);
+        Assert.False(File.Exists(heatSubtitle));
+    }
+
     private static Task<HttpResponseMessage> DeleteAsync(ApplicationTestHost app, string movieId, string path, string? libraryId)
         => app.Client.SendAsync(new HttpRequestMessage(HttpMethod.Delete, $"/api/movies/{movieId}/files")
         {
