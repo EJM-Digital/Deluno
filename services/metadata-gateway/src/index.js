@@ -17,6 +17,9 @@ const MAX_RESULTS = 6;
 // cached answer, and TMDb sees a single origin it can rate-limit sensibly.
 const MAX_SEASONS = 50;
 const ARTWORK_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
+// A popular list reshuffles through the day, so it is kept only a few hours.
+const POPULAR_TTL_SECONDS = 60 * 60 * 3;
+const MAX_POPULAR_PAGE = 500;
 const PERSON_EXTERNAL_IDS_TTL_SECONDS = 60 * 60 * 24 * 365;
 const ARTWORK_SIZES = new Set(["w92", "w185", "w342", "w500", "w780", "w1280", "original"]);
 
@@ -93,7 +96,7 @@ export default {
     }
 
     if (route.kind !== "search") {
-      return serveCatalogueRoute(route, env);
+      return serveCatalogueRoute(route, env, url.searchParams);
     }
 
     const key = await boundCacheKey(buildCacheKey(lookup.value));
@@ -169,6 +172,16 @@ export function matchRoute(pathname) {
     return { kind: "translations", mediaKind: translations[1], id: translations[2] };
   }
 
+  const episodeGroups = /^\/metadata\/tv\/(\d{1,12})\/episode-groups$/.exec(pathname);
+  if (episodeGroups) {
+    return { kind: "episode-groups", id: episodeGroups[1] };
+  }
+
+  const popular = /^\/metadata\/(movies?|tv)\/popular$/.exec(pathname);
+  if (popular) {
+    return { kind: "popular", mediaType: popular[1] === "tv" ? "tv" : "movies" };
+  }
+
   const personImdb = /^\/person\/(\d{1,12})\/imdb$/.exec(pathname);
   if (personImdb) {
     return { kind: "person-imdb", id: personImdb[1] };
@@ -235,9 +248,14 @@ function redirectToImdb(imdbId) {
   });
 }
 
-async function serveCatalogueRoute(route, env) {
+async function serveCatalogueRoute(route, env, params = new URLSearchParams()) {
+  const page = route.kind === "popular" ? parsePopularPage(params) : 1;
   const key = route.kind === "catalogue"
     ? `catalogue:v1:${route.id}`
+    : route.kind === "episode-groups"
+      ? `episode-groups:v1:${route.id}`
+      : route.kind === "popular"
+        ? `popular:v1:${route.mediaType}:${page}`
     : route.kind === "release-dates"
       ? `release-dates:v1:${route.id}`
       : route.kind === "translations"
@@ -256,6 +274,10 @@ async function serveCatalogueRoute(route, env) {
   try {
     const payload = route.kind === "catalogue"
       ? await lookupSeriesCatalogue(route.id, env.TMDB_API_KEY)
+      : route.kind === "episode-groups"
+        ? await lookupEpisodeGroups(route.id, env.TMDB_API_KEY)
+        : route.kind === "popular"
+          ? await lookupPopular(route.mediaType, page, env.TMDB_API_KEY)
       : route.kind === "release-dates"
         ? await lookupMovieReleaseDates(route.id, env.TMDB_API_KEY)
         : route.kind === "translations"
@@ -266,7 +288,11 @@ async function serveCatalogueRoute(route, env) {
       env.METADATA_CACHE,
       key,
       payload,
-      route.kind === "translations" ? TRANSLATIONS_TTL_SECONDS : CATALOGUE_TTL_SECONDS);
+      route.kind === "translations"
+        ? TRANSLATIONS_TTL_SECONDS
+        : route.kind === "popular"
+          ? POPULAR_TTL_SECONDS
+          : CATALOGUE_TTL_SECONDS);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
     const providerStatus = error instanceof TmdbRequestError ? error.status : 502;
@@ -282,6 +308,129 @@ async function serveCatalogueRoute(route, env) {
     await cacheError(env.METADATA_CACHE, key, failure);
     return json(failure.body, failure.status, failure.headers);
   }
+}
+
+export function parsePopularPage(params) {
+  const page = Number.parseInt(params.get("page") ?? "1", 10);
+  return Number.isInteger(page) ? Math.min(Math.max(page, 1), MAX_POPULAR_PAGE) : 1;
+}
+
+/**
+ * TMDb's popular list, trimmed to the fields Deluno's Discover grid reads and in
+ * TMDb's own field names, which is the shape the app's client parses.
+ */
+export async function lookupPopular(mediaType, page, apiKey, request = fetch) {
+  const endpoint = new URL(`https://api.themoviedb.org/3/${mediaType === "tv" ? "tv" : "movie"}/popular`);
+  endpoint.searchParams.set("api_key", apiKey);
+  endpoint.searchParams.set("page", String(page));
+  const body = await getJson(endpoint, request);
+  const results = (Array.isArray(body?.results) ? body.results : [])
+    .filter((item) => Number.isInteger(item?.id) && (item.title || item.name))
+    .map((item) => ({
+      id: item.id,
+      title: item.title ?? null,
+      name: item.name ?? null,
+      original_title: item.original_title ?? null,
+      original_name: item.original_name ?? null,
+      overview: item.overview ?? null,
+      poster_path: item.poster_path ?? null,
+      backdrop_path: item.backdrop_path ?? null,
+      release_date: item.release_date ?? null,
+      first_air_date: item.first_air_date ?? null,
+      vote_average: Number.isFinite(item.vote_average) ? item.vote_average : null,
+      vote_count: Number.isInteger(item.vote_count) ? item.vote_count : null,
+      popularity: Number.isFinite(item.popularity) ? item.popularity : null
+    }));
+  return { page, results };
+}
+
+// TMDb episode-group types: 2 absolute, 3 DVD. Only these two are resolved to
+// episodes; every other type is listed by name with no episodes.
+const EPISODE_GROUP_ABSOLUTE = 2;
+const EPISODE_GROUP_DVD = 3;
+
+/**
+ * A series' alternate orderings in the shape the app's broker client reads
+ * (`groups[]` with type, providerGroupId, name, episodes). Mirrors the app's own
+ * direct TMDb path: where several groups share a resolvable type the fullest
+ * one wins, absolute order is one running count, DVD order keeps one season per
+ * subgroup.
+ */
+export async function lookupEpisodeGroups(providerId, apiKey, request = fetch) {
+  const listUrl = new URL(`https://api.themoviedb.org/3/tv/${providerId}/episode_groups`);
+  listUrl.searchParams.set("api_key", apiKey);
+  const summary = await getJson(listUrl, request);
+  const candidates = (Array.isArray(summary?.results) ? summary.results : [])
+    .filter((entry) => typeof entry?.id === "string" && entry.id.trim()
+      && typeof entry?.name === "string" && entry.name.trim()
+      && Number.isInteger(entry.type));
+
+  const byType = new Map();
+  for (const entry of candidates) {
+    if (!byType.has(entry.type)) byType.set(entry.type, []);
+    byType.get(entry.type).push(entry);
+  }
+
+  const usable = (episode) => Number.isInteger(episode?.season_number) && Number.isInteger(episode?.episode_number);
+  const groups = [];
+  for (const [type, entries] of byType) {
+    if (type !== EPISODE_GROUP_ABSOLUTE && type !== EPISODE_GROUP_DVD) {
+      groups.push({ type, providerGroupId: entries[0].id.trim(), name: entries[0].name.trim(), episodes: [] });
+      continue;
+    }
+
+    const chosen = [...entries].sort((a, b) => (b.episode_count ?? 0) - (a.episode_count ?? 0))[0];
+    const summaryGroup = { type, providerGroupId: chosen.id.trim(), name: chosen.name.trim(), episodes: [] };
+    const detailUrl = new URL(`https://api.themoviedb.org/3/tv/episode_group/${encodeURIComponent(chosen.id)}`);
+    detailUrl.searchParams.set("api_key", apiKey);
+
+    let detail;
+    try {
+      detail = await getJson(detailUrl, request);
+    } catch (error) {
+      // One unavailable group must not lose the other orderings.
+      if (error instanceof TmdbRequestError && error.status === 404) {
+        groups.push(summaryGroup);
+        continue;
+      }
+      throw error;
+    }
+
+    const subgroups = Array.isArray(detail?.groups) ? detail.groups : [];
+    const episodes = [];
+    if (type === EPISODE_GROUP_ABSOLUTE) {
+      let position = 0;
+      for (const episode of subgroups.flatMap((subgroup) => Array.isArray(subgroup?.episodes) ? subgroup.episodes : [])) {
+        if (!usable(episode)) continue;
+        position++;
+        episodes.push({
+          originalSeasonNumber: episode.season_number,
+          originalEpisodeNumber: episode.episode_number,
+          groupSeasonNumber: 1,
+          groupEpisodeNumber: position
+        });
+      }
+    } else {
+      let seasonNumber = 0;
+      for (const subgroup of subgroups) {
+        seasonNumber++;
+        let episodeNumber = 0;
+        for (const episode of Array.isArray(subgroup?.episodes) ? subgroup.episodes : []) {
+          if (!usable(episode)) continue;
+          episodeNumber++;
+          episodes.push({
+            originalSeasonNumber: episode.season_number,
+            originalEpisodeNumber: episode.episode_number,
+            groupSeasonNumber: seasonNumber,
+            groupEpisodeNumber: episodeNumber
+          });
+        }
+      }
+    }
+    groups.push({ ...summaryGroup, episodes });
+  }
+
+  return { provider: "deluno-broker", mode: "broker", providerId: String(providerId), groups };
 }
 
 /**
