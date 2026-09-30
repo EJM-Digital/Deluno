@@ -2,6 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+// A release date is a calendar date in this computer's time zone. Built from UTC it
+// is yesterday for the first hours of a day east of Greenwich, and on the 1st of a
+// month the films fell outside the month shown.
+function localToday(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 /**
  * #786: Day and Agenda join Week and Month, an options control toggles
  * cutoff-unmet highlighting and which movie release types show, and the
@@ -32,7 +40,7 @@ const loaderData = {
       releaseYear: 2026,
       posterUrl: null,
       kind: "inCinemas" as const,
-      date: new Date().toISOString().slice(0, 10),
+      date: localToday(),
       monitored: true,
       wantedStatus: "missing"
     },
@@ -42,7 +50,7 @@ const loaderData = {
       releaseYear: 2026,
       posterUrl: null,
       kind: "digital" as const,
-      date: new Date().toISOString().slice(0, 10),
+      date: localToday(),
       monitored: true,
       wantedStatus: "missing"
     }
