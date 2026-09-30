@@ -75,6 +75,6 @@ export const fullSummary: DashboardSummary = {
     lastBackupUtc: "2026-09-25T09:00:00Z", backupsEnabled: false
   },
   activity: { asOfUtc: NOW, windowHours: 24, searchesRun: 12, downloadsStarted: 3, importsCompleted: 4, cleanupRemovals: 0, retentionRemovals: 0, recent: [
-    { id: "a1", category: "filesystem.import.completed", message: "Imported Sintel (2010).", relatedEntityType: null, relatedEntityId: null, createdUtc: "2026-09-30T09:58:00Z" }
+    { id: "a1", category: "filesystem.import.completed", label: "Imported into the library", message: "Imported Sintel (2010).", relatedEntityType: null, relatedEntityId: null, createdUtc: "2026-09-30T09:58:00Z" }
   ] }
 };
