@@ -139,6 +139,44 @@ public sealed class MovieNotWantedHereTests
     }
 
     [Fact]
+    public async Task A_library_still_hunting_with_no_file_does_not_keep_the_title_monitored()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, _) = await CreateAsync(storage);
+        var added = await movies.AddAsync(new CreateMovieRequest("Ronin", 1998, null), CancellationToken.None);
+        await movies.EnsureWantedStateAsync(added.Id, "lib-hd", WantedStatuses.Covered, "x", true, "WEB 1080p", "WEB 1080p", true, CancellationToken.None);
+        await movies.EnsureWantedStateAsync(added.Id, "lib-4k", WantedStatuses.Missing, "x", false, null, "WEB 2160p", false, CancellationToken.None);
+        await SetPathsAsync(storage, "/hd/");
+
+        var outcome = await movies.ClearFileAsync(added.Id, $"/hd/{added.Id}.mkv", CancellationToken.None);
+
+        Assert.True(outcome);
+        Assert.False(outcome.OnlyThatLibrary);
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT monitored FROM movie_entries WHERE id = @id;";
+        var p = command.CreateParameter();
+        p.ParameterName = "@id";
+        p.Value = added.Id;
+        command.Parameters.Add(p);
+        Assert.Equal(0L, Convert.ToInt64(await command.ExecuteScalarAsync()));
+    }
+
+    [Fact]
+    public async Task An_import_through_the_shared_repository_brings_the_library_back()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, _) = await CreateAsync(storage);
+        var id = await SeedTwoLibrariesAsync(storage, movies);
+        await movies.ClearFileAsync(id, $"/4k/{id}.mkv", CancellationToken.None);
+        Assert.Equal(["lib-4k"], await movies.ListNotWantedLibraryIdsAsync(id, CancellationToken.None));
+
+        await movies.EnsureWantedStateAsync(id, "lib-4k", WantedStatuses.Covered, "x", true, "WEB 2160p", "WEB 2160p", true, CancellationToken.None);
+
+        Assert.Empty(await movies.ListNotWantedLibraryIdsAsync(id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task The_migration_adds_the_flag_off_for_every_existing_row()
     {
         using var storage = TestStorage.Create();
@@ -242,8 +280,8 @@ public sealed class MovieNotWantedHereTests
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, timeProvider),
             NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
         var shared = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, shared);
         return (movies, shared);
     }
 

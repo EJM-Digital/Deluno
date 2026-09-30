@@ -345,6 +345,16 @@ public sealed class SqliteMediaStateRepository(
         return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// A film that has a file in a library is wanted there again (#1065): an
+    /// import into a library Deluno had stopped wanting the film in clears the
+    /// "not wanted here" mark. Shows have no per-library mark, so nothing is emitted.
+    /// </summary>
+    private static string NotWantedResetOnFile(MediaTableMap map, string condition)
+        => map.WantedTable == "movie_wanted_state"
+            ? $"not_wanted_here = CASE WHEN {condition} THEN 0 ELSE movie_wanted_state.not_wanted_here END, not_wanted_since_utc = CASE WHEN {condition} THEN NULL ELSE movie_wanted_state.not_wanted_since_utc END,"
+            : string.Empty;
+
     public async Task EnsureWantedStateAsync(
         MediaKind kind,
         string mediaId,
@@ -378,6 +388,7 @@ public sealed class SqliteMediaStateRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = excluded.has_file,
+                {NotWantedResetOnFile(map, "excluded.has_file = 1")}
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
@@ -1702,6 +1713,7 @@ public sealed class SqliteMediaStateRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = 1,
+                {NotWantedResetOnFile(map, "1 = 1")}
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
