@@ -39,14 +39,9 @@ export function ProxyDrawerBody({
   return (
     <>
       <DrawerSection title="Basics">
-        <FieldRow>
-          <Field label="Name" error={errors.name}>
-            <Input value={form.name} onChange={(event) => { clearError("name"); setForm((current) => ({ ...current, name: event.target.value })); }} placeholder="e.g. Home SOCKS5" autoComplete="off" />
-          </Field>
-          <Field label="Type">
-            <Select value={form.proxyType} onChange={(event) => setForm((current) => ({ ...current, proxyType: event.target.value as ProxyForm["proxyType"] }))} options={PROXY_TYPE_OPTIONS} />
-          </Field>
-        </FieldRow>
+        <Field label="Type" help="Deluno names the proxy from its type and address.">
+          <Select value={form.proxyType} onChange={(event) => setForm((current) => ({ ...current, proxyType: event.target.value as ProxyForm["proxyType"] }))} options={PROXY_TYPE_OPTIONS} />
+        </Field>
         <Field
           label="Address"
           error={errors.address}

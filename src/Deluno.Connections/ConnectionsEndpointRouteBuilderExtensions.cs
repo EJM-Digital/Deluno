@@ -925,11 +925,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
     {
         var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrWhiteSpace(request.Name))
-        {
-            errors["name"] = ["Give this proxy a name."];
-        }
-
         if (string.IsNullOrWhiteSpace(request.ProxyType) || !ProxyTypes.IsKnown(request.ProxyType))
         {
             errors["proxyType"] = ["Choose HTTP, SOCKS4, SOCKS5 or FlareSolverr/Byparr."];

@@ -49,7 +49,7 @@ public sealed class IndexerProxyPersistenceTests
             new CreateProxyRequest("Home SOCKS5", "socks5", "socks5://192.168.1.1:1080", "user", "pass"),
             CancellationToken.None);
 
-        Assert.Equal("Home SOCKS5", created.Name);
+        Assert.Equal("SOCKS5 proxy on 192.168.1.1", created.Name);
         Assert.Equal("socks5", created.ProxyType);
         Assert.Equal("socks5://192.168.1.1:1080", created.Address);
         Assert.Equal("user", created.Username);
@@ -102,7 +102,7 @@ public sealed class IndexerProxyPersistenceTests
             CancellationToken.None);
 
         Assert.NotNull(updated);
-        Assert.Equal("Renamed", updated.Name);
+        Assert.Equal("SOCKS4 proxy on b.test", updated.Name);
         Assert.Equal("socks4", updated.ProxyType);
         Assert.Equal("socks4://b.test:1080", updated.Address);
         Assert.False(updated.HasPassword);
@@ -138,7 +138,7 @@ public sealed class IndexerProxyPersistenceTests
             CancellationToken.None);
 
         Assert.NotNull(updated);
-        Assert.Equal("Proxy", updated.Name);
+        Assert.Equal("HTTP proxy on a.test", updated.Name);
         Assert.Equal("http", updated.ProxyType);
         Assert.Equal("http://a.test:8080", updated.Address);
         Assert.True(updated.HasPassword);
