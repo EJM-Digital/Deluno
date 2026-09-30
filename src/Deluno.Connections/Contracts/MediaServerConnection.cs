@@ -63,6 +63,12 @@ public sealed record MediaServerConnection(
 {
     public bool HasToken => !string.IsNullOrWhiteSpace(Token);
 
+    /// <summary>The saved secret was stored on another computer, account or key and cannot be read here (#1094). It is listed as missing; entering it again clears this.</summary>
+    public bool SecretUnreadable { get; init; }
+
+    /// <summary>Plain-words reason when <see cref="SecretUnreadable"/> is set, for the screen and Health.</summary>
+    public string? SecretProblem { get; init; }
+
     /// <summary>Last typed failure from a test or a real request.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }
 

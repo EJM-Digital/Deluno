@@ -51,8 +51,12 @@ public sealed class DownloadClientHealthCheck(IConnectionsRepository connections
                     client.LastHealthMessage is { Length: > 0 } message
                         ? $"{client.Name}: {message}"
                         : $"{client.Name} is not answering.",
-                    cause: "Deluno could not confirm this download client's last connection test.",
-                    fix: $"Open Connections and test {client.Name}. Grabs to it are held until it passes.",
+                    cause: client.SecretUnreadable
+                        ? "The saved password was stored on another computer, so this computer cannot read it."
+                        : "Deluno could not confirm this download client's last connection test.",
+                    fix: client.SecretUnreadable
+                        ? $"Open {client.Name} in Connections, enter its password again and save. Grabs to it are held until then."
+                        : $"Open Connections and test {client.Name}. Grabs to it are held until it passes.",
                     detailsJson: $$"""{"clientId":"{{client.Id}}","protocol":"{{client.Protocol}}"}"""));
         }
 

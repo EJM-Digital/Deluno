@@ -18,6 +18,13 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         ProcessorConnectionItem connection,
         CancellationToken cancellationToken)
     {
+        if (connection.SecretUnreadable)
+        {
+            return new ProcessorConnectionTestResult(
+                connection.Id, false, "degraded",
+                connection.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("secret"), null, null);
+        }
+
         var started = Stopwatch.GetTimestamp();
         var healthUrl = string.IsNullOrWhiteSpace(connection.HealthCheckUrl) ? null : connection.HealthCheckUrl.Trim();
         try

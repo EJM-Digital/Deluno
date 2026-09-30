@@ -266,17 +266,24 @@ public sealed class SqliteSubtitleProviderRepository(
     }
 
     private SubtitleProviderConnection Read(DbDataReader reader)
-        => new(
+    {
+        var secret = reader.IsDBNull(4) ? SecretReadResult.None : secretProtector.TryUnprotect(SecretPurpose, reader.GetString(4));
+        var apiKey = reader.IsDBNull(5) ? SecretReadResult.None : secretProtector.TryUnprotect(ApiKeyPurpose, reader.GetString(5));
+        var problem = apiKey.Unreadable
+            ? SecretUnreadable.Message("API key")
+            : secret.Unreadable ? SecretUnreadable.Message("password") : null;
+        var enabled = reader.GetInt32(7) == 1;
+        return new(
             Id: reader.GetString(0),
             ProviderKey: reader.GetString(1),
             Name: reader.GetString(2),
             Username: reader.IsDBNull(3) ? null : reader.GetString(3),
-            Secret: reader.IsDBNull(4) ? null : secretProtector.Unprotect(SecretPurpose, reader.GetString(4)),
-            ApiKey: reader.IsDBNull(5) ? null : secretProtector.Unprotect(ApiKeyPurpose, reader.GetString(5)),
+            Secret: secret.Value,
+            ApiKey: apiKey.Value,
             Priority: reader.GetInt32(6),
-            IsEnabled: reader.GetInt32(7) == 1,
-            HealthStatus: reader.GetString(8),
-            LastHealthMessage: reader.IsDBNull(9) ? null : reader.GetString(9),
+            IsEnabled: enabled,
+            HealthStatus: problem is not null && enabled ? "degraded" : reader.GetString(8),
+            LastHealthMessage: problem ?? (reader.IsDBNull(9) ? null : reader.GetString(9)),
             LastHealthLatencyMs: reader.IsDBNull(10) ? null : reader.GetInt32(10),
             LastHealthTestUtc: reader.IsDBNull(11) ? null : DateTimeOffset.Parse(reader.GetString(11)),
             ConsecutiveFailures: reader.GetInt32(12),
@@ -285,8 +292,11 @@ public sealed class SqliteSubtitleProviderRepository(
             CreatedUtc: DateTimeOffset.Parse(reader.GetString(15)),
             UpdatedUtc: DateTimeOffset.Parse(reader.GetString(16)))
         {
-            LastHealthFailure = reader.IsDBNull(17) ? null : DeserializeFailure(reader.GetString(17))
+            LastHealthFailure = reader.IsDBNull(17) ? null : DeserializeFailure(reader.GetString(17)),
+            SecretUnreadable = problem is not null,
+            SecretProblem = problem
         };
+    }
 
     private static IntegrationFailure? DeserializeFailure(string json)
     {

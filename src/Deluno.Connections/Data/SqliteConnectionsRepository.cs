@@ -178,21 +178,27 @@ public sealed class SqliteConnectionsRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            var apiKey = reader.IsDBNull(5) ? SecretReadResult.None : secretProtector.TryUnprotect("indexer:api-key", reader.GetString(5));
+            var trackerSecrets = reader.IsDBNull(38) ? SecretReadResult.None : secretProtector.TryUnprotect("indexer:tracker-secrets", reader.GetString(38));
+            var indexerIsEnabled = reader.GetInt64(10) == 1;
+            var indexerProblem = apiKey.Unreadable
+                ? SecretUnreadable.Message("API key")
+                : trackerSecrets.Unreadable ? SecretUnreadable.Message("login details") : null;
             items.Add(new IndexerItem(
                 Id: reader.GetString(0),
                 Name: reader.GetString(1),
                 Protocol: reader.GetString(2),
                 Privacy: reader.GetString(3),
                 BaseUrl: reader.GetString(4),
-                ApiKey: reader.IsDBNull(5) ? null : secretProtector.Unprotect("indexer:api-key", reader.GetString(5)),
+                ApiKey: apiKey.Value,
                 Priority: reader.GetInt32(6),
                 Categories: reader.GetString(7),
                 Tags: reader.GetString(8),
                 MediaScope: reader.IsDBNull(9) ? "both" : reader.GetString(9),
-                IsEnabled: reader.GetInt64(10) == 1,
-                HealthStatus: reader.GetString(11),
-                LastHealthMessage: reader.IsDBNull(12) ? null : reader.GetString(12),
-                LastHealthFailureCategory: reader.IsDBNull(13) ? null : reader.GetString(13),
+                IsEnabled: indexerIsEnabled,
+                HealthStatus: indexerProblem is not null && indexerIsEnabled ? "degraded" : reader.GetString(11),
+                LastHealthMessage: indexerProblem ?? (reader.IsDBNull(12) ? null : reader.GetString(12)),
+                LastHealthFailureCategory: indexerProblem is not null ? "auth" : reader.IsDBNull(13) ? null : reader.GetString(13),
                 LastHealthLatencyMs: reader.IsDBNull(14) ? null : reader.GetInt32(14),
                 LastHealthTestUtc: reader.IsDBNull(15) ? null : ParseTimestamp(reader.GetString(15)),
                 ConsecutiveFailures: reader.IsDBNull(16) ? 0 : reader.GetInt32(16),
@@ -201,6 +207,8 @@ public sealed class SqliteConnectionsRepository(
                 CreatedUtc: ParseTimestamp(reader.GetString(20)),
                 UpdatedUtc: ParseTimestamp(reader.GetString(21)))
             {
+                SecretUnreadable = indexerProblem is not null,
+                SecretProblem = indexerProblem,
                 RequestIntervalSeconds = reader.IsDBNull(19) ? null : reader.GetInt32(19),
                 // All null on a source that has never been given its own rule,
                 // which is the common case: it inherits the global one.
@@ -220,7 +228,7 @@ public sealed class SqliteConnectionsRepository(
                 LastHealthFailure = reader.IsDBNull(35) ? null : DeserializeFailure(reader.GetString(35)),
                 DefinitionId = reader.IsDBNull(36) ? null : reader.GetString(36),
                 DefinitionSettings = reader.IsDBNull(37) ? null : ReadStringMap(reader.GetString(37)),
-                DefinitionSecrets = reader.IsDBNull(38) ? null : ReadStringMap(secretProtector.Unprotect("indexer:tracker-secrets", reader.GetString(38))),
+                DefinitionSecrets = trackerSecrets.Value is null ? null : ReadStringMap(trackerSecrets.Value),
                 ApiPath = reader.IsDBNull(39) ? null : reader.GetString(39),
                 AdditionalParameters = reader.IsDBNull(40) ? null : reader.GetString(40),
                 AnimeCategories = reader.IsDBNull(41) ? null : reader.GetString(41),
@@ -272,6 +280,9 @@ public sealed class SqliteConnectionsRepository(
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            var clientSecret = reader.IsDBNull(6) ? SecretReadResult.None : secretProtector.TryUnprotect("download-client:secret", reader.GetString(6));
+            var clientProblem = clientSecret.Unreadable ? SecretUnreadable.Message("password") : null;
+            var clientIsEnabled = reader.GetInt64(12) == 1;
             items.Add(new DownloadClientItem(
                 Id: reader.GetString(0),
                 Name: reader.GetString(1),
@@ -279,7 +290,7 @@ public sealed class SqliteConnectionsRepository(
                 Host: reader.IsDBNull(3) ? null : reader.GetString(3),
                 Port: reader.IsDBNull(4) ? null : reader.GetInt32(4),
                 Username: reader.IsDBNull(5) ? null : reader.GetString(5),
-                Secret: reader.IsDBNull(6) ? null : secretProtector.Unprotect("download-client:secret", reader.GetString(6)),
+                Secret: clientSecret.Value,
                 EndpointUrl: reader.IsDBNull(7) ? null : reader.GetString(7),
                 UseSsl: reader.GetInt64(21) == 1,
                 UrlBase: reader.IsDBNull(22) ? null : reader.GetString(22),
@@ -287,10 +298,10 @@ public sealed class SqliteConnectionsRepository(
                 TvCategory: reader.IsDBNull(9) ? null : reader.GetString(9),
                 CategoryTemplate: reader.IsDBNull(10) ? null : reader.GetString(10),
                 Priority: reader.GetInt32(11),
-                IsEnabled: reader.GetInt64(12) == 1,
-                HealthStatus: reader.GetString(13),
-                LastHealthMessage: reader.IsDBNull(14) ? null : reader.GetString(14),
-                LastHealthFailureCategory: reader.IsDBNull(15) ? null : reader.GetString(15),
+                IsEnabled: clientIsEnabled,
+                HealthStatus: clientProblem is not null && clientIsEnabled ? "degraded" : reader.GetString(13),
+                LastHealthMessage: clientProblem ?? (reader.IsDBNull(14) ? null : reader.GetString(14)),
+                LastHealthFailureCategory: clientProblem is not null ? "auth" : reader.IsDBNull(15) ? null : reader.GetString(15),
                 LastHealthLatencyMs: reader.IsDBNull(16) ? null : reader.GetInt32(16),
                 LastHealthTestUtc: reader.IsDBNull(17) ? null : ParseTimestamp(reader.GetString(17)),
                 CreatedUtc: ParseTimestamp(reader.GetString(18)),
@@ -308,7 +319,9 @@ public sealed class SqliteConnectionsRepository(
                 Location: reader.IsDBNull(33) ? null : reader.GetString(33),
                 ContentLayout: ContentLayouts.Normalize(reader.IsDBNull(34) ? null : reader.GetString(34)))
             {
-                LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20))
+                LastHealthFailure = reader.IsDBNull(20) ? null : DeserializeFailure(reader.GetString(20)),
+                SecretUnreadable = clientProblem is not null,
+                SecretProblem = clientProblem
             });
         }
 
@@ -1472,16 +1485,21 @@ public sealed class SqliteConnectionsRepository(
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
+                var proxyPassword = reader.IsDBNull(5) ? SecretReadResult.None : secretProtector.TryUnprotect("indexer-proxy:password", reader.GetString(5));
                 items.Add(new ProxyItem(
                     Id: reader.GetString(0),
                     Name: reader.GetString(1),
                     ProxyType: reader.GetString(2),
                     Address: reader.GetString(3),
                     Username: reader.IsDBNull(4) ? null : reader.GetString(4),
-                    Password: reader.IsDBNull(5) ? null : secretProtector.Unprotect("indexer-proxy:password", reader.GetString(5)),
+                    Password: proxyPassword.Value,
                     IsEnabled: reader.GetInt64(6) == 1,
                     CreatedUtc: ParseTimestamp(reader.GetString(7)),
-                    UpdatedUtc: ParseTimestamp(reader.GetString(8))));
+                    UpdatedUtc: ParseTimestamp(reader.GetString(8)))
+                {
+                    SecretUnreadable = proxyPassword.Unreadable,
+                    SecretProblem = proxyPassword.Unreadable ? SecretUnreadable.Message("password") : null
+                });
             }
         }
 

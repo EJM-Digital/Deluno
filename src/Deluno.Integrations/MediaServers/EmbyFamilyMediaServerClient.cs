@@ -33,6 +33,11 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
 
     public async Task<MediaServerTestResult> TestAsync(MediaServerConnection connection, CancellationToken cancellationToken)
     {
+        if (connection.SecretUnreadable)
+        {
+            return new MediaServerTestResult(false, "degraded", connection.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("API key"), null);
+        }
+
         var info = await GetAsync(connection, "/System/Info", cancellationToken);
         if (!info.Ok)
         {

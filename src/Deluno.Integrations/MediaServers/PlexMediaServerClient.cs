@@ -27,6 +27,11 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
 
     public async Task<MediaServerTestResult> TestAsync(MediaServerConnection connection, CancellationToken cancellationToken)
     {
+        if (connection.SecretUnreadable)
+        {
+            return new MediaServerTestResult(false, "degraded", connection.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("access token"), null);
+        }
+
         var root = await GetAsync(connection, "/", cancellationToken);
         if (!root.Ok)
         {

@@ -441,7 +441,8 @@ public sealed class SqlitePlatformSettingsRepository(
         AddParameter(command, "@settingKey", settingKey);
         var stored = await command.ExecuteScalarAsync(cancellationToken) as string;
         var purpose = string.Equals(provider, "mdblist", StringComparison.OrdinalIgnoreCase) ? "intake:mdblist" : $"metadata:{provider.Trim().ToLowerInvariant()}";
-        return secretProtector.Unprotect(purpose, stored);
+        // A key saved on another computer cannot be read here: no key, never a failure (#1094).
+        return secretProtector.TryUnprotect(purpose, stored).Value;
     }
 
     public async Task<IReadOnlyList<TagItem>> ListTagsAsync(CancellationToken cancellationToken)

@@ -265,15 +265,19 @@ public sealed class SqliteMediaServerRepository(
         => (value ?? string.Empty).Trim().TrimEnd('/');
 
     private MediaServerConnection Read(DbDataReader reader)
-        => new(
+    {
+        var token = reader.IsDBNull(4) ? SecretReadResult.None : secretProtector.TryUnprotect(TokenPurpose, reader.GetString(4));
+        var problem = token.Unreadable ? SecretUnreadable.Message("access token") : null;
+        var enabled = reader.GetInt32(5) == 1;
+        return new(
             Id: reader.GetString(0),
             Kind: reader.GetString(1),
             Name: reader.GetString(2),
             BaseUrl: reader.GetString(3),
-            Token: reader.IsDBNull(4) ? null : secretProtector.Unprotect(TokenPurpose, reader.GetString(4)),
-            IsEnabled: reader.GetInt32(5) == 1,
-            HealthStatus: reader.GetString(6),
-            LastHealthMessage: reader.IsDBNull(7) ? null : reader.GetString(7),
+            Token: token.Value,
+            IsEnabled: enabled,
+            HealthStatus: problem is not null && enabled ? "degraded" : reader.GetString(6),
+            LastHealthMessage: problem ?? (reader.IsDBNull(7) ? null : reader.GetString(7)),
             LastHealthLatencyMs: reader.IsDBNull(8) ? null : reader.GetInt32(8),
             LastHealthTestUtc: reader.IsDBNull(9) ? null : DateTimeOffset.Parse(reader.GetString(9)),
             ServerName: reader.IsDBNull(10) ? null : reader.GetString(10),
@@ -282,8 +286,11 @@ public sealed class SqliteMediaServerRepository(
             UpdatedUtc: DateTimeOffset.Parse(reader.GetString(13)))
         {
             LastHealthFailure = reader.IsDBNull(14) ? null : DeserializeFailure(reader.GetString(14)),
-            LeavingSoonOnHome = reader.GetInt32(15) == 1
+            LeavingSoonOnHome = reader.GetInt32(15) == 1,
+            SecretUnreadable = problem is not null,
+            SecretProblem = problem
         };
+    }
 
     private static IntegrationFailure? DeserializeFailure(string json)
     {

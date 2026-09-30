@@ -848,20 +848,27 @@ public sealed class SqliteProcessorRepository(
     private ProcessorConnectionItem ReadProcessorConnection(System.Data.Common.DbDataReader reader)
     {
         var id = reader.GetString(0);
+        var secret = reader.IsDBNull(5) ? SecretReadResult.None : secretProtector.TryUnprotect($"processor-connection:{id}", reader.GetString(5));
+        var problem = secret.Unreadable ? SecretUnreadable.Message("secret") : null;
+        var enabled = reader.GetInt64(6) == 1;
         return new ProcessorConnectionItem(
             id,
             reader.GetString(1),
             NormalizeProcessorConnectionProvider(reader.GetString(2)),
             reader.GetString(3),
             NormalizeProcessorAuthHeaderName(reader.GetString(4)),
-            reader.IsDBNull(5) ? null : secretProtector.Unprotect($"processor-connection:{id}", reader.GetString(5)),
-            reader.GetInt64(6) == 1,
-            NormalizeProcessorConnectionHealth(reader.GetString(7)),
-            reader.IsDBNull(8) ? null : reader.GetString(8),
+            secret.Value,
+            enabled,
+            problem is not null && enabled ? "degraded" : NormalizeProcessorConnectionHealth(reader.GetString(7)),
+            problem ?? (reader.IsDBNull(8) ? null : reader.GetString(8)),
             reader.IsDBNull(9) ? null : ParseTimestamp(reader.GetString(9)),
             ParseTimestamp(reader.GetString(10)),
             ParseTimestamp(reader.GetString(11)),
-            reader.IsDBNull(12) ? null : reader.GetString(12));
+            reader.IsDBNull(12) ? null : reader.GetString(12))
+        {
+            SecretUnreadable = problem is not null,
+            SecretProblem = problem
+        };
     }
 
     private async Task<ProcessorConnectionItem?> GetProcessorConnectionAsync(
