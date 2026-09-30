@@ -7,6 +7,9 @@ import { SystemPage } from "./system-screen";
 const authedFetchMock = vi.fn();
 vi.mock("../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
 
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("../components/shell/toaster", () => ({ toast: toastMock, Toaster: () => null }));
+
 const revalidateMock = vi.fn();
 const loaderData = {
   activity: [],
@@ -139,14 +142,97 @@ describe("The unreachable-library note can confirm the files are gone (#1070)", 
   afterEach(() => {
     authedFetchMock.mockReset();
     revalidateMock.mockReset();
+    toastMock.success.mockReset();
+    toastMock.error.mockReset();
     loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
     loaderData.monitoring = null;
+  });
+
+  // Only the files-gone route gets the answer; every other request the screen makes gets an empty list.
+  function answerFilesGone(body: unknown, ok = true) {
+    authedFetchMock.mockImplementation((url: string) => (url.includes("files-gone") ? jsonResponse(body, ok) : jsonResponse([])));
+  }
+
+  function renderUnreachableNote() {
+    loaderData.healthChecks = {
+      checks: [
+        { id: "notice:library-unreachable:lib-1", category: "notice", name: "Movies 4K looks unreachable", status: "problem", message: "m", cause: null, fix: null, detailsJson: JSON.stringify({ libraryId: "lib-1", missing: 30, total: 40, raisedUtc: "2026-09-30T00:00:00Z" }), lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null }
+      ],
+      summary: { problemCount: 1 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+  }
+
+  async function confirmFilesGone() {
+    fireEvent.click(screen.getByRole("button", { name: "These files really are gone: Movies 4K looks unreachable" }));
+    expect(await screen.findByText(/Nothing is deleted from your disk/)).toBeTruthy();
+    expect(screen.getByText(/about 30 files/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Mark them as gone" }));
+  }
+
+  it("asks first, and shows the success message from the result", async () => {
+    answerFilesGone({ markedGone: 29, cameBack: 1, couldNotChange: 0, libraryUnreachable: false, message: "Movies 4K: 29 files marked as gone, 1 came back and was left alone." });
+    renderUnreachableNote();
+
+    fireEvent.click(screen.getByRole("button", { name: "These files really are gone: Movies 4K looks unreachable" }));
+    expect(authedFetchMock).not.toHaveBeenCalledWith(expect.stringContaining("files-gone"), expect.anything());
+    fireEvent.click(await screen.findByRole("button", { name: "Mark them as gone" }));
+
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Movies 4K: 29 files marked as gone, 1 came back and was left alone."));
+    expect(toastMock.error).not.toHaveBeenCalled();
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+
+  it("shows the reason when Deluno refuses because the drive is still unreachable", async () => {
+    answerFilesGone({ markedGone: 0, cameBack: 0, couldNotChange: 0, libraryUnreachable: true, message: "Movies 4K is still not reachable, so Deluno changed nothing." });
+    renderUnreachableNote();
+
+    await confirmFilesGone();
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("Movies 4K is still not reachable, so Deluno changed nothing."));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it("shows the reason when there is nothing left to act on", async () => {
+    answerFilesGone({ markedGone: 0, cameBack: 30, couldNotChange: 0, libraryUnreachable: false, message: "Every file Deluno tracks in Movies 4K is there now, so there is nothing to mark as gone." });
+    renderUnreachableNote();
+
+    await confirmFilesGone();
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("nothing to mark as gone")));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it("says a large answer is running in the background", async () => {
+    answerFilesGone({ markedGone: 0, cameBack: 0, couldNotChange: 0, libraryUnreachable: false, inBackground: true, message: "Deluno is marking about 30 files as gone in the background." });
+    renderUnreachableNote();
+
+    await confirmFilesGone();
+
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("Deluno is marking about 30 files as gone in the background."));
+  });
+
+  it("shows an error toast when the request fails or throws", async () => {
+    answerFilesGone({}, false);
+    renderUnreachableNote();
+    await confirmFilesGone();
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(1));
+
+    authedFetchMock.mockImplementation((url: string) => (url.includes("files-gone") ? Promise.reject(new Error("offline")) : jsonResponse([])));
+    await confirmFilesGone();
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledTimes(2));
+    expect(toastMock.success).not.toHaveBeenCalled();
   });
 
   it("offers These files really are gone next to Clear and posts to the library's route", async () => {
     loaderData.healthChecks = {
       checks: [
-        { id: "notice:library-unreachable:lib-1", category: "notice", name: "Movies 4K looks unreachable", status: "problem", message: "Movies 4K: 30 of 40 files could not be found.", cause: null, fix: null, detailsJson: JSON.stringify({ libraryId: "lib-1", issueIds: ["a", "b"] }), lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null },
+        { id: "notice:library-unreachable:lib-1", category: "notice", name: "Movies 4K looks unreachable", status: "problem", message: "Movies 4K: 30 of 40 files could not be found.", cause: null, fix: null, detailsJson: JSON.stringify({ libraryId: "lib-1", missing: 2, total: 5 }), lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null },
         { id: "notice:download-folders", category: "notice", name: "Other note", status: "problem", message: "Moved.", cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null }
       ],
       summary: { problemCount: 2 }
@@ -163,6 +249,7 @@ describe("The unreachable-library note can confirm the files are gone (#1070)", 
     expect(screen.getAllByRole("button", { name: /^These files really are gone/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /^Clear:/ })).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "These files really are gone: Movies 4K looks unreachable" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mark them as gone" }));
 
     await waitFor(() =>
       expect(authedFetchMock).toHaveBeenCalledWith(

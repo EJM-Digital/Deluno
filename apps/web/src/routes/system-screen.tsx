@@ -55,6 +55,7 @@ import {
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
+import { toast } from "../components/shell/toaster";
 import { describeCleanup, type RecycleBinCleanupPreview } from "../lib/recycle-bin-words";
 import type { DrawerSaveState } from "../components/ui/drawer";
 import { Field } from "../components/ui/field";
@@ -1545,14 +1546,28 @@ export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolea
   return check.id.startsWith("notice:");
 }
 
-/** The library an "unreachable" note is about, when it lists the files it found missing (#1070). */
-export function unreachableLibraryId(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): string | null {
-  if (!check.id.startsWith("notice:library-unreachable:") || !check.detailsJson) return null;
+/**
+ * How many missing files an "unreachable" note counts (#1070). The note holds
+ * only the library, a count and when; a note raised by an older build listed
+ * every file instead, so that list's length still counts.
+ */
+function unreachableMissingCount(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): number {
+  if (!check.id.startsWith("notice:library-unreachable:") || !check.detailsJson) return 0;
   try {
-    const details = JSON.parse(check.detailsJson) as { libraryId?: unknown; issueIds?: unknown };
-    return typeof details.libraryId === "string" && Array.isArray(details.issueIds) && details.issueIds.length > 0
-      ? details.libraryId
-      : null;
+    const details = JSON.parse(check.detailsJson) as { missing?: unknown; issueIds?: unknown };
+    if (typeof details.missing === "number") return details.missing;
+    return Array.isArray(details.issueIds) ? details.issueIds.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** The library an "unreachable" note is about, when it counts files it found missing (#1070). */
+export function unreachableLibraryId(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): string | null {
+  if (unreachableMissingCount(check) === 0) return null;
+  try {
+    const details = JSON.parse(check.detailsJson as string) as { libraryId?: unknown };
+    return typeof details.libraryId === "string" ? details.libraryId : null;
   } catch {
     return null;
   }
@@ -1572,6 +1587,7 @@ function tagCheckLink(check: HealthCheckResultItem): string | null {
 function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem[]; onChanged: () => void }) {
   const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmGone, setConfirmGone] = useState<HealthCheckResultItem | null>(null);
   const problems = checks.filter((check) => check.status !== "ok");
   const sorted = [...checks].sort((a, b) => {
     const rank = (status: string) => (status === "problem" ? 0 : status === "unknown" ? 1 : 2);
@@ -1636,13 +1652,22 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     if (!libraryId) return;
     setBusyId(check.id);
     try {
-      // Deluno re-checks each listed file and the drive before it changes anything.
+      // Deluno recounts the missing files and re-checks the drive before it changes anything.
       const response = await authedFetch(`/api/filesystem/libraries/${encodeURIComponent(libraryId)}/files-gone`, { method: "POST" });
-      if (response.ok) {
-        onChanged();
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string; libraryUnreachable?: boolean; markedGone?: number; inBackground?: boolean }
+        | null;
+      if (!response.ok) {
+        toast.error(result?.message ?? "Deluno could not mark those files as gone. Nothing was changed.");
+      } else if (result?.libraryUnreachable || (result?.markedGone === 0 && !result?.inBackground)) {
+        // A refusal, not a success: still unreachable, or nothing left to act on.
+        toast.error(result?.message ?? "Deluno changed nothing.");
+      } else {
+        toast.success(result?.message ?? "Those files are marked as gone.");
       }
+      onChanged();
     } catch {
-      // The note simply stays; nothing silently succeeded.
+      toast.error("Deluno could not mark those files as gone. Nothing was changed.");
     } finally {
       setBusyId(null);
     }
@@ -1661,6 +1686,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
   }
 
   return (
+    <>
     <ListCard
       title="Health"
       count={problems.length === 0 ? "everything checked out" : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
@@ -1760,7 +1786,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                             disabled={busyId === check.id}
                             onClick={(event) => {
                               event.stopPropagation();
-                              void filesReallyGone(check);
+                              setConfirmGone(check);
                             }}
                           >
                             These files really are gone
@@ -1818,7 +1844,27 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
         </ListTable>
       )}
     </ListCard>
+    <ConfirmDialog
+      open={confirmGone !== null}
+      onOpenChange={(open) => { if (!open) setConfirmGone(null); }}
+      title="Mark these files as gone?"
+      description={confirmGone ? describeFilesGone(unreachableMissingCount(confirmGone)) : ""}
+      confirmLabel="Mark them as gone"
+      confirmVariant="destructive"
+      busy={confirmGone !== null && busyId === confirmGone.id}
+      onConfirm={() => {
+        const check = confirmGone;
+        setConfirmGone(null);
+        if (check) void filesReallyGone(check);
+      }}
+    />
+    </>
   );
+}
+
+function describeFilesGone(count: number): string {
+  const what = count === 1 ? "1 file" : `about ${count} files`;
+  return `Deluno will check again and, for ${what} that really are missing, stop wanting the title so it is never searched for or downloaded again. Nothing is deleted from your disk. Anything that has come back is left alone.`;
 }
 
 function MonitoringCard({ monitoring }: { monitoring: MonitoringDashboardSnapshot }) {
