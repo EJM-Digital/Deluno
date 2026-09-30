@@ -44,7 +44,7 @@ public interface IBundledComponentCredentialStore
 }
 
 /// <summary>What a "connect this installed app now" request did. Never carries the sign-in.</summary>
-public sealed record InstalledComponentConnectResult(string Name, bool Healthy, string Message);
+public sealed record InstalledComponentConnectResult(string Name, bool Healthy, string Message, bool NeedsSignIn = false, string? Protocol = null, string? Host = null, int? Port = null);
 
 /// <summary>Connects an app the installer added, on this computer (#1061). Implemented by the worker.</summary>
 public interface IInstalledComponentConnector
@@ -186,7 +186,7 @@ public static class BundledComponentCredentialsEndpointRouteBuilderExtensions
                 var result = await connector.ConnectNowAsync(kind, cancellationToken);
                 return result is null
                     ? Results.NotFound()
-                    : Results.Ok(new { name = result.Name, healthy = result.Healthy, message = result.Message });
+                    : Results.Ok(new { name = result.Name, healthy = result.Healthy, message = result.Message, needsSignIn = result.NeedsSignIn, protocol = result.Protocol, host = result.Host, port = result.Port });
             })
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 

@@ -77,3 +77,19 @@ describe("connecting an installed app (#1061)", () => {
     expect(Object.keys(module)).not.toContain("fetchDetectedCredentials");
   });
 });
+
+describe("a Use that could not sign in (#1061)", () => {
+  afterEach(() => fetchJson.mockReset());
+
+  it("hands back the host and port to pre-fill the form with, and no password", async () => {
+    const { connectDetectedApp } = await import("./bundled-components-detected");
+    const failed = { name: "NZBGet", healthy: false, message: "Nothing was saved: enter your own login and save it.", needsSignIn: true, protocol: "nzbget", host: "localhost", port: 6789 };
+    fetchJson.mockResolvedValueOnce(failed);
+
+    const result = await connectDetectedApp("nzbget");
+
+    expect(result.needsSignIn).toBe(true);
+    expect(result.port).toBe(6789);
+    expect(Object.keys(result)).not.toContain("password");
+  });
+});

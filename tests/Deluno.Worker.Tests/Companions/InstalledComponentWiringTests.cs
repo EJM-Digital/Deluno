@@ -169,8 +169,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
         // Kept: no record (it failed to write) but the app is found installed.
         _saved["sabnzbd"] = new BundledComponentCredentials("", "key");
-        // Dropped: the record is stale, the app is uninstalled and not answering.
-        _record.MarkInstalled("nzbget", "localhost", 6789);
+        // Dropped: no record, the app is uninstalled and not answering.
         _saved["nzbget"] = new BundledComponentCredentials("a", "b");
         // Dropped: not an app Deluno connects.
         _saved["mystery"] = new BundledComponentCredentials("d", "e");
@@ -197,6 +196,77 @@ public sealed class InstalledComponentWiringTests : IDisposable
 
         Assert.Equal(1, await NewWirer().SweepStoredSignInsAsync(CancellationToken.None));
         Assert.Equal(["qbittorrent"], _saved.Keys.ToArray());
+    }
+
+    [Fact]
+    public async Task A_detection_miss_never_overrides_the_install_record()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
+        var detection = new Mock<IBundledComponentDetection>();
+        detection.Setup(item => item.DetectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+            [new BundledComponentStatus("qbittorrent", "qBittorrent", "download-client", false, false, "localhost", 8081)]);
+        var missed = new HashSet<string>();
+        var wirer = NewWirer(detection: detection.Object);
+
+        Assert.Equal(0, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        Assert.Equal(0, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        Assert.True(_saved.ContainsKey("qbittorrent"));
+    }
+
+    [Fact]
+    public async Task An_app_with_no_record_that_looks_gone_is_forgotten_only_on_the_second_sweep_in_a_row()
+    {
+        _saved["nzbget"] = new BundledComponentCredentials("a", "b");
+        var installed = false;
+        var detection = new Mock<IBundledComponentDetection>();
+        detection.Setup(item => item.DetectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() =>
+            [new BundledComponentStatus("nzbget", "NZBGet", "download-client", installed, false, "localhost", 6789)]);
+        var missed = new HashSet<string>();
+        var wirer = NewWirer(detection: detection.Object);
+
+        Assert.Equal(0, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        Assert.True(_saved.ContainsKey("nzbget"));
+        // Seen again: the miss is forgotten, so a later single miss does not count as the second.
+        installed = true;
+        Assert.Equal(0, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        installed = false;
+        Assert.Equal(0, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        Assert.True(_saved.ContainsKey("nzbget"));
+        Assert.Equal(1, await wirer.SweepStoredSignInsAsync(CancellationToken.None, missed));
+        Assert.False(_saved.ContainsKey("nzbget"));
+    }
+
+    [Fact]
+    public async Task Use_never_saves_a_connection_whose_test_failed_and_asks_for_the_persons_own_login()
+    {
+        _testStatus = "unauthorized";
+        _testMessage = "NZBGet refused the sign-in.";
+
+        var result = await NewWirer().ConnectNowAsync("nzbget", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.False(result.Healthy);
+        Assert.True(result.NeedsSignIn);
+        Assert.Equal("nzbget", result.Protocol);
+        Assert.Equal(6789, result.Port);
+        Assert.Contains("Nothing was saved", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("tegbzn6789", result.Message, StringComparison.Ordinal);
+        Assert.Empty(_created);
+        Assert.Empty(_health);
+    }
+
+    [Fact]
+    public async Task A_saved_client_with_no_port_is_the_same_client_as_one_on_that_kinds_default_port()
+    {
+        var connections = FakeConnections();
+        var saved = ExistingClient("nzbget", "localhost") with { Port = null };
+        Mock.Get(connections).Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([saved]);
+
+        var result = await NewWirer(connections: connections).ConnectNowAsync("nzbget", CancellationToken.None);
+
+        Assert.True(result!.Healthy);
+        Assert.Empty(_created);
     }
 
     private static DownloadClientItem ExistingClient(string protocol, string host)
