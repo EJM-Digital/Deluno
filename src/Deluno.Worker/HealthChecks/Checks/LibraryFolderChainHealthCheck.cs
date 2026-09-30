@@ -49,7 +49,7 @@ public sealed class LibraryFolderChainHealthCheck(
     private static HealthCheckOutcome BuildChainOutcome(FolderChainReport report)
     {
         var id = $"library:{report.LibraryId}:folder-chain";
-        var name = $"{report.LibraryName}'s category and save path";
+        var name = $"The {report.LibraryName} library's category and save path";
 
         if (report.AllMatch)
         {
@@ -83,7 +83,7 @@ public sealed class LibraryFolderChainHealthCheck(
         }
 
         var id = $"library:{report.LibraryId}:volumes";
-        var name = $"{report.LibraryName}'s downloads and library folders";
+        var name = $"The {report.LibraryName} library's downloads and library folders";
 
         bool? sameVolume;
         try
@@ -103,7 +103,7 @@ public sealed class LibraryFolderChainHealthCheck(
             true => HealthCheckOutcome.Ok(id, HealthCheckCategories.Library, name, "Downloads and the library share a volume, so imports can hardlink."),
             false => HealthCheckOutcome.Unknown(
                 id, HealthCheckCategories.Library, name,
-                $"{report.LibraryName}'s downloads folder and its library root are on different volumes, so Deluno cannot hardlink between them. Every import copies the file instead, using the space twice until the download is cleaned up.",
+                $"The {report.LibraryName} library's downloads folder and its library root are on different volumes, so Deluno cannot hardlink between them. Every import copies the file instead, using the space twice until the download is cleaned up.",
                 detailsJson: null),
             null => null
         } ?? HealthCheckOutcome.Unknown(id, HealthCheckCategories.Library, name, "Deluno could not tell whether downloads and this library share a volume.");

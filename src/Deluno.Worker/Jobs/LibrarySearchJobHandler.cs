@@ -148,7 +148,7 @@ public abstract class LibrarySearchJobHandler(
         }
 
         return decision.Paused
-            ? $"Held {payload.LibraryName}'s automatic search: {decision.Waiting} downloads are waiting."
+            ? $"Held the {payload.LibraryName} library's automatic search: {decision.Waiting} downloads are waiting."
             : null;
     }
 

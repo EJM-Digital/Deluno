@@ -109,7 +109,7 @@ public sealed class ProcessorHealthCheck(
         ProcessorStatusSupport support)
     {
         var id = $"processor:{connection.Id}:watching:{library.Id}";
-        var name = $"{connection.Name} watches {library.Name}'s handed-off folder";
+        var name = $"{connection.Name} watches the {library.Name} library's handed-off folder";
 
         if (support.Answer != ProcessorAnswer.Answered)
         {

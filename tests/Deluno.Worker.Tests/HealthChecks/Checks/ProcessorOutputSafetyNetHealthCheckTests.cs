@@ -46,6 +46,9 @@ public sealed class ProcessorOutputSafetyNetHealthCheckTests : IDisposable
 
         Assert.Contains("season folder", outcome.Message);
         Assert.Contains("Lioness.S02", outcome.Message);
+        // A library named Movies is not "Movies's": the sentence names the library, then owns the folder.
+        Assert.StartsWith("The Movies library's processor output folder", outcome.Message);
+        Assert.DoesNotContain("Movies's", outcome.Message);
         Assert.Contains("\"kind\":\"folder\"", outcome.DetailsJson);
     }
 

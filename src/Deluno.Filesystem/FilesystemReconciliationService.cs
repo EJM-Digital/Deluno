@@ -510,7 +510,7 @@ public sealed class FilesystemReconciliationService(
 
         var result = new TitleRescanResult(
             mediaType, titleId, title, "library-unreachable", trackedCount, 0, [], [], null,
-            $"Deluno changed nothing: most of {library.Name}'s files could not be found at once, so {title} was not marked missing and is still monitored. "
+            $"Deluno changed nothing: most of the {library.Name} library's files could not be found at once, so {title} was not marked missing and is still monitored. "
             + "If the drive or share dropped out, reconnect it and rescan. If you deleted these files, open System, Health and choose These files really are gone.");
         await RecordRescanAsync(result, cancellationToken);
         return result;

@@ -135,7 +135,7 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
 
         var isMedia = files.Any(WorkPlanner.IsImportableVideoFile);
         return BuildOutcome(library, name, path, "folder", isMedia,
-            $"{library.Name}'s processor output folder has a season folder Deluno cannot match to a hand-off: {name}.");
+            $"The {library.Name} library's processor output folder has a season folder Deluno cannot match to a hand-off: {name}.");
     }
 
     private static HealthCheckOutcome? DescribeFile(LibraryItem library, string path, string name, ISet<string> reservedSourceKeys)
@@ -148,15 +148,15 @@ public sealed class ProcessorOutputSafetyNetHealthCheck(
         var isMedia = WorkPlanner.IsImportableVideoFile(path);
         return BuildOutcome(library, name, path, isMedia ? "file" : "scraps", isMedia,
             isMedia
-                ? $"{library.Name}'s processor output folder has a file Deluno cannot match to a hand-off: {name}."
-                : $"{library.Name}'s processor output folder has files that are not media: {name}.");
+                ? $"The {library.Name} library's processor output folder has a file Deluno cannot match to a hand-off: {name}."
+                : $"The {library.Name} library's processor output folder has files that are not media: {name}.");
     }
 
     private static HealthCheckOutcome BuildOutcome(LibraryItem library, string name, string path, string kind, bool isMedia, string message)
         => HealthCheckOutcome.Problem(
             $"processor-output:{library.Id}:{name.ToLowerInvariant()}",
             HealthCheckCategories.Processor,
-            $"Unexpected files in {library.Name}'s processor output folder",
+            $"Unexpected files in the {library.Name} library's processor output folder",
             message,
             cause: "This shouldn't happen: it only occurs after something else already went wrong, or another app shares this folder.",
             fix: isMedia ? "Import it, or delete it." : "Delete it, or leave it for now.",
