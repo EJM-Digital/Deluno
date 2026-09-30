@@ -70,7 +70,17 @@ public static class SeasonSearchPlanner
                 continue;
             }
 
-            var monitored = seasonInventory(group.Key.SeriesId, group.Key.SeasonNumber)
+            var inSeason = seasonInventory(group.Key.SeriesId, group.Key.SeasonNumber);
+
+            // A season with an episode that was removed or unmonitored never gets a pack: the pack would download that
+            // episode again. Each due episode is searched on its own instead (#1072).
+            if (inSeason.Any(episode => !episode.Monitored))
+            {
+                episodeSearches.AddRange(groupEpisodes);
+                continue;
+            }
+
+            var monitored = inSeason
                 .Where(episode => episode.Monitored)
                 .ToArray();
 

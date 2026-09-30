@@ -146,6 +146,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
 
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
+        searchPlan = LeavePacksThatWouldRestoreRemovedEpisodes(searchPlan, request);
 
         var bestCandidate = searchPlan.BestCandidate;
         // The client is chosen for the release that won, not before the search:
@@ -438,6 +439,44 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
             Summary = best is null
                 ? $"{note} Nothing else was offered."
                 : $"{plan.Summary} {note}",
+            Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
+        };
+    }
+
+    /// <summary>
+    /// A season pack is never taken while an episode of its season has been removed or unmonitored: it would
+    /// download that episode again (#1072). A person choosing from the preview list still sees everything.
+    /// </summary>
+    public static MediaSearchPlan LeavePacksThatWouldRestoreRemovedEpisodes(MediaSearchPlan plan, AcquisitionDecisionRequest request)
+    {
+        if (request.PreviewOnly
+            || request.SeasonsWithRemovedEpisodes is not { Count: > 0 } removed
+            || !string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase)
+            || plan.Candidates.Count == 0)
+        {
+            return plan;
+        }
+
+        var kept = plan.Candidates
+            .Where(candidate =>
+            {
+                var classification = SeasonPackDetector.Classify(candidate.ReleaseName);
+                return !(classification.IsSeason && (classification.Season is { } season ? removed.Contains(season) : true));
+            })
+            .ToArray();
+        if (kept.Length == plan.Candidates.Count)
+        {
+            return plan;
+        }
+
+        var best = kept.FirstOrDefault();
+        return plan with
+        {
+            BestCandidate = best,
+            Candidates = kept,
+            Summary = best is null
+                ? "Only a season pack was offered, and it would download episodes that were removed. New episodes are fetched one at a time."
+                : plan.Summary,
             Reason = best is null ? MediaSearchReasons.NoUsableRelease : plan.Reason
         };
     }
@@ -886,7 +925,13 @@ public sealed record AcquisitionDecisionRequest(
     /// </summary>
     string? Genres = null,
     /// <summary>Region-specific spellings metadata gave for this title, beyond <see cref="Title"/> itself (#861).</summary>
-    IReadOnlyList<string>? OtherTitles = null);
+    IReadOnlyList<string>? OtherTitles = null,
+    /// <summary>
+    /// Seasons that have an episode Deluno no longer wants (removed by retention, deleted by the person, or gone from
+    /// disk). A season pack for one of them is never picked, because it would download those episodes again (#1072);
+    /// the new episodes are fetched one by one instead.
+    /// </summary>
+    IReadOnlyCollection<int>? SeasonsWithRemovedEpisodes = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

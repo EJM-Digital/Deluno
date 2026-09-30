@@ -170,7 +170,8 @@ public sealed class EpisodeSearchJobHandler(
                 RuntimeMinutes: seriesItem?.RuntimeMinutes,
                 ImdbId: seriesItem?.ImdbId,
                 Genres: seriesItem?.Genres,
-                OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem?.MetadataJson)).WithProfile(profileRules),
+                OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem?.MetadataJson),
+                SeasonsWithRemovedEpisodes: inventory?.SeasonsWithRemovedEpisodes()).WithProfile(profileRules),
             cancellationToken);
 
         var searchPlan = decisionPlan.SearchPlan;

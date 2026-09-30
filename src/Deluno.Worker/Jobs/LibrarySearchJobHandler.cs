@@ -941,7 +941,8 @@ public abstract class LibrarySearchJobHandler(
                      PreferencePlan: preferencePlan,
                      CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                      RuntimeMinutes: candidate.RuntimeMinutes,
-                     ImdbId: candidate.ImdbId).WithProfile(profileRules),
+                     ImdbId: candidate.ImdbId,
+                     SeasonsWithRemovedEpisodes: (await seriesCatalogRepository.GetInventoryDetailAsync(candidate.SeriesId, cancellationToken))?.SeasonsWithRemovedEpisodes()).WithProfile(profileRules),
                 cancellationToken);
             if (decisionPlan.SourceCount > 0 && decisionPlan.DownloadClientCount > 0)
             {

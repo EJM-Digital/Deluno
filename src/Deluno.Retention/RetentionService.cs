@@ -89,6 +89,47 @@ public sealed class RetentionService(
         }
     }
 
+    // A save of a rule (and the restart of its waits) takes this short gate; a run takes it only for the short steps that
+    // read or change the rule's marks or remove one title, never while it reads the media servers. So saving or switching
+    // off a rule waits for at most one removal, never for a whole run (#1072).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> EditGates = new(StringComparer.OrdinalIgnoreCase);
+
+    private sealed class EditHold(SemaphoreSlim gate) : IDisposable
+    {
+        private SemaphoreSlim? _gate = gate;
+
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
+    }
+
+    private static async Task<EditHold> HoldEditAsync(string ruleId, CancellationToken cancellationToken)
+    {
+        var gate = EditGates.GetOrAdd(ruleId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        return new EditHold(gate);
+    }
+
+    private static async Task<T> EditingAsync<T>(string ruleId, Func<Task<T>> work, CancellationToken cancellationToken)
+    {
+        using var hold = await HoldEditAsync(ruleId, cancellationToken);
+        return await work();
+    }
+
+    /// <summary>Whether the rule was edited, switched off (a scheduled check) or deleted since 'before' was read.</summary>
+    private async Task<bool> RuleChangedAsync(RetentionRule before, string trigger, CancellationToken cancellationToken)
+    {
+        var current = await repository.GetRuleAsync(before.Id, cancellationToken);
+        return current is null
+            || (trigger == "schedule" && !current.IsEnabled)
+            || current.UpdatedUtc != before.UpdatedUtc
+            || current.ExpiryAction != before.ExpiryAction
+            || !string.Equals(current.ExpiryTag, before.ExpiryTag, StringComparison.OrdinalIgnoreCase)
+            || current.RemovalMode != before.RemovalMode
+            || current.Level != before.Level
+            || current.WaitDays != before.WaitDays;
+    }
+
+    private const string EditedWhileRunning = "The rule was edited or switched off while this ran, so it stopped before changing anything more; the next check uses the new settings.";
+
     public Task<RetentionRun> CheckAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
         => OneAtATimeAsync(rule.Id, async () =>
         {
@@ -119,12 +160,27 @@ public sealed class RetentionService(
     private async Task<RetentionRun> CheckCoreAsync(RetentionRule rule, string trigger, CancellationToken cancellationToken)
     {
         var started = timeProvider.GetUtcNow();
-        await repository.MarkCheckedAsync(rule.Id, started, cancellationToken);
-        var marks = (await repository.ListMarksAsync(rule.Id, cancellationToken)).ToDictionary(mark => mark.EntityId, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, RetentionMark> marks;
+        using (await HoldEditAsync(rule.Id, cancellationToken))
+        {
+            await repository.MarkCheckedAsync(rule.Id, started, cancellationToken);
+            marks = (await repository.ListMarksAsync(rule.Id, cancellationToken)).ToDictionary(mark => mark.EntityId, StringComparer.OrdinalIgnoreCase);
+        }
+
         // Titles a person put on the list by hand are asked for by name: the steps do not decide them (#1008).
         var manualIds = marks.Values.Where(mark => mark.Manual).Select(mark => mark.EntityId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // The media servers are read without holding anything, so saving the rule never waits for that.
         var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, null, manualIds);
         var items = new List<RetentionRunItem>();
+
+        // What follows changes the rule's marks, so the rule is read again first: if it was edited, switched off or
+        // deleted while the servers were read, nothing is changed and the next check uses the new settings.
+        using var editing = await HoldEditAsync(rule.Id, cancellationToken);
+        if (await RuleChangedAsync(rule, trigger, cancellationToken))
+        {
+            return NotRun(rule, RetentionRunKinds.Check, trigger, EditedWhileRunning);
+        }
+        marks = (await repository.ListMarksAsync(rule.Id, cancellationToken)).ToDictionary(mark => mark.EntityId, StringComparer.OrdinalIgnoreCase);
 
         if (evaluation.Problems.Count > 0)
         {
@@ -243,8 +299,19 @@ public sealed class RetentionService(
         var dueMarks = marks.Values
             .Where(mark => mark.RemoveAfterUtc <= started && mark.State is not (RetentionMarkStates.Held or RetentionMarkStates.Done))
             .ToArray();
+        string? stoppedEarly = null;
+        editing.Dispose();
         foreach (var mark in dueMarks)
         {
+            // One title at a time: a waiting save gets in between two, and the rule is read again before each, so
+            // nothing is removed under a rule that was edited or switched off a moment ago.
+            using var oneTitle = await HoldEditAsync(rule.Id, cancellationToken);
+            if (await RuleChangedAsync(rule, trigger, cancellationToken))
+            {
+                stoppedEarly = EditedWhileRunning;
+                break;
+            }
+
             if (rule.RemovalMode == RetentionRemovalModes.Ask)
             {
                 if (mark.State != RetentionMarkStates.Ready)
@@ -298,7 +365,12 @@ public sealed class RetentionService(
         var held = marks.Values.Count(mark => mark.State == RetentionMarkStates.Held);
         var done = items.Where(item => item.Outcome == RetentionItemOutcomes.Done).ToArray();
         var leaving = marks.Values.Count(mark => mark.State != RetentionMarkStates.Done);
-        var summary = Summary(newlyMarked.Count, items.Count(item => item.Outcome == RetentionItemOutcomes.Cleared), removed.Count, freed, ready.Count, held, failed.Length, leaving, done.Length > 0 ? DoneSentence(rule, done.Length) : null, deferred.Count);
+        var summary = Summary(newlyMarked.Count, items.Count(item => item.Outcome == RetentionItemOutcomes.Cleared), removed.Count, freed, ready.Count, held, failed.Length, leaving, done.Length > 0 ? DoneSentence(rule, done.Length) : null, deferred.Count, evaluation.UpcomingLeftAlone);
+        if (stoppedEarly is not null)
+        {
+            summary = $"{summary} {stoppedEarly}";
+        }
+
         return await FinishAsync(rule, RetentionRunKinds.Check, trigger, started, leaving, items, freed, summary, cancellationToken);
     }
 
@@ -329,6 +401,12 @@ public sealed class RetentionService(
         }
 
         var evaluation = await evaluator.EvaluateAsync(rule, cancellationToken, null, manualIds);
+        using var editing = await HoldEditAsync(rule.Id, cancellationToken);
+        if (await RuleChangedAsync(rule, "person", cancellationToken))
+        {
+            return NotRun(rule, RetentionRunKinds.Confirmed, "person", "The rule was edited while this was being confirmed, so nothing was removed. Look at the list again.");
+        }
+
         if (evaluation.Problems.Count > 0 || evaluation.UnreachableServers.Count > 0)
         {
             var why = evaluation.Problems.Count > 0 ? string.Join(" ", evaluation.Problems) : string.Join("; ", evaluation.UnreachableServers);
@@ -346,8 +424,17 @@ public sealed class RetentionService(
         PlaybackReading? playback = null;
         var deferred = new List<RetentionMark>();
         var actedCount = 0;
+        string? stopped = null;
+        editing.Dispose();
         foreach (var mark in marks)
         {
+            using var oneTitle = await HoldEditAsync(rule.Id, cancellationToken);
+            if (await RuleChangedAsync(rule, "person", cancellationToken))
+            {
+                stopped = EditedWhileRunning;
+                break;
+            }
+
             if (keeps.Contains(mark.EntityId) || !candidates.TryGetValue(mark.EntityId, out var candidate))
             {
                 await repository.DeleteMarkAsync(rule.Id, mark.EntityId, cancellationToken);
@@ -392,6 +479,11 @@ public sealed class RetentionService(
                       + (deferred.Count > 0 ? $"; {Titles(deferred.Count)} left alone while being played, or while what is being played could not be seen" : string.Empty)
                       + (left - deferred.Count > 0 ? $"; {left - deferred.Count} left alone" : string.Empty)
                       + ".";
+        if (stopped is not null)
+        {
+            summary = $"{summary} {stopped}";
+        }
+
         return await FinishAsync(rule, RetentionRunKinds.Confirmed, "person", started, marks.Length - removed.Count - left - actedCount, items, freed, summary, cancellationToken);
     }
 
@@ -536,7 +628,7 @@ public sealed class RetentionService(
     /// already Ready (confirmed for the old action) goes back to waiting, so nothing is ever removed early (#1072).
     /// </summary>
     public Task<int> RestartWaitForDeleteAsync(RetentionRule rule, CancellationToken cancellationToken)
-        => OneAtATimeAsync(rule.Id, () => RestartWaitCoreAsync(rule, cancellationToken), cancellationToken);
+        => EditingAsync(rule.Id, () => RestartWaitCoreAsync(rule, cancellationToken), cancellationToken);
 
     /// <summary>
     /// Saves an edited rule under the rule's own gate, and, when the edit switches its action to delete, restarts
@@ -544,7 +636,7 @@ public sealed class RetentionService(
     /// promised for the old action (#1072). Null when the rule does not exist.
     /// </summary>
     public Task<RetentionRule?> SaveEditedRuleAsync(string id, SaveRetentionRuleRequest request, CancellationToken cancellationToken)
-        => OneAtATimeAsync(id, async () =>
+        => EditingAsync(id, async () =>
         {
             var before = await repository.GetRuleAsync(id, cancellationToken);
             var saved = await repository.SaveRuleAsync(id, request, cancellationToken);
@@ -946,8 +1038,12 @@ public sealed class RetentionService(
         var reason = $"removed by retention rule “{rule.Name}” on {Day(now)} ({string.Join("; ", candidate.Reasons)})";
         try
         {
-            var serverNotes = RetentionLevels.IsPartOfShow(rule.Level)
-                ? await RemovePartAsync(rule, candidate, reason, now, cancellationToken)
+            // A show still airing is not removed as a whole: only its aired episodes that have files go, each one
+            // unmonitored on its own, so the episodes still to come are fetched as usual (#1072).
+            var airing = rule.Level == RetentionLevels.Show ? await AiredPartOfAiringShowAsync(candidate, now, cancellationToken) : null;
+            var granular = airing is not null || RetentionLevels.IsPartOfShow(rule.Level);
+            var serverNotes = granular
+                ? await RemovePartAsync(rule, airing ?? candidate, reason, now, cancellationToken)
                 : await RemoveTitleAsync(rule, candidate, reason, cancellationToken);
             if (serverNotes is null)
             {
@@ -956,7 +1052,7 @@ public sealed class RetentionService(
             }
 
             await repository.DeleteMarksForEntityAsync(mark.EntityId, cancellationToken);
-            if (!RetentionLevels.IsPartOfShow(rule.Level))
+            if (!granular)
             {
                 // A show that goes takes its seasons' and episodes' marks with it.
                 foreach (var part in await repository.ListMarksForTitleAsync(mark.EntityId, cancellationToken))
@@ -965,7 +1061,7 @@ public sealed class RetentionService(
                 }
             }
 
-            var message = RetentionLevels.IsPartOfShow(rule.Level)
+            var message = granular
                 ? "Removed; the files are in the recycle bin and the episodes are no longer wanted."
                 : "Removed; the files are in the recycle bin.";
             return Item(
@@ -978,6 +1074,26 @@ public sealed class RetentionService(
             logger.LogWarning(exception, "Retention rule {Rule} could not remove {Title}.", rule.Name, mark.Title);
             return Item(mark, RetentionItemOutcomes.Failed, exception.Message);
         }
+    }
+
+    /// <summary>
+    /// For a show that still has an episode to come, the show as its aired episodes with files: the part of it a rule may
+    /// remove. Null for a show with nothing left to come, which is removed as a whole.
+    /// </summary>
+    private async Task<RetentionCandidate?> AiredPartOfAiringShowAsync(RetentionCandidate candidate, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var inventory = await series.GetInventoryDetailAsync(candidate.EntityId, cancellationToken);
+        if (inventory is null || !inventory.Episodes.Any(episode => RetentionEpisodeMath.EpisodeUpcoming(episode, now)))
+        {
+            return null;
+        }
+
+        var aired = inventory.Episodes
+            .Where(episode => episode.HasFile && !RetentionEpisodeMath.EpisodeUpcoming(episode, now))
+            .Select(episode => episode.EpisodeId)
+            .ToArray();
+        var part = new RetentionPartFacts(false, true, aired.Length, null, null, null, null, null, null, aired);
+        return candidate with { Unit = candidate.Unit with { ShowId = candidate.Unit.EntityId, Part = part } };
     }
 
     /// <returns>What each server said, or null when the title is already gone.</returns>
@@ -1102,7 +1218,7 @@ public sealed class RetentionService(
         var paths = files.Select(file => RetentionServerIndex.NormalizePath(file.FilePath)).ToHashSet(StringComparer.Ordinal);
         var told = candidate.ServerItems.SelectMany(match => match.Episodes.Count > 0
             ? match.Episodes.Where(episode => episode.Paths.Any(path => paths.Contains(RetentionServerIndex.NormalizePath(path)))).Select(episode => (match.Server, Item: episode))
-            : [(match.Server, match.Item)]);
+            : unit.Level == RetentionLevels.Show ? [] : [(match.Server, match.Item)]);
         return await TellServersAsync(told, unit.Title, cancellationToken);
     }
 
@@ -1229,7 +1345,21 @@ public sealed class RetentionService(
             .Select(match => new RetentionServerItem(match.Server.Id, match.Item.ServerItemId, match.Item.Level, match.Item.SectionId))
             .ToArray();
 
-    private static string Summary(int marked, int cleared, int removed, long freed, int ready, int held, int failed, int leaving, string? done = null, int deferred = 0)
+    private static string Summary(int marked, int cleared, int removed, long freed, int ready, int held, int failed, int leaving, string? done = null, int deferred = 0, int upcoming = 0)
+    {
+        var said = SummaryCore(marked, cleared, removed, freed, ready, held, failed, leaving, done, deferred);
+        return upcoming > 0
+            ? $"{said} {UpcomingSentence(upcoming)}"
+            : said;
+    }
+
+    /// <summary>Plain words for what the rule skipped because it has not aired yet (#1072).</summary>
+    private static string UpcomingSentence(int count)
+        => count == 1
+            ? "1 episode, season or show that has not aired yet was left alone: a rule never touches anything upcoming."
+            : $"{count} episodes, seasons or shows that have not aired yet were left alone: a rule never touches anything upcoming.";
+
+    private static string SummaryCore(int marked, int cleared, int removed, long freed, int ready, int held, int failed, int leaving, string? done, int deferred)
     {
         var parts = new List<string>();
         if (marked > 0) parts.Add($"{Titles(marked)} marked leaving soon");
