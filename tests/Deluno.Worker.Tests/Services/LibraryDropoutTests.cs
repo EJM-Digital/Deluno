@@ -247,7 +247,7 @@ public sealed class LibraryDropoutTests : IDisposable
                         null, null, null, null, now, now, FilePath: item.FilePath, LibraryId: "lib-1"));
                 });
             Movies.Setup(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
+                .ReturnsAsync(new Deluno.Movies.Contracts.MovieFileGoneOutcome(true));
 
             var activity = new Mock<IActivityFeedRepository>();
             activity.Setup(a => a.RecordActivityAsync(
