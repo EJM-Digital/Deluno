@@ -34,6 +34,7 @@ vi.mock("./failed-jobs", () => ({
 }));
 
 vi.mock("./api", () => ({
+  ApiRequestError: class ApiRequestError extends Error {},
   fetchJson: (url: string) => {
     mocks.fetchJsonCalls.push(url);
     // Never resolves on its own -- the test resolves each batch explicitly,
@@ -47,9 +48,11 @@ vi.mock("./api", () => ({
 }));
 
 const { useAttention } = await import("./use-attention");
+const { queryClient } = await import("./route-cache");
 
 describe("useAttention", () => {
   beforeEach(() => {
+    queryClient.clear();
     mocks.fetchJsonCalls = [];
     mocks.activityHandlers = [];
     mocks.healthHandlers = [];

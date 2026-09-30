@@ -36,10 +36,17 @@ const loaderData = {
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => loaderData,
-  useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" }),
   useNavigate: () => vi.fn()
 }));
+
+vi.mock("../lib/route-cache", async (importOriginal) => {
+  const { readyRouteSources } = await import("../test/route-sources");
+  return {
+    ...(await importOriginal<typeof import("../lib/route-cache")>()),
+    useRouteSources: () => readyRouteSources(loaderData, revalidateMock),
+    refetchSources: async () => { revalidateMock(); }
+  };
+});
 
 function jsonResponse(body: unknown, ok = true) {
   return Promise.resolve({

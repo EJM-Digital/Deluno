@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import { Link, useLoaderData, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { queryClient } from "../lib/route-cache";
+import { RouteSkeleton } from "../components/shell/skeleton";
 import type { ActiveDownload, IndexerHealthItem, MediaItem } from "../lib/media-types";
 import {
   emptyPlatformSettingsSnapshot,
@@ -48,7 +50,6 @@ import { MetricChart, type MetricPoint } from "../components/ui/metric-chart";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { TitleBars } from "../components/ui/title-mark";
 import {
-  DEFAULT_HISTORY_DAYS,
   HISTORY_RANGES,
   readStoredHistoryDays,
   windowLabel,
@@ -226,44 +227,19 @@ export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, def
   return false;
 }
 
-export async function dashboardLoader(): Promise<DashboardLoaderData> {
-  const [moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients, libraries, automation, searchCycles, retryWindows, upcomingEpisodes, setupProgress, settings, policySets, qualityProfiles] = await Promise.all([
-    fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<MovieListItem> => ({ items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null })),
-    fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED),
-    fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch((): CataloguePage<SeriesListItem> => ({ items: [], nextPageToken: null, hasMore: false, totalCount: 0, facets: null })),
-    fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED),
-    fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
-    fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []),
-    fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []),
-    fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []),
-    fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []),
-    fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []),
-    fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []),
-    fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []),
-    fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS),
-    fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot),
-    fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []),
-    fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => [])
-  ]);
-
-  // A dashboard that cannot draw its charts or read its own health still has to
-  // render, so these degrade to a stated gap rather than an error page.
-  const [metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing] = await Promise.all([
-    fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30").catch(() => null),
-    fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null),
-    fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null),
-    fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []),
-    fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS),
-    fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []),
-    fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null),
-    fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING)
-  ]);
-
-  return buildDashboardData({
-    moviePage, movieWanted, showPage, showWanted, telemetry, indexers, clients,
-    libraries, automation, searchCycles, retryWindows, upcomingEpisodes,
-    setupProgress, settings, policySets, qualityProfiles, metrics, monitoring, healthChecks, activity, activityStats, processors, throughput, sharing
-  });
+/**
+ * The loader starts every request the Dashboard reads and returns at once
+ * (#1081). It used to wait for all twenty-four, in two serial waves, before the
+ * page could open. Now the page opens on what the cache already holds from the
+ * last visit (nothing, the first time) and each panel fills in as its own
+ * answer arrives, every source refreshed behind what is already showing.
+ */
+export function dashboardLoader() {
+  for (const query of Object.values(dashboardQueries) as { queryKey: readonly unknown[]; queryFn: () => Promise<unknown>; staleTime: number }[]) {
+    void queryClient.prefetchQuery(query);
+  }
+  void queryClient.prefetchQuery(dashboardMetricsQuery(readStoredHistoryDays()));
+  return { cached: true as const };
 }
 
 /**
@@ -352,7 +328,8 @@ const DASHBOARD_REFRESH = {
   // app-layout.tsx), so the Dashboard is current the moment it is looked at
   // again (#641).
   staleTime: 60_000,
-  refetchInterval: 60_000
+  refetchInterval: 60_000,
+  refetchOnMount: "always"
 } as const;
 
 /**
@@ -365,8 +342,57 @@ const DASHBOARD_REFRESH = {
  */
 const MONITORING_REFRESH = {
   staleTime: 30_000,
-  refetchInterval: 30_000
+  refetchInterval: 30_000,
+  refetchOnMount: "always"
 } as const;
+
+/**
+ * Every dashboard query, defined once (#1081) so the route loader can start
+ * them before the page exists and the page can read them from the same cache.
+ * Each keeps its own type, its own cadence and its own options (#281).
+ * `refetchOnMount: "always"` is what makes a revisit show the last answer and
+ * ask again behind it, however fresh that answer still is.
+ */
+const EMPTY_DASHBOARD_SOURCES: DashboardSources = emptyDashboardSources();
+
+const dashboardQueries = {
+  moviePage: { ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage) },
+  movieWanted: { ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED) },
+  showPage: { ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage) },
+  showWanted: { ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED) },
+  indexers: { ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []) },
+  clients: { ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []) },
+  libraries: { ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []) },
+  automation: { ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []) },
+  searchCycles: { ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []) },
+  retryWindows: { ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []) },
+  upcomingEpisodes: { ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []) },
+  setupProgress: { ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS) },
+  settings: { ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot) },
+  policySets: { ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []) },
+  qualityProfiles: { ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []) },
+  activity: { ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []) },
+  activityStats: { ...DASHBOARD_REFRESH, queryKey: ["activity-stats", "24h"], queryFn: () => fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS) },
+  processors: { ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []) },
+  monitoring: { ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null) },
+  healthChecks: { ...MONITORING_REFRESH, queryKey: ["health-checks"], queryFn: () => fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null) },
+  throughput: { ...MONITORING_REFRESH, queryKey: ["download-throughput"], queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null) },
+  sharing: { ...DASHBOARD_REFRESH, queryKey: ["download-sharing"], queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING) },
+  telemetry: {
+    ...DASHBOARD_REFRESH,
+    queryKey: ["telemetry"],
+    queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY)
+  }
+};
+
+/** The window is part of the cache key, so every range keeps its own entry. */
+function dashboardMetricsQuery(historyDays: HistoryDays) {
+  return {
+    ...DASHBOARD_REFRESH,
+    queryKey: ["dashboard-metrics", historyDays],
+    queryFn: () => fetchJson<DashboardMetrics>(`/api/dashboard/metrics?days=${historyDays}`).catch(() => null)
+  };
+}
 
 /**
  * Every dashboard query, one hook each (#281).
@@ -386,69 +412,40 @@ const MONITORING_REFRESH = {
  * takes strongly typed parameters, which is the only reason the collapse was
  * ever visible rather than silent.
  */
-function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays) {
-  const source = initial.sources;
+function useDashboardData(historyDays: HistoryDays) {
+  const source = EMPTY_DASHBOARD_SOURCES;
 
-  const moviePage = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["movies"], queryFn: () => fetchJson<CataloguePage<MovieListItem>>("/api/movies/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().moviePage), initialData: source.moviePage });
-  const movieWanted = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["movies", "wanted"], queryFn: () => fetchJson<MovieWantedSummary>("/api/movies/wanted").catch(() => EMPTY_MOVIE_WANTED), initialData: source.movieWanted });
-  const showPage = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series"], queryFn: () => fetchJson<CataloguePage<SeriesListItem>>("/api/series/page?pageSize=14&sort=added&direction=desc").catch(() => emptyDashboardSources().showPage), initialData: source.showPage });
-  const showWanted = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series", "wanted"], queryFn: () => fetchJson<SeriesWantedSummary>("/api/series/wanted").catch(() => EMPTY_SERIES_WANTED), initialData: source.showWanted });
-  const indexers = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["indexers"], queryFn: () => fetchJson<IndexerItem[]>("/api/indexers").catch((): IndexerItem[] => []), initialData: source.indexers });
-  const clients = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["download-clients"], queryFn: () => fetchJson<DownloadClientItem[]>("/api/download-clients").catch((): DownloadClientItem[] => []), initialData: source.clients });
-  const libraries = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["libraries"], queryFn: () => fetchJson<LibraryItem[]>("/api/libraries").catch((): LibraryItem[] => []), initialData: source.libraries });
-  const automation = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["library-automation"], queryFn: () => fetchPageItems<LibraryAutomationStateItem>("/api/library-automation?pageSize=50").catch((): LibraryAutomationStateItem[] => []), initialData: source.automation });
-  const searchCycles = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["search-cycles"], queryFn: () => fetchPageItems<SearchCycleRunItem>("/api/search-cycles?pageSize=8").catch((): SearchCycleRunItem[] => []), initialData: source.searchCycles });
-  const retryWindows = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["search-retry-windows"], queryFn: () => fetchPageItems<SearchRetryWindowItem>("/api/search-retry-windows?pageSize=8").catch((): SearchRetryWindowItem[] => []), initialData: source.retryWindows });
-  const upcomingEpisodes = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["series", "upcoming"], queryFn: () => fetchJson<SeriesUpcomingEpisodeItem[]>("/api/series/upcoming?take=12&hours=72").catch((): SeriesUpcomingEpisodeItem[] => []), initialData: source.upcomingEpisodes });
-  const setupProgress = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["setup-progress"], queryFn: () => fetchJson<SetupProgressItem>("/api/setup/progress").catch(() => EMPTY_SETUP_PROGRESS), initialData: source.setupProgress });
-  const settings = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["settings"], queryFn: () => fetchJson<PlatformSettingsSnapshot>("/api/settings").catch(() => emptyPlatformSettingsSnapshot), initialData: source.settings });
-  const policySets = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["policy-sets"], queryFn: () => fetchJson<PolicySetItem[]>("/api/policy-sets").catch((): PolicySetItem[] => []), initialData: source.policySets });
-  const qualityProfiles = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["quality-profiles"], queryFn: () => fetchJson<QualityProfileItem[]>("/api/quality-profiles").catch((): QualityProfileItem[] => []), initialData: source.qualityProfiles });
-  const activity = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["activity", "dashboard"], queryFn: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10").catch((): ActivityEventItem[] => []), initialData: source.activity });
-  const activityStats = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["activity-stats", "24h"], queryFn: () => fetchJson<ActivityStatsSnapshot>("/api/stats?window=24h").catch(() => EMPTY_ACTIVITY_STATS), initialData: source.activityStats });
-  const processors = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["processor-connections"], queryFn: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections").catch((): ProcessorConnectionItem[] => []), initialData: source.processors });
+  const moviePage = useQuery(dashboardQueries.moviePage);
+  const movieWanted = useQuery(dashboardQueries.movieWanted);
+  const showPage = useQuery(dashboardQueries.showPage);
+  const showWanted = useQuery(dashboardQueries.showWanted);
+  const indexers = useQuery(dashboardQueries.indexers);
+  const clients = useQuery(dashboardQueries.clients);
+  const libraries = useQuery(dashboardQueries.libraries);
+  const automation = useQuery(dashboardQueries.automation);
+  const searchCycles = useQuery(dashboardQueries.searchCycles);
+  const retryWindows = useQuery(dashboardQueries.retryWindows);
+  const upcomingEpisodes = useQuery(dashboardQueries.upcomingEpisodes);
+  const setupProgress = useQuery(dashboardQueries.setupProgress);
+  const settings = useQuery(dashboardQueries.settings);
+  const policySets = useQuery(dashboardQueries.policySets);
+  const qualityProfiles = useQuery(dashboardQueries.qualityProfiles);
+  const activity = useQuery(dashboardQueries.activity);
+  const activityStats = useQuery(dashboardQueries.activityStats);
+  const processors = useQuery(dashboardQueries.processors);
+  const monitoring = useQuery(dashboardQueries.monitoring);
+  const healthChecks = useQuery(dashboardQueries.healthChecks);
+  const throughput = useQuery(dashboardQueries.throughput);
+  const sharing = useQuery(dashboardQueries.sharing);
+  const metrics = useQuery(dashboardMetricsQuery(historyDays));
+  const telemetry = useQuery(dashboardQueries.telemetry);
 
-  // Health moves on its own clock — see MONITORING_REFRESH.
-  const monitoring = useQuery({ ...MONITORING_REFRESH, queryKey: ["monitoring-dashboard"], queryFn: () => fetchJson<MonitoringDashboardSnapshot>("/api/monitoring/dashboard").catch(() => null), initialData: source.monitoring });
+  // What the first paint cannot honestly be drawn without: a page that said
+  // "add a library" for the half second before the libraries arrived would be
+  // wrong, not just empty. Everything else fills in as it comes.
+  const ready = [libraries, clients, indexers, settings, moviePage, showPage, telemetry].every((query) => query.data !== undefined);
 
-  // #909: the same board System -> Health and the bell read. HealthChanged
-  // (below) already nudges this on a start/clear; the interval is the floor
-  // for the fifteen-minute scheduled pass finding something new on its own.
-  const healthChecks = useQuery({ ...MONITORING_REFRESH, queryKey: ["health-checks"], queryFn: () => fetchJson<HealthCheckListResponse>("/api/system/health").catch(() => null), initialData: source.healthChecks });
-
-  // The window is part of the cache key, so every range keeps its own entry and
-  // switching back to one already read is instant. The loader only ever fetches
-  // the default window, so that is the only key it can legitimately seed.
-  const metrics = useQuery({
-    ...DASHBOARD_REFRESH,
-    queryKey: ["dashboard-metrics", historyDays],
-    queryFn: () => fetchJson<DashboardMetrics>(`/api/dashboard/metrics?days=${historyDays}`).catch(() => null),
-    initialData: historyDays === DEFAULT_HISTORY_DAYS ? source.metrics : undefined
-  });
-
-  // The pipeline's stage counts, and the set of transfers that exist. It sits on
-  // the ordinary heartbeat again (#273): a real `DownloadProgress` publisher now
-  // carries how far along each transfer is, so the bars move on events and this
-  // no longer has to poll every three seconds to look alive. A transfer changing
-  // stage still invalidates it, because that is a count rather than a reading.
-  const telemetry = useQuery({
-    ...DASHBOARD_REFRESH,
-    queryKey: ["telemetry"],
-    queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry").catch(() => EMPTY_TELEMETRY),
-    initialData: source.telemetry
-  });
-
-  // A minute-resolution series, so refreshing faster than the sampler writes
-  // would only redraw the same points.
-  const throughput = useQuery({ ...MONITORING_REFRESH, queryKey: ["download-throughput"], queryFn: () => fetchJson<DownloadThroughputWindow>("/api/download-clients/throughput?hours=6").catch(() => null), initialData: source.throughput });
-
-  // What the clients still hold after import (#288). Written by the worker's
-  // sharing pass rather than measured here, so it moves on that pass's clock —
-  // and the numbers on it are days and gigabytes, which do not reward polling
-  // any harder than the heartbeat.
-  const sharing = useQuery({ ...DASHBOARD_REFRESH, queryKey: ["download-sharing"], queryFn: () => fetchJson<DownloadSharingSnapshot>("/api/download-clients/sharing").catch(() => EMPTY_SHARING), initialData: source.sharing });
-
-  return buildDashboardData({
+  const data = buildDashboardData({
     moviePage: moviePage.data ?? source.moviePage,
     movieWanted: movieWanted.data ?? source.movieWanted,
     showPage: showPage.data ?? source.showPage,
@@ -474,12 +471,17 @@ function useDashboardData(initial: DashboardLoaderData, historyDays: HistoryDays
     throughput: throughput.data ?? source.throughput,
     sharing: sharing.data ?? source.sharing
   });
+  return { data, ready };
 }
 
 export function DashboardPage() {
-  const loaderData = useLoaderData() as DashboardLoaderData;
   const [historyDays, setHistoryDays] = useState<HistoryDays>(readStoredHistoryDays);
-  const data = useDashboardData(loaderData, historyDays);
+  const { data, ready } = useDashboardData(historyDays);
+  if (!ready) return <RouteSkeleton />;
+  return <DashboardBody data={data} historyDays={historyDays} setHistoryDays={setHistoryDays} />;
+}
+
+function DashboardBody({ data, historyDays, setHistoryDays }: { data: DashboardLoaderData; historyDays: HistoryDays; setHistoryDays: (days: HistoryDays) => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [liveSpeedMbps, setLiveSpeedMbps] = useState(() => data.speedMbps);

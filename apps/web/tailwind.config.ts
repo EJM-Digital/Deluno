@@ -154,6 +154,10 @@ const config: Config = {
           "0%": { transform: "translateX(-120%)" },
           "100%": { transform: "translateX(120%)" }
         },
+        "navigation-progress": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(300%)" }
+        },
         "pulse-dot": {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },
           "50%": { opacity: "0.55", transform: "scale(0.88)" }
@@ -189,6 +193,7 @@ const config: Config = {
       },
       animation: {
         shimmer: "shimmer 1.9s linear infinite",
+        "navigation-progress": "navigation-progress 1.1s ease-in-out infinite",
         "pulse-dot": "pulse-dot 1.8s ease-in-out infinite",
         "fade-in": "fade-in 160ms ease-out",
         "slide-up": "slide-up 180ms ease-out",

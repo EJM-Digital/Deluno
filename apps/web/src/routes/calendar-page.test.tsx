@@ -51,10 +51,16 @@ const loaderData = {
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => loaderData,
-  useRevalidator: () => ({ revalidate, state: "idle" }),
   useNavigate: () => vi.fn()
 }));
+
+vi.mock("../lib/route-cache", async (importOriginal) => {
+  const { readyRouteSources } = await import("../test/route-sources");
+  return {
+    ...(await importOriginal<typeof import("../lib/route-cache")>()),
+    useRouteSources: () => readyRouteSources(loaderData, revalidate)
+  };
+});
 
 const { CalendarPage } = await import("./calendar-page");
 

@@ -11,12 +11,15 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { CommandPalette } from "../components/shell/command-palette";
 import { KeyboardHintOverlay } from "../components/shell/keyboard-hint-overlay";
 import { MobileShellNav } from "../components/shell/mobile-shell-nav";
+import { NavigationProgress } from "../components/shell/navigation-progress";
+import { queryClient } from "../lib/route-cache";
+import { prefetchHandlers, prefetchMainRoutesWhenIdle } from "../lib/route-prefetch";
 import { PageTransition } from "../components/shell/motion";
 import { Toaster, realtimeToast } from "../components/shell/toaster";
 import { WsStatusBadge } from "../components/shell/ws-status-badge";
@@ -153,21 +156,17 @@ export function AppLayout() {
 
 function AppLayoutInner() {
   const { token } = useAuth();
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      // Deluno stays live while its tab is hidden (#641), so there is nothing
-      // to catch up on when it is looked at again. Refetching on focus would
-      // put back the refresh-on-return #641 removed.
-      //
-      // refetchIntervalInBackground is a global default (#937): any query
-      // that sets its own `refetchInterval` is a safety net behind realtime
-      // (SignalR events keep the real data current, hidden or not -- see
-      // use-signalr.tsx), so it is safe for this poll to keep running while
-      // hidden too rather than pausing and catching up on return. A query
-      // that opts out can still set the option to false itself.
-      queries: { retry: 1, refetchOnWindowFocus: false, refetchIntervalInBackground: true }
-    }
-  }));
+  // The one cache the route loaders and the screens share lives in
+  // lib/route-cache.ts (#1081). What it holds belongs to whoever signed in, so
+  // it goes when they sign out.
+  useEffect(() => {
+    if (!token) queryClient.clear();
+  }, [token]);
+  // Once the app is idle after sign-in, the main screens' code is fetched so
+  // the first click on any of them finds it already there.
+  useEffect(() => {
+    if (token) prefetchMainRoutesWhenIdle();
+  }, [token]);
   return (
     <QueryClientProvider client={queryClient}>
       <SignalRProvider accessToken={token}>
@@ -213,7 +212,10 @@ function AppLayoutContent() {
     including one with no realtime handler of its own. Returning to a hidden
     tab is not such a case: realtime keeps delivering while hidden (#641).
   */
-  useSignalRResync(() => { revalidator.revalidate(); });
+  useSignalRResync(() => {
+    void queryClient.invalidateQueries();
+    revalidator.revalidate();
+  });
 
   /*
     An import finishing is the end of the workflow the user started, and until
@@ -296,6 +298,7 @@ function AppLayoutContent() {
             everywhere, so the one banner that says so shows above every
             screen rather than living on System (#901). */}
         <OutageBanner />
+        <NavigationProgress />
 
         <div className="min-h-dvh">
           <DesktopSidebar attention={attention} user={user} onLogout={logout} />
@@ -615,12 +618,13 @@ function AreaRow({
       <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
         <NavLink
           to={area.to}
-          className={({ isActive }) => cn(
+          {...prefetchHandlers(area.to)}
+          className={({ isActive, isPending }) => cn(
             "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
-            isActive || areaIsActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
+            isActive || isPending || areaIsActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
           )}
         >
-          {({ isActive }) => <>
+          {({ isActive: active, isPending }) => { const isActive = active || isPending; return <>
             <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive || areaIsActive ? "bg-[var(--nav-accent)]" : "bg-transparent")} />
             <span
               className={cn(
@@ -633,7 +637,7 @@ function AreaRow({
               <DelunoNavGlyph kind={area.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
             </span>
             <span className="min-w-0 flex-1 whitespace-nowrap">{area.label}</span>
-          </>}
+          </>; }}
         </NavLink>
         {showChildren ? (
           <button
@@ -655,15 +659,16 @@ function AreaRow({
               to={item.to}
               end={item.end}
               title={item.label}
-              className={({ isActive }) => cn(
+              {...prefetchHandlers(item.to)}
+              className={({ isActive, isPending }) => cn(
                 "flex min-h-7 min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[length:calc(var(--shell-nav-size)*0.9)] font-medium transition",
-                isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
+                isActive || isPending ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
               )}
             >
-              {({ isActive }) => <>
+              {({ isActive: active, isPending }) => { const isActive = active || isPending; return <>
                 <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isActive ? "bg-[var(--nav-accent)]" : "bg-muted-foreground/35")} />
                 <span className="min-w-0 truncate">{item.label}</span>
-              </>}
+              </>; }}
             </NavLink>
           ))}
         </div>
@@ -727,14 +732,19 @@ function SidebarItem({
       to={item.to}
       end={item.end}
       style={NAV_ACCENT_STYLE}
-      className={({ isActive }) =>
+      {...prefetchHandlers(item.to)}
+      className={({ isActive, isPending }) =>
         cn(
           "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
-          isActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
+          isActive || isPending ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
         )
       }
     >
-      {({ isActive }) => (
+      {({ isActive: active, isPending }) => {
+        // A link answers the frame it is clicked: it takes the active look
+        // while its screen is still opening.
+        const isActive = active || isPending;
+        return (
         <>
           <span aria-hidden className={cn("absolute left-0 h-[calc(var(--shell-pill-height)*0.55)] w-[3px] rounded-r-full transition-colors", isActive ? "bg-[var(--nav-accent)]" : "bg-transparent")} />
           <span
@@ -754,7 +764,8 @@ function SidebarItem({
             </span>
           ) : null}
         </>
-      )}
+        );
+      }}
     </NavLink>
   );
 }

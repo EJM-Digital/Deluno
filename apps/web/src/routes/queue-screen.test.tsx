@@ -36,10 +36,16 @@ const queueLoaderData = {
 
 vi.mock("react-router-dom", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-router-dom")>()),
-  useLoaderData: () => queueLoaderData,
-  useRevalidator: () => ({ revalidate: revalidateMock, state: "idle" }),
   useNavigate: () => vi.fn()
 }));
+
+vi.mock("../lib/route-cache", async (importOriginal) => {
+  const { readyRouteSources } = await import("../test/route-sources");
+  return {
+    ...(await importOriginal<typeof import("../lib/route-cache")>()),
+    useRouteSources: () => readyRouteSources(queueLoaderData, revalidateMock)
+  };
+});
 
 // #810: reorder/force-start controls are shown only when the client's own
 // reported capabilities say so, never guessed at per protocol.
