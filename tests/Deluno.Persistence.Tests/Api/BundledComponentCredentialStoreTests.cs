@@ -108,7 +108,7 @@ public sealed class BundledComponentCredentialStoreTests : IDisposable
     private sealed class ThrowingProtector : ISecretProtector
     {
         public string Protect(string purpose, string plaintext) => throw new InvalidOperationException();
-        public string? Unprotect(string purpose, string? protectedValue) => throw new InvalidOperationException();
+        public string? Unprotect(string purpose, string? protectedValue) => throw new System.Security.Cryptography.CryptographicException("Key not valid for use in specified state.");
         public bool IsProtected(string? value) => true;
     }
 }
