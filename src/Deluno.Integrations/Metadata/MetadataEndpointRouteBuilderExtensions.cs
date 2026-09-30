@@ -66,7 +66,18 @@ public static class MetadataEndpointRouteBuilderExtensions
             }
 
             var request = new MetadataLookupRequest(query, mediaType, year, providerId, idSource);
+            using var failureScope = provider.BeginFailureScope();
             var results = await provider.SearchAsync(request, cancellationToken);
+
+            // An empty answer and a service that did not answer are different
+            // things. Say which, so the Add screen never reads an outage as
+            // "no metadata matches found" (#1090).
+            if (results.Count == 0 && failureScope.Failure is { } failure)
+            {
+                return Results.Json(
+                    new MetadataSearchFailureResponse("metadata-unavailable", MetadataFailureWords.Describe(failure), failure),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
 
             // After the provider, never inside it. The provider caches what it
             // returns, and whether Deluno holds a title is true of this install
@@ -86,7 +97,11 @@ public static class MetadataEndpointRouteBuilderExtensions
                 return denied;
             }
 
-            var status = await provider.GetStatusAsync(cancellationToken);
+            // Check now starts from a clean slate and asks the service for real:
+            // it closes the circuits and pauses, then probes live rather than
+            // answering from the configuration or the search cache (#1090).
+            await provider.ClearServiceTroubleAsync(cancellationToken);
+            var status = await provider.CheckReachabilityAsync(cancellationToken);
             var lookup = new MetadataLookupRequest(
                 string.IsNullOrWhiteSpace(request.Query) ? "The Matrix" : request.Query,
                 string.IsNullOrWhiteSpace(request.MediaType) ? "movies" : request.MediaType,
@@ -197,6 +212,12 @@ public static class MetadataEndpointRouteBuilderExtensions
         return endpoints;
     }
 }
+
+/// <summary>What /api/metadata/search answers with, at 503, when the metadata service did not answer.</summary>
+public sealed record MetadataSearchFailureResponse(
+    string Error,
+    string Message,
+    Deluno.Contracts.IntegrationFailure Failure);
 
 public sealed record MetadataTestRequest(
     string? Query,

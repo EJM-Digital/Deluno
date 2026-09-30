@@ -153,7 +153,13 @@ public static class IntegrationsServiceCollectionExtensions
         services.AddSingleton<Subtitles.ISubtitleProviderRegistry, Subtitles.SubtitleProviderRegistry>();
         services.AddSingleton<Subtitles.ISubtitleFetchService, Subtitles.SubtitleFetchService>();
 
-        services.AddHttpClient<TmdbMetadataProvider>();
+        // One health record for the whole process: the typed client below is
+        // rebuilt per request, so a failure kept on it never reached /api/metadata/status (#1090).
+        services.AddSingleton<MetadataServiceHealth>();
+        services.AddSingleton<Deluno.Infrastructure.Resilience.IMetadataServiceReset, MetadataServiceReset>();
+        // The per-call limit (about ten seconds) is applied in the provider; this is the
+        // backstop above it, which artwork downloads also run under.
+        services.AddHttpClient<TmdbMetadataProvider>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IMetadataProvider>(sp => sp.GetRequiredService<TmdbMetadataProvider>());
         services.AddHostedService<CacheSchemaInitializer>();
 

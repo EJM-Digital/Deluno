@@ -24,7 +24,8 @@ public sealed partial class TmdbMetadataProvider(
     TimeProvider timeProvider,
     IIntegrationResiliencePolicy resiliencePolicy,
     IOutboundRequestThrottle outboundRequestThrottle,
-    ILogger<TmdbMetadataProvider> logger)
+    ILogger<TmdbMetadataProvider> logger,
+    MetadataServiceHealth? serviceHealth = null)
     : IMetadataProvider
 {
     /// <summary>
@@ -58,7 +59,15 @@ public sealed partial class TmdbMetadataProvider(
     private static readonly TimeSpan ArtworkSearchDeadline = TimeSpan.FromSeconds(30);
     private const int ArtworkSearchConcurrency = 6;
     private const int MaxArtworkBytes = 20 * 1024 * 1024;
-    private IntegrationFailure? _lastFailure;
+
+    /// <summary>
+    /// Process-wide, not per instance: this provider is a typed HttpClient and is
+    /// rebuilt for nearly every request, so anything kept on it was gone before
+    /// the status endpoint could report it (#1090).
+    /// </summary>
+    private readonly MetadataServiceHealth _health = serviceHealth ?? new MetadataServiceHealth(timeProvider);
+
+    private static readonly AsyncLocal<FailureScope?> CurrentScope = new();
 
     /// <summary>
     /// The last boundary failure from a live metadata operation. Empty search
@@ -67,15 +76,64 @@ public sealed partial class TmdbMetadataProvider(
     /// </summary>
     public IntegrationFailure? LastFailure => Volatile.Read(ref _lastFailure);
 
+    // What this instance's own calls last hit, exactly as before: a caller that
+    // has just made one call reads the answer to that call (a 404 means the
+    // record is gone; a 503 means it may not be). The process-wide record in
+    // _health is what the status and the screens read; it cannot stand in for
+    // this, because another lane's call would overwrite it (#1090).
+    private IntegrationFailure? _lastFailure;
+
+    public IMetadataFailureScope BeginFailureScope()
+    {
+        var scope = new FailureScope(CurrentScope.Value);
+        CurrentScope.Value = scope;
+        return scope;
+    }
+
+    private sealed class FailureScope(FailureScope? outer) : IMetadataFailureScope
+    {
+        private IntegrationFailure? _failure;
+
+        public IntegrationFailure? Failure => Volatile.Read(ref _failure);
+
+        public void Report(IntegrationFailure failure)
+        {
+            Interlocked.Exchange(ref _failure, failure);
+            outer?.Report(failure);
+        }
+
+        public void Dispose() => CurrentScope.Value = outer;
+    }
+
+    private static void ReportToScope(IntegrationFailure failure) => CurrentScope.Value?.Report(failure);
+
+    /// <summary>
+    /// Only a service that is not answering counts: a 404 for one title is an
+    /// answer, and must not make the whole service look down.
+    /// </summary>
+    private static bool CountsAsServiceFailure(IntegrationFailure failure)
+        => failure.IsTransient
+           || failure.Kind is IntegrationFailureKind.Authentication or IntegrationFailureKind.Configuration;
+
+    public async Task ClearServiceTroubleAsync(CancellationToken cancellationToken)
+    {
+        _health.Reset();
+        Interlocked.Exchange(ref _lastFailure, null);
+        foreach (var source in MetadataServiceHealth.Sources)
+        {
+            await resiliencePolicy.CloseCircuitsAsync("metadata", source, cancellationToken);
+        }
+    }
+
     public async Task<MetadataProviderStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         var config = await GetMetadataConfigurationAsync(cancellationToken);
         var directConfigured = !string.IsNullOrWhiteSpace(config.TmdbApiKey);
         var brokerConfigured = !string.IsNullOrWhiteSpace(config.BrokerUrl);
         var sources = BuildSourceStatuses(config, directConfigured, brokerConfigured);
-        var lastFailure = LastFailure;
+        var lastFailure = _health.LastFailure;
 
-        return config.ProviderMode switch
+        var status = config.ProviderMode switch
         {
             "broker" => new MetadataProviderStatus(
                 BrokerProviderName,
@@ -109,6 +167,12 @@ public sealed partial class TmdbMetadataProvider(
                 sources,
                 lastFailure)
         };
+
+        // Ready is only true of the settings. When the service last failed, say
+        // so in plain words instead of "ready" (#1090).
+        return lastFailure is not null && status.IsConfigured
+            ? status with { Message = MetadataFailureWords.Describe(lastFailure) }
+            : status;
     }
 
     public async Task<MetadataProviderStatus> GetDirectStatusAsync(CancellationToken cancellationToken)
@@ -304,6 +368,18 @@ public sealed partial class TmdbMetadataProvider(
             if (config.ProviderMode == "broker")
             {
                 logger.LogWarning("Broker search returned no results and broker-only mode is active for query: {Query}", query);
+
+                // The gateway did not answer (null, not an empty list): an
+                // older answer to this same search beats "nothing found" (#1090).
+                if (brokerResults is null)
+                {
+                    var brokerStale = await TryReadStaleCacheAsync(cacheKey, cancellationToken);
+                    if (brokerStale is not null)
+                    {
+                        return await LocalizeArtworkAsync(brokerStale, cancellationToken);
+                    }
+                }
+
                 return [];
             }
 
@@ -2942,19 +3018,104 @@ public sealed partial class TmdbMetadataProvider(
         };
     }
 
+    /// <summary>
+    /// When set, calls made inside the block do not touch the process-wide
+    /// "last failure": TheTVDB is an optional first choice with TMDb behind it,
+    /// so its failing is reported to the work that asked (the failure scope)
+    /// and does not make the whole metadata service look down.
+    /// </summary>
+    private static readonly AsyncLocal<bool> QuietCalls = new();
+
+    private void NoteServiceFailure(IntegrationFailure failure)
+    {
+        Interlocked.Exchange(ref _lastFailure, failure);
+        if (!CountsAsServiceFailure(failure))
+        {
+            return;
+        }
+
+        ReportToScope(failure);
+        if (!QuietCalls.Value)
+        {
+            _health.RecordFailure(failure);
+        }
+    }
+
+    /// <summary>
+    /// The wait a service asked for: Retry-After first, then the common
+    /// rate-limit headers. Returns null when the response asked for nothing.
+    /// </summary>
+    private static TimeSpan? ReadRequestedPause(HttpResponseMessage response, DateTimeOffset now)
+    {
+        if (IntegrationResiliencePolicy.TryGetRetryAfter(response) is { } retryAfter && retryAfter > TimeSpan.Zero)
+        {
+            return retryAfter;
+        }
+
+        if (TryReadHeaderNumber(response, "X-RateLimit-Retry-After") is { } retryAfterSeconds && retryAfterSeconds > 0)
+        {
+            return TimeSpan.FromSeconds(retryAfterSeconds);
+        }
+
+        if (TryReadHeaderNumber(response, "X-RateLimit-Reset") is { } reset && reset > 0)
+        {
+            // Either seconds from now or an epoch second; an epoch is far larger than any wait.
+            var seconds = reset > 100_000_000 ? reset - now.ToUnixTimeSeconds() : reset;
+            return seconds > 0 ? TimeSpan.FromSeconds(seconds) : null;
+        }
+
+        return null;
+    }
+
+    private static double? TryReadHeaderNumber(HttpResponseMessage response, string name)
+        => response.Headers.TryGetValues(name, out var values)
+           && double.TryParse(values.FirstOrDefault(), NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : null;
+
     private async Task<T?> GetJsonWithResilienceAsync<T>(
         string url,
         string key,
         string operation,
         CancellationToken cancellationToken)
     {
+        var serviceName = MetadataServiceName(key);
+        var host = ThrottleHost(url);
+
+        // A pause the service itself asked for (a 429's Retry-After). Honoured
+        // before anything else: a short one is waited out, a long one defers the
+        // call instead of tying up a job lane for a minute (#1090).
+        var pausedFor = _health.PausedFor(host);
+        if (pausedFor > TimeSpan.Zero)
+        {
+            if (pausedFor > _health.MaxPauseWait)
+            {
+                var pausedFailure = IntegrationFailureFactory.FromLegacy(
+                    "metadata",
+                    key,
+                    serviceName,
+                    operation,
+                    "rate-limited",
+                    "The metadata service asked Deluno to wait before calling it again.",
+                    retryAfterUtc: timeProvider.GetUtcNow().Add(pausedFor));
+                ReportToScope(pausedFailure);
+                Interlocked.Exchange(ref _lastFailure, pausedFailure);
+                return default;
+            }
+
+            await Task.Delay(pausedFor, timeProvider, cancellationToken);
+        }
+
         // Paced before the request. A freshly imported library asks this
         // roughly once per title; at 20,000 titles and no pacing that is a
         // sustained burst, which is how a run during this work collected 394
-        // rate-limit responses out of about 20,000 requests.
+        // rate-limit responses out of about 20,000 requests. The gateway's own
+        // limit is far lower than TMDb's (30 a minute per address), so calls to
+        // it are paced to that instead (#1090).
+        var isGateway = key.StartsWith("metadata:broker:", StringComparison.OrdinalIgnoreCase);
         if (await outboundRequestThrottle.TryAcquireAsync(
-                ThrottleHost(url),
-                OutboundRate.MetadataProviderDefault,
+                host,
+                isGateway ? OutboundRate.MetadataGatewayDefault : OutboundRate.MetadataProviderDefault,
                 MaxMetadataThrottleWait,
                 cancellationToken) is null)
         {
@@ -2963,22 +3124,23 @@ public sealed partial class TmdbMetadataProvider(
                 operation,
                 MaxMetadataThrottleWait);
 
-            Interlocked.Exchange(
-                ref _lastFailure,
-                IntegrationFailureFactory.FromLegacy(
+            // Deluno's own pacing, not the service failing: it is reported to the
+            // work that asked, never to the status the person reads.
+            var deferredFailure = IntegrationFailureFactory.FromLegacy(
                     "metadata",
                     key,
-                    MetadataServiceName(key),
+                    serviceName,
                     operation,
                     "rate-limited",
                     "The metadata request was deferred because the provider budget was exhausted.",
-                    retryAfterUtc: timeProvider.GetUtcNow().Add(MaxMetadataThrottleWait)));
+                    retryAfterUtc: timeProvider.GetUtcNow().Add(MaxMetadataThrottleWait));
+            ReportToScope(deferredFailure);
+            Interlocked.Exchange(ref _lastFailure, deferredFailure);
 
             return default;
         }
 
         IntegrationFailure? boundaryFailure = null;
-        var serviceName = MetadataServiceName(key);
         var result = await resiliencePolicy.ExecuteAsync(
             new IntegrationResilienceRequest(
                 key,
@@ -2996,22 +3158,50 @@ public sealed partial class TmdbMetadataProvider(
             {
                 try
                 {
-                    using var response = await httpClient.GetAsync(url, token);
+                    // About ten seconds a call. The client's own timeout is a
+                    // backstop above this; without one a dead gateway held a
+                    // call for 100 s, three times over.
+                    using var timeout = new CancellationTokenSource(_health.CallTimeout, timeProvider);
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
+                    using var response = await httpClient.GetAsync(url, linked.Token);
                     if (!response.IsSuccessStatusCode)
                     {
+                        var requestedPause = ReadRequestedPause(response, timeProvider.GetUtcNow());
                         if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                         {
-                            // TMDb says exactly how long to wait; passing that
-                            // through the typed exception lets the resilience
-                            // policy honor it instead of guessing with the same
-                            // backoff a 500 or a timeout gets (#865).
-                            throw new IntegrationRateLimitedException(
-                                "The service returned HTTP 429.",
-                                IntegrationResiliencePolicy.TryGetRetryAfter(response));
+                            // TMDb and the gateway say exactly how long to wait;
+                            // keep that for every call that follows (not only the
+                            // retry of this one) and pass it through the typed
+                            // exception so the resilience policy honours it
+                            // instead of guessing (#865, #1090).
+                            var wait = requestedPause ?? TimeSpan.FromSeconds(10);
+                            var until = _health.PauseFor(host, wait);
+                            if (wait > _health.MaxPauseWait)
+                            {
+                                // Too long to sit out here, and not the service
+                                // being broken: defer, and do not count it towards
+                                // opening the circuit.
+                                boundaryFailure = IntegrationFailureFactory.FromLegacy(
+                                    "metadata",
+                                    key,
+                                    serviceName,
+                                    operation,
+                                    "rate-limited",
+                                    "The metadata service asked Deluno to wait before calling it again.",
+                                    retryAfterUtc: until);
+                                return default;
+                            }
+
+                            throw new IntegrationRateLimitedException("The service returned HTTP 429.", wait);
                         }
 
                         if (IntegrationResiliencePolicy.IsTransientHttpStatusCode(response.StatusCode))
                         {
+                            if (requestedPause is { } busyFor)
+                            {
+                                _health.PauseFor(host, busyFor);
+                            }
+
                             // "The service returned HTTP 503" - not the name of
                             // the Deluno function that asked. The operation is
                             // already a field on the failure.
@@ -3030,9 +3220,18 @@ public sealed partial class TmdbMetadataProvider(
                         return default;
                     }
 
-                    return await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, token);
+                    if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var remaining)
+                        && remaining.FirstOrDefault() == "0"
+                        && ReadRequestedPause(response, timeProvider.GetUtcNow()) is { } exhaustedFor)
+                    {
+                        // The budget is spent: wait for the window instead of
+                        // spending the next request on a 429.
+                        _health.PauseFor(host, exhaustedFor);
+                    }
+
+                    return await response.Content.ReadFromJsonAsync<T>(CacheJsonOptions, linked.Token);
                 }
-                catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
+                catch (Exception exception) when (exception is not HttpRequestException and not OperationCanceledException and not IOException)
                 {
                     boundaryFailure = IntegrationFailureFactory.FromException(
                         "metadata",
@@ -3050,9 +3249,7 @@ public sealed partial class TmdbMetadataProvider(
 
         if (result.Value is null)
         {
-            Interlocked.Exchange(
-                ref _lastFailure,
-                result.Failure
+            var failure = result.Failure
                 ?? boundaryFailure
                 ?? IntegrationFailureFactory.FromLegacy(
                     "metadata",
@@ -3060,11 +3257,17 @@ public sealed partial class TmdbMetadataProvider(
                     serviceName,
                     operation,
                     "unknown",
-                    "The metadata provider returned no usable response."));
+                    "The metadata provider returned no usable response.");
+            NoteServiceFailure(failure);
         }
         else
         {
             Interlocked.Exchange(ref _lastFailure, null);
+        }
+
+        if (result.Value is not null && !QuietCalls.Value)
+        {
+            _health.RecordSuccess();
         }
 
         return result.Value;
