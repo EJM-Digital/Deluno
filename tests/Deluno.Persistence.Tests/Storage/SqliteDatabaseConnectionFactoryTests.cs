@@ -7,6 +7,23 @@ namespace Deluno.Persistence.Tests.Storage;
 public sealed class SqliteDatabaseConnectionFactoryTests
 {
     [Fact]
+    public async Task Reopened_pooled_connections_keep_the_configured_pragmas()
+    {
+        using var storage = TestStorage.Create();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Platform);
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA busy_timeout;";
+            Assert.Equal(5000L, Convert.ToInt64(await command.ExecuteScalarAsync()));
+            command.CommandText = "PRAGMA cache_size;";
+            Assert.Equal(-16000L, Convert.ToInt64(await command.ExecuteScalarAsync()));
+            command.CommandText = "PRAGMA journal_mode;";
+            Assert.Equal("wal", Convert.ToString(await command.ExecuteScalarAsync()));
+        }
+    }
+
+    [Fact]
     public async Task ReadOnly_connection_reads_existing_database_without_permitting_writes()
     {
         using var storage = TestStorage.Create();
