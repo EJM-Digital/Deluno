@@ -23,6 +23,8 @@ import { fetchJson, fetchPageItems, type ActivityEventItem, type MachineTelemetr
 import type { DashboardScheduledTask, DashboardSummary } from "../../lib/api/types/operations";
 import { defineSources, useRouteSources } from "../../lib/route-cache";
 import { cn } from "../../lib/utils";
+import { useDashboardAttention } from "./use-dashboard-attention";
+import type { DashboardAttention } from "./attention";
 import { ActionButton, FactRow, Panel, PanelLink, PanelNote, ago, formatSize, plainWords, plural, send, until, useAction } from "./downloads-kit";
 
 const MACHINE_HOURS = 6;
@@ -44,22 +46,16 @@ type Action = ReturnType<typeof useAction>;
 
 const STARTUP_PREFIX = "system:background-problem:startup:";
 
-/** How many things on this tab need a person. Zero when nothing does; the tab badge shows it only above zero. */
-export function systemTabAttention(summary: DashboardSummary | undefined): number {
-  if (!summary) return 0;
-  const system = summary.system;
-  return (summary.health?.problems ?? 0) + (system?.jobs.failed ?? 0) + (system?.lanes.filter((lane) => lane.state === "failing").length ?? 0);
-}
-
 export function SystemTab({ summary }: { summary: DashboardSummary | undefined }) {
   const { data } = useRouteSources(sources);
   const action = useAction();
+  const attention = useDashboardAttention(summary);
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <Strip summary={summary} />
+      <Strip summary={summary} problems={attention.counts.system} jobsGaveUp={attention.jobsGaveUp} />
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-3">
-          <Problems summary={summary} action={action} />
+          <Problems summary={summary} attention={attention} action={action} />
           <Automation summary={summary} />
         </div>
         <div className="flex min-h-0 flex-col gap-3">
@@ -91,9 +87,8 @@ function taskFailed(task: DashboardScheduledTask): boolean {
   return task.lastResult.toLowerCase() === "failed";
 }
 
-function Strip({ summary }: { summary: DashboardSummary | undefined }) {
+function Strip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | undefined; problems: number; jobsGaveUp: number }) {
   const system = summary?.system;
-  const problems = systemTabAttention(summary);
   const tasks = summary?.automation?.tasks ?? [];
   const failedTasks = tasks.filter(taskFailed).length;
   const nextTask = tasks
@@ -126,7 +121,7 @@ function Strip({ summary }: { summary: DashboardSummary | undefined }) {
       label: "Jobs",
       value: `${system?.jobs.running ?? 0} running`,
       help: `${system?.jobs.queued ?? 0} waiting`,
-      tone: system && system.jobs.failed > 0 ? "danger" : undefined,
+      tone: jobsGaveUp > 0 ? "danger" : undefined,
       href: "/activity"
     }
   ];
@@ -138,13 +133,13 @@ function Strip({ summary }: { summary: DashboardSummary | undefined }) {
 const linkButton =
   "inline-flex h-[var(--control-height-sm)] items-center rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-function Problems({ summary, action }: { summary: DashboardSummary | undefined; action: Action }) {
+function Problems({ summary, attention, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
   const health = summary?.health;
   const system = summary?.system;
   const problems = health?.topProblems ?? [];
   const failedLanes = system?.lanes.filter((lane) => lane.state === "failing") ?? [];
-  const failedJobs = system?.jobs.failed ?? 0;
-  const total = systemTabAttention(summary);
+  const failedJobs = attention.jobsGaveUp;
+  const total = attention.counts.system;
   const shownProblems = problems.length;
   const more = Math.max(0, (health?.problems ?? 0) - shownProblems);
 

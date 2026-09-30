@@ -14,8 +14,8 @@ vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve(
 
 const { queryClient } = await import("../../lib/route-cache");
 const { OverviewTab, buildAreaLines } = await import("./overview-tab");
-const { LibraryTab, libraryTabAttention } = await import("./library-tab");
-const { buildNeedsYou, overviewTabAttention } = await import("./needs-you");
+const { LibraryTab } = await import("./library-tab");
+const { computeAttention } = await import("./attention");
 
 const wanted = {
   totalWanted: 3,
@@ -85,8 +85,8 @@ describe("Overview", () => {
 
     const needs = screen.getByRole("region", { name: /^needs you$/i });
     expect(within(needs).getByRole("link", { name: /Fix it in Find & Download: Nyaa\.si isn't answering/ })).toHaveAttribute("href", "/indexers/indexers");
-    expect(within(needs).getByRole("link", { name: /Look in Transfers: 2 downloads are stalled/ })).toHaveAttribute("href", "/queue");
-    expect(within(needs).getByRole("link", { name: /Fix it in Activity: 3 imports need a look/ })).toHaveAttribute("href", "/activity");
+    expect(within(needs).getByRole("link", { name: /Fix it in Downloads: 2 downloads are stalled/ })).toHaveAttribute("href", "/?tab=downloads");
+    expect(within(needs).getByRole("link", { name: /Fix it in Downloads: 3 imports need a look/ })).toHaveAttribute("href", "/?tab=downloads");
     // Every row has its own button, with its own name.
     const buttons = within(needs).getAllByRole("link");
     expect(new Set(buttons.map((button) => button.getAttribute("aria-label"))).size).toBe(buttons.length);
@@ -126,12 +126,12 @@ describe("Overview", () => {
   });
 
   it("counts what needs you for the tab's badge, and none on a new install", () => {
-    expect(overviewTabAttention(emptySummary())).toBe(0);
-    expect(overviewTabAttention(undefined)).toBe(0);
-    expect(buildNeedsYou(fullSummary()).map((row) => row.id)).toEqual(
+    expect(computeAttention(emptySummary()).counts.overview).toBe(0);
+    expect(computeAttention(undefined).counts.overview).toBe(0);
+    expect(computeAttention(fullSummary()).items.map((row) => row.id)).toEqual(
       expect.arrayContaining(["health:h1", "health:h2", "health:more", "stalled", "failed-downloads", "recovery", "handoffs", "failed-jobs", "lanes"])
     );
-    expect(overviewTabAttention(fullSummary(), 1)).toBe(buildNeedsYou(fullSummary()).length + 1);
+    expect(computeAttention(fullSummary(), {}, [{ id: "s", title: "t", text: "x", to: "/", action: "Go" }]).counts.overview).toBe(computeAttention(fullSummary()).counts.overview + 1);
   });
 });
 
@@ -174,11 +174,11 @@ describe("Library", () => {
   });
 
   it("counts a collection that cannot update and a request server that is not answering", () => {
-    expect(libraryTabAttention(emptySummary())).toBe(0);
-    expect(libraryTabAttention(undefined)).toBe(0);
-    expect(libraryTabAttention(fullSummary())).toBe(1);
+    expect(computeAttention(emptySummary()).counts.library).toBe(0);
+    expect(computeAttention(undefined).counts.library).toBe(0);
+    expect(computeAttention(fullSummary()).counts.library).toBe(1);
     const failing = fullSummary();
     failing.requests!.seerrFailing = 1;
-    expect(libraryTabAttention(failing)).toBe(2);
+    expect(computeAttention(failing).counts.library).toBe(2);
   });
 });

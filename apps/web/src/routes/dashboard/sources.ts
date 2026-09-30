@@ -21,7 +21,7 @@ import { queryClient, defineSources, useRouteSources, type RouteSource } from ".
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
 import { emptyDashboardMetrics, type DashboardMetrics } from "./metrics";
 import { sharedSources } from "../../lib/shared-sources";
-import type { SetupNeed } from "./needs-you";
+import type { SetupNeed } from "./attention";
 
 export const SUMMARY_KEY = ["dashboard", "summary"] as const;
 

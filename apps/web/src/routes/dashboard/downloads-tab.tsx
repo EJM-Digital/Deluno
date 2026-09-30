@@ -21,12 +21,11 @@ import { Chip } from "../../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../../components/ui/list-card";
 import { StatusLed } from "../../components/ui/status-led";
 import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
-import { fetchJson, type DownloadQueueItem, type DownloadTelemetryOverview, type ProcessorConnectionItem } from "../../lib/api";
+import type { DownloadQueueItem, DownloadTelemetryOverview, ProcessorConnectionItem } from "../../lib/api";
 import type { DashboardClientRow, DashboardSummary } from "../../lib/api/types/operations";
 import { dismissFailedJob } from "../../lib/failed-jobs";
-import { canTryAgain, handoffNeedsPerson, isVanished, needsAction, type RecoveryCaseRow } from "../../lib/needs-action";
-import { defineSources, useRouteSources } from "../../lib/route-cache";
-import { sharedSources } from "../../lib/shared-sources";
+import { canTryAgain, isVanished, type RecoveryCaseRow } from "../../lib/needs-action";
+import { useRouteSources } from "../../lib/route-cache";
 import { submitQueueRemoval } from "../../lib/remove-download";
 import { cn } from "../../lib/utils";
 import {
@@ -44,41 +43,15 @@ import {
   until,
   useAction
 } from "./downloads-kit";
+import { attentionSources, indexerNeedsButton, processorUnhealthy, type DashboardAttention } from "./attention";
+import { useDashboardAttention } from "./use-dashboard-attention";
 
-const sources = defineSources({
-  telemetry: sharedSources.telemetry,
-  movieRecovery: sharedSources.movieRecovery,
-  seriesRecovery: sharedSources.seriesRecovery,
-  failedJobs: sharedSources.failedJobs,
-  handoffs: sharedSources.handoffs,
-  indexers: sharedSources.indexers,
-  processors: {
-    key: ["processor-connections"],
-    label: "Processors",
-    fetch: () => fetchJson<ProcessorConnectionItem[]>("/api/integrations/processors/connections")
-  }
-});
-
-/** How many things on this tab need a person. Zero when nothing does; the tab badge shows it only above zero. */
-export function downloadsTabAttention(summary: DashboardSummary | undefined): number {
-  if (!summary) return 0;
-  const downloads = summary.downloads;
-  const clients = downloads?.clients ?? [];
-  return (
-    (downloads?.stalled ?? 0) +
-    clients.filter((client) => !client.reachable).length +
-    clients.filter((client) => client.reachable && client.paused === true).length +
-    (summary.imports?.recoveryOpen ?? 0) +
-    (summary.imports?.failedImportJobs ?? 0) +
-    (summary.imports?.failedProcessorHandoffs ?? 0) +
-    (summary.indexers?.failing ?? 0) +
-    (summary.processors?.failing ?? 0)
-  );
-}
+const sources = attentionSources;
 
 export function DownloadsTab({ summary }: { summary: DashboardSummary | undefined }) {
   const { data } = useRouteSources(sources);
   const action = useAction();
+  const attention = useDashboardAttention(summary);
   const processors = useMemo(() => (data.processors ?? []).filter((processor) => processor.isEnabled), [data.processors]);
   const processorName = processors.length === 1 ? processors[0].name : processors.length > 1 ? "the processors" : "the processor";
 
@@ -87,10 +60,10 @@ export function DownloadsTab({ summary }: { summary: DashboardSummary | undefine
       <Strip summary={summary} />
       <Pipeline summary={summary} processorName={processorName} hasProcessor={processors.length > 0} />
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
-        <DownloadsNow summary={summary} telemetry={data.telemetry} action={action} />
-        <Clients summary={summary} telemetry={data.telemetry} action={action} />
+        <DownloadsNow summary={summary} telemetry={data.telemetry} attention={attention} action={action} />
+        <Clients summary={summary} action={action} />
         <Indexers summary={summary} indexers={data.indexers} action={action} className="lg:row-span-2" />
-        <ImportsAndRecovery summary={summary} data={data} action={action} />
+        <ImportsAndRecovery summary={summary} attention={attention} action={action} />
         <ProcessorPanel summary={summary} processors={processors} handoffs={data.handoffs} action={action} />
       </div>
     </div>
@@ -208,7 +181,9 @@ function percent(progress: number): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
-function DownloadsNow({ summary, telemetry, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; action: Action }) {
+function DownloadsNow({ summary, telemetry, attention, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; attention: DashboardAttention; action: Action }) {
+  // A stalled download that an import case is about is that case, which has the buttons.
+  const stalledWithButton = new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`));
   const rows = nowRows(telemetry);
   const shown = rows.slice(0, ROW_LIMIT);
   const downloads = summary?.downloads;
@@ -258,7 +233,7 @@ function DownloadsNow({ summary, telemetry, action }: { summary: DashboardSummar
                 {item.status === "stalled" ? (
                   <span className="flex items-center justify-end gap-1.5">
                     <Chip tone="warn" dot={false}>Stalled</Chip>
-                    <ActionButton
+                    {stalledWithButton.has(`${item.clientId}:${item.id}`) ? <ActionButton
                       label="Search again"
                       name={`Search again for ${item.title}`}
                       busyKey={`stalled:${item.clientId}:${item.id}`}
@@ -269,7 +244,7 @@ function DownloadsNow({ summary, telemetry, action }: { summary: DashboardSummar
                           return result.message;
                         })
                       }
-                    />
+                    /> : null}
                   </span>
                 ) : null}
               </ListCell>
@@ -289,7 +264,7 @@ function clientState(client: DashboardClientRow): { tone: "ok" | "warn" | "bad" 
   return { tone: "ok", text: "Answering" };
 }
 
-function Clients({ summary, telemetry, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; action: Action }) {
+function Clients({ summary, action }: { summary: DashboardSummary | undefined; action: Action }) {
   const clients = summary?.downloads?.clients ?? [];
   const online = clients.filter((client) => client.reachable).length;
   return (
@@ -305,7 +280,6 @@ function Clients({ summary, telemetry, action }: { summary: DashboardSummary | u
         <ul>
           {clients.map((client) => {
             const state = clientState(client);
-            const first = telemetry?.clients.find((entry) => entry.clientId === client.id)?.queue[0];
             return (
               <li key={client.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
                 <StatusLed tone={state.tone} />
@@ -342,10 +316,8 @@ function Clients({ summary, telemetry, action }: { summary: DashboardSummary | u
                     state={action}
                     onClick={() =>
                       void action.run(`client-resume:${client.id}`, async () => {
-                        await send(`/api/download-clients/${encodeURIComponent(client.id)}/queue/actions`, `${client.name} could not be resumed.`, {
-                          body: { action: "resume", queueItemId: first?.id ?? "" }
-                        });
-                        return `Resume sent to ${client.name}`;
+                        const result = await send(`/api/download-clients/${encodeURIComponent(client.id)}/resume`, `${client.name} could not be resumed.`);
+                        return result?.message ?? `${client.name} is downloading again`;
                       })
                     }
                   />
@@ -412,6 +384,7 @@ function Indexers({
         <ul>
           {rows.map((item) => {
             const failing = item.isEnabled && /unreach|unhealth|fail|error/i.test(item.healthStatus);
+            const needsTest = indexerNeedsButton(item);
             const limited = item.isEnabled && !failing && Boolean(item.rateLimitedUntilUtc) && Date.parse(item.rateLimitedUntilUtc ?? "") > Date.now();
             const tone = !item.isEnabled ? "idle" : failing ? "bad" : limited ? "warn" : "ok";
             return (
@@ -421,7 +394,7 @@ function Indexers({
                 <span className="whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">
                   {!item.isEnabled ? "off" : failing ? "no answer" : limited ? `resting, back ${until(item.rateLimitedUntilUtc)}` : item.lastHealthLatencyMs ? `${Math.round(item.lastHealthLatencyMs)} ms` : "not tested yet"}
                 </span>
-                {failing ? (
+                {needsTest ? (
                   <ActionButton
                     label="Test again"
                     name={`Test ${item.name} again`}
@@ -452,12 +425,9 @@ function recoveryLabel(item: RecoveryCaseRow): string {
   return item.mediaType === "movie" ? "Movies" : "TV";
 }
 
-function ImportsAndRecovery({ summary, data, action }: { summary: DashboardSummary | undefined; data: Sources; action: Action }) {
-  const attention = useMemo(
-    () => needsAction({ movieRecovery: data.movieRecovery, seriesRecovery: data.seriesRecovery, failedJobs: data.failedJobs, handoffs: data.handoffs }),
-    [data.movieRecovery, data.seriesRecovery, data.failedJobs, data.handoffs]
-  );
-  const open = (summary?.imports?.recoveryOpen ?? attention.recoveryCases.length) + attention.failedImportJobs.length + attention.failedHandoffs.length;
+function ImportsAndRecovery({ summary, attention: all, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
+  const attention = { recoveryCases: all.downloads.recoveryCases, failedImportJobs: all.downloads.failedImportJobs, failedHandoffs: all.downloads.handoffs };
+  const open = attention.recoveryCases.length + attention.failedImportJobs.length + attention.failedHandoffs.length;
   const leftovers = summary?.downloads?.leftovers;
 
   return (
@@ -515,7 +485,7 @@ function ImportsAndRecovery({ summary, data, action }: { summary: DashboardSumma
               />
             </li>
           ))}
-          {attention.failedHandoffs.filter(handoffNeedsPerson).map((handoff) => (
+          {attention.failedHandoffs.map((handoff) => (
             <li key={handoff.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
               <StatusLed tone="bad" />
               <div className="min-w-0 flex-1 leading-tight">
@@ -602,7 +572,7 @@ function ProcessorPanel({
       ) : (
         <div>
           {processors.map((processor) => {
-            const unhealthy = processor.healthStatus === "unreachable" || processor.healthStatus === "degraded";
+            const unhealthy = processorUnhealthy(processor);
             return (
               <div key={processor.id} className="flex items-center gap-2 px-[var(--card-pad-x)] py-2">
                 <StatusLed tone={unhealthy ? "bad" : processor.healthStatus === "healthy" ? "ok" : "idle"} />

@@ -18,11 +18,13 @@ import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, startSources } from "../lib/route-cache";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
-import { DownloadsTab, downloadsTabAttention } from "./dashboard/downloads-tab";
-import { LibraryTab, libraryTabAttention } from "./dashboard/library-tab";
-import { OverviewTab, overviewTabAttention } from "./dashboard/overview-tab";
+import { DownloadsTab } from "./dashboard/downloads-tab";
+import { LibraryTab } from "./dashboard/library-tab";
+import { OverviewTab } from "./dashboard/overview-tab";
+import type { DashboardSummary } from "../lib/api";
 import { libraryTabSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
-import { SystemTab, systemTabAttention } from "./dashboard/system-tab";
+import { SystemTab } from "./dashboard/system-tab";
+import { useDashboardAttention } from "./dashboard/use-dashboard-attention";
 
 export const DASHBOARD_TABS = ["overview", "library", "downloads", "system"] as const;
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];
@@ -66,16 +68,6 @@ export function dashboardLoader(args?: { request?: Request }) {
   startSources(setupSources);
   if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "library") startSources(libraryTabSources);
   return { cached: true as const };
-}
-
-/** The badge count for each tab: what on it needs a person. Zero shows no badge. */
-export function tabBadge(tab: DashboardTab, summary: Parameters<typeof libraryTabAttention>[0], setupCount: number): number {
-  switch (tab) {
-    case "overview": return overviewTabAttention(summary, setupCount);
-    case "library": return libraryTabAttention(summary);
-    case "downloads": return downloadsTabAttention(summary);
-    case "system": return systemTabAttention(summary);
-  }
 }
 
 function TabBar({ active, badges, onSelect, className }: {
@@ -161,7 +153,7 @@ function useFitToScreen(element: HTMLDivElement | null) {
   }, [element]);
 }
 
-function TabBody({ tab, summary }: { tab: DashboardTab; summary: Parameters<typeof libraryTabAttention>[0] }): ReactNode {
+function TabBody({ tab, summary }: { tab: DashboardTab; summary: DashboardSummary | undefined }): ReactNode {
   switch (tab) {
     case "library": return <LibraryTab summary={summary} />;
     case "downloads": return <DownloadsTab summary={summary} />;
@@ -204,12 +196,8 @@ export function DashboardPage() {
     }, { replace: false });
   }, [setSearchParams]);
 
-  const badges: Record<DashboardTab, number> = {
-    overview: tabBadge("overview", summary, setup.needs.length),
-    library: tabBadge("library", summary, 0),
-    downloads: tabBadge("downloads", summary, 0),
-    system: tabBadge("system", summary, 0)
-  };
+  // One count of what needs a person, shared by these badges and the Overview list.
+  const badges: Record<DashboardTab, number> = useDashboardAttention(summary, setup.needs).counts;
 
   // Nothing to draw the first time until the summary arrives. After that the
   // last answer stays on screen while a newer one is fetched behind it.

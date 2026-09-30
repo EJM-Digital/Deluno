@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
-import { SystemTab, systemTabAttention } from "./system-tab";
+import { computeAttention } from "./attention";
+import { SystemTab } from "./system-tab";
 
 const authedFetchMock = vi.fn();
 vi.mock("../../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -40,10 +41,10 @@ beforeEach(() => {
 
 describe("System tab", () => {
   it("counts problems, failed jobs and failing workers, and nothing when all is well", () => {
-    // 3 health problems + 2 jobs that gave up + 1 failing worker
-    expect(systemTabAttention(fullSummary)).toBe(6);
-    expect(systemTabAttention(emptySummary)).toBe(0);
-    expect(systemTabAttention(undefined)).toBe(0);
+    // 3 health problems + 1 row for the jobs that gave up + 1 failing worker: one per row with a button
+    expect(computeAttention(fullSummary).counts.system).toBe(5);
+    expect(computeAttention(emptySummary).counts.system).toBe(0);
+    expect(computeAttention(undefined).counts.system).toBe(0);
   });
 
   it("shows problems with their buttons, plain-words activity and links to where you act", async () => {
