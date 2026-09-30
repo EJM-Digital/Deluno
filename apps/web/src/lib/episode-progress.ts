@@ -15,7 +15,7 @@ import type { SeriesEpisodeInventoryItem } from "./api";
  * place.
  */
 
-/** An episode with no air date has not been scheduled, so it has not aired. */
+/** An episode with no air date has not aired, but it is Missing, not Upcoming (James, 30 Sep, #1072). */
 export function hasAired(episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc">, now: Date = new Date()): boolean {
   if (!episode.airDateUtc) return false;
   const aired = new Date(episode.airDateUtc);
@@ -31,15 +31,15 @@ export function isEpisodeMissing(
   now: Date = new Date()
 ): boolean {
   if (episode.hasFile) return false;
-  return hasAired(episode, now);
+  return hasAired(episode, now) || !episode.airDateUtc;
 }
 
-/** Aired, not yet — the two halves that used to be one number. */
+/** Only an episode with a future air date is Upcoming; an undated one is Missing. */
 export function isEpisodeUpcoming(
   episode: Pick<SeriesEpisodeInventoryItem, "airDateUtc" | "hasFile">,
   now: Date = new Date()
 ): boolean {
-  return !episode.hasFile && !hasAired(episode, now);
+  return !episode.hasFile && !!episode.airDateUtc && !hasAired(episode, now);
 }
 
 export interface EpisodeProgress {
@@ -71,7 +71,8 @@ export function summariseEpisodes(
       if (episode.hasFile) held++;
       else missing++;
     } else if (!episode.hasFile) {
-      upcoming++;
+      if (episode.airDateUtc) upcoming++;
+      else missing++;
     }
 
     if (episode.hasFile && episode.wantedStatus === "upgrade") upgradable++;

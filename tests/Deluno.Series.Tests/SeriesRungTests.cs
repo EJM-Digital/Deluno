@@ -60,13 +60,16 @@ public sealed class SeriesRungTests
             SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: true));
     }
 
-    /// <summary>A show whose episodes have no air date has not aired either: Upcoming, the word retention uses too (#1072).</summary>
+    /// <summary>Undated episodes count as Missing (James, 30 Sep, #1072): with nothing aired, a show with any undated episode is Missing and is searched, even when other episodes are dated in the future.</summary>
     [Fact]
-    public void Nothing_aired_and_every_episode_undated_is_upcoming()
+    public void Nothing_aired_and_episodes_undated_is_missing()
     {
         Assert.Equal(
-            WantedStatuses.Upcoming,
-            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: false, episodeCount: 8));
+            WantedStatuses.Missing,
+            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: false, hasUndatedEpisode: true));
+        Assert.Equal(
+            WantedStatuses.Missing,
+            SeriesRung.From(aired: 0, airedWithFile: 0, airedUpgradable: 0, hasFutureAirDate: true, hasUndatedEpisode: true));
     }
 
     /// <summary>

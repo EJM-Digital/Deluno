@@ -1285,11 +1285,11 @@ public sealed class RetentionRuleTests
             .ReturnsAsync(new SeriesInventoryDetail("s1", "Breaking Bad", 2008, 2, episodes.Length, episodes.Length, episodes));
 
     [Fact]
-    public async Task A_season_and_an_episode_that_have_not_aired_or_have_no_air_date_are_never_selected()
+    public async Task A_season_and_an_episode_with_a_future_air_date_are_never_selected()
     {
         SeasonLibrary();
-        // Season 1: nothing has aired (one still to come, one undated). Upcoming, the movie word, so no rule touches it.
-        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(10)), AiredOrNot("e2", 1, 2, null));
+        // Season 1: every episode has a future air date. Upcoming, the movie word, so no rule touches it.
+        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(10)), AiredOrNot("e2", 1, 2, Now.AddDays(17)));
 
         var season = await Evaluator().EvaluateAsync(Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season }, CancellationToken.None);
         Assert.Empty(season.Matched);
@@ -1307,10 +1307,10 @@ public sealed class RetentionRuleTests
         var season = await Evaluator().EvaluateAsync(Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season }, CancellationToken.None);
         Assert.Equal("s1:s1", Assert.Single(season.Matched).EntityId);
 
-        // An episode that is undated is Upcoming even inside a season that has aired.
-        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(-10)), AiredOrNot("e2", 1, 2, null));
+        // An episode with a future air date is Upcoming even inside a season that has aired; an undated one is not.
+        SeasonOneEpisodes(AiredOrNot("e1", 1, 1, Now.AddDays(-10)), AiredOrNot("e2", 1, 2, null), AiredOrNot("e3", 1, 3, Now.AddDays(4)));
         var episodes = await Evaluator().EvaluateAsync(Rule(Keep("server.watchedBy:everyone:")) with { Level = RetentionLevels.Episode }, CancellationToken.None);
-        Assert.Equal(["e1"], episodes.Matched.Select(match => match.EntityId));
+        Assert.Equal(["e1", "e2"], episodes.Matched.Select(match => match.EntityId));
     }
 
     [Fact]

@@ -185,7 +185,9 @@ public sealed record MediaTableMap(
                 // A show is out once any episode has aired. No catalogued
                 // episodes at all is not evidence it has not — an unsynced show
                 // would otherwise stop being searched for.
-                "NULL, NULL, NULL, NULL, (SELECT MIN(ep.air_date_utc) FROM episode_entries ep WHERE ep.series_id = w.series_id)",
+                // An episode with no air date counts as aired (Missing, not Upcoming),
+                // so it makes the show out too (#1072).
+                "NULL, NULL, NULL, NULL, (SELECT MIN(COALESCE(ep.air_date_utc, '0001-01-01T00:00:00.0000000+00:00')) FROM episode_entries ep WHERE ep.series_id = w.series_id)",
                 "",
                 "episode_subtitle_state",
                 "episode_id",

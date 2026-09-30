@@ -262,7 +262,7 @@ public sealed class RetentionEvaluator(
             unreachable.AddRange(seerrUnreachable);
         }
 
-        // Retention never acts on anything Upcoming (not aired, or no air date): it is not a candidate for any rule.
+        // Retention never acts on anything Upcoming (an episode with a future air date, or a season or show made only of those): it is not a candidate for any rule.
         var all = (await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions)))
             .Where(unit => unit.Facts?.Upcoming != true)
             .ToArray();
