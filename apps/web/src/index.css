@@ -1246,6 +1246,17 @@ html .text-\[64px\] {
 .stagger > *:nth-child(12) { animation-delay: calc(var(--stagger) * 11); }
 .stagger > *:nth-child(n+13) { animation-delay: calc(var(--stagger) * 12); }
 
+/* ── LIVE ROW: a row that has just arrived (an event, work starting) slides in.
+   Used only for a row a real change added; it never loops. Reduced motion and a
+   hidden page are handled by the rules above. ── */
+@keyframes live-row-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.live-row-in {
+  animation: live-row-in var(--dur-md) var(--ease-emphasis) both;
+}
+
 /* ── MICRO-INTERACTIONS ── */
 @keyframes lift {
   from { transform: translateY(0);   box-shadow: var(--shadow-card); }
