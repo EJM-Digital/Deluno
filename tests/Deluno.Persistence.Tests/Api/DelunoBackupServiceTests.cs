@@ -276,6 +276,128 @@ public sealed class DelunoBackupServiceTests
         Assert.DoesNotContain(archive.Entries, entry => entry.FullName.Contains("logs", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// A backup taken while Deluno is writing is a consistent database, and no
+    /// write-ahead log or its index rides along in the zip (#1084).
+    /// </summary>
+    [Fact]
+    public async Task A_backup_taken_during_writes_restores_to_databases_that_pass_integrity_check()
+    {
+        using var storage = TempDataRoot.Create();
+        var dbPath = Path.Combine(storage.Path, "movies.db");
+        var connectionString = $"Data Source={dbPath};Pooling=False";
+        using (var setup = new Microsoft.Data.Sqlite.SqliteConnection(connectionString))
+        {
+            setup.Open();
+            Exec(setup, "PRAGMA journal_mode = WAL;");
+            Exec(setup, "CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT); CREATE INDEX ix ON t(a);");
+        }
+
+        using var stop = new CancellationTokenSource();
+        var writer = Task.Run(() =>
+        {
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString + ";Default Timeout=30");
+            connection.Open();
+            var i = 0;
+            while (!stop.IsCancellationRequested)
+            {
+                Exec(connection, $"INSERT INTO t (a, b) VALUES ('a{i}', '{new string('x', 200)}'); UPDATE t SET b = 'u{i}' WHERE id % 7 = 0;");
+                i++;
+            }
+        });
+
+        // Let the writer get going, so the -wal is live.
+        await Task.Delay(300);
+        var service = CreateService(storage.Path, "2026-09-30T02:00:00Z");
+        BackupItem backup;
+        try
+        {
+            backup = await service.CreateBackupAsync("manual", CancellationToken.None);
+        }
+        finally
+        {
+            stop.Cancel();
+            await writer;
+        }
+
+        var zipPath = Path.Combine(storage.Path, "backups", $"{backup.Id}.zip");
+        using (var archive = System.IO.Compression.ZipFile.OpenRead(zipPath))
+        {
+            Assert.NotNull(archive.GetEntry("data/movies.db"));
+            Assert.DoesNotContain(archive.Entries, e =>
+                e.FullName.EndsWith("-wal", StringComparison.OrdinalIgnoreCase)
+                || e.FullName.EndsWith("-shm", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Nothing is left behind in the data root.
+        Assert.False(Directory.Exists(Path.Combine(storage.Path, "backup-snapshots")));
+
+        using var target = TempDataRoot.Create();
+        var restoreService = CreateService(target.Path, "2026-09-30T03:00:00Z");
+        await using (var zip = File.OpenRead(zipPath))
+        {
+            var result = await restoreService.RestoreAsync(zip, CancellationToken.None);
+            Assert.True(result.Restored);
+        }
+
+        StagedRestore.ApplyPending(target.Path);
+        using var restored = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(target.Path, "movies.db")};Pooling=False");
+        restored.Open();
+        using var command = restored.CreateCommand();
+        command.CommandText = "PRAGMA integrity_check;";
+        Assert.Equal("ok", (string?)command.ExecuteScalar());
+    }
+
+    /// <summary>
+    /// Backups made by older versions carry a -wal beside the database; they
+    /// must still be accepted by restore.
+    /// </summary>
+    [Fact]
+    public async Task An_older_backup_that_holds_a_wal_file_still_restores()
+    {
+        using var storage = TempDataRoot.Create();
+        var zipPath = Path.Combine(storage.Path, "old.zip");
+        var dbBytes = MakeDatabaseBytes(storage.Path);
+        using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            using (var s = zip.CreateEntry("data/movies.db").Open()) { s.Write(dbBytes); }
+            using (var s = zip.CreateEntry("data/movies.db-wal").Open()) { s.Write(new byte[32]); }
+            using (var s = zip.CreateEntry("deluno-backup.json").Open()) { s.Write("{\"app\":\"Deluno\",\"version\":\"1\",\"createdUtc\":\"2026-01-01T00:00:00Z\",\"reason\":\"manual\",\"files\":[\"movies.db\",\"movies.db-wal\"]}"u8); }
+        }
+
+        using var target = TempDataRoot.Create();
+        var service = CreateService(target.Path, "2026-09-30T03:00:00Z");
+        await using var stream = File.OpenRead(zipPath);
+        var result = await service.RestoreAsync(stream, CancellationToken.None);
+        Assert.True(result.Restored);
+        StagedRestore.ApplyPending(target.Path);
+
+        using var restored = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(target.Path, "movies.db")};Pooling=False");
+        restored.Open();
+        using var command = restored.CreateCommand();
+        command.CommandText = "SELECT count(*) FROM t;";
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
+    private static byte[] MakeDatabaseBytes(string folder)
+    {
+        var path = Path.Combine(folder, "seed.db");
+        using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            connection.Open();
+            Exec(connection, "CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;");
+        }
+
+        return File.ReadAllBytes(path);
+    }
+
+    private static void Exec(Microsoft.Data.Sqlite.SqliteConnection connection, string sql)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
     private static DelunoBackupService CreateService(string dataRoot, string utcNowIso)
     {
         return new DelunoBackupService(
