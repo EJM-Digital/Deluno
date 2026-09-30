@@ -1,16 +1,28 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 
-// #1082: the Dashboard is four tabs (Overview, Library, Downloads, System).
-// Every tab fits one screen at 1920x1080 and 2560x1440: the page never
-// scrolls, whatever the tab holds, and a tab can be linked with ?tab=.
+// #1087: the Dashboard is two tabs, Live and System. Each fits one screen
+// at 1920x1080 and 2560x1440: the page never scrolls, whatever the tab holds,
+// and a tab can be linked with ?tab=. The tab numbers count only real problems,
+// and the bell (the one place for problems on every screen) shows the two
+// added together.
 
 const TABS = [
-  { name: "Overview", query: "", panel: /^needs you$/i },
-  { name: "Library", query: "?tab=library", panel: /^wanted$/i },
-  { name: "Downloads", query: "?tab=downloads", panel: null },
-  { name: "System", query: "?tab=system", panel: null }
+  { name: "Live", query: "", panel: /^needs you/i },
+  { name: "System", query: "?tab=system", panel: /^download clients/i }
 ] as const;
+
+/** The number on a tab, or 0 when it has no badge. */
+async function badge(page: Page, tab: string): Promise<number> {
+  const label = await page.getByRole("tab", { name: new RegExp(`^${tab}`) }).getByLabel(/need a look|needs a look/).getAttribute("aria-label", { timeout: 1500 }).catch(() => null);
+  return label ? Number(label.match(/^[0-9]+/)?.[0] ?? 0) : 0;
+}
+
+/** The bell's number, or 0 when it has no badge. */
+async function bell(page: Page): Promise<number> {
+  const label = await page.getByRole("button", { name: /^Notifications/ }).getAttribute("aria-label");
+  return Number(label?.match(/— ([0-9]+)/)?.[1] ?? 0);
+}
 
 const SIZES = [
   { width: 1920, height: 1080 },
@@ -122,22 +134,22 @@ async function serveBusyInstall(page: Page) {
   };
   const queue = Array.from({ length: 30 }, (_, n) => ({ id: `q${n}`, clientId: "c1", clientName: "Deluge on MEDIA-SERVER", protocol: "torrent", mediaType: "movie", title: `Stalled download number ${n + 1} (2010)`, releaseName: "Release.Name.1080p", category: "movies", status: "stalled", progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 1e9, downloadedBytes: 1e9, peers: 0, indexerName: "x", errorMessage: "Missing or invalid torrent data", addedUtc: now, sourcePath: null, libraryId: null, healthFindings: null }));
   const cases = Array.from({ length: 30 }, (_, n) => ({ id: `r${n}`, title: `Recovery case number ${n + 1}`, failureKind: "importFailed", summary: "Import failed: release refused", recommendedAction: "retry", detailsJson: null, detectedUtc: now }));
-  const wanted = Array.from({ length: 25 }, (_, n) => ({ movieId: `m${n}`, title: `Wanted movie number ${n + 1}`, releaseYear: 2000 + n, imdbId: null, libraryId: "l1", wantedStatus: "missing", wantedReason: "Deluno is still looking for this movie.", hasFile: false, currentQuality: null, targetQuality: "WEB 1080p", qualityCutoffMet: false, missingSinceUtc: null, lastSearchUtc: now, nextEligibleSearchUtc: now, lastSearchResult: null, updatedUtc: now }));
   await page.route("**/api/dashboard/summary", (route) => route.fulfill(json(summary)));
   await page.route("**/api/download-clients/telemetry", (route) => route.fulfill(json({ summary: { activeCount: 0, queuedCount: 0, stalledCount: 30, importReadyCount: 0, waitingForProcessorCount: 0 }, clients: [{ clientId: "c1", clientName: "Deluge on MEDIA-SERVER", queue }], capturedUtc: now })));
   await page.route("**/api/movies/import-recovery*", (route) => route.fulfill(json({ openCount: 30, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 30, recentCases: cases })));
-  await page.route("**/api/movies/wanted", (route) => route.fulfill(json({ totalWanted: 42, missingCount: 42, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: wanted })));
+  await page.route("**/api/download-clients/orphans", (route) => route.fulfill(json(Array.from({ length: 20 }, (_, n) => ({ name: `Leftover folder ${n + 1}`, path: `/downloads/leftover-${n + 1}`, sizeBytes: 5e8 })))));
   await page.route("**/api/system/health/summary", (route) => route.fulfill(json({ problemCount: 30, unsnoozedProblemCount: 30, unknownCount: 0, suggestionCount: 0, lastRunUtc: now })));
 }
 
 test.describe("Dashboard tabs", () => {
   test.skip(({ isMobile }) => isMobile, "The one-screen rule is for a desktop window; a phone scrolls.");
 
-  test("opens on the Overview and deep links open each tab", async ({ page }) => {
+  test("has two tabs, opens on Live, and deep links open each tab", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
-    await expect(page.getByRole("tab", { name: /^Overview/ })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("region", { name: /^needs you$/i })).toBeVisible();
+    await expect(page.getByRole("tab")).toHaveCount(2);
+    await expect(page.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
 
     for (const tab of TABS.slice(1)) {
       await page.goto(`/${tab.query}`);
@@ -146,23 +158,30 @@ test.describe("Dashboard tabs", () => {
     }
   });
 
+  test("the older tab links open the tab their content moved to", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await authenticateAndNavigate(page, "/");
+    for (const [old, expected] of [["now", "Live"], ["overview", "Live"], ["library", "Live"], ["downloads", "Live"], ["setup-health", "System"], ["system", "System"]] as const) {
+      await page.goto(`/?tab=${old}`);
+      await expect(page.getByRole("tab", { name: new RegExp(`^${expected}`) }), `?tab=${old}`).toHaveAttribute("aria-selected", "true");
+    }
+  });
+
   test("switching tabs changes the address without a reload and keeps the page", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
-    await expect(page.getByRole("tab", { name: /^Overview/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^Live/ })).toBeVisible();
     await page.evaluate(() => { (window as unknown as { __kept: boolean }).__kept = true; });
 
-    await page.getByRole("tab", { name: /^Library/ }).click();
-    await expect(page).toHaveURL(/\/\?tab=library$/);
     await page.getByRole("tab", { name: /^System/ }).click();
     await expect(page).toHaveURL(/\/\?tab=system$/);
-    await page.getByRole("tab", { name: /^Overview/ }).click();
+    await page.getByRole("tab", { name: /^Live/ }).click();
     await expect(page).toHaveURL(/\/$/);
 
     expect(await page.evaluate(() => (window as unknown as { __kept?: boolean }).__kept)).toBe(true);
   });
 
-  test("a fresh install fits every tab on one screen at both sizes", async ({ page }) => {
+  test("a fresh install fits both tabs on one screen at both sizes", async ({ page }) => {
     await authenticateAndNavigate(page, "/");
     for (const size of SIZES) {
       await page.setViewportSize(size);
@@ -188,10 +207,54 @@ test.describe("Dashboard tabs", () => {
       }
     }
     // The rest are named, with a way to them, rather than dropped.
-    await page.goto("/?tab=downloads");
+    await page.goto("/");
     await expect(page.getByRole("link", { name: /^and [0-9]+ more on Transfers/ }).first()).toBeVisible();
     await page.goto("/?tab=system");
     await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
+  });
+
+  test("the tab numbers count only real problems, and the bell shows the two added together", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await authenticateAndNavigate(page, "/");
+    await serveBusyInstall(page);
+    await page.goto("/");
+    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+    // The lists the count reads arrive after the summary; wait until the badges settle.
+    await expect.poll(async () => (await badge(page, "Live")) > 0 && (await badge(page, "System")) > 0, { timeout: 15_000 }).toBe(true);
+    const now = await badge(page, "Live");
+    const setup = await badge(page, "System");
+    await expect.poll(() => bell(page), { timeout: 15_000 }).toBe(now + setup);
+    console.log(`busy fixture: Live ${now}, System ${setup}, bell ${now + setup}`);
+
+    // The 20 leftover folders are reachable and not counted: one quiet line under Needs you.
+    const quiet = page.getByRole("region", { name: /^needs you/i }).getByText(/Also worth a look/);
+    await expect(quiet).toBeVisible();
+    await expect(page.getByRole("link", { name: "20 leftover folders" })).toHaveAttribute("href", "/queue");
+
+    // The left menu no longer carries a Needs a look card; the bell is the one place for problems.
+    await expect(page.locator("aside").getByText("Needs a look")).toHaveCount(0);
+    await page.getByRole("button", { name: /^Notifications/ }).click();
+    const panel = page.getByRole("dialog");
+    await expect(panel.getByRole("region", { name: "Needs you" })).toBeVisible();
+    await expect(panel.getByRole("link", { name: "20 leftover folders" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // The same number on any other screen.
+    await page.goto("/activity");
+    await expect.poll(() => bell(page), { timeout: 15_000 }).toBe(now + setup);
+  });
+
+  test("a fresh install's badges add up to the bell, and none shows at zero", async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await authenticateAndNavigate(page, "/");
+    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+    await page.waitForTimeout(1500);
+    const now = await badge(page, "Live");
+    const setup = await badge(page, "System");
+    expect(await bell(page)).toBe(now + setup);
+    for (const [tab, count] of [["Live", now], ["System", setup]] as const) {
+      if (count === 0) await expect(page.getByRole("tab", { name: new RegExp(`^${tab}`) }).getByLabel(/need a look|needs a look/)).toHaveCount(0);
+    }
   });
 
   test.describe("with a library to look at", () => {
@@ -204,7 +267,7 @@ test.describe("Dashboard tabs", () => {
       if (login.ok()) token = ((await login.json()) as { accessToken: string }).accessToken;
     });
 
-    test("every tab still fits one screen at both sizes", async ({ page, request }) => {
+    test("both tabs still fit one screen at both sizes", async ({ page, request }) => {
       test.setTimeout(120_000);
       await authenticateAndNavigate(page, "/");
       token = (await page.evaluate(() => localStorage.getItem("deluno-auth-token"))) ?? token;

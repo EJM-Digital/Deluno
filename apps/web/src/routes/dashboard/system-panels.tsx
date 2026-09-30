@@ -1,5 +1,5 @@
 /**
- * The panels of the Dashboard's Setup health tab (#1087): the problems with
+ * The panels of the Dashboard's System tab (#1087): the problems with
  * their own buttons, this computer's load, the scheduled tasks, automation per
  * library, updates and backups, and storage per drive, under one headline
  * strip (is Deluno ready, which version, tasks, jobs).
@@ -52,7 +52,7 @@ function taskFailed(task: DashboardScheduledTask): boolean {
   return task.lastResult.toLowerCase() === "failed";
 }
 
-export function SetupStrip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | undefined; problems: number; jobsGaveUp: number }) {
+export function SystemStrip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | undefined; problems: number; jobsGaveUp: number }) {
   const system = summary?.system;
   const tasks = summary?.automation?.tasks ?? [];
   const failedTasks = tasks.filter(taskFailed).length;
@@ -109,7 +109,7 @@ export function Problems({ summary, attention, action }: { summary: DashboardSum
   const more = attention.items.find((item) => item.id === "health:more")?.count ?? 0;
   // What this panel lists: connections have their own rows in the panels below, so they are not here.
   const ownRows = new Set(["clients", "indexers", "processors"]);
-  const others = attention.items.filter((item) => item.tab === "setup" && !ownRows.has(item.id) && !item.id.startsWith("health:") && item.id !== "failed-jobs" && item.id !== "lanes");
+  const others = attention.items.filter((item) => item.tab === "system" && !ownRows.has(item.id) && !item.id.startsWith("health:") && item.id !== "failed-jobs" && item.id !== "lanes");
   const total = others.reduce((sum, item) => sum + item.count, 0) + problems.length + failedJobs + failedLanes.length + more;
 
   return (

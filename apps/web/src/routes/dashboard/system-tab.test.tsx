@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { computeAttention } from "./attention";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
-import { SetupTab } from "./setup-tab";
+import { SystemTab } from "./system-tab";
 
 const authedFetchMock = vi.fn();
 vi.mock("../../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -38,7 +38,7 @@ function renderTab(summary: typeof fullSummary | undefined) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <SetupTab summary={summary} />
+        <SystemTab summary={summary} />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -51,7 +51,7 @@ beforeEach(() => {
   for (const key of Object.keys(lists)) delete lists[key];
 });
 
-describe("Setup health", () => {
+describe("System", () => {
   it("shows the clients, indexers and processor with their own buttons, and the system problems", async () => {
     seedBusy();
     renderTab(fullSummary);
@@ -76,7 +76,7 @@ describe("Setup health", () => {
     expect(screen.getByText("can’t be read")).toBeInTheDocument();
     expect(screen.getByText("Failed last time")).toBeInTheDocument();
 
-    // The download problems are on Now, not repeated here.
+    // The download problems are on Live, not repeated here.
     expect(screen.queryByRole("button", { name: /Give up on/ })).toBeNull();
     expect(screen.queryByText(/leftover folder/)).toBeNull();
 
@@ -101,10 +101,10 @@ describe("Setup health", () => {
     });
     // 2 clients with a button, 1 indexer, 1 processor, 1 health problem not covered by a row, 1 more health problem,
     // 1 row for the jobs that gave up, 1 failing worker. The indexer's health problem is that indexer's row.
-    const setup = attention.items.filter((item) => item.tab === "setup").reduce((sum, item) => sum + item.count, 0);
-    expect(attention.counts.setup).toBe(setup);
-    expect(attention.counts.setup).toBeGreaterThanOrEqual(7);
-    expect(computeAttention(emptySummary).counts.setup).toBe(0);
+    const setup = attention.items.filter((item) => item.tab === "system").reduce((sum, item) => sum + item.count, 0);
+    expect(attention.counts.system).toBe(setup);
+    expect(attention.counts.system).toBeGreaterThanOrEqual(7);
+    expect(computeAttention(emptySummary).counts.system).toBe(0);
   });
 
   it("sends the same requests the System screen does", async () => {

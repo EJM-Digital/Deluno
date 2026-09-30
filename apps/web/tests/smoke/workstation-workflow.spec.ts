@@ -3,7 +3,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 test.describe("dashboard workflow", () => {
   test("starts in the dashboard and opens direct add flows", async ({ page }) => {
-    // The Overview offers "Add a movie" while the library is empty (#1082).
+    // Now offers "Add a movie" while the library is empty (#1087).
     // Other specs add titles to the shared smoke install, so the summary is
     // answered as an empty library here rather than depending on run order.
     await page.route("**/api/dashboard/summary", async (route) => {
@@ -150,8 +150,8 @@ test.describe("dashboard workflow", () => {
     const guidedSetupBox = await guidedSetup.boundingBox();
     const setupProgressBox = await setupProgress.boundingBox();
     expect(guidedSetupBox?.y).toBeLessThan(setupProgressBox?.y ?? Number.POSITIVE_INFINITY);
-    // The Overview's Library line states what is true of an empty library and
-    // offers the action (#1082); nothing is invented to fill the space. The
+    // Now's Coming up panel states what is true of an empty library and
+    // offers the action (#1087); nothing is invented to fill the space. The
     // intent of this test is unchanged, so it checks where that statement is.
     await expect(page.getByRole("heading", { name: "Recently added" })).toHaveCount(0);
     await expect(page.getByText("Nothing in your library yet.", { exact: true })).toBeVisible();

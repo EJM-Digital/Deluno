@@ -45,8 +45,8 @@ describe("dashboardLoader", () => {
     expect(paths).not.toContain("/api/monitoring/dashboard");
   });
 
-  it("starts Now's own list (the next episodes) only when Now is the tab being opened", () => {
-    dashboardLoader(request("?tab=setup"));
+  it("starts Live's own list (the next episodes) only when Live is the tab being opened", () => {
+    dashboardLoader(request("?tab=system"));
     expect(asked().some((path) => String(path).startsWith("/api/series/upcoming"))).toBe(false);
 
     queryClient.clear();

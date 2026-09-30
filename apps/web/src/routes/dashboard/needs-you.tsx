@@ -1,10 +1,10 @@
 /**
  * Needs you (#1087): the real problems whose fix is about downloads, imports
- * and titles, each with its button. Every row is one the Now badge counts, so
+ * and titles, each with its button. Every row is one the Live badge counts, so
  * the number and the list are the same thing.
  *
  * A problem a person has to settle shows the buttons that settle it here
- * (Retry, Give up, Search again). The Setup health tab holds the connection,
+ * (Retry, Give up, Search again). The System tab holds the connection,
  * storage and system problems with theirs.
  *
  * One quiet line under the list reaches what is worth a look but is not a
@@ -59,13 +59,13 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
 
 /**
  * The Needs you rows for the problems about downloads, imports and titles, each
- * with its button. The Dashboard's Now tab and the bell's panel both draw these
+ * with its button. The Dashboard's Live tab and the bell's panel both draw these
  * rows, so they are one list.
  */
 export function needsYouRows(attention: DashboardAttention, action: Action): ReactElement[] {
   const { recoveryCases, failedImportJobs, handoffs } = attention.downloads;
   return attention.items
-    .filter((item) => item.tab === "now")
+    .filter((item) => item.tab === "live")
     .flatMap((item) => {
       if (item.id === "recovery") {
         return recoveryCases.map((entry) => (
@@ -147,14 +147,14 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
 
 /**
  * The connection, storage and system problems, one row each with a button that
- * goes to the place they are cleared (Setup health, or the screen a health
+ * goes to the place they are cleared (System, or the screen a health
  * problem names). Their own buttons (Test again, Resume, Snooze) sit in the
- * Setup health panels; the bell lists them here so every problem is reachable
+ * System panels; the bell lists them here so every problem is reachable
  * from every screen.
  */
 export function setupProblemRows(attention: DashboardAttention): ReactElement[] {
   return attention.items
-    .filter((item) => item.tab === "setup")
+    .filter((item) => item.tab === "system")
     .map((item) => (
       <li key={item.id} className={row}>
         <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
@@ -193,7 +193,7 @@ export function AlsoWorthALook({ attention }: { attention: DashboardAttention })
 }
 
 export function NeedsYou({ attention, action }: { attention: DashboardAttention; action: Action }) {
-  const total = attention.counts.now;
+  const total = attention.counts.live;
   const rows = needsYouRows(attention, action);
   const { leftovers, suggestions } = attention.alsoWorthALook;
 

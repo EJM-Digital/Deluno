@@ -80,7 +80,7 @@ describe("the bell and the Dashboard count the same problems", () => {
     expect(bell.total).toBe(dashboard.total);
     expect(bell.total).toBeGreaterThan(0);
     // The two badges added together are the bell's number, and the bell's rows are the Dashboard's.
-    expect(dashboard.counts.now + dashboard.counts.setup).toBe(bell.total);
+    expect(dashboard.counts.live + dashboard.counts.system).toBe(bell.total);
     expect(bell.needs.items.map((item) => item.id)).toEqual(dashboard.items.map((item) => item.id));
   });
 
