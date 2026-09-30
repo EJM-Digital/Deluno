@@ -27,7 +27,8 @@ public sealed class DelunoHeartbeatWorker(
     ILogger<DelunoHeartbeatWorker> logger,
     IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
-    IJobLaneSignal laneSignal)
+    IJobLaneSignal laneSignal,
+    JobLaneStateBoard? laneBoard = null)
     : BackgroundService
 {
     private readonly string _workerId = $"worker-{Environment.MachineName.ToLowerInvariant()}";
@@ -199,12 +200,13 @@ public sealed class DelunoHeartbeatWorker(
         if (!lane.Enabled)
         {
             logger.LogInformation("Worker {WorkerId} lane {LaneName} disabled; not starting.", _workerId, lane.Name);
+            laneBoard?.MarkDisabled(lane.Name);
             return Task.CompletedTask;
         }
 
         // A lane that dies is reported to Health and started again, and one
         // whose passes keep failing is shown on Health too (#1080).
-        var supervisor = new LaneSupervisor(logger, ResolveProblemReporter());
+        var supervisor = new LaneSupervisor(logger, ResolveProblemReporter(), board: laneBoard);
         return supervisor.SuperviseAsync(
             lane.Name,
             token => RunLaneOnceAsync(lane, supervisor, token),
@@ -534,6 +536,19 @@ public sealed class DelunoHeartbeatWorker(
     /// and touches nothing else in the lane.
     /// </summary>
     private async Task RunJobAsync(JobLane lane, JobQueueItem job, CancellationToken stoppingToken)
+    {
+        laneBoard?.JobStarted(lane.Name);
+        try
+        {
+            await RunJobCoreAsync(lane, job, stoppingToken);
+        }
+        finally
+        {
+            laneBoard?.JobFinished(lane.Name);
+        }
+    }
+
+    private async Task RunJobCoreAsync(JobLane lane, JobQueueItem job, CancellationToken stoppingToken)
     {
         var workerId = $"{_workerId}-{lane.Name}";
 

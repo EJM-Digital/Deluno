@@ -3334,6 +3334,32 @@ public sealed class SqliteMovieCatalogRepository(
         return items;
     }
 
+    public async Task<MediaDashboardCounts> GetDashboardCountsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenReadOnlyConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+
+        var facets = await CountCatalogueFacetsAsync(connection, null, null, "all", null, null, cancellationToken);
+
+        var byLibrary = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT library_id, COALESCE(SUM(file_size_bytes), 0)
+            FROM movie_wanted_state
+            WHERE has_file = 1
+            GROUP BY library_id;
+            """;
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            byLibrary[reader.GetString(0)] = reader.GetInt64(1);
+        }
+
+        return new MediaDashboardCounts(facets, byLibrary.Values.Sum(), byLibrary);
+    }
+
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(
         DateOnly fromDate,
         DateOnly toDate,

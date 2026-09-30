@@ -19,7 +19,8 @@ public sealed class LaneSupervisor(
     ILogger logger,
     IBackgroundProblemReporter? reporter,
     TimeSpan? restartBackoff = null,
-    TimeSpan? maxRestartBackoff = null)
+    TimeSpan? maxRestartBackoff = null,
+    JobLaneStateBoard? board = null)
 {
     /// <summary>Failed passes in a row before the lane is shown on Health.</summary>
     public const int FailureStreakThreshold = 3;
@@ -32,6 +33,8 @@ public sealed class LaneSupervisor(
     /// <summary>Called by the lane with its consecutive failed-pass count (0 when a pass works).</summary>
     public void OnFailureStreak(string laneName, int consecutiveFailures, Exception? lastError)
     {
+        board?.SetProblem(laneName, consecutiveFailures >= FailureStreakThreshold ? lastError?.Message : null);
+
         if (reporter is null)
         {
             return;
@@ -58,6 +61,7 @@ public sealed class LaneSupervisor(
         while (!stoppingToken.IsCancellationRequested)
         {
             Exception? failure = null;
+            board?.Started(laneName);
             try
             {
                 await runLane(stoppingToken);
@@ -78,6 +82,7 @@ public sealed class LaneSupervisor(
 
             failure ??= new InvalidOperationException($"The {laneName} lane ended without being asked to stop.");
             restarts++;
+            board?.MarkRestarting(laneName, failure.Message);
             var pause = TimeSpan.FromTicks(Math.Min(
                 _maxRestartBackoff.Ticks,
                 _restartBackoff.Ticks * (1L << Math.Min(restarts - 1, 10))));

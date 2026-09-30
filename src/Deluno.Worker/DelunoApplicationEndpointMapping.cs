@@ -32,6 +32,7 @@ using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Worker.ApiParity;
 using Deluno.Worker.Automation;
+using Deluno.Worker.Dashboard;
 using Deluno.Series;
 using Deluno.Movies.Testing;
 
@@ -114,6 +115,7 @@ public static class DelunoApplicationEndpointMapping
         writeEndpoints.MapDelunoDiscoverEndpoints();
         writeEndpoints.MapDelunoAutomationEndpoints();
         readEndpoints.MapDelunoAutomationReadEndpoints();
+        readEndpoints.MapDelunoDashboardSummaryEndpoints();
         writeEndpoints.MapDelunoJobsEndpoints();
         queueEndpoints.MapDelunoDownloadClientIntegrationEndpoints();
         writeEndpoints.MapDelunoSearchEndpoints();

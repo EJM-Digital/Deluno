@@ -69,16 +69,7 @@ public sealed class SearchQueuePauseGate(
         try
         {
             var overview = await telemetry.GetLatestOverviewAsync(DownloadTelemetryFreshness.Acting, cancellationToken);
-            var broken = overview.Clients.FirstOrDefault(client => client.LastFailure is not null);
-            if (broken is not null)
-            {
-                return new SearchQueuePauseDecision(true, false, true, 0, threshold, $"{broken.ClientName} did not answer");
-            }
-
-            var waiting = overview.Clients
-                .SelectMany(client => client.Queue)
-                .Count(item => IsWaiting(item) && CountsFor(item.MediaType, mediaType));
-            return new SearchQueuePauseDecision(true, waiting > threshold, false, waiting, threshold, null);
+            return Decide(threshold, mediaType, overview);
         }
         catch (OperationCanceledException)
         {
@@ -88,6 +79,26 @@ public sealed class SearchQueuePauseGate(
         {
             return new SearchQueuePauseDecision(true, false, true, 0, threshold, exception.Message);
         }
+    }
+
+    /// <summary>
+    /// The decision for a queue reading Deluno already holds, with no client
+    /// call. <see cref="EvaluateAsync"/> uses it after reading the queue; the
+    /// Dashboard uses it on the last snapshot so showing the gate never asks a
+    /// client anything.
+    /// </summary>
+    public static SearchQueuePauseDecision Decide(int threshold, string mediaType, DownloadTelemetryOverview overview)
+    {
+        var broken = overview.Clients.FirstOrDefault(client => client.LastFailure is not null);
+        if (broken is not null)
+        {
+            return new SearchQueuePauseDecision(true, false, true, 0, threshold, $"{broken.ClientName} did not answer");
+        }
+
+        var waiting = overview.Clients
+            .SelectMany(client => client.Queue)
+            .Count(item => IsWaiting(item) && CountsFor(item.MediaType, mediaType));
+        return new SearchQueuePauseDecision(true, waiting > threshold, false, waiting, threshold, null);
     }
 
     public SearchQueuePauseAnnouncement? TakeAnnouncement(string mediaType, SearchQueuePauseDecision decision)

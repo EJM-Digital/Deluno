@@ -637,6 +637,13 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         int take,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The Dashboard's library numbers: the shelf's facet counts over the whole
+    /// catalogue plus the bytes tracked episode files take up, per library.
+    /// Count-only.
+    /// </summary>
+    Task<MediaDashboardCounts> GetDashboardCountsAsync(CancellationToken cancellationToken);
+
     /// <summary>Per-day counts for the dashboard, straight from stored timestamps.</summary>
     Task<MediaDailyMetrics> GetDailyMetricsAsync(
         DateOnly fromDate,
