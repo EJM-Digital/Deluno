@@ -1274,6 +1274,12 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             return ("disabled", "Disabled until you turn it on.", null);
         }
 
+        if (item.SecretUnreadable)
+        {
+            // Asking with a key that cannot be read here would only fail in a confusing way (#1094).
+            return ("degraded", item.SecretProblem ?? Deluno.Security.SecretUnreadable.Message(), "auth");
+        }
+
         if (IndexerProtocols.IsTracker(item.Protocol))
         {
             return trackerTester is null
@@ -1605,6 +1611,11 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         if (!item.IsEnabled)
         {
             return ("disabled", "Disabled until you turn it on.", null);
+        }
+
+        if (item.SecretUnreadable)
+        {
+            return ("degraded", item.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("password"), "auth");
         }
 
         // A test is the moment someone asks "is this set up right?", so it has

@@ -62,6 +62,11 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
 
     public async Task<SeerrTestResult> TestAsync(SeerrConnection connection, CancellationToken cancellationToken)
     {
+        if (connection.SecretUnreadable)
+        {
+            return new SeerrTestResult(false, "degraded", connection.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("API key"), null);
+        }
+
         var status = await GetAsync(connection, "/api/v1/status", cancellationToken);
         if (!status.Ok)
         {

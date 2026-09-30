@@ -207,14 +207,21 @@ public sealed class SqliteSeerrRepository(
         => (value ?? string.Empty).Trim().TrimEnd('/');
 
     private SeerrConnection Read(DbDataReader reader)
-        => new(
+    {
+        var key = reader.IsDBNull(3) ? SecretReadResult.None : secretProtector.TryUnprotect(KeyPurpose, reader.GetString(3));
+        var webhook = reader.IsDBNull(17) ? SecretReadResult.None : secretProtector.TryUnprotect(WebhookSecretPurpose, reader.GetString(17));
+        var problem = key.Unreadable
+            ? SecretUnreadable.Message("API key")
+            : webhook.Unreadable ? SecretUnreadable.Message("webhook secret") : null;
+        var enabled = reader.GetInt32(4) == 1;
+        return new(
             Id: reader.GetString(0),
             Name: reader.GetString(1),
             BaseUrl: reader.GetString(2),
-            ApiKey: reader.IsDBNull(3) ? null : secretProtector.Unprotect(KeyPurpose, reader.GetString(3)),
-            IsEnabled: reader.GetInt32(4) == 1,
-            HealthStatus: reader.GetString(5),
-            LastHealthMessage: reader.IsDBNull(6) ? null : reader.GetString(6),
+            ApiKey: key.Value,
+            IsEnabled: enabled,
+            HealthStatus: problem is not null && enabled ? "degraded" : reader.GetString(5),
+            LastHealthMessage: problem ?? (reader.IsDBNull(6) ? null : reader.GetString(6)),
             LastHealthLatencyMs: reader.IsDBNull(7) ? null : reader.GetInt32(7),
             LastHealthTestUtc: reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)),
             ServerName: reader.IsDBNull(9) ? null : reader.GetString(9),
@@ -225,7 +232,12 @@ public sealed class SqliteSeerrRepository(
             MovieQualityProfileId: reader.IsDBNull(14) ? null : reader.GetString(14),
             SeriesLibraryId: reader.IsDBNull(15) ? null : reader.GetString(15),
             SeriesQualityProfileId: reader.IsDBNull(16) ? null : reader.GetString(16),
-            WebhookSecret: reader.IsDBNull(17) ? null : secretProtector.Unprotect(WebhookSecretPurpose, reader.GetString(17)),
+            WebhookSecret: webhook.Value,
             Tags: reader.GetString(18),
-            Tags4k: reader.GetString(19));
+            Tags4k: reader.GetString(19))
+        {
+            SecretUnreadable = problem is not null,
+            SecretProblem = problem
+        };
+    }
 }

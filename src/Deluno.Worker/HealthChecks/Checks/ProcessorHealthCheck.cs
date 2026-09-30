@@ -60,8 +60,12 @@ public sealed class ProcessorHealthCheck(
                     connection.LastHealthMessage is { Length: > 0 } message
                         ? $"{connection.Name}: {message}"
                         : $"{connection.Name} is not answering.",
-                    cause: "Deluno could not reach this processor on its last check.",
-                    fix: $"Check that {connection.Name} is running and reachable, then test the connection.",
+                    cause: connection.SecretUnreadable
+                        ? "The saved secret was stored on another computer, so this computer cannot read it."
+                        : "Deluno could not reach this processor on its last check.",
+                    fix: connection.SecretUnreadable
+                        ? $"Open {connection.Name} in Connections, enter its secret again and save."
+                        : $"Check that {connection.Name} is running and reachable, then test the connection.",
                     detailsJson: $$"""{"processorId":"{{connection.Id}}"}"""));
                 continue;
             }

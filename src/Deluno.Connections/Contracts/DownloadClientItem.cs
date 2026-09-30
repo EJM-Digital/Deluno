@@ -50,6 +50,12 @@ public sealed record DownloadClientItem(
     /// <summary>#999 (qBittorrent only): how a torrent's files land in the save folder: "default" (leave it to qBittorrent's own setting), "original", "subfolder" (always a folder named after the torrent) or "no-subfolder" (files straight into the save folder). See <see cref="ContentLayouts"/>.</summary>
     string ContentLayout = ContentLayouts.Default)
 {
+    /// <summary>The saved secret was stored on another computer, account or key and cannot be read here (#1094). It is listed as missing; entering it again clears this.</summary>
+    public bool SecretUnreadable { get; init; }
+
+    /// <summary>Plain-words reason when <see cref="SecretUnreadable"/> is set, for the screen and Health.</summary>
+    public string? SecretProblem { get; init; }
+
     /// <summary>Last typed health failure, when the client did not pass its most recent test.</summary>
     public IntegrationFailure? LastHealthFailure { get; init; }
 }

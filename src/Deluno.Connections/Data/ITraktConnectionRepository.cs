@@ -179,12 +179,21 @@ public sealed class SqliteTraktConnectionRepository(
             return null;
         }
 
+        SecretReadResult ReadSecret(int ordinal, string purpose)
+            => reader.IsDBNull(ordinal) ? SecretReadResult.None : secretProtector.TryUnprotect(purpose, reader.GetString(ordinal));
+        var clientId = ReadSecret(0, ClientIdPurpose);
+        var clientSecret = ReadSecret(1, ClientSecretPurpose);
+        var accessToken = ReadSecret(2, AccessTokenPurpose);
+        var refreshToken = ReadSecret(3, RefreshTokenPurpose);
+
+        // Tokens saved on another computer cannot be read here: connecting again is the way out (#1094).
+        var unreadable = clientId.Unreadable || clientSecret.Unreadable || accessToken.Unreadable || refreshToken.Unreadable;
         return new Row(
-            ClientId: reader.IsDBNull(0) ? null : secretProtector.Unprotect(ClientIdPurpose, reader.GetString(0)),
-            ClientSecret: reader.IsDBNull(1) ? null : secretProtector.Unprotect(ClientSecretPurpose, reader.GetString(1)),
-            AccessToken: reader.IsDBNull(2) ? null : secretProtector.Unprotect(AccessTokenPurpose, reader.GetString(2)),
-            RefreshToken: reader.IsDBNull(3) ? null : secretProtector.Unprotect(RefreshTokenPurpose, reader.GetString(3)),
+            ClientId: clientId.Value,
+            ClientSecret: clientSecret.Value,
+            AccessToken: accessToken.Value,
+            RefreshToken: refreshToken.Value,
             ExpiresUtc: reader.IsDBNull(4) ? null : ParseTimestamp(reader.GetString(4)),
-            NeedsReconnect: !reader.IsDBNull(5) && reader.GetInt64(5) == 1);
+            NeedsReconnect: unreadable || (!reader.IsDBNull(5) && reader.GetInt64(5) == 1));
     }
 }

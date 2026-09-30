@@ -35,6 +35,12 @@ public sealed record SubtitleProviderConnection(
     DateTimeOffset CreatedUtc,
     DateTimeOffset UpdatedUtc)
 {
+    /// <summary>The saved secret was stored on another computer, account or key and cannot be read here (#1094). It is listed as missing; entering it again clears this.</summary>
+    public bool SecretUnreadable { get; init; }
+
+    /// <summary>Plain-words reason when <see cref="SecretUnreadable"/> is set, for the screen and Health.</summary>
+    public string? SecretProblem { get; init; }
+
     public bool HasSecret => !string.IsNullOrWhiteSpace(Secret);
 
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);

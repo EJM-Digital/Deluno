@@ -32,10 +32,14 @@ public sealed class IndexerHealthCheck(IConnectionsRepository connections) : IHe
                     indexer.LastHealthMessage is { Length: > 0 } message
                         ? $"{indexer.Name}: {message}"
                         : $"{indexer.Name} is not answering.",
-                    cause: indexer.RateLimitedUntilUtc is { } until && until > DateTimeOffset.UtcNow
-                        ? $"{indexer.Name} rate-limited Deluno until {until:u}."
-                        : "Deluno could not confirm this indexer's last connection test.",
-                    fix: $"Open Connections and test {indexer.Name}.",
+                    cause: indexer.SecretUnreadable
+                        ? "The saved key was stored on another computer, so this computer cannot read it."
+                        : indexer.RateLimitedUntilUtc is { } until && until > DateTimeOffset.UtcNow
+                            ? $"{indexer.Name} rate-limited Deluno until {until:u}."
+                            : "Deluno could not confirm this indexer's last connection test.",
+                    fix: indexer.SecretUnreadable
+                        ? $"Open {indexer.Name} in Connections, enter its key again and save."
+                        : $"Open Connections and test {indexer.Name}.",
                     detailsJson: $$"""{"indexerId":"{{indexer.Id}}","protocol":"{{indexer.Protocol}}"}"""));
         }
 

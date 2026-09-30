@@ -54,6 +54,11 @@ public sealed class DownloadClientGrabService(
             return Failed(client.Id, request, "paused", "Download client is disabled.");
         }
 
+        if (client.SecretUnreadable)
+        {
+            return Failed(client.Id, request, "unready", client.SecretProblem ?? Deluno.Security.SecretUnreadable.Message("password"));
+        }
+
         // A normal acquisition must never dispatch to a client that was only
         // saved rather than capability-tested.
         if (!string.Equals(client.HealthStatus, "healthy", StringComparison.OrdinalIgnoreCase))
