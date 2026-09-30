@@ -3,16 +3,21 @@
  *
  * Strategy:
  *   · Shell assets (JS/CSS/fonts)  → Cache-first, background update
- *   · API calls (/api/*)           → Network-first, 5 s timeout → stale cache
+ *   · API calls (/api/*, /hubs/*)  → Not intercepted: they go straight to the
+ *                                    network. The API is no-store and the app has
+ *                                    its own timeouts, so copying every response
+ *                                    body into Cache Storage (and aborting at 5 s)
+ *                                    only slowed every screen down (#1081).
  *   · Navigation requests          → Network-first → cached shell (offline SPA)
  *   · Images / media               → Cache-first, never stale
  *
+ * Cache writes never sit between the network and the page: the response is
+ * returned at once and copied into the cache afterwards (event.waitUntil).
  * Cache names are versioned so old caches are purged on SW activation.
  */
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `deluno-shell-${VERSION}`;
-const API_CACHE = `deluno-api-${VERSION}`;
 const IMAGE_CACHE = `deluno-img-${VERSION}`;
 
 const PRECACHE_URLS = [
@@ -33,7 +38,7 @@ self.addEventListener("install", (event) => {
 
 /* ── Activate ────────────────────────────────────────────────────── */
 self.addEventListener("activate", (event) => {
-  const currentCaches = [SHELL_CACHE, API_CACHE, IMAGE_CACHE];
+  const currentCaches = [SHELL_CACHE, IMAGE_CACHE];
   event.waitUntil(
     caches
       .keys()
@@ -56,16 +61,15 @@ self.addEventListener("fetch", (event) => {
   /* WebSocket — never intercept */
   if (url.protocol === "ws:" || url.protocol === "wss:") return;
 
-  /* API calls → network-first with 5 s timeout, fallback to cache */
+  /* API and SignalR traffic: straight to the network, no cache copy, no
+     worker-imposed timeout. */
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/hubs/")) {
-    if (request.method !== "GET") return; /* Don't cache mutations */
-    event.respondWith(networkFirstWithTimeout(request, API_CACHE, 5000));
     return;
   }
 
   /* Images → cache-first */
   if (request.destination === "image") {
-    event.respondWith(cacheFirst(request, IMAGE_CACHE));
+    event.respondWith(cacheFirst(event, request, IMAGE_CACHE));
     return;
   }
 
@@ -76,70 +80,59 @@ self.addEventListener("fetch", (event) => {
     request.destination === "style" ||
     request.destination === "font"
   ) {
-    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+    event.respondWith(staleWhileRevalidate(event, request, SHELL_CACHE));
     return;
   }
 
   /* Navigation (HTML) → network first, fall back to shell index */
   if (request.mode === "navigate") {
-    event.respondWith(navigationHandler(request));
+    event.respondWith(navigationHandler(event, request));
     return;
   }
 });
 
 /* ── Strategies ──────────────────────────────────────────────────── */
 
-async function networkFirstWithTimeout(request, cacheName, timeoutMs) {
-  const cache = await caches.open(cacheName);
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(request, { signal: controller.signal });
-    clearTimeout(id);
-    if (response.ok) {
-      await cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    clearTimeout(id);
-    const cached = await cache.match(request);
-    return cached ?? Response.error();
-  }
+/* Copy a response into the cache after it has been handed to the page. */
+function cacheInBackground(event, cacheName, request, response) {
+  if (!response.ok) return;
+  const copy = response.clone();
+  event.waitUntil(
+    caches
+      .open(cacheName)
+      .then((cache) => cache.put(request, copy))
+      .catch(() => {})
+  );
 }
 
-async function cacheFirst(request, cacheName) {
+async function cacheFirst(event, request, cacheName) {
   const cached = await caches.match(request);
   if (cached) return cached;
   const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(cacheName);
-    await cache.put(request, response.clone());
-  }
+  cacheInBackground(event, cacheName, request, response);
   return response;
 }
 
-async function staleWhileRevalidate(request, cacheName) {
+async function staleWhileRevalidate(event, request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
 
   const fetchPromise = fetch(request).then((response) => {
-    if (response.ok) {
-      cache.put(request, response.clone());
-    }
+    cacheInBackground(event, cacheName, request, response);
     return response;
   });
 
-  return cached ?? fetchPromise;
+  if (cached) {
+    event.waitUntil(fetchPromise.catch(() => {}));
+    return cached;
+  }
+  return fetchPromise;
 }
 
-async function navigationHandler(request) {
+async function navigationHandler(event, request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(request, response.clone());
-    }
+    cacheInBackground(event, SHELL_CACHE, request, response);
     return response;
   } catch {
     /* Offline: serve the cached shell or the offline page */
