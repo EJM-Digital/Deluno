@@ -35,7 +35,12 @@ param(
     # Keep the previous App directory. Off by default now that only changed
     # files move: a full copy of 400 MB per deploy filled the disk quickly.
     # Use it for anything you would struggle to rebuild.
-    [switch]$Rollback
+    [switch]$Rollback,
+
+    # How many rollback copies to keep. Older ones are removed after a deploy
+    # that proved ready, never the one this deploy has just made. James, 30 Sep
+    # 2026 (#1085): keep 5; the rig had kept all 169, 44 GB, since 14 Sep.
+    [int]$KeepRollbacks = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -222,6 +227,26 @@ try {
     $ready = Wait-DelunoReady -Url $ReadyUrl
 
     $readyChecks = @($ready.checks | Where-Object { $_.status -eq 'ready' }).Count
+
+    $pruned = Invoke-Command -Session $session -ArgumentList $AppPath, $KeepRollbacks, $rollbackPath -ScriptBlock {
+        param($appPath, $keep, $justMade)
+        $parent = Split-Path -Parent $appPath
+        $leaf = Split-Path -Leaf $appPath
+        # The stamp is yyyyMMdd-HHmmss, so name order is age order.
+        $old = @(Get-ChildItem -Path $parent -Directory -Filter "$leaf.rollback-*" |
+            Sort-Object Name -Descending |
+            Select-Object -Skip ([Math]::Max($keep, 1)) |
+            Where-Object { $_.FullName -ne $justMade })
+        $bytes = 0
+        foreach ($dir in $old) {
+            $bytes += (Get-ChildItem -Path $dir.FullName -Recurse -File -Force | Measure-Object Length -Sum).Sum
+            Remove-Item -Path $dir.FullName -Recurse -Force
+        }
+        [PSCustomObject]@{ Count = $old.Count; Bytes = $bytes }
+    }
+    if ($pruned.Count -gt 0) {
+        Write-Host "Removed $($pruned.Count) old rollback folders, freeing $([math]::Round($pruned.Bytes / 1GB, 2)) GB (keeping the newest $KeepRollbacks)."
+    }
     $started.Stop()
 
     [PSCustomObject]@{
@@ -229,6 +254,7 @@ try {
         FilesRemoved = $orphaned.Count
         MegabytesSent = [math]::Round($changedBytes / 1MB, 2)
         Rollback = $rollbackPath
+        RollbacksRemoved = $pruned.Count
         Pid = $info.Pid
         ExeSha256 = $info.ExeSha256
         Readiness = "$readyChecks/$(@($ready.checks).Count) ready"
