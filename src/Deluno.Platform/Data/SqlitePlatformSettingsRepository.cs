@@ -261,7 +261,7 @@ public sealed class SqlitePlatformSettingsRepository(
         // #1013: off unless the key says "true"; a missing key reads as off.
         await UpsertSettingAsync(connection, transaction, "imports.forceImport.enabled", request.ForceImportEnabled == true ? "true" : "false", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "imports.forceImport.maxTries", Math.Clamp(request.ForceImportMaxTries ?? 3, 1, 25).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "imports.forceImport.minimumMegabytes", Math.Clamp(request.ForceImportMinimumMegabytes ?? 100, 1, 100000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
+        await UpsertSettingAsync(connection, transaction, "imports.forceImport.minimumMegabytes", Math.Clamp(request.ForceImportMinimumMegabytes is > 0 ? request.ForceImportMinimumMegabytes.Value : 100, 1, 100000).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         // #762: blank means no season/specials subfolder, the same "off"
         // value a brand-new install already reads for every other naming
         // format below.

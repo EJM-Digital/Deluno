@@ -547,6 +547,9 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.Equal(7, updated.ForceImportMaxTries);
         Assert.Equal(20, updated.ForceImportMinimumMegabytes);
 
+        // An emptied box never saves 1 MB: nothing sent (0) leaves the size as it was.
+        Assert.Equal(20, PlatformSettingsPatchMerger.Apply(updated, new PatchPlatformSettingsRequest(ForceImportMinimumMegabytes: 0)).ForceImportMinimumMegabytes);
+
         // A patch that mentions neither leaves both as they were.
         await repository.SaveAsync(
             PlatformSettingsPatchMerger.Apply(updated, new PatchPlatformSettingsRequest(LeftoverMinAgeHours: 5)),
