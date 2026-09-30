@@ -84,8 +84,12 @@ type SetupLists = Parameters<typeof buildSetupStatus>[0];
 export function buildSetupState(lists: SetupLists): { status: SetupStatusModel; needs: SetupNeed[] } {
   const status = buildSetupStatus(lists);
   // The ladder carries its own steps; only what it has no step for is a row.
+  // Its "connection health" item is left out too: every indexer and client that
+  // is not answering already has its own row with Test again, so it would say
+  // the same problem twice.
   const needs = status.attentionItems
     .filter((item) => !status.steps.some((step) => step.id === item.id))
+    .filter((item) => item.id !== "connection-health")
     .map((item) => ({ id: item.id, title: item.title, text: item.text, to: item.href, action: item.action }));
   return { status, needs };
 }
