@@ -78,7 +78,7 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public void A_password_is_generated_only_where_the_app_cannot_start_or_would_ship_a_public_one()
+    public void A_login_is_generated_only_for_qBittorrent_which_cannot_start_without_one()
     {
         foreach (var spec in BundledComponents.Load())
         {
@@ -87,10 +87,22 @@ public sealed partial class ComponentSetupTests
             if (seedsAPassword) { Assert.False(string.IsNullOrWhiteSpace(spec.CredentialsUsername), spec.Kind); }
         }
 
-        // qBittorrent 5.x will not start its Web UI without one; Transmission and SABnzbd keep their own defaults.
+        // qBittorrent 5.x will not start its Web UI without one. Every other app keeps the login it ships with (#1061),
+        // and Deluno connects with each app's own default.
         Assert.False(string.IsNullOrWhiteSpace(Load("qbittorrent").CredentialsUsername));
-        Assert.True(string.IsNullOrWhiteSpace(Load("transmission").CredentialsUsername));
-        Assert.True(string.IsNullOrWhiteSpace(Load("sabnzbd").CredentialsUsername));
+        foreach (var kind in new[] { "transmission", "sabnzbd", "deluge", "nzbget" })
+        {
+            Assert.True(string.IsNullOrWhiteSpace(Load(kind).CredentialsUsername), kind);
+        }
+
+        foreach (var spec in BundledComponents.Load().Where(s => s.Kind != "qbittorrent"))
+        {
+            var seed = (spec.ConfigFileContent ?? string.Empty) + string.Join(' ', spec.ConfigReplacements?.Values ?? Enumerable.Empty<string>());
+            Assert.DoesNotContain("{{username}}", seed, StringComparison.Ordinal);
+            Assert.DoesNotContain("{{password}}", seed, StringComparison.Ordinal);
+            Assert.DoesNotContain("Pwd", seed, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("pwd_", seed, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

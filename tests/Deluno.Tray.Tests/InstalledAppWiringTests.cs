@@ -74,31 +74,21 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public async Task Deluges_web_password_is_seeded_from_a_generated_one_that_is_kept_for_Deluno()
+    public async Task Deluge_gets_no_generated_login_only_its_local_address_and_port()
     {
         var writer = new FakeConfigWriter(true);
         var store = new RecordingCredentialStore();
 
         await InstallWith(Load("deluge"), writer, store);
 
-        var password = store.Saved["deluge"].Password;
-        Assert.NotEmpty(password);
+        Assert.False(store.Has("deluge"));
+        Assert.Empty(store.Saved);
         var content = writer.Content!;
-        Assert.Contains($"\"pwd_salt\": \"{DelugeWebPassword.Salt(password)}\"", content, StringComparison.Ordinal);
-        Assert.Contains($"\"pwd_sha1\": \"{DelugeWebPassword.Sha1(password)}\"", content, StringComparison.Ordinal);
         Assert.Contains("\"interface\": \"127.0.0.1\"", content, StringComparison.Ordinal);
-        Assert.DoesNotContain(password, content, StringComparison.Ordinal);
+        Assert.Contains("\"port\": 8112", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("pwd_", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("first_login", content, StringComparison.Ordinal);
         Assert.DoesNotContain("{{", content, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Deluges_password_check_is_sha1_of_the_stored_salt_followed_by_the_password()
-    {
-        var expected = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(DelugeWebPassword.Salt("hunter2") + "hunter2"))).ToLowerInvariant();
-
-        Assert.Equal(expected, DelugeWebPassword.Sha1("hunter2"));
-        Assert.NotEqual(DelugeWebPassword.Sha1("hunter2"), DelugeWebPassword.Sha1("hunter3"));
-        Assert.Equal(32, DelugeWebPassword.Salt("hunter2").Length);
     }
 
     private static async Task<ComponentInstallResult> InstallWithRecord(BundledComponentSpec real, RecordingInstalledRecord record, RecordingCredentialStore store, string? template = null)
