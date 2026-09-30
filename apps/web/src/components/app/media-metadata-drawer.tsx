@@ -10,6 +10,7 @@
  *   Fine-tune         — the manual override fields, saved by the footer
  */
 import { useEffect, useState } from "react";
+import { ArtworkImage } from "../ui/artwork-image";
 import { AlertTriangle, ExternalLink, LoaderCircle, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -269,7 +270,7 @@ export function MediaMetadataDrawer({
       <DrawerSection title="Provider record" aside={provider ? provider.toUpperCase() : "Not linked"}>
         <div className="flex items-start gap-[var(--grid-gap)]">
           {posterUrl ? (
-            <img src={posterUrl} alt="" className="h-28 w-[74px] shrink-0 rounded-[10px] border border-hairline object-cover" />
+            <ArtworkImage src={posterUrl} alt="" className="h-28 w-[74px] shrink-0 rounded-[10px] border border-hairline object-cover" />
           ) : null}
           <div className="min-w-0 flex-1">
             <DrawerFacts

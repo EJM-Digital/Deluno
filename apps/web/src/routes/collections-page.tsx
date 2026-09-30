@@ -1,4 +1,5 @@
 import { Check, Film, LoaderCircle, Plus, RefreshCcw, Trash2 } from "lucide-react";
+import { ArtworkImage } from "../components/ui/artwork-image";
 import { useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { TagPicker } from "../components/app/tag-picker";
@@ -271,7 +272,7 @@ export function CollectionsPage() {
                     className="mt-1"
                   />
                   <div className="h-36 w-24 shrink-0 overflow-hidden rounded-xl bg-surface-2">
-                    {collection.posterUrl ? <img src={collection.posterUrl} alt="" className="h-full w-full object-cover" /> : <Film className="m-auto mt-14 h-6 w-6 text-muted-foreground" />}
+                    {collection.posterUrl ? <ArtworkImage src={collection.posterUrl} alt="" className="h-full w-full object-cover" /> : <Film className="m-auto mt-14 h-6 w-6 text-muted-foreground" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -297,7 +298,7 @@ export function CollectionsPage() {
                   <div className="flex flex-wrap gap-2">
                     {members.map((member) => (
                       <a key={member.providerId} href={member.localMovieId ? `/movies/${member.localMovieId}` : member.externalUrl ?? undefined} target={member.localMovieId ? undefined : "_blank"} rel={member.localMovieId ? undefined : "noreferrer"} title={`${member.title}${member.releaseYear ? ` (${member.releaseYear})` : ""}`} className={cn("group relative h-14 w-10 overflow-hidden rounded-md bg-surface-2 ring-offset-2 transition hover:ring-2 hover:ring-primary", !member.localMovieId && "opacity-55 saturate-50") }>
-                        {member.posterUrl ? <img src={member.posterUrl} alt={member.title} className="h-full w-full object-cover" /> : <Film className="m-auto mt-5 h-4 w-4 text-muted-foreground" />}
+                        {member.posterUrl ? <ArtworkImage src={member.posterUrl} alt={member.title} className="h-full w-full object-cover" /> : <Film className="m-auto mt-5 h-4 w-4 text-muted-foreground" />}
                         {member.localMovieId ? <span className="absolute bottom-0.5 right-0.5 rounded-full bg-success p-0.5 text-white"><Check className="h-2.5 w-2.5" /></span> : null}
                       </a>
                     ))}

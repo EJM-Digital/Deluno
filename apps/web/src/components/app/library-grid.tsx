@@ -13,6 +13,7 @@ import { authedFetch } from "../../lib/use-auth";
 import { cn } from "../../lib/utils";
 import { TitleBars, TitleMarkBar, TitleMarkCorner, TitleMarkTopBar } from "../ui/title-mark";
 import { cardDesign } from "../../lib/card-design";
+import { ArtworkImage, ArtworkPlaceholder } from "../ui/artwork-image";
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   formatRuntime,
@@ -867,22 +868,14 @@ export function PosterArtwork({
   className?: string;
   compact?: boolean;
 }) {
-  if (src) {
-    return <img src={src} alt={title} className={cn("object-cover", className)} loading="lazy" />;
-  }
-
   return (
-    <div
-      className={cn(
-        "flex items-center justify-center bg-gradient-to-br from-surface-2 to-surface-3 text-center text-muted-foreground",
-        className
-      )}
-      aria-label={`${title} artwork unavailable`}
-    >
-      <span className={cn("px-2 font-display font-semibold tracking-tight", compact ? "text-[length:var(--type-micro)]" : "text-sm")}>
-        {title.slice(0, 2).toUpperCase()}
-      </span>
-    </div>
+    <ArtworkImage
+      src={src}
+      alt={title}
+      className={cn("object-cover", className)}
+      loading="lazy"
+      fallback={<ArtworkPlaceholder title={title} className={className} compact={compact} />}
+    />
   );
 }
 

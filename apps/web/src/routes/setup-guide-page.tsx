@@ -1,4 +1,5 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ArtworkImage } from "../components/ui/artwork-image";
 import { Link, useLoaderData, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -2013,7 +2014,7 @@ function FinishStep({
                 )}
               >
                 {item.posterUrl ? (
-                  <img src={item.posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
+                  <ArtworkImage src={item.posterUrl} alt="" className="h-16 w-11 rounded-lg object-cover" />
                 ) : (
                   <div className="flex h-16 w-11 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">No art</div>
                 )}

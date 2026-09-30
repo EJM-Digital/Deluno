@@ -13,6 +13,7 @@
  * the right shape for a sort column and much too thin for a page.</p>
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArtworkImage } from "../ui/artwork-image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 
@@ -113,7 +114,7 @@ export function CreditsRow({ heading, people, className }: CreditsRowProps) {
  */
 function CreditCard({ person }: { person: CreditedPerson }) {
   const portrait = person.profileUrl
-    ? <img src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg transition group-hover/credit:border-primary/50" />
+    ? <ArtworkImage src={person.profileUrl} alt="" loading="lazy" className="aspect-[2/3] w-full rounded-xl border border-white/15 bg-surface-2 object-cover shadow-lg transition group-hover/credit:border-primary/50" fallback={<div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>} />
     : <div className="flex aspect-[2/3] w-full items-center justify-center rounded-xl border border-white/15 bg-surface-2 text-center text-[length:var(--type-caption)] text-muted-foreground">No photo</div>;
 
   const caption = (

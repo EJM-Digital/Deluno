@@ -11,6 +11,7 @@
  * /api/movies/bulk.
  */
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
+import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
@@ -802,14 +803,14 @@ export function MovieDetailPage() {
         <CardContent className="relative p-[var(--tile-pad)] sm:p-[calc(var(--tile-pad)*1.15)]">
           <div className="grid items-start gap-[var(--grid-gap)] md:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_22rem]">
             {movie.posterUrl ? (
-              <img src={movie.posterUrl} alt={`${movie.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
+              <ArtworkImage src={movie.posterUrl} alt={`${movie.title} poster`} className="h-96 w-64 justify-self-center rounded-2xl border border-white/15 bg-surface-1 object-cover shadow-2xl md:justify-self-start" />
             ) : (
               <div className="flex h-96 w-64 justify-self-center items-center justify-center rounded-2xl border border-hairline bg-surface-1 px-3 text-center text-xs text-muted-foreground md:justify-self-start">No artwork yet</div>
             )}
             <div className="min-w-0 self-start xl:flex xl:h-96 xl:flex-col xl:has-[[data-expanded=true]]:h-auto">
               <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.18em] text-primary">Movie</p>
               {/* #864: a transparent logo/wordmark, where TMDb has one, above the title it labels. */}
-              {logoUrl ? <img src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
+              {logoUrl ? <ArtworkImage fallback={null} src={logoUrl} alt="" className="mt-1 h-12 w-auto max-w-[18rem] object-contain object-left" /> : null}
               {/*
                 **Centre, not baseline.** A button whose only child is an SVG has
                 its baseline at the BOTTOM of its box, so aligning that to the
@@ -1027,7 +1028,7 @@ export function MovieDetailPage() {
             <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Screenshots</p>
             <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
               {screenshots.map((url) => (
-                <img key={url} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
+                <ArtworkImage key={url} fallback={null} src={url} alt="" className="h-32 w-56 shrink-0 rounded-lg border border-hairline object-cover" />
               ))}
             </div>
           </CardContent>
