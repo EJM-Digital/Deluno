@@ -41,6 +41,17 @@ then Run anyway.
   apps before this version, setting them up properly is up to you: Deluno
   does not nag you about it.
 
+### Installed apps
+
+- Apps keep their own defaults. Only qBittorrent gets a generated login;
+  NZBGet and Deluge are connected with the login they ship with. No screen or
+  API hands out an installed app's password: Use connects the app itself, and
+  Deluno clears the stored copy once a connection exists.
+- Deleting the qBittorrent connection no longer loses its login, and a
+  connection is matched by port as well as address.
+- Every installer that runs with administrator rights runs from a fresh, locked
+  folder, and each download is checked by its signature or checksum first.
+
 ### Tags
 
 - Tags now do what they say. Tags on an indexer, download client or
@@ -90,6 +101,23 @@ then Run anyway.
   original title kept.
 - Anime episodes can show their absolute number.
 
+### TV
+
+- A season that is still airing is trimmed one episode at a time: new episodes
+  are fetched on their own, and a pack is never downloaded again to bring back
+  episodes you removed. Saving a rule no longer waits for a running check.
+- An episode with no air date counts as Missing and is searched; only an
+  episode with a future air date is Upcoming.
+- A show Deluno stopped wanting episodes of no longer reads Missing, on the
+  ladder, the catalogue counts or the show page. Your own Search of a season
+  still takes packs even if you unmonitored an episode yourself, while
+  automatic searches leave packs alone.
+- An episode whose file is gone is cleared, marked missing and unmonitored in
+  one step.
+- When TheTVDB is down, every show it holds appears in one Health note and one
+  Activity line that you can clear. Choosing the right TheTVDB or TMDb record on
+  purpose is never blocked by that hold.
+
 ### Retention
 
 - Rules can look at audio language, each person's watching, a whole
@@ -100,9 +128,16 @@ then Run anyway.
   played, keep its list off your media server, take titles you add by hand,
   and postpone a removal by a number of days. Deluno checks every connected
   media server for something playing before it removes a title.
-- Nothing upcoming is ever removed. An episode or show that has not aired yet,
-  or has no air date, is shown as Upcoming (the word already used for movies),
-  and retention never touches it.
+- Nothing upcoming is ever removed. An episode or show with a future air date
+  is shown as Upcoming (the word already used for movies), and retention never
+  touches it. An episode with no air date at all counts as Missing and is
+  searched for, so it is not hidden as Upcoming. A running show whose next
+  season has no dates yet is never removed whole by a Show rule, and your media
+  servers are told only about the episodes that were removed.
+- A rule that is queued to run uses the rule as you last edited it, and one
+  saved as delete starts its wait again before any check can run.
+- Retention waits when a film is playing on a media server Deluno does not read
+  and cannot tell apart from the one being removed.
 - A rule whose test cannot be answered, such as "is not" on a value Deluno
   does not know, leaves the title alone and shows it as undecided in the
   preview instead of treating it as a match.
@@ -129,14 +164,36 @@ then Run anyway.
   on a phone Sort and View no longer run off the screen.
 - A followed movie collection can be unfollowed, and selected collections can
   be changed together.
-- Deleting a film's file from disk makes the film Unmonitored automatically,
-  so Deluno does not go looking for it again. Its status says it has no file.
-  A film you deliberately left at Quality met is no longer flipped back to
-  Upgradable, and films that were flipped are put back.
-- If a library folder is empty, or holds only system folders such as
-  lost+found, Deluno treats the drive as not mounted: nothing is marked
-  missing or unmonitored. Rescan folder asks first and says exactly what it
-  did, and the scheduled library check follows the same rule.
+- Deleting a film's file, from a title's Files tab or outside Deluno, clears
+  the file and makes the film Unmonitored in one step, so it shows under
+  Unmonitored and Deluno does not go looking for it again. A film you
+  deliberately left at Quality met is no longer flipped back to Upgradable, and
+  films that were flipped are put back. A check never unmonitors a film that is
+  in the middle of an upgrade, and a download you re-run outside Deluno always
+  searches.
+- A film in two libraries: deleting its file in one library stops Deluno
+  wanting it only in that library. The other library's copy stays monitored and
+  keeps being upgraded. The film page's Libraries card marks the library it is
+  no longer wanted in and offers Want it again, and the catalogue card and
+  calendar show the film as not monitored there. Importing a file into that
+  library, or watching the whole title again, wants it there again. Monitoring
+  a film that is already monitored no longer brings back a library you stopped
+  wanting it in.
+- If a library folder is empty, holds only system folders such as lost+found,
+  or a share drops out mid-check, Deluno treats the library as unreachable and
+  changes nothing: no title is marked missing or unmonitored, and one note you
+  can clear says so. The note clears itself when the files are back. If the
+  files really are gone, choose "These files really are gone". Rescan folder
+  asks first and says exactly what it did, and the scheduled library check
+  follows the same rule. One missed sighting never unmonitors a title.
+- A film's Files tab shows every library's file and deletes exactly that
+  library's copy. A film filed straight in the library folder lists and deletes
+  only its own files, and links that lead out of the folder are refused.
+- Renaming or moving a title's folder takes the title's remembered file paths
+  with it, so the next check does not think a file is gone. If the records
+  cannot follow the folder, Deluno puts the folder back or says where it is,
+  records it and carries on; a move to another drive gives a plain reason.
+  Folder names with letters such as an accented E match correctly.
 - Rename folder and Move only ever touch a title's own folder. A library
   folder, a whole drive, a folder shared with other titles or a group folder is
   refused with a plain reason. Moving a title to another library moves only its
@@ -163,10 +220,32 @@ then Run anyway.
   trailers.
 - Deluno only shows and acts on downloads it sent. A download you add to your
   download client yourself is invisible to Deluno: not listed, counted,
-  cleaned or touched on Transfers, Queue, Health, clean-up or the API.
+  cleaned, paused, resumed, rechecked or touched on Transfers, Queue, Health,
+  clean-up or the API, and another tool's leftovers in a shared folder are not
+  listed. Deluno never claims a download by its name alone. Its own downloads
+  can still be cleaned up after their record is archived.
+- Every torrent is known by its hash before it is sent: Deluno works the hash
+  out from the magnet link, or fetches the .torrent file and hashes it itself,
+  and a grab is reserved first so a second grab of the same release follows the
+  first instead of doubling up. Transmission torrents are followed by their
+  hash instead of the session's number.
+- When your download client already has a release that came from somewhere else,
+  Deluno leaves it alone, fails that release with a plain reason and tries
+  another. A release you chose yourself fails with its reason shown and nothing
+  else is searched. Every search that lets Deluno choose the release blocklists
+  a dead one and searches again. A release sent from the Search page now has its
+  own download record.
+- A download client's webhook can no longer change which item a download
+  belongs to.
+- The Force Import minimum size is a setting; leaving the "Smallest file to
+  force" box empty saves the 100 MB default it says it will use. An unreadable
+  file that looks like a sample is no longer force-imported.
 - Transmission and Deluge downloads now go to the library's own downloads
   folder on every grab, and the folder check compares where a download really
-  went.
+  went. Deluno names a folder to a Transmission or Deluge on this computer only
+  when it can show the client sees the same folders; one in Docker or WSL is
+  not sent a Windows folder, and one that did not answer is asked again. Saving
+  a library with no downloads folder leaves it alone.
 - qBittorrent can choose where a download's files go. Leftover clean-up has
   Run now and a skip list. Processors can translate folder paths for one in
   Docker or on another machine.
@@ -178,6 +257,9 @@ then Run anyway.
   computer. Indexers are named after their site. The Name box is gone from
   every connection form, and the name Deluno shows for itself is the
   computer's own name.
+- Indexers behind Prowlarr or Jackett are named after their tracker, as the
+  aggregator reports it, and no longer share its host name. The first-run guide
+  and the processor form no longer ask for a name.
 - Renaming a connection can no longer break anything: libraries, hand-offs to
   a processor and indexer history now follow a connection, not its label.
   Changing a connection's address or key still stops it working and shows on
@@ -211,6 +293,28 @@ then Run anyway.
   downloaded site file never replaces a working one.
 - A background job that fails no longer stops the whole app: the failure is
   logged and shown on Health, where you can clear it.
+
+### Reliability
+
+- If Deluno stops itself after a failure, the Windows service restarts it after
+  a minute and the tray starts it again, saying so in plain words if it cannot.
+  Older installs get the restart settings when they start, and Health tells you
+  if Windows did not accept them. Choosing Stop in the tray still stops it for
+  good.
+- No background job ends for good on a timeout or a slow start.
+- Deluno waits up to two minutes for a locked database at start-up instead of
+  failing on the first busy answer.
+
+### Upgrading from rc.22
+
+- Connections are named automatically from their address the first time you
+  start rc.23. Indexers from a tracker definition, or behind Jackett or
+  Prowlarr, take their new name at start-up, and their old grabs, stats and
+  history stay with them.
+- Transmission downloads Deluno already tracks move to their hash the first
+  time Transmission is polled. Nothing needs doing.
+- Downloads you added to your clients yourself stop appearing in Deluno.
+  Nothing is removed from the clients.
 
 ## 1.0.0-rc.22
 
