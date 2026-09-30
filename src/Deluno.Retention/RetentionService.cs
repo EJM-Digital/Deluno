@@ -1083,7 +1083,7 @@ public sealed class RetentionService(
     private async Task<RetentionCandidate?> AiredPartOfAiringShowAsync(RetentionCandidate candidate, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var inventory = await series.GetInventoryDetailAsync(candidate.EntityId, cancellationToken);
-        if (inventory is null || !inventory.Episodes.Any(episode => RetentionEpisodeMath.EpisodeUpcoming(episode, now)))
+        if (inventory is null || !inventory.Episodes.Any(episode => RetentionEpisodeMath.StillToCome(episode, now)))
         {
             return null;
         }
@@ -1219,13 +1219,14 @@ public sealed class RetentionService(
         var told = candidate.ServerItems.SelectMany(match => match.Episodes.Count > 0
             ? match.Episodes.Where(episode => episode.Paths.Any(path => paths.Contains(RetentionServerIndex.NormalizePath(path)))).Select(episode => (match.Server, Item: episode))
             : unit.Level == RetentionLevels.Show ? [] : [(match.Server, match.Item)]);
-        return await TellServersAsync(told, unit.Title, cancellationToken);
+        return await TellServersAsync(told, unit.Title, cancellationToken, episodesOnly: unit.Level == RetentionLevels.Show);
     }
 
     private async Task<IReadOnlyList<string>> TellServersAsync(
         IEnumerable<(Deluno.Connections.Contracts.MediaServerConnection Server, MediaServerItem Item)> items,
         string title,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool episodesOnly = false)
     {
         var notes = new List<string>();
         foreach (var group in items.GroupBy(entry => entry.Server.Id))
@@ -1247,7 +1248,7 @@ public sealed class RetentionService(
             }
 
             notes.Add(problem is null
-                ? $"{server.Name} was told {title} is gone."
+                ? (episodesOnly ? $"{server.Name} was told {group.Count()} {(group.Count() == 1 ? "episode" : "episodes")} of {title} {(group.Count() == 1 ? "is" : "are")} gone." : $"{server.Name} was told {title} is gone.")
                 : $"{server.Name} was not updated: {problem.TrimEnd('.')}. It will drop the files on its next library scan.");
         }
 

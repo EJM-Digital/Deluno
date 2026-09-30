@@ -1359,6 +1359,30 @@ public sealed class RetentionRuleTests
     }
 
     [Fact]
+    public async Task A_running_show_whose_next_season_has_no_dates_yet_is_not_removed_as_a_whole()
+    {
+        SeasonLibrary();
+        // Season 3 is announced with dates to be announced: undated, no file. The show is still airing.
+        SeasonOneEpisodes(
+            AiredOrNot("e1", 1, 1, Now.AddDays(-10)),
+            AiredOrNot("e2", 1, 2, Now.AddDays(-9)),
+            AiredOrNot("e3", 2, 1, Now.AddDays(-5)),
+            AiredOrNot("e4", 3, 1, null) with { HasFile = false });
+        var rule = Rule(Keep("server.allEpisodesSeenBy:anyone:")) with { Level = RetentionLevels.Show, WaitDays = 1 };
+        _store.Add(rule);
+
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _series.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Order().SequenceEqual(new[] { "e1", "e2", "e3" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Contains("e4")), false, It.IsAny<CancellationToken>()), Times.Never);
+        Assert.DoesNotContain(run.Items!, item => (item.Message ?? "").Contains("Breaking Bad is gone", StringComparison.Ordinal));
+        _jellyfin.Verify(client => client.RemoveAsync(_server, It.Is<MediaServerItem>(item => item.ServerItemId == "js"), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Saving_a_rule_does_not_wait_for_a_check_that_is_still_reading_the_servers_and_that_check_then_changes_nothing()
     {
         var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 1 });

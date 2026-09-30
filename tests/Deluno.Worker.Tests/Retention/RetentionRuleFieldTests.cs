@@ -414,6 +414,20 @@ public sealed class RetentionRuleFieldTests
     }
 
     [Fact]
+    public void Still_to_come_is_a_future_date_or_no_date_and_no_file_and_every_finished_check_uses_it()
+    {
+        Assert.True(RetentionEpisodeMath.StillToCome(Episode("f", 1, 1, Now.AddDays(3), false), Now));
+        Assert.True(RetentionEpisodeMath.StillToCome(Episode("t", 1, 2, null, false), Now));
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("u", 1, 3, null, true), Now));
+        Assert.False(RetentionEpisodeMath.StillToCome(Episode("a", 1, 4, Now.AddDays(-3), false), Now));
+
+        // A season announced with no dates keeps the season from counting as finished, so its finale is not known.
+        var math = new RetentionEpisodeMath([Episode("a", 1, 2, Now.AddDays(-3), true), Episode("t", 1, 1, null, false)], Now);
+        Assert.Null(math.SeasonFinale(1, "a"));
+    }
+
+
+    [Fact]
     public void Upcoming_means_a_future_air_date_and_an_undated_episode_is_missing_not_upcoming()
     {
         var future = Episode("f", 1, 1, Now.AddDays(3), false);

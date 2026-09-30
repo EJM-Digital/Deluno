@@ -269,7 +269,7 @@ public sealed class RetentionUnitReader(
                 // A show whose episodes could not be read says nothing about finales or ranks.
                 var math = inventory is null ? null : new RetentionEpisodeMath(episodes, now);
                 var latestSeason = episodes.Where(episode => episode.SeasonNumber > 0).Select(episode => episode.SeasonNumber).DefaultIfEmpty(0).Max();
-                bool Unaired(int season) => episodes.Any(episode => episode.SeasonNumber == season && (episode.AirDateUtc is null || episode.AirDateUtc > now));
+                bool Unaired(int season) => episodes.Any(episode => episode.SeasonNumber == season && RetentionEpisodeMath.StillToCome(episode, now));
 
                 if (level == RetentionLevels.Season)
                 {
