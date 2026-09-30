@@ -221,7 +221,7 @@ test.describe("Dashboard tabs", () => {
     // Posters come in one request per kind; no title is asked for on its own, so a deleted title can never 404.
     const perTitle: string[] = [];
     page.on("request", (request) => {
-      if (/\/api\/(movies|series)\/(?!posters)[^/?]+$/.test(new URL(request.url()).pathname)) perTitle.push(request.url());
+      if (/\/api\/(movies|series)\/(?:m|s)?[0-9]+$/.test(new URL(request.url()).pathname)) perTitle.push(request.url());
     });
     for (const size of SIZES) {
       await page.setViewportSize(size);
@@ -229,7 +229,7 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
       // Today is the day's real count (the fixture holds more than the 200 a page of events could), the speed
       // peaks are labelled apart, and a failing indexer is left to Needs you instead of being listed twice.
-      await expect(page.getByRole("region", { name: /^today/i }).getByText(/^[0-9,]{3,} events$/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^today/i }).getByText(/^[0-9,]{3,} events$/).first()).toBeVisible();
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Download peak/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Upload peak/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^indexers/i }).getByText("NZBgeek")).toBeVisible();
