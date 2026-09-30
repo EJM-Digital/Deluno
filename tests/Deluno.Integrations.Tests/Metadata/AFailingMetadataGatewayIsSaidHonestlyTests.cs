@@ -201,11 +201,11 @@ public sealed class AFailingMetadataGatewayIsSaidHonestlyTests : IDisposable
 
         Assert.Equal(OutboundRate.MetadataGatewayDefault, Assert.Single(throttle.Rates));
 
-        // 30 a minute per address in fixed windows: never more than 30 in any
+        // 120 provider calls a minute per address: never more than 120 in any
         // minute, even across a window boundary.
         var rate = OutboundRate.MetadataGatewayDefault;
         Assert.Equal(TimeSpan.FromMinutes(1), rate.Per);
-        Assert.True(rate.Burst + rate.Permits <= 30);
+        Assert.True(rate.Burst + rate.Permits <= 120);
     }
 
     [Fact]

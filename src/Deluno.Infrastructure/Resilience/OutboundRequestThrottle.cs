@@ -82,18 +82,17 @@ public sealed record OutboundRate(int Permits, TimeSpan Per, int Burst)
     public static OutboundRate MetadataProviderDefault { get; } = new(10, TimeSpan.FromSeconds(1), 10);
 
     /// <summary>
-    /// Twenty-four requests a minute with a burst of five, for Deluno's own
+    /// A hundred requests a minute with a burst of ten, for Deluno's own
     /// metadata gateway.
     ///
-    /// The gateway allows 30 requests a minute per address in fixed one-minute
-    /// windows (services/metadata-gateway/src/index.js), which is nothing like
-    /// TMDb's ceiling. Paced at ten a second, an import or backfill spent the
-    /// whole minute's budget in three seconds and took 429s in every job lane.
-    /// Twenty-four plus a burst of five never exceeds 30 in any minute, even
-    /// across a window boundary, and leaves room for another app on the same
-    /// address.
+    /// The gateway lets each address make 120 calls a minute to TMDb or TheTVDB
+    /// (services/metadata-gateway/wrangler.jsonc) and counts only calls that
+    /// really reach a provider, never answers from its own cache. A hundred plus
+    /// a burst of ten never exceeds 120 in any minute, even across a window
+    /// boundary, and leaves room for another app on the same address. A 429
+    /// from the gateway is still honoured through Retry-After.
     /// </summary>
-    public static OutboundRate MetadataGatewayDefault { get; } = new(24, TimeSpan.FromMinutes(1), 5);
+    public static OutboundRate MetadataGatewayDefault { get; } = new(100, TimeSpan.FromMinutes(1), 10);
 
     public static OutboundRate FromInterval(TimeSpan interval)
         => new(1, interval <= TimeSpan.Zero ? TimeSpan.FromSeconds(2) : interval, 1);
