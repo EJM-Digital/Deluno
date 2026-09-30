@@ -1770,8 +1770,6 @@ public sealed class SqliteMovieCatalogRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = excluded.has_file,
-                not_wanted_here = CASE WHEN excluded.has_file = 1 THEN 0 ELSE movie_wanted_state.not_wanted_here END,
-                not_wanted_since_utc = CASE WHEN excluded.has_file = 1 THEN NULL ELSE movie_wanted_state.not_wanted_since_utc END,
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
@@ -1986,8 +1984,6 @@ public sealed class SqliteMovieCatalogRepository(
                 wanted_status = excluded.wanted_status,
                 wanted_reason = excluded.wanted_reason,
                 has_file = 1,
-                not_wanted_here = 0,
-                not_wanted_since_utc = NULL,
                 current_quality = excluded.current_quality,
                 target_quality = excluded.target_quality,
                 quality_cutoff_met = excluded.quality_cutoff_met,
@@ -2262,6 +2258,7 @@ public sealed class SqliteMovieCatalogRepository(
                     WHERE w.movie_id = @movieId
                       AND w.library_id <> @clearedLibraryId
                       AND w.not_wanted_here = 0
+                      AND w.has_file = 1
                       AND e.monitored = 1;
                     """;
                 AddParameter(stillWanted, "@movieId", movieId);
