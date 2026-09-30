@@ -48,7 +48,7 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
     public async Task<DownloadClientConnectResult> ConnectAsync(DownloadClientWiring wiring, int attempts, TimeSpan delay, CancellationToken cancellationToken)
     {
         var existing = (await connections.ListDownloadClientsAsync(cancellationToken))
-            .FirstOrDefault(client => string.Equals(client.Protocol, wiring.Protocol, StringComparison.OrdinalIgnoreCase) && IsLoopback(client.Host));
+            .FirstOrDefault(client => string.Equals(client.Protocol, wiring.Protocol, StringComparison.OrdinalIgnoreCase) && IsLoopback(client.Host) && client.Port == wiring.Port);
         var client = existing ?? await connections.CreateDownloadClientAsync(
             new CreateDownloadClientRequest(wiring.Name, wiring.Protocol, wiring.Host, wiring.Port, wiring.Username, wiring.Secret, null, wiring.MoviesCategory, wiring.TvCategory, null, 10, true),
             cancellationToken);

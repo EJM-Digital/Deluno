@@ -29,7 +29,7 @@ public sealed class InstalledComponentWirer(
     ICompanionSystem system,
     IActivityFeedRepository activity,
     IDownloadClientRegistry? registry = null,
-    IConnectionsRepository? connections = null)
+    IBundledComponentDetection? detection = null)
     : IInstalledComponentConnector, IDownloadClientDeletedHook
 {
     public const string ActivityCategory = "installer.components.connected";
@@ -137,12 +137,8 @@ public sealed class InstalledComponentWirer(
         var result = await connector.ConnectAsync(
             new DownloadClientWiring(recipe.Name, recipe.Protocol, "localhost", entry.Port, username, secret, recipe.MoviesCategory, recipe.TvCategory),
             attempts, delay, cancellationToken);
-        if (result.Client is not null)
-        {
-            // The connection exists and holds the sign-in in Deluno's own secret store, so the
-            // installer's copy is not needed anywhere any more, healthy or not (#1061).
-            ForgetSavedSignIn(kind);
-        }
+        // The installer's copy stays while the app is installed: nothing serves it to a caller
+        // (#1061), and it is what lets "Use <app>" connect again after the connection is deleted.
 
         if (result.Healthy)
         {
@@ -191,47 +187,54 @@ public sealed class InstalledComponentWirer(
     }
 
     /// <summary>
-    /// Forgets every stored sign-in that has no more work to do (#1061). The rule: a sign-in is
-    /// kept only for an app the installer put on this computer (it has an installed record),
-    /// that Deluno can connect, and that has no connection yet (a connection holds the sign-in
-    /// in Deluno's own secret store). Anything else is removed: a kind Deluno cannot connect,
-    /// a kind with no installed record (it never will be connected), or one whose connection
-    /// already exists (made by the wiring, made by hand, or kept after a failed test). A
-    /// deleted connection is handled by <see cref="DownloadClientDeletedAsync"/>.
+    /// Forgets the stored sign-ins whose app is gone (#1061). A stored sign-in stays for as
+    /// long as the app is on this computer, even after its connection is deleted, because it
+    /// is what "Use &lt;app&gt;" connects with and Deluno's API never returns it. It is removed
+    /// for a kind Deluno cannot connect, and for an app that has been uninstalled: neither
+    /// installed nor answering on its port.
     /// </summary>
     public async Task<int> SweepStoredSignInsAsync(CancellationToken cancellationToken)
     {
-        if (connections is null)
+        var kinds = credentials.Kinds();
+        if (kinds.Count == 0)
         {
             return 0;
         }
 
-        var installed = record.Read().Select(entry => entry.Kind).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var clients = await connections.ListDownloadClientsAsync(cancellationToken);
+        var recorded = record.Read().ToDictionary(entry => entry.Kind, StringComparer.OrdinalIgnoreCase);
+        var found = detection is null
+            ? null
+            : (await detection.DetectAsync(cancellationToken)).ToDictionary(status => status.Kind, StringComparer.OrdinalIgnoreCase);
         var removed = 0;
-        foreach (var kind in credentials.Kinds())
+        foreach (var kind in kinds)
         {
-            var connected = clients.Any(client => string.Equals(client.Protocol, kind, StringComparison.OrdinalIgnoreCase) && DownloadClientConnector.IsLoopback(client.Host));
-            if (!Clients.ContainsKey(kind) || !installed.Contains(kind) || connected)
+            if (Clients.ContainsKey(kind) && StillOnThisComputer(kind, recorded, found))
             {
-                ForgetSavedSignIn(kind);
-                removed++;
+                continue;
             }
+
+            ForgetSavedSignIn(kind);
+            removed++;
         }
 
         return removed;
     }
 
-    /// <summary>A connection to an app on this computer was deleted: its stored sign-in goes with it (#1061).</summary>
-    public Task DownloadClientDeletedAsync(string protocol, string? host, CancellationToken cancellationToken)
+    private static bool StillOnThisComputer(string kind, Dictionary<string, InstalledComponentEntry> recorded, Dictionary<string, BundledComponentStatus>? found)
     {
-        if (DownloadClientConnector.IsLoopback(host) && Clients.ContainsKey(protocol.ToLowerInvariant()))
+        var hasRecord = recorded.ContainsKey(kind);
+        if (found is null)
         {
-            ForgetSavedSignIn(protocol.ToLowerInvariant());
+            // Nothing to look with: the record alone decides.
+            return hasRecord;
         }
 
-        return Task.CompletedTask;
+        return found.TryGetValue(kind, out var status) ? status.Installed || status.Reachable : hasRecord;
     }
+
+    /// <summary>A connection to an app on this computer was deleted. Its stored sign-in stays while the app is installed, so "Use" can connect it again (#1061).</summary>
+    public Task DownloadClientDeletedAsync(string protocol, string? host, CancellationToken cancellationToken)
+        => Task.CompletedTask;
 
     /// <summary>
     /// A client that names a folder per category (NZBGet, Transmission) reports

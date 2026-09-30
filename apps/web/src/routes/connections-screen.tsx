@@ -25,7 +25,7 @@ import { authedFetch } from "../lib/use-auth";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { useLiveInterval } from "../hooks/use-live-interval";
 import { configurationNavAreas } from "../components/app/settings-shell";
-import { connectDetectedApp, DetectedComponents, type BundledComponentStatus } from "../components/app/bundled-components-detected";
+import { connectDetectedApp, DetectedComponents, delunoConnectsItself, type BundledComponentStatus } from "../components/app/bundled-components-detected";
 import { Button } from "../components/ui/button";
 import { ConnectionTestResult, type ConnectionTestOutcome } from "./connections/connection-test-result";
 import { Chip } from "../components/ui/chip";
@@ -541,10 +541,11 @@ export function IndexersPage() {
    */
   async function openDetectedClient(status: BundledComponentStatus) {
     const preset = CLIENT_PRESETS.find((item) => item.protocol === status.kind);
-    // A client the installer gave a sign-in (qBittorrent 5.2.1 will not start
-    // without one) is connected by Deluno itself: the sign-in never reaches the
-    // screen (#1061), so there is no form to fill in.
-    if (status.hasCredentials) {
+    // A client Deluno can sign in to itself is connected by Deluno: the sign-in the
+    // installer left (qBittorrent 5.2.1 will not start without one), or the login an
+    // installed NZBGet, Deluge or Transmission ships with. The sign-in never reaches
+    // the screen (#1061), so there is no form to fill in.
+    if (delunoConnectsItself(status)) {
       await run(`detected:${status.kind}`, async () => {
         const result = await connectDetectedApp(status.kind);
         if (result.healthy) toast.success(result.message);

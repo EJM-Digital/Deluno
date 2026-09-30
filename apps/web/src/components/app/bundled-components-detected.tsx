@@ -23,6 +23,14 @@ export function connectDetectedApp(kind: string): Promise<DetectedConnectResult>
   return fetchJson<DetectedConnectResult>(`/api/system/bundled-components/${encodeURIComponent(kind)}/connect`, { method: "POST" });
 }
 
+/** Apps that ship a login Deluno knows (or need none): once installed, "Use" connects them on the server like qBittorrent. */
+const SHIPPED_LOGIN_KINDS = ["nzbget", "deluge", "transmission"];
+
+/** True when "Use <app>" should go through the connect route instead of opening a form (#1061). */
+export function delunoConnectsItself(status: BundledComponentStatus): boolean {
+  return Boolean(status.hasCredentials) || (status.installed && SHIPPED_LOGIN_KINDS.includes(status.kind));
+}
+
 /**
  * What the installer's component picker put on this machine, or found already
  * there (#640). Shown above the "New client"/"Connect processor" actions so
