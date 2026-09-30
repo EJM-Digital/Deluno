@@ -197,6 +197,37 @@ public sealed class SabnzbdDownloadClient(IHttpClientFactory httpClientFactory) 
         return response.IsSuccessStatusCode;
     }
 
+    /// <summary>Resumes SABnzbd as a whole (mode=resume), which is what its queue-level pause (queue.paused) needs.</summary>
+    public override async Task<ClientResumeResult> ResumeClientAsync(DownloadClientItem client, CancellationToken cancellationToken)
+    {
+        var baseUri = DownloadClientHelpers.ResolveEndpoint(client);
+        if (baseUri is null || string.IsNullOrWhiteSpace(client.Secret)) return new ClientResumeResult(true, false, "SABnzbd's address or API key is missing.");
+        var http = httpClientFactory.CreateClient("download-clients");
+        http.Timeout = TimeSpan.FromSeconds(8);
+        using var response = await http.GetAsync(
+            new Uri(baseUri, $"api?mode=resume&output=json&apikey={Uri.EscapeDataString(client.Secret)}"),
+            cancellationToken);
+        if (!response.IsSuccessStatusCode) return new ClientResumeResult(true, false, $"SABnzbd answered {(int)response.StatusCode} when asked to resume.");
+        // SABnzbd answers {"status": true} or {"status": false, "error": ...}.
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("status", out var status)
+                && status.ValueKind == JsonValueKind.False)
+            {
+                var reason = document.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String ? error.GetString() : null;
+                return new ClientResumeResult(true, false, $"SABnzbd would not resume: {reason ?? "no reason given"}.");
+            }
+        }
+        catch (JsonException)
+        {
+            // A reply that is not JSON but is HTTP 200 is taken as done, as the warnings call does.
+        }
+
+        return new ClientResumeResult(true, true, "SABnzbd is downloading again.");
+    }
+
     // #813: mode=warnings returns the active warnings as an array of plain
     // strings (or objects on some versions); either shape is read as text.
     private static async Task<string[]> GetWarningsAsync(HttpClient http, Uri baseUri, string apiKey, CancellationToken cancellationToken)

@@ -150,4 +150,14 @@ public interface IDownloadClientTelemetryService
     /// protocol has no such concept, or that could not be reached.
     /// </summary>
     Task<bool> ClearClientWarningsAsync(string clientId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Resumes a client that is paused as a whole, not one item in its queue:
+    /// asks the client, writes what it did to Activity in plain words, and
+    /// refreshes the stored snapshot so the screen shows it downloading again.
+    /// Succeeded is false, with the reason, for a client that could not be
+    /// reached or has no pause of its own.
+    /// </summary>
+    Task<DownloadClientActionResult> ResumeClientAsync(string clientId, CancellationToken cancellationToken)
+        => Task.FromResult(new DownloadClientActionResult(clientId, string.Empty, "resume-client", false, "Resuming a whole client is not available here."));
 }

@@ -1994,6 +1994,66 @@ public sealed class DownloadClientTelemetryService(
         }
     }
 
+    public async Task<DownloadClientActionResult> ResumeClientAsync(string clientId, CancellationToken cancellationToken)
+    {
+        const string action = "resume-client";
+        var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+            .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+        if (client is null)
+        {
+            return new DownloadClientActionResult(clientId, string.Empty, action, false, "Download client was not found.");
+        }
+
+        if (!downloadClientRegistry.TryGet(client.Protocol, out var implementation))
+        {
+            return new DownloadClientActionResult(client.Id, string.Empty, action, false, $"{client.Name} is not a client Deluno knows how to talk to.");
+        }
+
+        ClientResumeResult outcome;
+        try
+        {
+            outcome = await implementation.ResumeClientAsync(client, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+        {
+            outcome = new ClientResumeResult(true, false, $"Deluno could not reach {client.Name} to resume it.");
+        }
+
+        if (!outcome.Supported)
+        {
+            return new DownloadClientActionResult(client.Id, string.Empty, action, false, $"{client.Name} does not pause as a whole, so there is nothing to resume.");
+        }
+
+        if (!outcome.Succeeded)
+        {
+            return new DownloadClientActionResult(client.Id, string.Empty, action, false, outcome.Message);
+        }
+
+        var message = $"Resumed {client.Name}: it is downloading again.";
+        await activityFeedRepository.RecordActivityAsync(
+            "download.client.resumed",
+            message,
+            null,
+            null,
+            "download_client",
+            client.Id,
+            cancellationToken);
+        // The screen shows what the stored snapshot says, so bring it up to date now.
+        if (snapshotStore is not null)
+        {
+            try
+            {
+                await snapshotStore.RefreshAsync(TimeSpan.Zero, cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
+            {
+                // The resume happened; the next poll shows it.
+            }
+        }
+
+        return new DownloadClientActionResult(client.Id, string.Empty, action, true, message);
+    }
+
     private Task<DownloadClientActionResult> ExecuteOwnedRemediationRemovalAsync(
         DownloadClientItem client,
         string queueItemId,

@@ -71,6 +71,10 @@ public abstract class DownloadClientBase : IDownloadClient
     public virtual Task<bool> ClearWarningsAsync(DownloadClientItem client, CancellationToken cancellationToken)
         => Task.FromResult(false);
 
+    /// <summary>Resumes the whole client. Only clients that report a client-wide pause override this.</summary>
+    public virtual Task<ClientResumeResult> ResumeClientAsync(DownloadClientItem client, CancellationToken cancellationToken)
+        => Task.FromResult(ClientResumeResult.NotSupported);
+
     protected DownloadClientTelemetrySnapshot CreateSnapshot(
         DownloadClientItem client,
         IReadOnlyList<DownloadQueueItem> queue,

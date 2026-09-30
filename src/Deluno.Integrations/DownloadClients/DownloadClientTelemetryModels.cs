@@ -517,6 +517,12 @@ public sealed record DownloadClientActionRequest(
     string Action,
     string QueueItemId);
 
+/// <summary>What asking a whole download client to resume came to (a client-level pause, not one item).</summary>
+public sealed record ClientResumeResult(bool Supported, bool Succeeded, string Message)
+{
+    public static ClientResumeResult NotSupported { get; } = new(false, false, "This download client has no pause of its own to resume.");
+}
+
 public sealed record DownloadClientActionResult(
     string ClientId,
     string QueueItemId,
