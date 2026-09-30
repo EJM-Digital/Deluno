@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
 namespace Deluno.Infrastructure.Storage;
@@ -89,5 +90,46 @@ public sealed class DelunoStartupGate : IDelunoStartupGate
 
         readyDatabases.TryRemove(databaseName, out _);
         failedDatabases[databaseName] = exception.Message;
+    }
+}
+
+public static class DelunoStartupGateExtensions
+{
+    /// <summary>
+    /// Waits for every database to be prepared and never throws for a timeout
+    /// (#1080). Background loops that need the databases used to call
+    /// <see cref="IDelunoStartupGate.WaitAsync"/> once with a two-minute limit;
+    /// on a slow start (a busy disk, a locked database being waited for) the
+    /// <see cref="TimeoutException"/> ended the loop for good. This keeps waiting
+    /// and says so in the log every <paramref name="slice"/>.
+    /// </summary>
+    /// <returns>True once the databases are ready; false only when <paramref name="stoppingToken"/> is cancelled.</returns>
+    public static async Task<bool> WaitUntilReadyAsync(
+        this IDelunoStartupGate gate,
+        ILogger logger,
+        string service,
+        CancellationToken stoppingToken,
+        TimeSpan? slice = null)
+    {
+        var wait = slice ?? TimeSpan.FromMinutes(2);
+        while (true)
+        {
+            try
+            {
+                await gate.WaitAsync(wait, stoppingToken);
+                return true;
+            }
+            catch (TimeoutException)
+            {
+                logger.LogWarning(
+                    "{Service} is still waiting for Deluno's databases to be ready ({Pending}); it keeps waiting.",
+                    service,
+                    string.Join(", ", gate.PendingDatabases));
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return false;
+            }
+        }
     }
 }

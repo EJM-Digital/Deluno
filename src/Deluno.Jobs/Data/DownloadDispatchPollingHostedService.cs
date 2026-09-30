@@ -78,7 +78,7 @@ public sealed class DownloadDispatchPollingHostedService(
                     logger.LogError(exception, "Error occurred during download dispatch polling.");
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(ex, "Error occurred while scheduling download dispatch polling.");
             }

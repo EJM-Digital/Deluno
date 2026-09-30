@@ -7,6 +7,7 @@ Deluno keeps product, architecture, and repo-state context in the repository so 
 - `../AGENTS.md`: compact agent entry point.
 - `ARCHITECTURE.md`: module boundaries, dependency direction, and current architectural posture.
 - `QUALITY_SCORE.md`: current quality posture and highest-interest gaps.
+- `background-services.md`: every background service, what it does on an error at start-up, in its loop and on a timeout, and how Deluno restarts itself.
 - `repo-change-history.md`: commit-by-commit and subsystem-by-subsystem summary of what changed from the last shared baseline.
 - `deluno-capability-map.md`: product capability target and current direction.
 - `DELUNO_END_TO_END_WORKFLOW.md`: canonical final-state media workflow and

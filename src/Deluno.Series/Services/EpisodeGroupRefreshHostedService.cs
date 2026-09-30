@@ -75,7 +75,7 @@ public sealed class EpisodeGroupRefreshHostedService(
                     logger.LogWarning(exception, "Episode-group refresh failed.");
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Error occurred while scheduling the episode-group refresh.");
             }

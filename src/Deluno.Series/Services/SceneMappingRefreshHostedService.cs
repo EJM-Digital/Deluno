@@ -68,7 +68,7 @@ public sealed class SceneMappingRefreshHostedService(
                     logger.LogWarning(exception, "Scene mapping refresh failed.");
                 }
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Error occurred while scheduling the scene mapping refresh.");
             }

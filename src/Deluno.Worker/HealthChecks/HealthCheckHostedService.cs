@@ -54,7 +54,7 @@ public sealed class HealthCheckHostedService(
                 await RunPendingImmediateChecksAsync(stoppingToken);
                 await RunScheduledPassAsync(stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogError(exception, "Error occurred while running health checks.");
             }

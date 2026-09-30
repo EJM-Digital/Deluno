@@ -21,7 +21,10 @@ public sealed class TrackerDefinitionAutoUpdateHostedService(
     {
         try
         {
-            await startupGate.WaitAsync(TimeSpan.FromMinutes(2), stoppingToken);
+            if (!await startupGate.WaitUntilReadyAsync(logger, "The tracker-definition update", stoppingToken))
+            {
+                return;
+            }
             await RunIfDueAsync(stoppingToken);
             using var timer = new PeriodicTimer(PollInterval);
             while (await timer.WaitForNextTickAsync(stoppingToken))

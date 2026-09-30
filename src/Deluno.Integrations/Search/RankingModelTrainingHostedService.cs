@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Deluno.Contracts;
+using Deluno.Infrastructure.Storage;
 using Deluno.Jobs.Data;
 
 namespace Deluno.Integrations.Search;
@@ -12,15 +13,31 @@ public sealed class RankingModelTrainingHostedService(
     IConfiguration configuration,
     ILogger<RankingModelTrainingHostedService> logger,
     IJobQueueRepository jobQueueRepository,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDelunoStartupGate startupGate)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var status = rankingModelService.GetStatus();
-        if (!status.Enabled)
+        try
         {
-            logger.LogInformation("Ranking model is disabled. Scheduled retraining will not run.");
+            var status = rankingModelService.GetStatus();
+            if (!status.Enabled)
+            {
+                logger.LogInformation("Ranking model is disabled. Scheduled retraining will not run.");
+                return;
+            }
+        }
+        catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+        {
+            // Reading the status is not worth ending the service for (#1080); carry on and train.
+            logger.LogWarning(exception, "Could not read the ranking model status; scheduled retraining carries on.");
+        }
+
+        // The retraining claim writes to the jobs database, which may still be
+        // being prepared right after start-up.
+        if (!await startupGate.WaitUntilReadyAsync(logger, "Ranking model training", stoppingToken))
+        {
             return;
         }
 
@@ -56,7 +73,7 @@ public sealed class RankingModelTrainingHostedService(
         {
             await RunTrackedTrainingAsync(reason, intervalHours, cancellationToken);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(exception, "The {Reason} ranking-model training pass failed; it will try again at the next interval.", reason);
         }
@@ -135,7 +152,7 @@ public sealed class RankingModelTrainingHostedService(
                 return false;
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Ranking model scheduled training failed.");
             return false;

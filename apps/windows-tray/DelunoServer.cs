@@ -336,7 +336,7 @@ internal sealed class ImportRecoveryCleanupService(
                         "Import recovery cleanup: {M} movie and {S} series cases removed.",
                         movieCount, seriesCount);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Import recovery cleanup error.");
             }
