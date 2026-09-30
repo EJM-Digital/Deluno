@@ -149,6 +149,85 @@ public sealed class TmdbMetadataProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task Artwork_cached_under_another_data_folder_is_still_served_and_cleaned_from_this_one()
+    {
+        // #1088: the rows store the absolute path the file was first written to
+        // (the rig's C:\Deluno\Data). After a restore elsewhere, a move or a
+        // copy, the files are here in artwork-cache but that path is not.
+        var now = DateTimeOffset.Parse("2026-10-01T00:00:00Z");
+        var storageOptions = Options.Create(new StoragePathOptions { DataRoot = _dataRoot });
+        var factory = new SqliteDatabaseConnectionFactory(storageOptions);
+        var timeProvider = new FakeTimeProvider(now);
+        await new CacheSchemaInitializer(
+            factory,
+            new SqliteDatabaseMigrator(factory, timeProvider),
+            NullLogger<CacheSchemaInitializer>.Instance)
+            .StartAsync(CancellationToken.None);
+
+        var artworkRoot = Path.Combine(_dataRoot, "artwork-cache");
+        Directory.CreateDirectory(artworkRoot);
+        var posterKey = new string('d', 64);
+        var oldKey = new string('e', 64);
+        var wrongNameKey = new string('f', 64);
+        await File.WriteAllBytesAsync(Path.Combine(artworkRoot, $"{posterKey}.jpg"), [1, 2], CancellationToken.None);
+        await File.WriteAllBytesAsync(Path.Combine(artworkRoot, $"{oldKey}.jpg"), [3, 4, 5], CancellationToken.None);
+        File.SetLastWriteTimeUtc(Path.Combine(artworkRoot, $"{oldKey}.jpg"), now.AddDays(-3).UtcDateTime);
+
+        await using (var connection = await factory.OpenConnectionAsync(DelunoDatabaseNames.Cache))
+        {
+            async Task InsertAsync(string key, string localPath)
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    INSERT INTO artwork_cache (cache_key, media_type, remote_url, local_path, fetched_utc, expires_utc)
+                    VALUES (@cacheKey, 'movies', 'https://images.deluno.test/art.jpg', @localPath, @fetchedUtc, NULL);
+                    """;
+                foreach (var (name, value) in new[] { ("@cacheKey", key), ("@localPath", localPath), ("@fetchedUtc", now.AddDays(-3).ToString("O")) })
+                {
+                    var parameter = command.CreateParameter();
+                    parameter.ParameterName = name;
+                    parameter.Value = value;
+                    command.Parameters.Add(parameter);
+                }
+
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+
+            await InsertAsync(posterKey, $@"C:\Deluno\Data\artwork-cache\{posterKey}.jpg");
+            await InsertAsync(oldKey, $"/srv/deluno/data/artwork-cache/{oldKey}.jpg");
+            // A row whose file name is not its own key is never trusted.
+            await InsertAsync(wrongNameKey, $@"C:\Deluno\Data\artwork-cache\{posterKey}.jpg");
+        }
+
+        var provider = new TmdbMetadataProvider(
+            new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound))),
+            new ConfigurationBuilder().Build(),
+            new Mock<IPlatformSettingsRepository>().Object,
+            factory,
+            storageOptions,
+            timeProvider,
+            new PassthroughResiliencePolicy(),
+            new OutboundRequestThrottle(timeProvider, NullLogger<OutboundRequestThrottle>.Instance),
+            NullLogger<TmdbMetadataProvider>.Instance);
+
+        var poster = await provider.GetCachedArtworkAsync(posterKey, CancellationToken.None);
+        Assert.NotNull(poster);
+        Assert.Equal(Path.GetFullPath(Path.Combine(artworkRoot, $"{posterKey}.jpg")), poster.FilePath);
+        Assert.Null(await provider.GetCachedArtworkAsync(wrongNameKey, CancellationToken.None));
+
+        var result = await provider.CleanupArtworkCacheAsync(
+            new HashSet<string>([posterKey], StringComparer.OrdinalIgnoreCase),
+            now.AddHours(-24),
+            CancellationToken.None);
+
+        Assert.False(File.Exists(Path.Combine(artworkRoot, $"{oldKey}.jpg")));
+        Assert.True(File.Exists(Path.Combine(artworkRoot, $"{posterKey}.jpg")));
+        Assert.Equal(3, result.ReclaimedBytes);
+        Assert.Equal(1, result.FailedCount); // the row named for the wrong file is left alone
+    }
+
+    [Fact]
     public async Task CleanupArtworkCacheAsync_removes_only_old_unreferenced_artwork()
     {
         var now = DateTimeOffset.Parse("2026-05-14T00:00:00Z");

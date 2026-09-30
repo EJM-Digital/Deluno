@@ -658,7 +658,9 @@ public sealed partial class TmdbMetadataProvider(
         try
         {
             var cachedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(cachedPath) && File.Exists(cachedPath))
+            if (cachedPath is not null
+                && TryGetManagedArtworkPath(cacheKey, cachedPath, out var cachedFile)
+                && File.Exists(cachedFile))
             {
                 return $"/api/metadata/artwork/{cacheKey}";
             }
@@ -708,7 +710,9 @@ public sealed partial class TmdbMetadataProvider(
                 // was waiting on the provider. Reuse its file rather than
                 // replacing it or resetting its cache age.
                 var refreshedPath = await ReadArtworkLocalPathAsync(cacheKey, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(refreshedPath) && File.Exists(refreshedPath))
+                if (refreshedPath is not null
+                    && TryGetManagedArtworkPath(cacheKey, refreshedPath, out var refreshedFile)
+                    && File.Exists(refreshedFile))
                 {
                     return $"/api/metadata/artwork/{cacheKey}";
                 }
@@ -926,6 +930,14 @@ public sealed partial class TmdbMetadataProvider(
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
+    /// <summary>
+    /// Where a cached artwork file is now (#1088). The row stores the absolute
+    /// path it was written to, which is wrong as soon as the data folder moves
+    /// or a backup is restored elsewhere; the file travels inside
+    /// <c>artwork-cache</c>, so it is found by its own name in the current
+    /// data folder's cache. Only a file named for its cache key, directly in
+    /// that folder, is ever served or deleted.
+    /// </summary>
     private bool TryGetManagedArtworkPath(
         string cacheKey,
         string localPath,
@@ -934,20 +946,23 @@ public sealed partial class TmdbMetadataProvider(
         managedPath = string.Empty;
         try
         {
-            var root = Path.GetFullPath(_artworkRootPath)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var fullPath = Path.GetFullPath(localPath);
-            var rootPrefix = root + Path.DirectorySeparatorChar;
-            if (!fullPath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) ||
+            if (string.IsNullOrWhiteSpace(localPath))
+            {
+                return false;
+            }
+
+            // The stored path may come from another machine, so both separators count.
+            var fileName = localPath[(localPath.LastIndexOfAny(['\\', '/']) + 1)..];
+            if (fileName.Length == 0 ||
                 !string.Equals(
-                    Path.GetFileNameWithoutExtension(fullPath),
+                    Path.GetFileNameWithoutExtension(fileName),
                     cacheKey,
                     StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            managedPath = fullPath;
+            managedPath = Path.Combine(Path.GetFullPath(_artworkRootPath), fileName);
             return true;
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
@@ -978,14 +993,16 @@ public sealed partial class TmdbMetadataProvider(
         AddParameter(command, "@cacheKey", cacheKey.Trim());
 
         var localPath = await command.ExecuteScalarAsync(cancellationToken) as string;
-        if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath))
+        if (localPath is null
+            || !TryGetManagedArtworkPath(cacheKey.Trim(), localPath, out var filePath)
+            || !File.Exists(filePath))
         {
             return null;
         }
 
         return new MetadataArtworkAsset(
-            localPath,
-            ResolveContentType(localPath));
+            filePath,
+            ResolveContentType(filePath));
     }
 
     private async Task<string?> ReadArtworkLocalPathAsync(string cacheKey, CancellationToken cancellationToken)
