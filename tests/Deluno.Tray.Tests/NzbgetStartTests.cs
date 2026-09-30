@@ -30,20 +30,20 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
-    public void Nzbget_config_is_built_from_its_own_template_bound_locally_with_a_generated_sign_in()
+    public void Nzbget_config_is_built_from_its_own_template_bound_locally_and_keeps_its_own_login()
     {
         var nzbget = Load("nzbget");
         Assert.Equal("%ProgramData%\\NZBGet\\nzbget.conf", nzbget.ConfigFilePath);
         Assert.Equal("%ProgramFiles%\\NZBGet\\nzbget.conf.template", nzbget.ConfigTemplateSourcePath);
 
-        var config = ComponentConfig.ApplyReplacements(NzbgetTemplateLines, nzbget.ConfigReplacements!, new BundledComponentCredentials("deluno", "Pw9Secret"));
+        var config = ComponentConfig.ApplyReplacements(NzbgetTemplateLines, nzbget.ConfigReplacements!, null);
 
         Assert.NotNull(config);
         Assert.Contains("ControlIP=127.0.0.1", config);
         Assert.DoesNotContain("0.0.0.0", config);
-        Assert.Contains("ControlUsername=deluno", config);
-        Assert.Contains("ControlPassword=Pw9Secret", config);
-        Assert.DoesNotContain("tegbzn6789", config);
+        // The login stays as NZBGet ships it (#1061); Deluno connects with that default.
+        Assert.Contains("ControlUsername=nzbget", config);
+        Assert.Contains("ControlPassword=tegbzn6789", config);
         Assert.DoesNotContain("${AppDir}", config);
         Assert.Contains("ControlPort=6789", config);
     }
@@ -68,7 +68,8 @@ public sealed partial class ComponentSetupTests
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         Assert.Contains("ControlIP=127.0.0.1", written.Content);
-        Assert.Equal("deluno", store.Saved["nzbget"].Username);
+        Assert.False(store.Has("nzbget"));
+        Assert.Empty(store.Saved);
         Assert.True(starter.LastHidden);
         Assert.Contains("nzbget", registry.Kinds);
     }

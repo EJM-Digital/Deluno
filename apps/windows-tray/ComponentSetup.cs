@@ -27,21 +27,6 @@ public static class QBittorrentPassword
     }
 }
 
-/// <summary>
-/// Deluge's Web UI password format (#1054), from <c>deluge/ui/web/auth.py</c>:
-/// <c>pwd_sha1</c> is the hex SHA-1 of the stored <c>pwd_salt</c> text followed by the
-/// password. The salt is derived from the (already random) generated password, so
-/// the two placeholders in the seeded web.conf always agree.
-/// </summary>
-public static class DelugeWebPassword
-{
-    public static string Salt(string password)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("deluno-deluge-web:" + password)))[..32].ToLowerInvariant();
-
-    public static string Sha1(string password)
-        => Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(Salt(password) + password))).ToLowerInvariant();
-}
-
 /// <summary>The one value the tray needs out of SABnzbd's own settings file (#1054).</summary>
 public static class SabnzbdIni
 {
@@ -104,9 +89,7 @@ public static class ComponentConfig
         return content
             .Replace("{{username}}", credentials.Username, StringComparison.Ordinal)
             .Replace("{{password}}", credentials.Password, StringComparison.Ordinal)
-            .Replace("{{qbittorrentPbkdf2}}", QBittorrentPassword.ToIniValue(credentials.Password), StringComparison.Ordinal)
-            .Replace("{{delugeSalt}}", DelugeWebPassword.Salt(credentials.Password), StringComparison.Ordinal)
-            .Replace("{{delugePwdSha1}}", DelugeWebPassword.Sha1(credentials.Password), StringComparison.Ordinal);
+            .Replace("{{qbittorrentPbkdf2}}", QBittorrentPassword.ToIniValue(credentials.Password), StringComparison.Ordinal);
     }
 
     /// <summary>The template with every replacement applied, or null when the template does not contain one of them (the vendor changed the file, so the seed would be wrong).</summary>
