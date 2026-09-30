@@ -25,8 +25,7 @@ public sealed record BundledComponentStatus(
     bool Installed,
     bool Reachable,
     string DefaultHost,
-    int DefaultPort,
-    bool HasCredentials = false);
+    int DefaultPort);
 
 public interface IBundledComponentDetection
 {
@@ -200,12 +199,35 @@ public static class BundledComponentsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapDelunoBundledComponentsEndpoints(this IEndpointRouteBuilder api)
     {
-        api.MapGet("/system/bundled-components", async (IBundledComponentDetection detection, IBundledComponentCredentialStore credentials, CancellationToken cancellationToken)
-                => Results.Ok((await detection.DetectAsync(cancellationToken))
-                    .Select(status => status with { HasCredentials = credentials.Has(status.Kind) })
-                    .ToArray()))
+        api.MapGet("/system/bundled-components", async (IBundledComponentDetection detection, [Microsoft.AspNetCore.Mvc.FromServices] IInstalledComponentConnector connector, CancellationToken cancellationToken) =>
+            {
+                var detected = await detection.DetectAsync(cancellationToken);
+                var states = await connector.StatesAsync(detected, cancellationToken);
+                return Results.Ok(detected.Select(status =>
+                {
+                    states.TryGetValue(status.Kind, out var state);
+                    return new BundledComponentView(
+                        status.Kind, status.DisplayName, status.Category,
+                        state?.Installed ?? status.Installed, status.Reachable,
+                        status.DefaultHost, status.DefaultPort,
+                        state?.Connected ?? false, state?.NeedsAccount ?? false, state?.AccountExists ?? false);
+                }).ToArray());
+            })
             .RequireAuthorization(DelunoAuthorizationPolicies.Read);
 
         return api;
     }
 }
+
+/// <summary>One installed-app row of GET /api/system/bundled-components. Carries no password and no sign-in of any kind.</summary>
+public sealed record BundledComponentView(
+    string Kind,
+    string DisplayName,
+    string Category,
+    bool Installed,
+    bool Reachable,
+    string DefaultHost,
+    int DefaultPort,
+    bool Connected,
+    bool NeedsAccount,
+    bool AccountExists);

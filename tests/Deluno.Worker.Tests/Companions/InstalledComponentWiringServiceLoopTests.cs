@@ -17,7 +17,7 @@ public sealed class InstalledComponentWiringServiceLoopTests
     {
         var passes = 0;
         var provider = new Mock<IServiceProvider>();
-        provider.Setup(p => p.GetService(typeof(WeirHealthAddressBackfill)))
+        provider.Setup(p => p.GetService(typeof(Deluno.Companions.ICompanionLoginCleanup)))
             .Returns(() =>
             {
                 Interlocked.Increment(ref passes);
@@ -30,7 +30,6 @@ public sealed class InstalledComponentWiringServiceLoopTests
 
         using var service = new InstalledComponentWiringService(
             scopes.Object,
-            Mock.Of<IServiceProvider>(),
             NullLogger<InstalledComponentWiringService>.Instance)
         {
             StartDelay = TimeSpan.Zero,

@@ -5,21 +5,25 @@ using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Jobs.Data;
 using Deluno.Worker.Companions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace Deluno.Worker.Tests.Companions;
 
 /// <summary>
-/// #1054: an app the picker installed becomes a Deluno connection with no clicks, once,
-/// with the sign-in the installer left for it, tested, and reported in plain words.
+/// #1061, #968: the installer installs the ticked apps and Deluno connects nothing by itself. The
+/// person connects them (one, or all) and Deluno answers whether it worked, never with a password.
 /// </summary>
 public sealed class InstalledComponentWiringTests : IDisposable
 {
+    private const string Url = "http://127.0.0.1:7879";
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "deluno-wiring-tests", Guid.NewGuid().ToString("N"));
     private readonly List<CreateDownloadClientRequest> _created = [];
     private readonly List<(string Id, string Status, string Message)> _health = [];
     private readonly List<string> _activity = [];
     private readonly Dictionary<string, BundledComponentCredentials> _saved = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DownloadClientItem> _existing = [];
     private readonly FileInstalledComponentRecord _record;
     private string _testStatus = "healthy";
     private string _testMessage = "Connected.";
@@ -44,7 +48,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
     [InlineData("deluge", "Deluge", 8112, "deluno-movies", "deluno-tv", null, "deluge", false)]
     [InlineData("sabnzbd", "SABnzbd", 8080, "Movies", "TV", null, "api-key-1", true)]
     [InlineData("nzbget", "NZBGet", 6789, "Movies", "TV", "nzbget", "tegbzn6789", false)]
-    public async Task Each_installed_download_client_is_added_with_its_own_port_categories_and_sign_in(
+    public async Task Each_installed_download_client_is_added_when_asked_with_its_own_port_categories_and_sign_in(
         string kind, string name, int port, string movies, string tv, string? username, string? secret, bool installerSavedIt)
     {
         _record.MarkInstalled(kind, "localhost", port);
@@ -53,8 +57,13 @@ public sealed class InstalledComponentWiringTests : IDisposable
             _saved[kind] = new BundledComponentCredentials(username ?? string.Empty, secret!);
         }
 
-        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        var result = await NewWirer().ConnectAsync(kind, null, null, Url, CancellationToken.None);
 
+        Assert.NotNull(result);
+        Assert.Equal(kind, result.Kind);
+        Assert.Equal(name, result.Name);
+        Assert.True(result.Healthy);
+        Assert.DoesNotContain(secret ?? "no-secret", result.Message, StringComparison.Ordinal);
         var request = Assert.Single(_created);
         Assert.Equal(name, request.Name);
         Assert.Equal(kind, request.Protocol);
@@ -66,64 +75,185 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Equal(tv, request.TvCategory);
         Assert.True(request.IsEnabled);
         Assert.Contains(_health, item => item.Status == "healthy");
-        Assert.Contains(_activity, line => line.Contains($"Connected {name} to Deluno", StringComparison.Ordinal));
+        Assert.Contains(_activity, line => line.Contains($"You connected {name} to Deluno", StringComparison.Ordinal));
+        Assert.All(_activity, line => Assert.DoesNotContain(secret ?? "no-secret", line, StringComparison.Ordinal));
         Assert.NotNull(_record.Read().Single().WiredUtc);
     }
 
     [Fact]
-    public async Task The_installers_sign_in_is_kept_while_the_app_is_installed_after_a_healthy_connection()
+    public async Task No_connection_is_made_on_start_after_install()
     {
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "Zx-secret");
+        // Every kind is installed and has its installer login; the background service runs its passes.
+        foreach (var kind in new[] { "qbittorrent", "transmission", "deluge", "sabnzbd", "nzbget", "weir" })
+        {
+            _record.MarkInstalled(kind, "localhost", 8081);
+        }
 
-        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
+        var cleanup = new Mock<ICompanionLoginCleanup>();
+        var processors = new Mock<Deluno.Platform.Data.IProcessorRepository>();
+        processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var services = new ServiceCollection();
+        services.AddSingleton(cleanup.Object);
+        services.AddSingleton(new WeirHealthAddressBackfill(processors.Object, Mock.Of<Deluno.Platform.Contracts.IProcessorConnectionService>(), Mock.Of<IActivityFeedRepository>()));
+        services.AddSingleton(NewWirer());
+        var provider = services.BuildServiceProvider();
 
-        Assert.Equal("Zx-secret", Assert.Single(_created).Password);
-        Assert.True(_saved.ContainsKey("qbittorrent"));
+        using var service = new InstalledComponentWiringService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<InstalledComponentWiringService>.Instance)
+        {
+            StartDelay = TimeSpan.Zero,
+            TickInterval = TimeSpan.FromMilliseconds(10),
+        };
+        await service.StartAsync(CancellationToken.None);
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                cleanup.Verify(item => item.ForgetAllAsync(It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+                break;
+            }
+            catch (MockException)
+            {
+                await Task.Delay(20);
+            }
+        }
+
+        await Task.Delay(100);
+        await service.StopAsync(CancellationToken.None);
+
+        cleanup.Verify(item => item.ForgetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Empty(_created);
+        Assert.Empty(_health);
+        Assert.Empty(_activity);
+        Assert.All(_record.Read(), entry => Assert.Null(entry.WiredUtc));
     }
 
     [Fact]
-    public async Task The_installers_sign_in_is_kept_even_when_the_first_test_fails()
+    public async Task Connect_all_connects_every_installed_client_not_yet_connected_and_leaves_Weir_for_the_persons_account()
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        _record.MarkInstalled("transmission", "localhost", 9091);
+        _record.MarkInstalled("weir", "localhost", 9347);
+        _existing.Add(ExistingClient("transmission", "localhost") with { Port = 9091 });
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
-        _testStatus = "unreachable";
-        _testMessage = "No answer.";
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectionNameAsync(It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        weir.Setup(item => item.AccountStateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new WeirAccountState(true, true, false));
 
-        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        var results = await NewWirer(weir: weir.Object).ConnectAllAsync(CancellationToken.None);
 
-        Assert.True(_saved.ContainsKey("qbittorrent"));
-        var request = Assert.Single(_created);
-        Assert.Equal("deluno", request.Username);
-        Assert.Equal("qb-secret", request.Password);
+        Assert.Equal(["qbittorrent", "nzbget", "weir"], results.Select(item => item.Kind).ToArray());
+        Assert.Equal(["qbittorrent", "nzbget"], _created.Select(item => item.Protocol!).ToArray());
+        var weirResult = results.Single(item => item.Kind == "weir");
+        Assert.False(weirResult.Healthy);
+        Assert.True(weirResult.NeedsAccount);
+        weir.Verify(item => item.ConnectAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Connecting_now_connects_the_app_keeps_the_sign_in_and_never_returns_it()
+    public async Task Connect_all_says_nothing_about_Weir_when_it_is_not_installed_or_already_connected()
     {
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectionNameAsync(It.IsAny<CancellationToken>())).ReturnsAsync("Weir");
+        _record.MarkInstalled("weir", "localhost", 9347);
 
-        var result = await NewWirer().ConnectNowAsync("qbittorrent", CancellationToken.None);
+        var results = await NewWirer(weir: weir.Object).ConnectAllAsync(CancellationToken.None);
+
+        Assert.Equal(["nzbget"], results.Select(item => item.Kind).ToArray());
+    }
+
+    [Fact]
+    public async Task The_state_of_each_app_says_installed_connected_and_whether_Weir_needs_an_account()
+    {
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        _record.MarkInstalled("transmission", "localhost", 9091);
+        _record.MarkInstalled("weir", "localhost", 9347);
+        _existing.Add(ExistingClient("transmission", "localhost") with { Port = null });
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectionNameAsync(It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+        weir.Setup(item => item.AccountStateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new WeirAccountState(true, true, false));
+        var detected = BundledComponentCatalog.All
+            .Select(spec => new BundledComponentStatus(spec.Kind, spec.DisplayName, spec.Category, false, false, "localhost", spec.DefaultPort))
+            .ToArray();
+
+        var states = await NewWirer(weir: weir.Object).StatesAsync(detected, CancellationToken.None);
+
+        Assert.Equal(new InstalledComponentState(true, false, false, false), states["nzbget"]);
+        Assert.Equal(new InstalledComponentState(false, false, false, false), states["deluge"]);
+        Assert.Equal(new InstalledComponentState(true, true, false, false), states["transmission"]);
+        Assert.Equal(new InstalledComponentState(true, false, true, false), states["weir"]);
+
+        weir.Setup(item => item.AccountStateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new WeirAccountState(true, false, true));
+        var again = await NewWirer(weir: weir.Object).StatesAsync(detected, CancellationToken.None);
+        Assert.Equal(new InstalledComponentState(true, false, false, true), again["weir"]);
+    }
+
+    [Fact]
+    public async Task Connecting_Weir_hands_the_persons_account_to_Weirs_connector_and_keeps_it_nowhere()
+    {
+        const string PersonPassword = "My-Own-Weir-Pass-9";
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectAsync("james", PersonPassword, Url, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeirConnectOutcome(true, "Weir is connected to Deluno both ways.", false));
+
+        var result = await NewWirer(weir: weir.Object).ConnectAsync("weir", "james", PersonPassword, Url, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.True(result.Healthy);
+        Assert.Equal("weir", result.Kind);
+        Assert.NotNull(_record.Read().Single().WiredUtc);
+        Assert.All(_activity, line => Assert.DoesNotContain(PersonPassword, line, StringComparison.Ordinal));
+        Assert.Contains(_activity, line => line.Contains("Weir", StringComparison.Ordinal));
+        Assert.Empty(_saved);
+    }
+
+    [Fact]
+    public async Task A_Weir_that_did_not_accept_the_account_is_not_marked_connected()
+    {
+        _record.MarkInstalled("weir", "localhost", 9347);
+        var weir = new Mock<IWeirConnector>();
+        weir.Setup(item => item.ConnectAsync(It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WeirConnectOutcome(false, "Weir did not accept that username and password.", false));
+
+        var result = await NewWirer(weir: weir.Object).ConnectAsync("weir", "james", "wrong", Url, CancellationToken.None);
+
+        Assert.False(result!.Healthy);
+        Assert.Equal("Weir did not accept that username and password.", result.Message);
+        Assert.Null(_record.Read().Single().WiredUtc);
+        Assert.Empty(_activity);
+    }
+
+    [Fact]
+    public async Task The_installers_sign_in_is_kept_while_the_app_is_installed_and_never_returned()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
+
+        var result = await NewWirer().ConnectAsync("qbittorrent", null, null, Url, CancellationToken.None);
+
+        Assert.True(result!.Healthy);
         Assert.DoesNotContain("qb-secret", result.Message + result.Name, StringComparison.Ordinal);
         Assert.Equal("qb-secret", Assert.Single(_created).Password);
         Assert.True(_saved.ContainsKey("qbittorrent"));
     }
 
     [Fact]
-    public async Task After_the_connection_is_deleted_Use_connects_again_with_the_kept_sign_in()
+    public async Task After_the_connection_is_deleted_Connect_works_again_with_the_kept_sign_in()
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
         var wirer = NewWirer();
 
-        await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        await wirer.ConnectAsync("qbittorrent", null, null, Url, CancellationToken.None);
         await wirer.DownloadClientDeletedAsync("qbittorrent", "localhost", CancellationToken.None);
         await wirer.SweepStoredSignInsAsync(CancellationToken.None);
-        var again = await wirer.ConnectNowAsync("qbittorrent", CancellationToken.None);
+        var again = await wirer.ConnectAsync("qbittorrent", null, null, Url, CancellationToken.None);
 
         Assert.True(again!.Healthy);
         Assert.Equal(2, _created.Count);
@@ -135,20 +265,26 @@ public sealed class InstalledComponentWiringTests : IDisposable
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
-        var connections = FakeConnections();
-        Mock.Get(connections).Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ExistingClient("qbittorrent", "localhost")]);
+        _existing.Add(ExistingClient("qbittorrent", "localhost"));
 
-        await NewWirer(connections: connections).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        await NewWirer().ConnectAsync("qbittorrent", null, null, Url, CancellationToken.None);
 
         Assert.Equal(8081, Assert.Single(_created).Port);
         Assert.True(_saved.ContainsKey("qbittorrent"));
     }
 
     [Fact]
-    public async Task Connecting_now_is_refused_for_a_kind_Deluno_cannot_connect_this_way()
+    public async Task Connecting_is_refused_for_a_kind_Deluno_cannot_connect_this_way()
     {
-        Assert.Null(await NewWirer().ConnectNowAsync("weir", CancellationToken.None));
-        Assert.Null(await NewWirer().ConnectNowAsync("nonsense", CancellationToken.None));
+        Assert.Null(await NewWirer().ConnectAsync("nonsense", null, null, Url, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Connecting_Weir_off_Windows_says_so()
+    {
+        var result = await NewWirer().ConnectAsync("weir", "a", "b", Url, CancellationToken.None);
+
+        Assert.False(result!.Healthy);
     }
 
     [Fact]
@@ -243,7 +379,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         _testStatus = "unauthorized";
         _testMessage = "NZBGet refused the sign-in.";
 
-        var result = await NewWirer().ConnectNowAsync("nzbget", CancellationToken.None);
+        var result = await NewWirer().ConnectAsync("nzbget", null, null, Url, CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.False(result.Healthy);
@@ -263,7 +399,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         var saved = ExistingClient("nzbget", "localhost") with { Port = null };
         Mock.Get(connections).Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([saved]);
 
-        var result = await NewWirer(connections: connections).ConnectNowAsync("nzbget", CancellationToken.None);
+        var result = await NewWirer(connections: connections).ConnectAsync("nzbget", null, null, Url, CancellationToken.None);
 
         Assert.True(result!.Healthy);
         Assert.Empty(_created);
@@ -283,130 +419,11 @@ public sealed class InstalledComponentWiringTests : IDisposable
         system.SetupGet(item => item.RoamingAppData).Returns(Path.Combine(_folder, "roaming"));
         system.Setup(item => item.ReadText(Path.Combine(_folder, "local", "sabnzbd", "sabnzbd.ini"))).Returns("[misc]\napi_key = abc123\n");
 
-        await NewWirer(system.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        await NewWirer(system.Object).ConnectAsync("sabnzbd", null, null, Url, CancellationToken.None);
 
         Assert.Equal("abc123", Assert.Single(_created).Password);
     }
 
-    [Fact]
-    public async Task An_app_is_connected_once_and_a_connection_the_person_deletes_is_not_made_again()
-    {
-        _record.MarkInstalled("nzbget", "localhost", 6789);
-        var wirer = NewWirer();
-
-        await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-        // The person deletes the connection; the next pass finds nothing to do.
-        var second = await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-
-        Assert.Equal(0, second);
-        Assert.False(wirer.HasWork());
-        Assert.Single(_created);
-    }
-
-    [Fact]
-    public async Task Reinstalling_does_not_forget_that_an_app_was_already_connected()
-    {
-        _record.MarkInstalled("nzbget", "localhost", 6789);
-        _record.MarkWired("nzbget");
-
-        _record.MarkInstalled("nzbget", "localhost", 6789);
-
-        Assert.NotNull(_record.Read().Single().WiredUtc);
-        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-        Assert.Empty(_created);
-    }
-
-    [Fact]
-    public async Task A_failed_test_keeps_the_connection_and_says_in_plain_words_what_failed()
-    {
-        _record.MarkInstalled("deluge", "localhost", 8112);
-        _testStatus = "unreachable";
-        _testMessage = "Deluge did not answer on port 8112.";
-
-        await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 2, TimeSpan.Zero, CancellationToken.None);
-
-        Assert.Single(_created);
-        Assert.Contains(_health, item => item.Status == "unreachable" && item.Message == "Deluge did not answer on port 8112.");
-        var line = Assert.Single(_activity);
-        Assert.Contains("Deluge was installed and added to Deluno, but its connection test did not pass", line, StringComparison.Ordinal);
-        Assert.Contains("did not answer on port 8112", line, StringComparison.Ordinal);
-        // Tried once: a failure is reported, not retried forever, and the connection stays.
-        Assert.NotNull(_record.Read().Single().WiredUtc);
-    }
-
-    [Fact]
-    public async Task Weir_is_connected_through_the_processor_path_and_named_in_the_activity_line()
-    {
-        _record.MarkInstalled("weir", "localhost", 9347);
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        var weir = new Mock<ICompanionTool>();
-        weir.SetupGet(item => item.Id).Returns(CompanionToolIds.Weir);
-        weir.SetupGet(item => item.Name).Returns("Weir");
-        weir.Setup(item => item.IsInstalled()).Returns(true);
-        CompanionRunContext? seen = null;
-        weir.Setup(item => item.RunAsync(It.IsAny<CompanionRunContext>(), It.IsAny<CancellationToken>()))
-            .Callback<CompanionRunContext, CancellationToken>((context, _) => seen = context)
-            .Returns(Task.CompletedTask);
-
-        await NewWirer(weir: weir.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-
-        Assert.Equal("http://127.0.0.1:7879", seen?.DelunoBaseUrl);
-        var line = Assert.Single(_activity);
-        Assert.Equal("Connected qBittorrent and Weir to Deluno after installing them. Each connection was tested and passed.", line);
-        Assert.All(_record.Read(), entry => Assert.NotNull(entry.WiredUtc));
-    }
-
-    [Fact]
-    public async Task A_Weir_test_that_fails_is_reported_with_its_reason()
-    {
-        _record.MarkInstalled("weir", "localhost", 9347);
-        var weir = new Mock<ICompanionTool>();
-        weir.SetupGet(item => item.Id).Returns(CompanionToolIds.Weir);
-        weir.SetupGet(item => item.Name).Returns("Weir");
-        weir.Setup(item => item.IsInstalled()).Returns(true);
-        weir.Setup(item => item.RunAsync(It.IsAny<CompanionRunContext>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CompanionStepException("Weir is installed and added to Deluno, but its test did not pass: it refused the sign-in."));
-
-        await NewWirer(weir: weir.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-
-        Assert.Contains("it refused the sign-in", Assert.Single(_activity), StringComparison.Ordinal);
-    }
-
-    /// <summary>#1055: the summary line never says everything passed when something did not.</summary>
-    [Fact]
-    public async Task The_activity_names_what_passed_and_what_did_not_with_the_reason()
-    {
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        _record.MarkInstalled("weir", "localhost", 9347);
-        var weir = new Mock<ICompanionTool>();
-        weir.SetupGet(item => item.Id).Returns(CompanionToolIds.Weir);
-        weir.SetupGet(item => item.Name).Returns("Weir");
-        weir.Setup(item => item.IsInstalled()).Returns(true);
-        weir.Setup(item => item.RunAsync(It.IsAny<CompanionRunContext>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new CompanionStepException("Weir is installed and added to Deluno, but its test did not pass: the processor answered its health check with HTTP 503."));
-
-        await NewWirer(weir: weir.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
-
-        Assert.Equal(2, _activity.Count);
-        Assert.Contains(_activity, line => line.Contains("HTTP 503", StringComparison.Ordinal));
-        var summary = Assert.Single(_activity, line => line.StartsWith("Connected", StringComparison.Ordinal));
-        Assert.Contains("qBittorrent", summary, StringComparison.Ordinal);
-        Assert.Contains("Weir did not pass its test", summary, StringComparison.Ordinal);
-        Assert.DoesNotContain("Each connection was tested and passed", summary, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task An_unexpected_error_leaves_the_app_for_the_next_pass()
-    {
-        _record.MarkInstalled("transmission", "localhost", 9091);
-        var connections = new Mock<IConnectionsRepository>();
-        connections.Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new InvalidOperationException("database not ready"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            NewWirer(connections: connections.Object).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None));
-
-        Assert.Null(_record.Read().Single().WiredUtc);
-    }
 
     [Fact]
     public void The_picker_record_is_only_written_for_installed_apps_and_survives_a_restart()
@@ -419,7 +436,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, ICompanionTool? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null)
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, IWeirConnector? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -431,12 +448,12 @@ public sealed class InstalledComponentWiringTests : IDisposable
         credentials.Setup(store => store.Remove(It.IsAny<string>())).Callback((string kind) => _saved.Remove(kind));
         credentials.Setup(store => store.Has(It.IsAny<string>())).Returns((string kind) => _saved.ContainsKey(kind));
         credentials.Setup(store => store.Kinds()).Returns(() => _saved.Keys.ToArray());
-        var tools = weir is null ? Array.Empty<ICompanionTool>() : [weir];
         return new InstalledComponentWirer(
             _record,
             credentials.Object,
             new DownloadClientConnector(connections, new FakeTester(this)),
-            tools,
+            connections,
+            weir,
             system ?? Mock.Of<ICompanionSystem>(),
             activity.Object,
             detection: detection);
@@ -445,7 +462,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
     private IConnectionsRepository FakeConnections()
     {
         var connections = new Mock<IConnectionsRepository>();
-        connections.Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        connections.Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() => _existing.ToList());
         connections.Setup(repo => repo.CreateDownloadClientAsync(It.IsAny<CreateDownloadClientRequest>(), It.IsAny<CancellationToken>()))
             .Callback<CreateDownloadClientRequest, CancellationToken>((request, _) => _created.Add(request))
             .ReturnsAsync((CreateDownloadClientRequest request, CancellationToken _) => new DownloadClientItem(

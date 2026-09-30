@@ -184,8 +184,8 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
 
         var wirer = new InstalledComponentWirer(
             record, credentials.Object, new DownloadClientConnector(connections.Object, new HealthyTester()),
-            [], Mock.Of<ICompanionSystem>(), activity.Object, registry.Object, null, _health.Object);
-        await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+            connections.Object, null, Mock.Of<ICompanionSystem>(), activity.Object, registry.Object, null, _health.Object);
+        await wirer.ConnectAsync(kind, null, null, "http://127.0.0.1:7879", CancellationToken.None);
     }
 
     private sealed class HealthyTester : IDownloadClientTester

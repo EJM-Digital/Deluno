@@ -66,8 +66,8 @@ public sealed class CompanionToolTests : IDisposable
     {
         var system = new FakeSystem(installed: false);
         ICompanionTool tool = kind == "qbittorrent"
-            ? new QbittorrentCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder))
-            : new SabnzbdCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder));
+            ? new QbittorrentCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder))
+            : new SabnzbdCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
 
         try
         {
@@ -93,7 +93,7 @@ public sealed class CompanionToolTests : IDisposable
     public async Task A_declined_permission_prompt_installs_nothing_and_says_so()
     {
         var system = new FakeSystem(installed: false) { Declines = true };
-        var tool = new QbittorrentCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder));
+        var tool = new QbittorrentCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
 
         var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.RunAsync(Context(), CancellationToken.None));
 
@@ -107,7 +107,7 @@ public sealed class CompanionToolTests : IDisposable
     {
         var system = new FakeSystem(installed: true);
         system.Files[Path.Combine(system.RoamingAppData, "qBittorrent", "qBittorrent.ini")] = "[Preferences]\nWebUI\\Username=james\n";
-        var tool = new QbittorrentCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder));
+        var tool = new QbittorrentCompanion(system, NoClients(), Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
 
         var failure = await Assert.ThrowsAsync<CompanionStepException>(() => tool.RunAsync(Context(), CancellationToken.None));
 
@@ -125,7 +125,7 @@ public sealed class CompanionToolTests : IDisposable
             .ReturnsAsync([client with { Name = "SABnzbd", Protocol = "sabnzbd", Host = "127.0.0.1" }]);
         var system = new FakeSystem(installed: false);
         var progress = new RecordingProgress();
-        var tool = new SabnzbdCompanion(system, connections.Object, Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder));
+        var tool = new SabnzbdCompanion(system, connections.Object, Mock.Of<IInstalledClientLogins>(), new StubDownloader(_folder));
 
         await tool.RunAsync(new CompanionRunContext("http://127.0.0.1:7879", _folder, progress), CancellationToken.None);
 

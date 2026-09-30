@@ -35,6 +35,9 @@ public interface ICompanionTool
 
     Task<string?> ConnectionNameAsync(CancellationToken cancellationToken);
 
+    /// <summary>Where the tool answers on this computer (for an "Open" link), or null when that is not known.</summary>
+    string? LocalUrl() => null;
+
     Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken);
 }
 
@@ -42,7 +45,7 @@ public interface ICompanionTool
 public abstract class DownloadClientCompanion(
     ICompanionSystem system,
     IConnectionsRepository connections,
-    ICompanionLoginStore logins) : ICompanionTool
+    IInstalledClientLogins logins) : ICompanionTool
 {
     public abstract string Id { get; }
 
@@ -52,11 +55,9 @@ public abstract class DownloadClientCompanion(
 
     protected abstract string Protocol { get; }
 
-    private readonly DownloadClientConnector _connector = new(connections, new DrawerDownloadClientTester());
-
     protected ICompanionSystem System => system;
 
-    protected ICompanionLoginStore Logins => logins;
+    protected IInstalledClientLogins Logins => logins;
 
     public abstract bool IsInstalled();
 
@@ -111,27 +112,13 @@ public abstract class DownloadClientCompanion(
         }
     }
 
-    protected async Task ConnectAsync(string host, int port, string? username, string secret, string moviesCategory, string tvCategory, CompanionRunContext context, CancellationToken cancellationToken)
-    {
-        context.Progress.Report("connect", $"Connecting {Name} to Deluno.");
-        var result = await _connector.ConnectAsync(
-            new DownloadClientWiring(Name, Protocol, host, port, username, secret, moviesCategory, tvCategory),
-            20, TimeSpan.FromSeconds(3), cancellationToken);
-        if (!result.Healthy)
-        {
-            throw new CompanionStepException($"{Name} is installed and added to Deluno, but its test did not pass: {result.Message}");
-        }
-
-        context.Progress.Report("done", $"{Name} is installed, running and connected. Its test passed.");
-    }
-
     private static bool IsLoopback(string? host) => DownloadClientConnector.IsLoopback(host);
 }
 
 public sealed class QbittorrentCompanion(
     ICompanionSystem system,
     IConnectionsRepository connections,
-    ICompanionLoginStore logins,
+    IInstalledClientLogins logins,
     ICompanionDownloader downloader) : DownloadClientCompanion(system, connections, logins)
 {
     private const string Username = "deluno";
@@ -149,6 +136,12 @@ public sealed class QbittorrentCompanion(
     private string SettingsPath => Path.Combine(System.RoamingAppData, "qBittorrent", "qBittorrent.ini");
 
     public override bool IsInstalled() => System.FileExists(Executable);
+    public string? LocalUrl()
+    {
+        var match = global::System.Text.RegularExpressions.Regex.Match(System.ReadText(SettingsPath) ?? string.Empty, @"WebUI\Port=(\d{2,5})");
+        return match.Success ? $"http://localhost:{match.Groups[1].Value}" : null;
+    }
+
 
     public override async Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken)
     {
@@ -183,20 +176,20 @@ public sealed class QbittorrentCompanion(
         var password = CompanionConfigFiles.NewPassword();
         System.WriteText(SettingsPath, (settings is null ? string.Empty : settings.TrimEnd() + Environment.NewLine + Environment.NewLine)
             + CompanionConfigFiles.QbittorrentIni(port, Username, CompanionConfigFiles.QbittorrentPasswordHash(password)));
-        await Logins.SaveAsync(new CompanionLogin(Id, $"http://127.0.0.1:{port}", Username, password, "Password"), cancellationToken);
+        Logins.Keep(Id, Username, password);
 
         context.Progress.Report("start", $"Starting {Name}.");
         System.Start(Executable, "--confirm-legal-notice");
         System.StartAtSignIn("qBittorrent", $"\"{Executable}\"");
 
-        await ConnectAsync("127.0.0.1", port, Username, password, "deluno-movies", "deluno-tv", context, cancellationToken);
+        context.Progress.Report("done", $"{Name} is installed and running. Connect it from the setup guide or Connections.");
     }
 }
 
 public sealed class SabnzbdCompanion(
     ICompanionSystem system,
     IConnectionsRepository connections,
-    ICompanionLoginStore logins,
+    IInstalledClientLogins logins,
     ICompanionDownloader downloader) : DownloadClientCompanion(system, connections, logins)
 {
     public override string Id => CompanionToolIds.Sabnzbd;
@@ -212,6 +205,9 @@ public sealed class SabnzbdCompanion(
     private string SettingsPath => Path.Combine(System.LocalAppData, "sabnzbd", "sabnzbd.ini");
 
     public override bool IsInstalled() => System.FileExists(Executable);
+    public string? LocalUrl()
+        => int.TryParse(CompanionConfigFiles.SabnzbdValue(System.ReadText(SettingsPath), "port"), out var port) ? $"http://localhost:{port}" : null;
+
 
     public override async Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken)
     {
@@ -247,7 +243,7 @@ public sealed class SabnzbdCompanion(
             System.WriteText(SettingsPath, CompanionConfigFiles.SabnzbdIni(port, apiKey, CompanionConfigFiles.NewHexKey()));
         }
 
-        await Logins.SaveAsync(new CompanionLogin(Id, $"http://127.0.0.1:{port}", null, apiKey, "API key"), cancellationToken);
+        Logins.Keep(Id, null, apiKey);
         var arguments = $"-f \"{SettingsPath}\" -b 0";
         if (!System.IsProcessRunning("SABnzbd"))
         {
@@ -256,7 +252,7 @@ public sealed class SabnzbdCompanion(
         }
 
         System.StartAtSignIn("SABnzbd", $"\"{Executable}\" {arguments}");
-        await ConnectAsync("127.0.0.1", port, null, apiKey, "Movies", "TV", context, cancellationToken);
+        context.Progress.Report("done", $"{Name} is installed and running. Connect it from the setup guide or Connections.");
     }
 }
 
@@ -265,12 +261,9 @@ public sealed class WeirCompanion(
     IProcessorRepository processors,
     IProcessorConnectionService processorConnections,
     ISecurityRepository security,
-    ICompanionLoginStore logins,
     ICompanionDownloader downloader,
-    IHttpClientFactory httpClientFactory) : ICompanionTool
+    IHttpClientFactory httpClientFactory) : ICompanionTool, IWeirConnector
 {
-    private const string AdminName = "deluno-admin";
-
     /// <summary>Weir's own default port (W-E-I-R on a phone keypad).</summary>
     private const int WeirDefaultPort = 9347;
 
@@ -295,6 +288,9 @@ public sealed class WeirCompanion(
         port is { } chosen ? $"--port {chosen} --no-browser" : "--no-browser";
 
     public bool IsInstalled() => system.FileExists(Executable) || system.FileExists(Path.Combine(system.LocalAppData, "Weir", "current", "Weir.exe"));
+    public string? LocalUrl()
+        => system.ListeningPortsOf(Path.Combine(system.LocalAppData, "Weir")).OrderBy(port => port).Select(port => $"http://localhost:{port}").FirstOrDefault();
+
 
     public async Task<string?> ConnectionNameAsync(CancellationToken cancellationToken)
         => (await processors.ListProcessorConnectionsAsync(cancellationToken))
@@ -341,47 +337,117 @@ public sealed class WeirCompanion(
         }
 
         context.Progress.Report("start", $"Waiting for {Name} to start.");
-        var baseUrl = await FindRunningAsync(firstStart, cancellationToken)
+        _ = await FindRunningAsync(firstStart, cancellationToken)
             ?? throw new CompanionStepException($"{Name} is installed but did not start answering. Start it from the Start menu and run this again.");
+
+        context.Progress.Report("done", $"{Name} is installed and running. Create your own {Name} account and connect it from the setup guide or Connections.");
+    }
+
+    /// <summary>
+    /// Whether Weir has an account yet, asked of the Weir this account installed if it is answering
+    /// right now. Never starts Weir and never waits: a status screen must stay quick.
+    /// </summary>
+    public async Task<WeirAccountState> AccountStateAsync(CancellationToken cancellationToken)
+    {
+        if (!IsInstalled())
+        {
+            return new WeirAccountState(false, false, false);
+        }
+
+        var installFolder = Path.Combine(system.LocalAppData, "Weir");
+        using var probe = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        foreach (var port in system.ListeningPortsOf(installFolder))
+        {
+            try
+            {
+                var status = await probe.GetFromJsonAsync<JsonElement>($"http://127.0.0.1:{port}/api/v1/auth/bootstrap/status", cancellationToken);
+                if (status.ValueKind == JsonValueKind.Object && status.TryGetProperty("bootstrap_allowed", out var allowed))
+                {
+                    var open = allowed.ValueKind == JsonValueKind.True;
+                    return new WeirAccountState(true, open, !open);
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        return new WeirAccountState(true, false, false);
+    }
+
+    /// <summary>
+    /// Links Weir and Deluno with the account the person gives here: creates it when Weir has none
+    /// yet, otherwise signs in with it, then makes Deluno's API key, registers Deluno in Weir and adds
+    /// Weir as Deluno's processor. The username and password live in memory for this call only: they
+    /// are never stored, logged, written to Activity, or put in an exception's text.
+    /// </summary>
+    public async Task<WeirConnectOutcome> ConnectAsync(string? username, string? password, string delunoBaseUrl, CancellationToken cancellationToken)
+    {
+        if (!IsInstalled())
+        {
+            return new WeirConnectOutcome(false, $"Deluno could not find {Name} on this computer to connect it.", false);
+        }
+
+        if (await ConnectionNameAsync(cancellationToken) is not null)
+        {
+            return new WeirConnectOutcome(true, $"{Name} is already connected to Deluno.", false);
+        }
+
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
+        {
+            return new WeirConnectOutcome(false, $"Enter the username and password for your {Name} account.", true);
+        }
+
+        var baseUrl = await FindRunningAsync(null, cancellationToken);
+        if (baseUrl is null)
+        {
+            return new WeirConnectOutcome(false, $"{Name} is installed but did not start answering. Start it from the Start menu and try again.", false);
+        }
 
         using var cookies = new HttpClientHandler { CookieContainer = new CookieContainer(), UseCookies = true };
         using var http = new HttpClient(cookies) { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(30) };
-
-        var status = await http.GetFromJsonAsync<JsonElement>("/api/v1/auth/bootstrap/status", cancellationToken);
-        var stored = await logins.GetAsync(Id, cancellationToken);
-        if (status.TryGetProperty("bootstrap_allowed", out var allowed) && allowed.GetBoolean())
+        try
         {
-            context.Progress.Report("configure", $"Creating {Name}'s administrator login. Deluno keeps it, encrypted, and shows it when you ask.");
-            var password = CompanionConfigFiles.NewPassword();
-            await PostAsync(http, "/api/v1/auth/bootstrap", csrf => new { username = AdminName, password, csrf_token = csrf }, cancellationToken);
-            stored = new CompanionLogin(Id, baseUrl, AdminName, password, "Password");
-            await logins.SaveAsync(stored, cancellationToken);
+            var status = await http.GetFromJsonAsync<JsonElement>("/api/v1/auth/bootstrap/status", cancellationToken);
+            if (status.TryGetProperty("bootstrap_allowed", out var allowed) && allowed.ValueKind == JsonValueKind.True)
+            {
+                if (!await TryPostAccountAsync(http, "/api/v1/auth/bootstrap", csrf => new { username = username.Trim(), password, csrf_token = csrf }, cancellationToken))
+                {
+                    return new WeirConnectOutcome(false, $"{Name} did not accept those details for a new account. Check {Name}'s password rules and try again.", false);
+                }
+            }
+
+            if (!await TryPostAccountAsync(http, "/api/v1/auth/login", csrf => new { username = username.Trim(), password, csrf_token = csrf }, cancellationToken))
+            {
+                return new WeirConnectOutcome(false, $"{Name} did not accept that username and password.", false);
+            }
+
+            var key = await security.CreateApiKeyAsync(new CreateApiKeyRequest("Weir (set up by Deluno)", "read,imports"), cancellationToken);
+            var manager = await PostAsync(http, "/api/v1/media-managers/connections",
+                csrf => new { csrf_token = csrf, kind = "deluno", name = "Deluno", base_url = delunoBaseUrl, api_key = key.ApiKey, enabled = true },
+                cancellationToken);
+            var managerId = manager.GetProperty("id").GetInt32();
+            var secret = await PostAsync(http, $"/api/v1/media-managers/connections/{managerId}/webhook-secret", csrf => new { csrf_token = csrf }, cancellationToken);
+
+            await AddProcessorConnectionAsync(
+                baseUrl,
+                secret.GetProperty("webhook_url_path").GetString()!,
+                secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
+                secret.GetProperty("webhook_secret").GetString(),
+                cancellationToken);
         }
-        else if (stored is null)
+        catch (CompanionStepException exception)
         {
-            throw new CompanionStepException($"{Name} already has an administrator Deluno does not know. Connect it under Media Management → Processor connections.");
+            return new WeirConnectOutcome(false, exception.Message, false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException && !cancellationToken.IsCancellationRequested)
+        {
+            // Never the exception's text: the request that failed carried the person's password.
+            return new WeirConnectOutcome(false, $"{Name} did not answer as expected. Check it is running and try again.", false);
         }
 
-        await PostAsync(http, "/api/v1/auth/login", csrf => new { username = stored.Username, password = stored.Secret, csrf_token = csrf }, cancellationToken);
-
-        context.Progress.Report("connect", $"Connecting {Name} and Deluno to each other.");
-        var key = await security.CreateApiKeyAsync(new CreateApiKeyRequest("Weir (set up by Deluno)", "read,imports"), cancellationToken);
-        var manager = await PostAsync(http, "/api/v1/media-managers/connections",
-            csrf => new { csrf_token = csrf, kind = "deluno", name = "Deluno", base_url = context.DelunoBaseUrl, api_key = key.ApiKey, enabled = true },
-            cancellationToken);
-        var managerId = manager.GetProperty("id").GetInt32();
-        var secret = await PostAsync(http, $"/api/v1/media-managers/connections/{managerId}/webhook-secret", csrf => new { csrf_token = csrf }, cancellationToken);
-
-        await AddProcessorConnectionAsync(
-            baseUrl,
-            secret.GetProperty("webhook_url_path").GetString()!,
-            secret.TryGetProperty("header_name", out var header) ? header.GetString() : "X-Webhook-Secret",
-            secret.GetProperty("webhook_secret").GetString(),
-            cancellationToken);
-
-        context.Progress.Report("done", $"{Name} is installed, running and connected both ways. Choose it as the processor on a library that should be cleaned before import.");
+        return new WeirConnectOutcome(true, $"{Name} is connected to Deluno both ways. Choose it as the processor on a library that should be cleaned before import.", false);
     }
-
     /// <summary>
     /// Adds Weir as a processor connection with Weir's own health address, tests it, and says
     /// so when the test does not come back healthy. The connection is kept either way.
@@ -490,6 +556,24 @@ public sealed class WeirCompanion(
         }
 
         return null;
+    }
+
+    /// <summary>Posts the person's account details. False when Weir refuses them; never keeps or reports what was sent or what Weir answered.</summary>
+    private static async Task<bool> TryPostAccountAsync(HttpClient http, string path, Func<string, object> body, CancellationToken cancellationToken)
+    {
+        var csrf = (await http.GetFromJsonAsync<JsonElement>("/api/v1/auth/csrf", cancellationToken)).GetProperty("csrf_token").GetString()!;
+        using var response = await http.PostSizedJsonAsync(path, body(csrf), cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        if ((int)response.StatusCode is >= 400 and < 500)
+        {
+            return false;
+        }
+
+        throw new CompanionStepException($"Weir could not be reached properly to check your account (HTTP {(int)response.StatusCode}). Try again in a moment.");
     }
 
     private static async Task<JsonElement> PostAsync(HttpClient http, string path, Func<string, object> body, CancellationToken cancellationToken)

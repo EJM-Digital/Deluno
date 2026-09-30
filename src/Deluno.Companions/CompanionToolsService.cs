@@ -8,54 +8,26 @@ using static Deluno.Infrastructure.Storage.SqliteRecordHelpers;
 
 namespace Deluno.Companions;
 
-public interface ICompanionLoginStore
+public interface ICompanionLoginCleanup
 {
-    Task SaveAsync(CompanionLogin login, CancellationToken cancellationToken);
-
-    Task<CompanionLogin?> GetAsync(string toolId, CancellationToken cancellationToken);
+    /// <summary>Deletes every login an earlier Deluno stored for the tools it set up. Nothing serves them any more.</summary>
+    Task ForgetAllAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// Logins Deluno generated for the tools it set up. Protected at rest with the
-/// same secret protector as every other credential; the purpose label
-/// <c>companion-tool:secret</c> must not change.
+/// Earlier versions kept the administrator login they generated for Weir (and each client's
+/// generated login) in the <c>companion_tool_logins</c> table and showed it on request. Deluno
+/// no longer keeps any: this empties the table on start. The table itself stays, because a
+/// migration that has run is never edited.
 /// </summary>
-public sealed class SqliteCompanionLoginStore(
-    IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    ISecretProtector secretProtector,
-    TimeProvider timeProvider) : ICompanionLoginStore
+public sealed class SqliteCompanionLoginCleanup(IDelunoDatabaseConnectionFactory databaseConnectionFactory) : ICompanionLoginCleanup
 {
-    private const string Purpose = "companion-tool:secret";
-
-    public async Task SaveAsync(CompanionLogin login, CancellationToken cancellationToken)
+    public async Task ForgetAllAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
         using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            INSERT INTO companion_tool_logins (tool_id, url, username, secret, secret_label, updated_utc)
-            VALUES (@toolId, @url, @username, @secret, @label, @now)
-            ON CONFLICT (tool_id) DO UPDATE SET url = excluded.url, username = excluded.username, secret = excluded.secret, secret_label = excluded.secret_label, updated_utc = excluded.updated_utc;
-            """;
-        AddParameter(command, "@toolId", login.ToolId);
-        AddParameter(command, "@url", login.Url);
-        AddParameter(command, "@username", login.Username);
-        AddParameter(command, "@secret", secretProtector.Protect(Purpose, login.Secret));
-        AddParameter(command, "@label", login.SecretLabel);
-        AddParameter(command, "@now", timeProvider.GetUtcNow().ToString("O"));
+        command.CommandText = "DELETE FROM companion_tool_logins;";
         await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    public async Task<CompanionLogin?> GetAsync(string toolId, CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT url, username, secret, secret_label FROM companion_tool_logins WHERE tool_id = @toolId;";
-        AddParameter(command, "@toolId", toolId);
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new CompanionLogin(toolId, reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1), secretProtector.Unprotect(Purpose, reader.GetString(2)) ?? string.Empty, reader.GetString(3))
-            : null;
     }
 }
 
@@ -99,7 +71,6 @@ public sealed class CompanionToolsService(
     public async Task<IReadOnlyList<CompanionToolStatus>> ListAsync(CancellationToken cancellationToken)
     {
         using var scope = scopes.CreateScope();
-        var logins = scope.ServiceProvider.GetRequiredService<ICompanionLoginStore>();
         var statuses = new List<CompanionToolStatus>();
         foreach (var tool in scope.ServiceProvider.GetServices<ICompanionTool>())
         {
@@ -111,8 +82,8 @@ public sealed class CompanionToolsService(
                 connection is not null ? "connected" : OperatingSystem.IsWindows() && tool.IsInstalled() ? "installed" : "not-installed",
                 null,
                 connection,
-                await logins.GetAsync(tool.Id, cancellationToken) is not null,
-                _jobs.TryGetValue(tool.Id, out var job) ? job : null));
+                _jobs.TryGetValue(tool.Id, out var job) ? job : null,
+                OperatingSystem.IsWindows() && tool.IsInstalled() ? tool.LocalUrl() : null));
         }
 
         return statuses;

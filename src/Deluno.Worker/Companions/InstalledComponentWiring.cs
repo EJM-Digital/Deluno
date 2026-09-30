@@ -4,8 +4,6 @@ using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Jobs.Data;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,19 +11,21 @@ using Microsoft.Extensions.Logging;
 namespace Deluno.Worker.Companions;
 
 /// <summary>
-/// Connects the apps the installer's picker installed, once each, with no clicks (#1054):
-/// qBittorrent, SABnzbd, NZBGet, Deluge and Transmission as download clients, Weir as the
-/// processor. Each goes through the one shared path (<see cref="DownloadClientConnector"/>
-/// for clients, the Weir companion for Weir), is tested, and is written to Activity in
-/// plain words. Every app is tried once: the record marks it wired after the first attempt
-/// whatever the outcome, so a connection the person deletes is not made again and a failed
-/// test leaves the connection in place, showing what failed, for them to fix.
+/// Connects the apps the installer's picker installed, only when the person asks (#1061, #968):
+/// qBittorrent, SABnzbd, NZBGet, Deluge and Transmission as download clients, and Weir as the
+/// processor. The installer installs the ticked apps with only what each needs to start safely;
+/// Deluno connects nothing by itself. The setup guide and Connections offer a Connect button per
+/// app and "Connect all", which call this. Each download client goes through the one shared path
+/// (<see cref="DownloadClientConnector"/>) and a connection whose test fails is never saved. Weir
+/// needs the person's own account, which is used in memory for that one call and never kept.
+/// Nothing here returns an app's password to a caller.
 /// </summary>
 public sealed class InstalledComponentWirer(
     IInstalledComponentRecord record,
     IBundledComponentCredentialStore credentials,
     DownloadClientConnector connector,
-    IEnumerable<ICompanionTool> tools,
+    IConnectionsRepository connections,
+    IWeirConnector? weir,
     ICompanionSystem system,
     IActivityFeedRepository activity,
     IDownloadClientRegistry? registry = null,
@@ -48,78 +48,45 @@ public sealed class InstalledComponentWirer(
         ["nzbget"] = new("NZBGet", "nzbget", "Movies", "TV", false, "nzbget", "tegbzn6789")
     };
 
-    /// <summary>Weir last: it can take a while to answer, and the clients should not wait behind it.</summary>
-    private static readonly string[] Order = ["qbittorrent", "transmission", "deluge", "sabnzbd", "nzbget", "weir"];
 
-    public bool HasWork() => record.Read().Any(entry => entry.WiredUtc is null && IsKnown(entry.Kind));
+    private static readonly string[] Order = ["qbittorrent", "transmission", "deluge", "sabnzbd", "nzbget"];
 
-    private static bool IsKnown(string kind) => Clients.ContainsKey(kind) || string.Equals(kind, CompanionToolIds.Weir, StringComparison.OrdinalIgnoreCase);
+    private InstalledComponentEntry EntryFor(string kind)
+        => record.Read().FirstOrDefault(item => string.Equals(item.Kind, kind, StringComparison.OrdinalIgnoreCase))
+            ?? new InstalledComponentEntry(kind, "localhost", BundledComponentCatalog.All.First(spec => spec.Kind == kind).DefaultPort, DateTimeOffset.UtcNow);
 
-    /// <summary>Connects every installed, not yet connected app. Returns how many were tried.</summary>
-    public async Task<int> RunOnceAsync(string delunoBaseUrl, int attempts, TimeSpan delay, CancellationToken cancellationToken)
+    /// <summary>Per kind: installed, connected (a Deluno connection to it on this computer and port exists), and for Weir whether it has an account yet.</summary>
+    public async Task<IReadOnlyDictionary<string, InstalledComponentState>> StatesAsync(IReadOnlyList<BundledComponentStatus> detected, CancellationToken cancellationToken)
     {
-        var pending = record.Read()
-            .Where(entry => entry.WiredUtc is null && IsKnown(entry.Kind))
-            .OrderBy(entry => Array.IndexOf(Order, entry.Kind.ToLowerInvariant()))
-            .ToArray();
-        if (pending.Length == 0)
+        var recorded = record.Read().Select(entry => entry.Kind).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var clients = await connections.ListDownloadClientsAsync(cancellationToken);
+        var states = new Dictionary<string, InstalledComponentState>(StringComparer.OrdinalIgnoreCase);
+        foreach (var status in detected)
         {
-            return 0;
-        }
-
-        var connected = new List<string>();
-        var failed = new List<string>();
-        Exception? unexpected = null;
-        foreach (var entry in pending)
-        {
-            var kind = entry.Kind.ToLowerInvariant();
-            (string Name, bool Ok, string? Problem) outcome;
-            try
+            var installed = status.Installed || recorded.Contains(status.Kind);
+            if (status.Kind == CompanionToolIds.Weir)
             {
-                outcome = kind == CompanionToolIds.Weir
-                    ? await WireWeirAsync(delunoBaseUrl, cancellationToken)
-                    : await WireClientAsync(kind, entry, attempts, delay, cancellationToken);
-            }
-            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-            {
-                // Something unexpected (the database not ready yet): not marked, so the next pass tries again.
-                unexpected = exception;
-                break;
+                var connected = weir is not null && await weir.ConnectionNameAsync(cancellationToken) is not null;
+                var account = installed && !connected && weir is not null ? await weir.AccountStateAsync(cancellationToken) : new WeirAccountState(false, false, false);
+                states[status.Kind] = new InstalledComponentState(installed, connected, installed && !connected && account.NeedsAccount, account.AccountExists);
+                continue;
             }
 
-            record.MarkWired(entry.Kind);
-            if (outcome.Ok)
+            if (!Clients.TryGetValue(status.Kind, out var recipe))
             {
-                connected.Add(outcome.Name);
+                states[status.Kind] = new InstalledComponentState(installed, false, false, false);
+                continue;
             }
-            else
-            {
-                failed.Add(outcome.Name);
-                await activity.RecordActivityAsync(
-                    ActivityCategory,
-                    $"{outcome.Name} was installed and added to Deluno, but its connection test did not pass: {outcome.Problem} The connection is kept; fix it, then test it again from its own screen.",
-                    null, null, null, null, cancellationToken);
-            }
+
+            var port = EntryFor(status.Kind).Port;
+            var isConnected = clients.Any(client =>
+                string.Equals(client.Protocol, recipe.Protocol, StringComparison.OrdinalIgnoreCase)
+                && DownloadClientConnector.IsLoopback(client.Host)
+                && (client.Port ?? DownloadClientConnector.DefaultPortFor(client.Protocol)) == port);
+            states[status.Kind] = new InstalledComponentState(installed, isConnected, false, false);
         }
 
-        if (connected.Count > 0)
-        {
-            await RefreshHealthAsync(cancellationToken);
-            await activity.RecordActivityAsync(
-                ActivityCategory,
-                // Only what passed is claimed as passed; whatever did not is named beside it (and has its own line with the reason).
-                failed.Count == 0
-                    ? $"Connected {Join(connected)} to Deluno after installing {(connected.Count == 1 ? "it" : "them")}. Each connection was tested and passed."
-                    : $"Connected {Join(connected)} to Deluno after installing {(connected.Count == 1 ? "it" : "them")}, and {(connected.Count == 1 ? "its test" : "their tests")} passed. {Join(failed)} did not pass its test; the reason is in its own line.",
-                null, null, null, null, cancellationToken);
-        }
-
-        if (unexpected is not null)
-        {
-            throw new InvalidOperationException("Connecting the installed apps did not finish.", unexpected);
-        }
-
-        return pending.Length;
+        return states;
     }
 
     private async Task<(string Name, bool Ok, string? Problem)> WireClientAsync(string kind, InstalledComponentEntry entry, int attempts, TimeSpan delay, CancellationToken cancellationToken, bool saveOnlyWhenHealthy = false)
@@ -170,31 +137,38 @@ public sealed class InstalledComponentWirer(
     }
 
     /// <summary>
-    /// The person clicked "Use X" on an app the installer added: connects it now, on this
-    /// computer, with the sign-in Deluno holds, and never returns that sign-in (#1061).
+    /// The person asked to connect an app installed on this computer. A download client is connected
+    /// with the sign-in Deluno holds (or the app's shipped login) and never returns it; a connection
+    /// whose test fails is never saved and the screen is told to open the sign-in form. Weir is
+    /// connected with the person's own account, held in memory for this call only.
     /// </summary>
-    public async Task<InstalledComponentConnectResult?> ConnectNowAsync(string kind, CancellationToken cancellationToken)
+    public async Task<InstalledComponentConnectResult?> ConnectAsync(string kind, string? username, string? password, string delunoBaseUrl, CancellationToken cancellationToken)
     {
         kind = kind.ToLowerInvariant();
-        if (!Clients.ContainsKey(kind))
+        if (kind == CompanionToolIds.Weir)
+        {
+            return await ConnectWeirAsync(username, password, delunoBaseUrl, cancellationToken);
+        }
+
+        if (!Clients.TryGetValue(kind, out var recipe))
         {
             return null;
         }
 
-        var entry = record.Read().FirstOrDefault(item => string.Equals(item.Kind, kind, StringComparison.OrdinalIgnoreCase))
-            ?? new InstalledComponentEntry(kind, "localhost", BundledComponentCatalog.All.First(spec => spec.Kind == kind).DefaultPort, DateTimeOffset.UtcNow);
-        // A person clicked "Use": a connection whose test fails is never saved. The screen opens the
-        // connection form pre-filled with the host and port so they can type their own sign-in.
+        var entry = EntryFor(kind);
+        // A connection whose test fails is never saved. The screen opens the connection form
+        // pre-filled with the host and port so the person can type their own sign-in.
         var (name, ok, problem) = await WireClientAsync(kind, entry, 3, TimeSpan.FromSeconds(2), cancellationToken, saveOnlyWhenHealthy: true);
         if (ok)
         {
             record.MarkWired(kind);
             await RefreshHealthAsync(cancellationToken);
-            return new InstalledComponentConnectResult(name, true, $"{name} is connected.");
+            await activity.RecordActivityAsync(ActivityCategory, $"You connected {name} to Deluno from the apps you installed. Its connection test passed.", null, null, null, null, cancellationToken);
+            return new InstalledComponentConnectResult(kind, name, true, $"{name} is connected.");
         }
 
-        var recipe = Clients[kind];
         return new InstalledComponentConnectResult(
+            kind,
             name,
             false,
             $"{name} is on this computer, but Deluno could not sign in to it with the login it ships with. {problem} Nothing was saved: enter your own login and save it.",
@@ -203,6 +177,56 @@ public sealed class InstalledComponentWirer(
             Host: entry.Host,
             Port: entry.Port);
     }
+
+    private async Task<InstalledComponentConnectResult> ConnectWeirAsync(string? username, string? password, string delunoBaseUrl, CancellationToken cancellationToken)
+    {
+        if (weir is null)
+        {
+            return new InstalledComponentConnectResult(CompanionToolIds.Weir, "Weir", false, "Deluno can connect Weir only on the Windows computer it runs on.");
+        }
+
+        var outcome = await weir.ConnectAsync(username, password, delunoBaseUrl, cancellationToken);
+        if (outcome.Healthy)
+        {
+            record.MarkWired(CompanionToolIds.Weir);
+            await activity.RecordActivityAsync(ActivityCategory, "You connected Weir to Deluno from the apps you installed, with your own Weir account. Deluno did not keep the account's password.", null, null, null, null, cancellationToken);
+        }
+
+        return new InstalledComponentConnectResult(CompanionToolIds.Weir, "Weir", outcome.Healthy, outcome.Message, NeedsSignIn: outcome.NeedsSignIn);
+    }
+
+    /// <summary>
+    /// "Connect all": every installed download client that is not connected yet. Weir needs the
+    /// person's own account, so it is never connected here; when it is installed and not connected its
+    /// result says needsAccount.
+    /// </summary>
+    public async Task<IReadOnlyList<InstalledComponentConnectResult>> ConnectAllAsync(CancellationToken cancellationToken)
+    {
+        var detected = detection is null
+            ? BundledComponentCatalog.All.Select(spec => new BundledComponentStatus(spec.Kind, spec.DisplayName, spec.Category, false, false, "localhost", spec.DefaultPort)).ToArray()
+            : await detection.DetectAsync(cancellationToken);
+        var states = await StatesAsync(detected, cancellationToken);
+        var results = new List<InstalledComponentConnectResult>();
+        foreach (var kind in Order)
+        {
+            if (states.TryGetValue(kind, out var state) && state.Installed && !state.Connected
+                && await ConnectAsync(kind, null, null, string.Empty, cancellationToken) is { } result)
+            {
+                results.Add(result);
+            }
+        }
+
+        if (states.TryGetValue(CompanionToolIds.Weir, out var weirState) && weirState.Installed && !weirState.Connected)
+        {
+            results.Add(new InstalledComponentConnectResult(
+                CompanionToolIds.Weir, "Weir", false,
+                "Weir needs your own account to connect. Create it in Weir's own step.",
+                NeedsAccount: true));
+        }
+
+        return results;
+    }
+
 
     /// <summary>
     /// Forgets the stored sign-ins whose app is gone (#1061). A stored sign-in stays for as
@@ -360,28 +384,6 @@ public sealed class InstalledComponentWirer(
 
         return null;
     }
-
-    private async Task<(string Name, bool Ok, string? Problem)> WireWeirAsync(string delunoBaseUrl, CancellationToken cancellationToken)
-    {
-        var weir = tools.First(tool => tool.Id == CompanionToolIds.Weir);
-        if (!weir.IsInstalled())
-        {
-            return (weir.Name, false, $"Deluno could not find {weir.Name} on this computer to connect it.");
-        }
-
-        try
-        {
-            // Installed already, so this connects it (creating its administrator login if it has none yet) and tests it.
-            await weir.RunAsync(new CompanionRunContext(delunoBaseUrl, Path.GetTempPath(), new SilentProgress()), cancellationToken);
-            return (weir.Name, true, null);
-        }
-        catch (CompanionStepException exception)
-        {
-            return (weir.Name, false, exception.Message);
-        }
-    }
-
-    /// <summary>
     /// A Health pass can be in the middle of its run while an app is being connected, and a row it
     /// worked out a moment before the connection existed (or before its folders did) would then stay
     /// until the next full pass a quarter of an hour later. Asking for the two affected categories
@@ -401,26 +403,22 @@ public sealed class InstalledComponentWirer(
     private static string Join(IReadOnlyList<string> names)
         => names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 
-    private sealed class SilentProgress : ICompanionProgress
-    {
-        public void Report(string step, string message) { }
-    }
 }
 
 /// <summary>
-/// Runs <see cref="InstalledComponentWirer"/> in the background while Deluno is up. It
-/// does not wait for first run: the connections it makes need no signed-in person, so an
-/// app is connected as soon as this Deluno is answering and has been told about it.
+/// Runs in the background while Deluno is up. It connects nothing: the person connects the apps
+/// they installed from the setup guide or Connections. Each start it forgets every login an earlier
+/// Deluno stored for the tools it set up, gives an older Weir connection its health address, and
+/// forgets the installer's stored logins for apps that are gone.
 /// </summary>
 public sealed class InstalledComponentWiringService(
     IServiceScopeFactory scopes,
-    IServiceProvider services,
     ILogger<InstalledComponentWiringService> logger) : BackgroundService
 {
-    private bool _healthAddressChecked;
+    private bool _startupWorkDone;
     private readonly HashSet<string> _missedLastSweep = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Wait before the first pass, so the web server is answering.</summary>
+    /// <summary>Wait before the first pass, so the database is ready.</summary>
     internal TimeSpan StartDelay { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>Wait between passes.</summary>
@@ -449,39 +447,30 @@ public sealed class InstalledComponentWiringService(
         try
         {
             using var scope = scopes.CreateScope();
-            if (!_healthAddressChecked)
+            if (!_startupWorkDone)
             {
-                // Once per start: gives an older Weir connection the address that lets it test healthy (#1055).
+                // Once per start. Deluno no longer keeps any tool's login (#1061), so anything an
+                // earlier version stored (Weir's generated administrator login included) is deleted.
+                await scope.ServiceProvider.GetRequiredService<ICompanionLoginCleanup>().ForgetAllAsync(cancellationToken);
+                // Gives an older Weir connection the address that lets it test healthy (#1055).
                 await scope.ServiceProvider.GetRequiredService<WeirHealthAddressBackfill>().RunAsync(cancellationToken);
-                _healthAddressChecked = true;
+                _startupWorkDone = true;
             }
 
             var wirer = scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
-            // Any sign-in kept for an app whose connection exists, or never will, is forgotten (#1061).
+            // Any sign-in kept for an app that is gone, or a kind Deluno cannot connect, is forgotten (#1061).
             await wirer.SweepStoredSignInsAsync(cancellationToken, _missedLastSweep);
-            if (!wirer.HasWork() || OwnAddress() is not { } baseUrl)
-            {
-                return;
-            }
-
-            await wirer.RunOnceAsync(baseUrl, 10, TimeSpan.FromSeconds(3), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(exception, "Connecting the apps the installer added did not finish; it will be tried again.");
+            logger.LogWarning(exception, "Tidying up after the apps the installer added did not finish; it will be tried again.");
         }
     }
+}
 
-    /// <summary>Where Weir reaches this Deluno back: its own listening address, on this computer.</summary>
-    private string? OwnAddress()
-    {
-        var address = services.GetService<IServer>()?.Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(address))
-        {
-            return null;
-        }
-
-        var uri = new Uri(address.Replace("*", "127.0.0.1").Replace("+", "127.0.0.1").Replace("[::]", "127.0.0.1").Replace("0.0.0.0", "127.0.0.1"));
-        return $"{uri.Scheme}://127.0.0.1:{uri.Port}";
-    }
+/// <summary>Keeps a login the "get the tools you need" install generated in the installer's own store, so the person's Connect click can use it. Never served to a caller.</summary>
+public sealed class InstalledClientLoginKeeper(IBundledComponentCredentialStore store) : IInstalledClientLogins
+{
+    public void Keep(string kind, string? username, string secret)
+        => store.Save(kind, new BundledComponentCredentials(username ?? string.Empty, secret));
 }

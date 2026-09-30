@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Deluno.Companions;
 
@@ -16,13 +17,16 @@ public static class CompanionModule
         services.AddHttpClient(CompanionDownloader.ClientName, client => client.Timeout = TimeSpan.FromMinutes(20));
         services.AddSingleton<ICompanionDownloader, CompanionDownloader>();
         services.AddSingleton<ICompanionSystem, WindowsCompanionSystem>();
-        services.AddSingleton<ICompanionLoginStore, SqliteCompanionLoginStore>();
+        services.AddSingleton<ICompanionLoginCleanup, SqliteCompanionLoginCleanup>();
+        services.TryAddSingleton<IInstalledClientLogins, NoInstalledClientLogins>();
         services.AddSingleton<CompanionToolsService>();
         services.AddSingleton<IDownloadClientTester, DrawerDownloadClientTester>();
         services.AddScoped<DownloadClientConnector>();
         services.AddScoped<ICompanionTool, SabnzbdCompanion>();
         services.AddScoped<ICompanionTool, QbittorrentCompanion>();
-        services.AddScoped<ICompanionTool, WeirCompanion>();
+        services.AddScoped<WeirCompanion>();
+        services.AddScoped<ICompanionTool>(sp => sp.GetRequiredService<WeirCompanion>());
+        services.AddScoped<IWeirConnector>(sp => sp.GetRequiredService<WeirCompanion>());
         return services;
     }
 
@@ -63,9 +67,6 @@ public static class CompanionModule
                 ? Results.Accepted("/api/companion-tools")
                 : Results.Conflict(new { message = "Tools are already being set up. Wait for that to finish." });
         });
-
-        group.MapGet("{id}/login", async (string id, [FromServices] ICompanionLoginStore logins, CancellationToken cancellationToken)
-            => await logins.GetAsync(id, cancellationToken) is { } login ? Results.Ok(login) : Results.NotFound());
 
         return endpoints;
     }

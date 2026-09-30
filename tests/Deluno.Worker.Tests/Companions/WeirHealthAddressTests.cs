@@ -46,7 +46,6 @@ public sealed class WeirHealthAddressTests
             processors.Object,
             new ProcessorConnectionService(factory.Object),
             new Mock<ISecurityRepository>().Object,
-            new Mock<ICompanionLoginStore>().Object,
             new Mock<ICompanionDownloader>().Object,
             factory.Object);
 
@@ -75,7 +74,7 @@ public sealed class WeirHealthAddressTests
         factory.Setup(item => item.CreateClient(It.IsAny<string>())).Returns(() => new HttpClient(handler));
         var companion = new WeirCompanion(
             new Mock<ICompanionSystem>().Object, processors.Object, new ProcessorConnectionService(factory.Object),
-            new Mock<ISecurityRepository>().Object, new Mock<ICompanionLoginStore>().Object, new Mock<ICompanionDownloader>().Object, factory.Object);
+            new Mock<ISecurityRepository>().Object, new Mock<ICompanionDownloader>().Object, factory.Object);
 
         var failure = await Assert.ThrowsAsync<CompanionStepException>(() => companion.AddProcessorConnectionAsync(Base, Intake, null, null, CancellationToken.None));
 
@@ -87,15 +86,12 @@ public sealed class WeirHealthAddressTests
     {
         var weir = Connection("weir", $"{Base}{Intake}", null);
         var other = Connection("fileflows", "http://192.168.1.5:5000/webhook/deluno", null);
-        var lookalike = Connection("other-weir", $"http://127.0.0.1:9999{Intake}", null);
+        var lookalike = Connection("other-weir", "http://127.0.0.1:9999/somewhere/else", null);
         var already = Connection("already", $"{Base}{Intake}", $"{Base}/ready");
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([weir, other, lookalike, already]);
         processors.Setup(repo => repo.UpdateProcessorConnectionAsync("weir", It.IsAny<UpdateProcessorConnectionRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(weir with { HealthCheckUrl = $"{Base}/ready" });
-        var logins = new Mock<ICompanionLoginStore>();
-        logins.Setup(store => store.GetAsync(CompanionToolIds.Weir, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CompanionLogin(CompanionToolIds.Weir, Base, "deluno-admin", "pw", "Password"));
         var service = new Mock<IProcessorConnectionService>();
         service.Setup(item => item.TestAsync(It.IsAny<ProcessorConnectionItem>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProcessorConnectionTestResult("weir", true, "healthy", "The processor answered its health check and reports it is up.", 200, 5));
@@ -105,7 +101,7 @@ public sealed class WeirHealthAddressTests
             .Callback<string, string, string?, string?, string?, string?, CancellationToken>((_, message, _, _, _, _, _) => lines.Add(message))
             .ReturnsAsync((Deluno.Jobs.Contracts.ActivityEventItem)null!);
 
-        var updated = await new WeirHealthAddressBackfill(logins.Object, processors.Object, service.Object, activity.Object).RunAsync(CancellationToken.None);
+        var updated = await new WeirHealthAddressBackfill(processors.Object, service.Object, activity.Object).RunAsync(CancellationToken.None);
 
         Assert.Equal(1, updated);
         processors.Verify(repo => repo.UpdateProcessorConnectionAsync(It.Is<string>(id => id != "weir"), It.IsAny<UpdateProcessorConnectionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -115,12 +111,12 @@ public sealed class WeirHealthAddressTests
     }
 
     [Fact]
-    public async Task Nothing_is_changed_when_the_companion_never_connected_Weir()
+    public async Task A_processor_that_is_not_on_this_computer_is_never_touched()
     {
         var processors = new Mock<IProcessorRepository>();
-        processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Connection("weir", $"{Base}{Intake}", null)]);
+        processors.Setup(repo => repo.ListProcessorConnectionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([Connection("weir", $"http://192.168.1.5:9347{Intake}", null)]);
 
-        var updated = await new WeirHealthAddressBackfill(new Mock<ICompanionLoginStore>().Object, processors.Object, new Mock<IProcessorConnectionService>().Object, new Mock<IActivityFeedRepository>().Object).RunAsync(CancellationToken.None);
+        var updated = await new WeirHealthAddressBackfill(processors.Object, new Mock<IProcessorConnectionService>().Object, new Mock<IActivityFeedRepository>().Object).RunAsync(CancellationToken.None);
 
         Assert.Equal(0, updated);
         processors.Verify(repo => repo.UpdateProcessorConnectionAsync(It.IsAny<string>(), It.IsAny<UpdateProcessorConnectionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
