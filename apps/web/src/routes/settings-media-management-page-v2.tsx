@@ -713,7 +713,6 @@ interface WorkflowForm {
   removeEmptySourceFolders: boolean;
 }
 interface CallbackForm {
-  name: string;
   provider: string;
   submissionUrl: string;
   authHeaderName: string;
@@ -758,7 +757,7 @@ function ProcessingWorkflowPage() {
       : drawer.kind === "callback"
         ? drawer.editId
           ? JSON.stringify(callback) !== JSON.stringify(callbackInitial)
-          : Boolean(callback.name.trim() || callback.submissionUrl.trim() || callback.secret.trim())
+          : Boolean(callback.submissionUrl.trim() || callback.secret.trim())
         : false;
   const footerState: DrawerSaveState = resolveDrawerSaveState(saveState, dirty);
   useUnsavedChanges(dirty);
@@ -785,7 +784,6 @@ function ProcessingWorkflowPage() {
   }, [drawer.kind, libraries, location.search, navigate]);
   function openEditCallback(connection: ProcessorConnectionItem) {
     const form: CallbackForm = {
-      name: connection.name,
       provider: connection.provider,
       submissionUrl: connection.submissionUrl,
       healthCheckUrl: connection.healthCheckUrl ?? "",
@@ -812,7 +810,7 @@ function ProcessingWorkflowPage() {
    */
   function openDetectedCallback(status: BundledComponentStatus) {
     setDrawer({ kind: "callback" });
-    setCallback({ ...emptyCallback(), name: status.displayName, submissionUrl: `http://${status.defaultHost}:${status.defaultPort}/api/v1/intake/webhook/deluno` });
+    setCallback({ ...emptyCallback(), submissionUrl: `http://${status.defaultHost}:${status.defaultPort}/api/v1/intake/webhook/deluno` });
     setSaveState(undefined);
   }
   function closeDrawer() {
@@ -1143,14 +1141,9 @@ function ProcessingWorkflowPage() {
               </p>
             </div>
             <DrawerSection title="Connection details">
-              <FieldRow>
-                <Field label="Name" help="A name you'll recognise in Transfers.">
-                  <Input value={callback.name} onChange={(event) => setCallback((current) => ({ ...current, name: event.target.value }))} placeholder="Processed media notifier" autoComplete="off" />
-                </Field>
-                <Field label="Type">
-                  <Select value={callback.provider} onChange={(event) => setCallback((current) => ({ ...current, provider: event.target.value }))} options={[{ value: "generic-webhook", label: "Generic processor webhook" }, { value: "fileflows-webhook", label: "FileFlows webhook" }]} />
-                </Field>
-              </FieldRow>
+              <Field label="Type" help="Deluno names the connection from its address; there is no name to type.">
+                <Select value={callback.provider} onChange={(event) => setCallback((current) => ({ ...current, provider: event.target.value }))} options={[{ value: "generic-webhook", label: "Generic processor webhook" }, { value: "fileflows-webhook", label: "FileFlows webhook" }]} />
+              </Field>
               <Field label="Processor job URL" help="Deluno sends a job here when a download needs processing. Your processor reports back to Deluno when the cleaned file is ready.">
                 <Input value={callback.submissionUrl} onChange={(event) => setCallback((current) => ({ ...current, submissionUrl: event.target.value }))} placeholder="https://processor.example/webhooks/deluno" className="font-mono text-[length:var(--type-caption)]" autoComplete="off" spellCheck={false} />
               </Field>
@@ -1234,7 +1227,7 @@ export function processorSub(connection: Pick<ProcessorConnectionItem, "secretCo
   return !connection.healthCheckUrl && connection.healthStatus === "degraded" ? `${token} · Add a health check address (Edit) to test it fully` : token;
 }
 function emptyCallback(): CallbackForm {
-  return { name: "", provider: "generic-webhook", submissionUrl: "", healthCheckUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true };
+  return { provider: "generic-webhook", submissionUrl: "", healthCheckUrl: "", authHeaderName: "Authorization", secret: "", isEnabled: true };
 }
 function healthTone(status: string): NonNullable<ChipProps["tone"]> {
   switch (status) {
