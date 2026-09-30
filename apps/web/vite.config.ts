@@ -1,8 +1,13 @@
+import { searchForWorkspaceRoot } from "vite";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const developmentPort = Number(process.env.DELUNO_WEB_PORT ?? 5173);
 const apiProxyTarget = process.env.DELUNO_API_ORIGIN ?? "http://127.0.0.1:5099";
+// Extra folders the dev server may serve files from, separated by ";". A
+// preview run from a git worktree whose node_modules is a link to the main
+// checkout's needs that folder here, or fonts and other package files answer 403.
+const extraServedFolders = (process.env.DELUNO_WEB_FS_ALLOW ?? "").split(";").map((folder) => folder.trim()).filter(Boolean);
 const apiProxy = {
   "/api": apiProxyTarget,
   "/hubs": {
@@ -85,7 +90,8 @@ export default defineConfig({
     host: "0.0.0.0",
     port: developmentPort,
     strictPort: true,
-    proxy: apiProxy
+    proxy: apiProxy,
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), ...extraServedFolders] }
   },
   preview: {
     host: "0.0.0.0",
