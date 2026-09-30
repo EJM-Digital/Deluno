@@ -155,22 +155,70 @@ internal static class InstallHooks
     /// <summary>
     /// Install hooks run before the tray's normal logging is set up. Append
     /// directly to the install-hook log so a packaging issue is at least
-    /// traceable after the fact.
+    /// traceable after the fact. Goes through <see cref="HookLog"/>, which
+    /// retries a locked or briefly unavailable file (an antivirus scan of a
+    /// just-written file, #968) and falls back to the temp folder.
     /// </summary>
-    private static void LogHook(string message)
+    private static void LogHook(string message) => HookLog.Write(message);
+}
+
+/// <summary>
+/// The install hook's own log (#968). It is the first thing the hook process
+/// does and the last thing it can rely on, so it never throws, retries
+/// transient file failures, and falls back to the temp folder when the
+/// per-user log folder cannot be created or written, so a hook failure
+/// always leaves a line somewhere.
+/// </summary>
+internal static class HookLog
+{
+    /// <summary>Test seam: the folder the log goes to. Null uses the per-user Deluno logs folder.</summary>
+    internal static string? PrimaryFolderOverride { get; set; }
+
+    /// <summary>Test seam: the folder used when the primary one cannot be written.</summary>
+    internal static string? FallbackFolderOverride { get; set; }
+
+    /// <summary>Test seam: how long to wait between retries.</summary>
+    internal static TimeSpan RetryDelay { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    internal const int Attempts = 6;
+
+    internal static string PrimaryFolder => PrimaryFolderOverride ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno", "logs");
+
+    internal static string FallbackFolder => FallbackFolderOverride ?? Path.GetTempPath();
+
+    internal static void Write(string message, string fileName = "install-hook.log")
     {
+        var line = $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}";
+        for (var attempt = 1; attempt <= Attempts; attempt++)
+        {
+            try
+            {
+                var dir = PrimaryFolder;
+                Directory.CreateDirectory(dir);
+                File.AppendAllText(Path.Combine(dir, fileName), line);
+                return;
+            }
+            catch
+            {
+                if (attempt < Attempts)
+                {
+                    try { Thread.Sleep(RetryDelay); } catch { }
+                }
+            }
+        }
+
         try
         {
-            var logDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Deluno", "logs");
-            Directory.CreateDirectory(logDir);
-            var logPath = Path.Combine(logDir, "install-hook.log");
-            File.AppendAllText(logPath, $"{DateTimeOffset.Now:O} {message}{Environment.NewLine}");
+            var dir = FallbackFolder;
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "Deluno-" + fileName),
+                $"{DateTimeOffset.Now:O} (could not write the per-user log) {message}{Environment.NewLine}");
         }
         catch
         {
-            // No telemetry channel from the installer; swallow.
+            // Nothing left to write to; an install must never fail over its own log.
         }
     }
 }

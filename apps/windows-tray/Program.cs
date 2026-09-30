@@ -34,6 +34,9 @@ internal static class Program
         // body itself. Process.GetCurrentProcess().StartTime and a single
         // AppendAllText are the only cost paid here; neither touches
         // WinForms, ASP.NET, EF or any Deluno.* assembly.
+        AppDomain.CurrentDomain.UnhandledException += HookUnhandledException;
+        TaskScheduler.UnobservedTaskException += (_, e) => HookLog.Write($"unobserved task exception: {e.Exception}");
+        HookLog.Write($"Main starting: args=[{string.Join(' ', args)}].");
         LogColdStart();
 
         // Setup.exe and Update.exe run these per user, without administrator
@@ -42,13 +45,30 @@ internal static class Program
         // there. The Windows permission prompt comes on the first run instead.
         // The install hooks exit the process when fired, so nothing after
         // this runs on install.
-        VelopackApp.Build()
-            .SetAutoApplyOnStartup(false)
-            .OnAfterInstallFastCallback(_ => InstallHooks.OnAfterInstall())
-            .OnAfterUpdateFastCallback(_ => InstallHooks.OnAfterInstall())
-            .OnBeforeUninstallFastCallback(_ => InstallHooks.OnBeforeUninstall())
-            .OnFirstRun(_ => InstallHooks.OnFirstRun())
-            .Run();
+        try
+        {
+            VelopackApp.Build()
+                .SetAutoApplyOnStartup(false)
+                .OnAfterInstallFastCallback(_ => InstallHooks.OnAfterInstall())
+                .OnAfterUpdateFastCallback(_ => InstallHooks.OnAfterInstall())
+                .OnBeforeUninstallFastCallback(_ => InstallHooks.OnBeforeUninstall())
+                .OnFirstRun(_ => InstallHooks.OnFirstRun())
+                .Run();
+        }
+        catch (Exception ex)
+        {
+            // Nothing the hook does is needed for the install to be usable:
+            // the firewall rule, picker and the rest run again on first start
+            // (#968). So a failure here is logged, and a Velopack hook
+            // invocation still exits 0 instead of failing the whole install.
+            HookLog.Write($"Velopack startup/hook failed: {ex}");
+            if (IsVelopackHookInvocation(args))
+            {
+                return 0;
+            }
+
+            throw;
+        }
 
         try
         {
@@ -167,22 +187,26 @@ internal static class Program
         try
         {
             var elapsed = DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
-            var logDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Deluno",
-                "logs");
-            Directory.CreateDirectory(logDir);
-            var logPath = Path.Combine(logDir, "install-hook.log");
-            File.AppendAllText(
-                logPath,
-                $"{DateTimeOffset.Now:O} Main entered {elapsed.TotalMilliseconds:F0}ms after process start.{Environment.NewLine}");
+            HookLog.Write($"Main entered {elapsed.TotalMilliseconds:F0}ms after process start.");
         }
         catch
         {
-            // Best-effort diagnostics only.
+            // The process start time can be unreadable on a starved machine;
+            // still leave the line.
+            HookLog.Write("Main entered (start time unreadable).");
         }
     }
 
+    /// <summary>True when Velopack started this process for one of its install lifecycle hooks.</summary>
+    internal static bool IsVelopackHookInvocation(string[] args)
+        => args.Any(a => a.StartsWith("--veloapp-", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Logs any exception that would otherwise kill the process without a
+    /// trace (#968): the hook process died after 2.5 s once and left no log.
+    /// </summary>
+    private static void HookUnhandledException(object? sender, UnhandledExceptionEventArgs e)
+        => HookLog.Write($"unhandled exception (terminating={e.IsTerminating}): {e.ExceptionObject}");
     private static void TryLogStartupFailure(Exception ex)
     {
         try
