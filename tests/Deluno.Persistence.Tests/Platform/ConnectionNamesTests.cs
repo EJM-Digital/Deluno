@@ -275,6 +275,26 @@ public sealed class ConnectionNamesTests
         Assert.Equal("SABnzbd on 192.168.1.51", names[sab.Id]);
     }
 
+    [Fact]
+    public async Task After_the_upgrade_a_tracker_definition_indexer_takes_its_automatic_name_at_start_up_and_it_is_stable()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(
+            storage.Factory, clock, TestSecretProtection.Create(storage), new FakeDefinitionNames());
+        var tracker = await repository.CreateIndexerAsync(Indexer(null, "https://1337x.to", "1337x"), CancellationToken.None);
+        var jackett = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9117/api/v2.0/indexers/yts/results/torznab/"), CancellationToken.None);
+        await LegacyConnectionNames.SetAsync(storage.Factory, "indexer_sources", tracker.Id, "My typed tracker");
+        await LegacyConnectionNames.SetAsync(storage.Factory, "indexer_sources", jackett.Id, Machine);
+
+        Assert.Equal(2, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
+
+        var names = (await repository.ListIndexersAsync(CancellationToken.None)).ToDictionary(item => item.Id, item => item.Name);
+        Assert.Equal("1337x", names[tracker.Id]);
+        Assert.Equal("yts", names[jackett.Id]);
+        Assert.Equal(0, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
+    }
+
     private sealed class FakeDefinitionNames : ITrackerDefinitionNames
     {
         public string? DisplayName(string definitionId) => definitionId == "1337x" ? "1337x" : null;

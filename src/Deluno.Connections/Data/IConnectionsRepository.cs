@@ -13,6 +13,13 @@ public interface IConnectionsRepository
 
     Task<IReadOnlyList<IndexerItem>> ListIndexersAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// #1076: gives every indexer the name saving it would give it today (a tracker's own name,
+    /// its site, its tracker behind Jackett or Prowlarr). Safe to run every start.
+    /// Returns how many were renamed.
+    /// </summary>
+    Task<int> ApplyAutomaticIndexerNamesAsync(CancellationToken cancellationToken);
+
     Task<IndexerItem> CreateIndexerAsync(
         CreateIndexerRequest request,
         CancellationToken cancellationToken);

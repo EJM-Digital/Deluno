@@ -63,6 +63,50 @@ public sealed class SqliteConnectionsRepository(
         return items;
     }
 
+    public async Task<int> ApplyAutomaticIndexerNamesAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Platform,
+            cancellationToken);
+
+        var rows = new List<(string Id, string Name, string? BaseUrl, string? DefinitionId)>();
+        using (var read = connection.CreateCommand())
+        {
+            read.CommandText = "SELECT id, name, base_url, definition_id FROM indexer_sources ORDER BY created_utc, id;";
+            using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3)));
+            }
+        }
+
+        // In the order they were added, the way saving each one would name it: the first to hold a
+        // name keeps it, a later one takes its port and then a short suffix.
+        var taken = new List<string>();
+        var renamed = 0;
+        foreach (var (id, name, baseUrl, definitionId) in rows)
+        {
+            var wanted = ConnectionNames.Unique(IndexerBaseName(definitionId, baseUrl), ConnectionNames.PortOf(baseUrl), id, taken);
+            taken.Add(wanted);
+            if (string.Equals(wanted, name, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            using var update = connection.CreateCommand();
+            update.CommandText = "UPDATE indexer_sources SET name = @name WHERE id = @id;";
+            AddParameter(update, "@name", wanted);
+            AddParameter(update, "@id", id);
+            renamed += await update.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return renamed;
+    }
+
     public async Task<IReadOnlyList<IndexerItem>> ListIndexersAsync(CancellationToken cancellationToken)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
