@@ -11,13 +11,12 @@ namespace Deluno.Worker.Companions;
 /// health-check address has none, so its test could only ever read "degraded". This gives that
 /// one connection Weir's published <c>/ready</c>, once, and tests it.
 ///
-/// <para>The marker is the companion's own record: the login it saved for Weir holds the base
-/// address it connected to. Only a connection with no health-check address whose hand-off
-/// address is on that base address, on Weir's intake path, is touched. Every other processor is
-/// left alone.</para>
+/// <para>The marker is the connection itself: Weir's hand-off address is on this computer
+/// (loopback) and on Weir's intake path, and the connection has no health-check address. Weir's
+/// base address is that hand-off address up to the intake path. Every other processor is left
+/// alone. Deluno keeps no Weir login any more (#1061), so nothing else is needed.</para>
 /// </summary>
 public sealed class WeirHealthAddressBackfill(
-    ICompanionLoginStore logins,
     IProcessorRepository processors,
     IProcessorConnectionService processorConnections,
     IActivityFeedRepository activity)
@@ -29,18 +28,10 @@ public sealed class WeirHealthAddressBackfill(
     /// <summary>Returns how many connections were updated (0 or 1 in practice).</summary>
     public async Task<int> RunAsync(CancellationToken cancellationToken)
     {
-        var login = await logins.GetAsync(CompanionToolIds.Weir, cancellationToken);
-        if (login is null || string.IsNullOrWhiteSpace(login.Url))
-        {
-            return 0;
-        }
-
-        var baseUrl = login.Url.TrimEnd('/');
         var updated = 0;
         foreach (var connection in await processors.ListProcessorConnectionsAsync(cancellationToken))
         {
-            if (!string.IsNullOrWhiteSpace(connection.HealthCheckUrl)
-                || !connection.SubmissionUrl.StartsWith(baseUrl + IntakePrefix, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(connection.HealthCheckUrl) || BaseAddressOnThisComputer(connection.SubmissionUrl) is not { } baseUrl)
             {
                 continue;
             }
@@ -64,5 +55,18 @@ public sealed class WeirHealthAddressBackfill(
         }
 
         return updated;
+    }
+
+    /// <summary>Weir's base address when <paramref name="submissionUrl"/> is on Weir's intake path on this computer; otherwise null.</summary>
+    internal static string? BaseAddressOnThisComputer(string? submissionUrl)
+    {
+        if (string.IsNullOrWhiteSpace(submissionUrl) || !Uri.TryCreate(submissionUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttp || !uri.IsLoopback
+            || !uri.AbsolutePath.StartsWith(IntakePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return $"http://{uri.Host}:{uri.Port}";
     }
 }

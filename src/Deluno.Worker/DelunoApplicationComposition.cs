@@ -90,6 +90,7 @@ public static class DelunoApplicationComposition
         services.AddScoped<Deluno.Api.Network.IInstalledComponentConnector>(sp => sp.GetRequiredService<Companions.InstalledComponentWirer>());
         services.AddScoped<Deluno.Contracts.IDownloadClientDeletedHook>(sp => sp.GetRequiredService<Companions.InstalledComponentWirer>());
         services.AddScoped<Companions.WeirHealthAddressBackfill>();
+        services.AddSingleton<IInstalledClientLogins, Companions.InstalledClientLoginKeeper>();
         services.AddHostedService<Companions.InstalledComponentWiringService>();
 
         return services;

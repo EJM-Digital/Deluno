@@ -43,15 +43,45 @@ public interface IBundledComponentCredentialStore
     IReadOnlyList<string> Kinds() => [];
 }
 
-/// <summary>What a "connect this installed app now" request did. Never carries the sign-in.</summary>
-public sealed record InstalledComponentConnectResult(string Name, bool Healthy, string Message, bool NeedsSignIn = false, string? Protocol = null, string? Host = null, int? Port = null);
+/// <summary>What a "connect this installed app" request did. Never carries any sign-in or password.</summary>
+/// <param name="NeedsSignIn">The screen should open the sign-in form (host and port are given for a download client).</param>
+/// <param name="NeedsAccount">Weir only: the person has to create their own Weir account to connect it; connect-all skips it and says so.</param>
+public sealed record InstalledComponentConnectResult(
+    string Kind,
+    string Name,
+    bool Healthy,
+    string Message,
+    bool NeedsSignIn = false,
+    string? Protocol = null,
+    string? Host = null,
+    int? Port = null,
+    bool NeedsAccount = false);
 
-/// <summary>Connects an app the installer added, on this computer (#1061). Implemented by the worker.</summary>
+/// <param name="Installed">The app is on this computer.</param>
+/// <param name="Connected">A Deluno connection to it on this computer and port exists.</param>
+/// <param name="NeedsAccount">Weir only: Weir answers and has no account yet.</param>
+/// <param name="AccountExists">Weir only: Weir answers and already has the person's account.</param>
+public sealed record InstalledComponentState(bool Installed, bool Connected, bool NeedsAccount, bool AccountExists);
+
+/// <summary>Connects the apps the installer added, on this computer, when the person asks (#1061, #968). Implemented by the worker.</summary>
 public interface IInstalledComponentConnector
 {
+    /// <summary>
+    /// Connects one app. <paramref name="username"/> and <paramref name="password"/> are the person's own Weir
+    /// account (used in memory for this call only); the download clients ignore them.
+    /// </summary>
     /// <returns>Null when <paramref name="kind"/> is not an app Deluno can connect this way.</returns>
-    Task<InstalledComponentConnectResult?> ConnectNowAsync(string kind, CancellationToken cancellationToken);
+    Task<InstalledComponentConnectResult?> ConnectAsync(string kind, string? username, string? password, string delunoBaseUrl, CancellationToken cancellationToken);
+
+    /// <summary>Connects every installed, not yet connected download client; Weir is listed with needsAccount instead.</summary>
+    Task<IReadOnlyList<InstalledComponentConnectResult>> ConnectAllAsync(CancellationToken cancellationToken);
+
+    /// <summary>Per kind: installed, connected, and (Weir) whether it has an account yet.</summary>
+    Task<IReadOnlyDictionary<string, InstalledComponentState>> StatesAsync(IReadOnlyList<BundledComponentStatus> detected, CancellationToken cancellationToken);
 }
+
+/// <summary>The optional body of a connect request: the person's own Weir account. Ignored for download clients.</summary>
+public sealed record BundledComponentConnectRequest(string? Username, string? Password);
 
 /// <summary>A host with no installer sign-ins: not Windows.</summary>
 public sealed class NoBundledComponentCredentialStore : IBundledComponentCredentialStore
@@ -175,21 +205,43 @@ public static class BundledComponentCredentialStores
 public static class BundledComponentCredentialsEndpointRouteBuilderExtensions
 {
     /// <summary>
-    /// "Use X" on an app the installer added: Deluno connects it itself, with the sign-in it
-    /// holds, and answers with whether it worked. There is no route that returns an app's
-    /// sign-in to anyone (#1061).
+    /// "Connect the apps you installed": the person asks, one app or all of them, and Deluno
+    /// connects them server-side and answers only whether it worked. There is no route that
+    /// returns an app's sign-in or password to anyone (#1061).
     /// </summary>
     public static IEndpointRouteBuilder MapDelunoBundledComponentCredentialsEndpoints(this IEndpointRouteBuilder api)
     {
-        api.MapPost("/system/bundled-components/{kind}/connect", async (string kind, IInstalledComponentConnector connector, CancellationToken cancellationToken) =>
+        api.MapPost("/system/bundled-components/{kind}/connect", async (string kind, HttpContext httpContext, [Microsoft.AspNetCore.Mvc.FromServices] IInstalledComponentConnector connector, CancellationToken cancellationToken) =>
             {
-                var result = await connector.ConnectNowAsync(kind, cancellationToken);
-                return result is null
-                    ? Results.NotFound()
-                    : Results.Ok(new { name = result.Name, healthy = result.Healthy, message = result.Message, needsSignIn = result.NeedsSignIn, protocol = result.Protocol, host = result.Host, port = result.Port });
+                BundledComponentConnectRequest? body = null;
+                if (httpContext.Request.HasJsonContentType())
+                {
+                    try
+                    {
+                        body = await httpContext.Request.ReadFromJsonAsync<BundledComponentConnectRequest>(cancellationToken);
+                    }
+                    catch (JsonException)
+                    {
+                        return Results.BadRequest(new { message = "That request was not understood." });
+                    }
+                }
+
+                var baseUrl = $"{httpContext.Request.Scheme}://127.0.0.1:{httpContext.Connection.LocalPort}{httpContext.Request.PathBase}";
+                var result = await connector.ConnectAsync(kind, body?.Username, body?.Password, baseUrl, cancellationToken);
+                return result is null ? Results.NotFound() : Results.Ok(ConnectResponse.From(result));
             })
             .RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
+        api.MapPost("/system/bundled-components/connect-all", async ([Microsoft.AspNetCore.Mvc.FromServices] IInstalledComponentConnector connector, CancellationToken cancellationToken)
+                => Results.Ok(new { results = (await connector.ConnectAllAsync(cancellationToken)).Select(ConnectResponse.From).ToArray() }))
+            .RequireAuthorization(DelunoAuthorizationPolicies.Write);
+
         return api;
+    }
+
+    private sealed record ConnectResponse(string Kind, string Name, bool Healthy, string Message, bool NeedsSignIn, string? Protocol, string? Host, int? Port, bool NeedsAccount)
+    {
+        public static ConnectResponse From(InstalledComponentConnectResult result)
+            => new(result.Kind, result.Name, result.Healthy, result.Message, result.NeedsSignIn, result.Protocol, result.Host, result.Port, result.NeedsAccount);
     }
 }

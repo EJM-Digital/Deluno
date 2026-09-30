@@ -73,7 +73,6 @@ GET /api/calendar/feed.ics
 GET /api/command/
 GET /api/command/{id}
 GET /api/companion-tools/
-GET /api/companion-tools/{id}/login
 GET /api/connections/
 GET /api/custom-formats/
 GET /api/custom-formats/export
@@ -503,6 +502,7 @@ POST /api/setup/completed
 POST /api/sharing-rules/
 POST /api/subtitle-providers/{key}/test
 POST /api/subtitles/wanted/search-all
+POST /api/system/bundled-components/connect-all
 POST /api/system/bundled-components/{kind}/connect
 POST /api/system/health/background-problems/{key}/retry
 POST /api/system/health/{id}/snooze
