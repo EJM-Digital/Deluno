@@ -1380,7 +1380,9 @@ export function MovieDetailPage() {
                   name="Background automation"
                   sub={
                     (memberships.some((item) => item.notWantedHere)
-                      ? "Switching this on also brings back any library you stopped wanting it in. "
+                      ? movie.monitored
+                        ? "A library you stopped wanting it in stays off until you choose Want it again for that library. "
+                        : "Switching this on also brings back any library you stopped wanting it in. "
                       : "") +
                     (workflowStatus?.reason ||
                       "Deluno searches for a missing file and quality upgrades on its own schedule.")

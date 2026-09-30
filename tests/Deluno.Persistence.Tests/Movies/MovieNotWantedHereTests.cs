@@ -99,12 +99,26 @@ public sealed class MovieNotWantedHereTests
     }
 
     [Fact]
-    public async Task Monitoring_the_whole_title_again_clears_the_library_switch()
+    public async Task Monitoring_an_already_monitored_title_keeps_the_library_switch()
     {
         using var storage = TestStorage.Create();
         var (movies, _) = await CreateAsync(storage);
         var id = await SeedTwoLibrariesAsync(storage, movies);
         await movies.ClearFileAsync(id, $"/4k/{id}.mkv", CancellationToken.None);
+
+        await movies.UpdateMonitoredAsync([id], true, CancellationToken.None);
+
+        Assert.Equal(["lib-4k"], await movies.ListNotWantedLibraryIdsAsync(id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Monitoring_an_unmonitored_title_clears_the_library_switch()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, _) = await CreateAsync(storage);
+        var id = await SeedTwoLibrariesAsync(storage, movies);
+        await movies.ClearFileAsync(id, $"/4k/{id}.mkv", CancellationToken.None);
+        await movies.UpdateMonitoredAsync([id], false, CancellationToken.None);
 
         await movies.UpdateMonitoredAsync([id], true, CancellationToken.None);
 
