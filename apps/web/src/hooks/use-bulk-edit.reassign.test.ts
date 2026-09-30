@@ -1,4 +1,5 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
+import { toast } from "../components/shell/toaster";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useBulkEdit } from "./use-bulk-edit";
@@ -6,6 +7,7 @@ import { authedFetch } from "../lib/use-auth";
 import type { MediaItem } from "../lib/media-types";
 
 vi.mock("../lib/use-auth", () => ({ authedFetch: vi.fn() }));
+vi.mock("../components/shell/toaster", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock("../lib/api", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/api")>(),
   // The dialog's own options loader (libraries, quality profiles) - not what
@@ -130,5 +132,37 @@ describe("useBulkEdit bulk reassign-library move-files (#787)", () => {
     act(() => { result.current.bulk.openBulkTools("reassignLibrary"); });
 
     expect(result.current.bulk.bulkMoveFiles).toBe(false);
+  });
+});
+
+describe("useBulkEdit refused library moves (#1078)", () => {
+  beforeEach(() => {
+    vi.mocked(authedFetch).mockReset();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("lists each refused title with its own reason and keeps it in its old library", async () => {
+    const reason = 'Heat: the folder "Action" holds other films, so Deluno moved nothing.';
+    vi.mocked(authedFetch).mockResolvedValue(jsonResponse({
+      reassigned: 1, filesMoved: 1, moveFailures: ["Title b"], moveFailureReasons: [reason]
+    }));
+    const { result } = renderHook(() => useHarness([makeItem("a"), makeItem("b")]));
+
+    act(() => { result.current.bulk.setSelectedIds(["a", "b"]); });
+    act(() => { result.current.bulk.openBulkTools("reassignLibrary"); });
+    act(() => { result.current.bulk.setBulkTargetLibraryId("lib-b"); });
+    act(() => { result.current.bulk.setBulkMoveFiles(true); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+    await act(async () => { await result.current.bulk.executeBulkToolsOperation(); });
+
+    expect(result.current.items.find((item) => item.id === "a")?.libraryId).toBe("lib-b");
+    expect(result.current.items.find((item) => item.id === "b")?.libraryId).toBe("lib-a");
+    expect(toast.error).toHaveBeenCalledWith(
+      "1 title not moved",
+      expect.objectContaining({ duration: Infinity })
+    );
+    const { description } = vi.mocked(toast.error).mock.calls[0][1] as { description: React.ReactElement<{ children: React.ReactElement[] }> };
+    render(description);
+    expect(screen.getByRole("list", { name: "Titles Deluno did not move and why" })).toHaveTextContent(reason);
   });
 });

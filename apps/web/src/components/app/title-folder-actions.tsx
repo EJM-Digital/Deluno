@@ -110,7 +110,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
         toast.success("The folder was renamed.");
         onChanged?.();
       } else if (payload.failures?.length) {
-        toast.error("The folder could not be renamed", { description: payload.failures[0]?.reason });
+        toast.error("The folder could not be renamed", { duration: Infinity, description: payload.failures[0]?.reason });
       } else {
         toast.info("Nothing needed renaming.");
       }
