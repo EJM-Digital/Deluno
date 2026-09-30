@@ -20,4 +20,8 @@ public sealed record JobQueueItem(
     string? DedupeKey,
     int MaxAttempts,
     DateTimeOffset? LastAttemptUtc,
-    DateTimeOffset? NextAttemptUtc);
+    DateTimeOffset? NextAttemptUtc)
+{
+    /// <summary>The job in plain words (#1086); screens show this, never <see cref="JobType"/>.</summary>
+    public string Label => Deluno.Contracts.JobTypeLabels.For(JobType);
+}

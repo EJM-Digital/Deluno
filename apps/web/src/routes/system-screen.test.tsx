@@ -319,3 +319,25 @@ describe("A start-up step that did not finish can be run again or cleared (#1080
     );
   });
 });
+
+describe("Background jobs name each job in plain words (#1086)", () => {
+  it("shows the label and never the job type", async () => {
+    loaderData.jobs = [
+      { id: "j1", jobType: "series.search.season", label: "Search for a season", source: "automation", status: "completed", attempts: 1, createdUtc: "2026-09-30T00:00:00Z", lastError: null },
+      { id: "j2", jobType: "library.search.tv", label: "Search the TV library", source: "automation", status: "failed", attempts: 3, createdUtc: "2026-09-30T00:00:00Z", lastError: "The indexer did not answer." }
+    ] as never;
+    authedFetchMock.mockImplementation(() => jsonResponse([]));
+
+    render(
+      <MemoryRouter initialEntries={["/system/audit"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText("Search for a season")).toBeInTheDocument();
+    expect(screen.getByText("Search the TV library")).toBeInTheDocument();
+    expect(screen.getByText("Tried 3 times")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/series\.search\.season|library\.search\.tv/);
+    loaderData.jobs = [];
+  });
+});

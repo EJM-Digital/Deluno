@@ -97,7 +97,7 @@ public sealed class SqliteJobStore(
                 connection,
                 transaction,
                 category: "job.revived",
-                message: $"Retrying {duplicate.JobType}, which had previously given up.",
+                message: $"Retrying {JobTypeLabels.ForSentence(duplicate.JobType)}, which had previously given up.",
                 detailsJson: job.PayloadJson,
                 relatedJobId: duplicate.Id,
                 relatedEntityType: duplicate.RelatedEntityType,
@@ -131,7 +131,7 @@ public sealed class SqliteJobStore(
                 connection,
                 transaction,
                 category: "job.duplicate",
-                message: $"Reused existing active {duplicate.JobType} job instead of creating duplicate work.",
+                message: $"Reused existing active job ({JobTypeLabels.ForSentence(duplicate.JobType)}) instead of creating duplicate work.",
                 detailsJson: JsonSerializer.Serialize(new
                 {
                     requestedJobType = request.JobType,
@@ -598,7 +598,7 @@ public sealed class SqliteJobStore(
         // The row goes, so the feed is where what it was and why it failed
         // stays readable. It is filed under the title or library it was for,
         // not under the job id, which no longer exists.
-        var message = $"Dismissed {job.JobType}, which had failed.";
+        var message = $"Dismissed the job \"{JobTypeLabels.For(job.JobType)}\", which had failed.";
         await InsertActivityAsync(
             connection,
             transaction,
@@ -831,7 +831,7 @@ public sealed class SqliteJobStore(
                 connection,
                 transaction,
                 category: "job.lease-released",
-                message: $"{job.JobType}: released after this worker restarted.",
+                message: $"{JobTypeLabels.For(job.JobType)}: released after this worker restarted.",
                 detailsJson: job.PayloadJson,
                 relatedJobId: job.Id,
                 relatedEntityType: job.RelatedEntityType,
@@ -856,7 +856,7 @@ public sealed class SqliteJobStore(
             }
             await realtimeEventPublisher.PublishActivityEventAddedAsync(
                 Guid.CreateVersion7().ToString("N"),
-                $"{job.JobType}: released after this worker restarted.",
+                $"{JobTypeLabels.For(job.JobType)}: released after this worker restarted.",
                 "job.lease-released",
                 SeverityForCategory("job.lease-released"),
                 now.ToString("O"),
@@ -1126,7 +1126,7 @@ public sealed class SqliteJobStore(
             connection,
             transaction,
             category: "job.completed",
-            message: completionMessage ?? $"{job.JobType} completed.",
+            message: completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
             detailsJson: job.PayloadJson,
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
@@ -1140,7 +1140,7 @@ public sealed class SqliteJobStore(
         await realtimeEventPublisher.PublishQueueItemRemovedAsync(job.Id, cancellationToken);
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
-            completionMessage ?? $"{job.JobType} completed.",
+            completionMessage ?? $"{JobTypeLabels.For(job.JobType)} finished.",
             "job.completed",
             SeverityForCategory("job.completed"),
             now.ToString("O"),
@@ -1260,14 +1260,14 @@ public sealed class SqliteJobStore(
             transaction,
             category: DecisionExplanationActivity.Category,
             message: shouldDeadLetter
-                ? $"job.failure: {job.JobType} moved to dead-letter after exhausting retries."
-                : $"job.failure: {job.JobType} will retry after {nextAttemptUtc:O}.",
+                ? $"job.failure: {JobTypeLabels.For(job.JobType)} moved to dead-letter after exhausting retries."
+                : $"job.failure: {JobTypeLabels.For(job.JobType)} will retry after {nextAttemptUtc:O}.",
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.failure",
                 Status: nextStatus,
                 Reason: shouldDeadLetter
-                    ? $"{job.JobType} reached the retry limit of {job.MaxAttempts} attempts and was moved to dead-letter."
-                    : $"{job.JobType} failed on attempt {attempts}; Deluno scheduled the next attempt after exponential backoff.",
+                    ? $"{JobTypeLabels.For(job.JobType)} reached the retry limit of {job.MaxAttempts} attempts and was moved to dead-letter."
+                    : $"{JobTypeLabels.For(job.JobType)} failed on attempt {attempts}; Deluno scheduled the next attempt after exponential backoff.",
                 Inputs: new Dictionary<string, string?>
                 {
                     ["jobId"] = job.Id,
@@ -3706,7 +3706,7 @@ public sealed class SqliteJobStore(
                 connection,
                 transaction,
                 category: shouldDeadLetter ? "job.dead-letter" : "job.lease-expired",
-                message: $"{job.JobType}: {message}",
+                message: $"{JobTypeLabels.For(job.JobType)}: {message}",
                 detailsJson: job.PayloadJson,
                 relatedJobId: job.Id,
                 relatedEntityType: job.RelatedEntityType,
@@ -4590,7 +4590,7 @@ public sealed class SqliteJobStore(
             }
         }
 
-        return JobTypeWords.TryGetValue(jobType, out var words) ? words.Title : jobType;
+        return JobTypeWords.TryGetValue(jobType, out var words) ? words.Title : JobTypeLabels.For(jobType);
     }
 
     /// <summary>

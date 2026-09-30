@@ -328,7 +328,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
         <ListTable columns={[{ label: "Job" }, { label: "Started by", width: "minmax(0,1fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
           {jobs.slice(0, 12).map((job) => (
             <ListRow key={job.id}>
-              <ListNameCell name={jobTypeLabel(job.jobType)} sub={job.jobType} />
+              <ListNameCell name={job.label} sub={job.attempts > 1 ? `Tried ${job.attempts} times` : "Tried once"} />
               <ListCell primary={job.source} secondary={job.lastError ?? undefined} />
               <ListCell numeric primary={formatWhen(job.createdUtc, preferences)} />
               <ListCell mobile>
@@ -448,20 +448,6 @@ function jobTone(status: string): NonNullable<ChipProps["tone"]> {
   if (status === JOB_STATUS.COMPLETED) return "ok";
   if (isJobActive(status as JobStatus)) return "info";
   return "idle";
-}
-
-/** "filesystem.import.execute" reads as machinery; say what it does. */
-function jobTypeLabel(jobType: string) {
-  const known: Record<string, string> = {
-    "filesystem.import.execute": "Import a file",
-    "metadata.refresh": "Refresh details",
-    "search.cycle": "Search cycle",
-    "notification.dispatch": "Send a notification",
-    "backup.create": "Create a backup"
-  };
-  if (known[jobType]) return known[jobType];
-  const tail = jobType.split(".").pop() ?? jobType;
-  return tail.charAt(0).toUpperCase() + tail.slice(1).replace(/([A-Z])/g, " $1");
 }
 
 /**
