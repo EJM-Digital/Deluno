@@ -15,7 +15,8 @@ namespace Deluno.Companions;
 /// it, refuses to run it unless its SHA-256 is the one the tray verified (and, when the
 /// download was accepted by signature rather than a pinned checksum, unless that very
 /// copy carries a valid signature from the expected publisher), runs it (msiexec for
-/// an .msi) from that folder, and deletes the folder afterwards. For a package that installs a
+/// an .msi) from that folder, deletes that folder afterwards and, when nothing else is in it, the
+/// <c>Deluno installer</c> folder too. For a package that installs a
 /// Windows service Deluno does not want (Transmission's MSI registers an auto-start
 /// service, run as LocalService and bound to every address) it stops and disables
 /// that service in the same prompt.
@@ -66,6 +67,7 @@ public static class ElevatedInstallScript
             "$ErrorActionPreference = 'Stop'",
             "$code = 0",
             "$fresh = $null",
+            "$root = $null",
             PublisherFunction,
             "function Test-Link($p) { (Test-Path -LiteralPath $p) -and (((Get-Item -LiteralPath $p -Force).Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) }",
             // Take the folder over, drop every entry it had, and leave only SYSTEM and Administrators (owner: Administrators).
@@ -120,6 +122,8 @@ public static class ElevatedInstallScript
             alsoSuccessCodes is { Count: > 0 } ? $"if (@({string.Join(", ", alsoSuccessCodes)}) -contains $code) {{ $code = 0 }}" : "# no other exit code counts as done",
             "} catch { if ($code -eq 0) { $code = " + FolderExitCode + " } } finally {",
             "if ($fresh) { Remove-Item -LiteralPath $fresh -Recurse -Force -ErrorAction SilentlyContinue }",
+            // With the per-run folder gone and nothing else in the parent, take the parent away too, so nothing is left in Program Files.
+            "if ($root -and (Test-Path -LiteralPath $root) -and -not (Test-Link $root) -and -not (Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) { Remove-Item -LiteralPath $root -Force -ErrorAction SilentlyContinue }",
             "}",
             "if ($code -ne 0) { exit $code }"
         });
