@@ -26,7 +26,7 @@ import { WsStatusBadge } from "../components/shell/ws-status-badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { getGlobalShortcuts } from "../lib/command-registry";
-import { attentionTotal, type AttentionSnapshot, useAttention } from "../lib/use-attention";
+import { useAttention } from "../lib/use-attention";
 import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
 import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
@@ -354,7 +354,6 @@ function DesktopSidebar({
 }) {
   const { changePassword } = useAuth();
   const { pathname } = useLocation();
-  const needsAttention = attentionTotal(attention);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -439,41 +438,6 @@ function DesktopSidebar({
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <MaintenanceSidebarTree pathname={pathname} />
         </nav>
-      </div>
-
-      {/*
-        The headline used to be hardcoded to "All systems normal" and sat directly
-        above a line reporting failed jobs — it claimed health while showing the
-        opposite. It now follows the same signal the line below it reads, and
-        that signal covers everything that needs a person (failed and
-        dead-lettered jobs, unhealthy search sources), not failed jobs alone —
-        it used to say "All good" beside a dead-lettered import (#250).
-      */}
-      <div className="mt-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-3">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "h-2 w-2 shrink-0 rounded-full",
-              needsAttention > 0
-                ? "bg-warning shadow-[0_0_12px_hsl(var(--warning)/0.8)]"
-                : "bg-success shadow-[0_0_12px_hsl(var(--success)/0.8)]"
-            )}
-          />
-          <span className="density-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">
-            {needsAttention > 0 ? "Needs a look" : "All good"}
-          </span>
-        </div>
-        {needsAttention > 0 ? (
-          // Every problem is listed, each with its button, on the Dashboard tab that holds it (#1087).
-          <NavLink
-            to={attention.to ?? "/"}
-            className="mt-2 block text-[length:var(--shell-subtle-size)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          >
-            {attention.summary}
-          </NavLink>
-        ) : (
-          <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">Nothing needs you</p>
-        )}
       </div>
 
       <div className="group relative z-50 mt-3">

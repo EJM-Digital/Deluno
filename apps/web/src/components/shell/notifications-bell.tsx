@@ -7,6 +7,11 @@
  * failed job can be seen and dealt with from wherever in the app the bell was
  * clicked, without leaving the page behind.
  *
+ * Since #1087 the bell is the one place for problems on every screen. Its badge
+ * is the real-problem count (the two Dashboard badges added together, none at
+ * zero), and its panel lists Needs you first, the same rows and fix buttons the
+ * Dashboard's Needs you draws, then the recent events below.
+ *
  * The panel is seeded from `/api/activity`, the same endpoint Activity itself
  * reads, and stays live from the same `activity` realtime group while it is
  * open. The merge and formatting are borrowed from the Activity screen
@@ -25,7 +30,9 @@ import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { fetchPageItems, type ActivityEventItem } from "../../lib/api";
-import type { AttentionSnapshot } from "../../lib/use-attention";
+import { attentionTotal, type AttentionSnapshot } from "../../lib/use-attention";
+import { useAction } from "../../routes/dashboard/downloads-kit";
+import { AlsoWorthALook, needsYouRows, setupProblemRows } from "../../routes/dashboard/needs-you";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
 import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
@@ -71,6 +78,10 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const { preferences } = useDisplayPreferences();
   const listId = useId();
   const headingId = useId();
+  const action = useAction();
+  const total = attentionTotal(attention);
+  const problemRows = [...needsYouRows(attention.needs, action), ...setupProblemRows(attention.needs)];
+  const { leftovers, suggestions } = attention.needs.alsoWorthALook;
 
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<ActivityEventItem[]>([]);
@@ -207,17 +218,13 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => setOpen((current) => !current)}
-        aria-label={
-          attention.failedJobs > 0
-            ? `Notifications — ${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}`
-            : attention.healthProblems > 0
-              ? `Notifications — ${attention.healthProblems} health check${attention.healthProblems === 1 ? "" : "s"} need attention`
-              : "Notifications"
-        }
+        aria-label={total > 0 ? `Notifications — ${total} ${total === 1 ? "thing needs" : "things need"} a look` : "Notifications"}
       >
         <Bell className={TOPBAR_ICON} strokeWidth={1.75} />
-        {attention.failedJobs > 0 || attention.healthProblems > 0 ? (
-          <span className="absolute right-1.5 top-1.5 h-[5px] w-[5px] rounded-full bg-destructive shadow-[0_0_0_1.5px_hsl(var(--background)),0_0_6px_hsl(var(--destructive)/0.7)]" />
+        {total > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-warning px-1 text-[length:var(--type-micro)] font-bold tabular-nums leading-none text-background shadow-[0_0_0_1.5px_hsl(var(--background))]">
+            {total > 99 ? "99+" : total}
+          </span>
         ) : null}
       </button>
 
@@ -235,12 +242,43 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
             Notifications
           </p>
 
+          <section aria-label="Needs you" className="border-b border-hairline">
+            <p className="flex items-center gap-2 px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Needs you
+              {total > 0 ? <span className="tabular-nums text-warning">{total}</span> : null}
+            </p>
+            {problemRows.length === 0 ? (
+              <p className="px-4 pb-3 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing needs you right now.</p>
+            ) : (
+              // A link in a row goes to the screen that clears it, so the panel closes behind it.
+              <ul
+                className="max-h-[320px] overflow-y-auto"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a")) close(false);
+                }}
+              >
+                {problemRows}
+              </ul>
+            )}
+            {leftovers + suggestions > 0 ? (
+              <div
+                className="border-t border-hairline px-4 py-2 text-[length:var(--type-caption)] text-muted-foreground"
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("a")) close(false);
+                }}
+              >
+                <AlsoWorthALook attention={attention.needs} />
+              </div>
+            ) : null}
+          </section>
+
+          <p className="px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent</p>
           {events.length === 0 ? (
             <p className="px-4 py-6 text-center text-[length:var(--type-body-sm)] text-muted-foreground">
               {loaded ? "Nothing has happened yet." : "Loading…"}
             </p>
           ) : (
-            <div className="max-h-[360px] overflow-y-auto">
+            <div className="max-h-[240px] overflow-y-auto">
               {events.map((event, index) => (
                 <button
                   key={event.id}
