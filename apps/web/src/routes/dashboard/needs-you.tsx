@@ -10,6 +10,7 @@
  * One quiet line under the list reaches what is worth a look but is not a
  * problem and is never counted: leftover folders and health suggestions.
  */
+import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { StatusLed } from "../../components/ui/status-led";
 import { dismissFailedJob } from "../../lib/failed-jobs";
@@ -18,7 +19,7 @@ import { ActionButton, Panel, PanelNote, plural, send, useAction } from "./downl
 import { FitList } from "./parts";
 import type { DashboardAttention } from "./attention";
 
-type Action = ReturnType<typeof useAction>;
+export type Action = ReturnType<typeof useAction>;
 
 const row = "flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
 const linkButton =
@@ -56,12 +57,14 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
   );
 }
 
-export function NeedsYou({ attention, action }: { attention: DashboardAttention; action: Action }) {
+/**
+ * The Needs you rows for the problems about downloads, imports and titles, each
+ * with its button. The Dashboard's Now tab and the bell's panel both draw these
+ * rows, so they are one list.
+ */
+export function needsYouRows(attention: DashboardAttention, action: Action): ReactElement[] {
   const { recoveryCases, failedImportJobs, handoffs } = attention.downloads;
-  const total = attention.counts.now;
-  const { leftovers, suggestions } = attention.alsoWorthALook;
-
-  const rows = attention.items
+  return attention.items
     .filter((item) => item.tab === "now")
     .flatMap((item) => {
       if (item.id === "recovery") {
@@ -140,7 +143,36 @@ export function NeedsYou({ attention, action }: { attention: DashboardAttention;
         </li>
       ];
     });
+}
 
+/**
+ * The connection, storage and system problems, one row each with a button that
+ * goes to the place they are cleared (Setup health, or the screen a health
+ * problem names). Their own buttons (Test again, Resume, Snooze) sit in the
+ * Setup health panels; the bell lists them here so every problem is reachable
+ * from every screen.
+ */
+export function setupProblemRows(attention: DashboardAttention): ReactElement[] {
+  return attention.items
+    .filter((item) => item.tab === "setup")
+    .map((item) => (
+      <li key={item.id} className={row}>
+        <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
+        <div className="min-w-0 flex-1 leading-tight">
+          <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
+          <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
+        </div>
+        <Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>
+      </li>
+    ));
+}
+
+/**
+ * The one quiet line for what is worth a look but is not a problem and is never
+ * counted: leftover folders and health suggestions. Nothing when there are none.
+ */
+export function AlsoWorthALook({ attention }: { attention: DashboardAttention }) {
+  const { leftovers, suggestions } = attention.alsoWorthALook;
   const quiet = [
     leftovers > 0 ? (
       <Link key="leftovers" to="/queue" className="text-primary hover:underline">{plural(leftovers, "leftover folder")}</Link>
@@ -149,6 +181,21 @@ export function NeedsYou({ attention, action }: { attention: DashboardAttention;
       <Link key="suggestions" to="/system" className="text-primary hover:underline">{plural(suggestions, "suggestion")}</Link>
     ) : null
   ].filter(Boolean);
+  if (quiet.length === 0) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-x-1.5">
+      <span>Also worth a look:</span>
+      {quiet.map((node, index) => (
+        <span key={index} className="inline-flex items-center gap-1.5">{index > 0 ? <span aria-hidden>·</span> : null}{node}</span>
+      ))}
+    </span>
+  );
+}
+
+export function NeedsYou({ attention, action }: { attention: DashboardAttention; action: Action }) {
+  const total = attention.counts.now;
+  const rows = needsYouRows(attention, action);
+  const { leftovers, suggestions } = attention.alsoWorthALook;
 
   return (
     <Panel
@@ -157,16 +204,7 @@ export function NeedsYou({ attention, action }: { attention: DashboardAttention;
       to="/queue"
       linkLabel="Transfers"
       className="min-h-0"
-      footer={
-        quiet.length > 0 ? (
-          <span className="flex flex-wrap items-center gap-x-1.5">
-            <span>Also worth a look:</span>
-            {quiet.map((node, index) => (
-              <span key={index} className="inline-flex items-center gap-1.5">{index > 0 ? <span aria-hidden>·</span> : null}{node}</span>
-            ))}
-          </span>
-        ) : undefined
-      }
+      footer={leftovers + suggestions > 0 ? <AlsoWorthALook attention={attention} /> : undefined}
     >
       {rows.length === 0 ? (
         <PanelNote>Nothing needs you. Anything that does will be listed here with a button that fixes it.</PanelNote>

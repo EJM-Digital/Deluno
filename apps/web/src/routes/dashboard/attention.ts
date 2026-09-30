@@ -129,14 +129,6 @@ export interface DashboardAttention {
   failingLanes: number;
 }
 
-/** The sidebar card's sentence: the worst problems in the words the Needs you rows use, then how many more there are. */
-export function attentionSummaryLine(items: AttentionItem[]): string {
-  if (items.length === 0) return "";
-  const shown = items.slice(0, 2).map((item) => item.title);
-  const hidden = items.slice(2).reduce((sum, item) => sum + item.count, 0);
-  return hidden > 0 ? `${shown.join(" · ")} · and ${hidden} more` : shown.join(" · ");
-}
-
 /** Which screen a web path belongs to, in the words the sidebar uses. */
 export function screenName(path: string): string {
   if (path.startsWith("/system")) return "System";

@@ -1,8 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem } from "../../lib/api";
 import type { AttentionSnapshot } from "../../lib/use-attention";
+import { computeAttention } from "../../routes/dashboard/attention";
+import { fullSummary } from "../../routes/dashboard/downloads-fixtures";
 
 const fetchPageItems = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api", async (importOriginal) => ({
@@ -16,6 +19,8 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useNavigate: () => navigate
 }));
 
+vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve(new Response("{}"))) }));
+
 const { NotificationsBell } = await import("./notifications-bell");
 
 const attention: AttentionSnapshot = {
@@ -28,9 +33,22 @@ const attention: AttentionSnapshot = {
   tvWanted: 0,
   healthProblems: 0,
   total: 0,
-  summary: "",
+  needs: computeAttention(undefined),
   loading: false
 };
+
+/** A busy install: real problems on both tabs, plus a leftover folder and a suggestion that are not counted. */
+function busy(): AttentionSnapshot {
+  const needs = computeAttention(
+    fullSummary,
+    {
+      failedJobs: [{ id: "j1", jobType: "filesystem.import.execute", status: "failed", lastError: "Disk was full", attempts: 3, maxAttempts: 3, nextAttemptUtc: null }] as never,
+      handoffs: [{ id: "h1", releaseName: "Metropolis (1927)", status: "failed", failureMessage: "The processor timed out.", processorName: "Cleaner", updatedUtc: "2026-09-30T09:55:00Z" }] as never,
+      orphans: [{ name: "a" }, { name: "b" }] as never
+    }
+  );
+  return { ...attention, total: needs.total, needs };
+}
 
 const events: ActivityEventItem[] = [
   {
@@ -70,7 +88,7 @@ const events: ActivityEventItem[] = [
 
 async function openPanel() {
   const user = userEvent.setup();
-  render(<NotificationsBell attention={attention} />);
+  render(<MemoryRouter><NotificationsBell attention={attention} /></MemoryRouter>);
   await user.click(screen.getByRole("button", { name: /notifications/i }));
   await waitFor(() => expect(fetchPageItems).toHaveBeenCalled());
   return user;
@@ -82,10 +100,50 @@ describe("notifications bell (#907)", () => {
     navigate.mockReset();
   });
 
-  it("says how many failed jobs need attention in its own label", () => {
+  it("shows no badge at zero, and the real-problem count when there is one", () => {
     fetchPageItems.mockResolvedValue([]);
-    render(<NotificationsBell attention={attention} />);
-    expect(screen.getByRole("button", { name: "Notifications — 2 failed jobs" })).toBeTruthy();
+    const { unmount } = render(<MemoryRouter><NotificationsBell attention={attention} /></MemoryRouter>);
+    const quiet = screen.getByRole("button", { name: "Notifications" });
+    expect(quiet.textContent).toBe("");
+    unmount();
+
+    const snapshot = busy();
+    expect(snapshot.total).toBeGreaterThan(0);
+    render(<MemoryRouter><NotificationsBell attention={snapshot} /></MemoryRouter>);
+    const bell = screen.getByRole("button", { name: `Notifications — ${snapshot.total} things need a look` });
+    expect(bell.textContent).toBe(String(snapshot.total));
+    // The number is the two Dashboard badges added together; leftovers and suggestions are not in it.
+    expect(snapshot.total).toBe(snapshot.needs.counts.now + snapshot.needs.counts.setup);
+    expect(snapshot.needs.alsoWorthALook.leftovers).toBe(2);
+  });
+
+  it("lists Needs you first, with the Dashboard's rows and buttons, then the recent events", async () => {
+    fetchPageItems.mockResolvedValue(events);
+    const user = userEvent.setup();
+    render(<MemoryRouter><NotificationsBell attention={busy()} /></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: /notifications/i }));
+    await waitFor(() => expect(fetchPageItems).toHaveBeenCalled());
+
+    const dialog = await screen.findByRole("dialog");
+    const needs = within(dialog).getByRole("region", { name: "Needs you" });
+    expect(within(needs).getByRole("button", { name: "Retry failed import 1" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
+    // A setup problem is reachable from here too, by a button that goes to where it is cleared.
+    expect(within(needs).getAllByRole("link", { name: /Setup health/ })[0]).toHaveAttribute("href", "/?tab=setup");
+    // The quiet line is there and is a link, not a count.
+    expect(within(needs).getByRole("link", { name: "2 leftover folders" })).toHaveAttribute("href", "/queue");
+
+    // Needs you comes before the recent events.
+    const recent = within(dialog).getByText("Recent");
+    expect(needs.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(await within(dialog).findByRole("button", { name: /Import failed for The Newest Film/ })).toBeInTheDocument();
+  });
+
+  it("says nothing needs you when nothing does", async () => {
+    fetchPageItems.mockResolvedValue([]);
+    await openPanel();
+    expect(within(screen.getByRole("region", { name: "Needs you" })).getByText("Nothing needs you right now.")).toBeInTheDocument();
   });
 
   it("opens on click and lists the most recent events newest first", async () => {

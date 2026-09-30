@@ -5,7 +5,7 @@ import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
 import type { DashboardSummary } from "./api";
-import { attentionSources, attentionSummaryLine, computeAttention, type AttentionLists } from "../routes/dashboard/attention";
+import { attentionSources, computeAttention, type AttentionLists, type DashboardAttention } from "../routes/dashboard/attention";
 import { SUMMARY_KEY, summaryQuery, setupNeedsFromCache, setupSources } from "../routes/dashboard/sources";
 import { RealtimeGroups, useSignalREvent } from "./use-signalr";
 
@@ -28,15 +28,16 @@ export interface AttentionSnapshot {
   /** Health checks currently reporting a problem that is not snoozed (#909). */
   healthProblems: number;
   /**
-   * Everything that needs a person, in one number. It is the Dashboard's own
-   * count (`computeAttention`, over the same stored sources), so the sidebar
-   * and the Dashboard's Needs you never disagree (#1082).
+   * Everything that needs a person, in one number: the two Dashboard badges
+   * added together (`computeAttention`, over the same stored sources), so the
+   * bell and the Dashboard never disagree (#1087).
    */
   total: number;
-  /** The same rows in a short sentence for the sidebar card. */
-  summary: string;
-  /** The Dashboard tab that holds the first of those problems. */
-  to?: string;
+  /**
+   * The rows behind the number: the same ones the Dashboard's Needs you and Setup
+   * health list, for the bell's panel to draw (#1087).
+   */
+  needs: DashboardAttention;
   loading: boolean;
 }
 
@@ -50,14 +51,13 @@ const empty: AttentionSnapshot = {
   tvWanted: 0,
   healthProblems: 0,
   total: 0,
-  summary: "",
-  to: "/",
+  needs: computeAttention(undefined),
   loading: true
 };
 
 /**
- * Everything that genuinely needs a person, in one number. The sidebar pill
- * used to read only failed jobs, so it said "All good" beside a dead-lettered
+ * Everything that genuinely needs a person, in one number: the bell's badge.
+ * It used to read only failed jobs, so it said nothing beside a dead-lettered
  * import and an unhealthy search source (#250), and then beside twenty
  * downloads on Transfers asking for Try again or Dismiss (#556).
  */
@@ -113,8 +113,7 @@ function snapshotFromCache(): AttentionSnapshot | null {
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
     healthProblems: health?.unsnoozedProblemCount ?? 0,
     total: attention.total,
-    summary: attentionSummaryLine(attention.items),
-    to: attention.counts.now > 0 || attention.counts.setup === 0 ? "/" : "/?tab=setup",
+    needs: attention,
     loading: false
   };
 }
