@@ -105,6 +105,37 @@ backend — makes the setup wizard show a pre-filled connection:
   draft "Test" call automatically, so the drawer opens already showing a
   tested connection.
 
+## Connecting what the installer installed (#1061, #968)
+
+The installer installs the ticked apps with only what each needs to start
+safely (this computer only, qBittorrent's required Web UI login). Deluno
+connects **nothing** by itself: `InstalledComponentWiringService` only forgets
+stored logins for apps that are gone, deletes any login an earlier version
+stored for a tool (including Weir's generated administrator login, in the
+`companion_tool_logins` table), and gives an older Weir connection its health
+address. Connections made by an earlier version stay as they are.
+
+The person connects the apps from the setup guide's "Connect the apps you
+installed" step or from Connections:
+
+- `POST /api/system/bundled-components/{kind}/connect` connects one app;
+  `POST /api/system/bundled-components/connect-all` connects every installed,
+  not yet connected download client (Weir is skipped and reports
+  `needsAccount`). `GET /api/system/bundled-components` reports, per app,
+  `installed`, `connected`, and for Weir `needsAccount` / `accountExists`.
+- A download client is connected server-side with the installer's stored
+  qBittorrent login or the app's shipped login, and a connection whose test
+  failed is never saved (`needsSignIn` with host and port opens the form).
+- Weir needs the person's own account (`username` and `password` in the
+  connect body). If Weir has no account yet Deluno creates it with those
+  values through Weir's bootstrap, otherwise it signs in with them; then it
+  makes Deluno's API key (read, imports), registers Deluno in Weir and adds
+  Weir as the processor (`WeirCompanion.ConnectAsync`). The password is used
+  in memory for that call only: never stored, logged, written to Activity or
+  put in an error message.
+- No API returns an app's password. The companion-tools install
+  (`POST /api/companion-tools/install`) only installs.
+
 This is deliberately decoupled from the install step: detection works exactly
 the same whether qBittorrent was ticked in the picker two minutes ago or was
 already running before Deluno was ever installed. Both are "detected on this
@@ -154,7 +185,7 @@ Weir. Live proof, on a clean Windows VM or machine:
 
 Read from the real packages and source, not guessed:
 
-- **qBittorrent 5.2.1** will not start its Web UI without a user name and password ("Credentials are not set"). This is the only thing the installer adds to qBittorrent: the seed carries `WebUIUsername` and `WebUIPassword_PBKDF2` for a generated password (PBKDF2-HMAC-SHA512, 100000 iterations, 16-byte salt, 64-byte key, qBittorrent's own `@ByteArray(<salt>:<key>)` format). The plain password is kept protected in `<data root>\secrets\component-credentials.json` (DPAPI, machine scope) for the tray and a service-run Deluno, and only when the config was actually written, never for one that already existed. Deluno's API never returns it, to a signed-in session or to an API key: "Use qBittorrent" (and the automatic wiring after install) connects the app on the server. The stored copy stays for as long as the app is installed, even after its connection is deleted, so "Use qBittorrent" can always connect it again (nothing serves the copy to a caller, so keeping it is safe); "Use" for an installed NZBGet, Deluge or Transmission goes through the same connect route with the login each app ships with. The copy is removed only when the app is uninstalled (neither installed nor answering on its port) or for a kind Deluno does not connect (`InstalledComponentWirer.SweepStoredSignInsAsync`). A connection is matched by host and port, so the person's own qBittorrent on 8080 never stands in for the installer's on 8081. Every other qBittorrent setting stays at the app's own default.
+- **qBittorrent 5.2.1** will not start its Web UI without a user name and password ("Credentials are not set"). This is the only thing the installer adds to qBittorrent: the seed carries `WebUIUsername` and `WebUIPassword_PBKDF2` for a generated password (PBKDF2-HMAC-SHA512, 100000 iterations, 16-byte salt, 64-byte key, qBittorrent's own `@ByteArray(<salt>:<key>)` format). The plain password is kept protected in `<data root>\secrets\component-credentials.json` (DPAPI, machine scope) for the tray and a service-run Deluno, and only when the config was actually written, never for one that already existed. Deluno's API never returns it, to a signed-in session or to an API key: the person's Connect click connects the app on the server; Deluno connects nothing by itself after an install. The stored copy stays for as long as the app is installed, even after its connection is deleted, so "Use qBittorrent" can always connect it again (nothing serves the copy to a caller, so keeping it is safe); "Use" for an installed NZBGet, Deluge or Transmission goes through the same connect route with the login each app ships with. The copy is removed only when the app is uninstalled (neither installed nor answering on its port) or for a kind Deluno does not connect (`InstalledComponentWirer.SweepStoredSignInsAsync`). A connection is matched by host and port, so the person's own qBittorrent on 8080 never stands in for the installer's on 8081. Every other qBittorrent setting stays at the app's own default.
 - **NZBGet (Windows 21.1)**: `-D` is not a daemon switch on Windows; it hands the process to the service dispatcher and crashes when run by hand. Deluno starts `nzbget.exe -s -o ControlIP=127.0.0.1` with no console window. The installer builds its config from NZBGet's own template with only two changes, `ControlIP=127.0.0.1` (local only) and `MainDir` moved out of Program Files. It adds no user or password: NZBGet keeps the login it ships with, and Deluno connects with NZBGet's own default.
 - **Transmission 4.1.1 MSI** has six features; only `QtClient` is in a default install. `transmission-daemon.exe` is in `Daemon`, so the install passes `ADDLOCAL=CommonLibs,Daemon,WebUi`. The package also registers an auto-start LocalService service bound to every address; the same elevated step (one prompt) stops and disables it. Deluno runs `transmission-daemon.exe -f -g %LocalAppData%\Deluno\components\transmission -r 127.0.0.1` with no window, as the signed-in person. The installer adds nothing to its settings; the app keeps its own defaults.
 - **Decided by James, 30 Sep 2026: each app keeps its own security defaults.** The installer installs only the apps that were ticked and adds only what Deluno needs to connect to them. Only qBittorrent gets a login (the Web UI login it refuses to start without). Transmission, Deluge, SABnzbd and NZBGet get no login and no password: each keeps its own defaults, and Deluno connects with them (NZBGet's shipped user and password, Deluge's shipped Web UI password, Transmission's open localhost RPC, SABnzbd's own API key read from its settings). Deluge's seed carries only its local address and port; NZBGet's carries only the local address and the download folder. It never switches a protection off and never gives an app a password it does not need. Deluno's API never hands out stored credentials, to an API key or anything else. Older installs get no Health warning and no "Turn them on" button: setting an app up is the person's responsibility.
