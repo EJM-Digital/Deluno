@@ -295,6 +295,100 @@ public sealed class ConnectionNamesTests
         Assert.Equal(0, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
     }
 
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(respond(request));
+        }
+    }
+
+    private static IndexerItem Aggregated(string baseUrl, string apiKey = "abc")
+        => new(
+            "id-1", "x", "torznab", "public", baseUrl, apiKey, 10, "2000", "", "both", true, "unknown", null, null, null, null, 0, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    [Fact]
+    public async Task Prowlarr_is_asked_for_the_indexers_name_with_its_own_key_and_a_url_base_is_kept()
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"id\":3,\"name\":\"NZBgeek\",\"protocol\":\"usenet\"}")
+        });
+        using var client = new HttpClient(handler);
+
+        var name = await AggregatorIndexerNames.DiscoverAsync(Aggregated("http://media.lan:9696/prowlarr/3/api", "prow-key"), client, CancellationToken.None);
+
+        Assert.Equal("NZBgeek", name);
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal("http://media.lan:9696/prowlarr/api/v1/indexer/3", request.RequestUri!.ToString());
+        Assert.Equal("prow-key", request.Headers.GetValues("X-Api-Key").Single());
+
+        var plain = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"name\":\"YTS\"}") });
+        using var plainClient = new HttpClient(plain);
+        await AggregatorIndexerNames.DiscoverAsync(Aggregated("http://media.lan:9696/9/api"), plainClient, CancellationToken.None);
+        Assert.Equal("http://media.lan:9696/api/v1/indexer/9", Assert.Single(plain.Requests).RequestUri!.ToString());
+    }
+
+    [Theory]
+    [InlineData("Jackett", null)]
+    [InlineData("1337x (Jackett)", "1337x (Jackett)")]
+    public async Task Jackett_gives_its_trackers_title_from_the_caps_answer_but_never_just_Jackett(string title, string? expected)
+    {
+        var handler = new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent($"<caps><server title=\"{title}\" /><searching /></caps>")
+        });
+        using var client = new HttpClient(handler);
+
+        var name = await AggregatorIndexerNames.DiscoverAsync(
+            Aggregated("http://localhost:9117/api/v2.0/indexers/1337x/results/torznab/"), client, CancellationToken.None);
+
+        Assert.Equal(expected, name);
+        Assert.Contains("t=caps", Assert.Single(handler.Requests).RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task A_failing_or_unreachable_aggregator_leaves_no_name_and_never_throws()
+    {
+        using var refused = new HttpClient(new StubHandler(_ => throw new HttpRequestException("refused")));
+        using var broken = new HttpClient(new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)));
+        using var notJson = new HttpClient(new StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("<html/>") }));
+        var item = Aggregated("http://localhost:9696/3/api");
+
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(item, refused, CancellationToken.None));
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(item, broken, CancellationToken.None));
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(item, notJson, CancellationToken.None));
+        Assert.Null(await AggregatorIndexerNames.DiscoverAsync(Aggregated("https://api.nzbgeek.info"), refused, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_name_the_aggregator_gave_is_kept_by_the_start_up_pass_and_dropped_when_the_address_changes()
+    {
+        var (storage, clock) = await StartAsync();
+        using var _ = storage;
+        var repository = new SqliteConnectionsRepository(storage.Factory, clock, TestSecretProtection.Create(storage));
+        var one = await repository.CreateIndexerAsync(Indexer(null, "http://localhost:9696/3/api"), CancellationToken.None);
+        Assert.Equal("Prowlarr indexer 3", one.Name);
+
+        var named = await repository.SetDiscoveredIndexerNameAsync(one.Id, "NZBgeek", CancellationToken.None);
+        Assert.Equal("NZBgeek", named!.Name);
+
+        // The start-up pass makes no network call and keeps what was learned.
+        Assert.Equal(0, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
+        Assert.Equal("NZBgeek", (await repository.ListIndexersAsync(CancellationToken.None)).Single().Name);
+
+        // Saving again at the same address keeps it; pointing it at another indexer goes back to the address's name.
+        var same = await repository.UpdateIndexerAsync(one.Id, new UpdateIndexerRequest(null, null, null, null, null, null, null, null, null, null), CancellationToken.None);
+        Assert.Equal("NZBgeek", same!.Name);
+        var moved = await repository.UpdateIndexerAsync(one.Id, new UpdateIndexerRequest(null, null, null, "http://localhost:9696/4/api", null, null, null, null, null, null), CancellationToken.None);
+        Assert.Equal("Prowlarr indexer 4", moved!.Name);
+        Assert.Equal(0, await repository.ApplyAutomaticIndexerNamesAsync(CancellationToken.None));
+    }
+
     private sealed class FakeDefinitionNames : ITrackerDefinitionNames
     {
         public string? DisplayName(string definitionId) => definitionId == "1337x" ? "1337x" : null;

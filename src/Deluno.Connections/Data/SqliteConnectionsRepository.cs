@@ -22,9 +22,46 @@ public sealed class SqliteConnectionsRepository(
     ITrackerDefinitionNames? trackerDefinitionNames = null)
     : IConnectionsRepository
 {
-    private string IndexerBaseName(string? definitionId, string? baseUrl)
+    private string IndexerBaseName(string? definitionId, string? baseUrl, string? discoveredName = null)
         => (string.IsNullOrWhiteSpace(definitionId) ? null : trackerDefinitionNames?.DisplayName(definitionId))
+           ?? (string.IsNullOrWhiteSpace(discoveredName) ? null : discoveredName)
            ?? ConnectionNames.SiteName(baseUrl);
+
+    /// <summary>The name Prowlarr or Jackett gave this indexer, when it was given for the address the indexer has now.</summary>
+    private static async Task<string?> DiscoveredNameAsync(System.Data.Common.DbConnection connection, string id, string? baseUrl, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT discovered_name FROM indexer_sources WHERE id = @id AND discovered_for_url = @url COLLATE NOCASE;";
+        AddParameter(command, "@id", id);
+        AddParameter(command, "@url", baseUrl ?? string.Empty);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? null : Convert.ToString(value);
+    }
+
+    public async Task<IndexerItem?> SetDiscoveredIndexerNameAsync(string id, string discoveredName, CancellationToken cancellationToken)
+    {
+        var existing = (await ListIndexersAsync(cancellationToken))
+            .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is null || string.IsNullOrWhiteSpace(discoveredName))
+        {
+            return existing;
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        var name = ConnectionNames.Unique(
+            IndexerBaseName(existing.DefinitionId, existing.BaseUrl, discoveredName.Trim()),
+            ConnectionNames.PortOf(existing.BaseUrl),
+            id,
+            await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", id, cancellationToken));
+        using var update = connection.CreateCommand();
+        update.CommandText = "UPDATE indexer_sources SET name = @name, discovered_name = @discovered, discovered_for_url = @url WHERE id = @id;";
+        AddParameter(update, "@name", name);
+        AddParameter(update, "@discovered", discoveredName.Trim());
+        AddParameter(update, "@url", existing.BaseUrl ?? string.Empty);
+        AddParameter(update, "@id", id);
+        await update.ExecuteNonQueryAsync(cancellationToken);
+        return existing with { Name = name };
+    }
 
     private static string DownloadClientBaseName(string? protocol, string? host, string? endpointUrl)
         => ConnectionNames.AppOnHost(ConnectionNames.DownloadClientApp(protocol), string.IsNullOrWhiteSpace(host) ? endpointUrl : host);
@@ -69,10 +106,10 @@ public sealed class SqliteConnectionsRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
-        var rows = new List<(string Id, string Name, string? BaseUrl, string? DefinitionId)>();
+        var rows = new List<(string Id, string Name, string? BaseUrl, string? DefinitionId, string? Discovered)>();
         using (var read = connection.CreateCommand())
         {
-            read.CommandText = "SELECT id, name, base_url, definition_id FROM indexer_sources ORDER BY created_utc, id;";
+            read.CommandText = "SELECT id, name, base_url, definition_id, CASE WHEN discovered_for_url = base_url COLLATE NOCASE THEN discovered_name END FROM indexer_sources ORDER BY created_utc, id;";
             using var reader = await read.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -80,7 +117,8 @@ public sealed class SqliteConnectionsRepository(
                     reader.GetString(0),
                     reader.GetString(1),
                     reader.IsDBNull(2) ? null : reader.GetString(2),
-                    reader.IsDBNull(3) ? null : reader.GetString(3)));
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
             }
         }
 
@@ -88,9 +126,9 @@ public sealed class SqliteConnectionsRepository(
         // name keeps it, a later one takes its port and then a short suffix.
         var taken = new List<string>();
         var renamed = 0;
-        foreach (var (id, name, baseUrl, definitionId) in rows)
+        foreach (var (id, name, baseUrl, definitionId, discovered) in rows)
         {
-            var wanted = ConnectionNames.Unique(IndexerBaseName(definitionId, baseUrl), ConnectionNames.PortOf(baseUrl), id, taken);
+            var wanted = ConnectionNames.Unique(IndexerBaseName(definitionId, baseUrl, discovered), ConnectionNames.PortOf(baseUrl), id, taken);
             taken.Add(wanted);
             if (string.Equals(wanted, name, StringComparison.Ordinal))
             {
@@ -500,7 +538,7 @@ public sealed class SqliteConnectionsRepository(
         var newPrivacy  = request.Privacy is not null ? IndexerPrivacy.Normalize(request.Privacy) : existing.Privacy;
         var newBaseUrl  = IndexerApiEndpoint.NormalizeBaseUrl(NormalizePath(request.BaseUrl)) ?? existing.BaseUrl;
         var newName     = ConnectionNames.Unique(
-            IndexerBaseName(existing.DefinitionId, newBaseUrl),
+            IndexerBaseName(existing.DefinitionId, newBaseUrl, await DiscoveredNameAsync(connection, id, newBaseUrl, cancellationToken)),
             ConnectionNames.PortOf(newBaseUrl),
             id,
             await ConnectionNameRows.OtherNamesAsync(connection, "indexer_sources", id, cancellationToken));

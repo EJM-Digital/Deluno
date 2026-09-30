@@ -138,7 +138,8 @@ public static class PlatformDatabaseMigrations
         new V0130RetentionActions(),
         new V0131RemoveInstanceNameSetting(),
         new V0132ProcessorLinksById(),
-        new V0133ConnectionNamesFollowTheirAddress()
+        new V0133ConnectionNamesFollowTheirAddress(),
+        new V0134IndexerDiscoveredName()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -74,6 +74,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IHealthCheckRepository healthChecks,
+            [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -89,6 +90,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             }
 
             var item = await repository.CreateIndexerAsync(request, cancellationToken);
+            item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
             await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
             // #909: a newly added indexer's reachability is worth showing on
             // Health right away rather than waiting up to fifteen minutes.
@@ -230,6 +232,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionsRepository repository,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
             [FromServices] IHealthCheckRepository healthChecks,
+            [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -247,6 +250,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             var item = await repository.UpdateIndexerAsync(id, request, cancellationToken);
             if (item is not null)
             {
+                item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
                 await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
                 await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Indexer, cancellationToken);
             }
@@ -285,6 +289,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             using var proxiedClient = await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken);
             var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
             await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
+            await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken, proxiedClient);
             var result = await repository.UpdateIndexerHealthAsync(
                 id,
                 health.HealthStatus,
@@ -1337,6 +1342,37 @@ public static class ConnectionsEndpointRouteBuilderExtensions
         // query does. t=caps is still called separately (#755), just never
         // in place of this credential-presenting test.
         return $"{uri}{separator}t=search&limit=1{apiKey}";
+    }
+
+    /// <summary>
+    /// #1076: an indexer behind Prowlarr or Jackett takes its tracker's name from the aggregator
+    /// when it is saved or tested. Any failure leaves the address-derived name and never fails the
+    /// save or the test.
+    /// </summary>
+    private static async Task<IndexerItem> NameFromItsAggregatorAsync(
+        IndexerItem item,
+        IConnectionsRepository repository,
+        IIndexerProxyHttpClientFactory? proxyHttpClientFactory,
+        CancellationToken cancellationToken,
+        HttpClient? existingClient = null)
+    {
+        if (ConnectionNames.AggregatorOf(item.BaseUrl) is null)
+        {
+            return item;
+        }
+
+        try
+        {
+            using var ownClient = existingClient is null
+                ? await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken)
+                : null;
+            var discovered = await AggregatorIndexerNames.DiscoverAsync(item, existingClient ?? ownClient!, cancellationToken);
+            return discovered is null ? item : await repository.SetDiscoveredIndexerNameAsync(item.Id, discovered, cancellationToken) ?? item;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return item;
+        }
     }
 
     /// <summary>What a generic Newznab/Torznab indexer's own t=caps response says it supports (#755).</summary>
