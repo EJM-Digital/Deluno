@@ -71,7 +71,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task The_installers_plain_sign_in_is_forgotten_once_the_connection_tests_healthy()
+    public async Task The_installers_sign_in_is_kept_while_the_app_is_installed_after_a_healthy_connection()
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "Zx-secret");
@@ -79,11 +79,11 @@ public sealed class InstalledComponentWiringTests : IDisposable
         await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
 
         Assert.Equal("Zx-secret", Assert.Single(_created).Password);
-        Assert.False(_saved.ContainsKey("qbittorrent"));
+        Assert.True(_saved.ContainsKey("qbittorrent"));
     }
 
     [Fact]
-    public async Task The_installers_plain_sign_in_is_forgotten_as_soon_as_the_connection_exists_even_when_its_test_fails()
+    public async Task The_installers_sign_in_is_kept_even_when_the_first_test_fails()
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
@@ -92,15 +92,14 @@ public sealed class InstalledComponentWiringTests : IDisposable
 
         await NewWirer().RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
 
-        // The connection holds the sign-in in Deluno's own secret store, so the installer's copy has no use left.
-        Assert.False(_saved.ContainsKey("qbittorrent"));
+        Assert.True(_saved.ContainsKey("qbittorrent"));
         var request = Assert.Single(_created);
         Assert.Equal("deluno", request.Username);
         Assert.Equal("qb-secret", request.Password);
     }
 
     [Fact]
-    public async Task Connecting_now_connects_the_app_and_forgets_the_sign_in_without_returning_it()
+    public async Task Connecting_now_connects_the_app_keeps_the_sign_in_and_never_returns_it()
     {
         _record.MarkInstalled("qbittorrent", "localhost", 8081);
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
@@ -111,7 +110,38 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.True(result.Healthy);
         Assert.DoesNotContain("qb-secret", result.Message + result.Name, StringComparison.Ordinal);
         Assert.Equal("qb-secret", Assert.Single(_created).Password);
-        Assert.False(_saved.ContainsKey("qbittorrent"));
+        Assert.True(_saved.ContainsKey("qbittorrent"));
+    }
+
+    [Fact]
+    public async Task After_the_connection_is_deleted_Use_connects_again_with_the_kept_sign_in()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
+        var wirer = NewWirer();
+
+        await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+        await wirer.DownloadClientDeletedAsync("qbittorrent", "localhost", CancellationToken.None);
+        await wirer.SweepStoredSignInsAsync(CancellationToken.None);
+        var again = await wirer.ConnectNowAsync("qbittorrent", CancellationToken.None);
+
+        Assert.True(again!.Healthy);
+        Assert.Equal(2, _created.Count);
+        Assert.All(_created, request => Assert.Equal("qb-secret", request.Password));
+    }
+
+    [Fact]
+    public async Task A_persons_own_qBittorrent_on_another_port_does_not_stand_in_for_the_installers()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
+        var connections = FakeConnections();
+        Mock.Get(connections).Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ExistingClient("qbittorrent", "localhost")]);
+
+        await NewWirer(connections: connections).RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
+
+        Assert.Equal(8081, Assert.Single(_created).Port);
+        Assert.True(_saved.ContainsKey("qbittorrent"));
     }
 
     [Fact]
@@ -122,55 +152,55 @@ public sealed class InstalledComponentWiringTests : IDisposable
     }
 
     [Fact]
-    public async Task Deleting_a_connection_to_an_app_on_this_computer_forgets_its_stored_sign_in()
+    public async Task Deleting_a_connection_keeps_the_stored_sign_in()
     {
         _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "qb-secret");
-        _saved["nzbget"] = new BundledComponentCredentials("x", "y");
 
         await NewWirer().DownloadClientDeletedAsync("qbittorrent", "localhost", CancellationToken.None);
-        await NewWirer().DownloadClientDeletedAsync("nzbget", "media-box", CancellationToken.None); // another computer: not ours
 
-        Assert.False(_saved.ContainsKey("qbittorrent"));
-        Assert.True(_saved.ContainsKey("nzbget"));
-    }
-
-    [Fact]
-    public async Task On_start_a_stored_sign_in_is_kept_only_for_an_installed_app_with_no_connection_yet()
-    {
-        // Kept: installed by the picker, and no connection to it exists yet.
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
-        // Dropped: its connection already exists (made by hand, or kept after a failed test).
-        _record.MarkInstalled("nzbget", "localhost", 6789);
-        _saved["nzbget"] = new BundledComponentCredentials("a", "b");
-        // Dropped: never installed by the picker, so nothing will ever connect it.
-        _saved["deluge"] = new BundledComponentCredentials("", "c");
-        // Dropped: not an app Deluno connects.
-        _saved["mystery"] = new BundledComponentCredentials("d", "e");
-        var connections = new Mock<IConnectionsRepository>();
-        connections.Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ExistingClient("nzbget", "localhost")]);
-
-        var removed = await NewWirer(connections: connections.Object).SweepStoredSignInsAsync(CancellationToken.None);
-
-        Assert.Equal(3, removed);
-        Assert.Equal(["qbittorrent"], _saved.Keys.ToArray());
-        Assert.Equal("keep-me", _saved["qbittorrent"].Password);
-    }
-
-    [Fact]
-    public async Task A_connection_to_a_client_on_another_computer_does_not_count_as_this_apps_connection()
-    {
-        _record.MarkInstalled("qbittorrent", "localhost", 8081);
-        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
-        var connections = new Mock<IConnectionsRepository>();
-        connections.Setup(repo => repo.ListDownloadClientsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([ExistingClient("qbittorrent", "media-box")]);
-
-        Assert.Equal(0, await NewWirer(connections: connections.Object).SweepStoredSignInsAsync(CancellationToken.None));
         Assert.True(_saved.ContainsKey("qbittorrent"));
     }
 
+    [Fact]
+    public async Task On_start_a_stored_sign_in_stays_for_an_installed_app_and_goes_when_the_app_is_gone()
+    {
+        // Kept: recorded as installed, connection or not.
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
+        // Kept: no record (it failed to write) but the app is found installed.
+        _saved["sabnzbd"] = new BundledComponentCredentials("", "key");
+        // Dropped: the record is stale, the app is uninstalled and not answering.
+        _record.MarkInstalled("nzbget", "localhost", 6789);
+        _saved["nzbget"] = new BundledComponentCredentials("a", "b");
+        // Dropped: not an app Deluno connects.
+        _saved["mystery"] = new BundledComponentCredentials("d", "e");
+        var detection = new Mock<IBundledComponentDetection>();
+        detection.Setup(item => item.DetectAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+        [
+            new BundledComponentStatus("qbittorrent", "qBittorrent", "download-client", true, true, "localhost", 8081),
+            new BundledComponentStatus("sabnzbd", "SABnzbd", "download-client", true, false, "localhost", 8080),
+            new BundledComponentStatus("nzbget", "NZBGet", "download-client", false, false, "localhost", 6789)
+        ]);
+
+        var removed = await NewWirer(detection: detection.Object).SweepStoredSignInsAsync(CancellationToken.None);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(["qbittorrent", "sabnzbd"], _saved.Keys.OrderBy(key => key).ToArray());
+    }
+
+    [Fact]
+    public async Task With_no_way_to_look_the_install_record_alone_decides_what_a_stored_sign_in_is_kept_for()
+    {
+        _record.MarkInstalled("qbittorrent", "localhost", 8081);
+        _saved["qbittorrent"] = new BundledComponentCredentials("deluno", "keep-me");
+        _saved["deluge"] = new BundledComponentCredentials("", "c");
+
+        Assert.Equal(1, await NewWirer().SweepStoredSignInsAsync(CancellationToken.None));
+        Assert.Equal(["qbittorrent"], _saved.Keys.ToArray());
+    }
+
     private static DownloadClientItem ExistingClient(string protocol, string host)
-        => new("existing-" + protocol, protocol, protocol, host, 1, null, null, null,
+        => new("existing-" + protocol, protocol, protocol, host, 8080, null, null, null,
             false, null, "m", "t", null, 10, true, "healthy", null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
@@ -319,7 +349,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
         Assert.Null(again.Read().Single().WiredUtc);
     }
 
-    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, ICompanionTool? weir = null, IConnectionsRepository? connections = null)
+    private InstalledComponentWirer NewWirer(ICompanionSystem? system = null, ICompanionTool? weir = null, IConnectionsRepository? connections = null, IBundledComponentDetection? detection = null)
     {
         connections ??= FakeConnections();
         var activity = new Mock<IActivityFeedRepository>();
@@ -339,7 +369,7 @@ public sealed class InstalledComponentWiringTests : IDisposable
             tools,
             system ?? Mock.Of<ICompanionSystem>(),
             activity.Object,
-            connections: connections);
+            detection: detection);
     }
 
     private IConnectionsRepository FakeConnections()

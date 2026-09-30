@@ -46,6 +46,20 @@ describe("what the installer found on this machine (#640)", () => {
   });
 });
 
+describe("which apps connect themselves (#1061)", () => {
+  it("connects qBittorrent when a sign-in is held and every installed app that ships its own login", async () => {
+    const { delunoConnectsItself } = await import("./bundled-components-detected");
+    const base = { displayName: "x", category: "download-client", reachable: true, defaultHost: "localhost", defaultPort: 1 };
+    expect(delunoConnectsItself({ ...base, kind: "qbittorrent", installed: true, hasCredentials: true })).toBe(true);
+    for (const kind of ["nzbget", "deluge", "transmission"]) {
+      expect(delunoConnectsItself({ ...base, kind, installed: true })).toBe(true);
+    }
+    // Not installed by anyone we know of, and nothing held: the form opens.
+    expect(delunoConnectsItself({ ...base, kind: "nzbget", installed: false })).toBe(false);
+    expect(delunoConnectsItself({ ...base, kind: "qbittorrent", installed: true })).toBe(false);
+  });
+});
+
 describe("connecting an installed app (#1061)", () => {
   afterEach(() => fetchJson.mockReset());
 
