@@ -308,6 +308,54 @@ public sealed class MetadataBackfillPersistenceTests
         await command.ExecuteNonQueryAsync();
     }
 
+    [Fact]
+    public async Task A_title_whose_poster_was_never_saved_locally_is_due_again_before_the_window_ends()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(Now);
+        await new MoviesSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<MoviesSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqliteMovieCatalogRepository(storage.Factory, timeProvider);
+
+        var local = await repository.AddAsync(new CreateMovieRequest("Local", 2024, null), CancellationToken.None);
+        var remote = await repository.AddAsync(new CreateMovieRequest("Remote", 2024, null), CancellationToken.None);
+        await SetMetadataStateAsync(storage, local.Id, providerId: "tmdb-1", updatedUtc: Now.AddDays(-1));
+        await SetMetadataStateAsync(storage, remote.Id, providerId: "tmdb-2", updatedUtc: Now.AddDays(-1));
+        await SetArtworkAsync(storage, local.Id, "/api/metadata/artwork/" + new string('a', 64), "/api/metadata/artwork/" + new string('b', 64));
+        await SetArtworkAsync(storage, remote.Id, "https://gateway.example/poster.jpg", null);
+
+        var candidates = await repository.ListStaleMetadataCandidatesAsync(
+            Now.AddDays(-14), Now.AddHours(-24), 50, CancellationToken.None);
+
+        Assert.DoesNotContain(candidates, candidate => candidate.Id == local.Id);
+        Assert.Contains(candidates, candidate => candidate.Id == remote.Id);
+        Assert.Equal(1, await repository.CountStaleMetadataCandidatesAsync(
+            Now.AddDays(-14), Now.AddHours(-24), CancellationToken.None));
+    }
+
+    private static async Task SetArtworkAsync(TestStorage storage, string movieId, string? poster, string? backdrop)
+    {
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE movie_entries SET poster_url = @poster, backdrop_url = @backdrop WHERE id = @id;";
+        foreach (var (name, value) in new (string, object)[]
+                 {
+                     ("@poster", (object?)poster ?? DBNull.Value),
+                     ("@backdrop", (object?)backdrop ?? DBNull.Value),
+                     ("@id", movieId)
+                 })
+        {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name;
+            parameter.Value = value;
+            command.Parameters.Add(parameter);
+        }
+
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static async Task SetMetadataStateAsync(TestStorage storage, string movieId, string providerId, DateTimeOffset updatedUtc)
     {
         await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Movies, CancellationToken.None);

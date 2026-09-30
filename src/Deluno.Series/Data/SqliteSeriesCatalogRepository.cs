@@ -1001,6 +1001,9 @@ public sealed class SqliteSeriesCatalogRepository(
     /// disagree about it.
     /// </summary>
     /// <remarks>
+    /// A poster or backdrop that is still a remote address was never saved locally
+    /// (#1089), so the entry is due again rather than waiting out the window.
+    ///
     /// The last clause is what stops a forced refresh becoming a hot loop. An
     /// entry the provider cannot match never gets a
     /// <c>metadata_updated_utc</c>, so without it a refresh request would
@@ -1019,6 +1022,8 @@ public sealed class SqliteSeriesCatalogRepository(
          OR TRIM(metadata_provider_id) = ''
          OR metadata_updated_utc IS NULL
          OR metadata_updated_utc < @staleBefore
+         OR (poster_url IS NOT NULL AND TRIM(poster_url) <> '' AND poster_url NOT LIKE '/api/metadata/artwork/%')
+         OR (backdrop_url IS NOT NULL AND TRIM(backdrop_url) <> '' AND backdrop_url NOT LIKE '/api/metadata/artwork/%')
          OR (
                 metadata_refresh_requested_utc IS NOT NULL
             AND (metadata_updated_utc IS NULL OR metadata_refresh_requested_utc > metadata_updated_utc)
