@@ -275,7 +275,7 @@ public sealed class SeerrAcquisitionService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Seerr connection {ConnectionId} failed turning an approval into an acquisition.", connection.Id);
-            return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "Unexpected error", ex.Message, cancellationToken);
+            return await FailAsync(connection, mediaType, seerrMediaId, requestedBy, "Unexpected error", PlainFailure.Describe(ex, "adding a request"), cancellationToken);
         }
     }
 

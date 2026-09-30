@@ -278,7 +278,7 @@ public sealed class IntakeSyncService(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Intake source {SourceId} fetch failed.", source.Id);
-                var failureSummary = $"Provider fetch failed: {ex.Message}";
+                var failureSummary = $"Provider fetch failed. {PlainFailure.Describe(ex, "fetching the feed")}";
                 await intakeRepository.RecordIntakeSourceSyncResultAsync(source.Id, timeProvider.GetUtcNow(), "error", failureSummary, cancellationToken);
                 await activityFeedRepository.RecordActivityAsync(
                     "intake.sync.failed",

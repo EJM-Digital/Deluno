@@ -578,7 +578,7 @@ public sealed class DelunoHeartbeatWorker(
         catch (Exception ex)
         {
             logger.LogError(ex, "Worker {WorkerId} lane {LaneName} failed processing job {JobId}.", _workerId, lane.Name, job.Id);
-            await jobQueueRepository.FailAsync(job.Id, workerId, ex.Message, CancellationToken.None);
+            await jobQueueRepository.FailAsync(job.Id, workerId, PlainFailure.Describe(ex, JobTypeLabels.ForSentence(job.JobType)), CancellationToken.None, rawDetail: ex.Message);
         }
     }
 

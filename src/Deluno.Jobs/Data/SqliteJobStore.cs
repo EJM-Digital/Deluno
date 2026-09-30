@@ -1188,7 +1188,7 @@ public sealed class SqliteJobStore(
         await update.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken)
+    public async Task FailAsync(string jobId, string workerId, string errorMessage, CancellationToken cancellationToken, string? rawDetail = null)
     {
         var now = timeProvider.GetUtcNow();
 
@@ -1207,7 +1207,8 @@ public sealed class SqliteJobStore(
 
         var attempts = Math.Max(job.Attempts, 1);
         var shouldDeadLetter = attempts >= job.MaxAttempts;
-        var nextAttemptUtc = shouldDeadLetter ? (DateTimeOffset?)null : now.Add(CalculateRetryDelay(attempts));
+        var retryDelay = CalculateRetryDelay(attempts);
+        var nextAttemptUtc = shouldDeadLetter ? (DateTimeOffset?)null : now.Add(retryDelay);
         var nextStatus = shouldDeadLetter ? "dead-letter" : "failed";
         var storedError = shouldDeadLetter
             ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
@@ -1247,7 +1248,7 @@ public sealed class SqliteJobStore(
             category: shouldDeadLetter ? "job.dead-letter" : "job.failed",
             message: shouldDeadLetter
                 ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
-                : $"{errorMessage} Deluno will retry after {nextAttemptUtc:O}.",
+                : $"{errorMessage} {PlainFailure.RetrySentence(retryDelay)}",
             detailsJson: job.PayloadJson,
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
@@ -1261,7 +1262,7 @@ public sealed class SqliteJobStore(
             category: DecisionExplanationActivity.Category,
             message: shouldDeadLetter
                 ? $"{JobTypeLabels.For(job.JobType)} moved to dead-letter after exhausting retries."
-                : $"{JobTypeLabels.For(job.JobType)} will retry after {nextAttemptUtc:O}.",
+                : $"{JobTypeLabels.For(job.JobType)} will try again {PlainFailure.InWords(retryDelay)}.",
             detailsJson: JsonSerializer.Serialize(new DecisionExplanationPayload(
                 Scope: "job.failure",
                 Status: nextStatus,
@@ -1274,12 +1275,12 @@ public sealed class SqliteJobStore(
                     ["jobType"] = job.JobType,
                     ["attempts"] = attempts.ToString(CultureInfo.InvariantCulture),
                     ["maxAttempts"] = job.MaxAttempts.ToString(CultureInfo.InvariantCulture),
-                    ["error"] = errorMessage,
+                    ["error"] = rawDetail ?? errorMessage,
                     ["nextAttemptUtc"] = nextAttemptUtc?.ToString("O")
                 },
                 Outcome: shouldDeadLetter
                     ? "No further automatic retries will run until the user retries failed jobs."
-                    : $"Next automatic retry is scheduled for {nextAttemptUtc:O}.",
+                    : $"Next automatic retry is scheduled {PlainFailure.InWords(retryDelay)}.",
                 Alternatives: [])),
             relatedJobId: job.Id,
             relatedEntityType: job.RelatedEntityType,
@@ -1300,7 +1301,7 @@ public sealed class SqliteJobStore(
             Guid.CreateVersion7().ToString("N"),
             shouldDeadLetter
                 ? $"{errorMessage} {GaveUpSentence(job.MaxAttempts)}"
-                : $"{errorMessage} Deluno will retry after {nextAttemptUtc:O}.",
+                : $"{errorMessage} {PlainFailure.RetrySentence(retryDelay)}",
             shouldDeadLetter ? "job.dead-letter" : "job.failed",
             SeverityForCategory(shouldDeadLetter ? "job.dead-letter" : "job.failed"),
             now.ToString("O"),

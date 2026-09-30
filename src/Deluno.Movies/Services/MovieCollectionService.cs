@@ -290,7 +290,7 @@ public sealed class MovieCollectionService(
                 collection.Id,
                 now.Add(RetryInterval),
                 null,
-                ex.Message,
+                PlainFailure.Describe(ex, "refreshing the collection"),
                 CancellationToken.None);
             return new MovieCollectionSyncResult(
                 collection.Id,
@@ -299,7 +299,7 @@ public sealed class MovieCollectionService(
                 0,
                 0,
                 false,
-                $"Collection refresh failed and will retry later: {ex.Message}");
+                $"Collection refresh failed and will retry later. {PlainFailure.Describe(ex, "refreshing the collection")}");
         }
     }
 

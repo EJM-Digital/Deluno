@@ -22,6 +22,9 @@ public sealed record JobQueueItem(
     DateTimeOffset? LastAttemptUtc,
     DateTimeOffset? NextAttemptUtc)
 {
+    /// <summary>What went wrong. An older row's raw exception text or ISO retry time reads in plain words (#1095).</summary>
+    public string? LastError { get; init; } = LastError is null ? null : Deluno.Contracts.PlainFailure.Rewrite(LastError, LastAttemptUtc ?? CreatedUtc);
+
     /// <summary>The job in plain words (#1086); screens show this, never <see cref="JobType"/>.</summary>
     public string Label => Deluno.Contracts.JobTypeLabels.For(JobType);
 
