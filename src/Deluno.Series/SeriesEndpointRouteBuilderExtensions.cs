@@ -646,6 +646,32 @@ public static class SeriesEndpointRouteBuilderExtensions
             return Results.Ok(posters);
         });
 
+        // The name, year and poster of the shows on the Dashboard's Live board, and the season and episode number of the episodes it names (#1096), in one request. Anything that no longer exists is simply absent.
+        series.MapGet("/titles", async (
+            string? ids,
+            string? episodeIds,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            static string[] Split(string? value) => (value ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).Take(48).ToArray();
+            var episodes = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var showIds = new HashSet<string>(Split(ids), StringComparer.OrdinalIgnoreCase);
+            foreach (var row in await repository.ListEpisodeNumbersAsync(Split(episodeIds), cancellationToken))
+            {
+                episodes[row.EpisodeId] = new { seriesId = row.SeriesId, season = row.SeasonNumber, episode = row.EpisodeNumber };
+                showIds.Add(row.SeriesId);
+            }
+
+            var shows = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in showIds.Take(96))
+            {
+                var item = await repository.GetByIdAsync(id, cancellationToken);
+                if (item is not null) shows[id] = new { title = item.Title, year = item.StartYear, posterUrl = item.PosterUrl };
+            }
+
+            return Results.Ok(new { series = shows, episodes });
+        });
+
         series.MapGet("/{id}", async (
             string id,
             ISeriesCatalogRepository repository,

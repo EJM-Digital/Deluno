@@ -619,7 +619,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 stats?.FailedQueries ?? 0,
                 stats?.AverageResponseMilliseconds,
                 grabs.SuccessfulGrabs,
-                windowDays));
+                windowDays),
+            LastQueryUtc: stats?.LastQueryUtc);
     }
 
     private static ScoreboardRow BuildHistoricalScoreboardRow(
@@ -648,7 +649,8 @@ public static class SearchEndpointRouteBuilderExtensions
                 stats.FailedQueries,
                 stats.AverageResponseMilliseconds,
                 grabs.SuccessfulGrabs,
-                windowDays));
+                windowDays),
+            LastQueryUtc: stats.LastQueryUtc);
     }
 
     private static string BuildRowRecommendation(
@@ -719,7 +721,8 @@ public static class SearchEndpointRouteBuilderExtensions
         long CandidatesReturned,
         long TotalGrabs,
         long SuccessfulGrabs,
-        string Recommendation)
+        string Recommendation,
+        DateTimeOffset? LastQueryUtc = null)
     {
         public double FailureRate => TotalQueries == 0 ? 0 : (double)FailedQueries / TotalQueries;
 

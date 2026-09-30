@@ -80,6 +80,7 @@ public sealed class IndexerQueryStatsRepositoryTests
         Assert.Equal(1, alpha.FailedQueries);
         Assert.Equal(56.666, alpha.AverageResponseMilliseconds, 2);
         Assert.Equal(2, alpha.CandidatesReturned);
+        Assert.Equal(now.AddDays(-3), alpha.LastQueryUtc);
 
         var beta = Assert.Single(snapshot.QueryStats, item => item.IndexerId == "indexer-b");
         Assert.Equal(1, beta.RssQueries);

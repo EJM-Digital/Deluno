@@ -463,6 +463,9 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// <summary>The show an episode belongs to, or <c>null</c> if there is no such episode (#595).</summary>
     Task<string?> GetEpisodeSeriesIdAsync(string episodeId, CancellationToken cancellationToken);
 
+    /// <summary>The season and episode number (and show) of up to 100 episodes, for labelling a download on the Dashboard (#1096).</summary>
+    Task<IReadOnlyList<(string EpisodeId, string SeriesId, int SeasonNumber, int EpisodeNumber)>> ListEpisodeNumbersAsync(IReadOnlyList<string> episodeIds, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
         string seriesId,
         string libraryId,

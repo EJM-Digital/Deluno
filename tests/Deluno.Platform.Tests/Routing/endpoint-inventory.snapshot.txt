@@ -167,6 +167,7 @@ GET /api/movies/lookup/imdb
 GET /api/movies/page
 GET /api/movies/posters
 GET /api/movies/search-history
+GET /api/movies/titles
 GET /api/movies/wanted
 GET /api/movies/{id}
 GET /api/movies/{id}/acquisition-blockers
@@ -231,6 +232,7 @@ GET /api/series/page
 GET /api/series/posters
 GET /api/series/search-history
 GET /api/series/season-pass
+GET /api/series/titles
 GET /api/series/upcoming
 GET /api/series/wanted
 GET /api/series/{id}
