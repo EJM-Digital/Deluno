@@ -36,6 +36,9 @@ public static class SeriesCatalogueChoice
     /// <summary>One note for a whole TheTVDB outage, however many shows it holds.</summary>
     public const string OutageHealthId = "notice:catalogue-held:tvdb-outage";
 
+    /// <summary>The outage note is read, changed and written back; two shows at once must not each start from the same old list (#1063).</summary>
+    private static readonly SemaphoreSlim OutageNote = new(1, 1);
+
     private sealed record HeldShow(string Id, string Title);
 
     private sealed record HeldShows(List<HeldShow> Shows);
@@ -94,6 +97,9 @@ public static class SeriesCatalogueChoice
     {
         if (hold == MetadataCatalogueHold.TvdbUnavailable && health is not null)
         {
+            await OutageNote.WaitAsync(cancellationToken);
+            try
+            {
             var existing = await health.GetAsync(OutageHealthId, cancellationToken);
             var shows = ReadHeldShows(existing);
             if (shows.Any(show => show.Id == seriesId))
@@ -116,6 +122,11 @@ public static class SeriesCatalogueChoice
 
             await health.UpsertResultsAsync([OutageOutcome(shows)], cancellationToken);
             return;
+            }
+            finally
+            {
+                OutageNote.Release();
+            }
         }
 
         var id = HoldHealthId(seriesId);
@@ -165,6 +176,9 @@ public static class SeriesCatalogueChoice
             await health.RemoveAsync(id, cancellationToken);
         }
 
+        await OutageNote.WaitAsync(cancellationToken);
+        try
+        {
         var outage = await health.GetAsync(OutageHealthId, cancellationToken);
         if (outage is null)
         {
@@ -184,6 +198,11 @@ public static class SeriesCatalogueChoice
         else
         {
             await health.UpsertResultsAsync([OutageOutcome(shows)], cancellationToken);
+        }
+        }
+        finally
+        {
+            OutageNote.Release();
         }
     }
 }
