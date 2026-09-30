@@ -512,11 +512,11 @@ export function SetupGuidePage() {
     seriesRootPath: data.draft.seriesRootPath || data.settings.seriesRootPath || "",
     qualityPreset: data.draft.qualityPreset as GuideForm["qualityPreset"],
     formatGoal: resolveDraftFormatGoal(data.draft.formatGoal),
-    indexerName: data.draft.indexerName || data.indexers[0]?.name || "Primary indexer",
+    indexerName: data.draft.indexerName || data.indexers[0]?.name,
     indexerProtocol: (data.draft.indexerProtocol || data.indexers[0]?.protocol || "torznab") as GuideForm["indexerProtocol"],
     indexerUrl: data.draft.indexerUrl || data.indexers[0]?.baseUrl || "",
     indexerApiKey: data.indexers[0]?.apiKey ?? "",
-    clientName: data.draft.clientName || data.clients[0]?.name || "Primary download client",
+    clientName: data.draft.clientName || data.clients[0]?.name,
     clientProtocol: (data.draft.clientProtocol || data.clients[0]?.protocol || "qbittorrent") as GuideForm["clientProtocol"],
     clientHost: data.draft.clientHost || data.clients[0]?.host || "",
     clientPort: data.draft.clientPort || (data.clients[0]?.port ? String(data.clients[0].port) : "8080"),
@@ -1260,9 +1260,6 @@ function ServicesStep({
               })
             }))}
           />
-          <Field label="Indexer name" hideLabel>
-            <Input value={form.indexerName} onChange={(event) => patch({ indexerName: event.target.value })} placeholder="Primary indexer" />
-          </Field>
           <Field label="Indexer protocol" hideLabel>
             <Select value={form.indexerProtocol} onChange={(event) => patch({ indexerProtocol: event.target.value as GuideForm["indexerProtocol"] })}>
               <option value="torznab">Torznab</option>
@@ -1305,9 +1302,6 @@ function ServicesStep({
               })
             }))}
           />
-          <Field label="Download client name" hideLabel>
-            <Input value={form.clientName} onChange={(event) => patch({ clientName: event.target.value })} placeholder="Primary download client" />
-          </Field>
           <Field label="Download client protocol" hideLabel>
             <Select value={form.clientProtocol} onChange={(event) => patch({ clientProtocol: event.target.value as GuideForm["clientProtocol"], clientPort: defaultClientPort(event.target.value) })}>
               <option value="qbittorrent">qBittorrent</option>
@@ -2477,7 +2471,6 @@ async function ensureClient(existing: DownloadClientItem[], form: GuideForm, tes
 
 function buildIndexerPayload(form: GuideForm) {
   return {
-    name: form.indexerName.trim() || "Primary indexer",
     protocol: form.indexerProtocol,
     baseUrl: form.indexerUrl.trim(),
     apiKey: form.indexerApiKey.trim() || null,
@@ -2497,7 +2490,6 @@ function buildIndexerPayload(form: GuideForm) {
 
 function buildClientPayload(form: GuideForm) {
   return {
-    name: form.clientName.trim() || "Primary download client",
     protocol: form.clientProtocol,
     host: form.clientHost.trim(),
     port: Number(form.clientPort || defaultClientPort(form.clientProtocol)),

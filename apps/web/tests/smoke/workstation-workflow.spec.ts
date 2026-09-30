@@ -728,8 +728,10 @@ test.describe("dashboard workflow", () => {
         await route.fulfill({ contentType: "application/json", body: "[]" });
         return;
       }
-      expect(route.request().postDataJSON()).toMatchObject({
-        name: "Processed media notifier",
+      // #1076: the name is worked out by Deluno; the form never sends one.
+      const body = route.request().postDataJSON();
+      expect(body).not.toHaveProperty("name");
+      expect(body).toMatchObject({
         provider: "generic-webhook",
         submissionUrl: "https://processor.example.test/webhooks/deluno"
       });
@@ -743,7 +745,7 @@ test.describe("dashboard workflow", () => {
 
     await page.getByRole("button", { name: "Connect processor" }).first().click();
     const drawer = page.getByRole("dialog", { name: "Connect a processor" });
-    await drawer.getByLabel("Name", { exact: true }).fill("Processed media notifier");
+    await expect(drawer.getByLabel("Name", { exact: true })).toHaveCount(0);
     await drawer.getByLabel("Processor job URL").fill("https://processor.example.test/webhooks/deluno");
     await drawer.getByRole("button", { name: "Connect processor" }).click();
 
