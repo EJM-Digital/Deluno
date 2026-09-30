@@ -431,11 +431,11 @@ public sealed class SignalRRealtimeEventPublisher(
 
         var now = timeProvider.GetUtcNow();
         var last = Interlocked.Read(ref _lastNudgeUtcTicks);
-        var wait = last == 0
-            ? TimeSpan.Zero
-            : new DateTimeOffset(last, TimeSpan.Zero) + DashboardNudgeInterval - now;
+        var dueUtc = last == 0
+            ? now
+            : new DateTimeOffset(last, TimeSpan.Zero) + DashboardNudgeInterval;
 
-        if (wait <= TimeSpan.Zero)
+        if (dueUtc <= now)
         {
             EmitDashboardNudge();
             return;
@@ -445,7 +445,13 @@ public sealed class SignalRRealtimeEventPublisher(
         {
             try
             {
-                await Task.Delay(wait, timeProvider);
+                // Measured against the moment it is due, not from whenever this
+                // task happens to start, so scheduling delay never stretches the gap.
+                var remaining = dueUtc - timeProvider.GetUtcNow();
+                if (remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining, timeProvider);
+                }
             }
             catch (OperationCanceledException)
             {
