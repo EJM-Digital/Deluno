@@ -297,6 +297,8 @@ export function MovieDetailPage() {
     ? chosenLibraryId
     : memberships.find((item) => item.libraryId === wantedItem?.libraryId)?.libraryId ?? memberships[0]?.libraryId ?? wantedItem?.libraryId ?? null;
   const libraryQuery = memberships.length > 1 && actingLibraryId ? `libraryId=${encodeURIComponent(actingLibraryId)}` : "";
+  // #1065: the mark speaks for the library the page is pointed at, so a film switched off there reads as not monitored, as the shelf and the Libraries card say.
+  const actingLibraryNotWanted = memberships.find((item) => item.libraryId === actingLibraryId)?.notWantedHere === true;
   const library = actingLibraryId ? libraries.find((item) => item.id === actingLibraryId) ?? null : null;
   // #990: which of this title's library's indexers/download clients Deluno
   // will actually use for it, and why — the tag rule already applied to
@@ -886,7 +888,7 @@ export function MovieDetailPage() {
                 */}
                 <TitleMarkLabel
                   className="rounded-full border border-hairline bg-surface-2 px-2.5 py-1 text-xs font-medium"
-                  item={{ monitored: movie.monitored, wantedStatus: wantedItem?.wantedStatus }}
+                  item={{ monitored: movie.monitored && !actingLibraryNotWanted, wantedStatus: wantedItem?.wantedStatus }}
                   type="movie"
                 />
                 {importCases.length ? <Badge variant="warning">{importCases.length} import issue{importCases.length === 1 ? "" : "s"}</Badge> : null}

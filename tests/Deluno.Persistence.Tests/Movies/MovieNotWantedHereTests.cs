@@ -168,6 +168,12 @@ public sealed class MovieNotWantedHereTests
         Assert.Equal(1, hd.Monitored);
         var unmonitoredFourK = await movies.ListPageAsync(new CatalogueQuery(LibraryId: "lib-4k", Monitored: false, PageSize: 50), CancellationToken.None);
         Assert.Single(unmonitoredFourK.Items);
+
+        // The card's own monitored shield agrees with the counts, per library (#1065).
+        Assert.False(Assert.Single((await movies.ListPageAsync(new CatalogueQuery(LibraryId: "lib-4k", PageSize: 50), CancellationToken.None)).Items).Monitored);
+        Assert.True(Assert.Single((await movies.ListPageAsync(new CatalogueQuery(LibraryId: "lib-hd", PageSize: 50), CancellationToken.None)).Items).Monitored);
+        // Across all libraries the wanted copy speaks for the title.
+        Assert.True(Assert.Single((await movies.ListPageAsync(new CatalogueQuery(PageSize: 50), CancellationToken.None)).Items).Monitored);
     }
 
     private static async Task AssertOnlyHdIsStillWantedAsync(

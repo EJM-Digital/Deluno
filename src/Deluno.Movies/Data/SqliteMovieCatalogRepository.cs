@@ -298,7 +298,7 @@ public sealed class SqliteMovieCatalogRepository(
                 m.vote_count,
             {CatalogueWantedState.PageColumns}
             FROM movie_entries m
-            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
+            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false, preferWantedHere: true)}
             WHERE m.id = @id
             LIMIT 1;
             """;
@@ -1008,9 +1008,10 @@ public sealed class SqliteMovieCatalogRepository(
                 $"""
                 SELECT
                 {CataloguePageColumns},
-                    {sortExpression} AS sort_value
+                    {sortExpression} AS sort_value,
+                    COALESCE(ws.not_wanted_here, 0) AS not_wanted_here
                 FROM movie_entries m
-                {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null)}
+                {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null, preferWantedHere: true)}
                 WHERE {where}
                 ORDER BY {CatalogueKeyset.OrderBy(sortExpression, "m", query.Descending)}
                 LIMIT @fetchCount;
@@ -1035,6 +1036,9 @@ public sealed class SqliteMovieCatalogRepository(
 
                 items.Add(ReadMovie(reader) with
                 {
+                    // A film switched off in the library this card speaks for reads as not monitored there (#1065),
+                    // agreeing with the counts, the filters and the Libraries row.
+                    Monitored = reader.GetInt32(4) == 1 && reader.GetInt64(WantedStateOrdinal + CatalogueWantedState.PageColumnCount + 1) == 0,
                     // From the columns, not the blob: the page projects
                     // NULL AS metadata_json on purpose, so the fallback in
                     // ReadMovie can only ever produce a single rounded TMDb
@@ -1161,7 +1165,7 @@ public sealed class SqliteMovieCatalogRepository(
         //
         // Always joined: every chip count reads the same picked row the page
         // shows, so a title is counted under exactly one rung (#1047).
-        var wantedJoin = CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null);
+        var wantedJoin = CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", libraryId is not null, preferWantedHere: true);
 
         var where = CatalogueKeyset.CombineFilters(
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("m"),
@@ -2332,6 +2336,37 @@ public sealed class SqliteMovieCatalogRepository(
         return ids;
     }
 
+    public async Task<IReadOnlyList<MovieLibraryFile>> ListLibraryFilesAsync(string movieId, CancellationToken cancellationToken)
+    {
+        var files = new List<MovieLibraryFile>();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT library_id, file_path, file_size_bytes, current_quality, video_codec, audio_codec, audio_channels
+            FROM movie_wanted_state
+            WHERE movie_id = @movieId AND has_file = 1 AND file_path IS NOT NULL
+            ORDER BY library_id ASC;
+            """;
+        AddParameter(command, "@movieId", movieId);
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            files.Add(new MovieLibraryFile(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? null : reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.IsDBNull(6) ? null : reader.GetString(6)));
+        }
+
+        return files;
+    }
+
     public async Task RecordSearchAttemptAsync(
         string movieId,
         string libraryId,
@@ -3092,7 +3127,7 @@ public sealed class SqliteMovieCatalogRepository(
             cancellationToken);
 
         using var command = connection.CreateCommand();
-        var monitoredClause = includeUnmonitored ? "1 = 1" : "m.monitored = 1";
+        var monitoredClause = includeUnmonitored ? "1 = 1" : "(m.monitored = 1 AND COALESCE(ws.not_wanted_here, 0) = 0)";
         var tagClause = MediaTagFilter.BuildClause("m.id", tagNames, command);
         // One joined wanted-state row, not a correlated EXISTS. The calendar was
         // the last place still asking "is there a file anywhere for this movie"
@@ -3103,7 +3138,7 @@ public sealed class SqliteMovieCatalogRepository(
         // a movie on the calendar shows the same mark as the movie on the shelf.
         command.CommandText =
             $"""
-            SELECT m.id, m.title, m.release_year, m.poster_url, m.monitored, m.kind, m.date,
+            SELECT m.id, m.title, m.release_year, m.poster_url, CASE WHEN COALESCE(ws.not_wanted_here, 0) = 1 THEN 0 ELSE m.monitored END, m.kind, m.date,
                    {CatalogueWantedState.HasFileColumn},
                    ws.wanted_status
             FROM (
@@ -3116,7 +3151,7 @@ public sealed class SqliteMovieCatalogRepository(
                 SELECT id, title, release_year, poster_url, monitored, 'physical', physical_release_date
                 FROM movie_entries WHERE physical_release_date IS NOT NULL
             ) AS m
-            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false)}
+            {CatalogueWantedState.Join("m", "movie_wanted_state", "movie_id", scopedToLibrary: false, preferWantedHere: true)}
             WHERE m.date >= @fromDate AND m.date < @toDate
               AND {monitoredClause}
               AND {tagClause}

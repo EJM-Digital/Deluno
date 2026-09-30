@@ -25,15 +25,17 @@ public static class CatalogueWantedState
     /// <paramref name="scopedToLibrary"/> narrows the pick to <c>@libraryId</c>,
     /// which the caller binds whether or not it is used.
     /// </summary>
-    public static string Join(string alias, string wantedTable, string foreignKey, bool scopedToLibrary)
+    public static string Join(string alias, string wantedTable, string foreignKey, bool scopedToLibrary, bool preferWantedHere = false)
     {
+        // Films only (#1065): among rows with no file, one that is still wanted speaks for the title before one switched off.
+        var wantedFirst = preferWantedHere ? "pick.not_wanted_here ASC, " : string.Empty;
         var scope = scopedToLibrary ? $"{Environment.NewLine}                      AND pick.library_id = @libraryId" : string.Empty;
         return $"""
                 LEFT JOIN {wantedTable} ws ON ws.rowid = (
                     SELECT pick.rowid
                     FROM {wantedTable} pick
                     WHERE pick.{foreignKey} = {alias}.id{scope}
-                    ORDER BY pick.has_file DESC, pick.quality_cutoff_met ASC, pick.library_id ASC
+                    ORDER BY pick.has_file DESC, {wantedFirst}pick.quality_cutoff_met ASC, pick.library_id ASC
                     LIMIT 1
                 )
                 """;

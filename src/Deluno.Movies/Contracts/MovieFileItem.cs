@@ -20,4 +20,8 @@ public sealed record MovieFileItem(
     string? AudioChannels,
     /// <summary>Normalized ISO 639-1, for a subtitle row. Null for anything else.</summary>
     string? Language,
-    bool? HearingImpaired);
+    bool? HearingImpaired,
+    /// <summary>The library whose copy this file belongs to (#1065).</summary>
+    string? LibraryId = null,
+    /// <summary>Set only when the film is in more than one library, so the Files tab can label each copy.</summary>
+    string? LibraryName = null);

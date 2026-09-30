@@ -136,4 +136,27 @@ describe("MovieFilesCard (#782)", () => {
 
     expect(await screen.findByText("No files on disk")).toBeVisible();
   });
+
+  it("labels each library's file and deletes exactly that library's copy (#1065)", async () => {
+    const user = userEvent.setup();
+    const video = (path: string, libraryId: string, libraryName: string, isPrimary: boolean): MovieFileItem => ({
+      path, sizeBytes: 1, kind: "video", isPrimary, quality: null, videoCodec: null, audioCodec: null,
+      audioChannels: null, language: null, hearingImpaired: null, libraryId, libraryName
+    });
+    mockLoads([
+      video("/hd/Heat/Heat.mkv", "lib-hd", "Movies", true),
+      video("/4k/Heat/Heat.mkv", "lib-4k", "Movies 4K", true)
+    ]);
+    vi.mocked(authedFetch).mockResolvedValue(Response.json({ deleted: true, wasPrimary: true }));
+    render(<MovieFilesCard movieId="movie-1" />);
+
+    expect(await screen.findByText(/In Movies 4K/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Delete Heat.mkv in Movies 4K" }));
+    await user.click(await screen.findByRole("button", { name: "Confirm delete" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      "/api/movies/movie-1/files",
+      expect.objectContaining({ body: JSON.stringify({ path: "/4k/Heat/Heat.mkv", libraryId: "lib-4k" }) })
+    ));
+  });
 });
