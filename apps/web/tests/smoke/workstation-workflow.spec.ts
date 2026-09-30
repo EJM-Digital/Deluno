@@ -150,7 +150,7 @@ test.describe("dashboard workflow", () => {
     const guidedSetupBox = await guidedSetup.boundingBox();
     const setupProgressBox = await setupProgress.boundingBox();
     expect(guidedSetupBox?.y).toBeLessThan(setupProgressBox?.y ?? Number.POSITIVE_INFINITY);
-    // Now's Coming up panel states what is true of an empty library and
+    // Live's empty-library row states what is true of an empty library and
     // offers the action (#1087); nothing is invented to fill the space. The
     // intent of this test is unchanged, so it checks where that statement is.
     await expect(page.getByRole("heading", { name: "Recently added" })).toHaveCount(0);

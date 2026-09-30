@@ -161,9 +161,10 @@ describe("Live", () => {
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
     expect(screen.queryByText(/Also worth a look/)).toBeNull();
     expect(screen.getByText("Nothing is downloading.")).toBeInTheDocument();
-    // An empty library says so and offers the next step, where the next episodes would be.
+    // An empty library says so and offers the next step, in a slim row under the strip.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
+    expect(screen.getByText(/Nothing airs in the next 72 hours/)).toBeInTheDocument();
     expect(screen.getByText(/Nothing has happened yet/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

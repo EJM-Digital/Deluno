@@ -349,7 +349,7 @@ export function Automation({ summary }: { summary: DashboardSummary | undefined 
   if (gate?.enabled && gate.unreadable) notes.push("Deluno can’t read the download queue, so automatic searches are on hold.");
 
   return (
-    <Panel title="Automation" to="/search-cycles" linkLabel="Automation" className="flex-[10]" footer={cycle ? `Last cycle: ${cycle.libraryName} checked ${cycle.planned}, sent ${cycle.queued}, held back ${cycle.skipped}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}.` : undefined}>
+    <Panel title="Automation" to="/search-cycles" linkLabel="Automation" className="flex-[2]" footer={cycle ? `Last cycle: ${cycle.libraryName} checked ${cycle.planned}, sent ${cycle.queued}, held back ${cycle.skipped}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}.` : undefined}>
       {!automation || automation.libraries.length === 0 ? (
         <PanelNote>No library is set up yet, so there is nothing to search for. Add a library and Deluno starts looking.</PanelNote>
       ) : (
@@ -503,7 +503,7 @@ export function ScheduledTasks({ summary }: { summary: DashboardSummary | undefi
       count={tasks.length > 0 ? (failed > 0 ? `${failed} failed` : "none failed") : undefined}
       to="/system"
       linkLabel="System"
-      className="flex-1"
+      className="flex-[3]"
     >
       {tasks.length === 0 ? (
         <PanelNote>No scheduled tasks have been reported yet.</PanelNote>
