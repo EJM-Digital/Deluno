@@ -3,6 +3,7 @@ using Deluno.Connections.Data;
 using Deluno.Contracts;
 using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.Search.Trackers;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Contracts;
 using Deluno.Libraries.Data;
 using Deluno.Platform.Contracts;
@@ -198,6 +199,7 @@ public static class ManualSearchEndpointRouteBuilderExtensions
             IAcquisitionDecisionPipeline acquisitionPipeline,
             IDownloadClientGrabService downloadClientGrabService,
             IIndexerHistoryRecorder indexerHistoryRecorder,
+            IJobQueueRepository jobQueueRepository,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.ReleaseName) || string.IsNullOrWhiteSpace(request.DownloadUrl))
@@ -299,6 +301,32 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                     IndexerName: request.IndexerName,
                     IndexerId: request.IndexerId),
                 cancellationToken);
+
+            // #1062: Deluno only sees and acts on downloads it sent, so a release
+            // sent from the Search page gets its own dispatch record like every
+            // other grab: without one the download would run in the client
+            // where Transfers, Queue, Health and cleanup could never see it.
+            // There is no title to file it under, so it is recorded as a
+            // release, in the library whose routing the client came from, and
+            // is found again by the id the grab already knows.
+            var homeLibrary = librariesOfType.FirstOrDefault(library => string.Equals(library.Id, downloadClient.LibraryId, StringComparison.OrdinalIgnoreCase))
+                ?? librariesOfType[0];
+            await jobQueueRepository.RecordDownloadDispatchAsync(
+                homeLibrary.Id,
+                mediaType,
+                "release",
+                Guid.CreateVersion7().ToString("N"),
+                request.ReleaseName,
+                request.IndexerName ?? string.Empty,
+                downloadClient.DownloadClientId,
+                downloadClient.DownloadClientName,
+                grabResult.Status,
+                notesJson: null,
+                grabResponseCode: grabResult.Succeeded ? 200 : 400,
+                grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
+                cancellationToken: cancellationToken,
+                failure: grabResult.Failure,
+                clientExternalId: grabResult.ExternalId);
 
             // #978: a grab made from the Search page shows in Indexer
             // History against its indexer, the same as a per-title grab.

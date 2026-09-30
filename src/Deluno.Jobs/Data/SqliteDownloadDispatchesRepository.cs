@@ -1040,63 +1040,6 @@ public sealed class SqliteDownloadDispatchesRepository(
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
-    public async Task RecordClientItemIdAsync(
-        string dispatchId,
-        string clientItemId,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs, cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            UPDATE download_dispatches
-            SET torrent_hash_or_item_id = @clientItemId
-            WHERE id = @dispatchId
-              AND (torrent_hash_or_item_id IS NULL OR torrent_hash_or_item_id = '')
-            """;
-
-        AddParameter(command, "@dispatchId", dispatchId);
-        AddParameter(command, "@clientItemId", clientItemId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static readonly TimeSpan NameOnlyMatchWindow = TimeSpan.FromHours(24);
-
-    public async Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
-        string clientId,
-        string releaseName,
-        CancellationToken cancellationToken)
-    {
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs, cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""
-            SELECT
-                {DispatchColumns}
-            FROM download_dispatches
-            WHERE download_client_id = @clientId
-              AND release_name = @releaseName
-              AND detected_utc IS NULL
-              AND status != 'archived'
-              AND created_utc >= @since
-            ORDER BY created_utc DESC
-            LIMIT 1
-            """;
-
-        AddParameter(command, "@clientId", clientId);
-        AddParameter(command, "@releaseName", releaseName);
-        // A name alone is thin proof, so it only reaches a dispatch Deluno sent
-        // recently (#1062); anything older waits for its id.
-        AddParameter(command, "@since", timeProvider.GetUtcNow().Add(-NameOnlyMatchWindow).ToString("O"));
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadDispatch(reader) : null;
-    }
-
     private static DownloadDispatchItem ReadDispatch(DbDataReader reader)
     {
         var dispatch = new DownloadDispatchItem(

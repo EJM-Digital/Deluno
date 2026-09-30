@@ -172,7 +172,10 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
     public async Task A_dispatch_with_no_id_is_refused_even_when_the_client_shows_its_release_name()
     {
         using var world = await World.CreateAsync();
-        var pending = await world.Dispatches.FindDispatchByReleaseNameAsync(world.ClientId, PendingRelease, CancellationToken.None);
+        var pending = Assert.Single((await world.Dispatches.QueryDispatchesAsync(
+            new DispatchQueryFilter { ClientId = world.ClientId, EntityId = "movie-pending" },
+            new DispatchPaginationOptions(),
+            CancellationToken.None)).Items);
         Assert.NotNull(pending);
 
         var result = await world.Service.ExecuteActionForDispatchAsync(

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Integrations.DownloadClients;
+using Deluno.Jobs.Data;
 using Deluno.Persistence.Tests.Support;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -146,6 +147,19 @@ public sealed class ManualSearchEndpointTests
         Assert.Equal($"qBittorrent on {Deluno.Contracts.DelunoHostName.Current}", body.GetProperty("downloadClientName").GetString());
         Assert.Equal(client.Id, grabService.LastClientId);
         Assert.True(body.GetProperty("succeeded").GetBoolean());
+
+        // #1062: a release sent from the Search page has a dispatch of its own,
+        // so Deluno can see, count and clean up the download it started.
+        var recorded = await app.Services.GetRequiredService<IDownloadDispatchesRepository>().QueryDispatchesAsync(
+            new DispatchQueryFilter { ClientId = client.Id },
+            new DispatchPaginationOptions(),
+            CancellationToken.None);
+        var dispatch = Assert.Single(recorded.Items);
+        Assert.Equal("Example.Release.WEB.1080p", dispatch.ReleaseName);
+        Assert.Equal(libraryId, dispatch.LibraryId);
+        Assert.Equal("movies", dispatch.MediaType);
+        Assert.Equal("succeeded", dispatch.GrabStatus);
+        Assert.Equal("fake-hash", dispatch.TorrentHashOrItemId);
     }
 
     [Fact]
@@ -271,7 +285,7 @@ public sealed class ManualSearchEndpointTests
         public Task<DownloadClientGrabResult> GrabAsync(string clientId, DownloadClientGrabRequest request, CancellationToken cancellationToken)
         {
             LastClientId = clientId;
-            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client."));
+            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client.") { ExternalId = "fake-hash" });
         }
     }
 

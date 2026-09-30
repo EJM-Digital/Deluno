@@ -321,7 +321,6 @@ POST /api/download-clients/orphans/keep
 POST /api/download-clients/orphans/remove
 POST /api/download-clients/test
 POST /api/download-clients/{clientId}/categories/check
-POST /api/download-clients/{clientId}/grab
 POST /api/download-clients/{clientId}/queue/actions
 POST /api/download-clients/{clientId}/queue/{queueItemId}/health/{kind}/ignore
 POST /api/download-clients/{clientId}/queue/{queueItemId}/remove

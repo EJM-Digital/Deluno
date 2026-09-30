@@ -190,23 +190,6 @@ public interface IDownloadDispatchesRepository
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Records the client's own id on a dispatch that has none. Never
-    /// overwrites an id that is already there.
-    /// </summary>
-    Task RecordClientItemIdAsync(
-        string dispatchId,
-        string clientItemId,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Find the most recent grabbed-but-undetected dispatch matching a release name for a client, sent within the last day (a name alone is thin proof, #1062).
-    /// </summary>
-    Task<DownloadDispatchItem?> FindDispatchByReleaseNameAsync(
-        string clientId,
-        string releaseName,
-        CancellationToken cancellationToken);
-
-    /// <summary>
     /// Find dispatches that have been in a failed state for longer than <paramref name="minAge"/>.
     /// </summary>
     Task<IReadOnlyList<DownloadDispatchItem>> FindStaleFailedDispatchesAsync(

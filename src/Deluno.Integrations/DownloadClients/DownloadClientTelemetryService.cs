@@ -45,9 +45,14 @@ public sealed class DownloadClientTelemetryService(
     IDownloadSharingRepository? sharingRepository = null,
     // #990: resolves a dispatch's movie/series tags, so a tagged
     // notification connection fires for a cleanup event scoped to it.
-    IMediaTagStore? mediaTagStore = null)
+    IMediaTagStore? mediaTagStore = null,
+    // #1062: which clients have had their one look for dispatches still filed
+    // under Transmission's old session numbers. A singleton in the app.
+    LegacyItemIdUpgradeMemory? legacyUpgradeMemory = null)
     : IDownloadClientTelemetryService
 {
+    private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
+
     /// <summary>
     /// Deluno's own recovery/cleanup actions (#858) already land in Activity;
     /// this also sends them outbound, gated by the matching preference, the
@@ -368,24 +373,38 @@ public sealed class DownloadClientTelemetryService(
 
     /// <summary>
     /// A dispatch recorded before Deluno keyed Transmission on the torrent's
-    /// hash holds the session's numeric id. When the client shows an item that
-    /// still carries that number as its old id, under the same release name as
-    /// that dispatch, the dispatch is moved to the item's hash so it stays
-    /// Deluno's. Nothing is claimed that has no dispatch of its own (#1062).
+    /// hash holds the session's numeric id. On the first poll of each client
+    /// after Deluno starts, an item that still carries that number as its old
+    /// id, under the same release name as a NON-archived dispatch holding that
+    /// number (case, punctuation and separators ignored), moves the dispatch to
+    /// the item's hash so it stays Deluno's, and its health records with it.
+    ///
+    /// <para>Only that once: a session number is only good for the session that
+    /// handed it out, so after the first poll a number can already name a
+    /// different torrent, and nothing is ever re-bound on it. An archived
+    /// dispatch with a number is never re-bound at all. Nothing is claimed that
+    /// has no dispatch of its own (#1062).</para>
+    ///
+    /// <para><b>Known limit:</b> if Transmission itself restarts before this
+    /// first poll, its numbers change, and an old in-flight grab recorded under
+    /// a number stays unlinked; it then shows the existing "vanished" alert
+    /// rather than being matched to a torrent that merely has the same number.</para>
     /// </summary>
     private async Task UpgradeLegacyItemIdsAsync(
         string clientId,
         DownloadClientTelemetrySnapshot live,
         CancellationToken cancellationToken)
     {
+        if (!legacyUpgrades.TryBegin(clientId))
+        {
+            return;
+        }
+
         var legacy = live.Queue.Where(item => !string.IsNullOrWhiteSpace(item.LegacyId)).ToArray();
         if (legacy.Length == 0)
         {
             return;
         }
-
-        static string Plain(string? name)
-            => string.Concat((name ?? string.Empty).Where(char.IsLetterOrDigit)).ToLowerInvariant();
 
         try
         {
@@ -394,20 +413,74 @@ public sealed class DownloadClientTelemetryService(
             foreach (var item in legacy)
             {
                 var dispatch = found.FirstOrDefault(candidate =>
-                    string.Equals(candidate.TorrentHashOrItemId?.Trim(), item.LegacyId!.Trim(), StringComparison.Ordinal)
-                    && Plain(candidate.ReleaseName).Length > 0
-                    && Plain(candidate.ReleaseName) == Plain(item.ReleaseName));
-                if (dispatch is not null)
+                    !string.Equals(candidate.Status, "archived", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(candidate.TorrentHashOrItemId?.Trim(), item.LegacyId!.Trim(), StringComparison.Ordinal)
+                    && SameRelease(candidate.ReleaseName, item.ReleaseName));
+                if (dispatch is null)
                 {
-                    await dispatchesRepository.ReplaceClientItemIdAsync(
-                        dispatch.Id, dispatch.TorrentHashOrItemId!, item.Id, cancellationToken);
+                    continue;
+                }
+
+                var moved = await dispatchesRepository.ReplaceClientItemIdAsync(
+                    dispatch.Id, dispatch.TorrentHashOrItemId!, item.Id, cancellationToken);
+                if (moved)
+                {
+                    await healthRepository.MoveDownloadHealthItemIdAsync(clientId, dispatch.TorrentHashOrItemId!, item.Id, cancellationToken);
                 }
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // The next poll tries again; nothing is claimed meanwhile.
+            // Nothing is claimed meanwhile, and nothing is tried again this run.
         }
+    }
+
+    /// <summary>A release name with case, punctuation, separators and a trailing ".nzb" ignored, for comparing an item with its dispatch.</summary>
+    internal static string PlainReleaseName(string? name)
+    {
+        var plain = string.Concat((name ?? string.Empty).Where(char.IsLetterOrDigit)).ToLowerInvariant();
+        return plain.EndsWith("nzb", StringComparison.Ordinal) && plain.Length > 3 ? plain[..^3] : plain;
+    }
+
+    internal static bool SameRelease(string? dispatchName, string? itemName)
+    {
+        var left = PlainReleaseName(dispatchName);
+        return left.Length > 0 && left == PlainReleaseName(itemName);
+    }
+
+    /// <summary>
+    /// An id that is only a small number (NZBGet's, Transmission's fallback):
+    /// a counter the client can reuse or reset, unlike a hash or GUID.
+    /// </summary>
+    internal static bool IsNumericClientId(string? id)
+        => !string.IsNullOrWhiteSpace(id) && id.Trim().Length <= 12 && id.Trim().All(char.IsDigit);
+
+    /// <summary>
+    /// Whether a dispatch is proof this client item is Deluno's: its recorded id
+    /// (or its own id) equals the item's. For a numeric id an ARCHIVED dispatch
+    /// is proof only when the release name agrees as well, since an old number
+    /// can name a different download by now. That is an additional check, never
+    /// a way in by name alone (#1062).
+    /// </summary>
+    internal static bool DispatchProvesItem(DownloadDispatchItem dispatch, string? itemId, string? itemReleaseName)
+    {
+        static bool Same(string? left, string? right)
+            => !string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right)
+               && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        if (Same(dispatch.Id, itemId))
+        {
+            return true;
+        }
+
+        if (!Same(dispatch.TorrentHashOrItemId, itemId))
+        {
+            return false;
+        }
+
+        return !IsNumericClientId(itemId)
+            || !string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)
+            || SameRelease(dispatch.ReleaseName, itemReleaseName);
     }
 
     // The newer read (second) wins for a dispatch that is in both.
@@ -495,9 +568,9 @@ public sealed class DownloadClientTelemetryService(
                && string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
 
         return clientDispatches.Any(dispatch =>
-            Same(dispatch.TorrentHashOrItemId, item.Id) ||
-            Same(dispatch.TorrentHashOrItemId, item.ExternalId) ||
-            Same(dispatch.Id, item.Id));
+            DispatchProvesItem(dispatch, item.Id, item.ReleaseName) ||
+            (Same(dispatch.TorrentHashOrItemId, item.ExternalId)
+                && DispatchProvesItem(dispatch, item.ExternalId, item.ReleaseName)));
     }
 
     /// <summary>
@@ -520,9 +593,7 @@ public sealed class DownloadClientTelemetryService(
     internal static bool IsDelunosOwnDownload(
         DownloadQueueItem item,
         IReadOnlyList<DownloadDispatchItem> clientDispatches)
-        => clientDispatches.Any(dispatch =>
-            string.Equals(dispatch.TorrentHashOrItemId, item.Id, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(dispatch.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+        => clientDispatches.Any(dispatch => DispatchProvesItem(dispatch, item.Id, item.ReleaseName));
 
     public async Task<DownloadOwnership> CheckOwnershipAsync(
         string clientId,
@@ -535,9 +606,47 @@ public sealed class DownloadClientTelemetryService(
         // as it finishes with it, and the download can still be sitting in the
         // client.
         var dispatch = await dispatchesRepository.FindAnyDispatchByHashAsync(clientId, queueItemId, cancellationToken);
-        return dispatch is not null
-            ? new DownloadOwnership(true, null)
-            : new DownloadOwnership(false, NotSentMessage(queueItemId));
+        if (dispatch is null)
+        {
+            return new DownloadOwnership(false, NotSentMessage(queueItemId));
+        }
+
+        // A small number is a counter the client can reuse, so an ARCHIVED
+        // dispatch holding one proves the item is Deluno's only when the item
+        // the client shows under that number carries the same release name (an
+        // additional check, never a way in by name alone).
+        if (IsNumericClientId(queueItemId)
+            && string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)
+            && !SameRelease(dispatch.ReleaseName, await ReadClientItemNameAsync(clientId, queueItemId, cancellationToken)))
+        {
+            return new DownloadOwnership(false, NotSentMessage(queueItemId));
+        }
+
+        return new DownloadOwnership(true, null);
+    }
+
+    /// <summary>The release name the client itself shows for an item id, or null when it will not say.</summary>
+    private async Task<string?> ReadClientItemNameAsync(string clientId, string queueItemId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = (await connectionsRepository.ListDownloadClientsAsync(cancellationToken))
+                .FirstOrDefault(item => string.Equals(item.Id, clientId, StringComparison.OrdinalIgnoreCase));
+            if (client is null)
+            {
+                return null;
+            }
+
+            var snapshot = await TryGetLiveSnapshotAsync(client, timeProvider.GetUtcNow(), cancellationToken);
+            var id = queueItemId.Trim();
+            return snapshot?.Queue.FirstOrDefault(item => string.Equals(item.Id?.Trim(), id, StringComparison.OrdinalIgnoreCase))?.ReleaseName
+                ?? snapshot?.History.FirstOrDefault(item => string.Equals(item.Id?.Trim(), id, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(item.ExternalId?.Trim(), id, StringComparison.OrdinalIgnoreCase))?.ReleaseName;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     private static string NotSentMessage(string queueItemId)

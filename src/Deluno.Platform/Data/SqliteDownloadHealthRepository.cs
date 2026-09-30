@@ -189,6 +189,84 @@ public sealed class SqliteDownloadHealthRepository(
         return forgotten + forgottenProgress;
     }
 
+    public async Task<int> MoveDownloadHealthItemIdAsync(
+        string clientId,
+        string oldQueueItemId,
+        string newQueueItemId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(oldQueueItemId) || string.IsNullOrWhiteSpace(newQueueItemId)
+            || string.Equals(oldQueueItemId, newQueueItemId, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        var now = timeProvider.GetUtcNow();
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var settings = await ReadSettingsAsync(connection, cancellationToken);
+        var moved = 0;
+
+        bool Ours(string recordClient, string recordItem, string id)
+            => string.Equals(recordClient, clientId, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(recordItem, id, StringComparison.OrdinalIgnoreCase);
+
+        var records = ReadDownloadHealthRecords(settings).ToList();
+        var rewritten = new List<DownloadHealthRecord>(records.Count);
+        foreach (var record in records)
+        {
+            if (!Ours(record.ClientId, record.QueueItemId, oldQueueItemId))
+            {
+                rewritten.Add(record);
+                continue;
+            }
+
+            moved++;
+            var alreadyThere = records.Any(other => Ours(other.ClientId, other.QueueItemId, newQueueItemId)
+                && string.Equals(other.Kind, record.Kind, StringComparison.OrdinalIgnoreCase));
+            if (!alreadyThere)
+            {
+                rewritten.Add(record with { QueueItemId = newQueueItemId });
+            }
+        }
+
+        var progress = ReadDownloadProgressRecords(settings).ToList();
+        var progressRewritten = new List<DownloadProgressRecord>(progress.Count);
+        var progressMoved = 0;
+        foreach (var record in progress)
+        {
+            if (!Ours(record.ClientId, record.QueueItemId, oldQueueItemId))
+            {
+                progressRewritten.Add(record);
+                continue;
+            }
+
+            progressMoved++;
+            if (!progress.Any(other => Ours(other.ClientId, other.QueueItemId, newQueueItemId)))
+            {
+                progressRewritten.Add(record with { QueueItemId = newQueueItemId });
+            }
+        }
+
+        if (moved == 0 && progressMoved == 0)
+        {
+            return 0;
+        }
+
+        if (moved > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadHealthRecordsSettingKey, JsonSerializer.Serialize(rewritten), now, cancellationToken);
+        }
+
+        if (progressMoved > 0)
+        {
+            await UpsertSettingAsync(connection, transaction, DownloadProgressRecordsSettingKey, JsonSerializer.Serialize(progressRewritten), now, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return moved + progressMoved;
+    }
+
     public async Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
         string clientId,
         string queueItemId,

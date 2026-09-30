@@ -48,6 +48,18 @@ public interface IDownloadHealthRepository
     /// </summary>
     Task<int> ForgetDownloadClientAsync(string clientId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Moves everything recorded about one download (its strikes, an ignore, its
+    /// progress clock) from the id its client used to file it under to the id it
+    /// files it under now (#1062): a Transmission torrent's session number
+    /// becoming its hash. What is already recorded under the new id wins.
+    /// </summary>
+    Task<int> MoveDownloadHealthItemIdAsync(
+        string clientId,
+        string oldQueueItemId,
+        string newQueueItemId,
+        CancellationToken cancellationToken);
+
     Task<DownloadHealthRecord?> IgnoreDownloadHealthFindingAsync(
         string clientId,
         string queueItemId,
