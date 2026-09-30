@@ -59,10 +59,6 @@ public static class ServiceHost
             ExitProcess = code => Environment.Exit(code)
         });
 
-        // Services installed by earlier builds have no restart-on-failure
-        // actions; set them again on every start (sc failure is idempotent).
-        ServiceManager.EnsureFailureActionsFromInsideService();
-
         builder.Services.AddDelunoInfrastructure(builder.Configuration);
         builder.Services.AddDelunoApplicationModules();
 
@@ -76,6 +72,14 @@ public static class ServiceHost
             Path.Combine(settings.DataRoot, "secrets", "master.key"));
 
         var app = builder.Build();
+
+        // Services installed by earlier builds have no restart-on-failure actions; set
+        // them again on every start (sc failure is idempotent). Off the start path, once
+        // Deluno is up, so three slow sc.exe calls can never eat the service manager's
+        // 30 seconds to start; a refusal is logged and shown on Health (#1080).
+        app.Lifetime.ApplicationStarted.Register(() => _ = ServiceManager.EnsureFailureActionsInBackground(
+            message => app.Logger.LogWarning("{Message}", message),
+            app.Services.GetService<Deluno.Contracts.IBackgroundProblemReporter>()));
 
         app.UseExceptionHandler(errorApp =>
         {

@@ -16,11 +16,11 @@ namespace Deluno.Api.Network;
 /// typing. Once the connection exists, Deluno's own secret store holds the
 /// password like any other client's.
 ///
-/// <para>Lifetime (#1061): the plain value is needed only until a connection to
-/// the client exists. It is never returned by Deluno's API, to anyone: the
-/// connection is made server-side. It is removed when a connection is made
-/// (healthy or not), when the connection is deleted, and on every start for any
-/// leftover copy whose connection already exists or never will (see
+/// <para>Lifetime (#1061): the plain value is kept for as long as the app is
+/// installed, even after its connection is deleted, because "Use" connects with
+/// it. It is never returned by Deluno's API, to anyone: the connection is made
+/// server-side. It is removed only when the app is uninstalled, or for a kind
+/// Deluno does not connect (see
 /// <c>InstalledComponentWirer.SweepStoredSignInsAsync</c>).</para>
 /// </summary>
 public sealed record BundledComponentCredentials(string Username, string Password);
