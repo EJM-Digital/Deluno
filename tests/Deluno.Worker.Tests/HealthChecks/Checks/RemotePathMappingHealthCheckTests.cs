@@ -107,6 +107,35 @@ public sealed class RemotePathMappingHealthCheckTests
         Assert.Equal(HealthCheckStatuses.Problem, savePathOutcome.Status);
     }
 
+    [Fact]
+    public async Task A_client_Deluno_names_the_folder_for_on_every_grab_has_no_category_folder_to_check()
+    {
+        // #1060: Transmission and Deluge are sent the library downloads folder per grab (#1073), so the
+        // "<download folder>/<category>" they report on a clean install is never used and never missing.
+        var missing = Path.Combine(Path.GetTempPath(), "deluno-missing-" + Guid.NewGuid().ToString("n"), "deluno-movies");
+        var check = new RemotePathMappingHealthCheck(
+            ConnectionsReturning(clients: [Client()], mappings: []),
+            RegistryReturning(missing, perGrab: true));
+
+        var outcomes = await check.RunAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(outcomes, outcome => outcome.Status == HealthCheckStatuses.Problem);
+        Assert.DoesNotContain(outcomes, outcome => outcome.Id.StartsWith("remote-path-mapping:save-path:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_client_with_its_own_category_folder_still_has_a_missing_one_flagged()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "deluno-missing-" + Guid.NewGuid().ToString("n"), "Movies");
+        var check = new RemotePathMappingHealthCheck(
+            ConnectionsReturning(clients: [Client()], mappings: []),
+            RegistryReturning(missing, perGrab: false));
+
+        var outcomes = await check.RunAsync(CancellationToken.None);
+
+        Assert.Contains(outcomes, outcome => outcome.Status == HealthCheckStatuses.Problem && outcome.Message.Contains("does not exist", StringComparison.Ordinal));
+    }
+
     private static DownloadClientPathMappingItem Mapping(string localPath, string remotePath = "/downloads/complete", string clientId = "client-1")
     {
         var now = DateTimeOffset.UnixEpoch;
@@ -153,7 +182,7 @@ public sealed class RemotePathMappingHealthCheckTests
         return repository.Object;
     }
 
-    private static IDownloadClientRegistry RegistryReturning(string? reportedSavePath)
+    private static IDownloadClientRegistry RegistryReturning(string? reportedSavePath, bool perGrab = false)
     {
         var registry = new Mock<IDownloadClientRegistry>();
         if (reportedSavePath is null)
@@ -167,6 +196,7 @@ public sealed class RemotePathMappingHealthCheckTests
         client.Setup(instance => instance.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DownloadClientCategoryCheckResult("client-1", "Test Client", "movies", DownloadClientCategoryStatuses.Ready, "Ready.", true, true, reportedSavePath));
 
+        client.SetupGet(instance => instance.SetsSaveFolderPerGrab).Returns(perGrab);
         var captured = client.Object;
         registry.Setup(instance => instance.TryGet(It.IsAny<string?>(), out captured)).Returns(true);
         return registry.Object;

@@ -111,6 +111,15 @@ public sealed class RemotePathMappingHealthCheck(
 
         // A mapping applies to every client at its host, not only the client
         // it was originally added under (#809).
+        // A client Deluno gives a folder to on every grab (Transmission, Deluge; #1073) has no category
+        // folder that matters: the folder Deluno sends is the library downloads folder, which the folder
+        // chain check already verifies. Inventing "<download folder>/<category>" here reported a folder
+        // Deluno never uses as missing on a clean install (#1060).
+        if (implementation.SetsSaveFolderPerGrab)
+        {
+            return [];
+        }
+
         var clientHost = string.IsNullOrWhiteSpace(client.Host) ? null : client.Host.Trim().ToLowerInvariant();
         var clientMappings = mappings
             .Where(item =>

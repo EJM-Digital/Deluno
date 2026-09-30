@@ -29,7 +29,8 @@ public sealed class InstalledComponentWirer(
     ICompanionSystem system,
     IActivityFeedRepository activity,
     IDownloadClientRegistry? registry = null,
-    IBundledComponentDetection? detection = null)
+    IBundledComponentDetection? detection = null,
+    Deluno.Contracts.IHealthCheckRepository? healthChecks = null)
     : IInstalledComponentConnector, IDownloadClientDeletedHook
 {
     public const string ActivityCategory = "installer.components.connected";
@@ -103,6 +104,7 @@ public sealed class InstalledComponentWirer(
 
         if (connected.Count > 0)
         {
+            await RefreshHealthAsync(cancellationToken);
             await activity.RecordActivityAsync(
                 ActivityCategory,
                 // Only what passed is claimed as passed; whatever did not is named beside it (and has its own line with the reason).
@@ -187,6 +189,7 @@ public sealed class InstalledComponentWirer(
         if (ok)
         {
             record.MarkWired(kind);
+            await RefreshHealthAsync(cancellationToken);
             return new InstalledComponentConnectResult(name, true, $"{name} is connected.");
         }
 
@@ -275,6 +278,13 @@ public sealed class InstalledComponentWirer(
     private async Task PrepareSaveFoldersAsync(ClientRecipe recipe, Deluno.Connections.Contracts.DownloadClientItem? client, CancellationToken cancellationToken)
     {
         if (registry is null || client is null || !registry.TryGet(recipe.Protocol, out var implementation))
+        {
+            return;
+        }
+
+        // Transmission and Deluge are given the library downloads folder on every grab (#1073), so a
+        // category folder inside their download folder is never used and is not made (#1060).
+        if (implementation.SetsSaveFolderPerGrab)
         {
             return;
         }
@@ -369,6 +379,23 @@ public sealed class InstalledComponentWirer(
         {
             return (weir.Name, false, exception.Message);
         }
+    }
+
+    /// <summary>
+    /// A Health pass can be in the middle of its run while an app is being connected, and a row it
+    /// worked out a moment before the connection existed (or before its folders did) would then stay
+    /// until the next full pass a quarter of an hour later. Asking for the two affected categories
+    /// again now means a clean install ends with a clean Health screen (#1060).
+    /// </summary>
+    private async Task RefreshHealthAsync(CancellationToken cancellationToken)
+    {
+        if (healthChecks is null)
+        {
+            return;
+        }
+
+        await healthChecks.RequestImmediateRunAsync(Deluno.Contracts.HealthCheckCategories.DownloadClient, cancellationToken);
+        await healthChecks.RequestImmediateRunAsync(Deluno.Contracts.HealthCheckCategories.RemotePathMapping, cancellationToken);
     }
 
     private static string Join(IReadOnlyList<string> names)
