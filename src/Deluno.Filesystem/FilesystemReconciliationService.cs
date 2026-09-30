@@ -187,6 +187,7 @@ public sealed class FilesystemReconciliationService(
             }
 
             bool repaired;
+            MovieFileGoneOutcome movieOutcome = default;
             if (token.MediaType == "tv")
             {
                 // Clear the file, mark it missing and unmonitor in one transaction.
@@ -199,19 +200,22 @@ public sealed class FilesystemReconciliationService(
             }
             else
             {
-                repaired = await movieCatalogRepository.MarkTrackedFileGoneAsync(
+                movieOutcome = await movieCatalogRepository.MarkTrackedFileGoneAsync(
                     token.EntityId,
                     token.LibraryId,
                     token.Path,
                     cancellationToken);
+                repaired = movieOutcome.Cleared;
             }
 
-            await RecordMarkMissingRepairAsync(token, repaired, cancellationToken);
+            await RecordMarkMissingRepairAsync(token, repaired, movieOutcome, libraries, cancellationToken);
             return new FilesystemReconciliationRepairResult(
                 repaired,
                 action,
                 repaired
-                    ? "The tracked item was safely marked missing and unmonitored. Deluno did not delete any files."
+                    ? movieOutcome.OnlyThatLibrary
+                        ? "The copy in this library was safely marked missing and Deluno stopped wanting it here. The film's other copy is still managed. Deluno did not delete any files."
+                        : "The tracked item was safely marked missing and unmonitored. Deluno did not delete any files."
                     : "No matching tracked item was updated.");
         }
 
@@ -888,14 +892,21 @@ public sealed class FilesystemReconciliationService(
     private async Task RecordMarkMissingRepairAsync(
         IssueToken token,
         bool repaired,
+        MovieFileGoneOutcome movieOutcome,
+        IReadOnlyList<LibraryItem> libraries,
         CancellationToken cancellationToken)
     {
         var name = string.IsNullOrWhiteSpace(token.Title) ? Path.GetFileName(token.Path) : token.Title;
+        string LibraryName(string? id) => libraries.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase))?.Name ?? "that library";
+        var message = !repaired
+            ? $"Reconciliation repair 'mark-missing' failed for {Path.GetFileName(token.Path)}."
+            : movieOutcome.OnlyThatLibrary
+                // #1065: a film kept in two libraries stops being wanted only where its file went.
+                ? $"{name}'s file in {LibraryName(movieOutcome.LibraryId)} was removed outside Deluno, so Deluno stopped wanting it in {LibraryName(movieOutcome.LibraryId)}. The {string.Join(" and ", (movieOutcome.OtherLibraryIds ?? []).Select(LibraryName))} copy is still managed."
+                : $"{name}'s file was removed outside Deluno, so Deluno stopped wanting it.";
         await activityFeedRepository.RecordActivityAsync(
             repaired ? "filesystem.reconciliation.unmonitored" : "filesystem.reconciliation.repair-failed",
-            repaired
-                ? $"{name}'s file was removed outside Deluno, so Deluno stopped wanting it."
-                : $"Reconciliation repair 'mark-missing' failed for {Path.GetFileName(token.Path)}.",
+            message,
             JsonSerializer.Serialize(new
             {
                 token.Kind,

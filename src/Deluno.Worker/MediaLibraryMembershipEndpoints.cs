@@ -1,6 +1,8 @@
 using Deluno.Contracts;
+using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
 using Deluno.Media;
+using Deluno.Movies.Data;
 using Deluno.Quality;
 using Deluno.Realtime;
 using Deluno.Security;
@@ -17,7 +19,8 @@ public sealed record MediaLibraryMembershipRequest(string? LibraryId);
 /// <summary>One library a title is in.</summary>
 /// <param name="CanRemove">It holds no file there and is in another library too.</param>
 /// <param name="CanMove">It holds no file there, so nothing on disk has to follow.</param>
-public sealed record MediaLibraryMembershipItem(string LibraryId, string LibraryName, bool HasFile, string WantedStatus, bool CanRemove, bool CanMove);
+/// <param name="NotWantedHere">A film whose copy in this library was deleted: Deluno stopped wanting it here only (#1065), and "Want it again" undoes that.</param>
+public sealed record MediaLibraryMembershipItem(string LibraryId, string LibraryName, bool HasFile, string WantedStatus, bool CanRemove, bool CanMove, bool NotWantedHere = false);
 
 /// <summary>
 /// The libraries a title is in, chosen by a person (#530).
@@ -40,16 +43,16 @@ public static class MediaLibraryMembershipEndpoints
         {
             var group = endpoints.MapGroup(route).RequireAuthorization(DelunoAuthorizationPolicies.Write);
 
-            group.MapGet(string.Empty, async (string id, [FromServices] IMediaStateRepository media, [FromServices] ILibrariesRepository libraries, CancellationToken cancellationToken) =>
+            group.MapGet(string.Empty, async (string id, [FromServices] IMediaStateRepository media, [FromServices] IMovieCatalogRepository movies, [FromServices] ILibrariesRepository libraries, CancellationToken cancellationToken) =>
                 await media.GetByIdAsync(kind, id, cancellationToken) is null
                     ? Results.NotFound()
-                    : Results.Ok(await ListAsync(kind, id, media, libraries, cancellationToken)));
+                    : Results.Ok(await ListAsync(kind, id, media, libraries, movies, cancellationToken)));
 
             // Keep it in one more library too: films only.
             group.MapPost(string.Empty, async (
                 string id,
                 [FromBody] MediaLibraryMembershipRequest request,
-                [FromServices] IMediaStateRepository media,
+                [FromServices] IMediaStateRepository media, [FromServices] IMovieCatalogRepository movies,
                 [FromServices] ILibrariesRepository libraries,
                 [FromServices] IMediaDecisionService decisions,
                 [FromServices] IRealtimeEventPublisher realtime,
@@ -84,13 +87,13 @@ public static class MediaLibraryMembershipEndpoints
                 }
 
                 await realtime.PublishEntityChangedAsync(entity, id, cancellationToken);
-                return Results.Ok(await ListAsync(kind, id, media, libraries, cancellationToken));
+                return Results.Ok(await ListAsync(kind, id, media, libraries, movies, cancellationToken));
             });
 
-            group.MapDelete("{libraryId}", async (string id, string libraryId, [FromServices] IMediaStateRepository media, [FromServices] ILibrariesRepository libraries, [FromServices] IRealtimeEventPublisher realtime, CancellationToken cancellationToken) =>
+            group.MapDelete("{libraryId}", async (string id, string libraryId, [FromServices] IMediaStateRepository media, [FromServices] IMovieCatalogRepository movies, [FromServices] ILibrariesRepository libraries, [FromServices] IRealtimeEventPublisher realtime, CancellationToken cancellationToken) =>
             {
                 if (await media.GetByIdAsync(kind, id, cancellationToken) is null) return Results.NotFound();
-                var memberships = await ListAsync(kind, id, media, libraries, cancellationToken);
+                var memberships = await ListAsync(kind, id, media, libraries, movies, cancellationToken);
                 var membership = memberships.FirstOrDefault(item => string.Equals(item.LibraryId, libraryId, StringComparison.OrdinalIgnoreCase));
                 if (membership is null) return Results.NotFound();
                 if (!membership.CanRemove)
@@ -105,14 +108,14 @@ public static class MediaLibraryMembershipEndpoints
 
                 await media.RemoveFromLibraryAsync(kind, id, libraryId, cancellationToken);
                 await realtime.PublishEntityChangedAsync(entity, id, cancellationToken);
-                return Results.Ok(await ListAsync(kind, id, media, libraries, cancellationToken));
+                return Results.Ok(await ListAsync(kind, id, media, libraries, movies, cancellationToken));
             });
 
             group.MapPut("{libraryId}", async (
                 string id,
                 string libraryId,
                 [FromBody] MediaLibraryMembershipRequest request,
-                [FromServices] IMediaStateRepository media,
+                [FromServices] IMediaStateRepository media, [FromServices] IMovieCatalogRepository movies,
                 [FromServices] ILibrariesRepository libraries,
                 [FromServices] IRealtimeEventPublisher realtime,
                 CancellationToken cancellationToken) =>
@@ -125,7 +128,7 @@ public static class MediaLibraryMembershipEndpoints
                     return Results.ValidationProblem(new Dictionary<string, string[]> { ["libraryId"] = [$"Choose one of your {noun} libraries."] });
                 }
 
-                var memberships = await ListAsync(kind, id, media, libraries, cancellationToken);
+                var memberships = await ListAsync(kind, id, media, libraries, movies, cancellationToken);
                 var from = memberships.FirstOrDefault(item => string.Equals(item.LibraryId, libraryId, StringComparison.OrdinalIgnoreCase));
                 if (from is null) return Results.NotFound();
                 if (memberships.Any(item => string.Equals(item.LibraryId, target.Id, StringComparison.OrdinalIgnoreCase)))
@@ -140,19 +143,57 @@ public static class MediaLibraryMembershipEndpoints
 
                 await media.MoveToLibraryAsync(kind, id, libraryId, target.Id, cancellationToken);
                 await realtime.PublishEntityChangedAsync(entity, id, cancellationToken);
-                return Results.Ok(await ListAsync(kind, id, media, libraries, cancellationToken));
+                return Results.Ok(await ListAsync(kind, id, media, libraries, movies, cancellationToken));
             });
+
+            if (kind == MediaKind.Movie)
+            {
+                // "Want it again" for one library of a film that stopped being wanted there (#1065).
+                group.MapPost("{libraryId}/want-again", async (
+                    string id,
+                    string libraryId,
+                    [FromServices] IMediaStateRepository media,
+                    [FromServices] IMovieCatalogRepository movies,
+                    [FromServices] ILibrariesRepository libraries,
+                    [FromServices] IActivityFeedRepository activity,
+                    [FromServices] IRealtimeEventPublisher realtime,
+                    CancellationToken cancellationToken) =>
+                {
+                    var title = await media.GetByIdAsync(kind, id, cancellationToken);
+                    if (title is null) return Results.NotFound();
+                    if (!await movies.WantAgainInLibraryAsync(id, libraryId, cancellationToken))
+                    {
+                        return Results.Conflict(new { message = "Deluno already wants this film in that library." });
+                    }
+
+                    var libraryName = (await libraries.ListLibrariesAsync(cancellationToken))
+                        .FirstOrDefault(item => string.Equals(item.Id, libraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "that library";
+                    await activity.RecordActivityAsync(
+                        "library.movie.wanted-again",
+                        $"{title.Title} is wanted again in {libraryName}, so Deluno will look for it there.",
+                        null,
+                        null,
+                        "movie",
+                        id,
+                        cancellationToken);
+                    await realtime.PublishEntityChangedAsync(entity, id, cancellationToken);
+                    return Results.Ok(await ListAsync(kind, id, media, libraries, movies, cancellationToken));
+                });
+            }
         }
 
         return endpoints;
     }
 
-    private static async Task<IReadOnlyList<MediaLibraryMembershipItem>> ListAsync(MediaKind kind, string id, IMediaStateRepository media, ILibrariesRepository libraries, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<MediaLibraryMembershipItem>> ListAsync(MediaKind kind, string id, IMediaStateRepository media, ILibrariesRepository libraries, IMovieCatalogRepository movies, CancellationToken cancellationToken)
     {
         var all = await libraries.ListLibrariesAsync(cancellationToken);
         var rows = (await media.ListWantedByIdsAsync(kind, [id], cancellationToken))
             .Where(row => row.Id == id && !string.IsNullOrWhiteSpace(row.LibraryId))
             .ToArray();
+        var notWanted = kind == MediaKind.Movie
+            ? await movies.ListNotWantedLibraryIdsAsync(id, cancellationToken)
+            : new HashSet<string>();
         return rows
             .Select(row => new MediaLibraryMembershipItem(
                 row.LibraryId,
@@ -160,7 +201,8 @@ public static class MediaLibraryMembershipEndpoints
                 row.HasFile,
                 row.WantedStatus,
                 CanRemove: !row.HasFile && rows.Length > 1,
-                CanMove: !row.HasFile))
+                CanMove: !row.HasFile,
+                NotWantedHere: notWanted.Contains(row.LibraryId)))
             .OrderBy(item => item.LibraryName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }

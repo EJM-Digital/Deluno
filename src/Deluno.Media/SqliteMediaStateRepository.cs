@@ -54,7 +54,8 @@ public sealed class SqliteMediaStateRepository(
                     SUM(CASE WHEN wanted_status = 'upgrade' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN wanted_status = 'covered' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN wanted_status = 'upcoming' THEN 1 ELSE 0 END)
-                FROM {map.WantedTable};
+                FROM {map.WantedTable} w
+                WHERE {map.RowWantedHere()};
                 """;
 
             using var reader = await totals.ExecuteReaderAsync(cancellationToken);
@@ -79,6 +80,7 @@ public sealed class SqliteMediaStateRepository(
                 w.file_path, w.file_size_bytes, {map.EntryAlias}.runtime_minutes
             FROM {map.WantedTable} w
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
+            WHERE {map.RowWantedHere()}
             ORDER BY w.updated_utc DESC, {map.EntryAlias}.title ASC
             LIMIT 25;
             """;
@@ -104,7 +106,7 @@ public sealed class SqliteMediaStateRepository(
         var availabilityColumn = AvailabilityColumn(kind, map.EntryAlias);
         var monitoredClause = monitored is null
             ? string.Empty
-            : $"AND {map.EntryAlias}.monitored = @monitored";
+            : monitored.Value ? $"AND {map.WantedHere()}" : $"AND {map.NotWantedHere()}";
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -120,10 +122,6 @@ public sealed class SqliteMediaStateRepository(
                 WHERE w.wanted_status = @status {monitoredClause};
                 """;
             AddParameter(count, "@status", wantedStatus);
-            if (monitored is not null)
-            {
-                AddParameter(count, "@monitored", monitored.Value ? 1 : 0);
-            }
 
             total = Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
         }
@@ -145,10 +143,6 @@ public sealed class SqliteMediaStateRepository(
             LIMIT @take OFFSET @skip;
             """;
         AddParameter(command, "@status", wantedStatus);
-        if (monitored is not null)
-        {
-            AddParameter(command, "@monitored", monitored.Value ? 1 : 0);
-        }
 
         AddParameter(command, "@take", take);
         AddParameter(command, "@skip", skip);
@@ -250,7 +244,7 @@ public sealed class SqliteMediaStateRepository(
         // Only a person's own retry passes requireMonitored: false — see the
         // parameter's doc comment. Unlike the retry window, this is never
         // dropped just because the search is targeted at one title (#653).
-        var monitored = requireMonitored ? $"AND {map.EntryAlias}.monitored = 1" : string.Empty;
+        var monitored = requireMonitored ? $"AND {map.WantedHere()}" : string.Empty;
         var retry = ignoreRetryWindow
             ? string.Empty
             : "AND (w.next_eligible_search_utc IS NULL OR w.next_eligible_search_utc <= @now)";
@@ -340,7 +334,7 @@ public sealed class SqliteMediaStateRepository(
             INNER JOIN {map.EntryTable} {map.EntryAlias} ON {map.EntryAlias}.id = w.{map.WantedMediaIdColumn}
             WHERE w.library_id = @libraryId
               AND (@wantedStatus IS NULL OR w.wanted_status = @wantedStatus)
-              AND {map.EntryAlias}.monitored = 1
+              AND {map.WantedHere()}
               AND w.next_eligible_search_utc IS NOT NULL
               AND w.next_eligible_search_utc > @now;
             """;

@@ -192,6 +192,23 @@ public static class CatalogueKeyset
     public static string SearchFilter(string alias)
         => $"(lower({alias}.title) LIKE @search OR lower(COALESCE({alias}.genres, '')) LIKE @search)";
 
+    /// <summary>
+    /// "Deluno is watching this title here": the title is monitored and, when the
+    /// catalogue has per-library switches (a film, #1065), the picked library row
+    /// has not been switched off. <paramref name="notWantedHere"/> is a predicate
+    /// over the joined wanted-state row, or null for a catalogue without one.
+    /// </summary>
+    public static string MonitoredExpression(string alias, string? notWantedHere)
+        => string.IsNullOrWhiteSpace(notWantedHere)
+            ? $"{alias}.monitored = 1"
+            : $"({alias}.monitored = 1 AND NOT ({notWantedHere}))";
+
+    /// <summary>The opposite of <see cref="MonitoredExpression"/>.</summary>
+    public static string UnmonitoredExpression(string alias, string? notWantedHere)
+        => string.IsNullOrWhiteSpace(notWantedHere)
+            ? $"{alias}.monitored = 0"
+            : $"({alias}.monitored = 0 OR ({notWantedHere}))";
+
     public static string StatusFilter(
         string status,
         string alias,
@@ -201,7 +218,8 @@ public static class CatalogueKeyset
         string? upcomingExpression = null,
         string? downloadingExpression = null,
         string? airingExpression = null,
-        bool monitoredOnly = true)
+        bool monitoredOnly = true,
+        string? notWantedHere = null)
     {
         var rung = CatalogueStatusFilters.Normalize(status) switch
         {
@@ -228,7 +246,7 @@ public static class CatalogueKeyset
             return string.Empty;
         }
 
-        return monitoredOnly ? $"({alias}.monitored = 1 AND ({rung}))" : $"({rung})";
+        return monitoredOnly ? $"({MonitoredExpression(alias, notWantedHere)} AND ({rung}))" : $"({rung})";
     }
 
     private static string MissingRung(
@@ -268,17 +286,19 @@ public static class CatalogueKeyset
         string coveredExpression,
         string upcomingExpression,
         string downloadingExpression,
-        string airingExpression)
+        string airingExpression,
+        string? notWantedHere = null)
     {
         static string Count(string predicate) => $"SUM(CASE WHEN {predicate} THEN 1 ELSE 0 END)";
-        var monitored = $"{alias}.monitored = 1";
+        var monitored = MonitoredExpression(alias, notWantedHere);
+        var unmonitored = UnmonitoredExpression(alias, notWantedHere);
         var missing = $"{monitored} AND {MissingRung(hasFileExpression, upgradeExpression, coveredExpression, upcomingExpression, downloadingExpression, airingExpression)}";
 
         return string.Join("," + Environment.NewLine + "    ", new[]
         {
             "COUNT(*)",
             Count(monitored),
-            Count($"{alias}.monitored = 0"),
+            Count(unmonitored),
             Count($"{monitored} AND {hasFileExpression}"),
             Count(missing),
             Count($"{monitored} AND {upgradeExpression}"),
@@ -294,11 +314,11 @@ public static class CatalogueKeyset
     /// <see cref="StatusFilter"/>, so the two can be asked together. `null` is
     /// "either", and produces no predicate at all.
     /// </summary>
-    public static string MonitoredFilter(bool? monitored, string alias)
+    public static string MonitoredFilter(bool? monitored, string alias, string? notWantedHere = null)
         => monitored switch
         {
-            true => $"{alias}.monitored = 1",
-            false => $"{alias}.monitored = 0",
+            true => MonitoredExpression(alias, notWantedHere),
+            false => UnmonitoredExpression(alias, notWantedHere),
             null => string.Empty
         };
 
