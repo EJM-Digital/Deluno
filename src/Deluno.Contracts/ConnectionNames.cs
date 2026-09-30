@@ -84,13 +84,13 @@ public static class ConnectionNames
 
     /// <summary>
     /// The tracker an indexer address inside Jackett ("/api/v2.0/indexers/1337x/results/torznab")
-    /// or Prowlarr ("/12/api") points at: the Jackett indexer id, or "Prowlarr indexer 12".
-    /// Null for an address that is not one (or Jackett's "all" aggregate).
+    /// points at: the Jackett indexer id. Null for an address that is not one (or Jackett's "all" aggregate).
+    /// A "/12/api" address is only a Prowlarr indexer once Prowlarr has answered for it (#1076), which
+    /// needs a network call; an ordinary Newznab site can have the same path shape, so until then it
+    /// is named after its host like any other indexer.
     /// </summary>
     public static string? AggregatedTrackerOf(string? baseUrl)
-        => AggregatorOf(baseUrl) is { } aggregator
-            ? aggregator.Kind == AggregatorKind.Prowlarr ? $"Prowlarr indexer {aggregator.Id}" : aggregator.Id
-            : null;
+        => AggregatorOf(baseUrl) is { Kind: AggregatorKind.Jackett } aggregator ? aggregator.Id : null;
 
     public enum AggregatorKind { Jackett, Prowlarr }
 

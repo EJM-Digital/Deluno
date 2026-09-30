@@ -13,6 +13,12 @@ namespace Deluno.Connections.Data;
 /// </summary>
 public static class AggregatorIndexerNames
 {
+    /// <summary>Only a changed address, API path or key is worth asking the aggregator about again; a toggle or priority change is not.</summary>
+    public static bool LookupNeeded(IndexerItem before, IndexerItem after)
+        => !string.Equals(before.BaseUrl, after.BaseUrl, StringComparison.Ordinal)
+            || !string.Equals(before.ApiKey, after.ApiKey, StringComparison.Ordinal)
+            || !string.Equals(before.ApiPath, after.ApiPath, StringComparison.Ordinal);
+
     public static async Task<string?> DiscoverAsync(IndexerItem item, HttpClient httpClient, CancellationToken cancellationToken)
     {
         var address = ConnectionNames.AggregatorOf(item.BaseUrl);
