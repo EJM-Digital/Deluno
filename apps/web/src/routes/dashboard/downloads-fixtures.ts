@@ -36,7 +36,7 @@ export const fullSummary: DashboardSummary = {
     clients: [
       { id: "c1", name: "Deluge", protocol: "torrent", reachable: true, paused: false, version: "v2.1.1", warnings: 0, freeSpaceBytes: 2e12, healthStatus: "healthy", active: 3, queued: 1 },
       { id: "c2", name: "SABnzbd", protocol: "usenet", reachable: false, paused: null, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "unreachable", active: 0, queued: 0 },
-      { id: "c3", name: "Transmission", protocol: "torrent", reachable: true, paused: true, version: "v4.0.6", warnings: 2, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0 }
+      { id: "c3", name: "NZBGet", protocol: "nzbget", reachable: true, paused: true, version: "v4.0.6", warnings: 2, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0 }
     ],
     sharingHolds: 5, sharingExtraBytes: 3e10, leftovers: { scanned: true, count: 2, bytes: 4e9, scannedUtc: NOW }, failedDownloads: 1
   },

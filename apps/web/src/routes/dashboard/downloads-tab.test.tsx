@@ -92,8 +92,8 @@ describe("Downloads tab", () => {
     expect(screen.getByText("61%")).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Test SABnzbd again" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Resume Transmission" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Clear Transmission’s warnings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume NZBGet" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear NZBGet’s warnings" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Test Nyaa.si again" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Retry Say Yes to the Dress" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Give up on Say Yes to the Dress" })).toBeInTheDocument();
@@ -130,6 +130,10 @@ describe("Downloads tab", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/r1/dismiss", expect.objectContaining({ method: "POST" })));
     await user.click(screen.getByRole("button", { name: "Test SABnzbd again" }));
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-clients/c2/test", expect.objectContaining({ method: "POST" })));
+    // Resume is the whole-client resume, not the per-item one.
+    await user.click(screen.getByRole("button", { name: "Resume NZBGet" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-clients/c3/resume", expect.objectContaining({ method: "POST" })));
+    expect(authedFetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/queue/actions"), expect.anything());
   });
 
   it("says something true on an empty install, with a speed reading and no blank panel", async () => {
