@@ -630,6 +630,22 @@ public static class SeriesEndpointRouteBuilderExtensions
             return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
         });
 
+        // Posters for the titles on the Dashboard's Live board (#1096): only the ids that still exist are answered, so a deleted title is simply absent (no failing request per id).
+        series.MapGet("/posters", async (
+            string? ids,
+            ISeriesCatalogRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var posters = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in (ids ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).Take(48))
+            {
+                var item = await repository.GetByIdAsync(id, cancellationToken);
+                if (item is not null) posters[id] = item.PosterUrl;
+            }
+
+            return Results.Ok(posters);
+        });
+
         series.MapGet("/{id}", async (
             string id,
             ISeriesCatalogRepository repository,
