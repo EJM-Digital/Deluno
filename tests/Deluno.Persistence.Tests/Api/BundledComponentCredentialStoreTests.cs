@@ -48,6 +48,19 @@ public sealed class BundledComponentCredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void Every_kind_with_a_saved_sign_in_can_be_listed_so_a_leftover_one_can_be_swept()
+    {
+        var store = new FileBundledComponentCredentialStore(FileBundledComponentCredentialStore.PathFor(_root), new ReversingProtector());
+        Assert.Empty(store.Kinds());
+        store.Save("qbittorrent", new BundledComponentCredentials("deluno", "one"));
+        store.Save("nzbget", new BundledComponentCredentials("deluno", "two"));
+
+        Assert.Equal(["nzbget", "qbittorrent"], store.Kinds().Order().ToArray());
+        store.Remove("nzbget");
+        Assert.Equal(["qbittorrent"], store.Kinds().ToArray());
+    }
+
+    [Fact]
     public void Another_kind_has_no_sign_in_and_a_second_save_replaces_the_first()
     {
         var store = new FileBundledComponentCredentialStore(FileBundledComponentCredentialStore.PathFor(_root), new ReversingProtector());

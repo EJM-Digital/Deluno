@@ -46,21 +46,20 @@ describe("what the installer found on this machine (#640)", () => {
   });
 });
 
-describe("the sign-in the installer gave a client (#1050)", () => {
+describe("connecting an installed app (#1061)", () => {
   afterEach(() => fetchJson.mockReset());
 
-  it("reads it from the credentials endpoint for that client", async () => {
-    const { fetchDetectedCredentials } = await import("./bundled-components-detected");
-    fetchJson.mockResolvedValueOnce({ username: "deluno", password: "generated" });
+  it("asks Deluno to connect it and gets back only whether it worked, never a sign-in", async () => {
+    const { connectDetectedApp } = await import("./bundled-components-detected");
+    fetchJson.mockResolvedValueOnce({ name: "qBittorrent", healthy: true, message: "qBittorrent is connected." });
 
-    await expect(fetchDetectedCredentials("qbittorrent")).resolves.toEqual({ username: "deluno", password: "generated" });
-    expect(fetchJson).toHaveBeenCalledWith("/api/system/bundled-components/qbittorrent/credentials");
+    await expect(connectDetectedApp("qbittorrent")).resolves.toEqual({ name: "qBittorrent", healthy: true, message: "qBittorrent is connected." });
+    expect(fetchJson).toHaveBeenCalledWith("/api/system/bundled-components/qbittorrent/connect", { method: "POST" });
   });
 
-  it("falls back to no sign-in when there is none saved", async () => {
-    const { fetchDetectedCredentials } = await import("./bundled-components-detected");
-    fetchJson.mockRejectedValueOnce(new Error("404"));
+  it("has no way to read an app's sign-in", async () => {
+    const module = await import("./bundled-components-detected");
 
-    await expect(fetchDetectedCredentials("nzbget")).resolves.toBeNull();
+    expect(Object.keys(module)).not.toContain("fetchDetectedCredentials");
   });
 });

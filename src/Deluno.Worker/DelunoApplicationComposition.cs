@@ -87,6 +87,8 @@ public static class DelunoApplicationComposition
         // #1076: after the history link-up, which matches by the names history was written under.
         services.AddHostedService<Deluno.Connections.Data.IndexerNamesUpgradeService>();
         services.AddScoped<Companions.InstalledComponentWirer>();
+        services.AddScoped<Deluno.Api.Network.IInstalledComponentConnector>(sp => sp.GetRequiredService<Companions.InstalledComponentWirer>());
+        services.AddScoped<Deluno.Contracts.IDownloadClientDeletedHook>(sp => sp.GetRequiredService<Companions.InstalledComponentWirer>());
         services.AddScoped<Companions.WeirHealthAddressBackfill>();
         services.AddHostedService<Companions.InstalledComponentWiringService>();
 

@@ -11,17 +11,16 @@ export type BundledComponentStatus = {
   reachable: boolean;
   defaultHost: string;
   defaultPort: number;
-  /** The installer gave this client a sign-in (qBittorrent, NZBGet); Deluno keeps it and fills it in. */
+  /** The installer gave this client a sign-in (qBittorrent). Deluno keeps it and connects the app itself; it is never sent to the screen. */
   hasCredentials?: boolean;
 };
 
-/** The sign-in the installer generated for a detected client, or null when there is none to use. */
-export async function fetchDetectedCredentials(kind: string): Promise<{ username: string; password: string } | null> {
-  try {
-    return await fetchJson<{ username: string; password: string }>(`/api/system/bundled-components/${encodeURIComponent(kind)}/credentials`);
-  } catch {
-    return null;
-  }
+/** What connecting an installed app did. The sign-in Deluno used is never part of it (#1061). */
+export type DetectedConnectResult = { name: string; healthy: boolean; message: string };
+
+/** Asks Deluno to connect an installed app now, with the sign-in it holds. */
+export function connectDetectedApp(kind: string): Promise<DetectedConnectResult> {
+  return fetchJson<DetectedConnectResult>(`/api/system/bundled-components/${encodeURIComponent(kind)}/connect`, { method: "POST" });
 }
 
 /**

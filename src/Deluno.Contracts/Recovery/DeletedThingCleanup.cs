@@ -57,3 +57,13 @@ public interface IDeletedThingCleanup
     /// </summary>
     Task<DeletionCleanup> ProcessorDeletedAsync(string processorConnectionId, string processorName, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Told when a download client connection is deleted, with the protocol and host it had
+/// (#1061). Whatever the installer kept for that app (a stored sign-in) goes with it.
+/// Anything may implement it; the delete endpoint tells every registered one.
+/// </summary>
+public interface IDownloadClientDeletedHook
+{
+    Task DownloadClientDeletedAsync(string protocol, string? host, CancellationToken cancellationToken);
+}
