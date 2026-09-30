@@ -19,7 +19,10 @@ public sealed class GuideUpdateCheckHostedService(
     {
         try
         {
-            await startupGate.WaitAsync(TimeSpan.FromMinutes(2), stoppingToken);
+            if (!await startupGate.WaitUntilReadyAsync(logger, "The guide update check", stoppingToken))
+            {
+                return;
+            }
             await CheckIfDueAsync(stoppingToken);
             using var timer = new PeriodicTimer(PollInterval);
             while (await timer.WaitForNextTickAsync(stoppingToken))

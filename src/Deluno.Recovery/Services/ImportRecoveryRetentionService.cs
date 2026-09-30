@@ -48,7 +48,7 @@ public sealed class ImportRecoveryRetentionService(
                     }
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Import recovery cleanup encountered an error.");
             }

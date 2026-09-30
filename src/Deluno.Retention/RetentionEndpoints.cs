@@ -331,7 +331,7 @@ public sealed class RetentionScheduleHostedService(
             {
                 await RunDueAsync(stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Scheduled retention rules could not run.");
             }

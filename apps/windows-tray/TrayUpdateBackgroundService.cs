@@ -27,7 +27,7 @@ public sealed class TrayUpdateBackgroundService(
                     await updates.CheckForUpdatesAsync(stoppingToken);
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogDebug(ex, "Background update check failed.");
             }

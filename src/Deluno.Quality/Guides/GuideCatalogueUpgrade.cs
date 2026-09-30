@@ -66,7 +66,10 @@ public sealed class GuideCatalogueUpgradeHostedService(
     {
         try
         {
-            await startupGate.WaitAsync(TimeSpan.FromMinutes(2), stoppingToken);
+            if (!await startupGate.WaitUntilReadyAsync(logger, "The guide layer upgrade", stoppingToken))
+            {
+                return;
+            }
             var upgraded = await GuideCatalogueUpgrade.RunAsync(store, GuidePackageCatalog.Current, stoppingToken);
             if (upgraded is not null)
             {

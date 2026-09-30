@@ -79,7 +79,10 @@ public sealed class TrackerSiteSwitchHostedService(
     {
         try
         {
-            await startupGate.WaitAsync(TimeSpan.FromMinutes(2), stoppingToken);
+            if (!await startupGate.WaitUntilReadyAsync(logger, "The tracker site-list check", stoppingToken))
+            {
+                return;
+            }
             await RunOnceAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

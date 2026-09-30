@@ -64,7 +64,7 @@ public sealed class DelunoHeartbeatWorker(
                     _lanes.Select(lane => $"{_workerId}-{lane.Name}").ToArray(),
                     stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
             {
                 // A busy database at startup must not stop the worker: leases
                 // a previous run left behind expire on their own (#1080).
