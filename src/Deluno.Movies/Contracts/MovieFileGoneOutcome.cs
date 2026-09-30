@@ -1,5 +1,8 @@
 namespace Deluno.Movies.Contracts;
 
+/// <summary>One tracked film file to mark gone in a batch (#1070).</summary>
+public sealed record MovieFileGoneRequest(string MovieId, string LibraryId, string FilePath);
+
 /// <summary>
 /// What happened when a film's tracked file was found gone (#1065). Converts to
 /// <c>true</c> when a row was cleared, so callers that only need "did it work"

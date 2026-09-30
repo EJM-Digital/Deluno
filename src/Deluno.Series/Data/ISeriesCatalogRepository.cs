@@ -353,6 +353,14 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         string filePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
+    /// (#1070). One answer per item, in order.
+    /// </summary>
+    Task<IReadOnlyList<bool>> MarkTrackedFilesGoneAsync(
+        IReadOnlyList<SeriesFileGoneRequest> items,
+        CancellationToken cancellationToken);
+
     Task RecordSearchAttemptAsync(
         string seriesId,
         string? episodeId,

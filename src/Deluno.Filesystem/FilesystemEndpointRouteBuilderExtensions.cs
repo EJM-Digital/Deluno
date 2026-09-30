@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Deluno.Libraries.Data;
@@ -10,6 +12,11 @@ namespace Deluno.Filesystem;
 
 public static class FilesystemEndpointRouteBuilderExtensions
 {
+    /// <summary>From this many missing files, "These files really are gone" runs in the background (#1070).</summary>
+    private const int FilesGoneBackgroundThreshold = 1000;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> FilesGoneRunning = new(StringComparer.OrdinalIgnoreCase);
+
     public static IEndpointRouteBuilder MapDelunoFilesystemEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var filesystem = endpoints.MapGroup("/api/filesystem");
@@ -411,13 +418,67 @@ public static class FilesystemEndpointRouteBuilderExtensions
 
         // The answer to the "library looks unreachable" note when the files
         // really were deleted (#1070).
+        //
+        // A big answer (thousands of files) can outlast an HTTP request, so it
+        // runs as a background job and answers 202; the note goes away, and
+        // Activity gets its one line, when the job is done.
         filesystem.MapPost("/libraries/{libraryId}/files-gone", async (
             string libraryId,
             IFilesystemReconciliationService reconciliationService,
+            IServiceScopeFactory scopes,
+            ILoggerFactory loggers,
             CancellationToken cancellationToken) =>
         {
-            var result = await reconciliationService.ConfirmFilesGoneAsync(libraryId, cancellationToken);
-            return result is null ? Results.NotFound() : Results.Ok(result);
+            var count = await reconciliationService.GetUnreachableNoticeMissingCountAsync(libraryId, cancellationToken);
+            if (count is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (count < FilesGoneBackgroundThreshold)
+            {
+                var result = await reconciliationService.ConfirmFilesGoneAsync(libraryId, cancellationToken);
+                return result is null ? Results.NotFound() : Results.Ok(result);
+            }
+
+            if (!FilesGoneRunning.TryAdd(libraryId, 0))
+            {
+                return Results.Accepted(null, new LibraryFilesGoneResult(0, 0, 0, false,
+                    "Deluno is already marking these files as gone. This note goes away when it is done.", InBackground: true));
+            }
+
+            var logger = loggers.CreateLogger("Deluno.Filesystem.FilesGone");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = scopes.CreateScope();
+                    var service = scope.ServiceProvider.GetRequiredService<IFilesystemReconciliationService>();
+                    try
+                    {
+                        await service.ConfirmFilesGoneAsync(libraryId, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId);
+                        await scope.ServiceProvider.GetRequiredService<IActivityFeedRepository>().RecordActivityAsync(
+                            "library.files-gone-failed",
+                            "Marking the missing files as gone stopped because of an error, so some may not have been changed. Choose These files really are gone again to finish.",
+                            null, null, "library", libraryId, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Marking the missing files of library {LibraryId} as gone failed.", libraryId);
+                }
+                finally
+                {
+                    FilesGoneRunning.TryRemove(libraryId, out _);
+                }
+            }, CancellationToken.None);
+            return Results.Accepted(null, new LibraryFilesGoneResult(0, 0, 0, false,
+                $"Deluno is marking about {count} files as gone in the background. This note goes away when it is done, and Activity gets one line.",
+                InBackground: true));
         });
 
         // The manual half of the scheduled file check. DESIGN-007: "everything

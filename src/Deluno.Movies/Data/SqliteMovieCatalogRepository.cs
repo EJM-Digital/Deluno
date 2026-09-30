@@ -2193,11 +2193,63 @@ public sealed class SqliteMovieCatalogRepository(
         bool unmonitor,
         CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow().ToString("O");
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Movies,
             cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var outcome = await FileGoneInTransactionAsync(
+            connection, transaction, movieId, libraryId, filePath, reason, unmonitor, cancellationToken);
+        if (outcome.Cleared)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// Marks many files gone in one transaction (#1070): a library that lost
+    /// thousands of files is answered in a handful of writes instead of one
+    /// transaction each. Every item is matched by path exactly as the single
+    /// writer does, and an item that no longer matches is reported as not found.
+    /// </summary>
+    public async Task<IReadOnlyList<MovieFileGoneOutcome>> MarkTrackedFilesGoneAsync(
+        IReadOnlyList<MovieFileGoneRequest> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Movies,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var outcomes = new List<MovieFileGoneOutcome>(items.Count);
+        foreach (var item in items)
+        {
+            outcomes.Add(await FileGoneInTransactionAsync(
+                connection, transaction, item.MovieId, item.LibraryId, item.FilePath,
+                "The file is gone from disk, so Deluno stopped wanting this movie.",
+                unmonitor: true, cancellationToken));
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return outcomes;
+    }
+
+    private async Task<MovieFileGoneOutcome> FileGoneInTransactionAsync(
+        System.Data.Common.DbConnection connection,
+        System.Data.Common.DbTransaction transaction,
+        string movieId,
+        string? libraryId,
+        string filePath,
+        string reason,
+        bool unmonitor,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
 
         string? clearedLibraryId;
         using (var find = connection.CreateCommand())
@@ -2301,7 +2353,6 @@ public sealed class SqliteMovieCatalogRepository(
             await stop.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await transaction.CommitAsync(cancellationToken);
         return new MovieFileGoneOutcome(true, clearedLibraryId, onlyThatLibrary, others);
     }
 
