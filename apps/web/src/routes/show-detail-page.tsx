@@ -169,7 +169,7 @@ export async function showDetailLoader({
       // sent for the very shows Deluno did download. Asked for by title, because
       // the newest twenty rows across the whole library are not this show's.
       fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=tv&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
-      fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery"),
+      fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500"),
       fetchJson<SeriesInventoryDetail>(`/api/series/${id}/inventory`),
       fetchPageItems<ActivityEventItem>(
         `/api/activity?relatedEntityType=series&relatedEntityId=${id}&pageSize=20`

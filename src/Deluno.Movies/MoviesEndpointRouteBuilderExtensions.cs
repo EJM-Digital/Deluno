@@ -283,6 +283,9 @@ public static class MoviesEndpointRouteBuilderExtensions
             // Absent is "either"; "true"/"false" narrow it.
             bool? monitored,
             string? libraryId,
+            // false leaves the quick-filter counts out and returns only totalCount, for a
+            // caller that wants the number and not the chips.
+            bool? facets,
             string? sort,
             string? direction,
             int? pageSize,
@@ -332,15 +335,22 @@ public static class MoviesEndpointRouteBuilderExtensions
                     Descending: !string.Equals(direction, "asc", StringComparison.OrdinalIgnoreCase),
                     PageSize: pageSize ?? 50,
                     PageToken: pageToken,
-                    Filters: filters),
+                    Filters: filters,
+                    IncludeFacets: facets != false),
                 cancellationToken);
 
             return Results.Ok(page);
         });
 
-        movies.MapGet("/import-recovery", async (IMovieCatalogRepository repository, CancellationToken cancellationToken) =>
+        movies.MapGet("/import-recovery", async (
+            IMovieCatalogRepository repository,
+            // The counts always cover every open case. The list is the newest 50 without
+            // their details unless asked: a screen that lists them all passes limit=500.
+            int? limit,
+            bool? includeDetails,
+            CancellationToken cancellationToken) =>
         {
-            var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken);
+            var summary = await repository.GetImportRecoverySummaryAsync(cancellationToken, limit ?? 50, includeDetails == true);
             return Results.Ok(summary);
         });
 

@@ -33,6 +33,7 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
             [FromServices] IMovieCatalogRepository movieCatalogRepository,
             [FromServices] ISeriesCatalogRepository seriesCatalogRepository,
             [FromServices] IJobQueueRepository jobQueueRepository,
+            [FromServices] DashboardMetricsCache cache,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -45,14 +46,40 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
             var to = DateOnly.FromDateTime(DateTime.UtcNow);
             var from = to.AddDays(-(window - 1));
 
-            var movies = await movieCatalogRepository.GetDailyMetricsAsync(from, to, cancellationToken);
-            var series = await seriesCatalogRepository.GetDailyMetricsAsync(from, to, cancellationToken);
-            var jobs = await jobQueueRepository.GetDailyMetricsAsync(from, to, cancellationToken);
+            // Kept for thirty seconds per window, and the three databases are read at
+            // once rather than one after another (#1081).
+            return Results.Ok(await cache.Memo.GetOrAddAsync(
+                $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}",
+                generation: 0,
+                DashboardMetricsCache.Lifetime,
+                () => BuildAsync(movieCatalogRepository, seriesCatalogRepository, jobQueueRepository, window, from, to),
+                cancellationToken));
+        });
+
+        return endpoints;
+    }
+
+    private static async Task<DashboardMetrics> BuildAsync(
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        IJobQueueRepository jobQueueRepository,
+        int window,
+        DateOnly from,
+        DateOnly to)
+    {
+        {
+            var moviesTask = movieCatalogRepository.GetDailyMetricsAsync(from, to, CancellationToken.None);
+            var seriesTask = seriesCatalogRepository.GetDailyMetricsAsync(from, to, CancellationToken.None);
+            var jobsTask = jobQueueRepository.GetDailyMetricsAsync(from, to, CancellationToken.None);
+            await Task.WhenAll(moviesTask, seriesTask, jobsTask);
+            var movies = await moviesTask;
+            var series = await seriesTask;
+            var jobs = await jobsTask;
 
             // Movies and TV are separate engines but one library, so they add up.
             var titlesAdded = DailyCounts.Fill(Merge(movies.TitlesAdded, series.TitlesAdded), from, to);
 
-            return Results.Ok(new DashboardMetrics(
+            return new DashboardMetrics(
                 Days: window,
                 From: from,
                 To: to,
@@ -65,10 +92,8 @@ public static class DashboardMetricsEndpointRouteBuilderExtensions
                     DailyCounts.Fill(jobs.JobsCompleted, from, to),
                     DailyCounts.Fill(jobs.JobsFailed, from, to)),
                 ImportFailures: DailyCounts.Fill(Merge(movies.ImportFailures, series.ImportFailures), from, to),
-                Grabs: DailyCounts.Fill(jobs.Grabs, from, to)));
-        });
-
-        return endpoints;
+                Grabs: DailyCounts.Fill(jobs.Grabs, from, to));
+        }
     }
 
     /// <summary>Add two per-day maps together, day by day.</summary>

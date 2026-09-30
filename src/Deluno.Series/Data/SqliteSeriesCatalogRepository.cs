@@ -1498,7 +1498,8 @@ public sealed class SqliteSeriesCatalogRepository(
         var token = CataloguePageToken.Decode(query.PageToken);
 
         var sortExpression = CatalogueKeyset.SortExpression(sort, "s", "start_year");
-        var where = CatalogueKeyset.CombineFilters(
+        var filterParts = new[]
+        {
             search is null ? string.Empty : CatalogueKeyset.SearchFilter("s"),
             CatalogueLibraryFilter(libraryId),
             CatalogueKeyset.MonitoredFilter(query.Monitored, "s", NothingWantedInShow),
@@ -1521,8 +1522,10 @@ public sealed class SqliteSeriesCatalogRepository(
             // Quality and size read `ws` — the one wanted-state row this page
             // speaks for — rather than an EXISTS over all of them, so what the
             // filter selects and what the row displays cannot disagree.
-            CatalogueKeyset.CustomFilters(query.Filters, MediaKind.Series, "s", "start_year"),
-            token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending));
+            CatalogueKeyset.CustomFilters(query.Filters, MediaKind.Series, "s", "start_year")
+        };
+        var where = CatalogueKeyset.CombineFilters([.. filterParts, token is null ? string.Empty : CatalogueKeyset.SeekPredicate(sortExpression, "s", query.Descending)]);
+        var countWhere = CatalogueKeyset.CombineFilters(filterParts);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
@@ -1626,7 +1629,32 @@ public sealed class SqliteSeriesCatalogRepository(
             return new CataloguePage<SeriesListItem>(withSubtitles, nextPageToken, hasMore, null, null);
         }
 
-        var facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, query.Filters, cancellationToken);
+        if (!query.IncludeFacets)
+        {
+            // The caller wants the number of matches and not the chips (#1081).
+            var matching = await CountMatchingAsync(connection, countWhere, search, libraryId, query.Filters, cancellationToken);
+            return new CataloguePage<SeriesListItem>(withSubtitles, nextPageToken, hasMore, matching, null);
+        }
+
+        // The chips are independent of the status pill and the monitoring filter, so
+        // one answer serves every click until something is written to the catalogue
+        // or ten seconds pass (#1081). Only the plain shelf and a search are kept: a
+        // custom filter is rarely asked twice.
+        CatalogueFacets facets;
+        if (query.Filters is null || query.Filters.IsEmpty)
+        {
+            var generation = databaseConnectionFactory.GetWriteGeneration(DelunoDatabaseNames.Series);
+            facets = await _facetMemo.GetOrAddAsync(
+                $"{libraryId}|{search}",
+                generation,
+                FacetMemoLifetime,
+                () => CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, query.Filters, CancellationToken.None),
+                cancellationToken);
+        }
+        else
+        {
+            facets = await CountCatalogueFacetsAsync(connection, search, libraryId, status, query.Monitored, query.Filters, cancellationToken);
+        }
 
         return new CataloguePage<SeriesListItem>(
             withSubtitles,
@@ -1817,6 +1845,34 @@ public sealed class SqliteSeriesCatalogRepository(
                 }
                 : item)
             .ToArray();
+    }
+
+    private static readonly TimeSpan FacetMemoLifetime = TimeSpan.FromSeconds(10);
+
+    private readonly Deluno.Infrastructure.Caching.GenerationMemo<CatalogueFacets> _facetMemo = new(timeProvider);
+
+    /// <summary>How many titles match the page's own filters, and nothing else.</summary>
+    private async Task<int> CountMatchingAsync(
+        System.Data.Common.DbConnection connection,
+        string countWhere,
+        string? search,
+        string? libraryId,
+        CatalogueFilters? filters,
+        CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = countWhere == "1 = 1"
+            ? "SELECT COUNT(*) FROM series_entries;"
+            : $"""
+              SELECT COUNT(*)
+              FROM series_entries s
+              {CatalogueWantedState.Join("s", "series_wanted_state", "series_id", libraryId is not null)}
+              WHERE {countWhere};
+              """;
+        CatalogueKeyset.BindSearch(command, search);
+        CatalogueKeyset.BindCustomFilters(command, filters, MediaKind.Series, timeProvider.GetUtcNow());
+        AddParameter(command, "@libraryId", libraryId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -4231,13 +4287,30 @@ public sealed class SqliteSeriesCatalogRepository(
                 upgradeUnknownItems,
                 cancellationToken);
 
-    public async Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken)
+    public async Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken, int limit = 500, bool includeDetails = true)
+    {
+        var summary = await LoadImportRecoverySummaryAsync(cancellationToken, limit, includeDetails);
+        // The fallback below reads every case; trim it to what was asked for.
+        return summary.RecentCases.Count <= Math.Max(limit, 0) && includeDetails
+            ? summary
+            : summary with
+            {
+                RecentCases = summary.RecentCases
+                    .Take(Math.Max(limit, 0))
+                    .Select(item => includeDetails ? item : item with { DetailsJson = null })
+                    .ToArray()
+            };
+    }
+
+    private async Task<SeriesImportRecoverySummary> LoadImportRecoverySummaryAsync(CancellationToken cancellationToken, int limit, bool includeDetails)
     {
         if (sharedMediaStateRepository is not null)
         {
             var sharedSummary = await sharedMediaStateRepository.GetImportRecoverySummaryAsync(
                 MediaKind.Series,
-                cancellationToken);
+                cancellationToken,
+                limit,
+                includeDetails);
             return new SeriesImportRecoverySummary(
                 sharedSummary.OpenCount,
                 sharedSummary.QualityCount,

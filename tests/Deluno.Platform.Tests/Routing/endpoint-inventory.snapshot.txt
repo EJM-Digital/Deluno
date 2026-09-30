@@ -125,6 +125,7 @@ GET /api/integrations/processors/handoffs
 GET /api/intelligent-routing/anomalies
 GET /api/intelligent-routing/snapshot
 GET /api/jobs
+GET /api/jobs/{id}
 GET /api/libraries/
 GET /api/libraries/export
 GET /api/libraries/{id}/import-existing

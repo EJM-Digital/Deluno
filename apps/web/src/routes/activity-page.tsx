@@ -94,12 +94,12 @@ const EVENT_OPTIONAL_COLUMNS: readonly ColumnDefinition[] = [
 
 export async function activityLoader(): Promise<ActivityLoaderData> {
   const [jobs, failedJobs, activity, dispatches, movieRecovery, seriesRecovery] = await Promise.all([
-    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24"),
+    fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24&includePayload=true"),
     fetchFailedJobs(),
     fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"),
     fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
-    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery")
+    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
+    fetchJson<SeriesImportRecoverySummary>("/api/series/import-recovery?limit=500")
   ]);
 
   return { activity, dispatches, failedJobs, jobs, movieRecovery, seriesRecovery };

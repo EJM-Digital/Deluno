@@ -1,4 +1,5 @@
 using Deluno.Persistence.Tests.Support;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -23,7 +24,11 @@ public sealed class AnUnreachableLibrarySaysSoTests
     [Fact]
     public async Task A_library_whose_folder_has_gone_is_raised_as_a_health_alert()
     {
-        await using var app = await ApplicationTestHost.StartAsync();
+        // The health screen keeps its answer for ten seconds and a folder check for thirty
+        // (#1081), so the clock is the test's to move: the drive goes away, time passes,
+        // and the next look finds it.
+        var clock = new FixedTimeProvider(DateTimeOffset.UtcNow);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services => services.AddSingleton<TimeProvider>(clock));
         var root = Directory.CreateTempSubdirectory("deluno-unreachable-").FullName;
 
         var created = await app.Client.PostAsJsonAsync("/api/libraries/", NewLibrary("Films", root));
@@ -34,6 +39,7 @@ public sealed class AnUnreachableLibrarySaysSoTests
 
         // The drive goes away.
         Directory.Delete(root, recursive: true);
+        clock.Advance(TimeSpan.FromSeconds(45));
 
         var alerts = await AlertsAsync(app);
         Assert.Contains("library.unreachable", alerts, StringComparison.Ordinal);

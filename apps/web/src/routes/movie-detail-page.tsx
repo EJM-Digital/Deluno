@@ -185,7 +185,7 @@ export async function movieDetailLoader({
     // sent for the very titles Deluno did download. Asked for by title, because
     // the newest twenty rows across the whole library are not this title's.
     fetchPageItems<DownloadDispatchItem>(`/api/download-dispatches?mediaType=movies&pageSize=20&includeArchived=true&entityId=${encodeURIComponent(id)}`),
-    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery"),
+    fetchJson<MovieImportRecoverySummary>("/api/movies/import-recovery?limit=500"),
     fetchPageItems<ActivityEventItem>(`/api/activity?relatedEntityType=movie&relatedEntityId=${id}&pageSize=20`),
     fetchPageItems<DecisionExplanationItem>(`/api/decisions?relatedEntityType=movie&relatedEntityId=${id}&pageSize=40`),
     fetchJson<LibraryItem[]>("/api/libraries"),

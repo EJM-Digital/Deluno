@@ -400,7 +400,11 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         bool upgradeUnknownItems,
         CancellationToken cancellationToken);
 
-    Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// The counts of every open case and the newest <paramref name="limit"/> of them.
+    /// <paramref name="includeDetails"/> false leaves each case's details JSON out (#1081).
+    /// </summary>
+    Task<SeriesImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken, int limit = 500, bool includeDetails = true);
 
     Task<SeriesImportRecoveryCase> AddImportRecoveryCaseAsync(
         CreateSeriesImportRecoveryCaseRequest request,

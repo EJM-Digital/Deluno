@@ -16,7 +16,7 @@ import { isJobFailed, type JobStatus } from "./job-status-constants";
 import { authedFetch } from "./use-auth";
 
 export async function fetchFailedJobs(): Promise<JobQueueItem[]> {
-  const jobs = await fetchAllPages<JobQueueItem>("/api/jobs?failed=true&pageSize=80");
+  const jobs = await fetchAllPages<JobQueueItem>("/api/jobs?failed=true&pageSize=500&includePayload=true");
   // An API from before the filter ignores it and answers with every job.
   return jobs.filter((job) => isJobFailed(job.status as JobStatus));
 }

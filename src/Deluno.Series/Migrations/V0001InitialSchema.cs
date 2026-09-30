@@ -60,7 +60,8 @@ public static class SeriesDatabaseMigrations
         new MediaSubtitleOverrideMigration(MediaKind.Series, 49),
         new V0050SeriesSubtitleAttemptHistory(),
         new V0051SeriesSubtitleAttemptHistoryScore(),
-        new V0052SeriesSearchHistoryIndexerId()
+        new V0052SeriesSearchHistoryIndexerId(),
+        new V0053SeriesScreenQueryIndexes()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

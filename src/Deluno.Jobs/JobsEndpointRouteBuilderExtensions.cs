@@ -46,10 +46,26 @@ public static class JobsEndpointRouteBuilderExtensions
             int? pageSize,
             string? pageToken,
             bool? failed,
+            bool? includePayload,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await repository.ListPageAsync(new PageRequest(pageSize ?? 25, pageToken), failed == true, cancellationToken));
+            // A list leaves the payload out unless asked: it can carry a whole
+            // torrent file. GET /api/jobs/{id} always has it.
+            return Results.Ok(await repository.ListPageAsync(
+                new PageRequest(pageSize ?? 25, pageToken),
+                failed == true,
+                cancellationToken,
+                includePayload == true));
+        });
+
+        endpoints.MapGet("/api/jobs/{id}", async (
+            string id,
+            IJobQueueRepository repository,
+            CancellationToken cancellationToken) =>
+        {
+            var job = await repository.GetAsync(id, cancellationToken);
+            return job is null ? Results.NotFound() : Results.Ok(job);
         });
 
         endpoints.MapPost("/api/jobs/{id}/dismiss", async (
@@ -205,6 +221,7 @@ public static class JobsEndpointRouteBuilderExtensions
             string? mediaType,
             bool? includeArchived,
             string? entityId,
+            bool? includeRawJson,
             IJobQueueRepository repository,
             CancellationToken cancellationToken) =>
         {
@@ -213,7 +230,8 @@ public static class JobsEndpointRouteBuilderExtensions
                 mediaType,
                 cancellationToken,
                 includeArchived ?? false,
-                entityId);
+                entityId,
+                includeRawJson == true);
             return Results.Ok(page);
         });
 

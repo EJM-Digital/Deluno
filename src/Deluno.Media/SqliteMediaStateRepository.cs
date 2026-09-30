@@ -841,8 +841,11 @@ public sealed class SqliteMediaStateRepository(
 
     public async Task<MediaImportRecoverySummary> GetImportRecoverySummaryAsync(
         MediaKind kind,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int limit = RecoveryCasePageLimit,
+        bool includeDetails = true)
     {
+        limit = Math.Clamp(limit, 0, RecoveryCasePageLimit);
         var map = MediaTableMap.For(kind);
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             map.DatabaseName,
@@ -882,18 +885,18 @@ public sealed class SqliteMediaStateRepository(
                 status,
                 summary,
                 recommended_action,
-                details_json,
+                {(includeDetails ? "details_json" : "NULL")},
                 detected_utc,
                 resolved_utc
             FROM {map.RecoveryTable}
             WHERE status = 'open'
             ORDER BY detected_utc DESC
-            LIMIT {RecoveryCasePageLimit};
+            LIMIT {limit};
             """;
 
         var cases = new List<MediaImportRecoveryCase>();
-        using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        using var reader = limit == 0 ? null : await command.ExecuteReaderAsync(cancellationToken);
+        while (reader is not null && await reader.ReadAsync(cancellationToken))
         {
             cases.Add(new MediaImportRecoveryCase(
                 Id: reader.GetString(0),

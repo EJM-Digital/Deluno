@@ -308,7 +308,11 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         bool upgradeUnknownItems,
         CancellationToken cancellationToken);
 
-    Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// The counts of every open case and the newest <paramref name="limit"/> of them.
+    /// <paramref name="includeDetails"/> false leaves each case's details JSON out (#1081).
+    /// </summary>
+    Task<MovieImportRecoverySummary> GetImportRecoverySummaryAsync(CancellationToken cancellationToken, int limit = 500, bool includeDetails = true);
 
     Task<MovieImportRecoveryCase> AddImportRecoveryCaseAsync(
         CreateMovieImportRecoveryCaseRequest request,

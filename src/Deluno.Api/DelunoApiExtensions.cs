@@ -32,6 +32,8 @@ public static class DelunoApiExtensions
         services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
         services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
+        services.AddSingleton<DashboardMetricsCache>();
+        services.AddSingleton<Deluno.Api.Monitoring.LibraryRootReachability>();
         services.TryAddSingleton<IReleaseNotesProvider, EmbeddedReleaseNotesProvider>();
         services.TryAddSingleton<IUpdateOrchestrator, DefaultUpdateOrchestrator>();
         services.TryAddSingleton<ILanAccess, UncheckedLanAccess>();

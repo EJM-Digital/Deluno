@@ -13,7 +13,13 @@ public interface IJobQueueRepository
     /// recurring work buries a failure under newer rows within hours, and a
     /// screen that reads "the latest few" then counts none of them.
     /// </summary>
-    Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken);
+    /// <remarks>
+    /// <paramref name="includePayload"/> false leaves <c>PayloadJson</c> null: the
+    /// payload can carry a whole torrent file, and a list has no use for it. True
+    /// keeps a payload up to 64 KB and leaves a larger one null; <see cref="GetAsync"/>
+    /// always returns the whole of it.
+    /// </remarks>
+    Task<Page<JobQueueItem>> ListPageAsync(PageRequest request, bool failedOnly, CancellationToken cancellationToken, bool includePayload = true);
 
     /// <summary>One job by id, whatever state it is in, or null when there is none.</summary>
     Task<JobQueueItem?> GetAsync(string jobId, CancellationToken cancellationToken);
@@ -240,7 +246,8 @@ public interface IJobQueueRepository
         string? mediaType,
         CancellationToken cancellationToken,
         bool includeArchived = false,
-        string? entityId = null);
+        string? entityId = null,
+        bool includeRawJson = false);
 
     Task<bool> RequestLibrarySearchAsync(
         LibraryAutomationPlanItem library,

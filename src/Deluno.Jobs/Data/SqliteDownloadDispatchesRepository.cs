@@ -25,6 +25,23 @@ public sealed class SqliteDownloadDispatchesRepository(
         "import_failure_message, import_failure_json, circuit_open_until_utc, next_retry_eligible_utc, attempt_count, " +
         "client_completed_utc, decision_quality, decision_custom_format_score, decision_language, indexer_id";
 
+    /// <summary>
+    /// The largest notes / grab-response JSON a list keeps (#1081). Above it the
+    /// column reads as null in a list, and <c>octet_length</c> answers from the
+    /// record header, so a large value is never read off disk to be thrown away.
+    /// </summary>
+    public const int ListJsonLimitBytes = 65536;
+
+    private static readonly string DispatchListColumns = DispatchColumns
+        .Replace(
+            "notes_json,",
+            $"CASE WHEN octet_length(notes_json) <= {ListJsonLimitBytes} THEN notes_json END AS notes_json,",
+            StringComparison.Ordinal)
+        .Replace(
+            "grab_response_json,",
+            $"CASE WHEN octet_length(grab_response_json) <= {ListJsonLimitBytes} THEN grab_response_json END AS grab_response_json,",
+            StringComparison.Ordinal);
+
     public async Task<DownloadDispatchItem?> GetDispatchIncludingArchivedAsync(
         string dispatchId,
         CancellationToken cancellationToken)
@@ -451,14 +468,19 @@ public sealed class SqliteDownloadDispatchesRepository(
         // 500 to the caller. Asking for archived rows without naming a media
         // type or an entity did exactly that, because dropping the
         // "not archived" condition left nothing behind it.
-        whereConditions.Add(
-            """
-            (@sortUtc IS NULL
-             OR COALESCE(grab_attempted_utc, created_utc) < @sortUtc
-             OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
-            """);
+        // Only written when there is a boundary: SQLite does not see through a
+        // "@sortUtc IS NULL OR" guard, and the sort could then not use
+        // ix_download_dispatches_sort (#1081).
+        if (token is not null)
+        {
+            whereConditions.Add(
+                """
+                (COALESCE(grab_attempted_utc, created_utc) < @sortUtc
+                 OR (COALESCE(grab_attempted_utc, created_utc) = @sortUtc AND id < @id))
+                """);
+        }
 
-        var whereClause = string.Join(" AND ", whereConditions);
+        var whereClause = whereConditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", whereConditions);
 
         // Fetch one extra to determine if there's a next page
         var fetchCount = pageSize + 1;
@@ -467,9 +489,9 @@ public sealed class SqliteDownloadDispatchesRepository(
         command.CommandText =
             $$"""
             SELECT
-                {{DispatchColumns}}
+                {{(filter.OmitLargeJson ? DispatchListColumns : DispatchColumns)}}
             FROM download_dispatches
-            WHERE {{whereClause}}
+            {{whereClause}}
             ORDER BY COALESCE(grab_attempted_utc, created_utc) DESC, id DESC
             LIMIT @limit
             """;
@@ -480,8 +502,11 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         AddParameter(command, "@limit", fetchCount);
-        AddParameter(command, "@sortUtc", token?[0]);
-        AddParameter(command, "@id", token?[1]);
+        if (token is not null)
+        {
+            AddParameter(command, "@sortUtc", token[0]);
+            AddParameter(command, "@id", token[1]);
+        }
 
         var items = new List<DownloadDispatchItem>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

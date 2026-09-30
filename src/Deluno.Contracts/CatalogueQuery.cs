@@ -64,7 +64,11 @@ public sealed record CatalogueQuery(
     int PageSize = 50,
     string? PageToken = null,
     CatalogueFilters? Filters = null,
-    bool IncludeUnmonitoredInStatus = false);
+    bool IncludeUnmonitoredInStatus = false,
+    // False leaves the five quick-filter counts out and answers only how many titles
+    // match (#1081): a caller that wants the number and not the chips - the dashboard
+    // - should not pay for the scan that counts every chip.
+    bool IncludeFacets = true);
 
 /// <summary>
 /// What a title *is*. Monitoring is not in here — it is whether Deluno will act

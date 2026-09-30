@@ -103,7 +103,7 @@ Current gap:
 
 Implemented endpoints:
 
-- `GET /api/movies/import-recovery`
+- `GET /api/movies/import-recovery?limit=n&includeDetails=true` — the counts cover every open case; the list is the newest 50 (`limit` up to 500, 0 for counts only) without `detailsJson` unless asked
 - `GET /api/movies/wanted`
 - `GET /api/movies/search-history`
 - `POST /api/movies/import-recovery`
@@ -116,7 +116,7 @@ Implemented endpoints:
 - `POST /api/movies/{id}/metadata/link/preview` — resolves the exact provider record and returns current/proposed identity, title/year/IMDb/collection changes, preserved local state, any held-title conflict, and a confirmation token bound to the current title state
 - `POST /api/movies/{id}/metadata/link`
 - `PUT /api/movies/{id}/metadata/override`
-- `GET /api/movies/page` — the paged catalogue list; see below
+- `GET /api/movies/page` — the paged catalogue list; see below. `facets=false` leaves the quick-filter counts out and answers only `totalCount`; the counts are kept for ten seconds and dropped the moment the catalogue is written to
 - `POST /api/movies/{id}/metadata/jobs`
 - `POST /api/movies/metadata/jobs` — `{ forceAll?, take? }` → `{ enqueuedCount, remainingCount, staleCount, markedForRefreshCount, message }`
 - `POST /api/movies`
@@ -144,7 +144,7 @@ Current gaps:
 
 Implemented endpoints:
 
-- `GET /api/series/import-recovery`
+- `GET /api/series/import-recovery?limit=n&includeDetails=true` — as the movie twin
 - `GET /api/series/wanted`
 - `GET /api/series/inventory`
 - `GET /api/series/{id}/inventory`
@@ -161,7 +161,7 @@ Implemented endpoints:
 - `POST /api/series/{id}/metadata/link/preview` — adds proposed season/episode counts and the number of existing episodes absent from the proposed provider catalogue
 - `POST /api/series/{id}/metadata/link`
 - `PUT /api/series/{id}/metadata/override`
-- `GET /api/series/page` — the paged catalogue list; see below
+- `GET /api/series/page` — the paged catalogue list; see below. `facets=false` behaves as on the movie twin
 - `POST /api/series/{id}/metadata/jobs`
 - `POST /api/series/metadata/jobs` — same shape as the movie twin
 - `POST /api/series/{id}/episodes/search` — each selected episode resolves its own installed path, size, current/target quality, and same-library immutable-plan evaluation before candidate comparison; replacement authority is bound to that exact path
@@ -545,14 +545,15 @@ Current behavior:
 
 Implemented core operational endpoints:
 
-- `GET /api/jobs?pageSize=n&pageToken=…`
+- `GET /api/jobs?pageSize=n&pageToken=…&failed=true&includePayload=true` — newest first; `failed=true` keeps only jobs that need a person (up to `pageSize=500` in one call). A list leaves `payloadJson` out unless `includePayload=true`, and even then leaves out a payload over 64 KB (it can carry a whole torrent file)
+- `GET /api/jobs/{id}` — one job with its whole payload
 - `GET /api/activity?pageSize=n&pageToken=…`
 - `GET /api/stats?window=24h|7d|30d`
 - `GET /api/decisions?pageSize=n&pageToken=…`
 - `GET /api/library-automation?pageSize=n&pageToken=…`
 - `GET /api/search-cycles?pageSize=n&pageToken=…`
 - `GET /api/search-retry-windows?pageSize=n&pageToken=…`
-- `GET /api/download-dispatches?pageSize=n&pageToken=…`
+- `GET /api/download-dispatches?pageSize=n&pageToken=…&includeArchived=true&includeRawJson=true` — `notesJson` and `grabResponseJson` are left out of a list when over 64 KB (a grab used to record its whole search plan, twice) unless `includeRawJson=true`; `GET /api/v1/download-dispatches/{id}` always has them. A new grab stores its notes once, with any list longer than ten entries cut to ten and a `<name>Total` beside it
 - `GET /api/v1/download-dispatches?pageSize=n&pageToken=…`
 - `GET /api/v1/import-resolutions?pageSize=n&pageToken=…`
 - `GET /api/download-health?pageSize=n&pageToken=…`
