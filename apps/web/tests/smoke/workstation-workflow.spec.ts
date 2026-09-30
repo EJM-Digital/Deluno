@@ -3,6 +3,19 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 test.describe("dashboard workflow", () => {
   test("starts in the dashboard and opens direct add flows", async ({ page }) => {
+    // The Overview offers "Add a movie" while the library is empty (#1082).
+    // Other specs add titles to the shared smoke install, so the summary is
+    // answered as an empty library here rather than depending on run order.
+    await page.route("**/api/dashboard/summary", async (route) => {
+      const response = await route.fetch();
+      const summary = await response.json();
+      if (summary.library) {
+        for (const shelf of [summary.library.movies, summary.library.shows]) {
+          for (const key of Object.keys(shelf)) shelf[key] = 0;
+        }
+      }
+      await route.fulfill({ response, json: summary });
+    });
     await authenticateAndNavigate(page, "/");
 
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
