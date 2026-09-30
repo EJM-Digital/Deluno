@@ -419,6 +419,7 @@ POST /api/movies/{id}/evaluate-candidate
 POST /api/movies/{id}/force-redownload
 POST /api/movies/{id}/grab
 POST /api/movies/{id}/libraries/
+POST /api/movies/{id}/libraries/{libraryId}/want-again
 POST /api/movies/{id}/metadata/issue/acknowledge
 POST /api/movies/{id}/metadata/jobs
 POST /api/movies/{id}/metadata/link
