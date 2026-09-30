@@ -77,7 +77,7 @@ describe("DashboardPage tabs", () => {
     await user.click(screen.getByRole("tab", { name: /^System/ }));
     expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
     expect(screen.getByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("region", { name: /^download clients/i })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /^health/i })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
 
     // Live carries no tab at all.

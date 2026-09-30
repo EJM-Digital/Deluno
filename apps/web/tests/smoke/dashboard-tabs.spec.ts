@@ -9,7 +9,7 @@ import { authenticateAndNavigate } from "../helpers/auth-helper";
 
 const TABS = [
   { name: "Live", query: "", panel: /^needs you/i },
-  { name: "System", query: "?tab=system", panel: /^download clients/i }
+  { name: "System", query: "?tab=system", panel: /^health/i }
 ] as const;
 
 /** The number on a tab, or 0 when it has no badge. */
