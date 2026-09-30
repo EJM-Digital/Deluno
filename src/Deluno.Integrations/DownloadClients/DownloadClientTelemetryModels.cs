@@ -371,7 +371,15 @@ public sealed record DownloadQueueItem(
     /// the client's overall limits or never stops. Null where the client says
     /// nothing about it.
     /// </summary>
-    string? SeedLimit = null);
+    string? SeedLimit = null,
+    /// <summary>
+    /// An id this client used to file the item under (Transmission's numeric
+    /// torrent id, before ownership moved to its hash). Never used to claim an
+    /// item; only to recognise a dispatch recorded under the old id and move it
+    /// to the current one, when the client shows the item under that dispatch's
+    /// own release name (#1062).
+    /// </summary>
+    string? LegacyId = null);
 
 /// <summary>
 /// An observational queue-health signal. These findings never cause Deluno to remove

@@ -269,7 +269,7 @@ public sealed class EveryVerbMeansSomethingDifferentTests
         var sent = new List<string>();
         var handler = new RecordingHandler(sent);
         var client = Client(protocol);
-        const string wrongShape = "0123456789abcdef0123456789abcdef01234567";
+        var wrongShape = protocol == "transmission" ? "not-an-id-at-all" : "0123456789abcdef0123456789abcdef01234567";
 
         var result = protocol == "transmission"
             ? await new TransmissionDownloadClient(new StubHttpClientFactory(handler))
