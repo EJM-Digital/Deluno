@@ -106,4 +106,22 @@ public sealed class HostRestartSupervisorTests
         Assert.Equal(0, starts);
         Assert.Equal(["restarting 1/5"], recorder.Events);
     }
+
+    [Fact]
+    public async Task Choosing_Stop_while_a_restart_is_starting_the_host_stops_the_host_it_just_started()
+    {
+        var recorder = new Recorder();
+        var stops = 0;
+        HostRestartSupervisor? supervisor = null;
+        supervisor = new HostRestartSupervisor(
+            _ => { supervisor!.Cancel(); return Task.CompletedTask; },
+            recorder.Reporter,
+            recorder.Delay,
+            stopHost: () => { stops++; return Task.CompletedTask; });
+
+        await supervisor.HandleUnexpectedStopAsync();
+
+        Assert.Equal(1, stops);
+        Assert.DoesNotContain("recovered", recorder.Events);
+    }
 }

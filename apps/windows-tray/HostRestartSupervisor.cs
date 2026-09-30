@@ -17,7 +17,8 @@ public sealed class HostRestartSupervisor(
     Func<CancellationToken, Task> startHost,
     HostRestartReporter reporter,
     Func<TimeSpan, CancellationToken, Task>? delay = null,
-    Func<DateTimeOffset>? now = null)
+    Func<DateTimeOffset>? now = null,
+    Func<Task>? stopHost = null)
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? ((span, token) => Task.Delay(span, token));
     private readonly Func<DateTimeOffset> _now = now ?? (() => DateTimeOffset.UtcNow);
@@ -112,6 +113,18 @@ public sealed class HostRestartSupervisor(
                 {
                     await _delay(pause, token).ConfigureAwait(false);
                     await startHost(token).ConfigureAwait(false);
+                    if (token.IsCancellationRequested)
+                    {
+                        // The person chose Stop, Restart or Quit while the start was in flight, and
+                        // their stop found nothing to stop yet. Stop the host this start just made.
+                        if (stopHost is not null)
+                        {
+                            await stopHost().ConfigureAwait(false);
+                        }
+
+                        return;
+                    }
+
                     NoteStarted();
                     reporter.Recovered();
                     return;

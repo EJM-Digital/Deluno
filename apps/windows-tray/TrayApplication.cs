@@ -89,7 +89,8 @@ public sealed class TrayApplication : ApplicationContext
                     _notify.Text = Truncate("Deluno stopped - choose Restart");
                     _notify.ShowBalloonTip(30000, "Deluno stopped", HostRestartReporter.GaveUpMessage(max), ToolTipIcon.Error);
                 })
-            });
+            },
+            stopHost: () => _server.StopAsync());
         _server.StoppedUnexpectedly += () => _ = _supervisor.HandleUnexpectedStopAsync();
         SetState(TrayState.Starting);
         _ = StartServerAsync();
