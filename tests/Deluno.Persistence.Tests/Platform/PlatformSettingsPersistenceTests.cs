@@ -546,9 +546,9 @@ public sealed class PlatformSettingsPersistenceTests
         Assert.True(updated.ForceImportEnabled);
         Assert.Equal(7, updated.ForceImportMaxTries);
         Assert.Equal(20, updated.ForceImportMinimumMegabytes);
-
+        // An emptied box means the 100 MB default, never 1 MB and never the old value.
         // An emptied box never saves 1 MB: nothing sent (0) leaves the size as it was.
-        Assert.Equal(20, PlatformSettingsPatchMerger.Apply(updated, new PatchPlatformSettingsRequest(ForceImportMinimumMegabytes: 0)).ForceImportMinimumMegabytes);
+        Assert.Equal(100, PlatformSettingsPatchMerger.Apply(updated, new PatchPlatformSettingsRequest(ForceImportMinimumMegabytes: 0)).ForceImportMinimumMegabytes);
 
         // A patch that mentions neither leaves both as they were.
         await repository.SaveAsync(

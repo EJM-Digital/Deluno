@@ -99,7 +99,7 @@ public static class PlatformSettingsPatchMerger
             LeftoverMinAgeHours: patch.LeftoverMinAgeHours ?? current.LeftoverMinAgeHours,
             ForceImportEnabled: patch.ForceImportEnabled ?? current.ForceImportEnabled,
             ForceImportMaxTries: patch.ForceImportMaxTries ?? current.ForceImportMaxTries,
-            ForceImportMinimumMegabytes: patch.ForceImportMinimumMegabytes is > 0 ? patch.ForceImportMinimumMegabytes : current.ForceImportMinimumMegabytes,
+            ForceImportMinimumMegabytes: patch.ForceImportMinimumMegabytes is { } smallest ? (smallest > 0 ? smallest : 100) : current.ForceImportMinimumMegabytes,
             SeasonFolderFormat: patch.SeasonFolderFormat ?? current.SeasonFolderFormat,
             SpecialsFolderFormat: patch.SpecialsFolderFormat ?? current.SpecialsFolderFormat,
             MultiEpisodeStyle: patch.MultiEpisodeStyle ?? current.MultiEpisodeStyle,
