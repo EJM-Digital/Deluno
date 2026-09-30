@@ -3795,6 +3795,105 @@ public sealed class SqliteSeriesCatalogRepository(
         return await series.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    /// <summary>
+    /// The one writer behind "this episode's (or show's) file is gone" (#1065):
+    /// the file fields, the status and the monitored flag change in a single
+    /// transaction, so a crash can never leave an episode Missing and still
+    /// monitored. Matched by path, so a row that changed since it was read
+    /// (a new import replaced the file) is never cleared by mistake.
+    /// </summary>
+    public async Task<bool> MarkTrackedFileGoneAsync(
+        string seriesId,
+        string? episodeId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(episodeId))
+        {
+            using var episode = connection.CreateCommand();
+            episode.Transaction = transaction;
+            episode.CommandText =
+                """
+                UPDATE episode_entries
+                SET has_file = 0,
+                    monitored = 0,
+                    missing_detected_utc = @now,
+                    last_verified_utc = @now,
+                    updated_utc = @now
+                WHERE id = @episodeId
+                  AND series_id = @seriesId
+                  AND file_path = @filePath;
+                """;
+            AddParameter(episode, "@episodeId", episodeId);
+            AddParameter(episode, "@seriesId", seriesId);
+            AddParameter(episode, "@filePath", filePath);
+            AddParameter(episode, "@now", now);
+            if (await episode.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                return false;
+            }
+
+            using var wanted = connection.CreateCommand();
+            wanted.Transaction = transaction;
+            wanted.CommandText =
+                """
+                UPDATE episode_wanted_state
+                SET wanted_status = 'missing',
+                    wanted_reason = 'The file is gone from disk, so Deluno stopped wanting this episode.',
+                    updated_utc = @now
+                WHERE episode_id = @episodeId
+                  AND library_id = @libraryId;
+                """;
+            AddParameter(wanted, "@episodeId", episodeId);
+            AddParameter(wanted, "@libraryId", libraryId);
+            AddParameter(wanted, "@now", now);
+            await wanted.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+
+        using var series = connection.CreateCommand();
+        series.Transaction = transaction;
+        series.CommandText =
+            """
+            UPDATE series_wanted_state
+            SET has_file = 0,
+                wanted_status = 'missing',
+                wanted_reason = 'The file is gone from disk, so Deluno stopped wanting this show.',
+                missing_since_utc = COALESCE(missing_since_utc, @now),
+                missing_detected_utc = @now,
+                last_verified_utc = @now,
+                updated_utc = @now
+            WHERE series_id = @seriesId
+              AND library_id = @libraryId
+              AND file_path = @filePath;
+            """;
+        AddParameter(series, "@seriesId", seriesId);
+        AddParameter(series, "@libraryId", libraryId);
+        AddParameter(series, "@filePath", filePath);
+        AddParameter(series, "@now", now);
+        if (await series.ExecuteNonQueryAsync(cancellationToken) == 0)
+        {
+            return false;
+        }
+
+        using var monitored = connection.CreateCommand();
+        monitored.Transaction = transaction;
+        monitored.CommandText = "UPDATE series_entries SET monitored = 0, updated_utc = @now WHERE id = @seriesId;";
+        AddParameter(monitored, "@seriesId", seriesId);
+        AddParameter(monitored, "@now", now);
+        await monitored.ExecuteNonQueryAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task RecordSearchAttemptAsync(
         string seriesId,
         string? episodeId,
