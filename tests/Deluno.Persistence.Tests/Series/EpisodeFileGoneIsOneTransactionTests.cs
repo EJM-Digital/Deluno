@@ -45,6 +45,24 @@ public sealed class EpisodeFileGoneIsOneTransactionTests
         Assert.Equal((1L, 1L, "covered"), row);
     }
 
+    [Fact]
+    public async Task A_batch_marks_the_matching_files_and_reports_the_one_that_no_longer_matches()
+    {
+        var (repository, storage, seriesId, episodeId) = await SeededAsync();
+        using var _ = storage;
+
+        var results = await repository.MarkTrackedFilesGoneAsync(
+            [
+                new SeriesFileGoneRequest(seriesId, episodeId, LibraryId, "/media/tv/Show/other.mkv"),
+                new SeriesFileGoneRequest(seriesId, episodeId, LibraryId, FilePath)
+            ],
+            CancellationToken.None);
+
+        Assert.Equal([false, true], results.ToArray());
+        Assert.Equal((0L, 0L, "missing"), await ReadAsync(storage, episodeId));
+        Assert.Empty(await repository.MarkTrackedFilesGoneAsync([], CancellationToken.None));
+    }
+
     private static async Task<(long HasFile, long Monitored, string Status)> ReadAsync(TestStorage storage, string episodeId)
     {
         await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Series, CancellationToken.None);

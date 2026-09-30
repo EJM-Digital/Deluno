@@ -262,6 +262,14 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         string filePath,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
+    /// (#1070). One outcome per item, in order.
+    /// </summary>
+    Task<IReadOnlyList<MovieFileGoneOutcome>> MarkTrackedFilesGoneAsync(
+        IReadOnlyList<MovieFileGoneRequest> items,
+        CancellationToken cancellationToken);
+
     Task RecordSearchAttemptAsync(
         string movieId,
         string libraryId,

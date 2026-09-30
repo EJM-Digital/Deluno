@@ -3849,11 +3849,58 @@ public sealed class SqliteSeriesCatalogRepository(
         string filePath,
         CancellationToken cancellationToken)
     {
-        var now = timeProvider.GetUtcNow().ToString("O");
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Series,
             cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var marked = await MarkTrackedFileGoneInTransactionAsync(
+            connection, transaction, seriesId, episodeId, libraryId, filePath, cancellationToken);
+        if (marked)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return marked;
+    }
+
+    /// <summary>
+    /// <see cref="MarkTrackedFileGoneAsync"/> for many files in one transaction
+    /// (#1070). One answer per item, in order; an item that no longer matches is false.
+    /// </summary>
+    public async Task<IReadOnlyList<bool>> MarkTrackedFilesGoneAsync(
+        IReadOnlyList<SeriesFileGoneRequest> items,
+        CancellationToken cancellationToken)
+    {
+        if (items.Count == 0)
+        {
+            return [];
+        }
+
+        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+            DelunoDatabaseNames.Series,
+            cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var results = new List<bool>(items.Count);
+        foreach (var item in items)
+        {
+            results.Add(await MarkTrackedFileGoneInTransactionAsync(
+                connection, transaction, item.SeriesId, item.EpisodeId, item.LibraryId, item.FilePath, cancellationToken));
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return results;
+    }
+
+    private async Task<bool> MarkTrackedFileGoneInTransactionAsync(
+        DbConnection connection,
+        DbTransaction transaction,
+        string seriesId,
+        string? episodeId,
+        string libraryId,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow().ToString("O");
 
         if (!string.IsNullOrWhiteSpace(episodeId))
         {
@@ -3895,7 +3942,6 @@ public sealed class SqliteSeriesCatalogRepository(
             AddParameter(wanted, "@libraryId", libraryId);
             AddParameter(wanted, "@now", now);
             await wanted.ExecuteNonQueryAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
             return true;
         }
 
@@ -3930,7 +3976,6 @@ public sealed class SqliteSeriesCatalogRepository(
         AddParameter(monitored, "@seriesId", seriesId);
         AddParameter(monitored, "@now", now);
         await monitored.ExecuteNonQueryAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 

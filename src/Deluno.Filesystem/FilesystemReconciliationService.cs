@@ -102,8 +102,7 @@ public sealed class FilesystemReconciliationService(
             if (LooksLikeDropout(missingHere.Count, trackedList.Count))
             {
                 await RaiseUnreachableNoticeAsync(
-                    library, missingHere.Count, trackedList.Count, cancellationToken,
-                    missingHere.Select(item => item.Id).ToArray());
+                    library, missingHere.Count, trackedList.Count, cancellationToken);
                 issues.Add(CreateUnreachableLibraryIssue(library, rootPath));
                 continue;
             }
@@ -489,21 +488,20 @@ public sealed class FilesystemReconciliationService(
     {
         if (describeSet)
         {
-            // Put the missing files on the note so "These files really are
-            // gone" has something to act on, even when the scheduled check has
-            // not run yet.
-            var ids = new List<string>();
+            // Put the count on the note so "These files really are gone" is
+            // offered, even when the scheduled check has not run yet.
+            var missingCount = 0;
             var total = 0;
             await foreach (var other in StreamTrackedFilesAsync(library, cancellationToken))
             {
                 total++;
                 if (!File.Exists(other.Path) && !IsBeingReplacedByAnImport(other.Path))
                 {
-                    ids.Add(CreateMissingTrackedFileIssue(library, other).Id);
+                    missingCount++;
                 }
             }
 
-            await RaiseUnreachableNoticeAsync(library, ids.Count, total, cancellationToken, ids);
+            await RaiseUnreachableNoticeAsync(library, missingCount, total, cancellationToken);
         }
         else
         {
@@ -544,10 +542,30 @@ public sealed class FilesystemReconciliationService(
             cancellationToken);
     }
 
+    /// <summary>How many files one write covers; each chunk is one transaction (#1070).</summary>
+    internal const int FilesGoneChunkSize = 500;
+
+    /// <summary>
+    /// How many missing files the note says there are (0 when it has no count),
+    /// or null when the library has no note.
+    /// </summary>
+    public async Task<int?> GetUnreachableNoticeMissingCountAsync(string libraryId, CancellationToken cancellationToken)
+    {
+        var notice = healthChecks is null
+            ? null
+            : await healthChecks.GetAsync(UnreachableNoticePrefix + libraryId, cancellationToken);
+        return notice is null ? null : ReadNoticeMissingCount(notice.DetailsJson);
+    }
+
     /// <summary>
     /// The user's answer to the unreachable note when they really did delete
-    /// the files: apply the missing-file rule to exactly the files the pass
-    /// that raised the note found missing, each re-checked at apply time.
+    /// the files: apply the missing-file rule to the files that are missing
+    /// right now. The note keeps only the library, a count and when, so the set
+    /// is worked out here with every re-check the single repair makes: the file
+    /// is still gone, the library's root is readable and not empty, the file
+    /// lies inside the root, and Deluno tracks it in this library. The writes go
+    /// a chunk at a time, one transaction per chunk, with one Activity line for
+    /// the whole answer.
     /// </summary>
     public async Task<LibraryFilesGoneResult?> ConfirmFilesGoneAsync(string libraryId, CancellationToken cancellationToken)
     {
@@ -560,12 +578,7 @@ public sealed class FilesystemReconciliationService(
             return null;
         }
 
-        var ids = ReadMissingSet(notice.DetailsJson);
-        if (ids.Count == 0)
-        {
-            return new LibraryFilesGoneResult(0, 0, 0, false,
-                $"Deluno has no list of missing files for {library.Name}. Run a file check first, then choose These files really are gone.");
-        }
+        var noted = ReadNoticeMissingCount(notice.DetailsJson);
 
         // The root has to be readable now: a share that is still down proves nothing.
         var root = string.IsNullOrWhiteSpace(library.RootPath) ? null : Path.GetFullPath(library.RootPath);
@@ -575,40 +588,107 @@ public sealed class FilesystemReconciliationService(
                 $"{library.Name} is still not reachable, so Deluno changed nothing.");
         }
 
-        var marked = 0;
-        var cameBack = 0;
+        var gone = new List<TrackedFile>();
         var refused = 0;
-        foreach (var issueId in ids)
+        await foreach (var tracked in StreamTrackedFilesAsync(library, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var token = DecodeIssueToken(issueId);
-            if (!string.Equals(token.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(tracked.LibraryId, library.Id, StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(tracked.Path))
             {
                 refused++;
                 continue;
             }
 
-            if (File.Exists(token.Path))
+            if (File.Exists(tracked.Path) || IsBeingReplacedByAnImport(tracked.Path))
             {
-                cameBack++;
                 continue;
             }
 
-            var repair = await RepairAsync(new FilesystemReconciliationRepairRequest(issueId, "mark-missing"), cancellationToken);
-            if (repair.Repaired)
+            if (!IsInsideRoot(Path.GetFullPath(tracked.Path), library.RootPath))
             {
-                marked++;
+                refused++;
+                continue;
+            }
+
+            gone.Add(tracked);
+        }
+
+        if (gone.Count == 0 && refused == 0)
+        {
+            return new LibraryFilesGoneResult(0, noted, 0, false,
+                $"Every file Deluno tracks in {library.Name} is there now, so there is nothing to mark as gone. The note clears at the next file check.");
+        }
+
+        var marked = 0;
+        var cameBack = Math.Max(0, noted - gone.Count - refused);
+        var perTitle = gone.Count <= 10;
+        var perTitleOutcomes = new List<(TrackedFile File, bool Repaired, MovieFileGoneOutcome Movie)>();
+        var stoppedEarly = false;
+        foreach (var chunk in gone.Chunk(FilesGoneChunkSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Look again immediately before each write: a share that dropped
+            // out part-way through must not unmonitor what is left.
+            if (!Directory.Exists(root) || IsRootEmptyOrUnreadable(root))
+            {
+                stoppedEarly = true;
+                break;
+            }
+
+            var still = chunk.Where(item => !File.Exists(item.Path) && !IsBeingReplacedByAnImport(item.Path)).ToArray();
+            cameBack += chunk.Length - still.Length;
+            if (still.Length == 0)
+            {
+                continue;
+            }
+
+            if (NormalizeMediaType(library.MediaType) == "tv")
+            {
+                var results = await seriesCatalogRepository.MarkTrackedFilesGoneAsync(
+                    still.Select(item => new SeriesFileGoneRequest(item.EntityId, item.EpisodeId, library.Id, item.Path)).ToArray(),
+                    cancellationToken);
+                for (var i = 0; i < still.Length; i++)
+                {
+                    if (results[i]) { marked++; } else { refused++; }
+                    if (perTitle) { perTitleOutcomes.Add((still[i], results[i], default)); }
+                }
             }
             else
             {
-                refused++;
+                var results = await movieCatalogRepository.MarkTrackedFilesGoneAsync(
+                    still.Select(item => new MovieFileGoneRequest(item.EntityId, library.Id, item.Path)).ToArray(),
+                    cancellationToken);
+                for (var i = 0; i < still.Length; i++)
+                {
+                    if (results[i].Cleared) { marked++; } else { refused++; }
+                    if (perTitle) { perTitleOutcomes.Add((still[i], results[i].Cleared, results[i])); }
+                }
             }
+        }
+
+        if (stoppedEarly)
+        {
+            await RaiseUnreachableNoticeAsync(library, null, null, cancellationToken);
+            return new LibraryFilesGoneResult(marked, cameBack, refused, true,
+                $"{library.Name} stopped being reachable part-way through, so Deluno stopped. {marked} file{(marked == 1 ? "" : "s")} {(marked == 1 ? "was" : "were")} marked as gone before that.");
         }
 
         var message = $"{library.Name}: {marked} file{(marked == 1 ? "" : "s")} marked as gone"
             + (cameBack > 0 ? $", {cameBack} came back and {(cameBack == 1 ? "was" : "were")} left alone" : "")
             + (refused > 0 ? $", {refused} could not be changed" : "")
-            + ".";
+            + ". Deluno did not delete any files.";
+
+        // A handful of titles are told by name, as a single repair does (#931);
+        // a large answer is one line so Activity is not flooded.
+        foreach (var (file, repaired, movie) in perTitleOutcomes)
+        {
+            await RecordMarkMissingRepairAsync(
+                new IssueToken("missingTrackedFile", file.MediaType, library.Id, file.EntityId, file.EpisodeId, file.Path, file.Title),
+                repaired, movie, libraries, cancellationToken);
+        }
+
         await activityFeedRepository.RecordActivityAsync(
             "library.files-gone",
             message,
@@ -621,23 +701,23 @@ public sealed class FilesystemReconciliationService(
         return new LibraryFilesGoneResult(marked, cameBack, refused, false, message);
     }
 
-    private static IReadOnlyList<string> ReadMissingSet(string? detailsJson)
+    private static int ReadNoticeMissingCount(string? detailsJson)
     {
         if (string.IsNullOrWhiteSpace(detailsJson))
         {
-            return [];
+            return 0;
         }
 
         try
         {
             using var doc = JsonDocument.Parse(detailsJson);
-            return doc.RootElement.TryGetProperty("issueIds", out var array) && array.ValueKind == JsonValueKind.Array
-                ? array.EnumerateArray().Select(e => e.GetString()).OfType<string>().ToArray()
-                : [];
+            return doc.RootElement.TryGetProperty("missing", out var count) && count.ValueKind == JsonValueKind.Number
+                ? count.GetInt32()
+                : 0;
         }
         catch (JsonException)
         {
-            return [];
+            return 0;
         }
     }
 
@@ -663,8 +743,7 @@ public sealed class FilesystemReconciliationService(
         LibraryItem library,
         int? missing,
         int? total,
-        CancellationToken cancellationToken,
-        IReadOnlyList<string>? missingIssueIds = null)
+        CancellationToken cancellationToken)
     {
         var id = UnreachableNoticePrefix + library.Id;
         var alreadyThere = false;
@@ -673,16 +752,16 @@ public sealed class FilesystemReconciliationService(
             var existing = await healthChecks.GetAsync(id, cancellationToken);
             alreadyThere = existing is not null
                 && string.Equals(existing.Status, HealthCheckStatuses.Problem, StringComparison.Ordinal);
-            // A note that already lists the missing files is left as it is; one
-            // raised without a list (a root that vanished mid-repair) gets the
-            // list when a pass finds one.
-            if (alreadyThere && (missingIssueIds is not { Count: > 0 } || ReadMissingSet(existing!.DetailsJson).Count > 0))
+            // A note that already says how many files are missing is left as it
+            // is (the answer recounts them anyway); one raised without a count
+            // (a root that vanished mid-repair) gets it when a pass finds one.
+            if (alreadyThere && (missing is not > 0 || ReadNoticeMissingCount(existing!.DetailsJson) > 0))
             {
                 return;
             }
         }
 
-        var canConfirm = missingIssueIds is { Count: > 0 };
+        var canConfirm = missing is > 0;
         var message = missing is not null && total is not null
             ? $"{library.Name}: {missing} of {total} files could not be found, so Deluno changed nothing. "
                 + "If the drive or share dropped out, reconnect it and this clears by itself."
@@ -703,12 +782,14 @@ public sealed class FilesystemReconciliationService(
 
         if (healthChecks is not null)
         {
-            // The list of files this pass found missing rides on the note, so
-            // "These files really are gone" acts on exactly them.
+            // Only the library, how many and when: the answer recounts the
+            // missing files itself, so a huge dropout never bloats this row.
             var details = JsonSerializer.Serialize(new
             {
                 libraryId = library.Id,
-                issueIds = missingIssueIds ?? []
+                missing = missing ?? 0,
+                total = total ?? 0,
+                raisedUtc = timeProvider.GetUtcNow()
             });
             await healthChecks.UpsertResultsAsync(
                 [HealthCheckOutcome.Problem(

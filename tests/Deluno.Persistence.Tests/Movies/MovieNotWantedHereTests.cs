@@ -48,6 +48,27 @@ public sealed class MovieNotWantedHereTests
     }
 
     [Fact]
+    public async Task A_batch_marks_every_matching_file_in_one_write_and_reports_a_stale_one_as_not_found()
+    {
+        using var storage = TestStorage.Create();
+        var (movies, shared) = await CreateAsync(storage);
+        var id = await SeedTwoLibrariesAsync(storage, movies);
+
+        var outcomes = await movies.MarkTrackedFilesGoneAsync(
+            [
+                new MovieFileGoneRequest(id, "lib-4k", $"/4k/{id}.mkv"),
+                new MovieFileGoneRequest(id, "lib-hd", "/hd/not-the-tracked-path.mkv")
+            ],
+            CancellationToken.None);
+
+        Assert.True(outcomes[0].Cleared);
+        Assert.True(outcomes[0].OnlyThatLibrary);
+        Assert.False(outcomes[1].Cleared);
+        await AssertOnlyHdIsStillWantedAsync(storage, movies, shared, id);
+        Assert.Empty(await movies.MarkTrackedFilesGoneAsync([], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task A_film_in_one_library_is_unmonitored_as_before_and_no_library_flag_is_set()
     {
         using var storage = TestStorage.Create();

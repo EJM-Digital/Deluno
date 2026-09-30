@@ -56,4 +56,5 @@ public sealed record LibraryFilesGoneResult(
     int CameBack,
     int CouldNotChange,
     bool LibraryUnreachable,
-    string Message);
+    string Message,
+    bool InBackground = false);

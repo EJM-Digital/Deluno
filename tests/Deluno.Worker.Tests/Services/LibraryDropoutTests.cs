@@ -46,7 +46,7 @@ public sealed class LibraryDropoutTests : IDisposable
             "Films: 30 of 40 files could not be found, so Deluno changed nothing. If the drive or share dropped out, reconnect it and this clears by itself. If you deleted these files, choose These files really are gone.",
             notice.Message);
         Assert.Single(rig.Activity, a => a.Category == "library.unreachable");
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class LibraryDropoutTests : IDisposable
 
         Assert.False(result.Repaired);
         Assert.True(result.LibraryUnreachable);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Contains(rig.HealthOutcomes, o => o.Status == HealthCheckStatuses.Problem);
     }
 
@@ -118,7 +118,7 @@ public sealed class LibraryDropoutTests : IDisposable
             new FilesystemReconciliationRepairRequest(issue.Id, "mark-missing"), CancellationToken.None);
 
         Assert.True(result.LibraryUnreachable);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class LibraryDropoutTests : IDisposable
 
         Assert.False(result.Repaired);
         Assert.False(result.LibraryUnreachable);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public sealed class LibraryDropoutTests : IDisposable
         // movie-0 is one of the missing ones
         Assert.NotNull(result);
         Assert.Equal("library-unreachable", result!.Outcome);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Contains("still monitored", result.Summary);
     }
 
@@ -194,7 +194,7 @@ public sealed class LibraryDropoutTests : IDisposable
     {
         var rig = new Rig(this, present: 10, missing: 30);
         rig.ExistingNotice = true;
-        rig.ExistingDetails = "{\"issueIds\":[\"x\"]}";
+        rig.ExistingDetails = "{\"libraryId\":\"lib-1\",\"missing\":30,\"total\":40}";
 
         await rig.Service.ScanAsync(CancellationToken.None);
 
@@ -203,7 +203,7 @@ public sealed class LibraryDropoutTests : IDisposable
     }
 
     [Fact]
-    public async Task The_note_carries_the_missing_files_and_offers_a_way_to_confirm_they_are_gone()
+    public async Task The_note_carries_only_a_count_and_offers_a_way_to_confirm_the_files_are_gone()
     {
         var rig = new Rig(this, present: 10, missing: 30);
 
@@ -211,33 +211,73 @@ public sealed class LibraryDropoutTests : IDisposable
 
         var notice = Assert.Single(rig.HealthOutcomes);
         using var details = System.Text.Json.JsonDocument.Parse(notice.DetailsJson!);
-        Assert.Equal(30, details.RootElement.GetProperty("issueIds").GetArrayLength());
+        Assert.Equal("lib-1", details.RootElement.GetProperty("libraryId").GetString());
+        Assert.Equal(30, details.RootElement.GetProperty("missing").GetInt32());
+        Assert.Equal(40, details.RootElement.GetProperty("total").GetInt32());
+        Assert.True(details.RootElement.TryGetProperty("raisedUtc", out _));
+        // Only the count rides on the row, never a token per file.
+        Assert.False(details.RootElement.TryGetProperty("issueIds", out _));
         Assert.Contains("These files really are gone", notice.Message);
     }
 
     [Fact]
-    public async Task Confirming_marks_exactly_the_listed_files_rechecks_each_and_clears_the_note()
+    public async Task Confirming_recounts_the_missing_files_marks_them_in_one_write_and_clears_the_note()
     {
         var rig = new Rig(this, present: 10, missing: 30);
         await rig.Service.ScanAsync(CancellationToken.None);
         rig.ExistingNotice = true;
         rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
 
-        // One listed file came back; one file that was fine at the pass is gone now.
+        // One file the pass found missing came back.
         Directory.CreateDirectory(Path.Combine(rig.Root, "Film 0"));
         File.WriteAllText(Path.Combine(rig.Root, "Film 0", "Film 0.mkv"), "x");
-        File.Delete(Path.Combine(rig.Root, "Film 35", "Film 35.mkv"));
 
         var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
 
         Assert.NotNull(result);
         Assert.Equal(29, result!.MarkedGone);
         Assert.Equal(1, result.CameBack);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-35", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-1", "lib-1", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var batch = Assert.Single(rig.Batches);
+        Assert.Equal(29, batch.Count);
+        Assert.DoesNotContain(batch, b => b.MovieId == "movie-0");
+        Assert.DoesNotContain(batch, b => b.MovieId == "movie-35");
+        Assert.Contains(batch, b => b.MovieId == "movie-1" && b.LibraryId == "lib-1");
         Assert.Equal(["notice:library-unreachable:lib-1"], rig.Removed);
         Assert.Single(rig.Activity, a => a.Category == "library.files-gone");
+        Assert.DoesNotContain(rig.Activity, a => a.Category == "filesystem.reconciliation.unmonitored");
+    }
+
+    [Fact]
+    public async Task Confirming_a_large_dropout_writes_in_chunks_with_one_activity_line()
+    {
+        var rig = new Rig(this, present: 10, missing: 1200);
+        await rig.Service.ScanAsync(CancellationToken.None);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
+        Assert.True(rig.HealthOutcomes.Single().DetailsJson!.Length < 300);
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.Equal(1200, result!.MarkedGone);
+        Assert.Equal([500, 500, 200], rig.Batches.Select(b => b.Count).ToArray());
+        Assert.Single(rig.Activity, a => a.Category == "library.files-gone");
+        Assert.DoesNotContain(rig.Activity, a => a.Category == "filesystem.reconciliation.unmonitored");
+        Assert.Equal(1200, await rig.Service.GetUnreachableNoticeMissingCountAsync("lib-1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Confirming_when_every_file_is_back_changes_nothing_and_says_so()
+    {
+        var rig = new Rig(this, present: 40, missing: 0);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = "{\"libraryId\":\"lib-1\",\"missing\":30,\"total\":40}";
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.Equal(0, result!.MarkedGone);
+        Assert.Contains("nothing to mark", result.Message);
+        Assert.Empty(rig.Batches);
+        Assert.Empty(rig.Removed);
     }
 
     [Fact]
@@ -257,7 +297,7 @@ public sealed class LibraryDropoutTests : IDisposable
         Assert.True(result!.LibraryUnreachable);
         Assert.Equal(0, result.MarkedGone);
         Assert.Empty(rig.Removed);
-        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -311,6 +351,7 @@ public sealed class LibraryDropoutTests : IDisposable
         public bool ExistingNotice { get; set; }
         public string? ExistingDetails { get; set; }
         public List<string> Removed { get; } = [];
+        public List<IReadOnlyList<MovieFileGoneRequest>> Batches { get; } = [];
         public string Root => _owner._root;
         private readonly LibraryDropoutTests _owner;
         public FilesystemReconciliationService Service { get; }
@@ -357,6 +398,13 @@ public sealed class LibraryDropoutTests : IDisposable
                 });
             Movies.Setup(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Deluno.Movies.Contracts.MovieFileGoneOutcome(true));
+            Movies.Setup(m => m.MarkTrackedFilesGoneAsync(It.IsAny<IReadOnlyList<MovieFileGoneRequest>>(), It.IsAny<CancellationToken>()))
+                .Returns((IReadOnlyList<MovieFileGoneRequest> items, CancellationToken _) =>
+                {
+                    Batches.Add(items.ToArray());
+                    return Task.FromResult<IReadOnlyList<Deluno.Movies.Contracts.MovieFileGoneOutcome>>(
+                        items.Select(_ => new Deluno.Movies.Contracts.MovieFileGoneOutcome(true)).ToArray());
+                });
 
             var activity = new Mock<IActivityFeedRepository>();
             activity.Setup(a => a.RecordActivityAsync(
