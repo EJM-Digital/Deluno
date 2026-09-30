@@ -184,6 +184,7 @@
     "minimumBytes": 50000000,
     "mustBeSigned": false,
     "silentArgs": "--silent",
+    "runsElevated": false,
     "defaultPort": 9347,
     "uninstallDisplayNameHint": "Weir",
     "postInstallCommand": "%LocalAppData%\\Weir\\current\\Weir.exe",

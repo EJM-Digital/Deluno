@@ -100,7 +100,7 @@ public sealed partial class ComponentSetupTests
         var spec = real with
         {
             Url = "https://example.invalid/installer.exe", GithubRepo = null, DirectoryListingUrl = null,
-            Sha256 = null, MustBeSigned = true, MinimumBytes = 1, Prerequisite = null, ReadinessTimeoutSeconds = 1
+            Sha256 = null, MustBeSigned = true, ExpectedPublisher = "Test Publisher", MinimumBytes = 1, Prerequisite = null, ReadinessTimeoutSeconds = 1
         };
         return await service.InstallAsync(spec, CancellationToken.None);
     }

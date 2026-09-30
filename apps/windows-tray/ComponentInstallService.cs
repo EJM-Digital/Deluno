@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Deluno.Api.Network;
+using Deluno.Companions;
 
 namespace Deluno.Tray;
 
@@ -263,20 +264,23 @@ public sealed class ComponentInstallService(
         }
 
         int? exitCode;
-        if (IsMsi(path))
+        var lockedFolder = spec.RunsElevated || IsMsi(path);
+        if (lockedFolder)
         {
-            // A per-machine .msi needs administrator rights to install quietly. It runs from a
-            // copy in a folder only administrators can write, re-hashed inside the elevated
-            // step; no script file is written, so nothing user-writable is run as admin (#1061).
-            // With no pinned checksum the signature is the only gate, and it is checked again on the copy
-            // that is actually run, inside the locked folder (#1061).
-            var signedBy = string.IsNullOrWhiteSpace(expectedSha256) && spec.MustBeSigned ? spec.ExpectedPublisher : null;
-            var script = ElevatedInstallScript.Build(path, verifiedSha256, spec.SilentArgs, spec.DisableServiceAfterInstall, signedBy, requireSignature: string.IsNullOrWhiteSpace(expectedSha256) && spec.MustBeSigned);
-            exitCode = await _processes.RunElevatedAsync("powershell.exe", ElevatedInstallScript.PowerShellArguments(script), TimeSpan.FromMinutes(5), cancellationToken);
+            // An installer that runs with administrator rights (a per-machine .msi, or a vendor .exe that
+            // asks for them) runs from a copy in a fresh folder only administrators can write, re-hashed
+            // inside the elevated step; no script file is written, so nothing user-writable is run as
+            // admin (#1061). With no pinned checksum the signature is the only gate, and it is checked
+            // again on the copy that is actually run, inside the locked folder (#1061).
+            var signatureIsTheGate = string.IsNullOrWhiteSpace(expectedSha256) && spec.MustBeSigned;
+            var script = ElevatedInstallScript.Build(path, verifiedSha256, spec.SilentArgs, spec.DisableServiceAfterInstall,
+                signatureIsTheGate ? spec.ExpectedPublisher : null, requireSignature: signatureIsTheGate, asExe: !IsMsi(path));
+            exitCode = await _processes.RunElevatedAsync(ElevatedInstallScript.PowerShellPath, ElevatedInstallScript.PowerShellArguments(script), TimeSpan.FromMinutes(5), cancellationToken);
         }
         else
         {
-            // Not elevated by Deluno, but the file still must be the one that was checked.
+            // An installer that installs for the signed-in person alone is not raised by Deluno, so
+            // there is no elevated run to protect; the file still must be the one that was checked.
             if (!StillHasHash(path, verifiedSha256))
             {
                 TryDelete(path);
@@ -302,7 +306,7 @@ public sealed class ComponentInstallService(
                 $"{spec.DisplayName}'s installer changed after it was checked. Deluno did not run it.");
         }
 
-        if (exitCode is ElevatedInstallScript.ReparsePointExitCode or ElevatedInstallScript.FolderExitCode && IsMsi(path))
+        if (lockedFolder && exitCode is ElevatedInstallScript.ReparsePointExitCode or ElevatedInstallScript.FolderExitCode)
         {
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
                 $"Deluno could not make a safe folder to run {spec.DisplayName}'s installer from, so it did not run it.");
@@ -574,15 +578,45 @@ public sealed class ComponentInstallService(
                 $"The downloaded file for {prerequisite.Name} is only {length} bytes -- far smaller than expected ({prerequisite.MinimumBytes}). Deluno did not run it.");
         }
 
-        if (prerequisite.MustBeSigned && !_signatures.IsSignedBy(path, prerequisite.ExpectedPublisher))
+        // A prerequisite has no pinned checksum, so its signature is the only gate, and that gate names
+        // the publisher: a rule with no publisher would accept any signer Windows trusts.
+        if (!prerequisite.MustBeSigned || string.IsNullOrWhiteSpace(prerequisite.ExpectedPublisher) || !_signatures.IsSignedBy(path, prerequisite.ExpectedPublisher))
         {
             TryDelete(path);
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
-                $"{prerequisite.Name} is not Authenticode-signed. Deluno did not run it.");
+                $"{prerequisite.Name} is not signed by its expected publisher. Deluno did not run it.");
         }
 
-        var exitCode = await _processes.RunAsync(path, prerequisite.SilentArgs, TimeSpan.FromMinutes(5), cancellationToken);
+        // The same locked-folder run as the component itself: copied into a fresh administrators-only
+        // folder, re-hashed and its signature checked again on that copy, then run from there.
+        string checkedSha256;
+        try
+        {
+            checkedSha256 = Sha256Of(path);
+        }
+        catch (IOException)
+        {
+            TryDelete(path);
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"{prerequisite.Name} could not be read to check it. Deluno did not run it.");
+        }
+
+        var script = ElevatedInstallScript.Build(path, checkedSha256, prerequisite.SilentArgs, null, prerequisite.ExpectedPublisher,
+            requireSignature: true, asExe: true, alsoSuccessCodes: [3010]);
+        var exitCode = await _processes.RunElevatedAsync(ElevatedInstallScript.PowerShellPath, ElevatedInstallScript.PowerShellArguments(script), TimeSpan.FromMinutes(5), cancellationToken);
         TryDelete(path);
+
+        if (exitCode is ElevatedInstallScript.HashMismatchExitCode or ElevatedInstallScript.SignatureExitCode)
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"{prerequisite.Name} changed after it was checked. Deluno did not run it.");
+        }
+
+        if (exitCode is ElevatedInstallScript.ReparsePointExitCode or ElevatedInstallScript.FolderExitCode)
+        {
+            return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed,
+                $"Deluno could not make a safe folder to run {prerequisite.Name}'s installer from, so it did not run it.");
+        }
 
         // Microsoft's own redistributable installers (and Windows Installer
         // generally) report 3010 for "succeeded, reboot required" -- still a
@@ -621,6 +655,12 @@ public sealed class ComponentInstallService(
 
         if (spec.MustBeSigned)
         {
+            if (string.IsNullOrWhiteSpace(spec.ExpectedPublisher))
+            {
+                // A signature rule with no named publisher would accept any signer Windows trusts.
+                return $"{spec.DisplayName}'s installer must be signed but the manifest names no publisher and no checksum. Deluno did not run it.";
+            }
+
             return _signatures.IsSignedBy(path, spec.ExpectedPublisher)
                 ? null
                 : $"{spec.DisplayName}'s installer is not Authenticode-signed and carries no pinned checksum. Deluno did not run it.";

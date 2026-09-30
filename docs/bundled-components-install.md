@@ -72,9 +72,9 @@ hash rather than one this repository would have to keep refreshing by hand.
 2. **Download.** Only a ticked, not-already-installed component is fetched,
    from the official source named in the manifest (or resolved live for
    Weir), to a temp file.
-3. **Verify.** Pinned SHA-256 (the vendor's published checksum for unsigned Deluge and NZBGet), or a valid Authenticode signature checked on the exact file that will run. The download is placed in a brand-new folder under `%ProgramFiles%` that only administrators can create, links are refused, and the folder is deleted afterwards. Anything that fails either check, or is implausibly small, is deleted and never run.
+3. **Verify.** Pinned SHA-256 (the vendor's published checksum for unsigned Deluge and NZBGet), or a valid Authenticode signature checked on the exact file that will run. Every installer that runs with administrator rights (the .msi, each vendor .exe setup, the Visual C++ runtime a package needs first, and the older "Get the tools you need" path for qBittorrent and SABnzbd) is copied into a brand-new folder under `%ProgramFiles%` that only administrators can create, links are refused, and the hash (and, where a signature is the gate, the signature and the publisher's exact CN or O) is checked again on that copy before it runs from there; the folder is deleted afterwards. The elevated launch uses the full path to Windows PowerShell and msiexec. A signature rule that names no publisher, with no checksum beside it, is refused. Weir's Setup is the one exception to the elevated run: it installs for the signed-in person alone, Deluno does not raise it, and it is checked against its published checksum and run as that person. Anything that fails either check, or is implausibly small, is deleted and never run.
 4. **Run.** Each ticked component's own installer runs as its own process
-   (`Process.Start`, `UseShellExecute = true`), with the silent arguments the
+   (from the locked folder above, or as the signed-in person for Weir), with the silent arguments the
    manifest names where the vendor documents one — never merged into Deluno's
    own payload.
 5. **Report.** Outcomes are appended to `install-hook.log`, the same log
