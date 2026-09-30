@@ -323,6 +323,31 @@ public sealed class MetadataRefreshJobHandlerTests
     }
 
     [Fact]
+    public async Task Two_shows_held_by_a_TheTVDB_outage_at_the_same_moment_both_reach_the_one_note_and_the_Activity_line_is_said_once()
+    {
+        var (health, rows) = InMemoryHealth();
+        // A slow read, so an unguarded read-modify-write would have both start from the same empty list.
+        health.Setup(repository => repository.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string id, CancellationToken _) =>
+            {
+                await Task.Delay(30);
+                lock (rows)
+                {
+                    return rows.GetValueOrDefault(id);
+                }
+            });
+        var activity = new Mock<IActivityFeedRepository>();
+
+        await Task.WhenAll(Enumerable.Range(1, 8).Select(index => Deluno.Series.Services.SeriesCatalogueChoice.RecordHoldAsync(
+            activity.Object, health.Object, MetadataCatalogueHold.TvdbUnavailable, $"c{index}", $"Concurrent {index}", null, CancellationToken.None)));
+
+        var note = Assert.Single(rows.Values);
+        Assert.Contains("8 shows", note.Message, StringComparison.Ordinal);
+        activity.Verify(repository => repository.RecordActivityAsync(
+            "metadata.series.catalogue.held", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task A_TheTVDB_outage_over_many_shows_is_one_Health_note_and_one_Activity_line_that_go_when_they_recover()
     {
         var (health, rows) = InMemoryHealth();
