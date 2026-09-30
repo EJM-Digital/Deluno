@@ -464,9 +464,9 @@ function DesktopSidebar({
           </span>
         </div>
         {needsAttention > 0 ? (
-          // Every problem is listed, each with its button, on the Dashboard's Needs you (#1082).
+          // Every problem is listed, each with its button, on the Dashboard tab that holds it (#1087).
           <NavLink
-            to="/"
+            to={attention.to ?? "/"}
             className="mt-2 block text-[length:var(--shell-subtle-size)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
             {attention.summary}

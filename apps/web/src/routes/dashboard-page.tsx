@@ -1,12 +1,13 @@
 /**
- * The Dashboard (#1082): Overview, Library, Downloads and System, as tabs in the
- * page header. Each tab fits one screen. All four read one summary request
+ * The Dashboard (#1087): two tabs in the page header, Now and Setup health.
+ * Each tab fits one screen. Both read one summary request
  * (`GET /api/dashboard/summary`, built from stored numbers only) and refetch it
  * when the server says it changed, so switching a tab never asks for anything
  * and never blanks the page (#1081).
  *
- * The tab is in the address (`?tab=library`), so a tab can be linked; Overview
- * carries no `tab` at all.
+ * The tab is in the address (`?tab=setup`), so a tab can be linked; Now carries
+ * no `tab` at all. The four old values still work: `overview`, `library` and
+ * `downloads` open Now, and `system` opens Setup health.
  */
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -18,28 +19,28 @@ import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, startSources } from "../lib/route-cache";
 import { RealtimeGroups, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
-import { DownloadsTab } from "./dashboard/downloads-tab";
-import { LibraryTab } from "./dashboard/library-tab";
-import { OverviewTab } from "./dashboard/overview-tab";
+import { NowTab } from "./dashboard/now-tab";
+import { SetupTab } from "./dashboard/setup-tab";
 import type { DashboardSummary } from "../lib/api";
-import { libraryTabSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
-import { SystemTab } from "./dashboard/system-tab";
+import { nowSources, refreshSummary, setupSources, summaryQuery, useDashboardSummary, useSetupState } from "./dashboard/sources";
 import { useDashboardAttention } from "./dashboard/use-dashboard-attention";
 
-export const DASHBOARD_TABS = ["overview", "library", "downloads", "system"] as const;
+export const DASHBOARD_TABS = ["now", "setup"] as const;
 export type DashboardTab = (typeof DASHBOARD_TABS)[number];
 
 const TAB_LABELS: Record<DashboardTab, string> = {
-  overview: "Overview",
-  library: "Library",
-  downloads: "Downloads",
-  system: "System"
+  now: "Now",
+  setup: "Setup health"
 };
 
-/** An unknown or missing `?tab=` is the Overview. */
+/** The tab each older tab name now opens. */
+const OLD_TABS: Record<string, DashboardTab> = { overview: "now", library: "now", downloads: "now", system: "setup" };
+
+/** An unknown or missing `?tab=` is Now; an old tab name opens the tab its content moved to. */
 export function tabFromSearch(search: string | URLSearchParams): DashboardTab {
-  const value = (typeof search === "string" ? new URLSearchParams(search) : search).get("tab");
-  return (DASHBOARD_TABS as readonly string[]).includes(value ?? "") ? (value as DashboardTab) : "overview";
+  const value = (typeof search === "string" ? new URLSearchParams(search) : search).get("tab") ?? "";
+  if ((DASHBOARD_TABS as readonly string[]).includes(value)) return value as DashboardTab;
+  return OLD_TABS[value] ?? "now";
 }
 
 /**
@@ -66,7 +67,7 @@ export function dashboardShouldRevalidate({ currentUrl, nextUrl, formMethod, def
 export function dashboardLoader(args?: { request?: Request }) {
   void queryClient.prefetchQuery(summaryQuery);
   startSources(setupSources);
-  if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "library") startSources(libraryTabSources);
+  if (args?.request && tabFromSearch(new URL(args.request.url).searchParams) === "now") startSources(nowSources);
   return { cached: true as const };
 }
 
@@ -154,12 +155,7 @@ function useFitToScreen(element: HTMLDivElement | null) {
 }
 
 function TabBody({ tab, summary }: { tab: DashboardTab; summary: DashboardSummary | undefined }): ReactNode {
-  switch (tab) {
-    case "library": return <LibraryTab summary={summary} />;
-    case "downloads": return <DownloadsTab summary={summary} />;
-    case "system": return <SystemTab summary={summary} />;
-    default: return <OverviewTab summary={summary} />;
-  }
+  return tab === "setup" ? <SetupTab summary={summary} /> : <NowTab summary={summary} />;
 }
 
 export function DashboardPage() {
@@ -190,13 +186,13 @@ export function DashboardPage() {
   const select = useCallback((next: DashboardTab) => {
     setSearchParams((current) => {
       const params = new URLSearchParams(current);
-      if (next === "overview") params.delete("tab");
+      if (next === "now") params.delete("tab");
       else params.set("tab", next);
       return params;
     }, { replace: false });
   }, [setSearchParams]);
 
-  // One count of what needs a person, shared by these badges and the Overview list.
+  // One count of what needs a person, shared by these badges, the Needs you list and the sidebar.
   const badges: Record<DashboardTab, number> = useDashboardAttention(summary, setup.needs).counts;
 
   // Nothing to draw the first time until the summary arrives. After that the

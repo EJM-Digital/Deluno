@@ -35,6 +35,8 @@ export interface AttentionSnapshot {
   total: number;
   /** The same rows in a short sentence for the sidebar card. */
   summary: string;
+  /** The Dashboard tab that holds the first of those problems. */
+  to?: string;
   loading: boolean;
 }
 
@@ -49,6 +51,7 @@ const empty: AttentionSnapshot = {
   healthProblems: 0,
   total: 0,
   summary: "",
+  to: "/",
   loading: true
 };
 
@@ -109,8 +112,9 @@ function snapshotFromCache(): AttentionSnapshot | null {
     movieWanted: readCached(sharedSources.movieWanted)?.totalWanted ?? 0,
     tvWanted: readCached(sharedSources.seriesWanted)?.totalWanted ?? 0,
     healthProblems: health?.unsnoozedProblemCount ?? 0,
-    total: attention.counts.overview,
+    total: attention.total,
     summary: attentionSummaryLine(attention.items),
+    to: attention.counts.now > 0 || attention.counts.setup === 0 ? "/" : "/?tab=setup",
     loading: false
   };
 }

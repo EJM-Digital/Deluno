@@ -1,21 +1,25 @@
 /**
- * What on the Dashboard needs a person, counted once (#1082).
+ * What on the Dashboard needs a person, counted once (#1087).
  *
- * The tab badges, the Overview's Needs you list and its count, and the
- * sidebar's "Needs a look" card all come from this one function (the sidebar
- * reads it in `lib/use-attention.ts`), so they can never disagree. It follows
- * the rules in `lib/needs-action.ts`: a job Deluno
- * will retry by itself is not a problem, a download a recovery case is about is
- * the case and not also a stalled download, and a hand-off a case is about is
- * the hand-off.
+ * The two tab badges, the Needs you list and the sidebar's "Needs a look" card
+ * all come from this one function (the sidebar reads it in
+ * `lib/use-attention.ts`), so they can never disagree.
  *
- * Every item is one or more rows with a button, on the tab where that button is:
- *  - `count` is how many rows of that tab the item stands for (a group such as
- *    "3 jobs gave up" is one row with one Retry button);
- *  - a tab's badge is the sum of `count` for the items on it;
- *  - the Overview lists every item, so its number is the sum of all of them:
- *    the other tabs' badges plus what only the Overview holds (setup steps, an
- *    internet outage, downloads Transfers deals with).
+ * One rule: only a REAL problem is counted, meaning something Deluno cannot
+ * resolve without a person: a client, indexer or processor that is not
+ * answering, an open import case, an import or processor hand-off that failed,
+ * a download that stalled, a job that gave up, an open health problem that is
+ * not snoozed, a background worker that keeps failing. NOT counted: leftover
+ * folders, health suggestions, a failed download Deluno is already searching
+ * again for, and anything snoozed. Leftovers and suggestions stay reachable as
+ * one quiet line (`alsoWorthALook`) under Needs you.
+ *
+ * Each problem is counted once, on the tab where its button is:
+ *  - Now: downloads, imports and processor hand-offs;
+ *  - Setup health: connections, folders, storage, system and jobs.
+ * `count` is how many rows an item stands for (a group such as "3 jobs gave up"
+ * is one row with one Retry button). A tab's badge is the sum of its items'
+ * counts, and the sidebar's total is the two badges added together.
  */
 import {
   fetchJson,
@@ -40,7 +44,8 @@ import { defineSources } from "../../lib/route-cache";
 import { sharedSources } from "../../lib/shared-sources";
 import { plural } from "./format";
 
-export type DashboardTab = "overview" | "library" | "downloads" | "system";
+/** Two tabs (#1087): Now is what is moving, Setup health is the plumbing. */
+export type DashboardTab = "now" | "setup";
 
 /** The stored lists the count reads. Each is one the sidebar already keeps warm. */
 export const attentionSources = defineSources({
@@ -91,7 +96,7 @@ export interface AttentionItem {
   tone: AttentionTone;
   title: string;
   text: string;
-  /** Where the Overview's fix button goes. */
+  /** Where the fix button goes. */
   to: string;
   action: string;
   /** How many rows with a button this item is on its tab. */
@@ -99,9 +104,14 @@ export interface AttentionItem {
 }
 
 export interface DashboardAttention {
-  /** Every problem, worst first. The Overview's Needs you list. */
+  /** Every problem, worst first. The Needs you list. */
   items: AttentionItem[];
+  /** Real problems per tab: the two badges. Each problem is on one tab only. */
   counts: Record<DashboardTab, number>;
+  /** The two badges added together: the sidebar's number. */
+  total: number;
+  /** Uncounted: leftover folders and health suggestions. */
+  alsoWorthALook: { leftovers: number; suggestions: number };
   /** The health problems the System tab lists: not snoozed, and not one a row above already stands for. */
   healthListed: DashboardHealthProblem[];
   /** The rows the tabs draw with buttons, already free of duplicates. */
@@ -184,7 +194,6 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   const stalled = na.queueAttention.filter(isStalled);
   const stalledCount = lists.telemetry !== undefined ? stalled.length : downloads?.stalled ?? 0;
   const otherQueue = na.queueAttention.filter((item) => !isStalled(item));
-  const failedDownloadCount = lists.dispatches !== undefined ? na.failedDownloads.length : downloads?.failedDownloads ?? 0;
 
   const clients = (downloads?.clients ?? []).filter(clientNeedsButton);
   const indexers = (lists.indexers ?? []).filter(indexerNeedsButton);
@@ -217,14 +226,14 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   const collectionsFailing = summary?.library?.collections.syncFailing ?? 0;
   const requestServersFailing = summary?.requests?.seerrFailing ?? 0;
 
-  // ------------------------------------------------------------- overview only
+  // ---------------------------------------------------------------- setup health
   for (const item of setup) {
-    add({ id: `setup:${item.id}`, tab: "overview", tone: "warn", title: item.title, text: item.text, to: item.to, action: item.action });
+    add({ id: `setup:${item.id}`, tab: "setup", tone: "warn", title: item.title, text: item.text, to: item.to, action: item.action });
   }
   if (system?.internetOutage) {
     add({
       id: "outage",
-      tab: "overview",
+      tab: "setup",
       tone: "bad",
       title: "Deluno can't reach the internet",
       text: "Searching and cleanup are paused until it is back. Nothing was marked as a bad release.",
@@ -236,7 +245,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   if (gate?.enabled && gate.unreadable) {
     add({
       id: "queue-gate",
-      tab: "overview",
+      tab: "setup",
       tone: "warn",
       title: "Deluno can't read the download queue",
       text: "Pausing searches when the queue is long is not working until it can.",
@@ -245,18 +254,8 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     });
   }
   add({
-    id: "failed-downloads",
-    tab: "overview",
-    tone: "bad",
-    title: `${plural(failedDownloadCount, "download")} failed`,
-    text: "Deluno will look for another release when the title is still wanted.",
-    to: "/queue",
-    action: "Look in Transfers",
-    count: failedDownloadCount
-  });
-  add({
     id: "queue-warnings",
-    tab: "overview",
+    tab: "now",
     tone: "warn",
     title: `${plural(otherQueue.length, "download has", "downloads have")} a warning`,
     text: "The download client reported a problem with them.",
@@ -264,21 +263,11 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     action: "Look in Transfers",
     count: otherQueue.length
   });
-  add({
-    id: "leftovers",
-    tab: "overview",
-    tone: "warn",
-    title: `${plural(na.orphanedDownloads.length, "leftover folder")} in the download folders`,
-    text: "Nothing claims these folders.",
-    to: "/queue",
-    action: "Look in Transfers",
-    count: na.orphanedDownloads.length
-  });
 
   // -------------------------------------------------------------------- library
   add({
     id: "collections",
-    tab: "library",
+    tab: "setup",
     tone: "warn",
     title: `${plural(collectionsFailing, "collection")} could not update`,
     text: "The list a collection follows could not be read.",
@@ -288,84 +277,84 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   });
   add({
     id: "requests",
-    tab: "library",
+    tab: "setup",
     tone: "warn",
     title: `${plural(requestServersFailing, "request server")} not answering`,
     text: "New requests can't arrive until it answers.",
-    to: "/?tab=library",
-    action: "Look in Library",
+    to: "/indexers/media-servers",
+    action: "Look in Find & Download",
     count: requestServersFailing > 0 ? 1 : 0
   });
 
   // ------------------------------------------------------------------ downloads
   add({
     id: "stalled",
-    tab: "downloads",
+    tab: "now",
     tone: "warn",
     title: `${plural(stalledCount, "download is", "downloads are")} stalled`,
     text: "They have stopped moving in the download client.",
-    to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    to: "/queue",
+    action: "Look in Transfers",
     count: stalledCount
   });
   add({
     id: "clients",
-    tab: "downloads",
+    tab: "setup",
     tone: "warn",
     title: `${plural(clients.length, "download client")} needs a look`,
     text: "It is not answering, is paused, or has warnings to clear.",
-    to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    to: "/?tab=setup",
+    action: "Fix it in Setup health",
     count: clients.length
   });
   add({
     id: "indexers",
-    tab: "downloads",
+    tab: "setup",
     tone: "warn",
     title: indexerOnly?.title ?? `${plural(indexerCount, "indexer")} not answering`,
     text: indexerOnly?.text ?? "Deluno can't search a site until it answers.",
-    to: "/?tab=downloads",
-    action: "Test again in Downloads",
+    to: "/?tab=setup",
+    action: "Test again in Setup health",
     count: indexerCount
   });
   add({
     id: "recovery",
-    tab: "downloads",
+    tab: "now",
     tone: "warn",
     title: `${plural(recoveryCount, "import needs", "imports need")} a look`,
     text: "Deluno could not finish these on its own. Retry them or give up on them.",
-    to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    to: "/",
+    action: "Fix it in Needs you",
     count: recoveryCount
   });
   add({
     id: "failed-imports",
-    tab: "downloads",
+    tab: "now",
     tone: "bad",
     title: `${plural(importJobsCount, "import")} didn't finish`,
     text: "They stopped and won't be tried again on their own.",
-    to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    to: "/",
+    action: "Fix it in Needs you",
     count: importJobsCount
   });
   add({
     id: "handoffs",
-    tab: "downloads",
+    tab: "now",
     tone: "warn",
     title: `${plural(handoffCount, "hand-off")} to the processor failed`,
     text: "The finished download was not handed over for cleaning.",
-    to: "/?tab=downloads",
-    action: "Fix it in Downloads",
+    to: "/",
+    action: "Fix it in Needs you",
     count: handoffCount
   });
   add({
     id: "processors",
-    tab: "downloads",
+    tab: "setup",
     tone: "warn",
     title: processorOnly?.title ?? `${plural(processorCount, "processor")} not answering`,
     text: processorOnly?.text ?? "Finished downloads can't be cleaned until it answers.",
-    to: "/?tab=downloads",
-    action: "Test again in Downloads",
+    to: "/?tab=setup",
+    action: "Test again in Setup health",
     count: processorCount
   });
 
@@ -377,7 +366,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   for (const problem of healthListed) {
     add({
       id: `health:${problem.id}`,
-      tab: "system",
+      tab: "setup",
       tone: "warn",
       title: problem.title,
       text: problem.message,
@@ -393,7 +382,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   if (health && healthTotal > shown) {
     add({
       id: "health:more",
-      tab: "system",
+      tab: "setup",
       tone: "warn",
       title: `${plural(healthTotal - shown, "more problem")} to look at`,
       text: "The health checks found more than fit here.",
@@ -404,36 +393,37 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
   }
   add({
     id: "failed-jobs",
-    tab: "system",
+    tab: "setup",
     tone: "bad",
     title: `${plural(jobsGaveUp, "background job")} gave up`,
     text: "Nothing else waits on them, but the work was not done.",
-    to: "/?tab=system",
-    action: "Fix it in System",
+    to: "/?tab=setup",
+    action: "Fix it in Setup health",
     count: jobsGaveUp > 0 ? 1 : 0
   });
   add({
     id: "lanes",
-    tab: "system",
+    tab: "setup",
     tone: "bad",
     title: `${plural(failingLanes, "background worker")} keeps failing`,
     text: "Deluno keeps trying, but this part is not getting its work done.",
-    to: "/?tab=system",
-    action: "Fix it in System",
+    to: "/?tab=setup",
+    action: "Fix it in Setup health",
     count: failingLanes
   });
 
-  const counts: Record<DashboardTab, number> = { overview: 0, library: 0, downloads: 0, system: 0 };
-  for (const item of items) {
-    counts[item.tab] += item.count;
-    counts.overview += item.count;
-  }
-  // The Overview's own items were counted twice above.
-  counts.overview -= items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0);
+  const counts: Record<DashboardTab, number> = { now: 0, setup: 0 };
+  for (const item of items) counts[item.tab] += item.count;
+
+  // What is worth a look but is not a problem: never counted, one quiet line under Needs you.
+  const suggestions = lists.healthSummary?.suggestionCount ?? health?.suggestions ?? 0;
+  const alsoWorthALook = { leftovers: na.orphanedDownloads.length, suggestions };
 
   return {
     items: [...items].sort((a, b) => Number(b.tone === "bad") - Number(a.tone === "bad")),
     counts,
+    total: counts.now + counts.setup,
+    alsoWorthALook,
     healthListed,
     downloads: { stalled, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,

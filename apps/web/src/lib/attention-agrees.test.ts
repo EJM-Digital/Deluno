@@ -56,7 +56,7 @@ function bothCounts() {
 async function agree() {
   const { sidebar, dashboard } = bothCounts();
   await waitFor(() => expect(sidebar.result.current.loading).toBe(false), { timeout: 4_000 });
-  await waitFor(() => expect(dashboard.result.current.counts.overview).toBe(sidebar.result.current.total), { timeout: 4_000 });
+  await waitFor(() => expect(dashboard.result.current.total).toBe(sidebar.result.current.total), { timeout: 4_000 });
   return { sidebar: sidebar.result.current, dashboard: dashboard.result.current };
 }
 
@@ -69,7 +69,7 @@ describe("the sidebar and the Dashboard count the same problems", () => {
   it("agree on a new install: nothing", async () => {
     mocks.data = { summary: emptySummary() };
     const { sidebar, dashboard } = await agree();
-    expect(dashboard.counts.overview).toBe(sidebar.total);
+    expect(dashboard.total).toBe(sidebar.total);
     expect(sidebar.total).toBe(0);
     expect(sidebar.summary).toBe("");
   });
@@ -77,9 +77,10 @@ describe("the sidebar and the Dashboard count the same problems", () => {
   it("agree on a busy install", async () => {
     mocks.data = { summary: fullSummary() };
     const { sidebar, dashboard } = await agree();
-    expect(sidebar.total).toBe(dashboard.counts.overview);
+    expect(sidebar.total).toBe(dashboard.total);
     expect(sidebar.total).toBeGreaterThan(0);
-    // The card's sentence is made of the Overview's own rows.
+    // The two badges added together are the sidebar's number, and the card's sentence is made of the same rows.
+    expect(dashboard.counts.now + dashboard.counts.setup).toBe(sidebar.total);
     expect(dashboard.items.some((item) => sidebar.summary.startsWith(item.title))).toBe(true);
   });
 
@@ -101,7 +102,19 @@ describe("the sidebar and the Dashboard count the same problems", () => {
       failedJobs: [{ id: "j1", jobType: "library.scan", status: "failed", attempts: 3, maxAttempts: 3, nextAttemptUtc: null, lastError: "x" }]
     };
     const { sidebar, dashboard } = await agree();
-    expect(sidebar.total).toBe(dashboard.counts.overview);
+    expect(sidebar.total).toBe(dashboard.total);
     expect(dashboard.items.filter((item) => /Nyaa/.test(item.title))).toHaveLength(1);
+  });
+
+  it("do not count leftover folders or suggestions, on either side", async () => {
+    mocks.data = {
+      summary: emptySummary(),
+      orphans: [{ name: "a" }, { name: "b" }, { name: "c" }],
+      healthSummary: { problemCount: 0, unsnoozedProblemCount: 0, unknownCount: 0, suggestionCount: 4, lastRunUtc: null }
+    };
+    const { sidebar, dashboard } = await agree();
+    expect(sidebar.total).toBe(0);
+    expect(dashboard.total).toBe(0);
+    expect(dashboard.alsoWorthALook).toEqual({ leftovers: 3, suggestions: 4 });
   });
 });

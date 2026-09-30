@@ -16,15 +16,11 @@
  * a person pressing Test again, Resume or Retry does.
  */
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import { Chip } from "../../components/ui/chip";
-import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../../components/ui/list-card";
+import { ListCell, ListNameCell, ListRow, ListTable } from "../../components/ui/list-card";
 import { StatusLed } from "../../components/ui/status-led";
-import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
 import type { DownloadQueueItem, DownloadTelemetryOverview, ProcessorConnectionItem } from "../../lib/api";
 import type { DashboardClientRow, DashboardSummary } from "../../lib/api/types/operations";
-import { dismissFailedJob } from "../../lib/failed-jobs";
-import { canTryAgain, isVanished, type RecoveryCaseRow } from "../../lib/needs-action";
 import { useRouteSources } from "../../lib/route-cache";
 import { submitQueueRemoval } from "../../lib/remove-download";
 import { cn } from "../../lib/utils";
@@ -32,7 +28,6 @@ import {
   ActionButton,
   FactRow,
   Panel,
-  PanelLink,
   PanelNote,
   ago,
   formatEta,
@@ -46,123 +41,8 @@ import {
 } from "./downloads-kit";
 import { FitList } from "./parts";
 import { attentionSources, indexerNeedsButton, processorUnhealthy, type DashboardAttention } from "./attention";
-import { useDashboardAttention } from "./use-dashboard-attention";
-
-const sources = attentionSources;
-
-export function DownloadsTab({ summary }: { summary: DashboardSummary | undefined }) {
-  const { data } = useRouteSources(sources);
-  const action = useAction();
-  const attention = useDashboardAttention(summary);
-  const processors = useMemo(() => (data.processors ?? []).filter((processor) => processor.isEnabled), [data.processors]);
-  const processorName = processors.length === 1 ? processors[0].name : processors.length > 1 ? "the processors" : "the processor";
-
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <Strip summary={summary} />
-      <Pipeline summary={summary} processorName={processorName} hasProcessor={processors.length > 0} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
-        <DownloadsNow summary={summary} telemetry={data.telemetry} attention={attention} action={action} />
-        <Clients summary={summary} action={action} />
-        <Indexers summary={summary} indexers={data.indexers} action={action} className="lg:row-span-2" />
-        <ImportsAndRecovery summary={summary} attention={attention} action={action} />
-        <ProcessorPanel summary={summary} processors={processors} handoffs={data.handoffs} action={action} />
-      </div>
-    </div>
-  );
-}
 
 type Action = ReturnType<typeof useAction>;
-
-/* --------------------------------------------------------------- strip */
-
-function Strip({ summary }: { summary: DashboardSummary | undefined }) {
-  const downloads = summary?.downloads;
-  const stalled = downloads?.stalled ?? 0;
-  const holds = downloads?.sharingHolds ?? 0;
-  const refused = summary?.blocklist?.count ?? 0;
-  const cells: SummaryCell[] = [
-    {
-      label: "Speed now",
-      value: formatSpeed(downloads?.downloadMbps),
-      help: downloads?.hasReading === false ? "Waiting for the first reading from your download clients" : `${formatSpeed(downloads?.uploadMbps)} going up`,
-      href: "/queue"
-    },
-    {
-      label: "Stalled",
-      value: stalled.toLocaleString("en-AU"),
-      help: stalled > 0 ? "they won’t restart on their own" : "nothing is stuck",
-      tone: stalled > 0 ? "warning" : undefined,
-      href: "/queue"
-    },
-    {
-      label: "Sharing",
-      value: holds.toLocaleString("en-AU"),
-      help: holds > 0 ? `kept for the sites they came from, ${formatSize(downloads?.sharingExtraBytes)} extra` : "nothing is being kept for a site’s sharing rules",
-      href: "/queue"
-    },
-    {
-      label: "Refused releases",
-      value: refused.toLocaleString("en-AU"),
-      help: refused > 0 ? "won’t be grabbed again" : "no release has been refused yet",
-      href: "/search-cycles/blocklist"
-    }
-  ];
-  return <SummaryStrip cells={cells} />;
-}
-
-/* ------------------------------------------------------------ pipeline */
-
-function Pipeline({ summary, processorName, hasProcessor }: { summary: DashboardSummary | undefined; processorName: string; hasProcessor: boolean }) {
-  const downloads = summary?.downloads;
-  const reading = downloads?.hasReading !== false;
-  const clientCount = downloads?.clients.length ?? 0;
-  const stages = [
-    {
-      label: "Queued",
-      count: downloads?.queued ?? 0,
-      sub: reading ? "held back by the client" : "not read yet"
-    },
-    {
-      label: "Downloading",
-      count: downloads?.active ?? 0,
-      sub: reading ? (clientCount > 0 ? `across ${plural(clientCount, "client")}` : "no client set up") : "not read yet"
-    },
-    {
-      label: "Processing",
-      count: downloads?.processing ?? 0,
-      sub: !hasProcessor
-        ? "no processor set up"
-        : (downloads?.waitingForProcessor ?? 0) > 0
-          ? `${downloads?.waitingForProcessor} waiting for ${processorName}`
-          : `in ${processorName}`
-    },
-    { label: "Ready to import", count: downloads?.importReady ?? 0, sub: "waiting for Deluno to file it" },
-    { label: "Imported today", count: summary?.pipeline?.today.imported ?? 0, sub: `${plural(summary?.pipeline?.today.grabbed ?? 0, "grab")} today` }
-  ];
-  return (
-    <ListCard title="Pipeline" actions={<PanelLink to="/queue">Transfers</PanelLink>}>
-      <ol className="grid grid-cols-2 gap-2 px-[var(--card-pad-x)] py-3 md:grid-cols-5">
-        {stages.map((stage) => (
-          <li key={stage.label} className="min-w-0 text-center">
-            <Link to="/queue" className="flex flex-col items-center gap-0.5 rounded-lg py-1 hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <span
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full border-2 text-[length:var(--type-body-sm)] font-semibold tabular-nums",
-                  stage.count > 0 ? "border-info text-info" : "border-hairline text-muted-foreground"
-                )}
-              >
-                {stage.count.toLocaleString("en-AU")}
-              </span>
-              <span className="text-[length:var(--type-body-sm)] font-semibold text-foreground">{stage.label}</span>
-              <span className="max-w-full truncate text-[length:var(--type-caption)] text-muted-foreground">{stage.sub}</span>
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </ListCard>
-  );
-}
 
 /* ------------------------------------------------------- downloads now */
 
@@ -181,7 +61,7 @@ function percent(progress: number): number {
   return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0;
 }
 
-function DownloadsNow({ summary, telemetry, attention, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; attention: DashboardAttention; action: Action }) {
+export function DownloadsNow({ summary, telemetry, attention, action }: { summary: DashboardSummary | undefined; telemetry: DownloadTelemetryOverview | undefined; attention: DashboardAttention; action: Action }) {
   // A stalled download that an import case is about is that case, which has the buttons.
   const stalledWithButton = new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`));
   const rows = nowRows(telemetry);
@@ -272,7 +152,7 @@ function clientState(client: DashboardClientRow): { tone: "ok" | "warn" | "bad" 
   return { tone: "ok", text: "Answering" };
 }
 
-function Clients({ summary, action }: { summary: DashboardSummary | undefined; action: Action }) {
+export function Clients({ summary, action }: { summary: DashboardSummary | undefined; action: Action }) {
   const clients = summary?.downloads?.clients ?? [];
   const online = clients.filter((client) => client.reachable).length;
   return (
@@ -354,14 +234,14 @@ function Clients({ summary, action }: { summary: DashboardSummary | undefined; a
 
 /* ------------------------------------------------------------ indexers */
 
-function Indexers({
+export function Indexers({
   summary,
   indexers,
   action,
   className
 }: {
   summary: DashboardSummary | undefined;
-  indexers: ReturnType<typeof useRouteSources<typeof sources>>["data"]["indexers"];
+  indexers: ReturnType<typeof useRouteSources<typeof attentionSources>>["data"]["indexers"];
   action: Action;
   className?: string;
 }) {
@@ -422,142 +302,11 @@ function Indexers({
     </Panel>
   );
 }
-
-/* ------------------------------------------------- imports & recovery */
-
-type Sources = ReturnType<typeof useRouteSources<typeof sources>>["data"];
-
-function recoveryLabel(item: RecoveryCaseRow): string {
-  return item.mediaType === "movie" ? "Movies" : "TV";
-}
-
-function ImportsAndRecovery({ summary, attention: all, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
-  const attention = { recoveryCases: all.downloads.recoveryCases, failedImportJobs: all.downloads.failedImportJobs, failedHandoffs: all.downloads.handoffs };
-  const open = attention.recoveryCases.length + attention.failedImportJobs.length + attention.failedHandoffs.length;
-  const leftovers = summary?.downloads?.leftovers;
-
-  return (
-    <Panel
-      title="Imports and recovery"
-      count={open > 0 ? plural(open, "open case") : undefined}
-      to="/queue"
-      linkLabel="Transfers"
-      footer={
-        leftovers?.scanned && leftovers.count > 0
-          ? `${plural(leftovers.count, "leftover folder")} (${formatSize(leftovers.bytes)}) left in download folders. Cases close themselves after 30 days.`
-          : "Cases close themselves after 30 days."
-      }
-    >
-      {open === 0 ? (
-        <PanelNote>Nothing needs a hand. Every finished download has been filed or is on its way.</PanelNote>
-      ) : (
-        <FitList moreTo="/queue" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Transfers`} rows={[
-          ...attention.recoveryCases.map((item) => (
-            <li key={`${item.mediaType}:${item.id}`} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
-              <StatusLed tone="warn" />
-              <div className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
-                <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{recoveryLabel(item)}: {item.summary}</span>
-              </div>
-              <RecoveryButtons item={item} action={action} />
-            </li>
-          )),
-          ...attention.failedImportJobs.map((job, index) => (
-            <li key={job.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
-              <StatusLed tone="bad" />
-              <div className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">An import didn{"’"}t finish</span>
-                <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{job.lastError ?? "It stopped without saying why."}</span>
-              </div>
-              <ActionButton
-                label="Retry"
-                name={`Retry failed import ${index + 1}`}
-                busyKey={`job-retry:${job.id}`}
-                state={action}
-                onClick={() =>
-                  void action.run(`job-retry:${job.id}`, async () => {
-                    await send("/api/jobs/retry-failed", "The failed imports could not be tried again.");
-                    return "Failed imports requeued";
-                  })
-                }
-              />
-              <ActionButton
-                label="Give up"
-                name={`Give up on failed import ${index + 1}`}
-                busyKey={`job-dismiss:${job.id}`}
-                state={action}
-                variant="ghost"
-                onClick={() => void action.run(`job-dismiss:${job.id}`, async () => { await dismissFailedJob(job.id); return "Import dismissed"; })}
-              />
-            </li>
-          )),
-          ...attention.failedHandoffs.map((handoff) => (
-            <li key={handoff.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
-              <StatusLed tone="bad" />
-              <div className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{handoff.releaseName}</span>
-                <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`}</span>
-              </div>
-              <ActionButton
-                label="Retry"
-                name={`Retry ${handoff.releaseName}`}
-                busyKey={`handoff-retry:${handoff.id}`}
-                state={action}
-                onClick={() => void action.run(`handoff-retry:${handoff.id}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
-              />
-              <ActionButton
-                label="Give up"
-                name={`Give up on ${handoff.releaseName}`}
-                busyKey={`handoff-dismiss:${handoff.id}`}
-                state={action}
-                variant="ghost"
-                onClick={() => void action.run(`handoff-dismiss:${handoff.id}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
-              />
-            </li>
-          ))
-        ]} />
-      )}
-    </Panel>
-  );
-}
-
-function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Action }) {
-  const collection = item.mediaType === "movie" ? "movies" : "series";
-  const base = `/api/${collection}/import-recovery/${encodeURIComponent(item.id)}`;
-  return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      {canTryAgain(item) ? (
-        <ActionButton
-          label={isVanished(item) ? "Search again" : "Retry"}
-          name={`${isVanished(item) ? "Search again for" : "Retry"} ${item.title}`}
-          busyKey={`recovery-retry:${item.id}`}
-          state={action}
-          onClick={() => void action.run(`recovery-retry:${item.id}`, async () => (await send(`${base}/retry`, "That could not be tried again."))?.message ?? `${item.title} is being tried again.`)}
-        />
-      ) : (
-        <Link
-          to="/queue"
-          aria-label={`Review ${item.title}`}
-          className="inline-flex h-[var(--control-height-sm)] items-center rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Review
-        </Link>
-      )}
-      <ActionButton
-        label="Give up"
-        name={`Give up on ${item.title}`}
-        busyKey={`recovery-dismiss:${item.id}`}
-        state={action}
-        variant="ghost"
-        onClick={() => void action.run(`recovery-dismiss:${item.id}`, async () => { await send(`${base}/dismiss`, "That case could not be dismissed."); return `${item.title} dismissed`; })}
-      />
-    </span>
-  );
-}
+type Sources = ReturnType<typeof useRouteSources<typeof attentionSources>>["data"];
 
 /* ----------------------------------------------------------- processor */
 
-function ProcessorPanel({
+export function ProcessorPanel({
   summary,
   processors,
   handoffs,

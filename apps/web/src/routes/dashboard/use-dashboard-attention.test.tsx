@@ -31,20 +31,20 @@ beforeEach(() => {
   });
 });
 
-describe("the Dashboard's count does not depend on which screens were opened first (#1082)", () => {
-  it("is the same with the other screens' lists cached as it is with none, and counts the leftover folders both times", async () => {
+describe("the Dashboard's count does not depend on which screens were opened first (#1087)", () => {
+  it("is the same with the other screens' lists cached as it is with none, and does not count the leftover folders either time", async () => {
     const summary = fullSummary();
 
     // Nothing cached: the hook reads every list itself.
     const cold = renderHook(() => useDashboardAttention(summary), { wrapper });
-    await waitFor(() => expect(cold.result.current.items.find((item) => item.id === "leftovers")?.count).toBe(3));
+    await waitFor(() => expect(cold.result.current.alsoWorthALook.leftovers).toBe(3));
     const coldCounts = cold.result.current.counts;
     cold.unmount();
 
     // Everything cached, as after visiting Downloads and Transfers.
     queryClient.setQueryData(sharedSources.orphans.key, orphans);
     const warm = renderHook(() => useDashboardAttention(summary), { wrapper });
-    await waitFor(() => expect(warm.result.current.items.find((item) => item.id === "leftovers")?.count).toBe(3));
+    await waitFor(() => expect(warm.result.current.alsoWorthALook.leftovers).toBe(3));
 
     expect(warm.result.current.counts).toEqual(coldCounts);
   });
