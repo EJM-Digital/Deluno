@@ -88,11 +88,25 @@ public static class ConnectionNames
     /// Null for an address that is not one (or Jackett's "all" aggregate).
     /// </summary>
     public static string? AggregatedTrackerOf(string? baseUrl)
+        => AggregatorOf(baseUrl) is { } aggregator
+            ? aggregator.Kind == AggregatorKind.Prowlarr ? $"Prowlarr indexer {aggregator.Id}" : aggregator.Id
+            : null;
+
+    public enum AggregatorKind { Jackett, Prowlarr }
+
+    /// <param name="Id">Jackett's indexer id (the tracker's own id), or Prowlarr's numeric indexer id.</param>
+    /// <param name="UrlBase">The path in front of the aggregator's own routes ("" or "/prowlarr"), without a trailing slash.</param>
+    public sealed record AggregatorAddress(AggregatorKind Kind, string Id, string Origin, string UrlBase);
+
+    /// <summary>Which aggregator an indexer address belongs to, which of its indexers it is, and where the aggregator lives.</summary>
+    public static AggregatorAddress? AggregatorOf(string? baseUrl)
     {
         if (!TryParse(baseUrl, out var uri))
         {
             return null;
         }
+
+        var origin = uri.GetLeftPart(UriPartial.Authority);
 
         var parts = uri.Segments.Select(part => Uri.UnescapeDataString(part.Trim('/'))).Where(part => part.Length > 0).ToArray();
         for (var index = 0; index + 1 < parts.Length; index++)
@@ -102,13 +116,18 @@ public static class ConnectionNames
                 && index + 2 < parts.Length
                 && parts[index + 2].Equals("results", StringComparison.OrdinalIgnoreCase))
             {
-                return parts[index + 1];
+                return new AggregatorAddress(AggregatorKind.Jackett, parts[index + 1], origin, string.Empty);
             }
         }
 
-        if (parts.Length >= 2 && parts[0].All(char.IsDigit) && parts[1].Equals("api", StringComparison.OrdinalIgnoreCase))
+        // Prowlarr: {urlBase}/{indexer id}/api, the url base being anything (or nothing) in front.
+        for (var index = 0; index + 1 < parts.Length; index++)
         {
-            return $"Prowlarr indexer {parts[0]}";
+            if (parts[index].Length > 0 && parts[index].All(char.IsDigit) && parts[index + 1].Equals("api", StringComparison.OrdinalIgnoreCase))
+            {
+                var urlBase = index == 0 ? string.Empty : "/" + string.Join('/', parts.Take(index).Select(Uri.EscapeDataString));
+                return new AggregatorAddress(AggregatorKind.Prowlarr, parts[index], origin, urlBase);
+            }
         }
 
         return null;

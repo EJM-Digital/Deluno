@@ -20,6 +20,12 @@ public interface IConnectionsRepository
     /// </summary>
     Task<int> ApplyAutomaticIndexerNamesAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// #1076: keeps the name Prowlarr or Jackett gave an indexer (for the address it has now) and
+    /// names the indexer after it. Returns the indexer, or null when there is none.
+    /// </summary>
+    Task<IndexerItem?> SetDiscoveredIndexerNameAsync(string id, string discoveredName, CancellationToken cancellationToken);
+
     Task<IndexerItem> CreateIndexerAsync(
         CreateIndexerRequest request,
         CancellationToken cancellationToken);
