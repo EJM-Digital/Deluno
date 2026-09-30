@@ -539,25 +539,13 @@ export function IndexersPage() {
    * them. Auto-tests once the drawer has settled, the same test a manual
    * "Test" click would run, so the connection shows as tested before Save.
    */
-  async function openDetectedClient(status: BundledComponentStatus) {
+  function openPrefilledClient(status: BundledComponentStatus, host = status.defaultHost, port = status.defaultPort, autoTest = true) {
     const preset = CLIENT_PRESETS.find((item) => item.protocol === status.kind);
-    // A client Deluno can sign in to itself is connected by Deluno: the sign-in the
-    // installer left (qBittorrent 5.2.1 will not start without one), or the login an
-    // installed NZBGet, Deluge or Transmission ships with. The sign-in never reaches
-    // the screen (#1061), so there is no form to fill in.
-    if (delunoConnectsItself(status)) {
-      await run(`detected:${status.kind}`, async () => {
-        const result = await connectDetectedApp(status.kind);
-        if (result.healthy) toast.success(result.message);
-        else toast.error(result.message);
-      });
-      return;
-    }
     const next: ClientForm = {
       ...emptyClientForm(),
       protocol: status.kind,
-      host: status.defaultHost,
-      port: String(status.defaultPort),
+      host,
+      port: String(port),
       username: "",
       password: "",
       name: preset?.label ?? status.displayName,
@@ -568,7 +556,30 @@ export function IndexersPage() {
     setClientForm(next);
     setClientInitial(next);
     resetDrawerChrome();
-    setPendingAutoTest(true);
+    if (autoTest) setPendingAutoTest(true);
+  }
+  async function openDetectedClient(status: BundledComponentStatus) {
+    // A client Deluno can sign in to itself is connected by Deluno: the sign-in the
+    // installer left (qBittorrent 5.2.1 will not start without one), or the login an
+    // installed NZBGet, Deluge or Transmission ships with. The sign-in never reaches
+    // the screen (#1061), so there is no form to fill in. When that login does not work
+    // nothing is saved, and the form opens with host and port filled in for the person
+    // to type their own.
+    if (delunoConnectsItself(status)) {
+      await run(`detected:${status.kind}`, async () => {
+        const result = await connectDetectedApp(status.kind);
+        if (result.healthy) {
+          toast.success(result.message);
+        } else if (result.needsSignIn) {
+          toast.error(result.message);
+          openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false);
+        } else {
+          toast.error(result.message);
+        }
+      });
+      return;
+    }
+    openPrefilledClient(status);
   }
   const openRouting = useCallback((library: LibraryItem) => {
     const snapshot = routing.find((item) => item.libraryId === library.id);

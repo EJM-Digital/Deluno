@@ -16,7 +16,16 @@ export type BundledComponentStatus = {
 };
 
 /** What connecting an installed app did. The sign-in Deluno used is never part of it (#1061). */
-export type DetectedConnectResult = { name: string; healthy: boolean; message: string };
+export type DetectedConnectResult = {
+  name: string;
+  healthy: boolean;
+  message: string;
+  /** Deluno could not sign in and saved nothing: open the connection form (host and port filled in, no password) for the person to type their own. */
+  needsSignIn?: boolean;
+  protocol?: string | null;
+  host?: string | null;
+  port?: number | null;
+};
 
 /** Asks Deluno to connect an installed app now, with the sign-in it holds. */
 export function connectDetectedApp(kind: string): Promise<DetectedConnectResult> {

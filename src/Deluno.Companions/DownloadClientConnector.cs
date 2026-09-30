@@ -45,13 +45,25 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
 {
     public static bool IsLoopback(string? host) => host is "127.0.0.1" or "localhost" or "::1";
 
-    public async Task<DownloadClientConnectResult> ConnectAsync(DownloadClientWiring wiring, int attempts, TimeSpan delay, CancellationToken cancellationToken)
+    /// <summary>The port a client of this kind listens on when none is saved (the vendor default, which is what a saved null port means).</summary>
+    public static int DefaultPortFor(string? protocol) => protocol?.ToLowerInvariant() switch
+    {
+        "transmission" => 9091,
+        "deluge" => 8112,
+        "nzbget" => 6789,
+        _ => 8080
+    };
+
+    /// <param name="saveOnlyWhenHealthy">A person clicked "Use": a connection that would not pass its test is never saved, so nothing broken is left behind; the failure is returned instead.</param>
+    public async Task<DownloadClientConnectResult> ConnectAsync(DownloadClientWiring wiring, int attempts, TimeSpan delay, CancellationToken cancellationToken, bool saveOnlyWhenHealthy = false)
     {
         var existing = (await connections.ListDownloadClientsAsync(cancellationToken))
-            .FirstOrDefault(client => string.Equals(client.Protocol, wiring.Protocol, StringComparison.OrdinalIgnoreCase) && IsLoopback(client.Host) && client.Port == wiring.Port);
-        var client = existing ?? await connections.CreateDownloadClientAsync(
-            new CreateDownloadClientRequest(wiring.Name, wiring.Protocol, wiring.Host, wiring.Port, wiring.Username, wiring.Secret, null, wiring.MoviesCategory, wiring.TvCategory, null, 10, true),
-            cancellationToken);
+            .FirstOrDefault(client => string.Equals(client.Protocol, wiring.Protocol, StringComparison.OrdinalIgnoreCase) && IsLoopback(client.Host) && (client.Port ?? DefaultPortFor(client.Protocol)) == wiring.Port);
+        var now = DateTimeOffset.UtcNow;
+        var draft = existing ?? new DownloadClientItem(
+            string.Empty, wiring.Name, wiring.Protocol, wiring.Host, wiring.Port, wiring.Username, wiring.Secret, null,
+            false, null, wiring.MoviesCategory, wiring.TvCategory, null, 10, true, "unknown", null, null, null, null, now, now);
+        var client = saveOnlyWhenHealthy ? draft : existing ?? await CreateAsync(wiring, cancellationToken);
 
         // Waiting for it to answer, then the same test the drawer runs.
         (string HealthStatus, string Message, string? FailureCategory) test = ("unreachable", "Not tested.", null);
@@ -77,7 +89,24 @@ public sealed class DownloadClientConnector(IConnectionsRepository connections, 
             }
         }
 
+        var healthy = test.HealthStatus == "healthy";
+        if (existing is null && saveOnlyWhenHealthy)
+        {
+            if (!healthy)
+            {
+                // Nothing is saved: the person is told why and can type the sign-in themselves.
+                return new DownloadClientConnectResult(wiring.Name, false, false, test.Message, null);
+            }
+
+            client = await CreateAsync(wiring, cancellationToken);
+        }
+
         await connections.UpdateDownloadClientHealthAsync(client.Id, test.HealthStatus, test.Message, test.FailureCategory, null, cancellationToken);
-        return new DownloadClientConnectResult(client.Name, existing is null, test.HealthStatus == "healthy", test.Message, client);
+        return new DownloadClientConnectResult(client.Name, existing is null, healthy, test.Message, client);
     }
+
+    private Task<DownloadClientItem> CreateAsync(DownloadClientWiring wiring, CancellationToken cancellationToken)
+        => connections.CreateDownloadClientAsync(
+            new CreateDownloadClientRequest(wiring.Name, wiring.Protocol, wiring.Host, wiring.Port, wiring.Username, wiring.Secret, null, wiring.MoviesCategory, wiring.TvCategory, null, 10, true),
+            cancellationToken);
 }

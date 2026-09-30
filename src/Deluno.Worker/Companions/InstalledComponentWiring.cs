@@ -120,7 +120,7 @@ public sealed class InstalledComponentWirer(
         return pending.Length;
     }
 
-    private async Task<(string Name, bool Ok, string? Problem)> WireClientAsync(string kind, InstalledComponentEntry entry, int attempts, TimeSpan delay, CancellationToken cancellationToken)
+    private async Task<(string Name, bool Ok, string? Problem)> WireClientAsync(string kind, InstalledComponentEntry entry, int attempts, TimeSpan delay, CancellationToken cancellationToken, bool saveOnlyWhenHealthy = false)
     {
         var recipe = Clients[kind];
         var saved = credentials.TryGet(kind);
@@ -136,7 +136,7 @@ public sealed class InstalledComponentWirer(
 
         var result = await connector.ConnectAsync(
             new DownloadClientWiring(recipe.Name, recipe.Protocol, "localhost", entry.Port, username, secret, recipe.MoviesCategory, recipe.TvCategory),
-            attempts, delay, cancellationToken);
+            attempts, delay, cancellationToken, saveOnlyWhenHealthy);
         // The installer's copy stays while the app is installed: nothing serves it to a caller
         // (#1061), and it is what lets "Use <app>" connect again after the connection is deleted.
 
@@ -181,9 +181,24 @@ public sealed class InstalledComponentWirer(
 
         var entry = record.Read().FirstOrDefault(item => string.Equals(item.Kind, kind, StringComparison.OrdinalIgnoreCase))
             ?? new InstalledComponentEntry(kind, "localhost", BundledComponentCatalog.All.First(spec => spec.Kind == kind).DefaultPort, DateTimeOffset.UtcNow);
-        var (name, ok, problem) = await WireClientAsync(kind, entry, 3, TimeSpan.FromSeconds(2), cancellationToken);
-        record.MarkWired(kind);
-        return new InstalledComponentConnectResult(name, ok, ok ? $"{name} is connected." : problem ?? $"{name} did not answer its test.");
+        // A person clicked "Use": a connection whose test fails is never saved. The screen opens the
+        // connection form pre-filled with the host and port so they can type their own sign-in.
+        var (name, ok, problem) = await WireClientAsync(kind, entry, 3, TimeSpan.FromSeconds(2), cancellationToken, saveOnlyWhenHealthy: true);
+        if (ok)
+        {
+            record.MarkWired(kind);
+            return new InstalledComponentConnectResult(name, true, $"{name} is connected.");
+        }
+
+        var recipe = Clients[kind];
+        return new InstalledComponentConnectResult(
+            name,
+            false,
+            $"{name} is on this computer, but Deluno could not sign in to it with the login it ships with. {problem} Nothing was saved: enter your own login and save it.",
+            NeedsSignIn: true,
+            Protocol: recipe.Protocol,
+            Host: entry.Host,
+            Port: entry.Port);
     }
 
     /// <summary>
@@ -193,7 +208,7 @@ public sealed class InstalledComponentWirer(
     /// for a kind Deluno cannot connect, and for an app that has been uninstalled: neither
     /// installed nor answering on its port.
     /// </summary>
-    public async Task<int> SweepStoredSignInsAsync(CancellationToken cancellationToken)
+    public async Task<int> SweepStoredSignInsAsync(CancellationToken cancellationToken, ISet<string>? missedLastSweep = null)
     {
         var kinds = credentials.Kinds();
         if (kinds.Count == 0)
@@ -208,10 +223,22 @@ public sealed class InstalledComponentWirer(
         var removed = 0;
         foreach (var kind in kinds)
         {
-            if (Clients.ContainsKey(kind) && StillOnThisComputer(kind, recorded, found))
+            var known = Clients.ContainsKey(kind);
+            if (known && StillOnThisComputer(kind, recorded, found))
+            {
+                missedLastSweep?.Remove(kind);
+                continue;
+            }
+
+            // A detection miss (an entry this account cannot read, a name that did not match) is not
+            // proof the app is gone: an app that looks gone is forgotten only when it looks gone on two
+            // sweeps in a row. A kind Deluno cannot connect at all is forgotten at once.
+            if (known && missedLastSweep is not null && missedLastSweep.Add(kind))
             {
                 continue;
             }
+
+            missedLastSweep?.Remove(kind);
 
             ForgetSavedSignIn(kind);
             removed++;
@@ -222,14 +249,14 @@ public sealed class InstalledComponentWirer(
 
     private static bool StillOnThisComputer(string kind, Dictionary<string, InstalledComponentEntry> recorded, Dictionary<string, BundledComponentStatus>? found)
     {
-        var hasRecord = recorded.ContainsKey(kind);
-        if (found is null)
+        // The installer's record is proof enough: it is never overridden by a detection miss.
+        if (recorded.ContainsKey(kind))
         {
-            // Nothing to look with: the record alone decides.
-            return hasRecord;
+            return true;
         }
 
-        return found.TryGetValue(kind, out var status) ? status.Installed || status.Reachable : hasRecord;
+        // No record: only detection can say. With nothing to look with, or an app it cannot place, it is gone.
+        return found is not null && found.TryGetValue(kind, out var status) && (status.Installed || status.Reachable);
     }
 
     /// <summary>A connection to an app on this computer was deleted. Its stored sign-in stays while the app is installed, so "Use" can connect it again (#1061).</summary>
@@ -364,6 +391,7 @@ public sealed class InstalledComponentWiringService(
     ILogger<InstalledComponentWiringService> logger) : BackgroundService
 {
     private bool _healthAddressChecked;
+    private readonly HashSet<string> _missedLastSweep = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Wait before the first pass, so the web server is answering.</summary>
     internal TimeSpan StartDelay { get; init; } = TimeSpan.FromSeconds(15);
@@ -403,7 +431,7 @@ public sealed class InstalledComponentWiringService(
 
             var wirer = scope.ServiceProvider.GetRequiredService<InstalledComponentWirer>();
             // Any sign-in kept for an app whose connection exists, or never will, is forgotten (#1061).
-            await wirer.SweepStoredSignInsAsync(cancellationToken);
+            await wirer.SweepStoredSignInsAsync(cancellationToken, _missedLastSweep);
             if (!wirer.HasWork() || OwnAddress() is not { } baseUrl)
             {
                 return;
