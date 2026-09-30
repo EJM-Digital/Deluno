@@ -118,15 +118,8 @@ public sealed class FileBundledComponentCredentialStore(string path, ISecretProt
             return null;
         }
 
-        try
-        {
-            var password = protector.Unprotect(PurposePrefix + kind, entry.Password);
-            return string.IsNullOrEmpty(password) ? null : new BundledComponentCredentials(entry.Username, password);
-        }
-        catch
-        {
-            return null;
-        }
+        var password = protector.TryUnprotect(PurposePrefix + kind, entry.Password).Value;
+        return string.IsNullOrEmpty(password) ? null : new BundledComponentCredentials(entry.Username, password);
     }
 
     public void Save(string kind, BundledComponentCredentials credentials)
