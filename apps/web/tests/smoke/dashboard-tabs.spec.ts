@@ -53,7 +53,9 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
     for (const section of Array.from(panel.querySelectorAll("section[aria-labelledby]"))) {
       const name = section.querySelector("h2")?.textContent ?? "a panel";
       const box = section.getBoundingClientRect();
-      for (const row of Array.from(section.querySelectorAll<HTMLElement>("li, [role='row'], [data-fit-row]"))) {
+      // The "and N more" line counts as a row: it must not be cut in half either.
+      const moreLines = Array.from(section.querySelectorAll<HTMLElement>("a")).filter((link) => /^and [0-9,]+ more/.test((link.textContent ?? "").trim()));
+      for (const row of [...Array.from(section.querySelectorAll<HTMLElement>("li, [role='row'], [data-fit-row]")), ...moreLines]) {
         const rect = row.getBoundingClientRect();
         if (rect.height === 0 || getComputedStyle(row).visibility === "hidden") continue;
         if (rect.top < box.top - 0.5 || rect.bottom > box.bottom + 0.5) {
@@ -124,7 +126,7 @@ async function serveBusyInstall(page: Page) {
   await page.route("**/api/dashboard/summary", (route) => route.fulfill(json(summary)));
   await page.route("**/api/download-clients/telemetry", (route) => route.fulfill(json({ summary: { activeCount: 0, queuedCount: 0, stalledCount: 30, importReadyCount: 0, waitingForProcessorCount: 0 }, clients: [{ clientId: "c1", clientName: "Deluge on MEDIA-SERVER", queue }], capturedUtc: now })));
   await page.route("**/api/movies/import-recovery*", (route) => route.fulfill(json({ openCount: 30, qualityCount: 0, unmatchedCount: 0, corruptCount: 0, downloadFailedCount: 0, importFailedCount: 30, recentCases: cases })));
-  await page.route("**/api/movies/wanted", (route) => route.fulfill(json({ totalWanted: 25, missingCount: 25, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: wanted })));
+  await page.route("**/api/movies/wanted", (route) => route.fulfill(json({ totalWanted: 42, missingCount: 42, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: wanted })));
   await page.route("**/api/system/health/summary", (route) => route.fulfill(json({ problemCount: 30, unsnoozedProblemCount: 30, unknownCount: 0, suggestionCount: 0, lastRunUtc: now })));
 }
 
