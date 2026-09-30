@@ -1934,7 +1934,13 @@ public static class SeriesEndpointRouteBuilderExtensions
                                 "planned",
                                 "No downloadable URL was available for this release.")
                         }
-                        : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
+                        : await downloadClientGrabService.GrabAsync(
+                            downloadClient.DownloadClientId,
+                            decisionPlan.DispatchRequest with
+                            {
+                                OnDeadRelease = new DeadReleaseFollowUp("episode", episode.EpisodeId, seriesItem.Title, library.Id, library.Name)
+                            },
+                            cancellationToken);
                     if (grabResult.Failure is { } dispatchFailure)
                     {
                         failures.Add(dispatchFailure);

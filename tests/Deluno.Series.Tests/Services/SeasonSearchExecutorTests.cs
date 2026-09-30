@@ -62,6 +62,32 @@ public sealed class SeasonSearchExecutorTests
     }
 
     /// <summary>
+    /// #1062: an automatic season pack that turns out dead is blocklisted and
+    /// searched past by the grab service, so the executor hands it the series,
+    /// the library and the episodes the pack covered.
+    /// </summary>
+    [Fact]
+    public async Task An_automatic_season_pack_tells_the_grab_service_what_to_search_again_if_it_is_dead()
+    {
+        var world = new World("Pioneer.One.S01.1080p.WEB-DL");
+
+        await world.Executor.ExecuteAsync("series-1", 1, "automatic-season", "was searched.", CancellationToken.None);
+
+        world.Grabs.Verify(
+            grab => grab.GrabAsync(
+                "client-1",
+                It.Is<DownloadClientGrabRequest>(request =>
+                    request.OnDeadRelease != null
+                    && request.OnDeadRelease.EntityType == "series"
+                    && request.OnDeadRelease.EntityId == "series-1"
+                    && request.OnDeadRelease.LibraryId != null
+                    && request.OnDeadRelease.SeasonEpisodeIds != null
+                    && request.OnDeadRelease.SeasonEpisodeIds.Count > 0),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
     /// #655: Chernobyl's targeted show-level search dispatched a season pack,
     /// and the season search #646 already plans for a fully-missing season ran
     /// straight after and dispatched a second one — nothing here knew the first

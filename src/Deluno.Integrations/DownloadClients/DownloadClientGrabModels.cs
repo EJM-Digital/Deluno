@@ -58,6 +58,18 @@ public sealed record DownloadClientGrabRequest(
     public string? KnownInfoHash { get; init; }
 
     /// <summary>
+    /// What to do when the client or the indexer says this release is dead (a
+    /// dead link, a file that is not a torrent, "already has this one from
+    /// elsewhere"): blocklist it and search again for the same title (#876,
+    /// #1062). Set by every caller that lets Deluno choose the release, so the
+    /// step runs once, in the grab service, whoever grabbed. Left null by a
+    /// grab a person chose themselves: that one fails with its reason shown and
+    /// nothing is searched again. Never read from a caller's JSON.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DeadReleaseFollowUp? OnDeadRelease { get; init; }
+
+    /// <summary>
     /// The folder, written the way the client sees it, this grab must be saved
     /// into (#1073). Filled in by the grab service from the library's downloads
     /// folder for a client that has no category folders of its own (Transmission,
@@ -96,3 +108,17 @@ public sealed record DownloadClientGrabResult(
     /// </summary>
     public bool IsDuplicateFollow { get; init; }
 }
+
+/// <summary>
+/// The title a dead release was grabbed for, so the grab service can blocklist
+/// the release and queue a replacement search for that title (#1062). For a
+/// season pack, <paramref name="SeasonEpisodeIds"/> names the episodes it
+/// covered, so each is searched rather than the whole show.
+/// </summary>
+public sealed record DeadReleaseFollowUp(
+    string EntityType,
+    string EntityId,
+    string Title,
+    string? LibraryId,
+    string? LibraryName = null,
+    IReadOnlyList<string>? SeasonEpisodeIds = null);

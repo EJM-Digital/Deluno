@@ -71,90 +71,6 @@ internal static class SearchExecutionSupport
     }
 
     /// <summary>
-    /// #876 (cleanup sheet B2): a grab the client refused outright — a dead
-    /// link or a file it could not parse — is nobody's setup problem and
-    /// nothing worth retrying unchanged. Blocklisting it here, and queuing a
-    /// replacement search for the same title straight away (via
-    /// <see cref="ReplacementSearchQueuer"/>, the same helper every other
-    /// give-up path uses), is what stops the title sitting on a bad release
-    /// until its next ordinary scheduled search happens to run.
-    ///
-    /// <para>A no-op for any other grab outcome, including an ordinary
-    /// connectivity failure (#875) — those are the client's or the network's
-    /// fault, not the release's, and must never end up on the blocklist.</para>
-    /// </summary>
-    internal static async Task BlockDeadReleaseAsync(
-        IBlockedReleaseRepository? blockedReleases,
-        IActivityFeedRepository activityFeedRepository,
-        DownloadClientGrabResult grabResult,
-        string mediaType,
-        string entityType,
-        string entityId,
-        string title,
-        string indexerName,
-        string clientName,
-        CancellationToken cancellationToken,
-        IJobScheduler? jobScheduler = null,
-        string? libraryId = null,
-        string? libraryName = null,
-        // #874/#942: the candidate's own hash or NZB id, when the search
-        // that grabbed it knew one — carried through so the block is keyed
-        // on the release's identity, not only its name. A renamed re-upload
-        // of the same dead content on another indexer is still caught
-        // without this; a hash key catches it even sooner.
-        string? torrentHashOrItemId = null)
-    {
-        if (blockedReleases is null || grabResult.Status != DownloadQueueStatuses.DeadRelease)
-        {
-            return;
-        }
-
-        await blockedReleases.BlockAsync(
-            new BlockedRelease(
-                Guid.NewGuid().ToString("n"),
-                BlockedReleaseKeys.For(grabResult.ReleaseName, indexerName),
-                grabResult.ReleaseName,
-                indexerName,
-                mediaType,
-                entityId,
-                title,
-                ImportFailurePolicy.DeadOrBrokenLink,
-                grabResult.Message,
-                string.IsNullOrWhiteSpace(torrentHashOrItemId) ? null : torrentHashOrItemId,
-                null,
-                null,
-                DateTimeOffset.MinValue),
-            cancellationToken);
-
-        var searchedAgain = false;
-        if (jobScheduler is not null && !string.IsNullOrWhiteSpace(libraryId) && ReplacementSearchQueuer.Supports(entityType))
-        {
-            await ReplacementSearchQueuer.EnqueueAsync(
-                jobScheduler,
-                dispatchId: $"dead-release:{entityType}:{entityId}:{Guid.NewGuid():n}",
-                libraryId,
-                libraryName ?? libraryId,
-                mediaType,
-                entityType,
-                entityId,
-                seasonEpisodeIds: [],
-                cancellationToken);
-            searchedAgain = true;
-        }
-
-        await activityFeedRepository.RecordActivityAsync(
-            "download.release.dead-link",
-            searchedAgain
-                ? $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and is searching for a replacement now."
-                : $"{grabResult.ReleaseName} could not be sent to {clientName}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
-            null,
-            null,
-            entityType,
-            entityId,
-            cancellationToken);
-    }
-
-    /// <summary>
     /// #877 (cleanup sheet B3): a torrent client saying it already holds this
     /// release is nobody's fault, and Deluno follows the copy it has instead
     /// of sending another — but that is still an automatic decision, so it is
@@ -190,7 +106,7 @@ internal static class SearchExecutionSupport
     /// to the same library), carried into automatic search too. A no-op for
     /// the ordinary case of an untagged client or a failed grab — an
     /// automatic grab already writes its own record on failure through
-    /// <see cref="BlockDeadReleaseAsync"/> or
+    /// the grab service's own dead-release step or
     /// <see cref="RetryConnectivityFailureAsync"/>, and there is nothing
     /// about tags to explain when they played no part in the choice.
     /// </summary>

@@ -32,7 +32,9 @@ public sealed class DownloadClientGrabService(
     ILogger<DownloadClientGrabService>? logger = null,
     IIndexerCallLimiter? indexerCallLimiter = null,
     IIndexerAuthFailureRecorder? indexerAuthFailureRecorder = null,
-    IIndexerTorrentFetcher? torrentFetcher = null)
+    IIndexerTorrentFetcher? torrentFetcher = null,
+    IBlockedReleaseRepository? blockedReleases = null,
+    IJobScheduler? jobScheduler = null)
     : IDownloadClientGrabService
 {
     public async Task<DownloadClientGrabResult> GrabAsync(
@@ -188,6 +190,8 @@ public sealed class DownloadClientGrabService(
         {
             await ReleaseReservationAsync(reservationId, cancellationToken);
         }
+
+        await FollowUpDeadReleaseAsync(client, request, grabResult, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(request.DispatchId))
         {
@@ -417,6 +421,86 @@ public sealed class DownloadClientGrabService(
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger?.LogDebug(exception, "Could not confirm the save path for grab of {ReleaseName} to {ClientName}.", request.ReleaseName, client.Name);
+        }
+    }
+
+    /// <summary>
+    /// #876 (cleanup sheet B2) and #1062: a release the client or the indexer
+    /// refused outright is nobody's setup problem and nothing worth retrying
+    /// unchanged. It is blocklisted (keyed on its hash or NZB id as well as its
+    /// name) and a replacement search for the same title is queued straight
+    /// away, so the title does not sit on a bad release until its next
+    /// scheduled search. This runs here, once, for every caller that lets
+    /// Deluno choose the release (see <see cref="DeadReleaseFollowUp"/>); a
+    /// release a person chose themselves fails with its reason shown and
+    /// nothing is searched again. A no-op for any other outcome, including a
+    /// connectivity failure (#875), which is never a bad release.
+    /// </summary>
+    private async Task FollowUpDeadReleaseAsync(
+        DownloadClientItem client,
+        DownloadClientGrabRequest request,
+        DownloadClientGrabResult grabResult,
+        CancellationToken cancellationToken)
+    {
+        if (grabResult.Status != DownloadQueueStatuses.DeadRelease
+            || request.OnDeadRelease is not { } followUp
+            || blockedReleases is null
+            || activityFeedRepository is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var indexerName = request.IndexerName ?? string.Empty;
+            var hashOrId = request.KnownInfoHash ?? request.ReleaseHash;
+            await blockedReleases.BlockAsync(
+                new BlockedRelease(
+                    Guid.NewGuid().ToString("n"),
+                    BlockedReleaseKeys.For(request.ReleaseName, indexerName),
+                    request.ReleaseName,
+                    indexerName,
+                    request.MediaType,
+                    followUp.EntityId,
+                    followUp.Title,
+                    ImportFailurePolicy.DeadOrBrokenLink,
+                    grabResult.Message,
+                    string.IsNullOrWhiteSpace(hashOrId) ? null : hashOrId,
+                    null,
+                    null,
+                    DateTimeOffset.MinValue),
+                cancellationToken);
+
+            var searchedAgain = false;
+            if (jobScheduler is not null && !string.IsNullOrWhiteSpace(followUp.LibraryId) && ReplacementSearchQueuer.Supports(followUp.EntityType))
+            {
+                await ReplacementSearchQueuer.EnqueueAsync(
+                    jobScheduler,
+                    dispatchId: $"dead-release:{followUp.EntityType}:{followUp.EntityId}:{Guid.NewGuid():n}",
+                    followUp.LibraryId,
+                    followUp.LibraryName ?? followUp.LibraryId,
+                    request.MediaType,
+                    followUp.EntityType,
+                    followUp.EntityId,
+                    followUp.SeasonEpisodeIds ?? [],
+                    cancellationToken);
+                searchedAgain = true;
+            }
+
+            await activityFeedRepository.RecordActivityAsync(
+                "download.release.dead-link",
+                searchedAgain
+                    ? $"{request.ReleaseName} could not be sent to {client.Name}: {grabResult.Message} Deluno blocklisted it and is searching for a replacement now."
+                    : $"{request.ReleaseName} could not be sent to {client.Name}: {grabResult.Message} Deluno blocklisted it and will pick a different release next search.",
+                null,
+                null,
+                followUp.EntityType,
+                followUp.EntityId,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger?.LogWarning(exception, "Could not blocklist the dead release {Release}.", request.ReleaseName);
         }
     }
 

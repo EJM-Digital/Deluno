@@ -363,7 +363,15 @@ public sealed class SeasonSearchExecutor(
                         "planned",
                         "No downloadable URL was available for this release.")
                 }
-                : await downloadClientGrabService.GrabAsync(downloadClient.DownloadClientId, decisionPlan.DispatchRequest, cancellationToken);
+                : await downloadClientGrabService.GrabAsync(
+                    downloadClient.DownloadClientId,
+                    decisionPlan.DispatchRequest with
+                    {
+                        OnDeadRelease = new DeadReleaseFollowUp(
+                            "series", seriesItem.Id, seriesItem.Title, library.Id, library.Name,
+                            seasonEpisodes.Select(item => item.EpisodeId).ToArray())
+                    },
+                    cancellationToken);
             if (grabResult.Failure is { } dispatchFailure)
             {
                 failures.Add(dispatchFailure);

@@ -199,24 +199,8 @@ public sealed class EpisodeSearchJobHandler(
                 downloadClientGrabService,
                 downloadClient.DownloadClientId,
                 bestCandidate!,
-                decisionPlan.DispatchRequest,
+                decisionPlan.DispatchRequest with { OnDeadRelease = new DeadReleaseFollowUp("episode", payload.EpisodeId, seriesItem?.Title ?? bestCandidate!.ReleaseName, payload.LibraryId, payload.LibraryId) },
                 cancellationToken);
-
-            await SearchExecutionSupport.BlockDeadReleaseAsync(
-                blockedReleases,
-                activityFeedRepository,
-                grabResult,
-                "tv",
-                "episode",
-                payload.EpisodeId,
-                seriesItem?.Title ?? bestCandidate!.ReleaseName,
-                bestCandidate!.IndexerName,
-                downloadClient.DownloadClientName,
-                cancellationToken,
-                jobScheduler,
-                payload.LibraryId,
-                payload.LibraryId,
-                bestCandidate.TorrentHashOrItemId);
 
             await SearchExecutionSupport.RecordDuplicateFollowAsync(
                 activityFeedRepository,
@@ -239,7 +223,7 @@ public sealed class EpisodeSearchJobHandler(
                 downloadClient.DownloadClientId,
                 downloadClient.DownloadClientName,
                 cancellationToken,
-                bestCandidate.TorrentHashOrItemId);
+                bestCandidate!.TorrentHashOrItemId);
 
             await SearchExecutionSupport.RecordAutomaticGrabRoutingAsync(
                 activityFeedRepository,
