@@ -22,6 +22,7 @@ import { queryClient, defineSources, useRouteSources, type RouteSource } from ".
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
 import { sharedSources } from "../../lib/shared-sources";
 import type { SetupNeed } from "./attention";
+import type { IndexerScoreboardToday } from "./live/indexers";
 
 /** What the newest page of Activity holds; when today's counts cannot be had, this is all the bars can show. */
 export const ACTIVITY_PAGE_SIZE = 200;
@@ -107,6 +108,8 @@ export const liveSources = defineSources({
   // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
   throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
   // Today's activity for the hourly bars: the day's real counts by the hour; live events are added as they arrive.
+  // What each indexer did today (queries, grabs, failures, when it last answered): a stored count, cached on the server for a minute.
+  scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null), refetchInterval: 60_000 },
   // The newest Activity, for the Latest stream: read from the stored list, refreshed behind realtime as a safety net. The summary carries only eight rows, most of them routine.
   latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []), refetchInterval: 120_000 },
   activityToday: { ...source<ActivityToday | null>("dashboard-activity-today", "Today's activity", fetchActivityToday, null), refetchInterval: 120_000 }

@@ -25,6 +25,7 @@
 import type { JSX } from "react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { cn } from "../../lib/utils";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
@@ -33,16 +34,16 @@ import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-stri
 import type { DashboardSummary, SeriesUpcomingEpisodeItem } from "../../lib/api";
 import { useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
-import { formatSpeed, useAction } from "./downloads-kit";
+import { useAction } from "./downloads-kit";
 import { until } from "./format";
-import { NeedsYou } from "./needs-you";
-import { FitList, Line, Panel, Plain } from "./parts";
+import { NeedsYou, type OnBoard } from "./needs-you";
+import { FitList, Line, Panel } from "./parts";
 import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { Countdowns } from "./live/countdowns";
 import { Flow } from "./live/flow";
 import { HeartbeatValue, UpdatedAgo } from "./live/heartbeat";
-import { useArrivals, useNow, usePosters, useSummaryUpdatedAt } from "./live/hooks";
+import { useArrivals, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
 import { Indexers } from "./live/indexers";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { Rhythm } from "./live/rhythm";
@@ -61,28 +62,20 @@ export interface LiveCell extends Omit<SummaryCell, "value"> {
   count?: { value: number; format?: (value: number) => string };
 }
 
-/** The strip's numbers: the library counts and the speed (always a reading). The connection cell is added beside them. */
+/** The strip's numbers: the library counts. The speed is in its own panel (once), and the connection cell is added beside them. */
 export function buildLiveCells(summary: DashboardSummary | undefined): LiveCell[] {
   const library = summary?.library;
-  const downloads = summary?.downloads;
   const movies = library?.movies;
   const shows = library?.shows;
   const missing = (movies?.missing ?? 0) + (shows?.missing ?? 0);
   const upgradable = (movies?.upgradable ?? 0) + (shows?.upgradable ?? 0);
-  const speed = Number.isFinite(downloads?.downloadMbps) ? Math.max(0, downloads?.downloadMbps ?? 0) : 0;
-
-  let speedHelp: string;
-  if (downloads?.hasReading === false) speedHelp = "waiting for the first reading";
-  else if ((downloads?.active ?? 0) > 0) speedHelp = `${downloads?.active} downloading${(downloads?.queued ?? 0) > 0 ? `, ${downloads?.queued} queued` : ""}`;
-  else speedHelp = (downloads?.queued ?? 0) > 0 ? `nothing moving, ${downloads?.queued} queued` : "nothing downloading";
 
   const whole = (value: number) => Math.round(value).toLocaleString("en-AU");
   return [
     { label: "Movies", value: (movies?.total ?? 0).toLocaleString("en-AU"), count: { value: movies?.total ?? 0, format: whole }, help: movies && movies.total > 0 ? "in your library" : "none yet", href: "/movies" },
     { label: "TV shows", value: (shows?.total ?? 0).toLocaleString("en-AU"), count: { value: shows?.total ?? 0, format: whole }, help: shows && shows.total > 0 ? "in your library" : "none yet", href: "/tv" },
     { label: "Missing", value: missing.toLocaleString("en-AU"), count: { value: missing, format: whole }, help: "no acceptable release yet", tone: missing > 0 ? "danger" : undefined, href: "/search-cycles/missing" },
-    { label: "Upgradable", value: upgradable.toLocaleString("en-AU"), count: { value: upgradable, format: whole }, help: "a better release would be taken", tone: upgradable > 0 ? "warning" : undefined, href: "/search-cycles/upgrades" },
-    { label: "Speed now", value: formatSpeed(speed), count: { value: speed, format: formatSpeed }, help: speedHelp, href: "/queue" }
+    { label: "Upgradable", value: upgradable.toLocaleString("en-AU"), count: { value: upgradable, format: whole }, help: "a better release would be taken", tone: upgradable > 0 ? "warning" : undefined, href: "/search-cycles/upgrades" }
   ];
 }
 
@@ -115,9 +108,17 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   );
   const grouped = useMemo(() => byStage(cards), [cards]);
   const counts = useMemo(() => laneCounts(grouped, summary), [grouped, summary]);
-  const posters = usePosters(cards);
+  const titles = useTitles(cards);
   const arrivals = useArrivals(cards);
-  const stalledWithButton = useMemo(() => new Set(attention.downloads.stalled.map((item) => `${item.clientId}:${item.id}`)), [attention.downloads.stalled]);
+  // What the board already shows with its own buttons is not listed again in Needs you.
+  const onBoard = useMemo<OnBoard>(
+    () => ({
+      queueKeys: new Set(cards.filter((card) => card.queueRef).map((card) => card.key)),
+      handoffIds: new Set(cards.flatMap((card) => (card.failedHandoffId ? [card.failedHandoffId] : [])))
+    }),
+    [cards]
+  );
+  const nothingNeedsYou = attention.counts.live === 0 && attention.alsoWorthALook.leftovers + attention.alsoWorthALook.suggestions === 0;
   const today = data.activityToday;
   const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
 
@@ -141,7 +142,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <SummaryStrip className="shrink-0 lg:grid-cols-6" cells={cells} />
+      <SummaryStrip className="shrink-0 lg:grid-cols-5" cells={cells} />
 
       {emptyLibrary ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
@@ -155,27 +156,28 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
           <div className="flex min-h-0 flex-[5] flex-col [&>section]:min-h-0 [&>section]:flex-1">
-            <Flow grouped={grouped} counts={counts} summary={summary} posters={posters} arrivals={arrivals} action={action} stalledWithButton={stalledWithButton} />
+            <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} />
           </div>
           <div className="grid min-h-0 flex-[3] gap-[var(--grid-gap)] sm:grid-cols-2 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr] [&>section]:min-h-0">
             <SpeedChart samples={data.throughput?.samples ?? []} summary={summary} />
             <Rhythm rows={rhythmRows} counts={today?.counts} countedAt={today?.fetchedAt} capped={today?.capped} />
             <Countdowns summary={summary} />
-            <Indexers indexers={data.indexers ?? NO_ROWS} summary={summary} now={now} />
+            <Indexers indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
           </div>
         </div>
 
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
-            <NeedsYou attention={attention} action={action} />
+          {/* A panel with nothing to say shrinks to a line, and what has more to show takes the room. */}
+          <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", nothingNeedsYou ? "shrink-0" : "flex-[4] [&>section]:flex-1")}>
+            <NeedsYou attention={attention} action={action} onBoard={onBoard} />
           </div>
           <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <ActivityStream rows={latest} />
           </div>
-          <div className="flex min-h-0 flex-[3] flex-col [&>section]:min-h-0 [&>section]:flex-1">
+          <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", upcoming.length === 0 ? "shrink-0" : "flex-[3] [&>section]:flex-1")}>
             <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
               {upcoming.length === 0 ? (
-                <Plain>Nothing airs in the next 72 hours.</Plain>
+                <p className="px-[var(--card-pad-x)] py-2 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing airs in the next 72 hours.</p>
               ) : (
                 <FitList
                   wrap={(shown) => <div>{shown}</div>}

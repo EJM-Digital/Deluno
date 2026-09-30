@@ -117,6 +117,8 @@ export interface DashboardAttention {
   /** The rows the tabs draw with buttons, already free of duplicates. */
   downloads: {
     stalled: DownloadQueueItem[];
+    /** Every download that needs a look: the stalled ones and those the client reported a problem with. */
+    queueAttention: DownloadQueueItem[];
     clients: DashboardClientRow[];
     indexers: IndexerItem[];
     processors: ProcessorConnectionItem[];
@@ -417,7 +419,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     total: counts.live + counts.system,
     alsoWorthALook,
     healthListed,
-    downloads: { stalled, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
+    downloads: { stalled, queueAttention: na.queueAttention, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,
     failingLanes
   };

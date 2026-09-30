@@ -39,7 +39,7 @@ function seedBusy() {
   lists["/api/movies/import-recovery"] = { openCount: 1, recentCases: [{ id: "r1", title: "Say Yes to the Dress", failureKind: "importFailed", summary: "Import failed: a replacement is already there.", recommendedAction: "", detailsJson: JSON.stringify({ DispatchId: "d1" }), detectedUtc: "2026-09-30T09:00:00Z" }] };
   lists["/api/series/import-recovery"] = { openCount: 0, recentCases: [] };
   lists["/api/jobs"] = [{ id: "j1", jobType: "filesystem.import.execute", status: "failed", lastError: "Disk was full", attempts: 3, maxAttempts: 3 }];
-  lists["/api/integrations/processors/handoffs"] = [{ id: "h1", releaseName: "Metropolis (1927)", status: "failed", failureMessage: "The processor timed out.", processorName: "Cleaner", updatedUtc: "2026-09-30T09:55:00Z" }];
+  lists["/api/integrations/processors/handoffs"] = [{ id: "h1", releaseName: "Metropolis (1927)", status: "failed", failureMessage: "The processor timed out.", processorName: "Cleaner", updatedUtc: new Date(Date.now() - 300_000).toISOString() }];
   lists["/api/indexers"] = [{ id: "i2", name: "Nyaa.si", isEnabled: true, healthStatus: "unreachable", lastHealthLatencyMs: null, rateLimitedUntilUtc: null }];
   lists["/api/integrations/processors/connections"] = [{ id: "p1", name: "Cleaner", isEnabled: true, healthStatus: "unreachable", lastHealthMessage: "connection refused", lastHealthTestUtc: "2026-09-30T09:50:00Z" }];
   lists["/api/download-clients/orphans"] = [{ name: "a" }, { name: "b" }];
@@ -64,22 +64,19 @@ beforeEach(() => {
 });
 
 describe("the Live strip", () => {
-  it("states each fact once: the library counts and the speed (the connection and the countdowns have their own places)", () => {
+  it("states each fact once: the library counts (the speed, the connection and the countdowns have their own places)", () => {
     const cells = buildLiveCells(library.fullSummary());
     const value = (label: string) => cells.find((cell) => cell.label === label)?.value;
-    expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable", "Speed now"]);
+    expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable"]);
     expect(value("Movies")).toBe("20");
     expect(value("TV shows")).toBe("2");
     expect(value("Missing")).toBe("3");
     expect(value("Upgradable")).toBe("2");
-    expect(value("Speed now")).toBe("3.9 MB/s");
   });
 
-  it("always reads a speed, and says what is true on a new install", () => {
-    const cells = buildLiveCells(library.emptySummary());
-    expect(cells.find((cell) => cell.label === "Speed now")).toMatchObject({ value: "0 MB/s", help: "waiting for the first reading" });
-    expect(buildLiveCells(undefined).find((cell) => cell.label === "Speed now")?.value).toBe("0 MB/s");
-    expect(JSON.stringify(cells)).not.toMatch(/undefined|NaN/);
+  it("has no speed cell: the speed is read once, in its own panel, and always as a reading", () => {
+    expect(buildLiveCells(library.emptySummary()).map((cell) => cell.label)).not.toContain("Speed now");
+    expect(JSON.stringify(buildLiveCells(undefined))).not.toMatch(/undefined|NaN/);
   });
 });
 
@@ -91,9 +88,16 @@ describe("Live", () => {
     const needs = screen.getByRole("region", { name: /^needs you/i });
     expect(await within(needs).findByRole("button", { name: "Retry Say Yes to the Dress" })).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Give up on Say Yes to the Dress" })).toBeInTheDocument();
-    expect(await within(needs).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
     expect(await within(needs).findByRole("button", { name: "Retry failed import 1" })).toBeInTheDocument();
-    expect(within(needs).getByRole("link", { name: /Look in Transfers: \d+ downloads? (is|are) stalled/ })).toHaveAttribute("href", "/queue");
+
+    // What the board already shows, with its own buttons, is one line here and is not listed twice:
+    // the stalled download is a card in Stuck, the failed hand-off a card with the processor.
+    expect(within(needs).getByText("1 download is stuck or needs a look")).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Show the stuck downloads on the board" })).toBeInTheDocument();
+    const board = screen.getByRole("region", { name: /^every title/i });
+    expect(await within(board).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    await waitFor(() => expect(within(needs).queryByRole("button", { name: "Retry Metropolis (1927)" })).toBeNull());
+    expect(within(within(board).getByRole("group", { name: "Stuck" })).getByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
 
     // The badge number and the list are the same thing.
     const now = computeAttention(fullSummary, {
@@ -158,7 +162,8 @@ describe("Live", () => {
     const { container } = renderTab(emptySummary);
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
     expect(screen.queryByText(/Also worth a look/)).toBeNull();
-    expect(screen.getByText(/Nothing downloading. Nothing imported yet today./)).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Downloading" })).getByText("Nothing moving")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "In the library" })).getByText("None today")).toBeInTheDocument();
     // An empty library says so and offers the next step, in a slim row under the strip.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
@@ -169,7 +174,8 @@ describe("Live", () => {
 
   it("renders before the summary has arrived without inventing numbers", () => {
     const { container } = renderTab(undefined);
-    expect(container.textContent).toContain("Speed now");
+    expect(container.textContent).toContain("Movies");
+    expect(container.textContent).toContain("0 MB/s");
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
 });

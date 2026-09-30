@@ -6,6 +6,7 @@ import { buildCountdownRows, Countdowns } from "./countdowns";
 import { Flow } from "./flow";
 import { HeartbeatValue } from "./heartbeat";
 import { byStage, laneCounts, type JourneyCard } from "./journey";
+import { NO_TITLES, type TitleLookup } from "./titles";
 import { Indexers } from "./indexers";
 import { Rhythm } from "./rhythm";
 import { SpeedChart } from "./speed-chart";
@@ -165,24 +166,74 @@ describe("the indexers", () => {
 });
 
 describe("the journey board", () => {
-  const card = (overrides: Partial<JourneyCard>): JourneyCard => ({ key: "c1:a", stage: "downloading", title: "Sintel (2010)", mediaType: "movie", state: { tone: "info", label: "Downloading" }, progress: 40, speedMbps: 2, etaSeconds: 600, sizeBytes: 2e9, quality: "Bluray 1080p", indexer: "NZBgeek", client: "Deluge", to: "/queue", ...overrides });
-  const board = (cards: JourneyCard[], arrivals: string[] = []) => {
+  const card = (overrides: Partial<JourneyCard>): JourneyCard => ({ key: "c1:a", stage: "downloading", title: "Sintel 2010 1080p", release: "Sintel.2010.1080p.BluRay", state: { tone: "info", label: "Downloading" }, progress: 40, speedMbps: 2, etaSeconds: 600, sizeBytes: 2e9, quality: "Bluray 1080p", indexer: "NZBgeek", client: "Deluge", to: "/queue", ...overrides });
+  const named: TitleLookup = {
+    movies: new Map([["m1", { title: "Sintel", year: 2010, posterUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>" }]]),
+    series: new Map([["s1", { title: "Say Yes to the Dress", year: 2007, posterUrl: null }]]),
+    episodes: new Map([["e1", { seriesId: "s1", season: 4, episode: 2 }]])
+  };
+  const board = (cards: JourneyCard[], arrivals: string[] = [], titles: TitleLookup = NO_TITLES) => {
     const grouped = byStage(cards);
     return (
       <MemoryRouter>
-        <Flow grouped={grouped} counts={laneCounts(grouped, undefined)} summary={undefined} posters={new Map()} arrivals={new Set(arrivals)} action={{ busy: null, run: async () => {} }} stalledWithButton={new Set()} />
+        <Flow grouped={grouped} counts={laneCounts(grouped, undefined)} summary={undefined} titles={titles} arrivals={new Set(arrivals)} action={{ busy: null, run: async () => {} }} />
       </MemoryRouter>
     );
   };
 
-  it("puts each title in its lane with its details, and an empty lane says something true", () => {
+  it("puts each title in its lane with its details, and an empty lane shrinks to one true line", () => {
     render(board([card({}), card({ key: "c1:b", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "info", label: "Being cleaned" } })]));
     const downloading = screen.getByRole("group", { name: "Downloading" });
-    expect(within(downloading).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(downloading).getByText("Sintel 2010 1080p")).toBeInTheDocument();
     expect(within(downloading).getByText("Bluray 1080p · 1.9 GB")).toBeInTheDocument();
     expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "With the processor" })).getByText("NZBgeek → Deluge → Cleaner")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Importing" })).getByText("Nothing waiting to import.")).toBeInTheDocument();
+    const importing = screen.getByRole("group", { name: "Importing" });
+    expect(within(importing).getByText("Nothing waiting")).toBeInTheDocument();
+    expect(importing.className).toContain("lg:w-[6.75rem]");
+    expect(downloading.className).not.toContain("lg:w-[6.75rem]");
+  });
+
+  it("names a card by its library title with the release as a quiet second line, and shows an episode as show plus SxxEyy", () => {
+    render(board([
+      card({ entity: { kind: "movie", id: "m1" } }),
+      card({ key: "c1:b", title: "Say Yes 2007", release: "Say.Yes.to.the.Dress.2007.S04E02.720p", entity: { kind: "episode", id: "e1" }, progress: 10 }),
+      card({ key: "c1:c", title: "Nobody 2020", release: "Nobody.2020.1080p", entity: { kind: "movie", id: "gone" } })
+    ], [], named));
+    const downloading = screen.getByRole("group", { name: "Downloading" });
+    expect(within(downloading).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(downloading).getByText("Sintel.2010.1080p.BluRay")).toBeInTheDocument();
+    expect(within(downloading).getByText("Say Yes to the Dress S04E02")).toBeInTheDocument();
+    // A title that no longer exists keeps the release's own name and gets no failing request.
+    expect(within(downloading).getByText("Nobody 2020")).toBeInTheDocument();
+    expect(within(downloading).getByRole("link", { name: /^Sintel \(2010\)/ })).toHaveAttribute("href", "/movies/m1");
+    expect(within(downloading).getByRole("link", { name: /^Say Yes to the Dress S04E02/ })).toHaveAttribute("href", "/tv/s1");
+  });
+
+  it("puts a stopped download in Stuck with its reason and Search again, and keeps it out of Downloading", () => {
+    render(board([
+      card({ key: "c1:s", stage: "stuck", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" }, progress: 100, speedMbps: 0 }),
+      card({})
+    ]));
+    const stuck = screen.getByRole("group", { name: "Stuck" });
+    expect(within(stuck).getByText("missing or invalid torrent data")).toBeInTheDocument();
+    expect(within(stuck).getByRole("button", { name: /^Search again for/ })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Downloading" })).queryByText("Stuck")).toBeNull();
+  });
+
+  it("gives a failed processor hand-off its Retry and Give up on the card", () => {
+    render(board([card({ key: "h:1", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" })]));
+    const lane = screen.getByRole("group", { name: "With the processor" });
+    expect(within(lane).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    expect(within(lane).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
+  });
+
+  it("only shimmers a download bar while bytes are really moving", () => {
+    const { container, unmount } = render(board([card({ speedMbps: 3 })]));
+    expect(container.querySelector(".live-shimmer")).not.toBeNull();
+    unmount();
+    const idle = render(board([card({ speedMbps: 0 })]));
+    expect(idle.container.querySelector(".live-shimmer")).toBeNull();
   });
 
   it("glows a card that has just arrived, and does not when motion is reduced", () => {
