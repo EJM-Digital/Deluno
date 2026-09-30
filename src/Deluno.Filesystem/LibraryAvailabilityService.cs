@@ -217,7 +217,7 @@ public sealed class LibraryAvailabilityService(
                 library.Id, library.Name, library.RootPath,
                 Reachable: true, Writable: false, FreePercent: freePercent,
                 Problem: LibraryRootProblem.ReadOnly, WarnLowFreeSpace: false,
-                Message: $"{library.Name}'s root at {library.RootPath} answers, but Deluno cannot write to it.");
+                Message: $"The {library.Name} library's root at {library.RootPath} answers, but Deluno cannot write to it.");
         }
 
         if (freePercent is { } percent)
@@ -228,7 +228,7 @@ public sealed class LibraryAvailabilityService(
                     library.Id, library.Name, library.RootPath,
                     Reachable: true, Writable: true, FreePercent: percent,
                     Problem: LibraryRootProblem.LowFreeSpace, WarnLowFreeSpace: false,
-                    Message: $"{library.Name}'s root at {library.RootPath} has only {percent:0.#}% free space left, at or below the {pausePercent}% pause threshold.");
+                    Message: $"The {library.Name} library's root at {library.RootPath} has only {percent:0.#}% free space left, at or below the {pausePercent}% pause threshold.");
             }
 
             if (percent <= warnPercent)
@@ -237,7 +237,7 @@ public sealed class LibraryAvailabilityService(
                     library.Id, library.Name, library.RootPath,
                     Reachable: true, Writable: true, FreePercent: percent,
                     Problem: LibraryRootProblem.None, WarnLowFreeSpace: true,
-                    Message: $"{library.Name}'s root at {library.RootPath} has {percent:0.#}% free space left, at or below the {warnPercent}% warning threshold.");
+                    Message: $"The {library.Name} library's root at {library.RootPath} has {percent:0.#}% free space left, at or below the {warnPercent}% warning threshold.");
             }
         }
 
@@ -245,7 +245,7 @@ public sealed class LibraryAvailabilityService(
             library.Id, library.Name, library.RootPath,
             Reachable: true, Writable: true, FreePercent: freePercent,
             Problem: LibraryRootProblem.None, WarnLowFreeSpace: false,
-            Message: $"{library.Name}'s root at {library.RootPath} is reachable and writable.");
+            Message: $"The {library.Name} library's root at {library.RootPath} is reachable and writable.");
     }
 
     /// <summary>

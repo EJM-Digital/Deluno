@@ -975,12 +975,12 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                 if (Directory.Exists(fullPath))
                 {
                     Directory.Delete(fullPath, recursive: true);
-                    message = $"Deleted the folder {name} from {library.Name}'s processor output folder.";
+                    message = $"Deleted the folder {name} from the {library.Name} library's processor output folder.";
                 }
                 else if (File.Exists(fullPath))
                 {
                     File.Delete(fullPath);
-                    message = $"Deleted {name} from {library.Name}'s processor output folder.";
+                    message = $"Deleted {name} from the {library.Name} library's processor output folder.";
                 }
                 else
                 {
@@ -1114,7 +1114,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
                         activityFeed,
                         handoff,
                         library,
-                        $"{processorName} said {handoff.ReleaseName} was ready at {request.OutputPath}, but that is outside {library.Name}'s configured clean output folder. Check the processor's path mapping, then have it send the event again.",
+                        $"{processorName} said {handoff.ReleaseName} was ready at {request.OutputPath}, but that is outside the {library.Name} library's configured clean output folder. Check the processor's path mapping, then have it send the event again.",
                         cancellationToken);
                 }
 

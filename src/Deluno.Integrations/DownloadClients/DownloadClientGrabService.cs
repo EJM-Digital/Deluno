@@ -426,7 +426,7 @@ public sealed class DownloadClientGrabService(
                         id, HealthCheckCategories.Grab, name,
                         $"{client.Name} saved {request.ReleaseName} to {reportedPath}, but {library.Name} expects {library.DownloadsPath}.",
                         cause: $"{client.Name}'s {request.Category} category no longer saves to the folder {library.Name} watches -- a category renamed in the client, or a remapped share, usually causes this.",
-                        fix: $"Change the {request.Category} category's folder in {client.Name}, or update {library.Name}'s downloads folder to match.",
+                        fix: $"Change the {request.Category} category's folder in {client.Name}, or update the {library.Name} library's downloads folder to match.",
                         detailsJson: $$"""{"libraryId":"{{library.Id}}","clientId":"{{client.Id}}","category":"{{request.Category}}","reportedPath":"{{reportedPath}}","expectedPath":"{{library.DownloadsPath}}"}""");
 
                 var transitions = await healthCheckRepository.UpsertResultsAsync([outcome], cancellationToken);
