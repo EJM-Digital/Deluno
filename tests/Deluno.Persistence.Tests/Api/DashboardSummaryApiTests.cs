@@ -293,6 +293,8 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
         var recent = summary.GetProperty("activity").GetProperty("recent").EnumerateArray().ToArray();
         var item = Assert.Single(recent);
         Assert.Equal("download.vanished.recovered", item.GetProperty("category").GetString());
+        Assert.Equal(Deluno.Contracts.ActivityEventLabels.For("download.vanished.recovered"), item.GetProperty("label").GetString());
+        Assert.DoesNotContain(".", item.GetProperty("label").GetString()!);
         Assert.Equal("A download came back", item.GetProperty("message").GetString());
     }
 
