@@ -26,7 +26,7 @@ internal sealed class InMemoryRetentionRepository : IRetentionRepository
     {
         if (BeforeSave is not null) await BeforeSave();
         if (id is null || !_rules.TryGetValue(id, out var existing)) return null;
-        var saved = existing with { ExpiryAction = request.ExpiryAction ?? existing.ExpiryAction, ExpiryTag = request.ExpiryTag };
+        var saved = existing with { ExpiryAction = request.ExpiryAction ?? existing.ExpiryAction, ExpiryTag = request.ExpiryTag, IsEnabled = request.IsEnabled, UpdatedUtc = existing.UpdatedUtc.AddSeconds(1) };
         _rules[id] = saved;
         return saved;
     }

@@ -36,7 +36,9 @@ public sealed record RetentionPartFacts(
     bool? CutoffMet,
     bool? Monitored,
     string? Path,
-    IReadOnlyList<string> EpisodeIds);
+    IReadOnlyList<string> EpisodeIds,
+    /// <summary>How many of a season's episodes with a file were left out because they have not aired (a future air date). Retention never touches those.</summary>
+    int UpcomingLeftAlone = 0);
 
 /// <summary>
 /// One thing a rule can act on: a movie, a show, a season or an episode that
@@ -271,26 +273,35 @@ public sealed class RetentionUnitReader(
 
                 if (level == RetentionLevels.Season)
                 {
+                    var upcomingIds = episodes
+                        .Where(episode => RetentionEpisodeMath.EpisodeUpcoming(episode, now))
+                        .Select(episode => episode.EpisodeId)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
                     foreach (var season in withEpisodes.GroupBy(file => file.File.SeasonNumber!.Value).OrderBy(group => group.Key))
                     {
-                        var episodeIds = season.Select(file => file.File.EpisodeId).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                        // A season in progress is acted on for what has aired only: episodes with a future air date are left out of
+                        // what it holds and of what a rule removes (#1072). A season with nothing aired is Upcoming as a whole.
+                        var airedFiles = season.Where(file => file.File.EpisodeId is null || !upcomingIds.Contains(file.File.EpisodeId)).ToArray();
+                        var leftAlone = season.Count() - airedFiles.Length;
+                        var seasonFiles = airedFiles.Length == 0 ? season.ToArray() : airedFiles;
+                        var episodeIds = seasonFiles.Select(file => file.File.EpisodeId).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                         units.Add(new RetentionUnit(
                             RetentionLevels.Season, RetentionUnit.SeasonId(show.Id, season.Key), show.Id, season.Key, null,
                             season.Key == 0 ? $"{show.Title} — Specials" : $"{show.Title} — Season {season.Key}",
                             show.Title, show.StartYear, show.ImdbId, tmdb, Tvdb(show.MetadataProvider, show.MetadataProviderId),
-                            season.Sum(file => file.File.FileSizeBytes ?? 0),
-                            season.Select(file => file.File.FilePath).ToArray(), showRoots,
+                            seasonFiles.Sum(file => file.File.FileSizeBytes ?? 0),
+                            seasonFiles.Select(file => file.File.FilePath).ToArray(), showRoots,
                             new RetentionPartFacts(
                                 season.Key == latestSeason, Unaired(season.Key), episodeIds.Length, null,
-                                season.Select(file => file.File.ImportedUtc).Where(when => when is not null).Max(),
-                                null, null, null, null, episodeIds),
+                                seasonFiles.Select(file => file.File.ImportedUtc).Where(when => when is not null).Max(),
+                                null, null, null, null, episodeIds, leftAlone),
                             AddedUtc: show.CreatedUtc,
                             Facts: new RetentionTitleFacts(
                                 QualityProfile: profile,
                                 Monitored: math?.SeasonMonitored(season.Key),
                                 SeriesType: show.SeriesType,
                                 MissingEpisodes: math?.Missing(season.Key),
-                                Upcoming: math?.SeasonUpcoming(season.Key) == true,
+                                Upcoming: airedFiles.Length == 0 || math?.SeasonUpcoming(season.Key) == true,
                                 SeasonFinale: math?.SeasonFinale(season.Key, null),
                                 SeriesFinale: math?.SeriesFinale(season.Key, null, Ended(show.Id)),
                                 SeasonRank: math?.SeasonRank(season.Key))));

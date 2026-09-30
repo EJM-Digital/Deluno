@@ -4851,6 +4851,81 @@ public sealed class ImportPipelineServiceTests
     }
 
     /// <summary>
+    /// #1072 (James, 30 Sep): Andor S02 has E01-E02 removed and unmonitored; a season pack that still holds them
+    /// must never bring them back. Only the wanted episode is imported; the removed ones are left in the folder.
+    /// </summary>
+    [Fact]
+    public async Task Tv_pack_never_brings_back_an_episode_that_was_removed_and_unmonitored()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-04-29T08:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        var seriesRootPath = Path.Combine(storage.DataRoot, "series");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        Directory.CreateDirectory(seriesRootPath);
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath, seriesRootPath);
+        await CreateTvLibraryAsync(libraries, seriesRootPath, downloadsPath);
+        var repository = new SqliteSeriesCatalogRepository(storage.Factory, timeProvider);
+        var series = await repository.AddAsync(new CreateSeriesRequest("Removed Pack", 2026, null), CancellationToken.None);
+        await repository.SyncEpisodeCatalogueAsync(
+            series.Id,
+            [
+                new CatalogueEpisodeItem(1, 1, "One", null, timeProvider.GetUtcNow().AddDays(-3)),
+                new CatalogueEpisodeItem(1, 2, "Two", null, timeProvider.GetUtcNow().AddDays(-2)),
+                new CatalogueEpisodeItem(1, 3, "Three", null, timeProvider.GetUtcNow().AddDays(-1))
+            ],
+            "provider",
+            CancellationToken.None);
+        var before = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        var removedIds = before!.Episodes.Where(episode => episode.EpisodeNumber <= 2).Select(episode => episode.EpisodeId).ToArray();
+        await repository.UpdateEpisodeMonitoredAsync(removedIds, false, CancellationToken.None);
+
+        var packDirectory = Path.Combine(downloadsPath, "Removed.Pack.S01");
+        Directory.CreateDirectory(packDirectory);
+        var sources = new Dictionary<int, string>();
+        foreach (var episode in new[] { 1, 2, 3 })
+        {
+            var source = Path.Combine(packDirectory, $"Removed.Pack.S01E{episode:D2}.mkv");
+            await File.WriteAllBytesAsync(source, Enumerable.Repeat((byte)(0x60 + episode), 4096).ToArray());
+            File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddMinutes(-1));
+            sources[episode] = source;
+        }
+
+        var service = CreateService(
+            storage,
+            timeProvider,
+            platform,
+            libraries,
+            new SqliteMovieCatalogRepository(storage.Factory, timeProvider),
+            seriesCatalogRepository: repository);
+        var request = new ImportExecuteRequest(
+            new ImportPreviewRequest(
+                packDirectory, null, "tv", series.Title, series.StartYear, [], [], null, null,
+                SeriesId: series.Id, SeriesType: SeriesTypes.Standard, NumberingScheme: SeriesNumberingSchemes.Standard),
+            "copy", false, true);
+
+        var result = await service.ExecuteAsync(request, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Single(result.Response!.PackFiles!);
+        Assert.Equal(2, result.Response.SkippedFiles!.Count);
+        Assert.All(result.Response.SkippedFiles, skipped => Assert.Contains("no longer wanted", skipped.Reason, StringComparison.Ordinal));
+        Assert.True(File.Exists(sources[1]));
+        Assert.True(File.Exists(sources[2]));
+
+        var detail = await repository.GetInventoryDetailAsync(series.Id, CancellationToken.None);
+        Assert.False(detail!.Episodes.Single(episode => episode.EpisodeNumber == 1).HasFile);
+        Assert.False(detail.Episodes.Single(episode => episode.EpisodeNumber == 2).HasFile);
+        Assert.True(detail.Episodes.Single(episode => episode.EpisodeNumber == 3).HasFile);
+        Assert.False(detail.Episodes.Single(episode => episode.EpisodeNumber == 1).Monitored);
+    }
+
+    /// <summary>
     /// #889 (cleanup sheet E9): a season pack used to stop entirely the moment
     /// one matched file had its own problem - nine good episodes and one
     /// corrupt file imported none of them. Now the corrupt file is treated
@@ -7195,6 +7270,14 @@ public sealed class ImportPipelineServiceTests
     [InlineData("/dl/Movie.2020/Movie.2020.mkv", 1024L, true)]
     public void A_file_that_could_not_be_read_is_told_to_be_a_sample_only_by_what_can_be_seen_outside_it(string path, long? size, bool sample)
         => Assert.Equal(sample, ImportPipelineService.LooksLikeASampleWithoutProbing(path, size));
+
+    [Theory]
+    [InlineData("/dl/Trailer.Park.Boys.S01E01.720p/Trailer.Park.Boys.S01E01.720p.mkv", "Trailer Park Boys", false)]
+    [InlineData("/dl/Trailer.Park.Boys.S01E01.720p/Trailer.Park.Boys.S01E01.720p-trailer.mkv", "Trailer Park Boys", true)]
+    [InlineData("/dl/Movie.2020/movie-sample.mkv", "Movie", true)]
+    [InlineData("/dl/Sample.Movie.2020/Sample.Movie.2020.mkv", "Sample Movie", false)]
+    public void A_sample_or_trailer_word_that_is_part_of_the_title_does_not_make_a_file_a_sample(string path, string title, bool sample)
+        => Assert.Equal(sample, ImportPipelineService.LooksLikeASampleWithoutProbing(path, 500L * 1024 * 1024, 100, title));
 
     [Theory]
     [InlineData(30, 40L * 1024 * 1024, false)]

@@ -866,6 +866,15 @@ public sealed partial class ImportPipelineService(
         var episodeIdByNumber = (numbering?.Episodes ?? [])
             .ToDictionary(episode => (episode.SeasonNumber, episode.EpisodeNumber), episode => episode.EpisodeId);
 
+        // #1072: an episode that was removed (by retention, the person, or a delete outside Deluno) is no longer
+        // monitored. A pack never brings it back: a file that resolves only to such episodes is left where it is.
+        var unwantedEpisodeIds = string.IsNullOrWhiteSpace(request.SeriesId)
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : ((await seriesCatalogRepository.GetInventoryDetailAsync(request.SeriesId, cancellationToken))?.Episodes ?? [])
+                .Where(episode => !episode.Monitored && !episode.HasFile)
+                .Select(episode => episode.EpisodeId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var declaredSeasons = SeriesNumberingResolver.ParseSeasonPackNumbers(request.SourcePath)
             .Distinct()
             .OrderBy(value => value)
@@ -962,6 +971,15 @@ public sealed partial class ImportPipelineService(
                 skippedFiles.Add(new TvPackSkippedFilePlan(
                     preview,
                     "The filename does not resolve to one or more canonical episodes in this show.",
+                    []));
+                continue;
+            }
+            if (unwantedEpisodeIds.Count > 0
+                && fileNumbers.Episodes.All(episode => episodeIdByNumber.TryGetValue((episode.SeasonNumber, episode.EpisodeNumber), out var wantedId) && unwantedEpisodeIds.Contains(wantedId)))
+            {
+                skippedFiles.Add(new TvPackSkippedFilePlan(
+                    preview,
+                    "Left alone: every episode in this file was removed and is no longer wanted, so the pack does not bring it back.",
                     []));
                 continue;
             }
@@ -2574,16 +2592,14 @@ public sealed partial class ImportPipelineService(
             string.Equals(item.ImportStatus, "failed", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// Force Import (#1013): whether to import past a stop that
-    /// <see cref="ForceImportPolicy"/> lists as minor and known-safe, and says
-    /// so in Activity when it does. Everything that decides lives in the policy;
-    /// this only supplies the facts and keeps the count.
-    /// </summary>
     /// <summary>Smallest size Force Import will accept for a file it could not read; anything below (or of unknown size) stays stopped.</summary>
     public const int DefaultForceImportMinimumMegabytes = 100;
 
-    public static bool LooksLikeASampleWithoutProbing(string? sourcePath, long? sizeBytes, int minimumMegabytes = DefaultForceImportMinimumMegabytes)
+    /// <summary>
+    /// Whether a file that could not be read looks like a sample or trailer: too small, or (when small for a feature or
+    /// episode) named "sample" or "trailer" where that word is not part of the title itself, so "Trailer Park Boys" is not a trailer.
+    /// </summary>
+    public static bool LooksLikeASampleWithoutProbing(string? sourcePath, long? sizeBytes, int minimumMegabytes = DefaultForceImportMinimumMegabytes, string? title = null)
     {
         var minimumBytes = Math.Max(1, minimumMegabytes) * 1024L * 1024L;
         if (string.IsNullOrWhiteSpace(sourcePath) || sizeBytes is not > 0 || sizeBytes < minimumBytes)
@@ -2593,11 +2609,37 @@ public sealed partial class ImportPipelineService(
 
         var name = Path.GetFileNameWithoutExtension(sourcePath);
         var folder = Path.GetFileName(Path.GetDirectoryName(sourcePath) ?? string.Empty);
-        return SampleTokenPattern().IsMatch(name)
-            || SampleTokenPattern().IsMatch(folder)
-            || name.Contains("trailer", StringComparison.OrdinalIgnoreCase);
+        // The word only counts when it is not part of the title, and only for a file that is small for what it claims to be.
+        if (sizeBytes >= minimumBytes * 10)
+        {
+            return false;
+        }
+
+        return NamesASampleOutsideTheTitle(name, title) || NamesASampleOutsideTheTitle(folder, title);
     }
 
+    private static bool NamesASampleOutsideTheTitle(string text, string? title)
+    {
+        // Whatever the title itself says (a show called "Trailer Park Boys") is taken out first; a "sample" or
+        // "trailer" word left over is the file's own.
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            var words = Regex.Split(title.Trim(), @"[^\p{L}\p{N}]+").Where(word => word.Length > 0).Select(Regex.Escape).ToArray();
+            if (words.Length > 0)
+            {
+                text = Regex.Replace(text, string.Join(@"[^\p{L}\p{N}]+", words), " ", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            }
+        }
+
+        return Regex.IsMatch(text, @"(^|[^\p{L}\p{N}])(sample|trailer)([^\p{L}\p{N}]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    /// <summary>
+    /// Force Import (#1013): whether to import past a stop that
+    /// <see cref="ForceImportPolicy"/> lists as minor and known-safe, and says
+    /// so in Activity when it does. Everything that decides lives in the policy;
+    /// this only supplies the facts and keeps the count.
+    /// </summary>
     private async Task<bool> TryForceImportAsync(
         ImportExecuteRequest request,
         ImportPreviewResponse preview,
@@ -2616,7 +2658,7 @@ public sealed partial class ImportPipelineService(
         // The probe could not read the file, so its no-video and likely-sample verdicts never ran. Forcing
         // must not import a sample just because the file could not be read: what can be told without
         // reading it (a sample-looking name, a file too small to be a feature or episode) still stops it (#1072).
-        if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes, settings.ForceImportMinimumMegabytes))
+        if (LooksLikeASampleWithoutProbing(preview.SourcePath, preview.SourceSizeBytes, settings.ForceImportMinimumMegabytes, request.Preview.Title))
         {
             logger.LogWarning("Force Import left {Source} stopped: it could not be read and looks like a sample.", preview.SourcePath);
             return false;

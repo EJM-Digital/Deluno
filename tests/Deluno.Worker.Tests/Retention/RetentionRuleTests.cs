@@ -1314,6 +1314,82 @@ public sealed class RetentionRuleTests
     }
 
     [Fact]
+    public async Task A_season_still_airing_loses_only_its_aired_episodes_and_the_rest_is_left_alone_and_said()
+    {
+        SeasonLibrary();
+        // Season 1: e1 has aired and is watched; e2 has a file but its air date is still to come. Season 2: e3 aired.
+        SeasonOneEpisodes(
+            AiredOrNot("e1", 1, 1, Now.AddDays(-10)),
+            AiredOrNot("e2", 1, 2, Now.AddDays(6)),
+            AiredOrNot("e3", 2, 1, Now.AddDays(-5)));
+        var rule = Rule(Keep("server.allEpisodesSeenBy:everyone:")) with { Level = RetentionLevels.Season, WaitDays = 1 };
+        _store.Add(rule);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _clock.Now = Now.AddDays(2);
+        var run = await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        Assert.Equal("s1:s1", Assert.Single(run.Items!, item => item.Outcome == RetentionItemOutcomes.Removed).EntityId);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.Is<IReadOnlyList<TrackedLibraryFile>>(files => files.Count == 1 && files[0].FilePath.Contains("S01E01")), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Once);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "e1" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(["e1"], (await _store.ListEpisodeRemovalsAsync("s1", CancellationToken.None)).Select(item => item.EpisodeId));
+        Assert.Contains("not aired yet", run.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_show_still_airing_is_not_removed_as_a_whole_only_its_aired_episodes_go_one_by_one()
+    {
+        SeasonLibrary();
+        SeasonOneEpisodes(
+            AiredOrNot("e1", 1, 1, Now.AddDays(-10)),
+            AiredOrNot("e2", 1, 2, Now.AddDays(-9)),
+            AiredOrNot("e3", 2, 1, Now.AddDays(8)));
+        _series.Setup(repo => repo.GetByIdAsync("s1", It.IsAny<CancellationToken>())).ReturnsAsync((SeriesListItem?)null);
+        var rule = Rule(Keep("server.allEpisodesSeenBy:anyone:")) with { Level = RetentionLevels.Show, WaitDays = 1 };
+        _store.Add(rule);
+        Assert.Equal("s1", Assert.Single((await Evaluator().EvaluateAsync(rule, CancellationToken.None)).Matched).EntityId);
+
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+
+        _series.Verify(repo => repo.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Order().SequenceEqual(new[] { "e1", "e2" })), false, It.IsAny<CancellationToken>()), Times.Once);
+        _series.Verify(repo => repo.UpdateEpisodeMonitoredAsync(It.Is<IReadOnlyList<string>>(ids => ids.Contains("e3")), false, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Saving_a_rule_does_not_wait_for_a_check_that_is_still_reading_the_servers_and_that_check_then_changes_nothing()
+    {
+        var rule = await WatchedFilmRuleAsync(rule => rule with { WaitDays = 1 });
+        await Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        _clock.Now = Now.AddDays(2);
+
+        var reading = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        _jellyfin.Setup(client => client.ListItemsAsync(_server, "movies", It.IsAny<CancellationToken>())).Returns(async () =>
+        {
+            reading.TrySetResult();
+            await release.Task;
+            return new MediaServerAnswer<MediaServerLibrary>.Reported(new MediaServerLibrary([Item("j1", Path("Nosferatu", 1922), tmdb: "653", playedBy: ["james"], last: Now.AddDays(-40))], ["james", "ben"]));
+        });
+
+        var check = Service().CheckAsync(rule, "schedule", CancellationToken.None);
+        await reading.Task;
+
+        // The check is mid-read; switching the rule off must not queue behind it.
+        var save = Service().SaveEditedRuleAsync(rule.Id, new SaveRetentionRuleRequest(rule.Name, rule.Level, false, rule.Steps, rule.MediaServerIds, false, ExpiryAction: RetentionExpiryActions.Delete), CancellationToken.None);
+        Assert.Same(save, await Task.WhenAny(save, Task.Delay(TimeSpan.FromSeconds(5))));
+        Assert.NotNull(await save);
+
+        release.SetResult();
+        var run = await check;
+
+        Assert.Contains("edited or switched off", run.Summary, StringComparison.Ordinal);
+        _recycleBin.Verify(bin => bin.MoveAsync(It.IsAny<IReadOnlyList<TrackedLibraryFile>>(), It.IsAny<IReadOnlyList<LibraryItem>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Checks_of_one_rule_run_one_at_a_time()
     {
         var rule = await WatchedFilmRuleAsync(rule => rule);

@@ -40,7 +40,9 @@ public sealed record RetentionEvaluation(
     IReadOnlyList<string> Problems,
     int Considered = 0,
     IReadOnlyList<RetentionStepCount>? StepCounts = null,
-    IReadOnlyList<RetentionUnmanagedItem>? Unmanaged = null)
+    IReadOnlyList<RetentionUnmanagedItem>? Unmanaged = null,
+    /// <summary>How many episodes, seasons or shows were left alone because they have not aired yet (a future air date). Said in the run's results.</summary>
+    int UpcomingLeftAlone = 0)
 {
     public IEnumerable<RetentionCandidate> Matched => Candidates.Where(item => item.Outcome == RetentionItemOutcomes.Matched);
 }
@@ -263,9 +265,11 @@ public sealed class RetentionEvaluator(
         }
 
         // Retention never acts on anything Upcoming (an episode with a future air date, or a season or show made only of those): it is not a candidate for any rule.
-        var all = (await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions)))
+        var everything = await units.ReadAsync(level, cancellationToken, RetentionFieldCatalog.NeedsOf(conditions));
+        var all = everything
             .Where(unit => unit.Facts?.Upcoming != true)
             .ToArray();
+        var upcomingLeftAlone = everything.Count(unit => unit.Facts?.Upcoming == true) + all.Sum(unit => unit.Part?.UpcomingLeftAlone ?? 0);
         var qualityRanks = qualityModel is null
             ? null
             : (await qualityModel.GetAsync(cancellationToken)).Tiers.ToDictionary(tier => tier.Name, tier => tier.Rank, StringComparer.OrdinalIgnoreCase);
@@ -381,7 +385,7 @@ public sealed class RetentionEvaluator(
             }
         }
 
-        return new RetentionEvaluation(candidates, unreachable, [], all.Length, outcome.Counts, unmanaged);
+        return new RetentionEvaluation(candidates, unreachable, [], all.Length, outcome.Counts, unmanaged, upcomingLeftAlone);
     }
 
     /// <summary>
