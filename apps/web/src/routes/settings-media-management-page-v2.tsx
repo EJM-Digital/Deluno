@@ -428,7 +428,7 @@ function ImportPolicyPage() {
         leftoverMinAgeHours: form.leftoverMinAgeHours,
         forceImportEnabled: form.forceImportEnabled,
         forceImportMaxTries: form.forceImportMaxTries,
-        forceImportMinimumMegabytes: form.forceImportMinimumMegabytes,
+        forceImportMinimumMegabytes: form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : undefined,
         unmatchedImportPolicy: form.unmatchedImportPolicy,
         unmatchedImportGiveUpDays: form.unmatchedImportGiveUpDays
       });
@@ -587,9 +587,9 @@ function ImportPolicyFields({
           </Field>
         ) : null}
         {form.forceImportEnabled ? (
-          <Field label="Smallest file to force" help="Files smaller than this are never force-imported, so samples and trailers stay out.">
+          <Field label="Smallest file to force" help="Files smaller than this are never force-imported, so samples and trailers stay out. Leave it empty to use 100 MB.">
             <div className="flex items-center gap-2">
-              <Input type="number" min={1} max={100000} value={form.forceImportMinimumMegabytes} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMinimumMegabytes: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
+              <Input type="number" min={1} max={100000} value={form.forceImportMinimumMegabytes > 0 ? form.forceImportMinimumMegabytes : ""} onChange={(event) => onFormChange((current) => ({ ...current, forceImportMinimumMegabytes: Number(event.target.value || 0) }))} className="max-w-[7rem]" />
               <span className="shrink-0 text-[length:var(--type-body-sm)] text-muted-foreground">MB</span>
             </div>
           </Field>
