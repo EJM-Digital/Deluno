@@ -40,6 +40,8 @@ export function FolderChainSection({ libraryId, refreshKey }: { libraryId: strin
   useEffect(() => {
     let active = true;
     setBusy(true);
+    // A new check never shows the last one beside its own result, or under its error.
+    setReport(null);
     setFailed(null);
     // #1079: the check always finishes. Whatever the request does (a client
     // that never answers, a dropped connection, a promise that never settles),

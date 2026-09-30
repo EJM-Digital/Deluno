@@ -262,7 +262,7 @@ public static class LibrariesEndpointRouteBuilderExtensions
         endpoints.MapPut("/api/libraries/{id}", async (
             string id,
             HttpContext httpContext,
-            [FromBody] UpdateLibraryDetailsRequest request,
+            [FromBody] JsonElement body,
             [FromServices] ILibrariesRepository repository,
             [FromServices] IJobQueueRepository jobs,
             [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
@@ -272,6 +272,36 @@ public static class LibrariesEndpointRouteBuilderExtensions
             if (denied is not null)
             {
                 return denied;
+            }
+
+            if (body.ValueKind != JsonValueKind.Object)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = ["Send the library's details as an object."] });
+            }
+
+            UpdateLibraryDetailsRequest request;
+            try
+            {
+                request = body.Deserialize<UpdateLibraryDetailsRequest>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                    ?? new UpdateLibraryDetailsRequest(null, null, null);
+            }
+            catch (JsonException)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = ["The library's details could not be read."] });
+            }
+
+            // The downloads folder: left out means unchanged, sent (even empty or null) means
+            // exactly that, so a caller that only renames a library never wipes it.
+            var downloadsSent = body.EnumerateObject().Any(property => string.Equals(property.Name, "downloadsPath", StringComparison.OrdinalIgnoreCase));
+            if (!downloadsSent)
+            {
+                var current = (await repository.ListLibrariesAsync(cancellationToken)).FirstOrDefault(library => library.Id == id);
+                if (current is null)
+                {
+                    return Results.NotFound();
+                }
+
+                request = request with { DownloadsPath = current.DownloadsPath };
             }
 
             var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);

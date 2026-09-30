@@ -51,6 +51,18 @@ describe("the folder check (#616)", () => {
     await vi.waitFor(() => expect(fetchJson).toHaveBeenCalledTimes(2));
   });
 
+  it("never shows the last check's result beside a new check's error", async () => {
+    fetchJson.mockResolvedValueOnce(mismatch);
+    render(<FolderChainSection libraryId="tv" />);
+    expect(await screen.findByText("Doesn't match")).toBeTruthy();
+
+    fetchJson.mockRejectedValueOnce(new Error("Deluno could not reach the server."));
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("could not reach");
+    expect(screen.queryByText("Doesn't match")).toBeNull();
+  });
+
   it("says when the folders could not be checked", async () => {
     fetchJson.mockRejectedValue(new Error("Deluno could not reach the server."));
 
