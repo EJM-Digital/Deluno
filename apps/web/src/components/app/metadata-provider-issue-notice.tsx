@@ -31,12 +31,28 @@ export function MetadataProviderIssueNotice({
   const headingId = useId();
   if (!issue || issue.acknowledgedUtc) return null;
 
+  // A note about the episode list (#1090) is about a service that did not
+  // answer, not about the provider dropping the title: different words, and
+  // "find another match" does not apply to it.
+  const catalogueNote = issue.kind === "catalogue-unreadable" || issue.kind === "catalogue-tvdb-unavailable";
+  const heading = issue.kind === "catalogue-unreadable"
+    ? `Deluno could not read this ${subjectLabel}'s episode list`
+    : issue.kind === "catalogue-tvdb-unavailable"
+      ? `This ${subjectLabel}'s episodes use TMDb's numbering for now`
+      : `This ${subjectLabel} is no longer listed by ${issue.provider.toLowerCase() === "tmdb" ? "TMDb" : issue.provider}`;
+  const body = issue.kind === "catalogue-unreadable"
+    ? "The metadata service did not answer, so the episodes Deluno already has were left as they are. It tries again at the next refresh."
+    : issue.kind === "catalogue-tvdb-unavailable"
+      ? "TheTVDB did not answer when this show was added, so its episodes are numbered the way TMDb numbers them. Try again to see if TheTVDB has the list now."
+      : "Deluno kept the title, monitoring, history, and files. You can keep the stored details, link another match, or try the provider again.";
+  const dismissLabel = catalogueNote ? "Clear this note" : `Keep this ${subjectLabel}`;
+
   async function acknowledge() {
     setIsAcknowledging(true);
     try {
       const response = await authedFetch(acknowledgeUrl, { method: "POST" });
       if (!response.ok && response.status !== 204) throw new Error("metadata-issue-acknowledge-failed");
-      toast.success(`Kept this ${subjectLabel}. The metadata note was cleared.`);
+      toast.success(catalogueNote ? "The note was cleared." : `Kept this ${subjectLabel}. The metadata note was cleared.`);
       onAcknowledged();
     } catch {
       toast.error("That metadata note could not be cleared.");
@@ -51,9 +67,9 @@ export function MetadataProviderIssueNotice({
         <div className="flex min-w-0 items-start gap-3">
           <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p id={headingId} className="font-medium text-foreground">This {subjectLabel} is no longer listed by {issue.provider.toLowerCase() === "tmdb" ? "TMDb" : issue.provider}</p>
+            <p id={headingId} className="font-medium text-foreground">{heading}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Deluno kept the title, monitoring, history, and files. You can keep the stored details, link another match, or try the provider again.
+              {body}
             </p>
           </div>
         </div>
@@ -62,7 +78,7 @@ export function MetadataProviderIssueNotice({
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Try again
           </Button>
-          <Button type="button" variant="outline" onClick={onFindAnother}>Find another match</Button>
+          {catalogueNote ? null : <Button type="button" variant="outline" onClick={onFindAnother}>Find another match</Button>}
           <Button
             type="button"
             onClick={() => void acknowledge()}
@@ -70,7 +86,7 @@ export function MetadataProviderIssueNotice({
             aria-busy={isAcknowledging}
           >
             {isAcknowledging ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-            Keep this {subjectLabel}
+            {dismissLabel}
           </Button>
         </div>
       </CardContent>
@@ -80,7 +96,7 @@ export function MetadataProviderIssueNotice({
         stopped responding. Say what is happening.
       */}
       <p role="status" aria-live="polite" className="sr-only">
-        {isAcknowledging ? `Keeping this ${subjectLabel}.` : ""}
+        {isAcknowledging ? (catalogueNote ? "Clearing the note." : `Keeping this ${subjectLabel}.`) : ""}
       </p>
     </Card>
   );

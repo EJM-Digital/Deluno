@@ -202,3 +202,56 @@ describe("MetadataProviderIssueNotice", () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe("MetadataProviderIssueNotice, episode list notes (#1090)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const unreadable: MetadataProviderIssue = {
+    ...issue,
+    kind: "catalogue-unreadable",
+    evidenceKey: "tmdb:series:95396:catalogue-unreadable:2026-10-01"
+  };
+
+  it("says in plain words that the episode list could not be read, and offers to clear the note", async () => {
+    const user = userEvent.setup();
+    const onAcknowledged = vi.fn();
+    vi.mocked(authedFetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    render(
+      <MetadataProviderIssueNotice
+        issue={unreadable}
+        subjectLabel="show"
+        acknowledgeUrl="/api/series/series-1/metadata/issue/acknowledge"
+        onAcknowledged={onAcknowledged}
+        onFindAnother={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("region", { name: "Deluno could not read this show's episode list" })).toBeVisible();
+    expect(screen.getByText(/episodes Deluno already has were left as they are/i)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Find another match" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/no longer listed/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear this note" }));
+
+    await waitFor(() => expect(onAcknowledged).toHaveBeenCalledTimes(1));
+    expect(authedFetch).toHaveBeenCalledWith("/api/series/series-1/metadata/issue/acknowledge", { method: "POST" });
+  });
+
+  it("says a show that was added while TheTVDB was down uses TMDb's numbering for now", () => {
+    render(
+      <MetadataProviderIssueNotice
+        issue={{ ...unreadable, kind: "catalogue-tvdb-unavailable" }}
+        subjectLabel="show"
+        acknowledgeUrl="/api/series/series-1/metadata/issue/acknowledge"
+        onAcknowledged={vi.fn()}
+        onFindAnother={vi.fn()}
+        onRetry={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("region", { name: "This show's episodes use TMDb's numbering for now" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+});

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useNavigation, useSearchParams } from "react-router-dom";
 import type { MediaItem } from "../../lib/media-types";
+import { describeMetadataSearchError } from "../../lib/metadata-check";
 import {
-  ApiRequestError,
   fetchJson,
   readValidationProblem,
   type CatalogueFacets,
@@ -745,12 +745,15 @@ export function LibraryView({
         );
       }
     } catch (error) {
-      const message =
-        error instanceof ApiRequestError
-          ? error.message
-          : "Metadata search failed.";
+      // A service that is not answering is said in its own words, never as
+      // "No metadata matches found" (#1090).
+      const failure = describeMetadataSearchError(error);
       if (!options.silent) {
-        toast.error(message);
+        if (failure.outage) {
+          toast.warning(failure.message, { description: failure.description });
+        } else {
+          toast.error(failure.message);
+        }
       }
     } finally {
       if (searchSequence === metadataSearchSequence.current) {
