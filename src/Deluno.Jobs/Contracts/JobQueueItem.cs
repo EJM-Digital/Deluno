@@ -24,4 +24,7 @@ public sealed record JobQueueItem(
 {
     /// <summary>The job in plain words (#1086); screens show this, never <see cref="JobType"/>.</summary>
     public string Label => Deluno.Contracts.JobTypeLabels.For(JobType);
+
+    /// <summary>What started the job in plain words (#1086); screens show this, never <see cref="Source"/>.</summary>
+    public string SourceLabel => Deluno.Contracts.JobSourceLabels.For(Source);
 }

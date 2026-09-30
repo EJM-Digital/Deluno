@@ -322,7 +322,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                 {stopped.map((job) => (
                   <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
                     <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
-                    <ListCell primary={job.source} mobile />
+                    <ListCell primary={job.sourceLabel} mobile />
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
@@ -350,7 +350,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                 {jobs.map((job) => (
                   <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
                     <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
-                    <ListCell primary={job.source} mobile />
+                    <ListCell primary={job.sourceLabel} mobile />
                     <ListCell primary={job.attempts} align="end" numeric />
                     <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
                     <ListCell>
@@ -501,7 +501,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
           if (!next) setOpenJobId(null);
         }}
         title={openJob ? openJob.label : "Job"}
-        description={openJob ? `${openJob.source} · ${getJobStatusLabel(openJob.status as JobStatus)}` : undefined}
+        description={openJob ? `${openJob.sourceLabel} · ${getJobStatusLabel(openJob.status as JobStatus)}` : undefined}
         footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenJobId(null)} />}
       >
         {openJob ? (

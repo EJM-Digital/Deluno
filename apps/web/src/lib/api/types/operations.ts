@@ -6,6 +6,8 @@ export interface JobQueueItem {
   /** The job in plain words (#1086). Show this, never jobType. */
   label: string;
   source: string;
+  /** What started the job in plain words (#1086). Show this, never source. */
+  sourceLabel: string;
   status: string;
   payloadJson: string | null;
   attempts: number;
