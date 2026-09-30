@@ -43,7 +43,7 @@ public sealed class LibraryDropoutTests : IDisposable
         Assert.Equal(HealthCheckCategories.Notice, notice.Category);
         Assert.Equal(HealthCheckStatuses.Problem, notice.Status);
         Assert.Equal(
-            "Films looks unreachable: 30 of 40 files could not be found. Nothing was changed.",
+            "Films: 30 of 40 files could not be found, so Deluno changed nothing. If the drive or share dropped out, reconnect it and this clears by itself. If you deleted these files, choose These files really are gone.",
             notice.Message);
         Assert.Single(rig.Activity, a => a.Category == "library.unreachable");
         rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -56,6 +56,7 @@ public sealed class LibraryDropoutTests : IDisposable
 
         await rig.Service.ScanAsync(CancellationToken.None);
         rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
         await rig.Service.ScanAsync(CancellationToken.None);
 
         Assert.Single(rig.HealthOutcomes);
@@ -177,6 +178,109 @@ public sealed class LibraryDropoutTests : IDisposable
     }
 
     [Fact]
+    public async Task The_notice_clears_itself_and_writes_one_activity_line_when_the_library_is_healthy_again()
+    {
+        var rig = new Rig(this, present: 40, missing: 0);
+        rig.ExistingNotice = true;
+
+        await rig.Service.ScanAsync(CancellationToken.None);
+
+        Assert.Equal(["notice:library-unreachable:lib-1"], rig.Removed);
+        Assert.Single(rig.Activity, a => a.Category == "library.reachable");
+    }
+
+    [Fact]
+    public async Task A_library_that_still_looks_unreachable_keeps_its_note()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = "{\"issueIds\":[\"x\"]}";
+
+        await rig.Service.ScanAsync(CancellationToken.None);
+
+        Assert.Empty(rig.Removed);
+        Assert.DoesNotContain(rig.Activity, a => a.Category == "library.reachable");
+    }
+
+    [Fact]
+    public async Task The_note_carries_the_missing_files_and_offers_a_way_to_confirm_they_are_gone()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+
+        await rig.Service.ScanAsync(CancellationToken.None);
+
+        var notice = Assert.Single(rig.HealthOutcomes);
+        using var details = System.Text.Json.JsonDocument.Parse(notice.DetailsJson!);
+        Assert.Equal(30, details.RootElement.GetProperty("issueIds").GetArrayLength());
+        Assert.Contains("These files really are gone", notice.Message);
+    }
+
+    [Fact]
+    public async Task Confirming_marks_exactly_the_listed_files_rechecks_each_and_clears_the_note()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+        await rig.Service.ScanAsync(CancellationToken.None);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
+
+        // One listed file came back; one file that was fine at the pass is gone now.
+        Directory.CreateDirectory(Path.Combine(rig.Root, "Film 0"));
+        File.WriteAllText(Path.Combine(rig.Root, "Film 0", "Film 0.mkv"), "x");
+        File.Delete(Path.Combine(rig.Root, "Film 35", "Film 35.mkv"));
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(29, result!.MarkedGone);
+        Assert.Equal(1, result.CameBack);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-35", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync("movie-1", "lib-1", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(["notice:library-unreachable:lib-1"], rig.Removed);
+        Assert.Single(rig.Activity, a => a.Category == "library.files-gone");
+    }
+
+    [Fact]
+    public async Task Confirming_while_the_root_is_still_unreadable_changes_nothing_and_keeps_the_note()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+        await rig.Service.ScanAsync(CancellationToken.None);
+        rig.ExistingNotice = true;
+        rig.ExistingDetails = rig.HealthOutcomes.Single().DetailsJson;
+        foreach (var entry in Directory.EnumerateFileSystemEntries(_root))
+        {
+            Directory.Delete(entry, recursive: true);
+        }
+
+        var result = await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None);
+
+        Assert.True(result!.LibraryUnreachable);
+        Assert.Equal(0, result.MarkedGone);
+        Assert.Empty(rig.Removed);
+        rig.Movies.Verify(m => m.MarkTrackedFileGoneAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Confirming_a_library_with_no_note_is_not_found()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+
+        Assert.Null(await rig.Service.ConfirmFilesGoneAsync("lib-1", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_blocked_title_rescan_points_to_the_note_in_plain_words()
+    {
+        var rig = new Rig(this, present: 10, missing: 30);
+
+        var result = await rig.Service.RescanTitleAsync("movies", "movie-0", CancellationToken.None);
+
+        Assert.Contains("System, Health", result!.Summary);
+        Assert.Contains("These files really are gone", result.Summary);
+        Assert.Contains("still monitored", result.Summary);
+    }
+
+    [Fact]
     public async Task The_scheduled_check_stops_writing_to_a_library_once_it_looks_unreachable()
     {
         var issues = Enumerable.Range(0, 3)
@@ -205,10 +309,15 @@ public sealed class LibraryDropoutTests : IDisposable
         public List<(string Category, string Message)> Activity { get; } = [];
         public List<HealthCheckOutcome> HealthOutcomes { get; } = [];
         public bool ExistingNotice { get; set; }
+        public string? ExistingDetails { get; set; }
+        public List<string> Removed { get; } = [];
+        public string Root => _owner._root;
+        private readonly LibraryDropoutTests _owner;
         public FilesystemReconciliationService Service { get; }
 
         public Rig(LibraryDropoutTests owner, int present, int missing)
         {
+            _owner = owner;
             var now = DateTimeOffset.UnixEpoch;
             var library = new LibraryItem(
                 "lib-1", "Films", "movies", "main", owner._root, null, null, null, null,
@@ -261,10 +370,13 @@ public sealed class LibraryDropoutTests : IDisposable
             health.Setup(h => h.UpsertResultsAsync(It.IsAny<IReadOnlyList<HealthCheckOutcome>>(), It.IsAny<CancellationToken>()))
                 .Callback<IReadOnlyList<HealthCheckOutcome>, CancellationToken>((outcomes, _) => HealthOutcomes.AddRange(outcomes))
                 .ReturnsAsync([]);
+            health.Setup(h => h.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Callback<string, CancellationToken>((id, _) => Removed.Add(id))
+                .Returns(Task.CompletedTask);
             health.Setup(h => h.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .Returns((string id, CancellationToken _) => Task.FromResult<HealthCheckResultItem?>(
                     ExistingNotice
-                        ? new HealthCheckResultItem(id, HealthCheckCategories.Notice, "n", HealthCheckStatuses.Problem, "m", null, null, null, now, now, null)
+                        ? new HealthCheckResultItem(id, HealthCheckCategories.Notice, "n", HealthCheckStatuses.Problem, "m", null, null, ExistingDetails, now, now, null)
                         : null));
 
             Service = new FilesystemReconciliationService(

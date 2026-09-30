@@ -49,3 +49,11 @@ public sealed record TitleRescanResult(
     IReadOnlyList<TitleRescanUntrackedFile> Untracked,
     string? Folder,
     string Summary);
+
+/// <summary>What choosing "These files really are gone" did to one library's unreachable note.</summary>
+public sealed record LibraryFilesGoneResult(
+    int MarkedGone,
+    int CameBack,
+    int CouldNotChange,
+    bool LibraryUnreachable,
+    string Message);

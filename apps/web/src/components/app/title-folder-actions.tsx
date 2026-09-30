@@ -195,7 +195,7 @@ export function TitleFolderActions({ variant, titleId, titleName, onChanged, dis
                 {panel.result.outcome === "library-unreachable" || panel.result.outcome === "library-unknown" ? (
                   <p className="mt-3 rounded-lg border border-hairline px-3 py-2 text-sm text-foreground">
                     {panel.result.outcome === "library-unreachable"
-                      ? "Nothing was changed: no file was marked missing and the title stays monitored. Mount the drive, then rescan."
+                      ? "Nothing was changed: no file was marked missing and the title stays monitored. Reconnect the drive and rescan. If you deleted the files, choose These files really are gone in System, Health."
                       : "Nothing was changed: no file was marked missing and the title stays monitored. Put the title back in a library, then rescan."}
                   </p>
                 ) : null}

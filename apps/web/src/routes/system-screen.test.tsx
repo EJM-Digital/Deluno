@@ -58,7 +58,7 @@ describe("Activity timeline page size (#871)", () => {
   });
 
   it("renders the page-size card showing the loaded setting", () => {
-    authedFetchMock.mockImplementation(() => jsonResponse({}));
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
 
     render(
       <MemoryRouter initialEntries={["/system/audit"]}>
@@ -71,7 +71,7 @@ describe("Activity timeline page size (#871)", () => {
   });
 
   it("changing the select saves the new page size and refetches the timeline", async () => {
-    authedFetchMock.mockImplementation(() => jsonResponse({}));
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
 
     render(
       <MemoryRouter initialEntries={["/system/audit"]}>
@@ -129,6 +129,45 @@ describe("Health notes are clearable (#1073)", () => {
       expect(authedFetchMock).toHaveBeenCalledWith(
         "/api/system/health/notices/notice%3Adownload-folders",
         expect.objectContaining({ method: "DELETE" })
+      )
+    );
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+});
+
+describe("The unreachable-library note can confirm the files are gone (#1070)", () => {
+  afterEach(() => {
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+    loaderData.healthChecks = { checks: [], summary: { problemCount: 0 } };
+    loaderData.monitoring = null;
+  });
+
+  it("offers These files really are gone next to Clear and posts to the library's route", async () => {
+    loaderData.healthChecks = {
+      checks: [
+        { id: "notice:library-unreachable:lib-1", category: "notice", name: "Movies 4K looks unreachable", status: "problem", message: "Movies 4K: 30 of 40 files could not be found.", cause: null, fix: null, detailsJson: JSON.stringify({ libraryId: "lib-1", issueIds: ["a", "b"] }), lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null },
+        { id: "notice:download-folders", category: "notice", name: "Other note", status: "problem", message: "Moved.", cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-09-30T00:00:00Z", problemSinceUtc: null, snoozedUntilUtc: null }
+      ],
+      summary: { problemCount: 2 }
+    } as never;
+    loaderData.monitoring = { alerts: [] } as never;
+    authedFetchMock.mockImplementation((_url: string, init?: RequestInit) => jsonResponse(init?.method === "POST" ? {} : []));
+
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getAllByRole("button", { name: /^These files really are gone/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Clear:/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "These files really are gone: Movies 4K looks unreachable" }));
+
+    await waitFor(() =>
+      expect(authedFetchMock).toHaveBeenCalledWith(
+        "/api/filesystem/libraries/lib-1/files-gone",
+        expect.objectContaining({ method: "POST" })
       )
     );
     await waitFor(() => expect(revalidateMock).toHaveBeenCalled());

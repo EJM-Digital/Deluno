@@ -10,4 +10,11 @@ public interface IFilesystemReconciliationService
     Task<FilesystemReconciliationRepairResult> RepairAsync(
         FilesystemReconciliationRepairRequest request,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// "These files really are gone": marks exactly the files the unreachable
+    /// note lists (each re-checked now) and clears the note. Null when the
+    /// library has no such note (#1070).
+    /// </summary>
+    Task<LibraryFilesGoneResult?> ConfirmFilesGoneAsync(string libraryId, CancellationToken cancellationToken);
 }

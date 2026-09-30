@@ -1545,6 +1545,19 @@ export function isHealthNotice(check: Pick<HealthCheckResultItem, "id">): boolea
   return check.id.startsWith("notice:");
 }
 
+/** The library an "unreachable" note is about, when it lists the files it found missing (#1070). */
+export function unreachableLibraryId(check: Pick<HealthCheckResultItem, "id" | "detailsJson">): string | null {
+  if (!check.id.startsWith("notice:library-unreachable:") || !check.detailsJson) return null;
+  try {
+    const details = JSON.parse(check.detailsJson) as { libraryId?: unknown; issueIds?: unknown };
+    return typeof details.libraryId === "string" && Array.isArray(details.issueIds) && details.issueIds.length > 0
+      ? details.libraryId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Where a tag warning (#1043) points: the connection's page, or the titles it strands. */
 function tagCheckLink(check: HealthCheckResultItem): string | null {
   if (!check.id.startsWith("tags:") || !check.detailsJson) return null;
@@ -1608,6 +1621,23 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     setBusyId(check.id);
     try {
       const response = await authedFetch(`/api/system/health/notices/${encodeURIComponent(check.id)}`, { method: "DELETE" });
+      if (response.ok) {
+        onChanged();
+      }
+    } catch {
+      // The note simply stays; nothing silently succeeded.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function filesReallyGone(check: HealthCheckResultItem) {
+    const libraryId = unreachableLibraryId(check);
+    if (!libraryId) return;
+    setBusyId(check.id);
+    try {
+      // Deluno re-checks each listed file and the drive before it changes anything.
+      const response = await authedFetch(`/api/filesystem/libraries/${encodeURIComponent(libraryId)}/files-gone`, { method: "POST" });
       if (response.ok) {
         onChanged();
       }
@@ -1720,19 +1750,36 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                         </Button>
                       </div>
                     ) : isHealthNotice(check) ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[length:var(--type-caption)]"
-                        aria-label={`Clear: ${check.name}`}
-                        disabled={busyId === check.id}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void clearNotice(check);
-                        }}
-                      >
-                        Clear
-                      </Button>
+                      <div className="flex gap-1.5">
+                        {unreachableLibraryId(check) ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[length:var(--type-caption)] text-destructive"
+                            aria-label={`These files really are gone: ${check.name}`}
+                            disabled={busyId === check.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void filesReallyGone(check);
+                            }}
+                          >
+                            These files really are gone
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[length:var(--type-caption)]"
+                          aria-label={`Clear: ${check.name}`}
+                          disabled={busyId === check.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void clearNotice(check);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
                     ) : check.status !== "ok" ? (
                       <div className="flex gap-1.5">
                         {tagLink ? (
