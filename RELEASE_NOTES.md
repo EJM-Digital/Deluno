@@ -43,10 +43,15 @@ then Run anyway.
 
 ### Installed apps
 
-- Apps keep their own defaults. Only qBittorrent gets a generated login;
-  NZBGet and Deluge are connected with the login they ship with. No screen or
-  API hands out an installed app's password: Use connects the app itself, and
-  Deluno clears the stored copy once a connection exists.
+- The installer installs the apps you ticked and nothing more than each needs
+  to start safely (only this computer, and the login qBittorrent insists on).
+  Deluno connects nothing by itself. Connect them from the setup guide or from
+  Connections: a Connect button per app, or Connect all.
+- Weir asks for your own account there. If Weir has none yet Deluno creates it
+  with the username and password you type, otherwise it signs in with them; it
+  uses them once to link Weir and Deluno and does not keep them.
+- Apps keep their own defaults. No screen or API ever shows an installed app's
+  password, and Deluno now deletes any Weir login an earlier version stored.
 - Deleting the qBittorrent connection no longer loses its login, and a
   connection is matched by port as well as address.
 - Every installer that runs with administrator rights runs from a fresh, locked
