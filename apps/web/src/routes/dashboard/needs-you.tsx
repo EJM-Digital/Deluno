@@ -22,9 +22,25 @@ import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
 
-const row = "flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
+const row = "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
 const linkButton =
-  "inline-flex h-[var(--control-height-sm)] items-center rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-[var(--control-height-sm)] items-center justify-center truncate rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * The same action area on every row: the main button in one column, "Give up"
+ * in a second column of fixed width, so buttons line up down the list whatever
+ * their words (James, 1 Oct: "make sure all the buttons align and are neat and
+ * tidy depending on the scenario"). A row with one button spans both columns,
+ * so every row ends at the same edge.
+ */
+export function RowActions({ primary, secondary }: { primary: ReactElement; secondary?: ReactElement }) {
+  return (
+    <span className="ml-4 grid w-[calc(100%-1rem)] shrink-0 grid-cols-[minmax(0,1fr)_4.75rem] gap-1.5 sm:ml-0 sm:w-[13.5rem] [&>span>*]:w-full [&>span>*]:min-w-0 [&>span>*]:justify-center">
+      <span className={secondary ? "flex min-w-0" : "col-span-2 flex min-w-0"}>{primary}</span>
+      {secondary ? <span className="flex min-w-0">{secondary}</span> : null}
+    </span>
+  );
+}
 
 function recoveryLabel(item: RecoveryCaseRow): string {
   return item.mediaType === "movie" ? "Movies" : "TV";
@@ -34,8 +50,8 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
   const collection = item.mediaType === "movie" ? "movies" : "series";
   const base = `/api/${collection}/import-recovery/${encodeURIComponent(item.id)}`;
   return (
-    <span className="flex shrink-0 items-center gap-1.5">
-      {canTryAgain(item) ? (
+    <RowActions
+      primary={canTryAgain(item) ? (
         <ActionButton
           label={isVanished(item) ? "Search again" : "Retry"}
           name={`${isVanished(item) ? "Search again for" : "Retry"} ${item.title}`}
@@ -46,15 +62,15 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
       ) : (
         <Link to="/queue" aria-label={`Review ${item.title}`} className={linkButton}>Review</Link>
       )}
-      <ActionButton
+      secondary={<ActionButton
         label="Give up"
         name={`Give up on ${item.title}`}
         busyKey={`recovery-dismiss:${item.id}`}
         state={action}
         variant="ghost"
         onClick={() => void action.run(`recovery-dismiss:${item.id}`, async () => { await send(`${base}/dismiss`, "That case could not be dismissed."); return `${item.title} dismissed`; })}
-      />
-    </span>
+      />}
+    />
   );
 }
 
@@ -72,7 +88,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
         return recoveryCases.map((entry) => (
           <li key={`recovery:${entry.mediaType}:${entry.id}`} className={row}>
             <StatusLed tone="warn" />
-            <div className="min-w-0 flex-1 leading-tight">
+            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{entry.title}</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{recoveryLabel(entry)}: {entry.summary}</span>
             </div>
@@ -84,24 +100,26 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
         return failedImportJobs.map((job, index) => (
           <li key={`import:${job.id}`} className={row}>
             <StatusLed tone="bad" />
-            <div className="min-w-0 flex-1 leading-tight">
+            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">An import didn{"’"}t finish</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{job.lastError ?? "It stopped without saying why."}</span>
             </div>
-            <ActionButton
+            <RowActions
+              primary={<ActionButton
               label="Retry"
               name={`Retry failed import ${index + 1}`}
               busyKey={`job-retry:${job.id}`}
               state={action}
               onClick={() => void action.run(`job-retry:${job.id}`, async () => { await send("/api/jobs/retry-failed", "The failed imports could not be tried again."); return "Failed imports requeued"; })}
-            />
-            <ActionButton
+            />}
+              secondary={<ActionButton
               label="Give up"
               name={`Give up on failed import ${index + 1}`}
               busyKey={`job-dismiss:${job.id}`}
               state={action}
               variant="ghost"
               onClick={() => void action.run(`job-dismiss:${job.id}`, async () => { await dismissFailedJob(job.id); return "Import dismissed"; })}
+            />}
             />
           </li>
         ));
@@ -110,24 +128,26 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
         return handoffs.map((handoff) => (
           <li key={`handoff:${handoff.id}`} className={row}>
             <StatusLed tone="bad" />
-            <div className="min-w-0 flex-1 leading-tight">
+            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
               <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{handoff.releaseName}</span>
               <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`}</span>
             </div>
-            <ActionButton
+            <RowActions
+              primary={<ActionButton
               label="Retry"
               name={`Retry ${handoff.releaseName}`}
               busyKey={`handoff-retry:${handoff.id}`}
               state={action}
               onClick={() => void action.run(`handoff-retry:${handoff.id}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
-            />
-            <ActionButton
+            />}
+              secondary={<ActionButton
               label="Give up"
               name={`Give up on ${handoff.releaseName}`}
               busyKey={`handoff-dismiss:${handoff.id}`}
               state={action}
               variant="ghost"
               onClick={() => void action.run(`handoff-dismiss:${handoff.id}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
+            />}
             />
           </li>
         ));
@@ -136,11 +156,11 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
       return [
         <li key={item.id} className={row}>
           <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
-          <div className="min-w-0 flex-1 leading-tight">
+          <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
             <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
             <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
           </div>
-          <Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>
+          <RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />
         </li>
       ];
     });
@@ -159,11 +179,11 @@ export function setupProblemRows(attention: DashboardAttention): ReactElement[] 
     .map((item) => (
       <li key={item.id} className={row}>
         <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
-        <div className="min-w-0 flex-1 leading-tight">
+        <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
           <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
           <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
         </div>
-        <Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>
+        <RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />
       </li>
     ));
 }
