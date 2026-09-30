@@ -23,7 +23,7 @@ public sealed class AllowedHostsHealthCheck(IAllowedHostsRepository repository) 
 
         IReadOnlyList<HealthCheckOutcome> result = settings.Enabled
             ? [HealthCheckOutcome.Ok(Id, Category, Name, $"Deluno only answers on {settings.AllowedHosts.Count} chosen address{(settings.AllowedHosts.Count == 1 ? "" : "es")}.")]
-            : [HealthCheckOutcome.Problem(
+            : [HealthCheckOutcome.Suggestion(
                 Id, Category, Name,
                 "Deluno answers on any address. Choose which ones it should use.",
                 cause: "Allowed Hosts is off, so Deluno accepts a request no matter which hostname or IP address it was sent to.",

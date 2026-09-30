@@ -83,6 +83,26 @@ public sealed class HealthCheckPersistenceTests
     }
 
     [Fact]
+    public async Task A_suggestion_is_listed_but_is_never_a_problem_and_never_starts_a_transition()
+    {
+        var repository = await RepositoryAsync();
+
+        var transitions = await repository.UpsertResultsAsync(
+            [HealthCheckOutcome.Suggestion("security:allowed-hosts", HealthCheckCategories.System, "Allowed Hosts", "Off.", "cause", "fix")],
+            CancellationToken.None);
+        var summary = await repository.GetSummaryAsync(CancellationToken.None);
+        var listed = Assert.Single(await repository.ListAsync(CancellationToken.None));
+
+        Assert.Equal(HealthCheckTransition.Unchanged, Assert.Single(transitions).Transition);
+        Assert.Equal(HealthCheckStatuses.Suggestion, listed.Status);
+        Assert.Null(listed.ProblemSinceUtc);
+        Assert.Equal(0, summary.ProblemCount);
+        Assert.Equal(0, summary.UnsnoozedProblemCount);
+        Assert.Equal(0, summary.UnknownCount);
+        Assert.Equal(1, summary.SuggestionCount);
+    }
+
+    [Fact]
     public async Task Immediate_run_requests_are_read_once_and_cleared()
     {
         var repository = await RepositoryAsync();

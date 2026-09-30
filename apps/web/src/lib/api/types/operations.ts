@@ -352,7 +352,7 @@ export interface HealthCheckResultItem {
   id: string;
   category: string;
   name: string;
-  status: "ok" | "problem" | "unknown";
+  status: "ok" | "problem" | "unknown" | "suggestion";
   message: string;
   cause: string | null;
   fix: string | null;
@@ -366,6 +366,7 @@ export interface HealthCheckSummary {
   problemCount: number;
   unsnoozedProblemCount: number;
   unknownCount: number;
+  suggestionCount: number;
   lastRunUtc: string | null;
 }
 

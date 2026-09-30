@@ -25,7 +25,7 @@ public sealed class DangerousFileCheckHealthCheck(IDownloadHealthRepository repo
 
         return settings.Enabled
             ? [HealthCheckOutcome.Ok(Id, Category, Name, "Deluno checks the files inside a download against the content blocklist.")]
-            : [HealthCheckOutcome.Problem(
+            : [HealthCheckOutcome.Suggestion(
                 Id, Category, Name,
                 "Deluno does not check downloads for dangerous or junk files.",
                 cause: "The content blocklist is off, so a download is never checked for a risky file - executable, script or shortcut - packaged inside it.",

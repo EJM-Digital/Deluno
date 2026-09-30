@@ -96,7 +96,9 @@ describe("system screen dangerous-file health check Fix button (#944)", () => {
   const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
 
   it("routes the dangerous-file check's Fix button to the content blocklist settings", () => {
-    expect(source).toMatch(/check\.id === "download-health:dangerous-file"/);
-    expect(source).toMatch(/navigate\("\/search-cycles\/failed-downloads"\)/);
+    expect(source).toMatch(/"download-health:dangerous-file": \{ label: "Turn it on", to: "\/search-cycles\/failed-downloads" \}/);
+    expect(source).toMatch(/"security:allowed-hosts": \{ label: "Open Security", to: "\/system\/security" \}/);
+    expect(source).toMatch(/status === "suggestion"/);
+    expect(source).toMatch(/title="Suggestions"/);
   });
 });

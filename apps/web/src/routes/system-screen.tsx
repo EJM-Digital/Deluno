@@ -1592,12 +1592,21 @@ function tagCheckLink(check: HealthCheckResultItem): string | null {
   }
 }
 
+/** Where a suggestion's button goes: the screen that turns the setting on (#1060). */
+export const SUGGESTION_ACTIONS: Record<string, { label: string; to: string }> = {
+  "security:allowed-hosts": { label: "Open Security", to: "/system/security" },
+  "download-health:dangerous-file": { label: "Turn it on", to: "/search-cycles/failed-downloads" }
+};
+
 function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem[]; onChanged: () => void }) {
   const navigate = useNavigate();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmGone, setConfirmGone] = useState<HealthCheckResultItem | null>(null);
-  const problems = checks.filter((check) => check.status !== "ok");
-  const sorted = [...checks].sort((a, b) => {
+  // A suggestion (#1060) is a setting that starts off and is worth turning on.
+  // It is not a problem: it never counts toward "need attention".
+  const suggestions = checks.filter((check) => check.status === "suggestion");
+  const problems = checks.filter((check) => check.status !== "ok" && check.status !== "suggestion");
+  const sorted = checks.filter((check) => check.status !== "suggestion").sort((a, b) => {
     const rank = (status: string) => (status === "problem" ? 0 : status === "unknown" ? 1 : 2);
     return rank(a.status) - rank(b.status);
   });
@@ -1734,9 +1743,11 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
     <>
     <ListCard
       title="Health"
-      count={problems.length === 0 ? "everything checked out" : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
+      count={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "everything checked out" : "All clear") : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
     >
-      {sorted.length === 0 ? (
+      {sorted.length === 0 && suggestions.length > 0 ? (
+        <ListEmpty title="All clear" description="Nothing needs a look. The suggestions below are optional." />
+      ) : sorted.length === 0 ? (
         <ListEmpty title="No checks have run yet" description="Deluno checks download clients, indexers, libraries and connections every fifteen minutes." />
       ) : (
         <ListTable
@@ -1767,31 +1778,7 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
                     <Chip tone={check.status === "ok" ? "ok" : check.status === "problem" ? (isSnoozed ? "idle" : "bad") : "warn"}>
                       {check.status === "ok" ? "ok" : isSnoozed ? "snoozed" : check.status}
                     </Chip>
-                    {check.id === "security:allowed-hosts" && check.status !== "ok" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[length:var(--type-caption)]"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          navigate("/system/security");
-                        }}
-                      >
-                        Fix
-                      </Button>
-                    ) : check.id === "download-health:dangerous-file" && check.status !== "ok" ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-[length:var(--type-caption)]"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          navigate("/search-cycles/failed-downloads");
-                        }}
-                      >
-                        Fix
-                      </Button>
-                    ) : outputDetails ? (
+                    {outputDetails ? (
                       <div className="flex gap-1.5">
                         {outputDetails.isMedia ? (
                           <Button
@@ -1918,6 +1905,50 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
         </ListTable>
       )}
     </ListCard>
+    {suggestions.length > 0 ? (
+      <ListCard
+        title="Suggestions"
+        count={`${suggestions.length} optional`}
+      >
+        <ListTable
+          columns={[
+            { label: "Setting" },
+            { label: "Why", width: "minmax(0,1.6fr)" },
+            { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+          ]}
+          chevron={false}
+        >
+          {suggestions.map((check) => {
+            const action = SUGGESTION_ACTIONS[check.id];
+            return (
+              <ListRow key={check.id}>
+                <ListNameCell name={check.name} sub="Switched off" />
+                <ListCell
+                  primary={check.message}
+                  secondary={[check.cause, check.fix].filter(Boolean).join(" ") || undefined}
+                />
+                <ListCell mobile>
+                  {action ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[length:var(--type-caption)]"
+                      aria-label={`${action.label}: ${check.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(action.to);
+                      }}
+                    >
+                      {action.label}
+                    </Button>
+                  ) : null}
+                </ListCell>
+              </ListRow>
+            );
+          })}
+        </ListTable>
+      </ListCard>
+    ) : null}
     <ConfirmDialog
       open={confirmGone !== null}
       onOpenChange={(open) => { if (!open) setConfirmGone(null); }}

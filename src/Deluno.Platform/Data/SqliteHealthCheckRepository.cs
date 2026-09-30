@@ -104,7 +104,7 @@ public sealed class SqliteHealthCheckRepository(
             SELECT id, category, name, status, message, cause, fix, details_json, last_run_utc, problem_since_utc, snoozed_until_utc
             FROM health_check_results
             ORDER BY
-                CASE status WHEN 'problem' THEN 0 WHEN 'unknown' THEN 1 ELSE 2 END,
+                CASE status WHEN 'problem' THEN 0 WHEN 'unknown' THEN 1 WHEN 'suggestion' THEN 2 ELSE 3 END,
                 category, name;
             """;
 
@@ -133,6 +133,7 @@ public sealed class SqliteHealthCheckRepository(
             ProblemCount: problems.Length,
             UnsnoozedProblemCount: problems.Count(item => !item.IsSnoozed(now)),
             UnknownCount: all.Count(item => item.Status == HealthCheckStatuses.Unknown),
+            SuggestionCount: all.Count(item => item.Status == HealthCheckStatuses.Suggestion),
             LastRunUtc: all.Count == 0 ? null : all.Max(item => item.LastRunUtc));
     }
 
