@@ -167,6 +167,15 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
 
       <SummaryStrip className="shrink-0 lg:grid-cols-6" cells={toSummaryCells(buildLiveCells(summary))} />
 
+      {emptyLibrary ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
+          <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Nothing in your library yet.</p>
+          <Button asChild size="sm" variant="outline">
+            <Link to="/movies?add=true">Add a movie</Link>
+          </Button>
+        </div>
+      ) : null}
+
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <NeedsYou attention={attention} action={action} />
 
@@ -177,16 +186,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <div className="flex min-h-0 flex-[2] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
               {upcoming.length === 0 ? (
-                emptyLibrary ? (
-                  <div className="flex flex-wrap items-center gap-3 px-[var(--card-pad-x)] py-3">
-                    <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Nothing in your library yet.</p>
-                    <Button asChild size="sm" variant="outline">
-                      <Link to="/movies?add=true">Add a movie</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <Plain>Nothing airs in the next 72 hours.</Plain>
-                )
+                <Plain>Nothing airs in the next 72 hours.</Plain>
               ) : (
                 <FitList
                   wrap={(shown) => <div>{shown}</div>}
