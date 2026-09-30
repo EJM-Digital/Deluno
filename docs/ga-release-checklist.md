@@ -138,6 +138,14 @@ already carry it). No decision yet. The regression summary draft is
 Release/Docker run links go there before a GO or NO-GO is posted. The
 "Final release decision log" box above stays unticked until that decision.
 
+### rc.24: pending
+
+Candidate: `1.0.0-rc.24`, cut on 30 Sep 2026 from rc.23 plus
+[#1081](https://github.com/jampat000/Deluno/issues/1081) to
+[#1086](https://github.com/jampat000/Deluno/issues/1086) (instant screens, the
+tabbed Dashboard, database trimming, consistent backups, plain words). No GO or
+NO-GO has been posted for rc.23 or rc.24.
+
 ## Release Decision Log Template
 
 Use this block in issue #78 for RC1, RC2, and GA decisions.

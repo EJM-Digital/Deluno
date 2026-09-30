@@ -4,7 +4,7 @@ Updated: 2026-09-29
 
 This guide is for users upgrading from packaged `0.1.x` builds to `1.x`.
 
-Current candidate: `1.0.0-rc.23` (rc.22 was not released; see the decision log
+Current candidate: `1.0.0-rc.24` (rc.22 was not released; see the decision log
 in [the GA release checklist](./ga-release-checklist.md)). The steps below are
 the ones being run against that candidate. Deluno is not code-signed, so
 Windows SmartScreen warns on the first run of Setup: choose **More info**, then
