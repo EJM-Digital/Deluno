@@ -9,6 +9,7 @@
  * one - there is no separate single-title writer to keep in sync with the
  * bulk one.
  */
+import { moveRefusalLines, type MoveResult } from "../../lib/move-refusals";
 import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { fetchJson, type LibraryItem, type QualityProfileItem } from "../../lib/api";
@@ -55,6 +56,8 @@ export function MovieEditDrawer({
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [state, setState] = useState<DrawerSaveState>("clean");
   const [message, setMessage] = useState<string | null>(null);
+  // Each title Deluno refused to move, with its own reason (#1078). Stays until the next save.
+  const [moveRefusals, setMoveRefusals] = useState<string[]>([]);
 
   const dirty = open && state === "dirty";
   useUnsavedChanges(dirty);
@@ -119,6 +122,7 @@ export function MovieEditDrawer({
 
     setState("saving");
     setMessage(null);
+    setMoveRefusals([]);
     try {
       if (formMonitored !== monitored) {
         const response = await authedFetch("/api/movies/monitoring", {
@@ -139,7 +143,7 @@ export function MovieEditDrawer({
       }
 
       let filesMoved = 0;
-      let moveFailed = false;
+      let refusalLines: string[] = [];
       if (pathChanging && libraryId) {
         const response = await authedFetch("/api/movies/bulk/reassign-library", {
           method: "POST",
@@ -152,19 +156,20 @@ export function MovieEditDrawer({
           })
         });
         if (!response.ok) throw new Error("reassign-failed");
-        const result = await response.json() as { filesMoved?: number; moveFailures?: string[] };
+        const result = await response.json() as MoveResult;
         filesMoved = result.filesMoved ?? 0;
-        moveFailed = Boolean(result.moveFailures?.length);
+        refusalLines = moveRefusalLines(result);
       }
 
       setState("saved");
       setMessage(
-        moveFailed
-          ? "Saved, but the file could not be moved — it stayed in the old root."
+        refusalLines.length > 0
+          ? "Saved, but Deluno did not move this title. The reason is below."
           : pathChanging && moveFiles && filesMoved > 0
             ? "Saved. The file was moved to the new root."
             : "Saved just now."
       );
+      setMoveRefusals(refusalLines);
       setConfirmingPathChange(false);
       onChanged();
     } catch {
@@ -238,6 +243,15 @@ export function MovieEditDrawer({
             {moveFiles
               ? "Confirming will move this title's file on disk to the new library's root."
               : "Confirming will reassign the record to the new library. The file stays exactly where it is."}
+          </div>
+        ) : null}
+
+        {moveRefusals.length > 0 ? (
+          <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground">
+            <p className="font-semibold">Deluno did not move this title</p>
+            <ul aria-label="Why Deluno did not move this title" className="mt-1 list-disc space-y-1 pl-4">
+              {moveRefusals.map((line) => <li key={line}>{line}</li>)}
+            </ul>
           </div>
         ) : null}
 

@@ -141,4 +141,22 @@ describe("MovieEditDrawer (#784)", () => {
       })
     ));
   });
+
+  it("shows the reason Deluno refused a move, inline, and keeps it on screen (#1078)", async () => {
+    const user = userEvent.setup();
+    const reason = 'Heat: the folder "Action" holds other films, so Deluno moved nothing.';
+    vi.mocked(authedFetch).mockResolvedValue(Response.json({
+      reassigned: 0, filesMoved: 0, moveFailures: ["Heat"], moveFailureReasons: [reason]
+    }));
+    renderDrawer();
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Path" }), "lib-4k");
+    await user.click(screen.getByRole("checkbox", { name: /move the file to the new root/i }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Confirm and save" }));
+
+    const list = await screen.findByRole("list", { name: "Why Deluno did not move this title" });
+    expect(list).toHaveTextContent(reason);
+    expect(screen.getByRole("alert")).toHaveTextContent("Deluno did not move this title");
+  });
 });

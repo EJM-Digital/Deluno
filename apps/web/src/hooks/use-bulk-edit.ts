@@ -3,6 +3,7 @@ import { fetchJson, type LibraryItem, type QualityProfileItem } from "../lib/api
 import type { MediaItem } from "../lib/media-types";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
+import { moveRefusalLines, toastMoveRefusals, type MoveResult } from "../lib/move-refusals";
 import { describeRequestFailure, RequestFailedError } from "../lib/search-reasons";
 
 export type BulkWorkflowOperation = "monitoring" | "quality" | "minimumAvailability" | "reassignLibrary" | "tags" | "search" | "renamePreview";
@@ -206,7 +207,7 @@ export function useBulkEdit({
       throw new Error("bulk-reassign-failed");
     }
 
-    return await response.json() as { reassigned?: number; filesMoved?: number; moveFailures?: string[] };
+    return await response.json() as MoveResult;
   }
 
   async function applyMinimumAvailability(ids: string[], minimumAvailability: string) {
@@ -499,6 +500,8 @@ export function useBulkEdit({
         const moveFiles = bulkMoveFiles;
         let totalFilesMoved = 0;
         let allMoveFailures: string[] = [];
+        let refusalLines: string[] = [];
+        let totalReassigned = 0;
         for (const [fromLibraryId, ids] of previousByLibrary) {
           if (fromLibraryId === bulkTargetLibraryId) {
             continue;
@@ -506,11 +509,16 @@ export function useBulkEdit({
           const result = await applyReassignLibrary(ids, fromLibraryId, bulkTargetLibraryId, moveFiles);
           totalFilesMoved += result.filesMoved ?? 0;
           allMoveFailures = [...allMoveFailures, ...(result.moveFailures ?? [])];
+          refusalLines = [...refusalLines, ...moveRefusalLines(result)];
+          totalReassigned += result.reassigned ?? 0;
         }
 
+        // A refused title keeps its old library on screen, as it does on the host.
         setLibraryItems((current) =>
           current.map((item) =>
-            selectedIds.includes(item.id) ? { ...item, libraryId: bulkTargetLibraryId } : item
+            selectedIds.includes(item.id) && !allMoveFailures.includes(item.title)
+              ? { ...item, libraryId: bulkTargetLibraryId }
+              : item
           )
         );
 
@@ -545,13 +553,13 @@ export function useBulkEdit({
         // Plain words about what actually happened to the files, not only the
         // record — "only the record was reassigned" is the whole point of
         // #787 when moveFiles was left off.
-        if (!moveFiles) {
+        if (refusalLines.length > 0) {
+          if (totalReassigned > 0) toast.success(`Library assignment updated for ${totalReassigned} title${totalReassigned === 1 ? "" : "s"}.`);
+          toastMoveRefusals(refusalLines);
+        } else if (!moveFiles) {
           toast.success("Library assignment updated. Files were left where they are.");
-        } else if (allMoveFailures.length === 0) {
-          toast.success(`Library assignment updated. ${totalFilesMoved} file${totalFilesMoved === 1 ? "" : "s"} moved.`);
         } else {
           toast.success(`Library assignment updated. ${totalFilesMoved} file${totalFilesMoved === 1 ? "" : "s"} moved.`);
-          toast.error(`${allMoveFailures.length} file${allMoveFailures.length === 1 ? "" : "s"} could not be moved and stayed put: ${allMoveFailures.join(", ")}`);
         }
       }
       else if (bulkOperation === "minimumAvailability") {
@@ -735,7 +743,7 @@ export function useBulkEdit({
       if (failures.length > 0) {
         toast.error(
           `${failures.length} folder${failures.length === 1 ? "" : "s"} could not be renamed`,
-          { description: failures.map((item) => `${item.title ?? "Untitled"}: ${item.reason ?? "unknown reason"}`).join("; ") }
+          { duration: Infinity, description: failures.map((item) => `${item.title ?? "Untitled"}: ${item.reason ?? "unknown reason"}`).join("; ") }
         );
       }
       if (renamedCount === 0 && failures.length === 0) {
