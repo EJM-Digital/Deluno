@@ -108,10 +108,13 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
       const response = await authedFetch(`/api/movies/${movieId}/files`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: item.path })
+        body: JSON.stringify({ path: item.path, libraryId: item.libraryId ?? undefined })
       });
       if (!response.ok) throw new Error("delete-failed");
-      toast.success(item.isPrimary ? "File deleted. This title now shows as missing." : "File deleted.");
+      toast.success(
+        item.isPrimary && item.libraryName
+          ? `File deleted. Deluno stopped wanting this film in ${item.libraryName}. The other copy is still managed.`
+          : item.isPrimary ? "File deleted. This title now shows as missing." : "File deleted.");
       setConfirmingDeletePath(null);
       reload();
     } catch {
@@ -121,6 +124,8 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
     }
   }
 
+  // Quality and language edits act on the film's own tracked file, so only that copy offers them.
+  const primaryLibraryId = files?.find((file) => file.isPrimary)?.libraryId ?? null;
   const count = files ? `${files.length} file${files.length === 1 ? "" : "s"}` : undefined;
 
   return (
@@ -147,11 +152,11 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
         >
           {files.map((item) => {
             const editing = editingPath === item.path;
-            const canEdit = item.kind === "video" || item.kind === "subtitle";
+            const canEdit = (item.kind === "video" || item.kind === "subtitle") && (!item.libraryName || item.libraryId === primaryLibraryId);
             const fileName = item.path.split(/[\\/]/).pop() ?? item.path;
             return (
               <ListRow key={item.path}>
-                <ListNameCell name={fileName} sub={item.isPrimary ? "Tracked file" : undefined} />
+                <ListNameCell name={fileName} sub={[item.libraryName ? `In ${item.libraryName}` : null, item.isPrimary ? "Tracked file" : null].filter(Boolean).join(" · ") || undefined} />
                 <ListCell primary={kindLabel(item.kind)} mobile />
                 <ListCell primary={formatBytes(item.sizeBytes)} />
                 <ListCell mobile>
@@ -198,7 +203,7 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
                     ) : (
                       <>
                         {canEdit ? (
-                          <Button type="button" size="sm" variant="ghost" aria-label={`Edit ${fileName}`} onClick={() => startEdit(item)}>
+                          <Button type="button" size="sm" variant="ghost" aria-label={`Edit ${fileName}${item.libraryName ? ` in ${item.libraryName}` : ""}`} onClick={() => startEdit(item)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         ) : null}
@@ -207,7 +212,7 @@ export function MovieFilesCard({ movieId }: { movieId: string }) {
                           size="sm"
                           variant="ghost"
                           className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Delete ${fileName}`}
+                          aria-label={`Delete ${fileName}${item.libraryName ? ` in ${item.libraryName}` : ""}`}
                           onClick={() => { setEditingPath(null); setConfirmingDeletePath(item.path); }}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

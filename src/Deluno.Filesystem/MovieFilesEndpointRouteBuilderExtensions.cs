@@ -41,6 +41,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         movies.MapGet("/{id}/files", async (
             string id,
             IMovieCatalogRepository repository,
+            Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
             ISubtitleInventoryService subtitleInventoryService,
             CancellationToken cancellationToken) =>
         {
@@ -50,95 +51,33 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            if (movie.FilePath is not { Length: > 0 } primaryPath || !File.Exists(primaryPath))
+            // Every library the film holds a file in gets its own group (#1065).
+            var copies = (await repository.ListLibraryFilesAsync(id, cancellationToken)).ToList();
+            if (copies.Count == 0 && movie.FilePath is { Length: > 0 } onlyPath)
             {
-                return Results.Ok(Array.Empty<MovieFileItem>());
+                copies.Add(new MovieLibraryFile(movie.LibraryId ?? string.Empty, onlyPath, movie.FileSizeBytes, movie.CurrentQuality, movie.VideoCodec, movie.AudioCodec, movie.AudioChannels));
             }
 
-            var folder = Path.GetDirectoryName(primaryPath);
-            if (folder is null || !Directory.Exists(folder))
-            {
-                // Still report the tracked file itself - the folder having gone
-                // is not a reason to hide the one row the record already knows.
-                return Results.Ok(new[] { PrimaryRow(movie, primaryPath) });
-            }
+            // The library that is the film's own primary copy comes first.
+            copies = copies
+                .OrderBy(copy => string.Equals(copy.FilePath, movie.FilePath, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(copy => copy.LibraryId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            var inventory = await subtitleInventoryService.InspectAsync(primaryPath, probeContainer: true, cancellationToken);
-
-            var items = new List<MovieFileItem>
+            var labelled = copies.Count > 1;
+            var libraries = labelled ? await librariesRepository.ListLibrariesAsync(cancellationToken) : [];
+            var items = new List<MovieFileItem>();
+            foreach (var copy in copies)
             {
-                PrimaryRow(movie, primaryPath, inventory.Probed)
-            };
-
-            var accountedFor = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primaryPath };
-            foreach (var subtitle in inventory.Subtitles)
-            {
-                if (subtitle.Path is not { Length: > 0 } subtitlePath || !accountedFor.Add(subtitlePath))
+                if (!File.Exists(copy.FilePath))
                 {
                     continue;
                 }
 
-                long? size = null;
-                try { size = new FileInfo(subtitlePath).Length; } catch (IOException) { }
-
-                items.Add(new MovieFileItem(
-                    Path: subtitlePath,
-                    SizeBytes: size,
-                    Kind: "subtitle",
-                    IsPrimary: false,
-                    Quality: null,
-                    VideoCodec: null,
-                    AudioCodec: null,
-                    AudioChannels: null,
-                    Language: subtitle.Language,
-                    HearingImpaired: subtitle.HearingImpaired));
-            }
-
-            // Everything else in the folder - extras, samples, nfo files,
-            // artwork - that neither the wanted state nor the subtitle
-            // inventory already accounts for. This is the whole point of
-            // #782: a Files tab that shows every file on disk, not only the
-            // one Deluno picked as "the" file.
-            IEnumerable<string> restOfFolder;
-            try
-            {
-                restOfFolder = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories);
-            }
-            catch (IOException)
-            {
-                restOfFolder = [];
-            }
-            catch (UnauthorizedAccessException)
-            {
-                restOfFolder = [];
-            }
-
-            foreach (var path in restOfFolder.Take(1000))
-            {
-                if (!accountedFor.Add(path))
-                {
-                    continue;
-                }
-
-                long? size = null;
-                try { size = new FileInfo(path).Length; } catch (IOException) { }
-
-                var extension = Path.GetExtension(path);
-                var kind = VideoExtensions.Contains(extension) ? "video"
-                    : SubtitleExtensions.Contains(extension) ? "subtitle"
-                    : "other";
-
-                items.Add(new MovieFileItem(
-                    Path: path,
-                    SizeBytes: size,
-                    Kind: kind,
-                    IsPrimary: false,
-                    Quality: null,
-                    VideoCodec: null,
-                    AudioCodec: null,
-                    AudioChannels: null,
-                    Language: null,
-                    HearingImpaired: null));
+                var libraryName = labelled
+                    ? libraries.FirstOrDefault(item => string.Equals(item.Id, copy.LibraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "Removed library"
+                    : null;
+                items.AddRange(await FilesForCopyAsync(copy, copy.LibraryId, libraryName, subtitleInventoryService, cancellationToken));
             }
 
             return Results.Ok(items);
@@ -256,10 +195,41 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             var movie = await repository.GetByIdAsync(id, cancellationToken);
-            if (movie?.FilePath is not { Length: > 0 } primaryPath)
+            if (movie is null)
             {
                 return Results.NotFound();
             }
+
+            // The file belongs to exactly one library's copy (#1065): the one the
+            // request names, or else the one whose own folder holds the path. A path is
+            // only ever accepted inside that copy's own title folder.
+            var copies = (await repository.ListLibraryFilesAsync(id, cancellationToken)).ToList();
+            if (copies.Count == 0 && movie.FilePath is { Length: > 0 } soleFile)
+            {
+                copies.Add(new MovieLibraryFile(movie.LibraryId ?? string.Empty, soleFile, movie.FileSizeBytes, movie.CurrentQuality, movie.VideoCodec, movie.AudioCodec, movie.AudioChannels));
+            }
+
+            MovieLibraryFile? chosen;
+            if (!string.IsNullOrWhiteSpace(request.LibraryId))
+            {
+                chosen = copies.FirstOrDefault(copy => string.Equals(copy.LibraryId, request.LibraryId, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                chosen = copies.FirstOrDefault(copy => TryResolveWithinMovieFolder(copy.FilePath, request.Path, out _));
+            }
+
+            if (chosen is null)
+            {
+                return copies.Count == 0 || !string.IsNullOrWhiteSpace(request.LibraryId)
+                    ? Results.NotFound()
+                    : Results.ValidationProblem(new Dictionary<string, string[]>
+                    {
+                        ["path"] = ["That file could not be found under this title's own folder."]
+                    });
+            }
+
+            var primaryPath = chosen.FilePath;
 
             if (!TryResolveWithinMovieFolder(primaryPath, request.Path, out var targetPath) || !File.Exists(targetPath))
             {
@@ -339,18 +309,115 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         return endpoints;
     }
 
-    private static MovieFileItem PrimaryRow(MovieListItem movie, string primaryPath, ProbedMediaFacts? probed = null)
+    private static async Task<List<MovieFileItem>> FilesForCopyAsync(
+        MovieLibraryFile copy,
+        string libraryId,
+        string? libraryName,
+        ISubtitleInventoryService subtitleInventoryService,
+        CancellationToken cancellationToken)
+    {
+        var primaryPath = copy.FilePath;
+        var folder = Path.GetDirectoryName(primaryPath);
+        if (folder is null || !Directory.Exists(folder))
+        {
+            // Still report the tracked file itself - the folder having gone
+            // is not a reason to hide the one row the record already knows.
+            return [PrimaryRow(copy, primaryPath, libraryId, libraryName)];
+        }
+
+        var inventory = await subtitleInventoryService.InspectAsync(primaryPath, probeContainer: true, cancellationToken);
+        var items = new List<MovieFileItem> { PrimaryRow(copy, primaryPath, libraryId, libraryName, inventory.Probed) };
+
+        var accountedFor = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primaryPath };
+        foreach (var subtitle in inventory.Subtitles)
+        {
+            if (subtitle.Path is not { Length: > 0 } subtitlePath || !accountedFor.Add(subtitlePath))
+            {
+                continue;
+            }
+
+            long? size = null;
+            try { size = new FileInfo(subtitlePath).Length; } catch (IOException) { }
+
+            items.Add(new MovieFileItem(
+                Path: subtitlePath,
+                SizeBytes: size,
+                Kind: "subtitle",
+                IsPrimary: false,
+                Quality: null,
+                VideoCodec: null,
+                AudioCodec: null,
+                AudioChannels: null,
+                Language: subtitle.Language,
+                HearingImpaired: subtitle.HearingImpaired,
+                LibraryId: libraryId,
+                LibraryName: libraryName));
+        }
+
+        // Everything else in the folder - extras, samples, nfo files,
+        // artwork - that neither the wanted state nor the subtitle
+        // inventory already accounts for (#782).
+        IEnumerable<string> restOfFolder;
+        try
+        {
+            restOfFolder = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories);
+        }
+        catch (IOException)
+        {
+            restOfFolder = [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            restOfFolder = [];
+        }
+
+        foreach (var path in restOfFolder.Take(1000))
+        {
+            if (!accountedFor.Add(path))
+            {
+                continue;
+            }
+
+            long? size = null;
+            try { size = new FileInfo(path).Length; } catch (IOException) { }
+
+            var extension = Path.GetExtension(path);
+            var kind = VideoExtensions.Contains(extension) ? "video"
+                : SubtitleExtensions.Contains(extension) ? "subtitle"
+                : "other";
+
+            items.Add(new MovieFileItem(
+                Path: path,
+                SizeBytes: size,
+                Kind: kind,
+                IsPrimary: false,
+                Quality: null,
+                VideoCodec: null,
+                AudioCodec: null,
+                AudioChannels: null,
+                Language: null,
+                HearingImpaired: null,
+                LibraryId: libraryId,
+                LibraryName: libraryName));
+        }
+
+        return items;
+    }
+
+    private static MovieFileItem PrimaryRow(MovieLibraryFile copy, string primaryPath, string libraryId, string? libraryName, ProbedMediaFacts? probed = null)
         => new(
             Path: primaryPath,
-            SizeBytes: movie.FileSizeBytes,
+            SizeBytes: copy.FileSizeBytes,
             Kind: "video",
             IsPrimary: true,
-            Quality: movie.CurrentQuality,
-            VideoCodec: probed?.VideoCodec ?? movie.VideoCodec,
-            AudioCodec: probed?.AudioCodec ?? movie.AudioCodec,
-            AudioChannels: probed?.AudioChannels ?? movie.AudioChannels,
+            Quality: copy.CurrentQuality,
+            VideoCodec: probed?.VideoCodec ?? copy.VideoCodec,
+            AudioCodec: probed?.AudioCodec ?? copy.AudioCodec,
+            AudioChannels: probed?.AudioChannels ?? copy.AudioChannels,
             Language: null,
-            HearingImpaired: null);
+            HearingImpaired: null,
+            LibraryId: libraryId,
+            LibraryName: libraryName);
 
     private static bool TryResolveWithinMovieFolder(string primaryFilePath, string? requestedPath, out string resolved)
     {
@@ -414,4 +481,5 @@ public sealed record UpdateMovieFileQualityRequest(string Quality);
 
 public sealed record UpdateMovieFileLanguageRequest(string Path, string Language, bool HearingImpaired = false);
 
-public sealed record DeleteMovieFileRequest(string Path);
+/// <param name="LibraryId">Which library's copy the file belongs to. Optional: omitted, the library whose own folder holds the path is used (#1065).</param>
+public sealed record DeleteMovieFileRequest(string Path, string? LibraryId = null);

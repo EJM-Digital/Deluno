@@ -417,6 +417,9 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
     /// <summary>The libraries this film was switched off in (#1065), for the title page.</summary>
     Task<IReadOnlySet<string>> ListNotWantedLibraryIdsAsync(string movieId, CancellationToken cancellationToken);
 
+    /// <summary>Every library's own tracked file for the film, one row per library that holds one.</summary>
+    Task<IReadOnlyList<MovieLibraryFile>> ListLibraryFilesAsync(string movieId, CancellationToken cancellationToken);
+
     /// <summary>
     /// Records a file's new on-disk location after the caller has physically
     /// renamed or moved it - matched by <paramref name="previousFilePath"/>

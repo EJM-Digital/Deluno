@@ -154,6 +154,10 @@ export interface MovieFileItem {
   audioChannels: string | null;
   language: string | null;
   hearingImpaired: boolean | null;
+  /** The library whose copy this file belongs to (#1065). */
+  libraryId?: string | null;
+  /** Set only when the film is in more than one library. */
+  libraryName?: string | null;
 }
 
 export interface MovieSearchHistoryItem {
