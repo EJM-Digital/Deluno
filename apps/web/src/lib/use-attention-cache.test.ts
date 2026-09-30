@@ -14,7 +14,8 @@ vi.mock("./use-signalr", () => ({
   useSignalREvent: () => undefined
 }));
 vi.mock("./failed-jobs", () => ({ fetchFailedJobs: () => { mocks.calls.push("failed-jobs"); return Promise.resolve([]); } }));
-vi.mock("./api", () => ({
+vi.mock("./api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api")>()),
   ApiRequestError: class ApiRequestError extends Error {},
   fetchJson: (path: string) => {
     mocks.calls.push(path);

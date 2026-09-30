@@ -70,13 +70,49 @@ describe("computeAttention", () => {
     expect(attention.items.find((item) => item.id === "health:more")?.count).toBe(2);
   });
 
-  it("says which of the Overview's problems only the Dashboard checks, so it can differ from the sidebar in words", () => {
-    const summary = emptySummary();
-    summary.system = { ...summary.system!, internetOutage: true };
-    const attention = computeAttention(summary, { orphans: [{ name: "x" }, { name: "y" }] as never });
-    // Two leftover folders are the sidebar's too; the outage is the Dashboard's own.
-    expect(attention.counts.overview).toBe(3);
-    expect(attention.dashboardOnly).toBe(1);
+  describe("one problem is one row", () => {
+    const problem = (id: string, title: string) => ({ id, title, category: "x", message: "answered HTTP 504", sinceUtc: null, link: "/indexers/indexers", snoozed: false });
+    const indexer = { id: "i1", name: "Nyaa.si", isEnabled: true, healthStatus: "unreachable", lastHealthMessage: "nyaa.si answered HTTP 504" } as never;
+    const processor = { id: "p1", name: "Cleaner", isEnabled: true, healthStatus: "unreachable", lastHealthMessage: "no answer" } as never;
+
+    it("counts an indexer that is down once, when it is also a health problem", () => {
+      const summary = emptySummary();
+      summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i1", "Nyaa.si (indexer)")] };
+      const attention = computeAttention(summary, { indexers: [indexer], healthSummary: { problemCount: 1, unsnoozedProblemCount: 1, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } });
+      expect(attention.counts).toEqual({ overview: 1, library: 0, downloads: 1, system: 0 });
+      expect(attention.items).toHaveLength(1);
+      // The one row says which indexer and why, and its button is where Test again is.
+      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in Downloads" });
+      expect(attention.healthListed).toHaveLength(0);
+    });
+
+    it("does the same for a download client and a processor, and keeps unrelated health problems", () => {
+      const summary = fullSummary();
+      const client = summary.downloads!.clients[0];
+      summary.downloads!.clients = [{ ...client, id: "c1", reachable: false }];
+      summary.health = {
+        ...summary.health!,
+        problems: 4,
+        topProblems: [problem("download-client:c1", "qBit (download client)"), problem("processor:p1", "Cleaner (processor)"), problem("indexer:i1", "Nyaa.si (indexer)"), problem("system:disk", "A drive is nearly full")]
+      };
+      const lists = { indexers: [indexer], processors: [processor], healthSummary: { problemCount: 4, unsnoozedProblemCount: 4, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } };
+      const attention = computeAttention(summary, lists);
+      expect(attention.healthListed.map((p) => p.id)).toEqual(["system:disk"]);
+      expect(attention.items.filter((item) => item.id.startsWith("health:")).map((item) => item.id)).toEqual(["health:system:disk"]);
+      expect(attention.items.find((item) => item.id === "clients")?.count).toBe(1);
+      expect(attention.items.find((item) => item.id === "indexers")?.count).toBe(1);
+      expect(attention.items.find((item) => item.id === "processors")?.count).toBe(1);
+      // Nothing left over as "more": all four are accounted for.
+      expect(attention.items.some((item) => item.id === "health:more")).toBe(false);
+    });
+
+    it("leaves a health problem alone when its connection has no row of its own", () => {
+      const summary = emptySummary();
+      summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i9", "Other (indexer)")] };
+      const attention = computeAttention(summary, { indexers: [{ ...(indexer as object), healthStatus: "healthy" } as never] });
+      expect(attention.healthListed).toHaveLength(1);
+      expect(attention.counts.system).toBe(1);
+    });
   });
 
   it("puts the tab's own rows and the Needs you rows on the same count", () => {

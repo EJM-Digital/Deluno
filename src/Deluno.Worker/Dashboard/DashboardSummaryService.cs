@@ -557,7 +557,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
             .OrderBy(check => check.IsSnoozed(now))
             .ThenBy(check => check.ProblemSinceUtc ?? DateTimeOffset.MaxValue)
             .ThenBy(check => check.Name, StringComparer.OrdinalIgnoreCase)
-            .Take(5)
+            .Take(30)
             .Select(check => new DashboardHealthProblem(
                 check.Id,
                 check.Name,

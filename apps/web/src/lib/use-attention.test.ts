@@ -33,7 +33,8 @@ vi.mock("./failed-jobs", () => ({
   fetchFailedJobs: () => Promise.resolve([])
 }));
 
-vi.mock("./api", () => ({
+vi.mock("./api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./api")>()),
   ApiRequestError: class ApiRequestError extends Error {},
   fetchJson: (url: string) => {
     mocks.fetchJsonCalls.push(url);

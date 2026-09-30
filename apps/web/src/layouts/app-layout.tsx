@@ -463,19 +463,16 @@ function DesktopSidebar({
             {needsAttention > 0 ? "Needs a look" : "All good"}
           </span>
         </div>
-        {attention.downloadsNeedingAction > 0 ? (
-          // Downloads that need someone are fixed on Transfers, so the verdict
-          // takes you there (#556).
+        {needsAttention > 0 ? (
+          // Every problem is listed, each with its button, on the Dashboard's Needs you (#1082).
           <NavLink
-            to="/queue"
+            to="/"
             className="mt-2 block text-[length:var(--shell-subtle-size)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
-            {attentionSummary(attention)}
+            {attention.summary}
           </NavLink>
         ) : (
-          <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">
-            {needsAttention > 0 ? attentionSummary(attention) : "Nothing needs you"}
-          </p>
+          <p className="mt-2 text-[length:var(--shell-subtle-size)] text-muted-foreground">Nothing needs you</p>
         )}
       </div>
 
@@ -907,22 +904,6 @@ function ContentTopbar({
       </span>
     </header>
   );
-}
-
-/** What the pill says when something needs a person — the specific thing, not a total. */
-function attentionSummary(attention: AttentionSnapshot): string {
-  const parts: string[] = [];
-  if (attention.failedJobs > 0) {
-    const gaveUp = attention.deadLetteredJobs > 0 ? ` (${attention.deadLetteredJobs} gave up)` : "";
-    parts.push(`${attention.failedJobs} failed job${attention.failedJobs === 1 ? "" : "s"}${gaveUp}`);
-  }
-  if (attention.indexerAlerts > 0) {
-    parts.push(`${attention.indexerAlerts} search source${attention.indexerAlerts === 1 ? "" : "s"} unhealthy`);
-  }
-  if (attention.downloadsNeedingAction > 0) {
-    parts.push(`${attention.downloadsNeedingAction} download${attention.downloadsNeedingAction === 1 ? " needs" : "s need"} you`);
-  }
-  return parts.join(" · ");
 }
 
 function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" | "movies" | "tv" | "indexers" | "activity" | "transfers") {

@@ -78,10 +78,35 @@ export interface SetupState {
   ready: boolean;
 }
 
+type SetupLists = Parameters<typeof buildSetupStatus>[0];
+
+/** The setup checklist, and what it raises beyond its own steps as Needs you rows. One rule for the Dashboard and the sidebar. */
+export function buildSetupState(lists: SetupLists): { status: SetupStatusModel; needs: SetupNeed[] } {
+  const status = buildSetupStatus(lists);
+  // The ladder carries its own steps; only what it has no step for is a row.
+  const needs = status.attentionItems
+    .filter((item) => !status.steps.some((step) => step.id === item.id))
+    .map((item) => ({ id: item.id, title: item.title, text: item.text, to: item.href, action: item.action }));
+  return { status, needs };
+}
+
+/** The setup needs from whatever the cache holds now (the sidebar reads this; nothing is fetched). */
+export function setupNeedsFromCache(): SetupNeed[] {
+  const read = <T,>(src: RouteSource<T>) => queryClient.getQueryData<T>(src.key) ?? src.fallback;
+  return buildSetupState({
+    libraries: read(setupSources.libraries),
+    downloadClients: read(setupSources.downloadClients),
+    indexers: read(setupSources.indexers),
+    policySets: read(setupSources.policySets),
+    qualityProfiles: read(setupSources.qualityProfiles),
+    settings: read(setupSources.settings)
+  } as SetupLists).needs;
+}
+
 export function useSetupState(): SetupState {
   const { data, ready } = useRouteSources(setupSources);
   return useMemo(() => {
-    const status = buildSetupStatus({
+    const { status, needs } = buildSetupState({
       libraries: data.libraries,
       downloadClients: data.downloadClients,
       indexers: data.indexers,
@@ -89,10 +114,6 @@ export function useSetupState(): SetupState {
       qualityProfiles: data.qualityProfiles,
       settings: data.settings
     });
-    // The ladder carries its own steps; only what it has no step for is a row.
-    const needs = status.attentionItems
-      .filter((item) => !status.steps.some((step) => step.id === item.id))
-      .map((item) => ({ id: item.id, title: item.title, text: item.text, to: item.href, action: item.action }));
     return { status, progress: data.setupProgress, needs, ready };
   }, [data, ready]);
 }
