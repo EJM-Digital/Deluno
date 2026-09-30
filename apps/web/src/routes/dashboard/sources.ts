@@ -10,8 +10,6 @@ import {
   emptyPlatformSettingsSnapshot,
   fetchJson,
   type DashboardSummary,
-  type MovieWantedSummary,
-  type SeriesWantedSummary,
   type PolicySetItem,
   type QualityProfileItem,
   type SeriesUpcomingEpisodeItem,
@@ -19,7 +17,6 @@ import {
 } from "../../lib/api";
 import { queryClient, defineSources, useRouteSources, type RouteSource } from "../../lib/route-cache";
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
-import { emptyDashboardMetrics, type DashboardMetrics } from "./metrics";
 import { sharedSources } from "../../lib/shared-sources";
 import type { SetupNeed } from "./attention";
 
@@ -60,14 +57,9 @@ export const setupSources = defineSources({
   setupProgress: source<SetupProgressItem>("setup-progress", "Setup progress", () => fetchJson("/api/setup/progress"), EMPTY_PROGRESS)
 });
 
-const EMPTY_WANTED = { totalWanted: 0, missingCount: 0, upgradeCount: 0, coveredCount: 0, upcomingCount: 0, recentItems: [] };
-
-/** What only the Library tab reads. */
-export const libraryTabSources = defineSources({
-  movieWanted: { ...sharedSources.movieWanted, fallback: EMPTY_WANTED as MovieWantedSummary },
-  seriesWanted: { ...sharedSources.seriesWanted, fallback: EMPTY_WANTED as SeriesWantedSummary },
-  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), []),
-  metrics: source<DashboardMetrics>("dashboard-metrics-30", "Library growth", () => fetchJson<DashboardMetrics>("/api/dashboard/metrics?days=30"), emptyDashboardMetrics)
+/** What only the Now tab reads beyond the summary and the download queue. */
+export const nowSources = defineSources({
+  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), [])
 });
 
 export interface SetupState {

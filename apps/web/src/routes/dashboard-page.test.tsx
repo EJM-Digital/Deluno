@@ -48,76 +48,84 @@ beforeEach(() => {
 });
 
 describe("tabFromSearch", () => {
-  it("reads the tab from the address, and anything else is the Overview", () => {
-    expect(tabFromSearch("?tab=library")).toBe("library");
-    expect(tabFromSearch("?tab=downloads")).toBe("downloads");
-    expect(tabFromSearch("?tab=system")).toBe("system");
-    expect(tabFromSearch("")).toBe("overview");
-    expect(tabFromSearch("?tab=nonsense")).toBe("overview");
+  it("reads the tab from the address, and anything else is Now", () => {
+    expect(tabFromSearch("?tab=setup")).toBe("setup");
+    expect(tabFromSearch("?tab=now")).toBe("now");
+    expect(tabFromSearch("")).toBe("now");
+    expect(tabFromSearch("?tab=nonsense")).toBe("now");
+  });
+
+  it("opens the tab an older link's content moved to", () => {
+    expect(tabFromSearch("?tab=overview")).toBe("now");
+    expect(tabFromSearch("?tab=library")).toBe("now");
+    expect(tabFromSearch("?tab=downloads")).toBe("now");
+    expect(tabFromSearch("?tab=system")).toBe("setup");
   });
 });
 
 describe("DashboardPage tabs", () => {
-  it("opens on the Overview and switches tab through the address, with no reload", async () => {
+  it("has exactly two tabs, opens on Now and switches through the address, with no reload", async () => {
     const user = userEvent.setup();
     open("/");
 
-    expect(await screen.findByRole("region", { name: /^needs you$/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /^Overview/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByLabelText("address")).toHaveTextContent("/");
+    expect(await screen.findByRole("region", { name: /^needs you/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Now", "Setup health"]);
+    expect(screen.getByRole("tab", { name: /^Now/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("address").textContent).toBe("/");
 
-    await user.click(screen.getByRole("tab", { name: /^Library/ }));
-    expect(screen.getByLabelText("address").textContent).toBe("/?tab=library");
-    expect(screen.getByRole("tab", { name: /^Library/ })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("region", { name: /^wanted$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^needs you$/i })).toBeNull();
+    await user.click(screen.getByRole("tab", { name: /^Setup health/ }));
+    expect(screen.getByLabelText("address").textContent).toBe("/?tab=setup");
+    expect(screen.getByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("region", { name: /^download clients/i })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
 
-    await user.click(screen.getByRole("tab", { name: /^System/ }));
-    expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
-
-    // Overview carries no tab at all.
-    await user.click(screen.getByRole("tab", { name: /^Overview/ }));
+    // Now carries no tab at all.
+    await user.click(screen.getByRole("tab", { name: /^Now/ }));
     expect(screen.getByLabelText("address").textContent).toBe("/");
     // Switching tabs never asked for the summary again: it was already there.
     expect(api.fetchJson.mock.calls.filter(([path]) => path === "/api/dashboard/summary")).toHaveLength(1);
   });
 
-  it("can be linked straight to a tab", async () => {
-    open("/?tab=downloads");
-    expect(await screen.findByRole("tab", { name: /^Downloads/ })).toHaveAttribute("aria-selected", "true");
+  it("can be linked straight to a tab, and an old link opens the tab its content moved to", async () => {
+    const first = open("/?tab=setup");
+    expect(await screen.findByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+    first.unmount();
+
+    const old = open("/?tab=system");
+    expect(await screen.findByRole("tab", { name: /^Setup health/ })).toHaveAttribute("aria-selected", "true");
+    old.unmount();
+
+    open("/?tab=downloads");
+    expect(await screen.findByRole("tab", { name: /^Now/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("badges each tab with the problems on it, counted once, and shows none at zero", async () => {
+  it("badges each tab with the real problems on it, once, and the Now badge is not a total", async () => {
     open("/");
-    await screen.findByRole("tab", { name: /^Overview/ });
-    // The same count the Overview lists and the tabs draw their buttons from.
+    await screen.findByRole("tab", { name: /^Now/ });
+    // The same count the Needs you list and the sidebar read.
     // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
     const none = [] as never;
     const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
     const expected = attention.counts;
-    expect(expected.overview).toBe(expected.library + expected.downloads + expected.system + attention.items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0));
+    expect(attention.total).toBe(expected.now + expected.setup);
     const label = (tab: string) => within(screen.getByRole("tab", { name: new RegExp(`^${tab}`) })).queryByLabelText(/need a look|needs a look/)?.getAttribute("aria-label") ?? null;
     const words = (n: number) => (n === 1 ? "1 thing needs a look" : `${n} things need a look`);
     // The stored lists arrive after the summary; the badges settle on them.
-    await waitFor(() => expect(label("Downloads")).toBe(words(expected.downloads)));
-    expect(label("Library")).toBe(words(expected.library));
-    expect(label("Downloads")).toBe(words(expected.downloads));
-    expect(label("System")).toBe(expected.system === 0 ? null : words(expected.system));
-    // The setup checklist adds its own steps to the Overview only; the number is the Needs you list's count.
-    const listed = Number(within(screen.getByRole("region", { name: /^needs you$/i })).getByText(/^[0-9]+$/).textContent);
-    expect(label("Overview")).toBe(words(listed));
-    expect(listed).toBeGreaterThanOrEqual(expected.overview);
-    expect(expected.library).toBe(1);
-    expect(expected.downloads).toBeGreaterThan(0);
+    await waitFor(() => expect(label("Setup health")).toBe(expected.setup === 0 ? null : words(expected.setup)));
+    expect(label("Now")).toBe(expected.now === 0 ? null : words(expected.now));
+    // Each number counts its own tab only: Now does not add Setup health's problems to its own.
+    expect(expected.setup).toBeGreaterThan(0);
+    expect(expected.now).toBeGreaterThan(0);
+    const listed = Number(within(screen.getByRole("region", { name: /^needs you/i })).getByText(/^[0-9]+$/).textContent);
+    expect(listed).toBeGreaterThanOrEqual(expected.now);
   });
 
   it("shows no badges on a new install", async () => {
     api.summary.mockReturnValue(emptySummary());
     open("/");
-    await screen.findByRole("tab", { name: /^Overview/ });
-    for (const name of [/^Overview/, /^Library/, /^Downloads/, /^System/]) {
+    await screen.findByRole("tab", { name: /^Now/ });
+    for (const name of [/^Now/, /^Setup health/]) {
       expect(within(screen.getByRole("tab", { name })).queryByLabelText(/need/)).toBeNull();
     }
   });
@@ -131,7 +139,7 @@ describe("dashboardShouldRevalidate", () => {
   });
 
   it("does not re-run the loader when only the tab changes", () => {
-    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: new URL("http://deluno.local/?tab=library"), defaultShouldRevalidate: true })).toBe(false);
+    expect(dashboardShouldRevalidate({ currentUrl: here, nextUrl: new URL("http://deluno.local/?tab=setup"), defaultShouldRevalidate: true })).toBe(false);
   });
 
   it("still revalidates after a form submission", () => {

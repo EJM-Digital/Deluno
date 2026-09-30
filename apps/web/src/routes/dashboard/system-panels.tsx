@@ -1,17 +1,13 @@
 /**
- * Dashboard, System tab (#1082, option B).
- *
- * One headline strip (is Deluno ready, which version, tasks, jobs), then the
- * problems with their own buttons, this computer's load, the scheduled tasks,
- * automation per library, updates and backups, storage per drive and the
- * latest activity.
+ * The panels of the Dashboard's Setup health tab (#1087): the problems with
+ * their own buttons, this computer's load, the scheduled tasks, automation per
+ * library, updates and backups, and storage per drive, under one headline
+ * strip (is Deluno ready, which version, tasks, jobs).
  *
  * Where the numbers come from:
- *  - the Dashboard summary (a prop): system, health, automation, storage and
- *    the activity counts;
- *  - two stored lists read cache-first: the machine's own history (samples the
- *    background sampler already wrote) and the newest activity rows, which
- *    carry the plain-words `label`.
+ *  - the Dashboard summary (a prop): system, health, automation and storage;
+ *  - one stored list read cache-first: the machine's own history (samples the
+ *    background sampler already wrote).
  * Nothing here calls a client, indexer, media server or disk while it waits.
  */
 import { Link } from "react-router-dom";
@@ -19,59 +15,27 @@ import { ListCard, ListCell, ListNameCell, ListRow, ListTable } from "../../comp
 import { MetricChart, type MetricPoint } from "../../components/ui/metric-chart";
 import { StatusLed } from "../../components/ui/status-led";
 import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
-import { fetchJson, fetchPageItems, type ActivityEventItem, type MachineTelemetryWindow } from "../../lib/api";
+import { fetchJson, type MachineTelemetryWindow } from "../../lib/api";
 import type { DashboardScheduledTask, DashboardSummary } from "../../lib/api/types/operations";
-import { defineSources, useRouteSources } from "../../lib/route-cache";
+import { defineSources } from "../../lib/route-cache";
 import { cn } from "../../lib/utils";
-import { useDashboardAttention } from "./use-dashboard-attention";
 import type { DashboardAttention } from "./attention";
 import { ActionButton, FactRow, Panel, PanelLink, PanelNote, ago, formatSize, plainWords, plural, send, until, useAction } from "./downloads-kit";
 import { FitList } from "./parts";
 
 const MACHINE_HOURS = 6;
 
-const sources = defineSources({
+export const setupPanelSources = defineSources({
   machine: {
     key: ["src", "machine-6h"],
     label: "This computer",
     fetch: () => fetchJson<MachineTelemetryWindow>(`/api/monitoring/machine?hours=${MACHINE_HOURS}`)
-  },
-  activity: {
-    key: ["activity", "dashboard-system"],
-    label: "Recent activity",
-    fetch: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=10")
   }
 });
 
 type Action = ReturnType<typeof useAction>;
 
 const STARTUP_PREFIX = "system:background-problem:startup:";
-
-export function SystemTab({ summary }: { summary: DashboardSummary | undefined }) {
-  const { data } = useRouteSources(sources);
-  const action = useAction();
-  const attention = useDashboardAttention(summary);
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <Strip summary={summary} problems={attention.counts.system} jobsGaveUp={attention.jobsGaveUp} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col gap-3">
-          <Problems summary={summary} attention={attention} action={action} />
-          <Automation summary={summary} />
-        </div>
-        <div className="flex min-h-0 flex-col gap-3">
-          <Machine summary={summary} window={data.machine} />
-          <ScheduledTasks summary={summary} />
-          <UpdatesAndBackups summary={summary} />
-        </div>
-        <div className="flex min-h-0 flex-col gap-3">
-          <RecentActivity summary={summary} rows={data.activity} />
-          <Storage summary={summary} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* --------------------------------------------------------------- strip */
 
@@ -88,7 +52,7 @@ function taskFailed(task: DashboardScheduledTask): boolean {
   return task.lastResult.toLowerCase() === "failed";
 }
 
-function Strip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | undefined; problems: number; jobsGaveUp: number }) {
+export function SetupStrip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | undefined; problems: number; jobsGaveUp: number }) {
   const system = summary?.system;
   const tasks = summary?.automation?.tasks ?? [];
   const failedTasks = tasks.filter(taskFailed).length;
@@ -134,16 +98,19 @@ function Strip({ summary, problems, jobsGaveUp }: { summary: DashboardSummary | 
 const linkButton =
   "inline-flex h-[var(--control-height-sm)] items-center rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-function Problems({ summary, attention, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
+export function Problems({ summary, attention, action }: { summary: DashboardSummary | undefined; attention: DashboardAttention; action: Action }) {
   const health = summary?.health;
   const system = summary?.system;
   // A snoozed problem is not counted, so it is not listed; one that Downloads has its own row for is that row.
   const problems = attention.healthListed;
   const failedLanes = system?.lanes.filter((lane) => lane.state === "failing") ?? [];
   const failedJobs = attention.jobsGaveUp;
-  const total = attention.counts.system;
   // Health problems the summary did not carry: the list panel says "and N more" for these too.
   const more = attention.items.find((item) => item.id === "health:more")?.count ?? 0;
+  // What this panel lists: connections have their own rows in the panels below, so they are not here.
+  const ownRows = new Set(["clients", "indexers", "processors"]);
+  const others = attention.items.filter((item) => item.tab === "setup" && !ownRows.has(item.id) && !item.id.startsWith("health:") && item.id !== "failed-jobs" && item.id !== "lanes");
+  const total = others.reduce((sum, item) => sum + item.count, 0) + problems.length + failedJobs + failedLanes.length + more;
 
   return (
     <Panel
@@ -152,17 +119,22 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
       to="/system"
       linkLabel="Health"
       className="flex-[13]"
-      footer={
-        <span className="flex flex-wrap items-center gap-x-3">
-          {(health?.suggestions ?? 0) > 0 ? <Link className="text-primary hover:underline" to="/system">{plural(health?.suggestions ?? 0, "suggestion")}</Link> : null}
-          <span>{(health?.unknown ?? 0) > 0 ? `${health?.unknown} not checked yet` : health?.lastRunUtc ? `Last checked ${ago(health.lastRunUtc)}` : "Not checked yet"}</span>
-        </span>
-      }
+      footer={(health?.unknown ?? 0) > 0 ? `${health?.unknown} not checked yet` : health?.lastRunUtc ? `Last checked ${ago(health.lastRunUtc)}` : "Not checked yet"}
     >
       {total === 0 ? (
         <PanelNote>Nothing is wrong. Deluno checks downloads, indexers, libraries and connections every 15 minutes{health?.lastRunUtc ? `, most recently ${ago(health.lastRunUtc)}` : ""}.</PanelNote>
       ) : (
         <FitList moreTo="/system" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Health`} extra={more} rows={[
+          ...others.map((item) => (
+            <li key={item.id} className="flex items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0">
+              <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} />
+              <div className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
+                <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
+              </div>
+              <Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>
+            </li>
+          )),
           ...problems.map((problem) => {
             const startup = problem.id.startsWith(STARTUP_PREFIX);
             const key = problem.id.slice("system:background-problem:".length);
@@ -240,7 +212,7 @@ function Problems({ summary, attention, action }: { summary: DashboardSummary | 
 
 /* ---------------------------------------------------------- automation */
 
-function Automation({ summary }: { summary: DashboardSummary | undefined }) {
+export function Automation({ summary }: { summary: DashboardSummary | undefined }) {
   const automation = summary?.automation;
   const gate = automation?.queuePause;
   const cycle = automation?.lastSearchCycle;
@@ -284,7 +256,7 @@ function Automation({ summary }: { summary: DashboardSummary | undefined }) {
 
 /* ----------------------------------------------------------- machine */
 
-function Machine({ summary, window }: { summary: DashboardSummary | undefined; window: MachineTelemetryWindow | undefined }) {
+export function Machine({ summary, window }: { summary: DashboardSummary | undefined; window: MachineTelemetryWindow | undefined }) {
   const machine = summary?.system?.machine;
   const samples = window?.samples ?? [];
   const cpu: MetricPoint[] = samples.map((sample) => ({ date: sample.capturedUtc, value: Math.round(sample.cpuPercent) }));
@@ -339,7 +311,7 @@ function taskState(task: DashboardScheduledTask): { tone: "ok" | "bad" | "info" 
   return { tone: "ok", text: `Done ${ago(task.lastCompletedUtc)}` };
 }
 
-function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) {
+export function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) {
   const tasks = summary?.automation?.tasks ?? [];
   const failed = tasks.filter(taskFailed).length;
   return (
@@ -393,7 +365,7 @@ function ScheduledTasks({ summary }: { summary: DashboardSummary | undefined }) 
 
 /* ------------------------------------------------- updates & backups */
 
-function UpdatesAndBackups({ summary }: { summary: DashboardSummary | undefined }) {
+export function UpdatesAndBackups({ summary }: { summary: DashboardSummary | undefined }) {
   const system = summary?.system;
   return (
     <ListCard title="Updates and backups" actions={<PanelLink to="/system/backups">Backups</PanelLink>} className="shrink-0">
@@ -419,45 +391,11 @@ function UpdatesAndBackups({ summary }: { summary: DashboardSummary | undefined 
   );
 }
 
-/* ----------------------------------------------------- recent activity */
-
-function RecentActivity({ summary, rows }: { summary: DashboardSummary | undefined; rows: ActivityEventItem[] | undefined }) {
-  const activity = summary?.activity;
-  const items = (rows && rows.length > 0
-    ? rows.map((row) => ({ id: row.id, message: row.message, label: row.label, createdUtc: row.createdUtc }))
-    : (activity?.recent ?? []).map((row) => ({ id: row.id, message: row.message, label: (row as { label?: string }).label, createdUtc: row.createdUtc }))
-  ).slice(0, 10);
-
-  return (
-    <Panel
-      title="Recent activity"
-      to="/activity"
-      linkLabel="Activity"
-      className="flex-[13]"
-      footer={activity ? `Last ${activity.windowHours} hours: ${plural(activity.searchesRun, "search", "searches")}, ${plural(activity.downloadsStarted, "download")} started, ${plural(activity.importsCompleted, "import")}.` : undefined}
-    >
-      {items.length === 0 ? (
-        <PanelNote>Nothing has happened yet. Searches, downloads and imports will appear here as they happen.</PanelNote>
-      ) : (
-        <FitList moreTo="/activity" rows={items.map((item) => (
-            <li key={item.id} className="border-b border-hairline px-[var(--card-pad-x)] py-1.5 leading-tight last:border-b-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{item.message}</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">
-                {item.label ? `${item.label}, ` : ""}
-                {ago(item.createdUtc)}
-              </span>
-            </li>
-          ))} />
-      )}
-    </Panel>
-  );
-}
-
 /* -------------------------------------------------------------- storage */
 
 const ROLE_WORDS: Record<string, string> = { data: "Deluno", library: "Library", downloads: "Downloads", processor: "Processor" };
 
-function Storage({ summary }: { summary: DashboardSummary | undefined }) {
+export function Storage({ summary }: { summary: DashboardSummary | undefined }) {
   const storage = summary?.storage;
   const volumes = storage?.volumes ?? [];
   return (

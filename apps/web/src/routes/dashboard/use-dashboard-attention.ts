@@ -12,7 +12,6 @@ export function useDashboardAttention(summary: DashboardSummary | undefined, set
   const { data } = useRouteSources(attentionSources);
   return useMemo(
     () => computeAttention(summary, data, setup),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [summary, data, setup]
   );
 }

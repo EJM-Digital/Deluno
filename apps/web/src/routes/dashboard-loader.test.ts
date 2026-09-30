@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * #1081, #1082: the Dashboard's loader starts everything the page reads, in
+ * #1081, #1087: the Dashboard's loader starts everything the page reads, in
  * one wave, and returns at once. It reads one summary request and a few cheap
  * stored lists; it never asks a download client, indexer or disk anything.
  */
@@ -45,15 +45,17 @@ describe("dashboardLoader", () => {
     expect(paths).not.toContain("/api/monitoring/dashboard");
   });
 
-  it("starts the Library tab's own lists only when that tab is the one being opened", () => {
-    dashboardLoader(request(""));
-    expect(asked()).not.toContain("/api/movies/wanted");
+  it("starts Now's own list (the next episodes) only when Now is the tab being opened", () => {
+    dashboardLoader(request("?tab=setup"));
+    expect(asked().some((path) => String(path).startsWith("/api/series/upcoming"))).toBe(false);
 
     queryClient.clear();
     api.fetchJson.mockClear();
-    dashboardLoader(request("?tab=library"));
-    expect(asked()).toContain("/api/movies/wanted");
+    dashboardLoader(request(""));
     expect(asked().some((path) => String(path).startsWith("/api/series/upcoming"))).toBe(true);
+    // The wanted lists and the growth series belonged to the old Library tab and are not asked for any more.
+    expect(asked()).not.toContain("/api/movies/wanted");
+    expect(asked().some((path) => String(path).startsWith("/api/dashboard/metrics"))).toBe(false);
   });
 
   it("does not ask again for sources already on their way when the page mounts", () => {

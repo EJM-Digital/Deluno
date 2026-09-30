@@ -9,20 +9,38 @@ const job = (over: Record<string, unknown>) => ({
 
 describe("computeAttention", () => {
   it("is zero everywhere on a new install and with no summary", () => {
-    expect(computeAttention(emptySummary()).counts).toEqual({ overview: 0, library: 0, downloads: 0, system: 0 });
-    expect(computeAttention(undefined).counts).toEqual({ overview: 0, library: 0, downloads: 0, system: 0 });
+    expect(computeAttention(emptySummary()).counts).toEqual({ now: 0, setup: 0 });
+    expect(computeAttention(undefined).counts).toEqual({ now: 0, setup: 0 });
+    expect(computeAttention(emptySummary()).total).toBe(0);
   });
 
-  it("makes the Overview the sum of the tabs plus what only it holds", () => {
+  it("counts each problem on one tab only, and the total is the two badges added together", () => {
     const attention = computeAttention(fullSummary(), {}, [{ id: "a", title: "t", text: "x", to: "/", action: "Go" }]);
-    const { overview, library, downloads, system } = attention.counts;
-    const overviewOnly = attention.items.filter((item) => item.tab === "overview").reduce((sum, item) => sum + item.count, 0);
-    expect(overview).toBe(library + downloads + system + overviewOnly);
-    expect(overview).toBe(attention.items.reduce((sum, item) => sum + item.count, 0));
-    expect(overviewOnly).toBeGreaterThanOrEqual(1);
+    const { now, setup } = attention.counts;
+    expect(attention.total).toBe(now + setup);
+    expect(attention.total).toBe(attention.items.reduce((sum, item) => sum + item.count, 0));
+    for (const tab of ["now", "setup"] as const) {
+      expect(attention.counts[tab]).toBe(attention.items.filter((item) => item.tab === tab).reduce((sum, item) => sum + item.count, 0));
+    }
+    // The setup step is a Setup health row with its button.
+    expect(attention.items.find((item) => item.id === "setup:a")?.tab).toBe("setup");
   });
 
-  it("counts a failed import once, on Downloads, and not again as a job that gave up", () => {
+  it("does not count leftover folders, suggestions, a failed download Deluno is searching again for, or a snoozed problem", () => {
+    const summary = emptySummary();
+    summary.health = { ...summary.health!, problems: 1, suggestions: 2, topProblems: [{ id: "a", title: "A", category: "system", message: "m", sinceUtc: null, link: "/system", snoozed: true }] };
+    const attention = computeAttention(summary, {
+      orphans: [{ name: "a" }, { name: "b" }] as never,
+      dispatches: [{ id: "d1", status: "failed", releaseName: "R", entityType: "movie", entityId: "m1" }] as never,
+      healthSummary: { problemCount: 1, unsnoozedProblemCount: 0, unknownCount: 0, suggestionCount: 2, lastRunUtc: null }
+    });
+    expect(attention.total).toBe(0);
+    expect(attention.items).toHaveLength(0);
+    // They stay reachable as one quiet line under Needs you.
+    expect(attention.alsoWorthALook).toEqual({ leftovers: 2, suggestions: 2 });
+  });
+
+  it("counts a failed import once, on Now, and not again as a job that gave up", () => {
     const attention = computeAttention(fullSummary(), { failedJobs: [job({ id: "imp" }), job({ id: "other", jobType: "library.scan" })] });
     expect(attention.downloads.failedImportJobs.map((j) => j.id)).toEqual(["imp"]);
     expect(attention.jobsGaveUp).toBe(1);
@@ -34,7 +52,7 @@ describe("computeAttention", () => {
     const retrying = job({ id: "r", jobType: "library.scan", attempts: 1, nextAttemptUtc: NOW });
     const attention = computeAttention(emptySummary(), { failedJobs: [retrying, job({ id: "r2", attempts: 1, nextAttemptUtc: NOW })] });
     expect(attention.jobsGaveUp).toBe(0);
-    expect(attention.counts.overview).toBe(0);
+    expect(attention.total).toBe(0);
   });
 
   it("counts a failed hand-off a recovery case is about once, as the hand-off", () => {
@@ -43,7 +61,7 @@ describe("computeAttention", () => {
     const attention = computeAttention(emptySummary(), { handoffs: [handoff], movieRecovery: withCase });
     expect(attention.downloads.handoffs).toHaveLength(1);
     expect(attention.downloads.recoveryCases).toHaveLength(0);
-    expect(attention.counts.downloads).toBe(1);
+    expect(attention.counts.now).toBe(1);
   });
 
   it("counts a client once however many buttons it has, and a stalled download a case covers only as the case", () => {
@@ -79,10 +97,10 @@ describe("computeAttention", () => {
       const summary = emptySummary();
       summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i1", "Nyaa.si (indexer)")] };
       const attention = computeAttention(summary, { indexers: [indexer], healthSummary: { problemCount: 1, unsnoozedProblemCount: 1, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } });
-      expect(attention.counts).toEqual({ overview: 1, library: 0, downloads: 1, system: 0 });
+      expect(attention.counts).toEqual({ now: 0, setup: 1 });
       expect(attention.items).toHaveLength(1);
       // The one row says which indexer and why, and its button is where Test again is.
-      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in Downloads" });
+      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in Setup health" });
       expect(attention.healthListed).toHaveLength(0);
     });
 
@@ -111,14 +129,7 @@ describe("computeAttention", () => {
       summary.health = { ...summary.health!, problems: 1, topProblems: [problem("indexer:i9", "Other (indexer)")] };
       const attention = computeAttention(summary, { indexers: [{ ...(indexer as object), healthStatus: "healthy" } as never] });
       expect(attention.healthListed).toHaveLength(1);
-      expect(attention.counts.system).toBe(1);
+      expect(attention.counts.setup).toBe(1);
     });
-  });
-
-  it("puts the tab's own rows and the Needs you rows on the same count", () => {
-    const attention = computeAttention(fullSummary());
-    for (const tab of ["library", "downloads", "system"] as const) {
-      expect(attention.counts[tab]).toBe(attention.items.filter((item) => item.tab === tab).reduce((sum, item) => sum + item.count, 0));
-    }
   });
 });
