@@ -133,6 +133,19 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
     }
 
     [Fact]
+    public async Task A_release_chosen_on_search_that_never_showed_is_ended_and_nothing_is_searched_for()
+    {
+        var world = new World(detected: false, handoffStatus: null, entityType: "release");
+
+        var outcome = await world.RetryAsync("downloadFailed");
+
+        Assert.True(outcome.Retried);
+        Assert.Contains("choose one on Search again", outcome.Message);
+        world.Dispatches.Verify(repository => repository.ArchiveDispatchAsync("d1", "retried", It.IsAny<CancellationToken>()), Times.Once);
+        world.Scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Stop_wanting_it_ends_the_download_and_unmonitors_exactly_the_title_named()
     {
         var world = new World(detected: true, handoffStatus: null);
@@ -179,10 +192,10 @@ public sealed class TryAgainActsOnWhatTheDownloadIsTests
         public Mock<ILibrariesRepository> Libraries { get; } = new();
         public Mock<IProcessorRepository> Processors { get; } = new();
 
-        public World(bool detected, string? handoffStatus, string? importStatus = null, int failedImports = 0)
+        public World(bool detected, string? handoffStatus, string? importStatus = null, int failedImports = 0, string entityType = "movie")
         {
             var dispatch = new DownloadDispatchItem(
-                Id: "d1", LibraryId: "library-1", MediaType: "movies", EntityType: "movie", EntityId: "movie-1",
+                Id: "d1", LibraryId: "library-1", MediaType: "movies", EntityType: entityType, EntityId: "movie-1",
                 ReleaseName: Release, IndexerName: "Fixture", DownloadClientId: "client-1", DownloadClientName: "SABnzbd",
                 Status: detected ? "sent" : "failed", NotesJson: null, CreatedUtc: Now, GrabStatus: "succeeded", GrabAttemptedUtc: Now,
                 GrabResponseCode: 200, GrabMessage: null, GrabFailureCode: detected ? null : "not_found", GrabResponseJson: null,

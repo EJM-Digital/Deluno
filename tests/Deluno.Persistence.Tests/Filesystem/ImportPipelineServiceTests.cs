@@ -3598,6 +3598,54 @@ public sealed class ImportPipelineServiceTests
     }
 
     [Fact]
+    public async Task An_import_from_a_release_chosen_on_search_is_filed_under_the_film_it_matched_not_the_generated_id()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-09-30T05:00:00Z"));
+        await InitializeAllAsync(storage, timeProvider);
+
+        var downloadsPath = Path.Combine(storage.DataRoot, "downloads");
+        var movieRootPath = Path.Combine(storage.DataRoot, "movies");
+        Directory.CreateDirectory(downloadsPath);
+        Directory.CreateDirectory(movieRootPath);
+        var sourcePath = Path.Combine(downloadsPath, "Sintel.2010.1080p.WEB-DL-DELUNO.mkv");
+        await File.WriteAllBytesAsync(sourcePath, Enumerable.Repeat((byte)0x33, 4096).ToArray());
+        File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddMinutes(-1));
+
+        var platform = CreatePlatformRepository(storage, timeProvider);
+        var libraries = CreateLibrariesRepository(storage, timeProvider);
+        await SaveSettingsAsync(platform, movieRootPath, downloadsPath);
+        await CreateMovieLibraryAsync(libraries, movieRootPath, downloadsPath);
+        var library = Assert.Single(await libraries.ListLibrariesAsync(CancellationToken.None));
+        var mediaState = new SqliteMediaStateRepository(storage.Factory, timeProvider);
+        var movies = new SqliteMovieCatalogRepository(storage.Factory, timeProvider, mediaState);
+        var movie = await movies.AddAsync(new CreateMovieRequest("Sintel", 2010, null), CancellationToken.None);
+
+        var jobStore = new SqliteJobStore(storage.Factory, timeProvider, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository());
+        var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, timeProvider);
+        const string generatedId = "0a1b2c3d4e5f60718293a4b5c6d7e8f9";
+        var dispatchId = await jobStore.RecordDownloadDispatchAsync(
+            library.Id, "movies", "release", generatedId, "Sintel.2010.1080p.WEB-DL-DELUNO", "TestIndexer", "client-1", "qBittorrent", "sent",
+            notesJson: null, cancellationToken: CancellationToken.None);
+
+        var service = CreateService(storage, timeProvider, platform, libraries, movies, downloadDispatchesRepository: dispatches);
+        var result = await service.ExecuteAsync(
+            new ImportExecuteRequest(
+                new ImportPreviewRequest(sourcePath, null, "movies", "Sintel", 2010, [], [], null, "en"),
+                "copy",
+                Overwrite: false,
+                AllowCopyFallback: true,
+                DispatchId: dispatchId),
+            CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+
+        var onTheFilm = await jobStore.ListActivityAsync(50, "movie", movie.Id, CancellationToken.None);
+        Assert.Contains(onTheFilm, item => item.Category == "filesystem.import.completed");
+        var onTheGuid = await jobStore.ListActivityAsync(50, "movie", generatedId, CancellationToken.None);
+        Assert.Empty(onTheGuid);
+    }
+
+    [Fact]
     public async Task Tv_import_uses_persisted_airdate_numbering_for_rename_and_catalogue_identity()
     {
         using var storage = TestStorage.Create();

@@ -160,6 +160,45 @@ public sealed class ManualSearchEndpointTests
         Assert.Equal("movies", dispatch.MediaType);
         Assert.Equal("succeeded", dispatch.GrabStatus);
         Assert.Equal("fake-hash", dispatch.TorrentHashOrItemId);
+        Assert.Contains("chosenOnSearch", dispatch.NotesJson);
+    }
+
+    [Fact]
+    public async Task A_grab_of_a_download_Deluno_already_has_is_followed_not_recorded_a_second_time()
+    {
+        var grabService = new FakeGrabService(duplicateFollow: true);
+        await using var app = await ApplicationTestHost.StartAsync(replaceServices: services =>
+        {
+            services.RemoveAll<IDownloadClientGrabService>();
+            services.AddSingleton<IDownloadClientGrabService>(grabService);
+        });
+        var libraryRoot = Directory.CreateDirectory(Path.Combine(app.DataRoot, "Films")).FullName;
+        var created = await app.Client.PostAsJsonAsync("/api/libraries", new { name = "Films", mediaType = "movies", rootPath = libraryRoot });
+        var libraryId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        var client = await app.Services.GetRequiredService<IConnectionsRepository>().CreateDownloadClientAsync(
+            new CreateDownloadClientRequest("Fake", "qbittorrent", "localhost", 1234, null, null, null, "movies", "tv", null, 1, true),
+            CancellationToken.None);
+        var routed = await app.Client.PutAsJsonAsync($"/api/libraries/{libraryId}/routing", new
+        {
+            sources = Array.Empty<object>(),
+            downloadClients = new[] { new { downloadClientId = client.Id, priority = 1, category = (string?)null } }
+        });
+        Assert.True(routed.IsSuccessStatusCode, await routed.Content.ReadAsStringAsync());
+
+        var response = await app.Client.PostAsJsonAsync("/api/search/grab", new
+        {
+            releaseName = "Example.Release.WEB.1080p",
+            downloadUrl = "https://fixture.invalid/x.torrent",
+            searchType = "movie"
+        });
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains("already on its way", body.GetProperty("message").GetString());
+        var recorded = await app.Services.GetRequiredService<IDownloadDispatchesRepository>().QueryDispatchesAsync(
+            new DispatchQueryFilter { ClientId = client.Id },
+            new DispatchPaginationOptions(),
+            CancellationToken.None);
+        Assert.Empty(recorded.Items);
     }
 
     [Fact]
@@ -278,14 +317,14 @@ public sealed class ManualSearchEndpointTests
         Assert.Contains("Example.Release.WEB.1080p", grabRow.GetProperty("message").GetString());
     }
 
-    private sealed class FakeGrabService : IDownloadClientGrabService
+    private sealed class FakeGrabService(bool duplicateFollow = false) : IDownloadClientGrabService
     {
         public string? LastClientId { get; private set; }
 
         public Task<DownloadClientGrabResult> GrabAsync(string clientId, DownloadClientGrabRequest request, CancellationToken cancellationToken)
         {
             LastClientId = clientId;
-            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client.") { ExternalId = "fake-hash" });
+            return Task.FromResult(new DownloadClientGrabResult(clientId, request.ReleaseName, true, "sent", "Sent to the fake client.") { ExternalId = "fake-hash", IsDuplicateFollow = duplicateFollow });
         }
     }
 

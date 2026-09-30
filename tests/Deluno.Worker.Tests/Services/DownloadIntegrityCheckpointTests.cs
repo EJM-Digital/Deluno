@@ -33,6 +33,9 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
     private readonly string _root = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), $"deluno-integrity-checkpoint-{Guid.NewGuid():N}")).FullName;
 
+    private string _linkEntityType = "movie";
+    private string _linkEntityId = "movie-1";
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -91,6 +94,33 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             WorkPlanner.DownloadIntegrityFailedCategory,
             It.Is<string>(message => message.Contains("No video stream", StringComparison.Ordinal)),
             It.IsAny<string?>(), null, "movie", "movie-1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_failed_check_on_a_release_chosen_on_search_removes_it_but_blocklists_and_searches_for_nothing()
+    {
+        _linkEntityType = "release";
+        _linkEntityId = "0a1b2c3d4e5f";
+        var scheduler = new Mock<IJobScheduler>();
+        var telemetry = Telemetry(out var file);
+        telemetry.Setup(instance => instance.ExecuteActionAsync(
+                "client-1",
+                It.IsAny<DownloadClientActionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DownloadClientActionResult("client-1", "queue-1", DownloadClientActions.DeleteWithData, true, "removed"));
+        var blocked = new Mock<IBlockedReleaseRepository>();
+        var activity = Activity();
+
+        await Run(scheduler, telemetry, blocked, checkEnabled: true, probe: Probe.Failed(), activity: activity);
+
+        blocked.Verify(instance => instance.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()), Times.Never);
+        scheduler.Verify(instance => instance.EnqueueAsync(
+            It.Is<EnqueueJobRequest>(request => request.JobType == LibrarySearchJobTypes.Movies),
+            It.IsAny<CancellationToken>()), Times.Never);
+        activity.Verify(instance => instance.RecordActivityAsync(
+            WorkPlanner.DownloadIntegrityFailedCategory,
+            It.Is<string>(message => message.Contains("choose one on Search again", StringComparison.Ordinal)),
+            It.IsAny<string?>(), null, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -322,7 +352,7 @@ public sealed class DownloadIntegrityCheckpointTests : IDisposable
             .ReturnsAsync(true);
         jobs.Setup(repository => repository.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         jobs.Setup(repository => repository.FindDispatchLinkByClientItemAsync("client-1", "queue-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DispatchCatalogueLink("dispatch-1", "movie", "movie-1", IndexerName: "Indexer", LibraryId: "library-1"));
+            .ReturnsAsync(new DispatchCatalogueLink("dispatch-1", _linkEntityType, _linkEntityId, IndexerName: "Indexer", LibraryId: "library-1"));
 
         var libraries = new Mock<ILibrariesRepository>();
         libraries.Setup(repository => repository.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([libraryOverride ?? Library()]);

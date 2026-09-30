@@ -89,6 +89,26 @@ public sealed class RetryAFailedGrabTests
     }
 
     [Fact]
+    public async Task Retry_on_a_release_chosen_on_search_searches_for_nothing_and_says_why()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var library = await CreateLibraryAsync(app);
+        var dispatchId = await app.Services.GetRequiredService<IJobQueueRepository>().RecordDownloadDispatchAsync(
+            library.Id, "movies", "release", "0a1b2c3d4e5f", Release, "Fixture", "client-1", "qBittorrent", "failed", null,
+            cancellationToken: CancellationToken.None);
+
+        var response = await app.Client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("CHOSEN_ON_SEARCH", body);
+        Assert.Contains("choose one on Search again", body);
+        Assert.DoesNotContain(
+            await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
+            job => job.Source == "download_dispatch.retry");
+    }
+
+    [Fact]
     public async Task Retry_says_so_when_the_library_is_gone()
     {
         await using var app = await ApplicationTestHost.StartAsync();

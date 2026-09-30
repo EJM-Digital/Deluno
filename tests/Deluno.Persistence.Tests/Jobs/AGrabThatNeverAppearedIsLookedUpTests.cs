@@ -87,6 +87,23 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         Assert.Contains(activity.Recorded, item => item.Category == "download.grab.rejected");
     }
 
+    [Fact]
+    public async Task A_release_chosen_on_search_that_the_client_rejected_is_not_blocklisted_or_searched_for_and_says_why()
+    {
+        var (poller, dispatches, blocked, activity) = await CreateAsync(new GrabAppearanceLookupResult(
+            GrabAppearanceOutcome.Rejected, Detail: "password protected archive"));
+        await InsertAsync(dispatches.Storage, "gone", TimeSpan.FromHours(3), entityType: "release");
+
+        await poller.PollAsync(CancellationToken.None);
+
+        var dispatch = await dispatches.Repository.GetDispatchIncludingArchivedAsync("gone", CancellationToken.None);
+        Assert.Equal("archived", dispatch?.Status);
+        Assert.Empty(await blocked.ListAsync(CancellationToken.None));
+        var recorded = Assert.Single(activity.Recorded, item => item.Category == "download.grab.rejected");
+        Assert.Contains("choose one on Search again", recorded.Message);
+        Assert.DoesNotContain("searching for another copy", recorded.Message);
+    }
+
     /// <summary>
     /// #911 acceptance: an unreachable client is a setup problem or an
     /// outage, never a bad release — it is retried, and told, never ended.
@@ -251,7 +268,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         return (poller, (storage, dispatches), blocked, activity);
     }
 
-    private static async Task InsertAsync(TestStorage storage, string id, TimeSpan grabbedAgo)
+    private static async Task InsertAsync(TestStorage storage, string id, TimeSpan grabbedAgo, string entityType = "movie")
     {
         await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs, CancellationToken.None);
         using var command = connection.CreateCommand();
@@ -262,7 +279,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
                 indexer_name, download_client_id, download_client_name, status, created_utc,
                 grab_status, grab_attempted_utc, torrent_hash_or_item_id
             ) VALUES (
-                @id, 'movies-main', 'movies', 'movie', @id, @release,
+                @id, 'movies-main', 'movies', @entityType, @id, @release,
                 'test-indexer', 'qbittorrent-main', 'qBittorrent', 'sent', @grabbed,
                 'succeeded', @grabbed, 'hash-1'
             )
@@ -270,6 +287,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
         foreach (var (name, value) in new (string, object)[]
         {
             ("@id", id),
+            ("@entityType", entityType),
             ("@release", $"{id}.2010.1080p.WEB-DL-DELUNO"),
             ("@grabbed", Start.Subtract(grabbedAgo).ToString("O"))
         })

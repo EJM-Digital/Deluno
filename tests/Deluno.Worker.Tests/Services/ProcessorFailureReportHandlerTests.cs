@@ -76,6 +76,22 @@ public sealed class ProcessorFailureReportHandlerTests
     }
 
     [Fact]
+    public async Task A_release_chosen_on_search_is_refused_but_nothing_is_searched_for_and_the_answer_says_why()
+    {
+        GivenTheDispatch("release");
+        _blocked.Setup(repo => repo.BlockAsync(It.IsAny<BlockedRelease>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((BlockedRelease release, CancellationToken _) => release with { Id = "blocked-1" });
+
+        var outcome = await Handler().HandleRejectedAsync(Report("movies"), CancellationToken.None);
+
+        Assert.True(outcome.Acted);
+        Assert.Null(outcome.SearchJobId);
+        Assert.Contains("choose one on Search again", outcome.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("searching for another copy", outcome.Message, StringComparison.Ordinal);
+        _scheduler.Verify(scheduler => scheduler.EnqueueAsync(It.IsAny<EnqueueJobRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Without_the_download_it_came_from_nothing_is_refused_and_the_answer_is_no()
     {
         _jobQueue.Setup(repo => repo.FindRecentDispatchLinkAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -207,7 +223,7 @@ public sealed class ProcessorFailureReportHandlerTests
             EntityId = "movie-1"
         };
 
-    private void GivenTheDispatch()
+    private void GivenTheDispatch(string entityType = "movie")
     {
         _jobQueue.Setup(repo => repo.FindRecentDispatchLinkAsync("qbittorrent", "Sintel.2010.1080p", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DispatchCatalogueLink("dispatch-1", "movie", "movie-1"));
@@ -218,7 +234,7 @@ public sealed class ProcessorFailureReportHandlerTests
                 Id = "dispatch-1",
                 LibraryId = "library-movies",
                 MediaType = "movies",
-                EntityType = "movie",
+                EntityType = entityType,
                 EntityId = "movie-1",
                 ReleaseName = "Sintel.2010.1080p",
                 IndexerName = "Soak Torznab",
