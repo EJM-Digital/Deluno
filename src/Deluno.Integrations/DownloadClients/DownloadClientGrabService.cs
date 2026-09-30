@@ -218,6 +218,13 @@ public sealed class DownloadClientGrabService(
                 librariesRepository, client, request.MediaType, DownloadClientHelpers.ResolveCategory(client, request), mappings, cancellationToken,
                 async token => (await FolderChainService.CheckCategoryBoundedAsync(
                     implementation, client, DownloadClientHelpers.ResolveCategory(client, request), FolderChainService.DefaultStepTimeout, token)).SavePath);
+            if (folder is not null && folder.ClientFolder is null)
+            {
+                logger?.LogWarning(
+                    "{Client} was sent no save folder for {Release}: Deluno could not confirm the client sees the same folders it does, so the client's own default applies. Add a path mapping for {Folder} to send it there.",
+                    client.Name, request.ReleaseName, folder.HostFolder);
+            }
+
             return folder?.ClientFolder is { } clientFolder ? request with { SaveFolder = clientFolder } : request;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
