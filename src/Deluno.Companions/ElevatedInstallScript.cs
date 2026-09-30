@@ -44,9 +44,11 @@ public static class ElevatedInstallScript
     /// The signer check, as PowerShell: true only when a whole CN or O value of the signer's
     /// subject is exactly the publisher. Each subject part is read on its own line, so text
     /// inside a quoted value (CN="Evil, O=SignPath Foundation") is one value and never matches.
+    /// A subject with a line break anywhere in it is refused outright: a CN holding a newline
+    /// would otherwise start a line that reads as an O= part of its own.
     /// </summary>
     public const string PublisherFunction = """
-        function Test-Publisher($cert, $wanted) { foreach ($line in ($cert.SubjectName.Format($true) -split '\r?\n')) { if ($line -match '^\s*(CN|O)=(.*)$') { $v = $Matches[2].Trim(); if ($v.Length -ge 2 -and $v.StartsWith('"') -and $v.EndsWith('"')) { $v = $v.Substring(1, $v.Length - 2).Replace('""', '"') }; if ($v -eq $wanted) { return $true } } }; return $false }
+        function Test-Publisher($cert, $wanted) { if ($cert.SubjectName.Name -match '[\x0d\x0a]') { return $false }; foreach ($line in ($cert.SubjectName.Format($true) -split '\r?\n')) { if ($line -match '^\s*(CN|O)=(.*)$') { $v = $Matches[2].Trim(); if ($v.Length -ge 2 -and $v.StartsWith('"') -and $v.EndsWith('"')) { $v = $v.Substring(1, $v.Length - 2).Replace('""', '"') }; if ($v -eq $wanted) { return $true } } }; return $false }
         """;
 
     /// <param name="asExe">Run the copy itself (a vendor .exe setup) instead of msiexec.</param>

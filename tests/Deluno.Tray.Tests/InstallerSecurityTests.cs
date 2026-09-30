@@ -133,6 +133,9 @@ public sealed partial class ComponentSetupTests
     [InlineData("CN=Not SignPath Foundation, O=Evil", false)]
     [InlineData("CN=SignPath Foundation Extra, O=Evil", false)]
     [InlineData("OU=SignPath Foundation, CN=Evil", false)]
+    // A CN holding a line break could start a line that reads as an O= part of its own.
+    [InlineData("CN=\"Evil\nO=SignPath Foundation\", O=Evil", false)]
+    [InlineData("CN=\"Evil\r\nCN=SignPath Foundation\"", false)]
     public void The_elevated_publisher_check_matches_a_whole_CN_or_O_and_never_text_inside_a_quoted_value(string subject, bool expected)
     {
         if (!OperatingSystem.IsWindows())
