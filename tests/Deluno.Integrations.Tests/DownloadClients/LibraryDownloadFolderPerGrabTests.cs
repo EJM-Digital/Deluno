@@ -226,7 +226,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         var library = Library("lib-1", LibraryFolder) with { ImportWorkflow = "refine-before-import", ProcessorName = "Weir" };
         var processors = Processors(
             new ProcessorConnectionItem("proc-1", "Weir", "generic", "http://weir.test/intake/webhook/deluno", "Authorization", null, true, "healthy", null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch),
-            [ProcMapping("m1", @"C:DownloadsCompleted", "/downloads", true, 1), ProcMapping("m2", @"E:WeirReady", "/ready", false, 2)]);
+            [ProcMapping("m1", @"C:\Downloads\Completed", "/downloads", true, 1), ProcMapping("m2", @"E:\Weir\Ready", "/ready", false, 2)]);
         var service = new FolderChainService(Libraries([library]), Connections("deluge", []), Registry(FakeClient(true, null).Object), processors);
 
         var listed = Assert.Single((await service.ListDestinationsAsync(null, CancellationToken.None))!);
@@ -234,7 +234,7 @@ public sealed class LibraryDownloadFolderPerGrabTests
         Assert.Equal("proc-1", listed.ProcessorConnection!.Id);
         Assert.Equal("Weir", listed.ProcessorConnection.Name);
         var mapping = Assert.Single(listed.ProcessorConnection.PathMappings);
-        Assert.Equal(@"C:DownloadsCompleted", mapping.DelunoPath);
+        Assert.Equal(@"C:\Downloads\Completed", mapping.DelunoPath);
         Assert.Equal("/downloads", mapping.ProcessorPath);
     }
 
