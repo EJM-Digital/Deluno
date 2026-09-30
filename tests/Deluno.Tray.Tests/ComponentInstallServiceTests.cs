@@ -1,3 +1,4 @@
+using Deluno.Companions;
 using Deluno.Api.Network;
 using Deluno.Tray;
 using Xunit;
@@ -84,7 +85,7 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: true),
             processes);
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
         Assert.False(processes.WasCalled);
@@ -102,7 +103,7 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: false),
             processes);
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
         Assert.False(processes.WasCalled);
@@ -120,12 +121,17 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: true),
             processes);
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         Assert.True(processes.WasCalled);
-        Assert.Equal("/S", processes.LastArguments);
+        // Run from the locked folder, never straight from the download (#1061).
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, processes.LastPath);
+        Assert.Contains("-ArgumentList '/S'", Script(processes.LastArguments!));
     }
+
+    private static string Script(string arguments)
+        => System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(arguments[(arguments.IndexOf("-EncodedCommand ", StringComparison.Ordinal) + 16)..]));
 
     [Fact]
     public async Task A_pinned_checksum_that_does_not_match_is_refused_even_when_signed()
@@ -157,7 +163,7 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: true),
             processes);
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
     }
@@ -174,14 +180,13 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: true),
             processes);
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, FileName = "test-client.msi" }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", FileName = "test-client.msi" }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         // msiexec runs from inside the elevated PowerShell step (#1061), on a protected copy.
-        Assert.Equal("powershell.exe", processes.LastPath);
-        var arguments = processes.LastArguments!;
-        var script = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(arguments[(arguments.IndexOf("-EncodedCommand ", StringComparison.Ordinal) + 16)..]));
-        Assert.Contains("'msiexec.exe'", script);
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, processes.LastPath);
+        var script = Script(processes.LastArguments!);
+        Assert.Contains(@"System32\msiexec.exe", script);
         Assert.Contains("'" + downloadedPath + "'", script);
         Assert.Contains("ALLUSERS=1", script);
         Assert.Contains("/S", script); // the manifest's own silentArgs still applies
@@ -189,7 +194,7 @@ public sealed class ComponentInstallServiceTests
     }
 
     [Fact]
-    public async Task A_non_msi_installer_still_runs_directly()
+    public async Task A_vendor_exe_is_run_from_the_locked_folder_and_never_straight_from_the_download()
     {
         var downloadedPath = WriteTempFile(new byte[20], ".exe");
         var processes = new RecordingProcesses(exitCode: 0);
@@ -200,10 +205,75 @@ public sealed class ComponentInstallServiceTests
             new FakeSignatures(signed: true),
             processes);
 
-        await service.InstallAsync(Spec with { MustBeSigned = true }, CancellationToken.None);
+        await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher" }, CancellationToken.None);
+
+        Assert.NotEqual(downloadedPath, processes.LastPath);
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, processes.LastPath);
+        var script = Script(processes.LastArguments!);
+        Assert.Contains("Copy-Item -LiteralPath '" + downloadedPath + "'", script);
+        Assert.Contains("Start-Process -FilePath $copy", script);
+        Assert.Contains("Get-AuthenticodeSignature -LiteralPath $copy", script);
+        Assert.Contains("Test-Publisher $sig.SignerCertificate 'Test Publisher'", script);
+        Assert.True(script.IndexOf("Get-FileHash", StringComparison.Ordinal) < script.IndexOf("Start-Process", StringComparison.Ordinal));
+        Assert.Contains("Remove-Item -LiteralPath $fresh -Recurse", script);
+    }
+
+    [Fact]
+    public async Task A_pinned_exe_is_run_from_the_locked_folder_after_its_hash_is_checked_there()
+    {
+        var downloadedPath = WriteTempFile(new byte[20], ".exe");
+        var expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(downloadedPath)));
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: false), processes);
+
+        var result = await service.InstallAsync(Spec with { Sha256 = expected }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
+        var script = Script(processes.LastArguments!);
+        Assert.Contains($"'{expected}'", script);
+        Assert.DoesNotContain("Get-AuthenticodeSignature", script);
+        Assert.Contains("Start-Process -FilePath $copy", script);
+    }
+
+    [Fact]
+    public async Task An_installer_that_installs_for_the_signed_in_person_alone_is_not_raised_by_Deluno()
+    {
+        var downloadedPath = WriteTempFile(new byte[20], ".exe");
+        var expected = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(downloadedPath)));
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: false), processes);
+
+        await service.InstallAsync(Spec with { Sha256 = expected, RunsElevated = false }, CancellationToken.None);
 
         Assert.Equal(downloadedPath, processes.LastPath);
         Assert.Equal("/S", processes.LastArguments);
+    }
+
+    [Fact]
+    public async Task A_signature_rule_that_names_no_publisher_and_has_no_checksum_is_refused()
+    {
+        var downloadedPath = WriteTempFile(new byte[20], ".exe");
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(new FakePrograms(), new FakePorts(), new RecordingDownloader(downloadedPath), new FakeSignatures(signed: true), processes);
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = null }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
+    }
+
+    [Fact]
+    public async Task A_prerequisite_signature_rule_that_names_no_publisher_is_refused()
+    {
+        var downloader = new SequencedDownloader(WriteTempFile(new byte[20]), WriteTempFile(new byte[20]));
+        var processes = new RecordingProcesses(exitCode: 0);
+        var service = new ComponentInstallService(new FakePrograms(), new FakePorts(), downloader, new FakeSignatures(signed: true), processes,
+            prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
+
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite with { ExpectedPublisher = null } }, CancellationToken.None);
+
+        Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
+        Assert.False(processes.WasCalled);
     }
 
     [Fact]
@@ -222,7 +292,7 @@ public sealed class ComponentInstallServiceTests
 
         var spec = Spec with
         {
-            MustBeSigned = true,
+            MustBeSigned = true, ExpectedPublisher = "Test Publisher",
             ConfigFilePath = "%TEST_CONFIG_DIR%\\client.ini",
             ConfigFileContent = "[Preferences]\nWebUI\\Enabled=true\n"
         };
@@ -251,7 +321,7 @@ public sealed class ComponentInstallServiceTests
 
         var spec = Spec with
         {
-            MustBeSigned = true,
+            MustBeSigned = true, ExpectedPublisher = "Test Publisher",
             PreStartCommand = "%TEST_DAEMON_HOME%\\deluged.exe",
             PostInstallCommand = "%TEST_DAEMON_HOME%\\deluge-web.exe",
             PostInstallArgs = "--port 8112",
@@ -272,7 +342,7 @@ public sealed class ComponentInstallServiceTests
         DisplayName = "Test Processor",
         Kind = "test-processor",
         UninstallDisplayNameHint = "Test Processor",
-        MustBeSigned = true,
+        MustBeSigned = true, ExpectedPublisher = "Test Publisher",
         PostInstallCommand = "%TEST_PROCESSOR_HOME%\\Test.exe",
         PostInstallArgs = "--port 9999 --silent",
         ReadinessUrl = "http://127.0.0.1:9999/ready",
@@ -378,7 +448,8 @@ public sealed class ComponentInstallServiceTests
         MustBeSigned: true,
         SilentArgs: "/install /quiet /norestart",
         SkipRegistryKeyPath: "SOFTWARE\\Test\\Runtime",
-        SkipRegistryValueName: "Installed");
+        SkipRegistryValueName: "Installed",
+        ExpectedPublisher: "Test Publisher");
 
     [Fact]
     public async Task A_present_prerequisite_is_skipped_without_downloading_anything()
@@ -394,7 +465,7 @@ public sealed class ComponentInstallServiceTests
             processes,
             prerequisiteRegistry: new FakePrerequisiteRegistry(present: true));
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         // Only the component's own installer ran -- the prerequisite's own
@@ -420,12 +491,19 @@ public sealed class ComponentInstallServiceTests
             processes,
             prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         Assert.Equal(2, downloader.CallCount);
         Assert.Equal(Spec.Url, downloader.Urls[0]);
         Assert.Equal(Prerequisite.Url, downloader.Urls[1]);
+        // The runtime goes through the same locked-folder run, re-hashed and re-verified on the exact copy that runs.
+        var prerequisiteScript = Script(processes.Arguments[0]!);
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, processes.Paths[0]);
+        Assert.Contains("Get-FileHash", prerequisiteScript);
+        Assert.Contains("Test-Publisher $sig.SignerCertificate 'Test Publisher'", prerequisiteScript);
+        Assert.Contains("-ArgumentList '/install /quiet /norestart'", prerequisiteScript);
+        Assert.Contains("@(3010) -contains $code", prerequisiteScript);
     }
 
     [Fact]
@@ -445,7 +523,7 @@ public sealed class ComponentInstallServiceTests
             processes,
             prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.VerificationFailed, result.Outcome);
         Assert.False(processes.WasCalled);
@@ -466,7 +544,7 @@ public sealed class ComponentInstallServiceTests
             processes,
             prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
     }
@@ -486,7 +564,7 @@ public sealed class ComponentInstallServiceTests
             processes,
             prerequisiteRegistry: new FakePrerequisiteRegistry(present: false));
 
-        var result = await service.InstallAsync(Spec with { MustBeSigned = true, Prerequisite = Prerequisite }, CancellationToken.None);
+        var result = await service.InstallAsync(Spec with { MustBeSigned = true, ExpectedPublisher = "Test Publisher", Prerequisite = Prerequisite }, CancellationToken.None);
 
         Assert.Equal(ComponentInstallOutcome.InstallerFailed, result.Outcome);
         // Only the prerequisite ran -- the component's own installer never got a turn.
@@ -572,12 +650,16 @@ public sealed class ComponentInstallServiceTests
         public bool WasCalled { get; private set; }
         public string? LastPath { get; private set; }
         public string? LastArguments { get; private set; }
+        public List<string> Paths { get; } = [];
+        public List<string?> Arguments { get; } = [];
 
         public Task<int?> RunAsync(string path, string? arguments, TimeSpan timeout, CancellationToken cancellationToken)
         {
             WasCalled = true;
             LastPath = path;
             LastArguments = arguments;
+            Paths.Add(path);
+            Arguments.Add(arguments);
             return Task.FromResult(exitCode);
         }
     }

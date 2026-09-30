@@ -1,3 +1,4 @@
+using Deluno.Companions;
 using System.Text;
 using System.Text.Json;
 using Deluno.Api.Network;
@@ -106,6 +107,47 @@ public sealed partial class ComponentSetupTests
     }
 
     [Fact]
+    public void A_signature_check_with_no_named_publisher_is_refused_rather_than_accepting_any_trusted_signer()
+    {
+        Assert.Throws<ArgumentException>(() => ElevatedInstallScript.Build(@"C:\dl\a.exe", "ABCD", "/S", null, null, requireSignature: true, asExe: true));
+        Assert.Throws<ArgumentException>(() => ElevatedInstallScript.Build(@"C:\dl\a.exe", "ABCD", "/S", null, "  ", requireSignature: true, asExe: true));
+    }
+
+    [Fact]
+    public void The_elevated_launch_uses_the_full_path_to_Windows_PowerShell_and_msiexec()
+    {
+        Assert.True(Path.IsPathFullyQualified(ElevatedInstallScript.PowerShellPath));
+        Assert.EndsWith(Path.Combine("WindowsPowerShell", "v1.0", "powershell.exe"), ElevatedInstallScript.PowerShellPath, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(Environment.SystemDirectory, ElevatedInstallScript.PowerShellPath, StringComparison.OrdinalIgnoreCase);
+        var script = ElevatedInstallScript.Build(@"C:\dl\a.msi", "ABCD", "/qn", null);
+        Assert.Contains(@"(Join-Path $env:SystemRoot 'System32\msiexec.exe')", script);
+        Assert.DoesNotContain("-FilePath 'msiexec.exe'", script);
+    }
+
+    [Theory]
+    [InlineData("CN=SignPath Foundation, O=SignPath Foundation, L=Lewes, S=Delaware, C=US", true)]
+    [InlineData("O=\"SignPath Foundation\", CN=Some Product", true)]
+    [InlineData("CN=signpath foundation", true)]
+    [InlineData("CN=\"Evil, O=SignPath Foundation\", O=Evil, C=US", false)]
+    [InlineData("CN=\"Evil, CN=SignPath Foundation\"", false)]
+    [InlineData("CN=Not SignPath Foundation, O=Evil", false)]
+    [InlineData("CN=SignPath Foundation Extra, O=Evil", false)]
+    [InlineData("OU=SignPath Foundation, CN=Evil", false)]
+    public void The_elevated_publisher_check_matches_a_whole_CN_or_O_and_never_text_inside_a_quoted_value(string subject, bool expected)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var script = ElevatedInstallScript.PublisherFunction + Environment.NewLine
+            + $"$c = [pscustomobject]@{{ SubjectName = New-Object System.Security.Cryptography.X509Certificates.X500DistinguishedName('{subject.Replace("'", "''")}') }}" + Environment.NewLine
+            + "if (Test-Publisher $c 'SignPath Foundation') { exit 0 } else { exit 7 }";
+
+        Assert.Equal(expected ? 0 : 7, RunPowerShell(script));
+    }
+
+    [Fact]
     public void An_installer_checked_only_by_its_signature_names_the_publisher_it_must_be_signed_by()
     {
         foreach (var spec in BundledComponents.Load().Where(s => s.MustBeSigned && s.Sha256 is null
@@ -118,6 +160,29 @@ public sealed partial class ComponentSetupTests
         var prerequisite = Load("transmission").Prerequisite!;
         Assert.True(prerequisite.MustBeSigned);
         Assert.Equal("Microsoft Corporation", prerequisite.ExpectedPublisher);
+    }
+
+    [Fact]
+    public void Every_manifest_component_and_prerequisite_has_a_hash_or_a_named_publisher_and_only_Weir_is_run_without_elevation()
+    {
+        foreach (var spec in BundledComponents.Load())
+        {
+            var hashed = !string.IsNullOrWhiteSpace(spec.Sha256) || !string.IsNullOrWhiteSpace(spec.GithubChecksumAsset)
+                || !string.IsNullOrWhiteSpace(spec.GithubChecksumAssetPattern) || !string.IsNullOrWhiteSpace(spec.ChecksumSuffix);
+            Assert.True(hashed || (spec.MustBeSigned && !string.IsNullOrWhiteSpace(spec.ExpectedPublisher)), spec.Kind + " has no hash and no named publisher");
+            // A signature rule with no hash beside it must always name who signs it.
+            if (spec.MustBeSigned && !hashed)
+            {
+                Assert.False(string.IsNullOrWhiteSpace(spec.ExpectedPublisher), spec.Kind);
+            }
+
+            if (spec.Prerequisite is { } prerequisite)
+            {
+                Assert.True(prerequisite.MustBeSigned && !string.IsNullOrWhiteSpace(prerequisite.ExpectedPublisher), spec.Kind + "'s prerequisite has no named publisher");
+            }
+
+            Assert.Equal(spec.Kind != "weir", spec.RunsElevated);
+        }
     }
 
     [Fact]
@@ -297,7 +362,7 @@ public sealed partial class ComponentSetupTests
         Assert.True(At("Get-FileHash") < At("Get-AuthenticodeSignature -LiteralPath $copy"));
         Assert.True(At("Get-AuthenticodeSignature") < At("msiexec.exe"));
         Assert.Contains("$sig.Status -ne 'Valid'", script);
-        Assert.Contains("[regex]::Escape('SignPath Foundation')", script);
+        Assert.Contains("Test-Publisher $sig.SignerCertificate 'SignPath Foundation'", script);
         Assert.Contains($"$code = {ElevatedInstallScript.SignatureExitCode}", script);
         Assert.DoesNotContain("Get-AuthenticodeSignature", ElevatedInstallScript.Build("C:\\dl\\a.msi", "ABCD", "/qn", null));
     }

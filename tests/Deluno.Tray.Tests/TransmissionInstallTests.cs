@@ -1,3 +1,4 @@
+using Deluno.Companions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -45,7 +46,7 @@ public sealed partial class ComponentSetupTests
         var script = ElevatedInstallScript.Build("C:\\t\\tr.msi", "ABC123", "/qn ADDLOCAL=CommonLibs,Daemon,WebUi", "Transmission");
         var lines = script.Split("\n");
 
-        var msi = Array.FindIndex(lines, l => l.Contains("Start-Process -FilePath 'msiexec.exe'", StringComparison.Ordinal));
+        var msi = Array.FindIndex(lines, l => l.Contains(@"Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe')", StringComparison.Ordinal));
         var check = Array.FindIndex(lines, l => l.StartsWith("if ($code -ne 0) { exit $code }", StringComparison.Ordinal));
         var stop = Array.FindIndex(lines, l => l.Contains("Stop-Service -Name 'Transmission'", StringComparison.Ordinal));
         Assert.True(msi >= 0 && check > msi && stop > check, "install, then check the result, then stop the service");
@@ -69,7 +70,7 @@ public sealed partial class ComponentSetupTests
         Assert.Equal(ComponentInstallOutcome.Installed, result.Outcome);
         Assert.Equal(1, runner.ElevatedCalls);
         Assert.Equal(0, runner.PlainCalls);
-        Assert.Equal("powershell.exe", runner.LastPath);
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, runner.LastPath);
         Assert.Contains("-EncodedCommand", runner.LastArguments);
         Assert.False(File.Exists(download + ".install.cmd"), "no script file is left in the user's temp folder to be swapped");
     }

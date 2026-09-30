@@ -89,7 +89,9 @@ public sealed record BundledComponentSpec(
     /// <summary>A Windows service the component's own package installs and starts that Deluno does not want (Transmission's MSI registers an auto-start service bound to every address). It is stopped and disabled in the same elevated step as the install, and Deluno runs the daemon itself, bound to this computer only.</summary>
     [property: JsonPropertyName("disableServiceAfterInstall")] string? DisableServiceAfterInstall = null,
     /// <summary>The publisher name the installer's signing certificate must carry (a piece of its subject) when it is verified by signature rather than a pinned checksum.</summary>
-    [property: JsonPropertyName("expectedPublisher")] string? ExpectedPublisher = null)
+    [property: JsonPropertyName("expectedPublisher")] string? ExpectedPublisher = null,
+    /// <summary>Whether the installer is run with administrator rights, which means it is run from a fresh folder only administrators can write, checked on the exact copy that runs (#1061). False only for an installer that installs for the signed-in person alone (Weir's Setup): Deluno does not raise it, so there is nothing to protect by raising it.</summary>
+    [property: JsonPropertyName("runsElevated")] bool RunsElevated = true)
 {
     /// <summary>The manifest's own key, e.g. "qbittorrent" -- filled in by <see cref="BundledComponents.Load"/>.</summary>
     [JsonIgnore]

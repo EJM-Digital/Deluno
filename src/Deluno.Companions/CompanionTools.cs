@@ -73,7 +73,21 @@ public abstract class DownloadClientCompanion(
         var installer = await downloader.DownloadAsync(artifact, context.DownloadFolder, cancellationToken);
 
         context.Progress.Report("install", $"Installing {Name}. Windows will ask for permission, because it installs for everyone on this computer.");
-        var result = await system.RunElevatedAsync(installer, "/S", cancellationToken);
+        // Never straight from the download folder: the installer is copied into a fresh folder only administrators
+        // can write, checked there against the pinned hash, run from there, and the folder is deleted (#1061).
+        var script = ElevatedInstallScript.Build(installer, artifact.Sha256, "/S", null, asExe: true);
+        var result = await system.RunElevatedAsync(ElevatedInstallScript.PowerShellPath, ElevatedInstallScript.PowerShellArguments(script), cancellationToken);
+        TryDeleteInstaller(installer);
+        if (result.ExitCode is ElevatedInstallScript.HashMismatchExitCode)
+        {
+            throw new CompanionStepException($"The {Name} installer changed after it was checked, so Deluno did not run it. Nothing was installed.");
+        }
+
+        if (result.ExitCode is ElevatedInstallScript.ReparsePointExitCode or ElevatedInstallScript.FolderExitCode)
+        {
+            throw new CompanionStepException($"Deluno could not make a safe folder to run the {Name} installer from, so it did not run it. Nothing was installed.");
+        }
+
         if (result.Declined)
         {
             throw new CompanionStepException($"Windows asked for permission to install {Name} and it was not given. Nothing was installed.");
@@ -82,6 +96,18 @@ public abstract class DownloadClientCompanion(
         if (result.ExitCode != 0 || !system.FileExists(installedPath))
         {
             throw new CompanionStepException($"The {Name} installer finished with code {result.ExitCode} and {Name} is not where it should be.");
+        }
+    }
+
+    private static void TryDeleteInstaller(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Left behind; it is only the vendor's own installer, and nothing runs it again.
         }
     }
 

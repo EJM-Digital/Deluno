@@ -58,6 +58,37 @@ public sealed class CompanionToolTests : IDisposable
         Assert.Null(right);
     }
 
+    /// <summary>#1061: the older "Get the tools you need" path never runs an installer straight from the download folder.</summary>
+    [Theory]
+    [InlineData("qbittorrent")]
+    [InlineData("sabnzbd")]
+    public async Task An_installer_is_run_from_a_locked_folder_after_its_pinned_hash_is_checked_there(string kind)
+    {
+        var system = new FakeSystem(installed: false);
+        ICompanionTool tool = kind == "qbittorrent"
+            ? new QbittorrentCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder))
+            : new SabnzbdCompanion(system, NoClients(), Mock.Of<ICompanionLoginStore>(), new StubDownloader(_folder));
+
+        try
+        {
+            await tool.RunAsync(Context(), CancellationToken.None);
+        }
+        catch (CompanionStepException)
+        {
+            // The fake reports the app as still missing afterwards; only the installer launch is being checked.
+        }
+
+        Assert.Equal(1, system.Elevated);
+        Assert.Equal(ElevatedInstallScript.PowerShellPath, system.ElevatedPath);
+        var arguments = system.ElevatedArguments!;
+        var script = Encoding.Unicode.GetString(Convert.FromBase64String(arguments[(arguments.IndexOf("-EncodedCommand ", StringComparison.Ordinal) + 16)..]));
+        var artifact = kind == "qbittorrent" ? CompanionCatalog.Qbittorrent : CompanionCatalog.Sabnzbd;
+        Assert.Contains($"'{artifact.Sha256}'", script, StringComparison.Ordinal);
+        Assert.Contains("Copy-Item -LiteralPath", script, StringComparison.Ordinal);
+        Assert.Contains("Start-Process -FilePath $copy -ArgumentList '/S'", script, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item -LiteralPath $fresh -Recurse", script, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_declined_permission_prompt_installs_nothing_and_says_so()
     {
@@ -153,6 +184,8 @@ public sealed class CompanionToolTests : IDisposable
         public List<string> Written { get; } = [];
         public bool Declines { get; init; }
         public int Elevated { get; private set; }
+        public string? ElevatedPath { get; private set; }
+        public string? ElevatedArguments { get; private set; }
 
         public string ProgramFiles => @"C:\Program Files";
         public string RoamingAppData => @"C:\Users\test\AppData\Roaming";
@@ -174,6 +207,8 @@ public sealed class CompanionToolTests : IDisposable
         public Task<CompanionRunResult> RunElevatedAsync(string path, string arguments, CancellationToken cancellationToken)
         {
             Elevated++;
+            ElevatedPath = path;
+            ElevatedArguments = arguments;
             return Task.FromResult(new CompanionRunResult(Declines ? 1223 : 0, Declines));
         }
 
