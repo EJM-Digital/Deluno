@@ -37,7 +37,7 @@ export function SpeedChart({ samples, summary }: { samples: DownloadThroughputSa
   const summaryText = `Download peaked at ${formatSpeed(series.peakDown)} and upload at ${formatSpeed(series.peakUp)} in the last ${HOURS} hours.`;
 
   return (
-    <Panel title={`Speed, last ${HOURS} hours`} count={`peak ${formatSpeed(series.peakDown)}`} to="/queue" toLabel="Transfers">
+    <Panel title="Speed" count={<span className="whitespace-nowrap">{`${HOURS} h, peak ${formatSpeed(series.peakDown)}`}</span>} to="/queue" toLabel="Transfers">
       <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] pb-2 pt-2">
         <div className="relative min-h-0 flex-1">
           <svg role="img" aria-label={summaryText} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">

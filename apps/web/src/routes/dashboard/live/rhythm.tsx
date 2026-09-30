@@ -22,8 +22,8 @@ export function Rhythm({ rows }: { rows: RhythmRow[] }) {
 
   return (
     <Panel
-      title="Today's activity"
-      count={total > 0 ? <CountUp value={total} format={(value) => `${Math.round(value).toLocaleString("en-AU")} events`} /> : "by the hour"}
+      title="Today"
+      count={<span className="whitespace-nowrap">{total > 0 ? <CountUp value={total} format={(value) => `${Math.round(value).toLocaleString("en-AU")} events`} /> : "by the hour"}</span>}
       to="/activity"
       toLabel="Activity"
     >
@@ -44,11 +44,12 @@ export function Rhythm({ rows }: { rows: RhythmRow[] }) {
           <div aria-hidden className="mt-1 flex justify-between text-[length:var(--type-caption)] text-muted-foreground tabular-nums">
             <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
           </div>
-          <ul className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+          <ul className="mt-1.5 flex h-5 items-center gap-x-2.5 overflow-hidden whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">
             {byKind.map((entry) => (
-              <li key={entry.kind} className="inline-flex items-center gap-1.5">
+              <li key={entry.kind} title={KIND_STYLE[entry.kind].label} className="inline-flex items-center gap-1">
                 <span aria-hidden className={cn("h-2 w-2 rounded-full", KIND_STYLE[entry.kind].fill)} />
-                {KIND_STYLE[entry.kind].label} <span className="font-medium tabular-nums text-foreground">{entry.count.toLocaleString("en-AU")}</span>
+                <span className="sr-only">{KIND_STYLE[entry.kind].label}</span>
+                <span className="font-medium tabular-nums text-foreground">{entry.count.toLocaleString("en-AU")}</span>
               </li>
             ))}
           </ul>

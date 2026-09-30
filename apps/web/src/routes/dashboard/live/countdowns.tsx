@@ -93,7 +93,7 @@ export function Countdowns({ summary }: { summary: DashboardSummary | undefined 
   const now = useNow(1000);
   const rows = buildCountdownRows(summary);
   return (
-    <Panel title="Next runs" count={rows.length > 0 ? "counting down" : undefined} to="/?tab=system" toLabel="Schedule">
+    <Panel title="Next runs" to="/?tab=system" toLabel="Schedule">
       {rows.length === 0 ? (
         <Plain>Nothing is scheduled. Searches and tasks that are switched off do not count down.</Plain>
       ) : (

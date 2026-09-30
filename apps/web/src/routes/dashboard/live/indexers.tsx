@@ -22,10 +22,10 @@ export function indexerAnswer(indexer: IndexerItem, now: number): { tone: Tone; 
 
 export function Indexers({ indexers, summary, now }: { indexers: IndexerItem[]; summary: DashboardSummary | undefined; now: number }) {
   const stats = summary?.indexers;
-  const count = stats ? `${stats.queriesToday.toLocaleString("en-AU")} asked today${stats.failedQueriesToday > 0 ? `, ${stats.failedQueriesToday.toLocaleString("en-AU")} failed` : ""}` : undefined;
+  const count = stats ? (stats.failedQueriesToday > 0 ? `${stats.failedQueriesToday.toLocaleString("en-AU")} failed today` : `${stats.queriesToday.toLocaleString("en-AU")} asked today`) : undefined;
   const sorted = [...indexers].sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled) || a.priority - b.priority);
   return (
-    <Panel title="Indexers" count={count} to="/indexers/indexers" toLabel="Find & Download">
+    <Panel title="Indexers" count={count ? <span className="whitespace-nowrap">{count}</span> : undefined} to="/indexers/indexers" toLabel="Manage">
       {sorted.length === 0 ? (
         <Plain>No indexers are set up, so nothing can be searched for.</Plain>
       ) : (
