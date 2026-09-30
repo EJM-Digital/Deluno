@@ -299,7 +299,6 @@ export function buildClientSavePayload(form: ClientForm) {
 /** The body of PUT/POST /api/indexer-proxies — a proxy has no separate Test action, so this is only ever a save. */
 export function buildProxySavePayload(form: ProxyForm) {
   return {
-    name: form.name.trim(),
     proxyType: form.proxyType,
     address: form.address.trim(),
     username: form.username.trim() || null,
@@ -1265,7 +1264,7 @@ export function IndexersPage() {
         title={
           drawer.kind === "indexer" ? editingIndexer?.name ?? (indexerForm.name || "New indexer")
           : drawer.kind === "client" ? editingClient?.name ?? (clientForm.name || "New download client")
-          : drawer.kind === "proxy" ? editingProxy?.name ?? (proxyForm.name || "New proxy")
+          : drawer.kind === "proxy" ? editingProxy?.name ?? "New proxy"
           : drawer.kind === "routing" ? routingLibrary?.name ?? "Library routing"
           : ""
         }

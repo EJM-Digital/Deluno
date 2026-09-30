@@ -1520,7 +1520,7 @@ public sealed class SqliteConnectionsRepository(
         var now = timeProvider.GetUtcNow();
         var item = new ProxyItem(
             Id: Guid.CreateVersion7().ToString("N"),
-            Name: NormalizeName(request.Name) ?? "New proxy",
+            Name: string.Empty,
             ProxyType: ProxyTypes.Normalize(request.ProxyType),
             Address: NormalizePath(request.Address) ?? string.Empty,
             Username: NormalizeBlankToNull(request.Username),
@@ -1532,6 +1532,12 @@ public sealed class SqliteConnectionsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        var (baseName, port) = ProxyTypes.AutomaticName(item.ProxyType, item.Address);
+        item = item with
+        {
+            Name = ConnectionNames.Unique(baseName, port, item.Id, await ConnectionNameRows.OtherNamesAsync(connection, "indexer_proxies", item.Id, cancellationToken))
+        };
 
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -1569,7 +1575,6 @@ public sealed class SqliteConnectionsRepository(
             .FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is null) return null;
 
-        var newName = NormalizeName(request.Name) ?? existing.Name;
         var newType = request.ProxyType is not null ? ProxyTypes.Normalize(request.ProxyType) : existing.ProxyType;
         var newAddress = NormalizeBlankToNull(request.Address) ?? existing.Address;
         var newUsername = request.Username is not null ? NormalizeBlankToNull(request.Username) : existing.Username;
@@ -1581,6 +1586,9 @@ public sealed class SqliteConnectionsRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+
+        var (baseName, port) = ProxyTypes.AutomaticName(newType, newAddress);
+        var newName = ConnectionNames.Unique(baseName, port, id, await ConnectionNameRows.OtherNamesAsync(connection, "indexer_proxies", id, cancellationToken));
 
         using var command = connection.CreateCommand();
         command.CommandText =

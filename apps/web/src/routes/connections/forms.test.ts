@@ -334,21 +334,21 @@ describe("proxy form", () => {
     };
   }
 
-  it("a new proxy is not valid until it has a name and an address", () => {
+  it("a new proxy is not valid until it has an address", () => {
     expect(proxyFormErrors(emptyProxyForm())).not.toEqual({});
-    expect(proxyFormErrors({ ...emptyProxyForm(), name: "Proxy", address: "http://a.test:8080" })).toEqual({});
+    expect(proxyFormErrors({ ...emptyProxyForm(), address: "http://a.test:8080" })).toEqual({});
   });
 
   it("round-trips a saved proxy into the form, with password always blank", () => {
     const form = proxyFormFrom(proxyItem({ username: "user", hasPassword: true }));
-    expect(form).toEqual({ name: "Home SOCKS5", proxyType: "socks5", address: "socks5://192.168.1.1:1080", username: "user", password: "", isEnabled: true });
+    expect(form).toEqual({ proxyType: "socks5", address: "socks5://192.168.1.1:1080", username: "user", password: "", isEnabled: true });
   });
 
   it("sameProxy ignores nothing but the form's own fields", () => {
     const a = proxyFormFrom(proxyItem());
     const b = proxyFormFrom(proxyItem());
     expect(sameProxy(a, b)).toBe(true);
-    expect(sameProxy(a, { ...b, name: "Renamed" })).toBe(false);
+    expect(sameProxy(a, { ...b, address: "socks5://192.168.1.2:1080" })).toBe(false);
   });
 });
 

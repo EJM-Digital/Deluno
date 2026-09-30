@@ -181,7 +181,6 @@ export function sameSet(a: string[], b: string[]) { return a.length === b.length
 // ── Indexer Proxies (#748) ──────────────────────────────────────────────────
 
 export interface ProxyForm {
-  name: string;
   proxyType: "http" | "socks4" | "socks5" | "flaresolverr";
   address: string;
   username: string;
@@ -189,12 +188,11 @@ export interface ProxyForm {
   password: string;
   isEnabled: boolean;
 }
-export function emptyProxyForm(): ProxyForm { return { name: "", proxyType: "http", address: "", username: "", password: "", isEnabled: true }; }
-export function proxyFormFrom(item: ProxyItem): ProxyForm { return { name: item.name, proxyType: item.proxyType, address: item.address, username: item.username ?? "", password: "", isEnabled: item.isEnabled }; }
+export function emptyProxyForm(): ProxyForm { return { proxyType: "http", address: "", username: "", password: "", isEnabled: true }; }
+export function proxyFormFrom(item: ProxyItem): ProxyForm { return { proxyType: item.proxyType, address: item.address, username: item.username ?? "", password: "", isEnabled: item.isEnabled }; }
 export function sameProxy(a: ProxyForm, b: ProxyForm) { return (Object.keys(a) as (keyof ProxyForm)[]).every((key) => a[key] === b[key]); }
 export function proxyFormErrors(form: ProxyForm): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (!form.name.trim()) errors.name = "Give this proxy a name.";
   if (!form.address.trim()) errors.address = "Add the address Deluno should send requests through.";
   return errors;
 }
