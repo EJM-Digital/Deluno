@@ -49,6 +49,21 @@ export function categoryLabel(category: string): string {
 }
 
 /**
+ * What one activity event is called on screen (#1086). The backend writes the
+ * plain-words `label` for every kind of event in one place and sends it on each
+ * event; screens show that and never the raw `category` code. An event that
+ * arrives without one (an older build, or a kind nobody has labelled yet)
+ * still reads as words: its area, or just "Activity".
+ */
+export function eventLabel(event: { category: string; label?: string | null }): string {
+  const label = event.label?.trim();
+  if (label) return label;
+  const area = event.category.trim().toLowerCase().split(/[._s-]+/)[0] ?? "";
+  const known = CATEGORY_AREAS[area];
+  return known ? `${known} activity` : "Activity";
+}
+
+/**
  * The event-type filter Activity's history gains in #798, cutting across
  * category prefixes the way Radarr/Sonarr's History filter does — "grabbed",
  * "imported", "failed", "rejected" — rather than one option per raw category

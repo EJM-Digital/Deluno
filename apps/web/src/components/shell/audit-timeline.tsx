@@ -29,6 +29,7 @@ import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import type { ActivityEventItem } from "../../lib/api";
+import { eventLabel } from "../../lib/activity-format";
 
 /* ── Types ───────────────────────────────────────────────────────── */
 type Severity = "info" | "success" | "warning" | "error";
@@ -46,6 +47,8 @@ export interface TimelineEvent {
   id: string;
   message: string;
   category: Category;
+  /** The kind of event in plain words (#1086). `category` is only the group used for colour and filtering. */
+  label?: string;
   severity: Severity;
   detail?: string;
   createdUtc: string;
@@ -56,6 +59,7 @@ function apiToTimeline(item: ActivityEventItem): TimelineEvent {
     id: item.id,
     message: item.message,
     category: normalizeCategory(item.category ?? "system"),
+    label: eventLabel(item),
     severity: severityForCategory(item.category ?? "system"),
     detail: item.detailsJson ?? undefined,
     createdUtc: item.createdUtc
@@ -148,7 +152,10 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
 
   const converted = useMemo(() => events.map(apiToTimeline), [events]);
   const all = useMemo(() => {
-    const combined = [...liveEvents, ...converted];
+    // A live event carries the raw code as its category; group it the way the
+    // fetched ones are, and name it from the plain-words label it arrived with.
+    const live = liveEvents.map((e) => ({ ...e, label: e.label ?? eventLabel({ category: e.category }), category: normalizeCategory(e.category) }));
+    const combined = [...live, ...converted];
     /* deduplicate by id, keep order */
     const seen = new Set<string>();
     return combined.filter((e) => {
@@ -165,7 +172,7 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
         if (sevFilter !== "all" && e.severity !== sevFilter) return false;
         if (query) {
           const q = query.toLowerCase();
-          return e.message.toLowerCase().includes(q) || e.category.toLowerCase().includes(q);
+          return e.message.toLowerCase().includes(q) || (e.label ?? e.category).toLowerCase().includes(q);
         }
         return true;
       })
@@ -288,8 +295,8 @@ export function AuditTimeline({ events, liveEvents = [], maxVisible = 200 }: Aud
                   </div>
 
                   <div className="mt-0.5 flex items-center gap-2 text-[length:var(--type-caption)] text-muted-foreground">
-                    <span className="rounded-full border border-hairline px-1.5 py-0.5 capitalize">
-                      {event.category}
+                    <span className="rounded-full border border-hairline px-1.5 py-0.5">
+                      {event.label ?? eventLabel({ category: event.category })}
                     </span>
                     <span title={absoluteTime(event.createdUtc)}>{relativeTime(event.createdUtc)}</span>
                     <span className="opacity-50">·</span>

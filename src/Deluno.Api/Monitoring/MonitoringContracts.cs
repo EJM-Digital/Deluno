@@ -70,7 +70,11 @@ public sealed record MonitoringDiagnosticItem(
     string? DetailsJson,
     string? RelatedEntityType,
     string? RelatedEntityId,
-    DateTimeOffset CreatedUtc);
+    DateTimeOffset CreatedUtc)
+{
+    /// <summary>The event kind in plain words (#1086).</summary>
+    public string Label => Deluno.Contracts.ActivityEventLabels.For(Category);
+}
 
 public sealed record ApiLatencySnapshot(
     DateTimeOffset WindowStartUtc,

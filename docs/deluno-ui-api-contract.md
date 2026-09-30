@@ -74,7 +74,7 @@ Implemented SignalR event names currently modeled in frontend/backend contracts:
 - `QueueItemRemoved`
 - `QueueItemStatusChanged`
 - `HealthChanged`
-- `ActivityEventAdded`
+- `ActivityEventAdded` (`{ id, message, category, label, severity, createdUtc }`; `label` is the plain-words name of the event kind, see below)
 - `SearchRunCompleted`
 - `ImportStateChanged`
 - `DispatchGrabAttempt`
@@ -548,6 +548,7 @@ Implemented core operational endpoints:
 - `GET /api/jobs?pageSize=n&pageToken=…&failed=true&includePayload=true` — newest first; `failed=true` keeps only jobs that need a person (up to `pageSize=500` in one call). A list leaves `payloadJson` out unless `includePayload=true`, and even then leaves out a payload over 64 KB (it can carry a whole torrent file)
 - `GET /api/jobs/{id}` — one job with its whole payload
 - `GET /api/activity?pageSize=n&pageToken=…`
+  - every event carries `label` (#1086): the kind of event in plain Australian English, for example `download.vanished.recovered` reads "Found its files after it left the client". Screens show `label` and never the raw `category` code, which stays only as a stable key for grouping and filtering. `GET /api/monitoring/diagnostics` items and the `ActivityEventAdded` live event carry the same `label`, and the film and show History tables read it from this feed. The wording is written once, in `ActivityEventLabels` (`src/Deluno.Contracts/ActivityEventLabels.cs`), and `ActivityEventLabels.For(category)` is what any other endpoint (such as the Dashboard summary) calls; a kind with no label of its own reads as its area ("Download activity"), never as the code. A test (`EveryActivityKindHasPlainWordsTests`) fails if any writer can record a kind that has no label there.
 - `GET /api/stats?window=24h|7d|30d`
 - `GET /api/decisions?pageSize=n&pageToken=…`
 - `GET /api/library-automation?pageSize=n&pageToken=…`

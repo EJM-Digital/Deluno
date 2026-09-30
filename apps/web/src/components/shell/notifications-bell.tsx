@@ -28,7 +28,7 @@ import { fetchPageItems, type ActivityEventItem } from "../../lib/api";
 import type { AttentionSnapshot } from "../../lib/use-attention";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
-import { categoryLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
+import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
 import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
 
@@ -126,6 +126,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
           id: event.id,
           message: event.message,
           category: event.category,
+          label: event.label,
           severity: event.severity,
           detailsJson: null,
           relatedJobId: null,
@@ -262,7 +263,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                     ) : null}
                   </span>
                   <span className="block truncate text-[length:var(--type-micro)] text-muted-foreground">
-                    {categoryLabel(event.category)} · {formatEventAge(event.createdUtc, preferences)}
+                    {eventLabel(event)} · {formatEventAge(event.createdUtc, preferences)}
                   </span>
                 </button>
               ))}

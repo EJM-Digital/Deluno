@@ -22,7 +22,7 @@ import type { ActivityEventItem, ActivityStatsSnapshot } from "../../lib/api";
 import { useLiveInterval } from "../../hooks/use-live-interval";
 import { RealtimeGroups, useSignalREvent, useSignalRStatus } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
-import { categoryLabel, formatEventAge, SEVERITY_LED, type ActivitySeverity } from "../../lib/activity-format";
+import { eventLabel, formatEventAge, SEVERITY_LED, type ActivitySeverity } from "../../lib/activity-format";
 
 type Severity = ActivitySeverity;
 
@@ -30,6 +30,7 @@ interface TickerEvent {
   id: string;
   message: string;
   category: string;
+  label?: string;
   severity: Severity;
   createdUtc: string;
   /** How many times in a row this exact message occurred. Absent means once. */
@@ -53,7 +54,7 @@ export function ActivityTicker({ seed, limit = 10, stats }: { seed: ActivityEven
       // event can arrive that is already in the list.
       if (current.some((item) => item.id === event.id)) return current;
       return [
-        { id: event.id, message: event.message, category: event.category, severity: event.severity, createdUtc: event.createdUtc },
+        { id: event.id, message: event.message, category: event.category, label: event.label, severity: event.severity, createdUtc: event.createdUtc },
         ...current
       ].slice(0, limit);
     });
@@ -63,6 +64,7 @@ export function ActivityTicker({ seed, limit = 10, stats }: { seed: ActivityEven
     id: item.id,
     message: item.message,
     category: item.category,
+    label: item.label,
     severity: (item.severity ?? "info") as Severity,
     createdUtc: item.createdUtc
   }));
@@ -120,7 +122,7 @@ export function ActivityTicker({ seed, limit = 10, stats }: { seed: ActivityEven
                   ) : null}
                 </span>
                 <span className="mt-0.5 block truncate text-[length:var(--type-micro)] text-muted-foreground">
-                  {categoryLabel(event.category)} · {formatEventAge(event.createdUtc, preferences)}
+                  {eventLabel(event)} · {formatEventAge(event.createdUtc, preferences)}
                 </span>
               </span>
             </div>

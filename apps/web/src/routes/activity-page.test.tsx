@@ -12,6 +12,7 @@ const loaderData = {
     {
       id: "event-1",
       category: "release.blocked",
+      label: "Release blocked",
       message: 'Deluno will not use Arrival.2016.2160p again.',
       severity: "info",
       detail: undefined,
@@ -24,6 +25,7 @@ const loaderData = {
     {
       id: "event-2",
       category: "filesystem.import.completed",
+      label: "Imported into the library",
       message: "Imported Arrival (2016).",
       severity: "success",
       detail: undefined,
@@ -174,6 +176,26 @@ describe("Activity events filter and columns (#798)", () => {
     await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Category" }));
 
     expect(screen.queryByRole("columnheader", { name: "Category" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Activity names each kind of event in plain words (#1086)", () => {
+  it("shows the label in the Category column and the drawer, never the internal code", async () => {
+    // An earlier test hides this column and the choice is remembered.
+    window.localStorage.clear();
+    render(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>
+    );
+    await userEvent.click(screen.getByRole("radio", { name: "Events" }));
+
+    expect(screen.getByText("Imported into the library")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/filesystem\.import\.completed|release\.blocked/);
+
+    await userEvent.click(screen.getByText("Imported Arrival (2016)."));
+    expect(await screen.findByText(/Imported into the library ·/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/filesystem\.import\.completed/);
   });
 });
 

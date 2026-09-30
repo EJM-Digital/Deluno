@@ -98,4 +98,24 @@ test.describe("authenticated app smoke", () => {
     });
   }
 
+  // #1086: an activity event is named in plain words on every screen that
+  // lists one. An internal kind such as `download.vanished.recovered` or
+  // `processing.waiting` must never show as text.
+  const rawEventCode =
+    /\b(job|jobs|download|downloads|processing|processor|filesystem|library|metadata|retention|intake|release|health|tags|trackers|subtitle|connectivity|seerr|movie|series|episode|external|collection|quality|activity)\.[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*\b/;
+
+  for (const path of ["/", "/activity", "/system"]) {
+    test(`shows no internal event code on ${path}`, async ({ page }) => {
+      await page.goto(path);
+      await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
+      if (path === "/activity") {
+        await page.getByRole("radio", { name: "Events" }).click();
+      }
+      // Let the feed and the live list settle before reading the page.
+      await page.waitForLoadState("networkidle");
+      const text = await page.locator("body").innerText();
+      expect(text).not.toMatch(rawEventCode);
+    });
+  }
+
 });

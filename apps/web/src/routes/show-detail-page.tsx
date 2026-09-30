@@ -11,6 +11,7 @@
  * /automation/defer, /automation/skip-once, /api/series/bulk.
  */
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
+import { eventLabel } from "../lib/activity-format";
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
@@ -1900,7 +1901,7 @@ export function ShowDetailPage() {
                 {activity.slice(0, 10).map((item) => (
                   <ListRow key={item.id}>
                     <ListNameCell name={item.message} />
-                    <ListCell primary={item.category} mobile />
+                    <ListCell primary={eventLabel(item)} mobile />
                     <ListCell primary={formatPreferenceDateTime(item.createdUtc, preferences)} />
                   </ListRow>
                 ))}

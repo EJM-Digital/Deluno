@@ -88,6 +88,7 @@ public sealed class SignalRRealtimeEventPublisher(
                 id,
                 message,
                 category,
+                label = Deluno.Contracts.ActivityEventLabels.For(category),
                 severity,
                 createdUtc
             });

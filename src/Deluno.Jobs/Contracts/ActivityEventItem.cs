@@ -8,4 +8,8 @@ public sealed record ActivityEventItem(
     string? RelatedJobId,
     string? RelatedEntityType,
     string? RelatedEntityId,
-    DateTimeOffset CreatedUtc);
+    DateTimeOffset CreatedUtc)
+{
+    /// <summary>The event kind in plain words (#1086); screens show this, never <see cref="Category"/>.</summary>
+    public string Label => Deluno.Contracts.ActivityEventLabels.For(Category);
+}

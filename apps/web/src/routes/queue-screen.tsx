@@ -18,6 +18,7 @@
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
 import { statusPresentation, statusTone } from "../lib/status-tones";
+import { eventLabel } from "../lib/activity-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -2598,7 +2599,7 @@ function buildActivity({
       detail: event.message,
       extra: activityEventDetail(event),
       tone: event.severity === "error" ? "bad" : event.severity === "warning" ? "warn" : "info",
-      status: activityEventLabel(event.category),
+      status: eventLabel(event),
       whenUtc: event.createdUtc
     });
   }
@@ -2651,13 +2652,6 @@ function activityEventDetail(event: ActivityEventItem) {
   if (actions.length) return actions.join(" · ");
   if (typeof details?.reason === "string") return details.reason;
   return event.detail ?? undefined;
-}
-
-function activityEventLabel(category: string) {
-  return category
-    .replace(/^download\./, "")
-    .replace(/[._-]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function parseActivityDetails(detailsJson: string | null): Record<string, unknown> | null {
