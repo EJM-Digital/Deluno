@@ -65,7 +65,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 .ToList();
 
             var labelled = copies.Count > 1;
-            var libraries = labelled ? await librariesRepository.ListLibrariesAsync(cancellationToken) : [];
+            var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
+            var libraryRoots = libraries.Select(item => item.RootPath).ToArray();
             var items = new List<MovieFileItem>();
             foreach (var copy in copies)
             {
@@ -77,7 +78,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 var libraryName = labelled
                     ? libraries.FirstOrDefault(item => string.Equals(item.Id, copy.LibraryId, StringComparison.OrdinalIgnoreCase))?.Name ?? "Removed library"
                     : null;
-                items.AddRange(await FilesForCopyAsync(copy, copy.LibraryId, libraryName, subtitleInventoryService, cancellationToken));
+                items.AddRange(await FilesForCopyAsync(copy, copy.LibraryId, libraryName, MovieFilePathSafety.IsFiledFlat(copy.FilePath, libraryRoots), subtitleInventoryService, cancellationToken));
             }
 
             return Results.Ok(items);
@@ -123,6 +124,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             string id,
             [FromBody] UpdateMovieFileLanguageRequest request,
             IMovieCatalogRepository repository,
+            Deluno.Libraries.Data.ILibrariesRepository librariesRepository,
             IActivityFeedRepository activityFeedRepository,
             IRealtimeEventPublisher realtimeEventPublisher,
             CancellationToken cancellationToken) =>
@@ -133,7 +135,8 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            if (!TryResolveWithinMovieFolder(primaryPath, request.Path, out var subtitlePath) || !File.Exists(subtitlePath))
+            var libraryRoots = (await librariesRepository.ListLibrariesAsync(cancellationToken)).Select(item => item.RootPath).ToArray();
+            if (!TryResolveWithinMovieFolder(primaryPath, libraryRoots, request.Path, out var subtitlePath) || !File.Exists(subtitlePath))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -209,6 +212,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
                 copies.Add(new MovieLibraryFile(movie.LibraryId ?? string.Empty, soleFile, movie.FileSizeBytes, movie.CurrentQuality, movie.VideoCodec, movie.AudioCodec, movie.AudioChannels));
             }
 
+            var libraryRoots = (await librariesRepository.ListLibrariesAsync(cancellationToken)).Select(item => item.RootPath).ToArray();
             MovieLibraryFile? chosen;
             if (!string.IsNullOrWhiteSpace(request.LibraryId))
             {
@@ -216,7 +220,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             }
             else
             {
-                chosen = copies.FirstOrDefault(copy => TryResolveWithinMovieFolder(copy.FilePath, request.Path, out _));
+                chosen = copies.FirstOrDefault(copy => TryResolveWithinMovieFolder(copy.FilePath, libraryRoots, request.Path, out _));
             }
 
             if (chosen is null)
@@ -231,7 +235,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
 
             var primaryPath = chosen.FilePath;
 
-            if (!TryResolveWithinMovieFolder(primaryPath, request.Path, out var targetPath) || !File.Exists(targetPath))
+            if (!TryResolveWithinMovieFolder(primaryPath, libraryRoots, request.Path, out var targetPath) || !File.Exists(targetPath))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -313,6 +317,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         MovieLibraryFile copy,
         string libraryId,
         string? libraryName,
+        bool filedFlat,
         ISubtitleInventoryService subtitleInventoryService,
         CancellationToken cancellationToken)
     {
@@ -331,6 +336,11 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         var accountedFor = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { primaryPath };
         foreach (var subtitle in inventory.Subtitles)
         {
+            if (filedFlat && subtitle.Path is { Length: > 0 } flatSubtitle && !MovieFilePathSafety.BelongsToFlatFilm(primaryPath, flatSubtitle))
+            {
+                continue;
+            }
+
             if (subtitle.Path is not { Length: > 0 } subtitlePath || !accountedFor.Add(subtitlePath))
             {
                 continue;
@@ -360,7 +370,12 @@ public static class MovieFilesEndpointRouteBuilderExtensions
         IEnumerable<string> restOfFolder;
         try
         {
-            restOfFolder = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories);
+            // A flat film shares its folder with every other title, so only its own
+            // named companions are its files; never walk the shared folder.
+            restOfFolder = filedFlat
+                ? Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                    .Where(path => MovieFilePathSafety.BelongsToFlatFilm(primaryPath, path))
+                : Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories);
         }
         catch (IOException)
         {
@@ -419,7 +434,7 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             LibraryId: libraryId,
             LibraryName: libraryName);
 
-    private static bool TryResolveWithinMovieFolder(string primaryFilePath, string? requestedPath, out string resolved)
+    private static bool TryResolveWithinMovieFolder(string primaryFilePath, IReadOnlyCollection<string> libraryRoots, string? requestedPath, out string resolved)
     {
         var folder = Path.GetDirectoryName(primaryFilePath);
         if (folder is null)
@@ -428,54 +443,27 @@ public static class MovieFilesEndpointRouteBuilderExtensions
             return false;
         }
 
-        return MovieFilePathSafety.TryResolveWithinFolder(folder, requestedPath, out resolved);
-    }
-}
-
-/// <summary>
-/// A requested path is only ever accepted when it resolves to somewhere
-/// under the movie's own folder - never an arbitrary absolute path the
-/// client happened to send, which is what would let one title's edit surface
-/// delete or rename a file anywhere else on the host. Its own class, and
-/// public, so this rule is tested directly rather than only through the
-/// endpoints that lean on it (#782).
-/// </summary>
-/// <summary>Log-category marker for the movie Files tab's delete endpoint (#856); the endpoint class itself is static and cannot be an ILogger&lt;T&gt; argument.</summary>
-public sealed class MovieFileDeleteNotification;
-
-public static class MovieFilePathSafety
-{
-    public static bool TryResolveWithinFolder(string folder, string? requestedPath, out string resolved)
-    {
-        resolved = string.Empty;
-        if (string.IsNullOrWhiteSpace(requestedPath))
+        if (!MovieFilePathSafety.TryResolveWithinFolder(folder, requestedPath, out resolved))
         {
             return false;
         }
 
-        string fullFolder;
-        string fullRequested;
-        try
+        // Filed flat in the library root: the folder is everyone's, so only this
+        // film's own files count as its files.
+        if (MovieFilePathSafety.IsFiledFlat(primaryFilePath, libraryRoots)
+            && !MovieFilePathSafety.BelongsToFlatFilm(primaryFilePath, resolved))
         {
-            fullFolder = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            fullRequested = Path.GetFullPath(requestedPath);
-        }
-        catch (ArgumentException)
-        {
+            resolved = string.Empty;
             return false;
         }
 
-        var comparer = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        if (!fullRequested.StartsWith(fullFolder + Path.DirectorySeparatorChar, comparer)
-            && !string.Equals(fullRequested, fullFolder, comparer))
-        {
-            return false;
-        }
-
-        resolved = fullRequested;
         return true;
     }
 }
+
+/// <summary>Log-category marker for the movie Files tab's delete endpoint (#856); the endpoint class itself is static and cannot be an ILogger&lt;T&gt; argument.</summary>
+public sealed class MovieFileDeleteNotification;
+
 
 public sealed record UpdateMovieFileQualityRequest(string Quality);
 
