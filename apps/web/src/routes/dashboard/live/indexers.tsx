@@ -2,6 +2,9 @@
  * The indexers Deluno asks (#1096): each one with how it answered last, from
  * the stored health of every indexer (no indexer is asked while the screen
  * waits), and what was asked of them all today from the summary.
+ *
+ * An indexer that is not answering is not listed here: Needs you owns it, with
+ * its own Test again button, so a problem is in one place with one button.
  */
 import { Link } from "react-router-dom";
 import { StatusLed } from "../../../components/ui/status-led";
@@ -9,6 +12,7 @@ import type { IndexerItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { Tone } from "../../../lib/status-tones";
 import { cn } from "../../../lib/utils";
+import { indexerNeedsButton } from "../attention";
 import { ago } from "../format";
 import { FitList, Panel, Plain } from "../parts";
 
@@ -22,12 +26,12 @@ export function indexerAnswer(indexer: IndexerItem, now: number): { tone: Tone; 
 
 export function Indexers({ indexers, summary, now }: { indexers: IndexerItem[]; summary: DashboardSummary | undefined; now: number }) {
   const stats = summary?.indexers;
-  const count = stats ? (stats.failedQueriesToday > 0 ? `${stats.failedQueriesToday.toLocaleString("en-AU")} failed today` : `${stats.queriesToday.toLocaleString("en-AU")} asked today`) : undefined;
-  const sorted = [...indexers].sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled) || a.priority - b.priority);
+  const count = stats ? (stats.failedQueriesToday > 0 ? `${stats.failedQueriesToday.toLocaleString("en-AU")} failed` : `${stats.queriesToday.toLocaleString("en-AU")} asked`) : undefined;
+  const sorted = indexers.filter((indexer) => !indexerNeedsButton(indexer)).sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled) || a.priority - b.priority);
   return (
     <Panel title="Indexers" count={count ? <span className="whitespace-nowrap">{count}</span> : undefined} to="/indexers/indexers" toLabel="Manage">
       {sorted.length === 0 ? (
-        <Plain>No indexers are set up, so nothing can be searched for.</Plain>
+        <Plain>{indexers.length === 0 ? "No indexers are set up, so nothing can be searched for." : "No indexer is answering. Needs you has each one."}</Plain>
       ) : (
         <FitList
           moreTo="/indexers/indexers"

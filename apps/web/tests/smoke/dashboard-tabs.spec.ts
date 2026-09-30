@@ -218,10 +218,23 @@ test.describe("Dashboard tabs", () => {
     test.setTimeout(120_000);
     await authenticateAndNavigate(page, "/");
     await serveLiveBusy(page);
+    // Posters come in one request per kind; no title is asked for on its own, so a deleted title can never 404.
+    const perTitle: string[] = [];
+    page.on("request", (request) => {
+      if (/\/api\/(movies|series)\/(?!posters)[^/?]+$/.test(new URL(request.url()).pathname)) perTitle.push(request.url());
+    });
     for (const size of SIZES) {
       await page.setViewportSize(size);
       await page.goto("/");
       await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
+      // Today is the day's real count (the fixture holds more than the 200 a page of events could), the speed
+      // peaks are labelled apart, and a failing indexer is left to Needs you instead of being listed twice.
+      await expect(page.getByRole("region", { name: /^today/i }).getByText(/^[0-9,]{3,} events$/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Download peak/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Upload peak/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^indexers/i }).getByText("NZBgeek")).toBeVisible();
+      await expect(page.getByRole("region", { name: /^indexers/i }).getByText("Nyaa.si")).toHaveCount(0);
+      expect(perTitle).toEqual([]);
       await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
       // Every lane has its own cards, and the countdown reads by the second.
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();

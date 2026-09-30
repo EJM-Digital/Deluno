@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
 import { buildJourney, byStage, laneCounts, movedCards, titleFromRelease, type Stage } from "./journey";
 import { activityKind } from "./kinds";
-import { bucketByHour, linePath, shapeSpeedSeries } from "./series";
+import { addBuckets, bucketByHour, bucketsFromCounts, linePath, shapeSpeedSeries } from "./series";
 import { heartbeatState } from "./status";
 import { fullSummary } from "../downloads-fixtures";
 
@@ -103,6 +103,22 @@ describe("activity per hour today", () => {
     expect(buckets[3].counts).toEqual({ search: 1, grab: 1 });
     expect(buckets[9].counts).toEqual({ import: 1, failed: 1 });
     expect(buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(4);
+  });
+
+  it("builds the day's bars from the server's real counts, and adds events that arrived since", () => {
+    const base = bucketsFromCounts([
+      { hour: 2, category: "wanted.search.completed", count: 120 },
+      { hour: 2, category: "movies.release.grabbed", count: 30 },
+      { hour: 9, category: "filesystem.import.completed", count: 7 },
+      { hour: 30, category: "wanted.search.completed", count: 5 },
+      { hour: 4, category: "wanted.search.completed", count: 0 }
+    ]);
+    expect(base[2].counts).toEqual({ search: 120, grab: 30 });
+    expect(base.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(157);
+    const at = new Date(new Date(NOW).setHours(9, 30, 0, 0)).toISOString();
+    const more = addBuckets(base, bucketByHour([{ id: "x", category: "filesystem.import.completed", createdUtc: at }], NOW));
+    expect(more[9].counts).toEqual({ import: 8 });
+    expect(more[9].total).toBe(8);
   });
 
   it("names the kind from the category, the way the server counts them", () => {

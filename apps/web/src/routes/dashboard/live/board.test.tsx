@@ -6,6 +6,7 @@ import { buildCountdownRows, Countdowns } from "./countdowns";
 import { Flow } from "./flow";
 import { HeartbeatValue } from "./heartbeat";
 import { byStage, laneCounts, type JourneyCard } from "./journey";
+import { Indexers } from "./indexers";
 import { Rhythm } from "./rhythm";
 import { SpeedChart } from "./speed-chart";
 
@@ -118,6 +119,47 @@ describe("the charts", () => {
     expect(screen.getByRole("img", { name: /3 events today: 1 searches, 2 imports/ })).toBeInTheDocument();
     rerender(page([]));
     expect(screen.getByText(/Quiet so far today/)).toBeInTheDocument();
+  });
+});
+
+describe("today's count", () => {
+  it("shows the day's real total from the server counts, never the size of a page", () => {
+    vi.useFakeTimers({ now: NOW });
+    const counts = [{ hour: 3, category: "wanted.search.completed", count: 340 }, { hour: 5, category: "movies.release.grabbed", count: 60 }];
+    const { container } = withRouter(<Rhythm rows={[]} counts={counts} countedAt={NOW.getTime()} />);
+    expect(screen.getByRole("img", { name: /400 events today/ })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/last 200/);
+  });
+
+  it("says so when it only has the newest page, and does not present the cap as the total", () => {
+    vi.useFakeTimers({ now: NOW });
+    const rows = [{ id: "1", category: "wanted.search.completed", createdUtc: inMs(-3_600_000) }];
+    withRouter(<Rhythm rows={rows} capped />);
+    expect(screen.getByText("last 200 events")).toBeInTheDocument();
+  });
+});
+
+describe("the speed peaks", () => {
+  it("labels the download peak and the upload peak separately", () => {
+    vi.useFakeTimers({ now: NOW });
+    const summary = structuredClone(fullSummary);
+    summary.downloads!.readingUtc = inMs(-30_000);
+    summary.downloads!.downloadMbps = 12;
+    summary.downloads!.uploadMbps = 3;
+    withRouter(<SpeedChart samples={[]} summary={summary} />);
+    expect(screen.getByText(/^Download peak/).textContent).toContain("12 MB/s");
+    expect(screen.getByText(/^Upload peak/).textContent).toContain("3.0 MB/s");
+  });
+});
+
+describe("the indexers", () => {
+  const indexer = (id: string, name: string, healthStatus: string) => ({ id, name, protocol: "usenet", isEnabled: true, priority: 1, healthStatus, lastHealthMessage: healthStatus === "healthy" ? null : "HTTP 504", lastHealthLatencyMs: 200, lastHealthTestUtc: inMs(-60_000), consecutiveFailures: 0, rateLimitedUntilUtc: null }) as never;
+
+  it("leaves a failing indexer to Needs you, which has its button, so it is never listed twice", () => {
+    vi.useFakeTimers({ now: NOW });
+    withRouter(<Indexers indexers={[indexer("a", "NZBgeek", "healthy"), indexer("b", "Nyaa.si", "unreachable")]} summary={undefined} now={NOW.getTime()} />);
+    expect(screen.getByText("NZBgeek")).toBeInTheDocument();
+    expect(screen.queryByText("Nyaa.si")).toBeNull();
   });
 });
 

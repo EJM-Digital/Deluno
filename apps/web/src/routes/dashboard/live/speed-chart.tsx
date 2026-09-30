@@ -37,8 +37,12 @@ export function SpeedChart({ samples, summary }: { samples: DownloadThroughputSa
   const summaryText = `Download peaked at ${formatSpeed(series.peakDown)} and upload at ${formatSpeed(series.peakUp)} in the last ${HOURS} hours.`;
 
   return (
-    <Panel title="Speed" count={<span className="whitespace-nowrap">{`${HOURS} h, peak ${formatSpeed(series.peakDown)}`}</span>} to="/queue" toLabel="Transfers">
+    <Panel title="Speed" count={<span className="whitespace-nowrap">last {HOURS} hours</span>} to="/queue" toLabel="Transfers">
       <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] pb-2 pt-2">
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-4 text-[length:var(--type-caption)] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-info" />Download peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakDown)}</span></span>
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-success" />Upload peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakUp)}</span></span>
+        </div>
         <div className="relative min-h-0 flex-1">
           <svg role="img" aria-label={summaryText} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
             <defs>
@@ -61,10 +65,6 @@ export function SpeedChart({ samples, summary }: { samples: DownloadThroughputSa
         </div>
         <div className="mt-1 flex items-center justify-between gap-3 text-[length:var(--type-caption)] text-muted-foreground">
           <span>{HOURS} h ago</span>
-          <span className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-1.5 w-3 rounded-full bg-info" />Download</span>
-            <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-1.5 w-3 rounded-full bg-success" />Upload</span>
-          </span>
           <span>now</span>
         </div>
       </div>

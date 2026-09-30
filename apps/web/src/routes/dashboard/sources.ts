@@ -23,6 +23,43 @@ import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status"
 import { sharedSources } from "../../lib/shared-sources";
 import type { SetupNeed } from "./attention";
 
+/** What the newest page of Activity holds; when today's counts cannot be had, this is all the bars can show. */
+export const ACTIVITY_PAGE_SIZE = 200;
+
+export interface ActivityHourCount {
+  hour: number;
+  category: string;
+  count: number;
+}
+
+export interface ActivityToday {
+  /** When the counts were read here; events that arrive after this are added on top. */
+  fetchedAt: number;
+  /** The day's counts by the hour, or null when the server cannot give them (an older server). */
+  counts: ActivityHourCount[] | null;
+  /** The newest events, used only when there are no counts. */
+  rows: ActivityEventItem[];
+  /** True when `rows` stopped at the page size, so it is not the whole day. */
+  capped: boolean;
+}
+
+/** Today's activity: real counts by the hour from the server, or, from an older server, the newest page and the fact that it is only that. */
+export async function fetchActivityToday(): Promise<ActivityToday> {
+  const fetchedAt = Date.now();
+  const midnight = new Date(fetchedAt);
+  midnight.setHours(0, 0, 0, 0);
+  try {
+    const result = await fetchJson<{ buckets: ActivityHourCount[] }>(
+      `/api/activity/by-hour?sinceUtc=${encodeURIComponent(midnight.toISOString())}&offsetMinutes=${-midnight.getTimezoneOffset()}`
+    );
+    if (Array.isArray(result?.buckets)) return { fetchedAt, counts: result.buckets, rows: [], capped: false };
+  } catch {
+    // An older server has no such count; fall through to the newest page.
+  }
+  const rows = await fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${ACTIVITY_PAGE_SIZE}`);
+  return { fetchedAt, counts: null, rows, capped: rows.length >= ACTIVITY_PAGE_SIZE };
+}
+
 export const SUMMARY_KEY = ["dashboard", "summary"] as const;
 
 export const summaryQuery = {
@@ -69,8 +106,8 @@ export const liveSources = defineSources({
   indexers: { ...sharedSources.indexers, fallback: [] },
   // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
   throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
-  // Today's activity for the hourly bars: the newest stored events; live ones are added as they arrive.
-  activityToday: { ...source<ActivityEventItem[]>("dashboard-activity-today", "Today's activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=200"), []), refetchInterval: 120_000 }
+  // Today's activity for the hourly bars: the day's real counts by the hour; live events are added as they arrive.
+  activityToday: { ...source<ActivityToday | null>("dashboard-activity-today", "Today's activity", fetchActivityToday, null), refetchInterval: 120_000 }
 });
 
 export interface SetupState {
