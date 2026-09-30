@@ -15,6 +15,7 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "deluno-savefolders-tests", Guid.NewGuid().ToString("N"));
     private readonly List<string> _activity = [];
+    private readonly Mock<Deluno.Contracts.IHealthCheckRepository> _health = new();
 
     public void Dispose()
     {
@@ -51,6 +52,28 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
         Assert.False(Directory.Exists(elsewhere));
         Assert.False(Directory.Exists(Path.Combine(_root, "somewhere")));
         Assert.DoesNotContain(_activity, line => line.StartsWith("Created", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_client_given_a_folder_on_every_grab_gets_no_category_folders_made()
+    {
+        var download = Path.Combine(_root, "Downloads");
+        Directory.CreateDirectory(download);
+
+        await Wire("transmission", 9091, "deluno-movies", "deluno-tv", category => Path.Combine(download, category), perGrab: true);
+
+        Assert.False(Directory.Exists(Path.Combine(download, "deluno-movies")));
+        Assert.False(Directory.Exists(Path.Combine(download, "deluno-tv")));
+        Assert.DoesNotContain(_activity, line => line.StartsWith("Created", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Connecting_an_app_asks_Health_to_look_again_so_a_row_worked_out_mid_install_does_not_linger()
+    {
+        await Wire("nzbget", 6789, "Movies", "TV", category => Path.Combine(_root, "complete", category));
+
+        _health.Verify(repo => repo.RequestImmediateRunAsync(Deluno.Contracts.HealthCheckCategories.DownloadClient, It.IsAny<CancellationToken>()), Times.Once);
+        _health.Verify(repo => repo.RequestImmediateRunAsync(Deluno.Contracts.HealthCheckCategories.RemotePathMapping, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]
@@ -131,7 +154,7 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
         Assert.Equal("unreachable", result.healthStatus);
     }
 
-    private async Task Wire(string kind, int port, string movies, string tv, Func<string, string> folderFor)
+    private async Task Wire(string kind, int port, string movies, string tv, Func<string, string> folderFor, bool perGrab = false)
     {
         var record = new FileInstalledComponentRecord(Path.Combine(_root, "installed-components.json"));
         record.MarkInstalled(kind, "localhost", port);
@@ -148,6 +171,7 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
         implementation.Setup(client => client.CheckCategoryAsync(It.IsAny<DownloadClientItem>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((DownloadClientItem item, string category, CancellationToken _) => new DownloadClientCategoryCheckResult(
                 item.Id, item.Name, category, "ready", "ok", Supported: true, Found: true, SavePath: folderFor(category)));
+        implementation.SetupGet(client => client.SetsSaveFolderPerGrab).Returns(perGrab);
         var registry = new Mock<IDownloadClientRegistry>();
         var handle = implementation.Object;
         registry.Setup(item => item.TryGet(kind, out handle)).Returns(true);
@@ -160,7 +184,7 @@ public sealed class ClientSaveFolderAndSlowTestTests : IDisposable
 
         var wirer = new InstalledComponentWirer(
             record, credentials.Object, new DownloadClientConnector(connections.Object, new HealthyTester()),
-            [], Mock.Of<ICompanionSystem>(), activity.Object, registry.Object);
+            [], Mock.Of<ICompanionSystem>(), activity.Object, registry.Object, null, _health.Object);
         await wirer.RunOnceAsync("http://127.0.0.1:7879", 1, TimeSpan.Zero, CancellationToken.None);
     }
 
