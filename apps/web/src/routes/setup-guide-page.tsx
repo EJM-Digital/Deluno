@@ -46,7 +46,8 @@ import {
   type ContentBlocklistSettings,
   type UpdatePreferencesResponse,
   emptyContentBlocklistSettings,
-  readErrorText } from "../lib/api";
+  readErrorText,
+  type BundledComponentStatus } from "../lib/api";
 import { metadataCreatePayload } from "../hooks/use-library-create";
 import { createRuleFromGuide, guideBundleTargets } from "../lib/guide-formats";
 import { authedFetch, useAuth } from "../lib/use-auth";
@@ -64,6 +65,7 @@ import { Chip } from "../components/ui/chip";
 import { ListCard, ListCell, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { LanAccessNotice } from "../components/app/lan-access-notice";
+import { ConnectInstalledApps } from "../components/app/connect-installed-apps";
 
 /**
  * #1034: two stages. Stage 1 ("This computer and you") covers the computer
@@ -81,6 +83,7 @@ type StepId =
   | "folders"
   | "quality"
   | "services"
+  | "connectApps"
   | "automation"
   | "finish";
 
@@ -351,6 +354,7 @@ export const STEPS: { id: StepId; label: string; copy: string; stage: SetupStage
   { id: "folders", label: "Folders", copy: "Tell Deluno where your media lives.", stage: 2 },
   { id: "quality", label: "Library Profiles", copy: "Choose the quality and release experience you want.", stage: 2 },
   { id: "services", label: "Find & Download", copy: "Connect search sources and downloads when you are ready.", stage: 2 },
+  { id: "connectApps", label: "Connect installed apps", copy: "Connect the apps the installer put on this computer, when you are ready.", stage: 2 },
   { id: "automation", label: "Automation", copy: "What should Deluno do by itself?", stage: 2 },
   { id: "finish", label: "Start", copy: "Create your plan and open the Dashboard.", stage: 2 }
 ];
@@ -499,6 +503,16 @@ export function SetupGuidePage() {
   const [metadataResults, setMetadataResults] = useState<MetadataSearchResult[]>([]);
   const [metadataBusy, setMetadataBusy] = useState(false);
   const [rollbackMessage, setRollbackMessage] = useState<string | null>(null);
+  // #1061: the apps the installer put here, and whether the person skipped connecting them. Never blocks the baseline.
+  const [installedApps, setInstalledApps] = useState<BundledComponentStatus[]>([]);
+  const [appsSkipped, setAppsSkipped] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void fetchJson<BundledComponentStatus[]>("/api/system/bundled-components")
+      .then((next) => { if (active && Array.isArray(next)) setInstalledApps(next.filter((app) => app.installed)); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const [serviceTest, setServiceTest] = useState<ServiceTestState>({
     indexer: "idle",
     client: "idle",
@@ -603,7 +617,8 @@ export function SetupGuidePage() {
       { label: "Library Profile chosen", done: hasQualityChoice },
       { label: "Release preferences chosen", done: hasReleaseRuleChoice },
       { label: "Search source ready", done: hasReadyIndexer },
-      { label: "Downloads ready", done: hasReadyClient }
+      { label: "Downloads ready", done: hasReadyClient },
+      ...(installedApps.length > 0 ? [{ label: "Installed apps connected", done: appsSkipped || installedApps.every((app) => app.connected) }] : [])
     ];
     return checks;
   }, [
@@ -611,6 +626,8 @@ export function SetupGuidePage() {
     canCreateTv,
     hasReadyClient,
     hasReadyIndexer,
+    installedApps,
+    appsSkipped,
     form.formatGoal,
     form.qualityPreset,
     serviceTest.client,
@@ -953,6 +970,9 @@ export function SetupGuidePage() {
                 onTestIndexer={() => void testIndexerConnection()}
                 onTestClient={() => void testClientConnection()}
               />
+            ) : null}
+            {current.id === "connectApps" ? (
+              <ConnectAppsStep skipped={appsSkipped} onSkip={() => setAppsSkipped(true)} onChange={setInstalledApps} hasInstalled={installedApps.length > 0} />
             ) : null}
             {current.id === "automation" ? <AutomationStep form={form} patch={patch} /> : null}
             {current.id === "finish" ? (
@@ -1336,6 +1356,45 @@ function ServicesStep({
           />
         </div>
       </FieldShell>
+    </div>
+  );
+}
+
+/**
+ * #1061: Deluno connects nothing by itself after install. This step lists the
+ * apps the installer put on this computer, one Connect button each plus
+ * "Connect all". It is done when every installed app is connected or the person
+ * skips it, and it never blocks the baseline. Shows a plain line when nothing
+ * was installed.
+ */
+export function ConnectAppsStep({
+  skipped,
+  onSkip,
+  onChange,
+  hasInstalled
+}: {
+  skipped: boolean;
+  onSkip: () => void;
+  onChange: (apps: BundledComponentStatus[]) => void;
+  hasInstalled: boolean;
+}) {
+  return (
+    <div className="grid gap-3">
+      <ConnectInstalledApps onChange={onChange} />
+      {hasInstalled ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onSkip} disabled={skipped}>
+            Skip connecting for now
+          </Button>
+          <span className="text-[length:var(--type-caption)] text-muted-foreground">
+            {skipped ? "Skipped. You can connect them later from Connections." : "Skipping does not stop you finishing setup."}
+          </span>
+        </div>
+      ) : (
+        <p className="text-[length:var(--type-caption)] text-muted-foreground">
+          The installer did not put any download client or processor on this computer, so there is nothing to connect here.
+        </p>
+      )}
     </div>
   );
 }
