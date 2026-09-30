@@ -39,7 +39,31 @@ public sealed record DashboardLibrarySection(
     DashboardMediaCounts Movies,
     DashboardMediaCounts Shows,
     long TotalBytes,
-    IReadOnlyList<DashboardLibraryBytes> Libraries);
+    IReadOnlyList<DashboardLibraryBytes> Libraries,
+    DashboardLibraryMix Mix,
+    DashboardCollections Collections);
+
+/// <summary>
+/// What the files on disk are, biggest first. An empty label in the stored data
+/// is reported as "Unknown"; <c>Count</c> is titles for films and episodes for shows
+/// (the video codec is stored per title, so a show's codec counts shows).
+/// </summary>
+public sealed record DashboardLibraryMix(
+    IReadOnlyList<DashboardMixEntry> MovieQuality,
+    IReadOnlyList<DashboardMixEntry> MovieCodec,
+    IReadOnlyList<DashboardMixEntry> EpisodeQuality,
+    IReadOnlyList<DashboardMixEntry> ShowCodec);
+
+public sealed record DashboardMixEntry(string Label, int Count);
+
+/// <summary>Followed film collections: how many, how complete, and whether the last refresh failed.</summary>
+public sealed record DashboardCollections(
+    int Followed,
+    int Monitored,
+    int Members,
+    int InLibrary,
+    int SyncFailing,
+    DateTimeOffset? LastSyncedUtc);
 
 /// <summary>The shelf's own facet counts, whole catalogue, each title under one rung.</summary>
 public sealed record DashboardMediaCounts(
@@ -217,7 +241,9 @@ public sealed record DashboardLeavingTitle(string EntityId, string Title, string
 
 // -------------------------------------------------------------- subtitles
 
-public sealed record DashboardSubtitlesSection(DateTimeOffset AsOfUtc, int Wanted);
+/// <param name="Wanted">Files short of a language their library asked for.</param>
+/// <param name="Held">Files in libraries that ask for subtitles which already have every language (files minus wanted; reads a little low when titles carry their own language override).</param>
+public sealed record DashboardSubtitlesSection(DateTimeOffset AsOfUtc, int Wanted, int Held);
 
 // --------------------------------------------------------------- requests
 
@@ -228,7 +254,8 @@ public sealed record DashboardRequestsSection(
     int SeerrFailing,
     IReadOnlyDictionary<string, int> AcquisitionsLast7Days,
     int ImportLists,
-    IReadOnlyDictionary<string, int> ImportListsByLastSync);
+    IReadOnlyDictionary<string, int> ImportListsByLastSync,
+    int ListTitlesAddedLast7Days);
 
 // -------------------------------------------------------------- blocklist
 
@@ -311,4 +338,17 @@ public sealed record DashboardActivitySection(
     int DownloadsStarted,
     int ImportsCompleted,
     int CleanupRemovals,
-    int RetentionRemovals);
+    int RetentionRemovals,
+    IReadOnlyList<DashboardActivityItem> Recent);
+
+/// <summary>
+/// One recent Activity row as stored: the raw <c>Category</c> code and the message.
+/// The plain-English label comes from the shared activity mapping (#1086), not from here.
+/// </summary>
+public sealed record DashboardActivityItem(
+    string Id,
+    string Category,
+    string Message,
+    string? RelatedEntityType,
+    string? RelatedEntityId,
+    DateTimeOffset CreatedUtc);

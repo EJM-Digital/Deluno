@@ -119,7 +119,9 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
 ```
 {
   asOfUtc, buildMilliseconds, unavailableSections: string[],
-  library?:    { asOfUtc, movies: Counts, shows: Counts, totalBytes, libraries: [{ id, name, mediaType, bytes }] },
+  library?:    { asOfUtc, movies: Counts, shows: Counts, totalBytes, libraries: [{ id, name, mediaType, bytes }],
+                 mix: { movieQuality, movieCodec, episodeQuality, showCodec: [{ label, count }] }  // biggest first, at most 8 (the tail folded into "Other"), "Unknown" for unrecorded,
+                 collections: { followed, monitored, members, inLibrary, syncFailing, lastSyncedUtc? } },
                  Counts = { total, monitored, unmonitored, missing, upgradable, qualityMet, upcoming,
                             downloading, airing, fileBytes }   // the catalogue shelf's own facet counts
   downloads?:  { asOfUtc, hasReading, readingUtc?, active, queued, stalled, processing, importReady,
@@ -145,9 +147,10 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
   processors?: { asOfUtc, total, healthy, failing, handoffsToday, waiting },
   retention?:  { asOfUtc, leavingSoon, nextLeaving: [{ entityId, title, mediaType, removeAfterUtc }] (3),
                  readyToRemove, removedLast7Days, removedBytesLast7Days },
-  subtitles?:  { asOfUtc, wanted },
+  subtitles?:  { asOfUtc, wanted, held },
   requests?:   { asOfUtc, seerrServers, seerrHealthy, seerrFailing,
-                 acquisitionsLast7Days: { [status]: n }, importLists, importListsByLastSync: { [status]: n } },
+                 acquisitionsLast7Days: { [status]: n }, importLists, importListsByLastSync: { [status]: n },
+                 listTitlesAddedLast7Days },
   blocklist?:  { asOfUtc, count },
   health?:     { asOfUtc, problems, unknown, suggestions, lastRunUtc?,
                  topProblems: [{ id, title, category, message, sinceUtc?, link }] (5) },
@@ -161,11 +164,13 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
                  lastBackupUtc?, nextBackupUtc?, backupsEnabled, internetOutage, outageSinceUtc?,
                  notificationsUnread },
   activity?:   { asOfUtc, windowHours, searchesRun, downloadsStarted, importsCompleted,
-                 cleanupRemovals, retentionRemovals }   // last 24 hours; the stream itself stays GET /api/activity
+                 cleanupRemovals, retentionRemovals,
+                 recent: [{ id, category, message, relatedEntityType?, relatedEntityId?, createdUtc }] (8, newest first, raw category code) }
+                 // counts are the last 24 hours; the stream itself stays GET /api/activity; the plain label comes from the shared activity mapping (#1086)
 }
 ```
 
-Notes on the numbers: `library.*.total` counts every title; every other library count is over monitored titles, each title under exactly one rung, exactly as the shelf's chips count them. `fileBytes` and `libraries[].bytes` are the sum of the tracked file sizes Deluno already stores (no disk is read). `pipeline.today` is since local midnight on the machine running Deluno. `retention.removedLast7Days` and `...Bytes` add up every rule's confirmed and checked runs (previews removed nothing). `subtitles.wanted` is count-only and counts a title with its own language override as wanted, so it can read a little high for a library that uses overrides. `health.topProblems[].link` is the web path of the screen that clears that kind of problem (System for anything without a better home).
+Notes on the numbers: `library.mix` counts files on disk (a show's codec counts shows, its quality counts episodes); `subtitles.held` is files in libraries that ask for subtitles minus `wanted`, so it reads a little low where titles carry their own language override. Not in the summary because no stored number exists (they need a live call, which the summary never makes): Seerr's own pending requests and what a media server is playing right now. `library.*.total` counts every title; every other library count is over monitored titles, each title under exactly one rung, exactly as the shelf's chips count them. `fileBytes` and `libraries[].bytes` are the sum of the tracked file sizes Deluno already stores (no disk is read). `pipeline.today` is since local midnight on the machine running Deluno. `retention.removedLast7Days` and `...Bytes` add up every rule's confirmed and checked runs (previews removed nothing). `subtitles.wanted` is count-only and counts a title with its own language override as wanted, so it can read a little high for a library that uses overrides. `health.topProblems[].link` is the web path of the screen that clears that kind of problem (System for anything without a better home).
 
 Realtime: the hub sends one `DashboardSummaryChanged` event (`{ asOfUtc }`, no numbers) on the `dashboard` group, at most every 2 seconds, whenever a source the summary reads has changed (health, queue items, download progress, import state, search runs, activity, dispatch stages, and the automation, movie, series, episode, library, indexer, indexer proxy, download client, import list and settings change events). The first change after a quiet spell nudges at once; changes during the following two seconds fold into a single nudge. The web refetches this one endpoint instead of twenty-four.
 

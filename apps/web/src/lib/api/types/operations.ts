@@ -728,6 +728,8 @@ export interface DashboardLibrarySection {
   shows: DashboardMediaCounts;
   totalBytes: number;
   libraries: DashboardLibraryBytes[];
+  mix: DashboardLibraryMix;
+  collections: DashboardCollections;
 }
 
 export interface DashboardClientRow {
@@ -879,9 +881,31 @@ export interface DashboardRetentionSection {
   removedBytesLast7Days: number;
 }
 
+export interface DashboardMixEntry {
+  label: string;
+  count: number;
+}
+
+export interface DashboardLibraryMix {
+  movieQuality: DashboardMixEntry[];
+  movieCodec: DashboardMixEntry[];
+  episodeQuality: DashboardMixEntry[];
+  showCodec: DashboardMixEntry[];
+}
+
+export interface DashboardCollections {
+  followed: number;
+  monitored: number;
+  members: number;
+  inLibrary: number;
+  syncFailing: number;
+  lastSyncedUtc: string | null;
+}
+
 export interface DashboardSubtitlesSection {
   asOfUtc: string;
   wanted: number;
+  held: number;
 }
 
 export interface DashboardRequestsSection {
@@ -892,6 +916,7 @@ export interface DashboardRequestsSection {
   acquisitionsLast7Days: Record<string, number>;
   importLists: number;
   importListsByLastSync: Record<string, number>;
+  listTitlesAddedLast7Days: number;
 }
 
 export interface DashboardBlocklistSection {
@@ -956,6 +981,15 @@ export interface DashboardSystemSection {
   notificationsUnread: number;
 }
 
+export interface DashboardActivityItem {
+  id: string;
+  category: string;
+  message: string;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  createdUtc: string;
+}
+
 export interface DashboardActivitySection {
   asOfUtc: string;
   windowHours: number;
@@ -964,4 +998,5 @@ export interface DashboardActivitySection {
   importsCompleted: number;
   cleanupRemovals: number;
   retentionRemovals: number;
+  recent: DashboardActivityItem[];
 }

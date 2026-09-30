@@ -257,6 +257,114 @@ public sealed class DashboardCountsStore(IDelunoDatabaseConnectionFactory databa
         return new RequestCounts(servers, healthy, failing, acquisitions, lists);
     }
 
+    // --------------------------------------------------------- library mix
+
+    /// <summary>
+    /// What the tracked files are: their quality tier and video codec, counted per
+    /// engine from the stored wanted-state rows (one grouped query each), plus how
+    /// many files each library holds (the subtitle panel's "held" base).
+    /// </summary>
+    public async Task<LibraryMixCounts> GetLibraryMixAsync(CancellationToken cancellationToken)
+    {
+        var movieQuality = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var movieCodec = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var showQuality = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var showCodec = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var filesByLibrary = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        await using (var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken))
+        {
+            await GroupAsync(connection, "SELECT COALESCE(current_quality, ''), COUNT(*) FROM movie_wanted_state WHERE has_file = 1 GROUP BY 1;", movieQuality, cancellationToken);
+            await GroupAsync(connection, "SELECT COALESCE(video_codec, ''), COUNT(*) FROM movie_wanted_state WHERE has_file = 1 GROUP BY 1;", movieCodec, cancellationToken);
+            await GroupAsync(connection, "SELECT library_id, COUNT(*) FROM movie_wanted_state WHERE has_file = 1 GROUP BY library_id;", filesByLibrary, cancellationToken);
+        }
+
+        await using (var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Series, cancellationToken))
+        {
+            await GroupAsync(connection, "SELECT COALESCE(w.current_quality, ''), COUNT(*) FROM episode_wanted_state w JOIN episode_entries e ON e.id = w.episode_id WHERE e.has_file = 1 GROUP BY 1;", showQuality, cancellationToken);
+            await GroupAsync(connection, "SELECT COALESCE(video_codec, ''), COUNT(*) FROM series_wanted_state WHERE has_file = 1 GROUP BY 1;", showCodec, cancellationToken);
+            await GroupAsync(connection, "SELECT w.library_id, COUNT(*) FROM episode_wanted_state w JOIN episode_entries e ON e.id = w.episode_id WHERE e.has_file = 1 GROUP BY w.library_id;", filesByLibrary, cancellationToken);
+        }
+
+        return new LibraryMixCounts(movieQuality, movieCodec, showQuality, showCodec, filesByLibrary);
+    }
+
+    private static async Task GroupAsync(DbConnection connection, string sql, Dictionary<string, int> into, CancellationToken cancellationToken)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var key = reader.GetString(0);
+            into[key] = into.GetValueOrDefault(key) + reader.GetInt32(1);
+        }
+    }
+
+    // ----------------------------------------------------------- collections
+
+    /// <summary>Followed film collections, from the stored collection and member rows.</summary>
+    public async Task<CollectionCounts> GetCollectionCountsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+        int followed = 0, monitored = 0, syncFailing = 0;
+        string? lastSynced = null;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT COUNT(*),
+                       COALESCE(SUM(monitored), 0),
+                       COALESCE(SUM(CASE WHEN last_sync_error IS NOT NULL AND last_sync_error <> '' THEN 1 ELSE 0 END), 0),
+                       MAX(last_synced_utc)
+                FROM movie_collections;
+                """;
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                followed = reader.GetInt32(0);
+                monitored = reader.GetInt32(1);
+                syncFailing = reader.GetInt32(2);
+                lastSynced = reader.IsDBNull(3) ? null : reader.GetString(3);
+            }
+        }
+
+        int members = 0, inLibrary = 0;
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT COUNT(*), COALESCE(SUM(CASE WHEN local_movie_id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                FROM movie_collection_members WHERE is_excluded = 0;
+                """;
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                members = reader.GetInt32(0);
+                inLibrary = reader.GetInt32(1);
+            }
+        }
+
+        return new CollectionCounts(
+            followed,
+            monitored,
+            members,
+            inLibrary,
+            syncFailing,
+            DateTimeOffset.TryParse(lastSynced, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null);
+    }
+
+    /// <summary>Titles a list first brought in since <paramref name="sinceUtc"/>.</summary>
+    public async Task<int> CountListTitlesAddedAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM intake_title_origins WHERE first_seen_utc >= @since;";
+        Add(command, "@since", Iso(sinceUtc));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
     // --------------------------------------------------------------- helpers
 
     private async Task<int> ScalarAsync(string database, string sql, CancellationToken cancellationToken)
@@ -291,3 +399,12 @@ public sealed record RequestCounts(
     int Failing,
     IReadOnlyDictionary<string, int> AcquisitionsByStatus,
     IReadOnlyDictionary<string, int> ImportListsByLastSync);
+
+public sealed record LibraryMixCounts(
+    IReadOnlyDictionary<string, int> MovieQuality,
+    IReadOnlyDictionary<string, int> MovieCodec,
+    IReadOnlyDictionary<string, int> EpisodeQuality,
+    IReadOnlyDictionary<string, int> ShowCodec,
+    IReadOnlyDictionary<string, int> FilesByLibrary);
+
+public sealed record CollectionCounts(int Followed, int Monitored, int Members, int InLibrary, int SyncFailing, DateTimeOffset? LastSyncedUtc);
