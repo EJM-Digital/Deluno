@@ -68,6 +68,30 @@ public sealed class ActivityStatsTests
     }
 
     [Fact]
+    public async Task Counts_the_days_activity_by_hour_in_the_callers_own_time()
+    {
+        var now = DateTimeOffset.Parse("2026-09-27T12:00:00Z");
+        var (store, timeProvider) = await CreateAsync(now);
+
+        await store.RecordActivityAsync("movie.release.grabbed", "Grabbed", null, null, null, null, CancellationToken.None);
+        await store.RecordActivityAsync("movie.release.grabbed", "Grabbed again", null, null, null, null, CancellationToken.None);
+        await store.RecordActivityAsync("filesystem.import.completed", "Imported", null, null, null, null, CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromHours(3));
+        await store.RecordActivityAsync("filesystem.import.completed", "Imported later", null, null, null, null, CancellationToken.None);
+
+        // Ten hours ahead of UTC: 12:00Z is 22:00 and 15:00Z is 01:00 the next day.
+        var counts = await store.GetActivityCountsByHourAsync(now.AddHours(-1), 600, CancellationToken.None);
+
+        Assert.Equal(4, counts.Sum(count => count.Count));
+        Assert.Contains(counts, count => count.Hour == 22 && count.Category == "movie.release.grabbed" && count.Count == 2);
+        Assert.Contains(counts, count => count.Hour == 22 && count.Category == "filesystem.import.completed" && count.Count == 1);
+        Assert.Contains(counts, count => count.Hour == 1 && count.Category == "filesystem.import.completed" && count.Count == 1);
+
+        var none = await store.GetActivityCountsByHourAsync(now.AddHours(4), 0, CancellationToken.None);
+        Assert.Empty(none);
+    }
+
+    [Fact]
     public async Task An_empty_window_reports_zeroes_rather_than_failing()
     {
         var (store, timeProvider) = await CreateAsync(DateTimeOffset.Parse("2026-09-27T12:00:00Z"));
