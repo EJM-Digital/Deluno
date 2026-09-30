@@ -111,8 +111,11 @@ test.describe("authenticated app smoke", () => {
       if (path === "/activity") {
         await page.getByRole("radio", { name: "Events" }).click();
       }
-      // Let the feed and the live list settle before reading the page.
-      await page.waitForLoadState("networkidle");
+      // Let the feed and the live list settle before reading the page. Not
+      // networkidle: the live connection and the pollers keep the network busy
+      // by design (#1081).
+      await expect(page.locator("#main-content [aria-busy='true']")).toHaveCount(0, { timeout: 15_000 });
+      await page.waitForTimeout(1_500);
       const text = await page.locator("body").innerText();
       expect(text).not.toMatch(rawEventCode);
     });
