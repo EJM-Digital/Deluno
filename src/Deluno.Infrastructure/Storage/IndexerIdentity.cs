@@ -122,7 +122,20 @@ public static class IndexerIdentity
     /// indexer's name as it is now, so history filed under the old name still
     /// links to its indexer afterwards. It does nothing once migration 133 has run.
     /// </summary>
-    public static async Task RememberNamesBeforeRenameAsync(
+    public static Task RememberNamesBeforeRenameAsync(
+        IDelunoDatabaseConnectionFactory databaseConnectionFactory,
+        CancellationToken cancellationToken,
+        MigrationLockRetryOptions? lockRetry = null,
+        ILogger? logger = null)
+        // A write-locked platform database is waited for, not a failed start (#1080); the step is idempotent.
+        => SqliteLockRetry.RunAsync(
+            () => RememberNamesOnceAsync(databaseConnectionFactory, cancellationToken),
+            "Remembering indexer names before the update",
+            lockRetry ?? new MigrationLockRetryOptions(),
+            logger,
+            cancellationToken);
+
+    private static async Task RememberNamesOnceAsync(
         IDelunoDatabaseConnectionFactory databaseConnectionFactory,
         CancellationToken cancellationToken)
     {
