@@ -61,6 +61,8 @@ public abstract class DownloadClientCompanion(
 
     public abstract bool IsInstalled();
 
+    public virtual string? LocalUrl() => null;
+
     public abstract Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken);
 
     public async Task<string?> ConnectionNameAsync(CancellationToken cancellationToken)
@@ -136,9 +138,9 @@ public sealed class QbittorrentCompanion(
     private string SettingsPath => Path.Combine(System.RoamingAppData, "qBittorrent", "qBittorrent.ini");
 
     public override bool IsInstalled() => System.FileExists(Executable);
-    public string? LocalUrl()
+    public override string? LocalUrl()
     {
-        var match = global::System.Text.RegularExpressions.Regex.Match(System.ReadText(SettingsPath) ?? string.Empty, @"WebUI\Port=(\d{2,5})");
+        var match = global::System.Text.RegularExpressions.Regex.Match(System.ReadText(SettingsPath) ?? string.Empty, @"WebUI\\Port=(\d{2,5})");
         return match.Success ? $"http://localhost:{match.Groups[1].Value}" : null;
     }
 
@@ -205,7 +207,7 @@ public sealed class SabnzbdCompanion(
     private string SettingsPath => Path.Combine(System.LocalAppData, "sabnzbd", "sabnzbd.ini");
 
     public override bool IsInstalled() => System.FileExists(Executable);
-    public string? LocalUrl()
+    public override string? LocalUrl()
         => int.TryParse(CompanionConfigFiles.SabnzbdValue(System.ReadText(SettingsPath), "port"), out var port) ? $"http://localhost:{port}" : null;
 
 
