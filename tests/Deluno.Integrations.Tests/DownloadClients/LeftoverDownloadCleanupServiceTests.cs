@@ -122,7 +122,7 @@ public sealed class LeftoverDownloadCleanupServiceTests
             await File.WriteAllTextAsync(downloadCopy, "same bytes");
             CreateHardLink(downloadCopy, libraryCopy);
 
-            var item = new OrphanedDownloadItem(downloadCopy, "Still.Shared.mkv", "library-1", "Library", 10, Now.AddDays(-10), DelunoGrabbedIt: true);
+            var item = new OrphanedDownloadItem(downloadCopy, "Still.Shared.mkv", "library-1", "Library", 10, Now.AddDays(-10));
             var orphans = new Mock<IOrphanedDownloadService>();
             orphans.Setup(instance => instance.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([item]);
             var service = CreateService(orphans, enabled: true, ageHours: 24);
@@ -149,7 +149,7 @@ public sealed class LeftoverDownloadCleanupServiceTests
             var downloadCopy = Path.Combine(directory.FullName, "Only.Copy.mkv");
             await File.WriteAllTextAsync(downloadCopy, "only copy");
 
-            var item = new OrphanedDownloadItem(downloadCopy, "Only.Copy.mkv", "library-1", "Library", 9, Now.AddDays(-10), DelunoGrabbedIt: true);
+            var item = new OrphanedDownloadItem(downloadCopy, "Only.Copy.mkv", "library-1", "Library", 9, Now.AddDays(-10));
             var orphans = new Mock<IOrphanedDownloadService>();
             orphans.Setup(instance => instance.ListAsync(It.IsAny<CancellationToken>())).ReturnsAsync([item]);
             orphans
@@ -171,7 +171,7 @@ public sealed class LeftoverDownloadCleanupServiceTests
     private static OrphanedDownloadItem Item(string name, DateTimeOffset lastWrittenUtc)
     {
         var path = Path.Combine(Path.GetTempPath(), $"leftover-cleanup-tests-{Guid.NewGuid():n}", name);
-        return new OrphanedDownloadItem(path, name, "library-1", "Library", 4096, lastWrittenUtc, DelunoGrabbedIt: true);
+        return new OrphanedDownloadItem(path, name, "library-1", "Library", 4096, lastWrittenUtc);
     }
 
     private static LeftoverDownloadCleanupService CreateService(Mock<IOrphanedDownloadService> orphans, bool enabled, int ageHours)

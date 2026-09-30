@@ -290,9 +290,7 @@ export function QueuePage() {
     [movieRecovery, seriesRecovery, telemetry, failedJobs, processorHandoffs, dispatches, orphans]
   );
   const { recoveryCases, queueAttention, failedImportJobs, failedHandoffs: failedProcessorHandoffs, failedDownloads, orphanedDownloads } = attention;
-  // #932: select-all only ever offers what Deluno can prove it downloaded - the same rule the per-item Remove button already follows.
-  const removableOrphans = orphanedDownloads.filter((orphan) => orphan.delunoGrabbedIt);
-  const selectedRemovableOrphans = removableOrphans.filter((orphan) => selectedOrphanPaths.has(orphan.path));
+  const selectedRemovableOrphans = orphanedDownloads.filter((orphan) => selectedOrphanPaths.has(orphan.path));
   const activeImportJobs = importJobs.filter((job) => isJobActive(job.status as never)).length;
   const activeProcessorHandoffs = processorHandoffs.filter((handoff) => isWithProcessor(handoff.status));
   const blockedQueueItems = queue.filter((item) => item.healthFindings?.some((finding) => finding.candidateBlocked));
@@ -1113,7 +1111,7 @@ export function QueuePage() {
           title="Needs attention"
           count={`${needsActionCount} ${needsActionCount === 1 ? "thing" : "things"} Deluno could not finish on its own`}
           actions={
-            failedImportJobs.length || removableOrphans.length ? (
+            failedImportJobs.length || orphanedDownloads.length ? (
               <>
                 {failedImportJobs.length ? (
                   <Button type="button" variant="outline" size="sm" onClick={() => void retryFailedJobs()} disabled={busyKey !== null}>
@@ -1121,7 +1119,7 @@ export function QueuePage() {
                     Retry {failedImportJobs.length} failed
                   </Button>
                 ) : null}
-                {removableOrphans.length ? (
+                {orphanedDownloads.length ? (
                   selectedRemovableOrphans.length > 0 ? (
                     <>
                       <Button type="button" variant="outline" size="sm" onClick={clearOrphanSelection} disabled={busyKey !== null}>
@@ -1133,7 +1131,7 @@ export function QueuePage() {
                       </Button>
                     </>
                   ) : (
-                    <Button type="button" variant="outline" size="sm" onClick={() => selectAllRemovableOrphans(removableOrphans)} disabled={busyKey !== null}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => selectAllRemovableOrphans(orphanedDownloads)} disabled={busyKey !== null}>
                       Select all leftovers
                     </Button>
                   )
@@ -1236,27 +1234,21 @@ export function QueuePage() {
               <ListRow key={`orphan:${orphan.path}`}>
                 <ListNameCell name={orphan.name} sub={`${orphan.libraryName} download folder`} />
                 <ListCell
-                  primary={orphan.delunoGrabbedIt
-                    ? "Left in the download folder. No client, import or hand-off is using it."
-                    : "In the download folder, but Deluno did not download it."}
+                  primary="Left in the download folder. No client, import or hand-off is using it."
                   secondary={`${formatBytes(orphan.sizeBytes)} · ${orphan.path}`}
                 />
                 <ListCell mobile align="end">
                   <span className="flex items-center justify-end gap-2">
-                    {orphan.delunoGrabbedIt ? (
-                      <Switch
-                        size="sm"
-                        aria-label={`Select ${orphan.name}`}
-                        checked={selectedOrphanPaths.has(orphan.path)}
-                        onCheckedChange={(checked) => toggleOrphanSelected(orphan.path, checked)}
-                        disabled={busyKey !== null}
-                      />
-                    ) : null}
-                    {orphan.delunoGrabbedIt ? (
-                      <Button type="button" variant="outline" size="sm" aria-label={`Remove ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "remove")} disabled={busyKey !== null}>
-                        Remove
-                      </Button>
-                    ) : null}
+                    <Switch
+                      size="sm"
+                      aria-label={`Select ${orphan.name}`}
+                      checked={selectedOrphanPaths.has(orphan.path)}
+                      onCheckedChange={(checked) => toggleOrphanSelected(orphan.path, checked)}
+                      disabled={busyKey !== null}
+                    />
+                    <Button type="button" variant="outline" size="sm" aria-label={`Remove ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "remove")} disabled={busyKey !== null}>
+                      Remove
+                    </Button>
                     <Button type="button" variant="outline" size="sm" aria-label={`Keep ${orphan.name}`} onClick={() => void actOnOrphan(orphan, "keep")} disabled={busyKey !== null}>
                       Keep
                     </Button>

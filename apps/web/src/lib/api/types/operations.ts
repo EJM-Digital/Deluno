@@ -376,8 +376,8 @@ export interface HealthCheckListResponse {
 
 /**
  * Something in a library's completed-download folder that nothing claims
- * (#588). `delunoGrabbedIt` says whether Deluno can prove it downloaded it,
- * which is the only case in which it will remove it for you.
+ * (#588). Only what Deluno can prove it downloaded is ever returned (#1062);
+ * what another tool left in a shared folder is invisible to Deluno.
  */
 export interface OrphanedDownloadItem {
   path: string;
@@ -386,7 +386,6 @@ export interface OrphanedDownloadItem {
   libraryName: string;
   sizeBytes: number;
   lastWrittenUtc: string;
-  delunoGrabbedIt: boolean;
 }
 export interface DownloadDispatchItem {
   id: string;

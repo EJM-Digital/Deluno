@@ -61,34 +61,43 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
         }
     }
 
-    [Fact]
-    public async Task With_no_client_claiming_it_the_same_entry_is_a_leftover()
+    private static async Task<IReadOnlyList<OrphanedDownloadItem>> ListLeftoversAsync(string entryName, params DownloadDispatchItem[] dispatches)
     {
-        var directory = Directory.CreateTempSubdirectory("foreign-download-no-claim-test-");
+        var directory = Directory.CreateTempSubdirectory("leftover-proof-test-");
         try
         {
-            var itemPath = Path.Combine(directory.FullName, "Nothing.Claims.This.S01E01");
+            var itemPath = Path.Combine(directory.FullName, entryName);
             Directory.CreateDirectory(itemPath);
             await File.WriteAllTextAsync(Path.Combine(itemPath, "episode.mkv"), "bytes");
             BackdatePastGrace(itemPath);
-
-            var library = Library(directory.FullName);
 
             var telemetry = new Mock<IDownloadClientTelemetryService>();
             telemetry.Setup(instance => instance.GetSnapshotsForLeftoverScanAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
 
-            var service = CreateService(library, telemetry.Object);
-
-            var found = await service.ListAsync(CancellationToken.None);
-
-            Assert.Single(found);
+            return await CreateService(Library(directory.FullName), telemetry.Object, dispatches).ListAsync(CancellationToken.None);
         }
         finally
         {
             directory.Delete(recursive: true);
         }
     }
+
+    private static DownloadDispatchItem Dispatch(string releaseName, string status)
+        => ((DownloadDispatchItem)RuntimeHelpers.GetUninitializedObject(typeof(DownloadDispatchItem))) with { ReleaseName = releaseName, Status = status };
+
+    /// <summary>#1062: an entry in a scanned folder that no dispatch of Deluno's names (Radarr's or Sonarr's, say) is never returned.</summary>
+    [Fact]
+    public async Task An_entry_Deluno_never_sent_is_not_returned_even_when_nothing_claims_it()
+        => Assert.Empty(await ListLeftoversAsync("Radarr.Left.Behind.S01E01"));
+
+    [Fact]
+    public async Task With_no_client_claiming_it_an_entry_Deluno_sent_is_a_leftover()
+        => Assert.Single(await ListLeftoversAsync("Nothing.Claims.This.S01E01", Dispatch("Nothing.Claims.This.S01E01", "completed")));
+
+    [Fact]
+    public async Task A_leftover_of_an_archived_dispatch_is_still_Deluno_own_and_is_returned()
+        => Assert.Single(await ListLeftoversAsync("Old.Grab.S01E01", Dispatch("Old.Grab.S01E01", "archived")));
 
     /// <summary>
     /// #1062: a folder only another tool's downloads live in is never scanned,
@@ -153,7 +162,7 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
             OutsideSourcePaths = [foreignItemPath]
         };
 
-    private static OrphanedDownloadService CreateService(LibraryItem library, IDownloadClientTelemetryService telemetryService)
+    private static OrphanedDownloadService CreateService(LibraryItem library, IDownloadClientTelemetryService telemetryService, params DownloadDispatchItem[] dispatches)
     {
         var libraries = new Mock<ILibrariesRepository>();
         libraries.Setup(instance => instance.ListLibrariesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([library]);
@@ -166,7 +175,8 @@ public sealed class ForeignDownloadsHoldTheirFilesTests
         jobQueue.Setup(instance => instance.ListAsync(It.IsAny<int>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         jobQueue.Setup(instance => instance.ListDownloadDispatchesAsync(
                 It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<bool>(), It.IsAny<string?>()))
-            .ReturnsAsync([]);
+            .ReturnsAsync((int _, string? _, CancellationToken _, bool includeArchived, string? _) =>
+                (IReadOnlyList<DownloadDispatchItem>)dispatches.Where(item => includeArchived || item.Status != "archived").ToArray());
 
         var processors = new Mock<IProcessorRepository>();
         processors.Setup(instance => instance.ListProcessorHandoffsAsync(It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))

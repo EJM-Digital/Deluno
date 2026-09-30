@@ -128,11 +128,6 @@ public sealed class OrphanedDownloadService(
             return new OrphanedDownloadAction(false, "That is not an orphaned download any more.");
         }
 
-        if (!item.DelunoGrabbedIt)
-        {
-            return new OrphanedDownloadAction(false, $"Deluno cannot show it downloaded {item.Name}, so it will not remove it. Keep it, or remove it yourself.");
-        }
-
         // Never inside a library, whatever else is true: a download folder
         // configured inside a library root must not let this reach media.
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
