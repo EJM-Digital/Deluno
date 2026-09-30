@@ -1792,6 +1792,11 @@ public sealed class SqliteJobStore(
         return items;
     }
 
+    public Task<IReadOnlyList<string>> FindGrabbedReleaseNamesAsync(
+        IReadOnlyCollection<string> candidateNames,
+        CancellationToken cancellationToken)
+        => downloadDispatchesRepository.FindGrabbedReleaseNamesAsync(candidateNames, cancellationToken);
+
     public Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
         int limit,
         CancellationToken cancellationToken)
