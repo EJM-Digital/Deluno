@@ -44,6 +44,33 @@ public interface IComponentDownloader
     Task<string?> DownloadAsync(string url, string suggestedFileName, CancellationToken cancellationToken);
 }
 
+/// <summary>Where the installer records what it checked for each component (#1061).</summary>
+public interface IInstallLog
+{
+    void Write(string line);
+}
+
+/// <summary>The tray's install log, <c>%LocalAppData%\Deluno\logs\install-hook.log</c>, the file the install hooks already write to.</summary>
+public sealed class FileInstallLog : IInstallLog
+{
+    public void Write(string line)
+    {
+        try
+        {
+            var root = Environment.GetEnvironmentVariable("DELUNO_TEST_LOCALAPPDATA") is { Length: > 0 } testRoot
+                ? testRoot
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deluno");
+            var logDir = Path.Combine(root, "logs");
+            Directory.CreateDirectory(logDir);
+            File.AppendAllText(Path.Combine(logDir, "install-hook.log"), $"{DateTimeOffset.Now:O} {line}{Environment.NewLine}");
+        }
+        catch
+        {
+            // A log that cannot be written must never stop an install.
+        }
+    }
+}
+
 public interface IAuthenticodeVerifier
 {
     /// <summary>Whether the file at <paramref name="path"/> carries a valid Authenticode signature.</summary>
@@ -155,8 +182,10 @@ public sealed class ComponentInstallService(
     IBundledComponentCredentialStore? credentialStore = null,
     IStartedComponentsRegistry? startedComponents = null,
     IInstalledComponentRecord? installedRecord = null,
-    TimeSpan? credentialCaptureWait = null)
+    TimeSpan? credentialCaptureWait = null,
+    IInstallLog? installLog = null)
 {
+    private readonly IInstallLog _log = installLog ?? new FileInstallLog();
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(200);
     private readonly ITextFileReader _templates = templates ?? new RealTextFileReader();
     private readonly Lazy<IBundledComponentCredentialStore> _credentials = new(
@@ -249,9 +278,12 @@ public sealed class ComponentInstallService(
 
         if (verification is not null)
         {
+            _log.Write($"{spec.DisplayName}: refused. {verification}");
             TryDelete(path);
             return new ComponentInstallResult(spec.Kind, ComponentInstallOutcome.VerificationFailed, verification);
         }
+
+        _log.Write($"{spec.DisplayName}: {DescribeVerification(spec, expectedSha256, checksumFromVendor: !string.IsNullOrWhiteSpace(expectedSha256) && string.IsNullOrWhiteSpace(spec.Sha256))}");
 
         if (spec.Prerequisite is not null)
         {
@@ -602,6 +634,8 @@ public sealed class ComponentInstallService(
                 $"{prerequisite.Name} is not signed by its expected publisher. Deluno did not run it.");
         }
 
+        _log.Write($"{prerequisite.Name}: signature valid, publisher {prerequisite.ExpectedPublisher}");
+
         // The same locked-folder run as the component itself: copied into a fresh administrators-only
         // folder, re-hashed and its signature checked again on that copy, then run from there.
         string checkedSha256;
@@ -682,6 +716,19 @@ public sealed class ComponentInstallService(
         }
 
         return $"{spec.DisplayName}'s installer carries no pinned checksum and the manifest does not require a signature. Deluno did not run it.";
+    }
+
+    /// <summary>What the check that just passed was, in the words the install log records.</summary>
+    private static string DescribeVerification(BundledComponentSpec spec, string? expectedSha256, bool checksumFromVendor)
+    {
+        if (!string.IsNullOrWhiteSpace(expectedSha256))
+        {
+            return checksumFromVendor
+                ? "SHA-256 matches the vendor's published checksum"
+                : "SHA-256 matches the checksum pinned in Deluno's list of components";
+        }
+
+        return $"signature valid, publisher {spec.ExpectedPublisher}";
     }
 
     private static bool StillHasHash(string path, string sha256)
