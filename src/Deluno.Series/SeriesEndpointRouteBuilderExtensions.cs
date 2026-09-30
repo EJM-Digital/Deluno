@@ -3137,11 +3137,32 @@ public static class SeriesEndpointRouteBuilderExtensions
                     continue;
                 }
 
-                foreach (var (episodeId, filePath) in episodeFiles)
+                try
                 {
-                    var relative = Path.GetRelativePath(plan.SourceDirectory, filePath);
-                    var newFilePath = Path.Combine(plan.DestinationDirectory, relative);
-                    await repository.UpdateEpisodeFileLocationAsync(episodeId, filePath, newFilePath, cancellationToken);
+                    await repository.UpdateEpisodeFileLocationsAsync(
+                        episodeFiles
+                            .Select(file => (file.EpisodeId, file.FilePath,
+                                Path.Combine(plan.DestinationDirectory, Path.GetRelativePath(plan.SourceDirectory, file.FilePath))))
+                            .ToArray(),
+                        cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The folder has already been renamed but the database could not follow (the
+                    // update is one transaction, so no episode row changed). Put the folder back, or
+                    // say exactly where it is, record it, and carry on with the next show.
+                    var putBack = FolderMoveRecovery.TryPutBack(plan.SourceDirectory, plan.DestinationDirectory);
+                    var reason = FolderMoveRecovery.Describe(seriesItem.Title, plan.SourceDirectory, plan.DestinationDirectory, putBack, ex.Message);
+                    failures.Add(new { seriesId = id, seriesItem.Title, reason });
+                    await activityFeedRepository.RecordActivityAsync(
+                        "library.series.rename-records-failed",
+                        reason,
+                        JsonSerializer.Serialize(new { seriesId = id, source = plan.SourceDirectory, destination = plan.DestinationDirectory, putBack }),
+                        null,
+                        "series",
+                        id,
+                        cancellationToken);
+                    continue;
                 }
 
                 await realtimeEventPublisher.PublishEntityChangedAsync("Series", id, cancellationToken);
