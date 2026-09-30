@@ -64,22 +64,20 @@ beforeEach(() => {
 });
 
 describe("the Live strip", () => {
-  it("states each fact once: the library counts, the speed and the next search", () => {
+  it("states each fact once: the library counts and the speed (the connection and the countdowns have their own places)", () => {
     const cells = buildLiveCells(library.fullSummary());
     const value = (label: string) => cells.find((cell) => cell.label === label)?.value;
-    expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable", "Speed now", "Next search"]);
+    expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable", "Speed now"]);
     expect(value("Movies")).toBe("20");
     expect(value("TV shows")).toBe("2");
     expect(value("Missing")).toBe("3");
     expect(value("Upgradable")).toBe("2");
     expect(value("Speed now")).toBe("3.9 MB/s");
-    expect(String(value("Next search"))).not.toBe("Not scheduled");
   });
 
   it("always reads a speed, and says what is true on a new install", () => {
     const cells = buildLiveCells(library.emptySummary());
     expect(cells.find((cell) => cell.label === "Speed now")).toMatchObject({ value: "0 MB/s", help: "waiting for the first reading" });
-    expect(cells.find((cell) => cell.label === "Next search")).toMatchObject({ value: "Not scheduled", help: "no search has run yet" });
     expect(buildLiveCells(undefined).find((cell) => cell.label === "Speed now")?.value).toBe("0 MB/s");
     expect(JSON.stringify(cells)).not.toMatch(/undefined|NaN/);
   });
@@ -126,14 +124,14 @@ describe("Live", () => {
     expect(within(quiet).getByRole("link", { name: "1 suggestion" })).toHaveAttribute("href", "/system");
   });
 
-  it("shows Downloads now with Search again, Coming up and Latest in plain words", async () => {
+  it("shows the journey board with Search again, Coming up and Latest in plain words", async () => {
     seedBusy();
     const summary = { ...fullSummary, activity: { ...fullSummary.activity!, recent: [{ ...fullSummary.activity!.recent[0], relatedEntityType: "movie", relatedEntityId: "m9" }] } };
     renderTab(summary);
 
-    const downloads = screen.getByRole("region", { name: /^downloads now/i });
+    const downloads = screen.getByRole("region", { name: /^every title/i });
     expect(await within(downloads).findByText("Photographer (2026)")).toBeInTheDocument();
-    expect(within(downloads).getByText("61%")).toBeInTheDocument();
+    expect(within(downloads).getAllByText("61%").length).toBeGreaterThan(0);
     expect(await within(downloads).findByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
 
     const coming = screen.getByRole("region", { name: /^coming up/i });
@@ -160,7 +158,7 @@ describe("Live", () => {
     const { container } = renderTab(emptySummary);
     expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
     expect(screen.queryByText(/Also worth a look/)).toBeNull();
-    expect(screen.getByText("Nothing is downloading.")).toBeInTheDocument();
+    expect(screen.getByText(/Nothing downloading. Nothing imported yet today./)).toBeInTheDocument();
     // An empty library says so and offers the next step, in a slim row under the strip.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");

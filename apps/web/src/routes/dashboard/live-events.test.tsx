@@ -79,13 +79,13 @@ describe("Live follows real changes", () => {
   it("moves a download's bar and speed when the server pushes a reading, and not before", async () => {
     seed();
     renderTab(fullSummary);
-    const downloads = screen.getByRole("region", { name: /^downloads now/i });
-    expect(await within(downloads).findByText("61%")).toBeInTheDocument();
-    const bar = () => downloads.querySelector<HTMLElement>("span.bg-info")?.style.width;
+    const downloads = screen.getByRole("region", { name: /^every title/i });
+    expect((await within(downloads).findAllByText("61%")).length).toBeGreaterThan(0);
+    const bar = () => downloads.querySelector<HTMLElement>(".live-fill")?.style.width;
     expect(bar()).toBe("61%");
 
     send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 88, speedMbps: 5.5, eta: null, status: "downloading" });
-    await waitFor(() => expect(within(downloads).getByText("88%")).toBeInTheDocument());
+    await waitFor(() => expect(within(downloads).getAllByText("88%").length).toBeGreaterThan(0));
     expect(bar()).toBe("88%");
     expect(downloads.textContent).toContain("5.5 MB/s");
   });
@@ -101,39 +101,39 @@ describe("Live follows real changes", () => {
 
     const rows = await within(latest).findAllByRole("link", { name: /Imported Sintel/ });
     expect(rows).toHaveLength(1);
-    expect(rows[0].closest("li")).toHaveClass("live-row-in");
-    expect(within(latest).getByText(/Imported into the library · just now/)).toBeInTheDocument();
+    expect(rows[0].closest("li")).toHaveClass("live-stream-new");
+    expect(within(latest).getByText("Imported into the library")).toBeInTheDocument();
+    expect(rows[0].textContent).toMatch(/just now/);
     expect(within(latest).queryByText(/Nothing has happened yet/)).toBeNull();
   });
 
-  it("shows work while it runs and takes it away when it ends", async () => {
+  it("shows a grab on its way and an import under way as cards, and takes them away when they end", async () => {
     renderTab(emptySummary);
-    const working = screen.getByRole("region", { name: /^working now/i });
+    const board = screen.getByRole("region", { name: /^every title/i });
     // Idle says something true rather than nothing.
-    expect(within(working).getByText(/Nothing running right now\. No search has run yet\./)).toBeInTheDocument();
+    expect(within(board).getByText(/No search has run yet\./)).toBeInTheDocument();
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
-    expect(await within(working).findByText("Sending Sintel.2010.1080p to Deluge")).toBeInTheDocument();
+    const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });
+    expect(within(within(board).getByRole("group", { name: "Grabbed" })).getByText("Sintel (2010)")).toBeInTheDocument();
     send("DispatchGrabCompleted", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", succeeded: true, message: null, timestamp: new Date().toISOString() });
-    await waitFor(() => expect(within(working).queryByText("Sending Sintel.2010.1080p to Deluge")).toBeNull());
+    await waitFor(() => expect(grab).not.toBeInTheDocument());
 
-    send("DispatchImportStarted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny", mediaType: "movie", timestamp: new Date().toISOString() });
-    expect(await within(working).findByText("Importing Big.Buck.Bunny")).toBeInTheDocument();
-    send("DispatchImportCompleted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny", succeeded: true, importedPath: "/m", failureReason: null, timestamp: new Date().toISOString() });
-    await waitFor(() => expect(within(working).queryByText("Importing Big.Buck.Bunny")).toBeNull());
-    expect(within(working).getByText(/Nothing running right now/)).toBeInTheDocument();
+    send("DispatchImportStarted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", mediaType: "movie", timestamp: new Date().toISOString() });
+    expect(await within(within(board).getByRole("group", { name: "Importing" })).findByText("Big Buck Bunny (2008)")).toBeInTheDocument();
+    send("DispatchImportCompleted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", succeeded: true, importedPath: "/m", failureReason: null, timestamp: new Date().toISOString() });
+    await waitFor(() => expect(within(board).queryByText("Big Buck Bunny (2008)")).toBeNull());
   });
 
-  it("shows a search, the processor and running jobs from the summary while they are true", () => {
+  it("shows a running search and the lanes' counts from the summary while they are true", () => {
     const summary = structuredClone(fullSummary);
     summary.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "running", nextSearchUtc: null, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: null, lastError: null }];
     summary.downloads!.processing = 2;
-    summary.system!.jobs.running = 3;
     renderTab(summary);
-    const working = screen.getByRole("region", { name: /^working now/i });
-    expect(within(working).getByText("Searching Movies for what is missing or could be better")).toBeInTheDocument();
-    expect(within(working).getByText("2 downloads are being cleaned by the processor")).toBeInTheDocument();
-    expect(within(working).getByText("3 background jobs are running")).toBeInTheDocument();
+    const board = screen.getByRole("region", { name: /^every title/i });
+    const searching = within(board).getByRole("group", { name: "Searching" });
+    expect(within(searching).getByRole("link", { name: "Movies: Searching now" })).toHaveAttribute("href", "/search-cycles");
+    expect(within(board).getByRole("link", { name: "With the processor: 3" })).toBeInTheDocument();
   });
 
   it("does not animate anything by itself: the page has no looping animation of its own", () => {

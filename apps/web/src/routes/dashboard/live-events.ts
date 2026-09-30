@@ -111,6 +111,9 @@ export interface WorkItem {
   kind: WorkKind;
   /** One plain sentence saying what is happening. */
   text: string;
+  /** The release and client behind a grab or an import, so the board can show it as a card. */
+  release?: string;
+  client?: string;
   /** The screen where it can be watched. */
   to: string;
 }
@@ -120,6 +123,8 @@ const WORK_EXPIRES_MS = 10 * 60_000;
 
 interface Started {
   kind: "grab" | "import";
+  release: string;
+  client?: string;
   text: string;
   at: number;
 }
@@ -140,9 +145,9 @@ export function useWorkingNow(summary: DashboardSummary | undefined): WorkItem[]
     return next;
   }), []);
 
-  useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => begin(`grab:${event.dispatchId}`, { kind: "grab", text: `Sending ${event.releaseName} to ${event.clientName}`, at: Date.now() }));
+  useSignalREvent("DispatchGrabAttempt", RealtimeGroups.Queue, (event) => begin(`grab:${event.dispatchId}`, { kind: "grab", text: `Sending ${event.releaseName} to ${event.clientName}`, release: event.releaseName, client: event.clientName, at: Date.now() }));
   useSignalREvent("DispatchGrabCompleted", RealtimeGroups.Queue, (event) => end(`grab:${event.dispatchId}`));
-  useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, (event) => begin(`import:${event.dispatchId}`, { kind: "import", text: `Importing ${event.releaseName}`, at: Date.now() }));
+  useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, (event) => begin(`import:${event.dispatchId}`, { kind: "import", text: `Importing ${event.releaseName}`, release: event.releaseName, at: Date.now() }));
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, (event) => end(`import:${event.dispatchId}`));
 
   return useMemo(() => {
@@ -153,7 +158,7 @@ export function useWorkingNow(summary: DashboardSummary | undefined): WorkItem[]
     }
     for (const [key, entry] of started) {
       if (now - entry.at > WORK_EXPIRES_MS) continue;
-      items.push({ key, kind: entry.kind, text: entry.text, to: "/queue" });
+      items.push({ key, kind: entry.kind, text: entry.text, release: entry.release, client: entry.client, to: "/queue" });
     }
     const downloads = summary?.downloads;
     if ((downloads?.processing ?? 0) > 0) {
