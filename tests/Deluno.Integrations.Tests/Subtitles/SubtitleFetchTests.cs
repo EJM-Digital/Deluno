@@ -735,6 +735,30 @@ public sealed class SubtitleFetchTests
         return buffer.ToArray();
     }
 
+    [Fact]
+    public async Task A_provider_whose_saved_key_cannot_be_read_here_is_not_asked_and_says_why()
+    {
+        // #1094: the same sentence the screen shows, not a crypto exception.
+        var provider = new FakeProvider("first", [], Srt);
+        var unreadable = Connection("first") with { };
+        unreadable = new SubtitleProviderConnection(
+            unreadable.Id, unreadable.ProviderKey, unreadable.Name, null, null, null, 100, true, "degraded",
+            null, null, null, 0, null, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch)
+        {
+            SecretUnreadable = true,
+            SecretProblem = Deluno.Security.SecretUnreadable.Message("API key")
+        };
+        var service = Build([provider], new FakeWriter(), new FakeRepository([unreadable]));
+
+        var outcome = await service.FetchAsync(
+            Request(), "en", false, @"D:\Media\Dune\Dune.mkv",
+            SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        Assert.False(outcome.Found);
+        Assert.Contains("can't be read here. Enter it again.", outcome.Reason, StringComparison.Ordinal);
+        Assert.False(unreadable.IsAskable(DateTimeOffset.UtcNow));
+    }
+
     private static SubtitleProviderConnection Connection(string key)
         => new(key, key, key, null, null, null, 100, true, "untested", null, null, null, 0, null, null,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
