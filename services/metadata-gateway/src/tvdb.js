@@ -1,3 +1,4 @@
+import { ProviderRateLimited, rateLimitedResponse } from "./limits.js";
 import { boundCacheKey, cacheError, readCache, readCachedError, writeCache } from "./cache.js";
 
 // TheTVDB v4 served through the gateway exactly like TMDb: the API key (and the
@@ -495,6 +496,7 @@ export async function serveTvdbRoute(route, url, env, cache, json, request = fet
     await writeCache(cache, key, payload, ttl);
     return json(payload, 200, { "Cache-Control": "public, max-age=600" });
   } catch (error) {
+    if (error instanceof ProviderRateLimited) return rateLimitedResponse(error, json);
     const status = error instanceof TvdbRequestError ? error.status : 502;
     let failure;
     if (status === 404) {

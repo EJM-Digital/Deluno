@@ -9,5 +9,19 @@
       "binding": "METADATA_CACHE",
       "id": "920f62211cfa4ea79788e1f7f1582bd5"
     }
+  ],
+  // Provider-call limits (Workers Rate Limiting): no KV writes. Only calls that
+  // reach TMDb or TheTVDB are counted; cached answers never are.
+  "ratelimits": [
+    {
+      "name": "PROVIDER_CALLS_PER_INSTALL",
+      "namespace_id": "2001",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "PROVIDER_CALLS_SHARED",
+      "namespace_id": "2002",
+      "simple": { "limit": 400, "period": 10 }
+    }
   ]
 }
