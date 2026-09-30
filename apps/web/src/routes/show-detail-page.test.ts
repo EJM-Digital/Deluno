@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SeriesEpisodeInventoryItem, SeriesSearchHistoryItem } from "../lib/api";
-import { ALL_NUMBERING_SCHEME_OPTIONS, explainNumberingScheme, filterSearchHistoryByEpisode, formatEpisodeCode } from "./show-detail-page";
+import { ALL_NUMBERING_SCHEME_OPTIONS, explainNumberingScheme, filterSearchHistoryByEpisode, formatEpisodeCode, hasNoOtherOrderings, OTHER_ORDERINGS_UNAVAILABLE_NOTE } from "./show-detail-page";
 
 function search(overrides: Partial<SeriesSearchHistoryItem> = {}): SeriesSearchHistoryItem {
   return {
@@ -86,5 +86,18 @@ describe("formatEpisodeCode (#1024)", () => {
 
   it("keeps the plain code for an episode with no absolute number", () => {
     expect(formatEpisodeCode({ ...episode, absoluteNumber: null }, true)).toBe("S01E05");
+  });
+});
+
+describe("numbering picker when other orderings are missing (#1092)", () => {
+  it("says other orderings are unavailable right now when only the aired order is known", () => {
+    expect(hasNoOtherOrderings({ availableSchemes: ["standard"], otherSchemeNames: [] })).toBe(true);
+    expect(OTHER_ORDERINGS_UNAVAILABLE_NOTE.toLowerCase()).toContain("unavailable right now");
+  });
+
+  it("stays quiet once DVD or absolute order is offered, or the provider named other orderings", () => {
+    expect(hasNoOtherOrderings({ availableSchemes: ["standard", "dvd"], otherSchemeNames: [] })).toBe(false);
+    expect(hasNoOtherOrderings({ availableSchemes: ["standard", "absolute"], otherSchemeNames: [] })).toBe(false);
+    expect(hasNoOtherOrderings({ availableSchemes: ["standard"], otherSchemeNames: ["Story arcs"] })).toBe(false);
   });
 });

@@ -1966,6 +1966,11 @@ export function ShowDetailPage() {
                   <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
                     {explainNumberingScheme(numberingDraft.numberingScheme)}
                   </p>
+                  {hasNoOtherOrderings(numberingDraft) ? (
+                    <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
+                      {OTHER_ORDERINGS_UNAVAILABLE_NOTE}
+                    </p>
+                  ) : null}
                   {numberingDraft.otherSchemeNames.length > 0 ? (
                     <p className="text-[length:var(--type-caption)] leading-snug text-muted-foreground">
                       TMDb also publishes {numberingDraft.otherSchemeNames.join(", ")} for this title, which Deluno does not match episodes by yet.
@@ -2460,6 +2465,20 @@ export function explainNumberingScheme(value: string | null | undefined) {
     default:
       return "Matches and imports episodes by the season and episode number TMDb aired them under.";
   }
+}
+
+/**
+ * Deluno stores nothing when the metadata service gives no alternate orderings,
+ * whether the show has none or the service could not answer, so the two cannot
+ * be told apart on screen. Say so in words instead of leaving a list that looks
+ * complete.
+ */
+export const OTHER_ORDERINGS_UNAVAILABLE_NOTE =
+  "Other orderings (DVD order, absolute numbering) are unavailable right now. Either this show has none, or the metadata service could not be reached; Deluno checks again on its next refresh.";
+
+export function hasNoOtherOrderings(draft: { availableSchemes: string[]; otherSchemeNames: string[] }) {
+  return draft.otherSchemeNames.length === 0
+    && !draft.availableSchemes.some((scheme) => scheme === "dvd" || scheme === "absolute");
 }
 
 /** Every scheme the show page's numbering switcher may offer, in a fixed display order. Only <see cref="detail.availableNumberingSchemes"/> narrows this down to what a title actually has. */

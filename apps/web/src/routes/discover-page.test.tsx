@@ -167,3 +167,13 @@ describe("Discover page (#785)", () => {
     expect(body.searchForCutoffUnmetNow).toBe(false);
   });
 });
+
+describe("Discover empty state (#1092)", () => {
+  it("says the list could not be loaded, never that a provider needs configuring", async () => {
+    await renderDiscoverPage(discoverResponse({ popular: [], lists: [] }));
+
+    await waitFor(() => expect(screen.getByText("Nothing to show right now")).toBeInTheDocument());
+    expect(screen.getByText(/could not be loaded just now/)).toBeInTheDocument();
+    expect(screen.queryByText(/provider configured/i)).not.toBeInTheDocument();
+  });
+});
