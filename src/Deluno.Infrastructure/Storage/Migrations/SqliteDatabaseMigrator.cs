@@ -1,13 +1,40 @@
 using System.Data.Common;
+using Microsoft.Extensions.Logging;
 
 namespace Deluno.Infrastructure.Storage.Migrations;
 
 public sealed class SqliteDatabaseMigrator(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    ILogger<SqliteDatabaseMigrator>? logger = null,
+    MigrationLockRetryOptions? lockRetry = null)
     : IDelunoDatabaseMigrator
 {
+    private readonly MigrationLockRetryOptions _lockRetry = lockRetry ?? new MigrationLockRetryOptions();
+
+    /// <summary>
+    /// Applies the pending migrations. A database that another process holds
+    /// locked (a backup tool, a slow disk, a previous Deluno still closing) is
+    /// retried with a growing pause for up to <see cref="MigrationLockRetryOptions.MaxWait"/>,
+    /// with a plain log line, instead of failing start-up on the first busy
+    /// answer. If it never clears, the last error is thrown and start-up fails:
+    /// Deluno must not run on a database it could not prepare. Each migration
+    /// commits on its own, so a retry carries on from the last one that finished.
+    /// </summary>
     public async Task ApplyAsync(
+        string databaseName,
+        IReadOnlyList<IDelunoDatabaseMigration> migrations,
+        CancellationToken cancellationToken)
+    {
+        await SqliteLockRetry.RunAsync(
+            () => ApplyOnceAsync(databaseName, migrations, cancellationToken),
+            $"Updating the {databaseName} database",
+            _lockRetry,
+            logger,
+            cancellationToken);
+    }
+
+    private async Task ApplyOnceAsync(
         string databaseName,
         IReadOnlyList<IDelunoDatabaseMigration> migrations,
         CancellationToken cancellationToken)

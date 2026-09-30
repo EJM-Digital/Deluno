@@ -7,7 +7,8 @@ namespace Deluno.Infrastructure.Storage;
 public sealed class DelunoStorageBootstrapService(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     IOptions<StoragePathOptions> storageOptions,
-    ILogger<DelunoStorageBootstrapService> logger)
+    ILogger<DelunoStorageBootstrapService> logger,
+    MigrationLockRetryOptions? lockRetry = null)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -28,13 +29,22 @@ public sealed class DelunoStorageBootstrapService(
 
         foreach (var database in DelunoStorageLayout.Databases)
         {
-            await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-                database.Key,
-                cancellationToken);
+            // A database another process holds locked is waited for, not a failed start (#1080).
+            await SqliteLockRetry.RunAsync(
+                async () =>
+                {
+                    await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
+                        database.Key,
+                        cancellationToken);
 
-            await SetPragmaAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken, scalar: true);
-            await SetPragmaAsync(connection, "PRAGMA synchronous = NORMAL;", cancellationToken);
-            await SetPragmaAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken);
+                    await SetPragmaAsync(connection, "PRAGMA journal_mode = WAL;", cancellationToken, scalar: true);
+                    await SetPragmaAsync(connection, "PRAGMA synchronous = NORMAL;", cancellationToken);
+                    await SetPragmaAsync(connection, "PRAGMA foreign_keys = ON;", cancellationToken);
+                },
+                $"Preparing the {database.Key} database",
+                lockRetry ?? new MigrationLockRetryOptions(),
+                logger,
+                cancellationToken);
         }
 
         logger.LogInformation(
