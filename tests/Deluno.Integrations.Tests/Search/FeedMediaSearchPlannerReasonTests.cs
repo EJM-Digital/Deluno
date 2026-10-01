@@ -42,6 +42,63 @@ public sealed class FeedMediaSearchPlannerReasonTests
         Assert.Empty(plan.Candidates);
     }
 
+    private static (Mock<IRealtimeEventPublisher> Publisher, List<IndexerQueryRecordedEvent> Queries) RecordingQueries()
+    {
+        var queries = new List<IndexerQueryRecordedEvent>();
+        var publisher = new Mock<IRealtimeEventPublisher>();
+        publisher
+            .Setup(p => p.PublishLiveEventAsync(LiveEventNames.IndexerQueryRecorded, It.IsAny<object>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object, CancellationToken>((_, payload, _) =>
+            {
+                lock (queries)
+                {
+                    queries.Add((IndexerQueryRecordedEvent)payload);
+                }
+            })
+            .Returns(Task.CompletedTask);
+        return (publisher, queries);
+    }
+
+    /// <summary>
+    /// #1097: each indexer question is pushed to Live as it is asked and again as it is answered,
+    /// so a person sees which indexer is being asked and how long it took.
+    /// </summary>
+    [Fact]
+    public async Task Each_indexer_query_is_pushed_as_it_is_asked_and_as_it_is_answered()
+    {
+        var indexer = CreateIndexer("fixture-indexer", "Fixture indexer");
+        var (publisher, queries) = RecordingQueries();
+
+        await CreatePlanner(CreateConnections(indexer).Object, realtime: publisher.Object).BuildPlanAsync(
+            "Example", 2026, "movies", null, "WEB 1080p", [CreateSource(indexer)], cancellationToken: CancellationToken.None);
+
+        Assert.Equal(["asked", "answered"], queries.Select(query => query.Phase).ToArray());
+        Assert.All(queries, query =>
+        {
+            Assert.Equal("fixture-indexer", query.IndexerId);
+            Assert.Equal("Fixture indexer", query.IndexerName);
+            Assert.Equal("Example 2026", query.Query);
+        });
+        Assert.Null(queries[0].ResultCount);
+        Assert.Equal(0, queries[1].ResultCount);
+        Assert.False(queries[1].Failed);
+        Assert.NotNull(queries[1].ElapsedMs);
+    }
+
+    [Fact]
+    public async Task An_indexer_that_fails_is_pushed_as_answered_with_its_reason()
+    {
+        var indexer = CreateIndexer("unreachable-indexer", "Primary indexer");
+        var (publisher, queries) = RecordingQueries();
+
+        await CreatePlanner(CreateConnections(indexer).Object, resiliencePolicy: new TimingOutResiliencePolicy(), realtime: publisher.Object).BuildPlanAsync(
+            "Example", 2026, "movies", null, "WEB 1080p", [CreateSource(indexer)], cancellationToken: CancellationToken.None);
+
+        var answered = Assert.Single(queries, query => query.Phase == "answered");
+        Assert.True(answered.Failed);
+        Assert.False(string.IsNullOrWhiteSpace(answered.Failure));
+    }
+
     /// <summary>
     /// A failure that cannot name the indexer it came from is not attributable,
     /// which is half of what #338 asks for. The resilience policy only knew the
@@ -1141,7 +1198,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
         IIntegrationResiliencePolicy? resiliencePolicy = null,
         bool indexersBusy = false,
         Deluno.Integrations.Search.Trackers.TrackerIndexers? trackerIndexers = null,
-        IIndexerAuthFailureRecorder? authFailureRecorder = null)
+        IIndexerAuthFailureRecorder? authFailureRecorder = null,
+        IRealtimeEventPublisher? realtime = null)
     {
         var platform = new Mock<IPlatformSettingsRepository>();
         platform
@@ -1177,7 +1235,8 @@ public sealed class FeedMediaSearchPlannerReasonTests
             logger ?? NullLogger<FeedMediaSearchPlanner>.Instance,
             guidePackageStore: guidePackageStore,
             trackerIndexers: trackerIndexers,
-            indexerAuthFailureRecorder: authFailureRecorder);
+            indexerAuthFailureRecorder: authFailureRecorder,
+            realtimeEventPublisher: realtime);
     }
 
     private static Mock<IConnectionsRepository> CreateConnections(IndexerItem indexer)

@@ -266,6 +266,30 @@ public sealed class DashboardSummaryApiTests(ITestOutputHelper output)
         Assert.Equal(2, service.Builds);
     }
 
+    /// <summary>#1097: the realtime hub pushes the changed sections themselves, built fresh and by name.</summary>
+    [Fact]
+    public async Task Named_sections_can_be_built_alone_for_a_push_and_drop_the_remembered_summary()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var source = app.Services.GetRequiredService<IDashboardSectionSource>();
+        var service = (DashboardSummaryService)app.Services.GetRequiredService<IDashboardSummaryService>();
+        await app.Client.GetStringAsync("/api/dashboard/summary");
+        Assert.Equal(1, service.Builds);
+
+        var built = await source.BuildSectionsAsync(["downloads", "health", "not-a-section"], CancellationToken.None);
+
+        Assert.Equal(["downloads", "health"], built.Sections.Keys.Order().ToArray());
+        Assert.Empty(built.Unavailable);
+        Assert.IsType<DashboardDownloadsSection>(built.Sections["downloads"]);
+
+        // What was just pushed must not be older than what the next fetch answers.
+        await app.Client.GetStringAsync("/api/dashboard/summary");
+        Assert.Equal(2, service.Builds);
+
+        var everything = await source.BuildSectionsAsync(DashboardSectionNames.All, CancellationToken.None);
+        Assert.Equal(SectionNames.Order().ToArray(), everything.Sections.Keys.Order().ToArray());
+    }
+
     [Fact]
     public async Task The_summary_carries_the_quality_mix_collections_lists_added_and_recent_activity()
     {

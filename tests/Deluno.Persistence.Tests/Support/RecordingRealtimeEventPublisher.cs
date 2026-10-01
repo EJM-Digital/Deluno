@@ -12,6 +12,23 @@ internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublish
     public IReadOnlyList<T> LiveEventsOf<T>(string name) where T : class
         => liveEvents.Where(item => item.Name == name).Select(item => (T)item.Payload).ToArray();
 
+    private readonly ConcurrentQueue<string> downloadProgressIds = new();
+
+    public IReadOnlyList<string> DownloadProgressIds => downloadProgressIds.ToArray();
+
+    public override Task PublishDownloadProgressAsync(
+        string id,
+        string title,
+        double progress,
+        double speedMbps,
+        string? eta,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        downloadProgressIds.Enqueue(id);
+        return Task.CompletedTask;
+    }
+
     public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
     {
         liveEvents.Enqueue((eventName, payload));

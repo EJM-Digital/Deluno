@@ -11,7 +11,7 @@ internal class NullRealtimeEventPublisher : IRealtimeEventPublisher
         CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    public Task PublishDownloadProgressAsync(
+    public virtual Task PublishDownloadProgressAsync(
         string id,
         string title,
         double progress,
