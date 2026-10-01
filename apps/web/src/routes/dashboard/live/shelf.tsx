@@ -142,7 +142,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
 
   const [boxRef, box] = useElementSize<HTMLUListElement>();
   // The poster size comes from the row's own measured box, so nothing shifts after paint.
-  const posters = box.height > 0 ? libraryPosters(box.height) : null;
+  const posters = box.height > 0 ? libraryPosters(box.height, box.width) : null;
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
   const inRow = posters ? shown.slice(0, across) : shown;
