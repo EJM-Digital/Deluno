@@ -1,10 +1,10 @@
 /**
- * Sources (#1098): everything Deluno talks to, as one network map. Deluno is in the middle; the indexers are on an arc across
- * the top, the download clients on the lower left and the connections (processors, media servers, Seerr, subtitles, lists) on
- * the lower right, each with a line to Deluno. A circle's colour is its status (green answering, amber slow, red not
- * answering, grey off). When Deluno asks an indexer a dot flies out and the answer flies back; a downloading client streams
- * particles in, faster as it speeds up; a connection that is used gets a pulse. Every movement is a real pushed event or
- * reading (#1097). Each node is a link, with its detail on hover, to where it is managed.
+ * Sources (#1098): everything Deluno talks to, as one readable map. Deluno is in the middle; the indexers are a list on the
+ * left, the download clients and connections (processors, media servers, Seerr, subtitles, lists) are lists on the right, and a
+ * curved line runs from each row's status dot into Deluno. A dot's colour is its status (green answering, amber slow, red not
+ * answering, grey off). When Deluno asks an indexer a dot flies out along its line and the answer flies back; a downloading
+ * client streams particles in, faster as it speeds up; a connection that is used gets a pulse. Every movement is a real pushed
+ * event or reading (#1097). Each row is a link to where it is managed, with its detail on hover.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +19,8 @@ import { useElementSize } from "./hooks";
 import { indexersSummary, pulseOf, type IndexerScoreboardToday } from "./indexers";
 import { LiveCard as Panel } from "./live-card";
 import { MapFx, type DotTone } from "./map-fx";
-import { clientNodes, connectionNodes, indexerNodes, layoutMap, type MapGroup, type PlacedNode } from "./map-model";
+import { clientNodes, connectionNodes, indexerNodes, layoutMap, type MapGroup, type MapSide, type PlacedNode } from "./map-model";
+import "./sources-map.css";
 
 const NO_ROWS: never[] = [];
 
@@ -72,7 +73,10 @@ export function SourcesMap({ indexers, scoreboard, summary, now, clientRows, cli
     ],
     [indexers, todayById, now, lights, connections]
   );
-  const layout = useMemo(() => layoutMap(width, height, specs), [width, height, specs]);
+  // A phone is narrower than the app's tablet size; its two lists stack and the hub goes.
+  const phone = typeof window !== "undefined" && window.innerWidth < 640 && width < 460;
+  const [scroll, setScroll] = useState<Record<MapSide, number>>({ left: 0, right: 0, stack: 0 });
+  const layout = useMemo(() => layoutMap(width, height, specs, scroll, phone), [width, height, specs, scroll, phone]);
   const counts = useMemo<Record<MapGroup, string>>(
     () => ({
       indexers: indexers.length === 0 ? "none set up" : indexersSummary(indexers, todayById, summary?.indexers?.queriesToday),
@@ -104,8 +108,8 @@ export function SourcesMap({ indexers, scoreboard, summary, now, clientRows, cli
     };
   }, []);
   useEffect(() => {
-    fx.current?.setCurves(new Map(layout.nodes.map((node) => [node.key, node.curve])));
-    for (const node of layout.nodes) if (node.group === "clients") fx.current?.setFlow(node.key, node.speedMbps);
+    fx.current?.setCurves(new Map(layout.mode === "fan" ? layout.nodes.map((node) => [node.key, node.curve]) : []));
+    for (const node of layout.nodes) if (node.group === "clients") fx.current?.setFlow(node.key, layout.mode === "fan" ? node.speedMbps : 0);
   }, [layout]);
 
   const ripple = useCallback((key: string, tone: DotTone) => {
@@ -155,7 +159,6 @@ export function SourcesMap({ indexers, scoreboard, summary, now, clientRows, cli
 
   // Hover / focus ---------------------------------------------------------------------------------------------------------
   const [hover, setHover] = useState<string | null>(null);
-  const hovered = hover ? layout.nodes.find((node) => node.key === hover) : undefined;
   const clipId = useId();
   const moving = layout.nodes.some((node) => node.speedMbps > 0);
 
@@ -166,10 +169,67 @@ export function SourcesMap({ indexers, scoreboard, summary, now, clientRows, cli
   };
 
   const { hub } = layout;
+  const fan = layout.mode === "fan";
   const hubBusy = busy || moving;
+  const litKeys = new Set(ripples.map((item) => item.key));
   return (
     <>
-      <svg width={layout.width} height={layout.height} viewBox={`0 0 ${layout.width} ${layout.height}`} role="group" aria-label="Sources map" className="absolute inset-0 block">
+      {layout.columns.map((column) => (
+        <div
+          key={column.side}
+          className="map-col"
+          data-testid={`map-list-${column.side}`}
+          style={{ left: column.left, top: column.top, width: column.width, height: column.height }}
+          onScroll={(event) => {
+            const top = Math.round(event.currentTarget.scrollTop);
+            setScroll((current) => (current[column.side] === top ? current : { ...current, [column.side]: top }));
+          }}
+        >
+          <div className="map-inner" data-narrow={column.narrow ? "" : undefined} style={{ height: column.innerHeight }}>
+            {column.heads.map((head) => (
+              <div key={head.group} className="map-head" style={{ top: head.top, height: column.headH }}>
+                <span className="map-head-title" style={{ color: GROUP_COLOR[head.group] }}>
+                  <i />
+                  <span className="text-foreground">{GROUP_TITLE[head.group]}</span>
+                </span>
+                <span className="map-head-count">{counts[head.group]}</span>
+              </div>
+            ))}
+            {layout.nodes.filter((node) => node.side === column.side).map((node) => (
+              <a
+                key={node.key}
+                href={node.to}
+                aria-label={node.label}
+                title={[node.name, ...node.detail].join("\n")}
+                className="map-row"
+                style={{ top: node.top, height: node.height }}
+                data-tone={node.tone}
+                data-off={node.off ? "" : undefined}
+                data-group={node.group}
+                data-side={column.side === "left" ? "left" : "right"}
+                data-compact={node.compact ? "" : undefined}
+                data-hot={hover === node.key || litKeys.has(node.key) ? "" : undefined}
+                onClick={go(node)}
+                onMouseEnter={() => setHover(node.key)}
+                onMouseLeave={() => setHover((current) => (current === node.key ? null : current))}
+                onFocus={() => setHover(node.key)}
+                onBlur={() => setHover((current) => (current === node.key ? null : current))}
+              >
+                <span className="map-dot">
+                  {ripples.filter((item) => item.key === node.key).map((item) => (
+                    <span key={item.id} className="map-ripple" style={{ ["--ripple" as string]: RIPPLE_COLOR[item.tone] }} />
+                  ))}
+                </span>
+                <span className="map-text">
+                  <span className="map-name">{node.name}</span>
+                  <span className="map-sub">{node.sub}</span>
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      ))}
+      <svg width={layout.width} height={layout.height} viewBox={`0 0 ${layout.width} ${layout.height}`} role="group" aria-label="Sources map" className="pointer-events-none absolute inset-0 block">
         <defs>
           <radialGradient id={`${clipId}-glow`}>
             <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.38" />
@@ -179,87 +239,36 @@ export function SourcesMap({ indexers, scoreboard, summary, now, clientRows, cli
             <circle cx={hub.x} cy={hub.y} r={hub.r} />
           </clipPath>
         </defs>
-        {/* Lines first, so the circles sit on them. */}
-        {layout.nodes.map((node) => {
+        {fan ? layout.nodes.map((node) => {
           const { from, control, to } = node.curve;
-          const flowing = node.speedMbps > 0;
+          const active = node.speedMbps > 0 || hover === node.key || litKeys.has(node.key);
           return (
             <path
               key={`line-${node.key}`}
               className="map-line"
               d={`M${from.x.toFixed(1)} ${from.y.toFixed(1)} Q${control.x.toFixed(1)} ${control.y.toFixed(1)} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`}
               stroke={node.off ? "hsl(var(--muted-foreground))" : GROUP_COLOR[node.group]}
-              strokeOpacity={node.off ? 0.28 : flowing ? 0.85 : 0.3}
-              strokeWidth={flowing ? 1.8 : 1}
+              strokeOpacity={node.off ? (active ? 0.5 : 0.22) : active ? 0.9 : 0.3}
+              strokeWidth={active ? 2 : 1.2}
               strokeDasharray={node.off ? "3 4" : undefined}
             />
           );
-        })}
+        }) : null}
         <g data-testid="map-dots" ref={layer} pointerEvents="none" />
-        {/* Deluno. */}
-        <circle cx={hub.x} cy={hub.y} r={hub.r * 2.7} fill={`url(#${clipId}-glow)`} pointerEvents="none" />
-        <circle className="map-hub-ring" data-busy={hubBusy ? "" : undefined} cx={hub.x} cy={hub.y} r={hub.r + 2} pointerEvents="none" />
-        <g clipPath={`url(#${clipId}-hub)`} pointerEvents="none">
-          <g transform={`translate(${hub.x - hub.r} ${hub.y - hub.r})`}>
-            <AppMark size={hub.r * 2} />
+        {fan ? (
+          <g pointerEvents="none">
+            <circle cx={hub.x} cy={hub.y} r={hub.r * 2.7} fill={`url(#${clipId}-glow)`} />
+            <circle className="map-hub-ring" data-busy={hubBusy ? "" : undefined} cx={hub.x} cy={hub.y} r={hub.r + 2} />
+            <g clipPath={`url(#${clipId}-hub)`}>
+              <g transform={`translate(${hub.x - hub.r} ${hub.y - hub.r})`}>
+                <AppMark size={hub.r * 2} />
+              </g>
+            </g>
+            <circle cx={hub.x} cy={hub.y} r={hub.r} fill="none" stroke="hsl(var(--primary))" strokeOpacity={hubBusy ? 0.9 : 0.5} strokeWidth="1.5" />
+            <text className="map-hub-label" x={hub.x} y={hub.y + hub.r + 17} textAnchor="middle">Deluno</text>
           </g>
-        </g>
-        <circle cx={hub.x} cy={hub.y} r={hub.r} fill="none" stroke="hsl(var(--primary))" strokeOpacity={hubBusy ? 0.9 : 0.5} strokeWidth="1.5" pointerEvents="none" />
-        {/* Group labels. */}
-        {layout.groups.map((group) => (
-          <g key={group.group} pointerEvents="none">
-            <circle cx={group.anchor === "start" ? group.x + 4 : group.x - 4} cy={group.y - 4} r="3.5" fill={GROUP_COLOR[group.group]} />
-            <text className="map-group" x={group.anchor === "start" ? group.x + 14 : group.x - 14} y={group.y} textAnchor={group.anchor}>{GROUP_TITLE[group.group]}</text>
-            <text className="map-count" x={group.anchor === "start" ? group.x + 14 : group.x - 14} y={group.y + 14} textAnchor={group.anchor}>{counts[group.group]}</text>
-          </g>
-        ))}
-        {/* The nodes. */}
-        {layout.nodes.map((node) => (
-          <a
-            key={node.key}
-            href={node.to}
-            aria-label={node.label}
-            className="map-node"
-            data-tone={node.tone}
-            data-off={node.off ? "" : undefined}
-            data-group={node.group}
-            onClick={go(node)}
-            onMouseEnter={() => setHover(node.key)}
-            onMouseLeave={() => setHover((current) => (current === node.key ? null : current))}
-            onFocus={() => setHover(node.key)}
-            onBlur={() => setHover((current) => (current === node.key ? null : current))}
-          >
-            <circle className="map-glow" cx={node.x} cy={node.y} r={node.r * (node.speedMbps > 0 ? 1.9 : 1.5)} />
-            <circle className="map-disc" cx={node.x} cy={node.y} r={node.r} />
-            <circle className="map-focus" cx={node.x} cy={node.y} r={node.r + 4} />
-            {ripples.filter((item) => item.key === node.key).map((item) => (
-              <circle key={item.id} className="map-ripple" style={{ ["--ripple" as string]: RIPPLE_COLOR[item.tone] }} cx={node.x} cy={node.y} r={node.r} />
-            ))}
-            <text transform={`rotate(${node.text.rotate.toFixed(1)} ${node.text.x.toFixed(1)} ${node.text.y.toFixed(1)})`} x={node.text.x} y={node.text.y} dy="0.35em" textAnchor={node.text.anchor}>
-              {node.text.numberFirst ? <tspan className="map-num">{node.text.number} </tspan> : null}
-              <tspan className="map-name">{node.text.name}</tspan>
-              {node.text.numberFirst ? null : <tspan className="map-num" dx="5">{node.text.number}</tspan>}
-            </text>
-            {/* A larger target than the circle and its words, so the node is easy to hit. */}
-            <circle cx={node.x} cy={node.y} r={node.r + 6} fill="transparent" />
-          </a>
-        ))}
+        ) : null}
       </svg>
-      {hovered ? (
-        <div
-          role="presentation"
-          aria-hidden
-          className="pointer-events-none absolute z-10 w-max max-w-[16rem] -translate-x-1/2 rounded-lg border border-hairline bg-popover px-2.5 py-1.5 text-[length:var(--type-caption)] leading-snug text-popover-foreground shadow-md"
-          style={{
-            left: Math.max(100, Math.min(layout.width - 100, hovered.x)),
-            top: hovered.y > layout.height / 2 ? undefined : hovered.y + hovered.r + 8,
-            bottom: hovered.y > layout.height / 2 ? layout.height - hovered.y + hovered.r + 8 : undefined
-          }}
-        >
-          <span className="block font-semibold text-foreground">{hovered.name}</span>
-          {hovered.detail.map((line) => <span key={line} className="block text-muted-foreground">{line}</span>)}
-        </div>
-      ) : null}
     </>
   );
 }
