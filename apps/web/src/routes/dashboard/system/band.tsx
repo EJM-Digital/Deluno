@@ -8,7 +8,7 @@ import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperti
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
 import type { DashboardSummary } from "../../../lib/api";
 import { useNow } from "../live/hooks";
-import { ChartLayer, niceMax, rateText, scaleLabel, spanLabel, traceHitAt } from "../chart-scale";
+import { ChartLayer, quarterMax, quarterTicks, rateText, traceHitAt } from "../chart-scale";
 import { instanceFacts } from "./facts";
 import { countdown, mbps, plainCount, sizeText, tracePaths, upText, wholeRows } from "./logic";
 
@@ -43,7 +43,7 @@ export type TraceScale = { kind: "percent"; noun?: string } | { kind: "rate" };
 /** The top of a trace's scale in its own units: 100 for a percentage, else a round number of MB/s just above the highest reading. */
 export function traceTop(values: readonly number[], scale: TraceScale): number {
   if (scale.kind === "percent") return 100;
-  return niceMax(Math.max(0, ...values.filter((value) => Number.isFinite(value))) / 1e6);
+  return quarterMax(Math.max(0, ...values.filter((value) => Number.isFinite(value))) / 1e6);
 }
 
 /** A trace with its scale, time span and the reading under the pointer (#1105), in the box its card gives it. */
@@ -57,12 +57,7 @@ export function TraceChart({ values, scale, colour }: { values: readonly number[
     <div className="cs-plot">
       <Trace values={values} max={percent ? top : top * 1e6} colour={colour} />
       <ChartLayer
-        ticks={[
-          { top: (4 / 50) * 100, label: scaleLabel(top, unit), side: "below" },
-          { top: (27 / 50) * 100, label: scaleLabel(top / 2, unit), side: "below" }
-        ]}
-        startLabel={spanLabel(values.length)}
-        endLabel="now"
+        ticks={quarterTicks(top, unit, (4 / 50) * 100, 100)}
         resolve={resolve}
       />
     </div>

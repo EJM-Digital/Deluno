@@ -15,7 +15,7 @@ import { formatSpeed } from "../downloads-kit";
 import { BandCard, FigureUnit } from "./band-card";
 import { useNow } from "./hooks";
 import { linePath, shapeSpeedSeries, type SpeedSeries } from "./series";
-import { ChartLayer, clockAt, nearestIndex, niceMax, rateText, scaleLabel, type ChartHit } from "../chart-scale";
+import { ChartLayer, clockAt, nearestIndex, quarterMax, quarterTicks, rateText, type ChartHit } from "../chart-scale";
 
 /** The mockup's chart box: 600 by 110, the trace kept 6 units off the bottom and 10 off the top. */
 const WIDTH = 600;
@@ -61,7 +61,7 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
     [readingAt, downloads?.downloadMbps, downloads?.uploadMbps, now]
   );
   const series = useMemo(() => shapeSpeedSeries(Array.isArray(samples) ? samples : [], live, now, HOURS), [samples, live, now]);
-  const top = niceMax(Math.max(series.peakDown, series.peakUp));
+  const top = quarterMax(Math.max(series.peakDown, series.peakUp));
   const resolve = useCallback((at: number) => speedHitAt(series, at), [series]);
   const last = series.points[series.points.length - 1];
   const dotY = 100 - Math.min(1, last.down / top) * 100;
@@ -108,10 +108,7 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
         </g>
       </svg>
       <ChartLayer
-        ticks={[
-          { top: (PAD_TOP / HEIGHT) * 100, label: scaleLabel(top, "MB/s"), side: "below" },
-          { top: ((PAD_TOP + PLOT / 2) / HEIGHT) * 100, label: scaleLabel(top / 2, "MB/s"), side: "below" }
-        ]}
+        ticks={quarterTicks(top, "MB/s", (PAD_TOP / HEIGHT) * 100, ((PAD_TOP + PLOT) / HEIGHT) * 100)}
         startLabel={`${HOURS} h ago`}
         endLabel="now"
         resolve={resolve}
