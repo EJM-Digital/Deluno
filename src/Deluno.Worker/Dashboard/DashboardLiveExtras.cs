@@ -16,7 +16,8 @@ public sealed record LiveArrival(
     string? PreviousQuality,
     bool Upgraded,
     long? SizeBytes,
-    DateTimeOffset ImportedUtc);
+    DateTimeOffset ImportedUtc,
+    bool? QualityMet = null);
 
 /// <summary>A release Deluno refused or a file it blocked, newest first on the Live screen's Protected-you counter.</summary>
 public sealed record LiveProtection(string Release, string ReasonCode, string Reason, DateTimeOffset BlockedUtc);
@@ -129,6 +130,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             string? release = null, quality = null, previous = null;
             long? size = null;
             var upgraded = false;
+            bool? qualityMet = null;
             var details = reader.IsDBNull(2) ? null : reader.GetString(2);
             if (!string.IsNullOrWhiteSpace(details))
             {
@@ -140,6 +142,11 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                     quality = Text(root, "NewQuality");
                     previous = Text(root, "PreviousQuality");
                     upgraded = root.TryGetProperty("Upgraded", out var flag) && flag.ValueKind == JsonValueKind.True;
+                    if (root.TryGetProperty("QualityMet", out var met) && met.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    {
+                        qualityMet = met.ValueKind == JsonValueKind.True;
+                    }
+
                     if (root.TryGetProperty("FileSizeBytes", out var bytes) && bytes.ValueKind == JsonValueKind.Number)
                     {
                         size = bytes.GetInt64();
@@ -159,7 +166,8 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                 previous,
                 upgraded,
                 size,
-                DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)));
+                DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
+                qualityMet));
         }
 
         return rows;

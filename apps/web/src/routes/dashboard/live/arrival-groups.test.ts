@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupArrivals } from "./arrival-groups";
+import { groupArrivals, groupMet } from "./arrival-groups";
 import type { ArrivalItem } from "./extras";
 import type { TitleLookup } from "./titles";
 
@@ -24,6 +24,15 @@ describe("groupArrivals", () => {
     expect(groupArrivals([ep(1)], titles)[0]).toMatchObject({ title: "Breaking Bad", episodes: "S01E01" });
     const mixed = groupArrivals([ep(1), ep(2, { quality: "WEB 720p", upgraded: true })], titles)[0];
     expect(mixed.tag).toBe("mixed · 1 upgraded");
+  });
+
+  it("says which row a group sits in, and its state: met only when every arrival met it", () => {
+    expect(groupArrivals([film], titles)[0]).toMatchObject({ library: "movies", quality: "Bluray 1080p", met: null });
+    expect(groupArrivals([ep(1), ep(2)], titles)[0]).toMatchObject({ library: "tv", quality: "WEB 1080p" });
+    expect(groupMet([ep(1, { qualityMet: true }), ep(2, { qualityMet: true })])).toBe(true);
+    expect(groupMet([ep(1, { qualityMet: true }), ep(2, { qualityMet: false })])).toBe(false);
+    expect(groupMet([ep(1, { qualityMet: true }), ep(2)])).toBeNull();
+    expect(groupArrivals([ep(1, { upgraded: true, previousQuality: "WEB 720p" })], titles)[0]).toMatchObject({ quality: "WEB 1080p", previousQuality: "WEB 720p" });
   });
 
   it("keeps the same show on different days apart", () => {

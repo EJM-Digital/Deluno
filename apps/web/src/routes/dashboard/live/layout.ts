@@ -75,15 +75,15 @@ export function pageLayout(width: number, remPx: number): PageLayout {
 
 /**
  * The one shared grid of the Live tab beside the right column (the mockup's `main`): the top band, the journey and the
- * bottom row are rows, Sources spans the band and the journey, Activity sits beside the bottom row, so the tops and
+ * bottom row are rows, Sources spans the band and the journey, Turned down today sits beside the bottom row, so the tops and
  * bottoms line up across both columns. Row heights are fluid within bounds, shares of the height the grid has (see `gridRows`).
  */
 export const GRID_COLUMNS = "minmax(0, 1fr) clamp(340px, 28%, 600px)";
 export const GRID_AREAS = '"now src" "board src" "low act"';
 /** System's areas on the same columns and rows: Storage in the top-right slot, Connections beside Health, Backups beside the bottom row. */
 export const GRID_AREAS_SYSTEM = '"band store" "mid conn" "low upd"';
-/** The bottom row's own two columns: Arrived today and Turned down. */
-export const LOW_COLUMNS = "minmax(0, 1fr) clamp(260px, 36%, 420px)";
+/** The bottom row's own two columns, as the mockup's `.low`: Your library and Activity. Turned down today is the right column's last row. */
+export const LOW_COLUMNS = "minmax(0, 1.15fr) minmax(0, 1fr)";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -149,33 +149,44 @@ export function cardsBudget(budget: number | undefined, chrome: number): number 
   return budget === undefined ? undefined : Math.max(0, budget - chrome);
 }
 
-export interface PosterLayout {
-  /** Always one row: a second, partial row is never drawn. */
-  rows: 1;
-  /** Posters across. */
-  perRow: number;
-  /** Width and height of one poster's picture (2:3). */
-  width: number;
-  height: number;
-  /** The height of one poster with its caption. */
-  itemHeight: number;
-  /** How many posters the shelf shows. */
-  capacity: number;
+/**
+ * Your library (the mockup's `layout()`): TV Shows above Movies, each row's posters sized from the row's own height, 2:3, the
+ * same size in both rows and whole posters only. A card too short for stacked rows to give posters of at least 80px puts the
+ * two rows side by side instead, so each gets the card's full height.
+ */
+export const LIBRARY_MIN_POSTER_PX = 80;
+/** The caption (the title and when) under a poster, and the space between posters, in px. */
+export const POSTER_CAPTION_PX = 34;
+export const POSTER_GAP_PX = 12;
+/** The padding round the posters' box (7 above, 5 below and either side), which the posters do not use. */
+const POSTERS_PAD_Y = 12;
+const POSTERS_PAD_X = 10;
+
+/** True when stacked rows would make posters under 80px tall, so the two rows go side by side. Unmeasured is stacked. */
+export function libraryBySide(libsHeight: number): boolean {
+  if (!(libsHeight > 0)) return false;
+  const stackedRow = (libsHeight - 12) / 2 - 10;
+  return stackedRow - (stackedRow >= 130 ? POSTER_CAPTION_PX : 0) < LIBRARY_MIN_POSTER_PX;
 }
 
-/** The widest a poster's picture may be (the mockup's 130px) and the narrowest (40px, so a very short shelf shows whole posters rather than cutting them), in px. */
-export const MAX_POSTER_PX = 130;
-export const MIN_POSTER_PX = 40;
-/** The caption under a poster, and the space between posters, in px. */
-export const POSTER_CAPTION_PX = 36;
-export const POSTER_GAP_PX = 16;
+export interface LibraryPosters {
+  /** The row is so short that its counts sit on one line. */
+  short: boolean;
+  /** A caption (title and when) goes under each poster. */
+  captions: boolean;
+  /** The width of a poster; its height is exactly one and a half times this (2:3). */
+  width: number;
+}
 
-/**
- * The mockup's poster rule: one row, a poster 2:3 sized from the height of the shelf (less its caption), at most 130px
- * wide and at least 64px: more posters across rather than bigger ones.
- */
-export function posterLayout(width: number, height: number): PosterLayout {
-  const wide = clamp(Math.round(((height - POSTER_CAPTION_PX) * 2) / 3), MIN_POSTER_PX, MAX_POSTER_PX);
-  const perRow = width > 0 ? Math.max(1, Math.floor((width + POSTER_GAP_PX) / (wide + POSTER_GAP_PX))) : 1;
-  return { rows: 1, perRow, width: wide, height: Math.round(wide * 1.5), itemHeight: Math.round(wide * 1.5) + POSTER_CAPTION_PX, capacity: perRow };
+/** The poster size both rows share, from the shorter of the two rows' own heights. */
+export function libraryPosters(boxHeights: readonly number[]): LibraryPosters {
+  const rowH = Math.min(...boxHeights) - POSTERS_PAD_Y;
+  const captions = rowH >= 130;
+  const art = Math.max(36, Math.min(255, rowH - (captions ? POSTER_CAPTION_PX : 0)));
+  return { short: rowH < 110, captions, width: Math.floor(art / 1.5) };
+}
+
+/** Whole posters across a row of `boxWidth` px, at least one; never a part of one. */
+export function postersAcross(boxWidth: number, posterWidth: number): number {
+  return Math.max(1, Math.floor((boxWidth - POSTERS_PAD_X + POSTER_GAP_PX) / (posterWidth + POSTER_GAP_PX)));
 }

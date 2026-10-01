@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { recentArrivalItems } from "./extras";
-import { arrivedWhen, LATEST_ARRIVALS_HEADING, POSTER_WIDTH_CSS } from "./shelf";
+import { arrivedWhen, LATEST_ARRIVALS_HEADING } from "./shelf";
 import { speedAside } from "./speed-chart";
 import type { DashboardLiveExtras } from "../../../lib/api/types/operations";
 
@@ -21,15 +21,6 @@ describe("the shelf's latest arrivals (#1098)", () => {
     expect(recentArrivalItems(extras).map((item) => item.at)).toEqual(["2026-09-29T10:00:00Z"]);
     expect(recentArrivalItems({ requests: [] } as unknown as DashboardLiveExtras)).toEqual([]);
     expect(recentArrivalItems(undefined)).toEqual([]);
-  });
-
-  it("sizes a poster from the box it sits in, so it can never be taller than its row", () => {
-    expect(POSTER_WIDTH_CSS).toContain("100cqh");
-    expect(POSTER_WIDTH_CSS).toContain("var(--poster-caption)");
-    // One row, at most the mockup's 130px and at least 64px.
-    expect(POSTER_WIDTH_CSS).toContain("min(130px, max(40px,");
-    expect(POSTER_WIDTH_CSS).not.toContain("--poster-rows");
-    expect(POSTER_WIDTH_CSS).not.toContain("16rem");
   });
 });
 

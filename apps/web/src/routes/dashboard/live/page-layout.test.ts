@@ -21,10 +21,10 @@ describe("page layout from the measured main area", () => {
 });
 
 describe("the shared page grid", () => {
-  it("is the mockup's: Sources spans the band and the journey, Activity sits beside the bottom row", () => {
+  it("is the mockup's: Sources spans the band and the journey, Turned down today sits beside the bottom row", () => {
     expect(GRID_COLUMNS).toBe("minmax(0, 1fr) clamp(340px, 28%, 600px)");
     expect(GRID_AREAS).toBe('"now src" "board src" "low act"');
-    expect(LOW_COLUMNS).toBe("minmax(0, 1fr) clamp(260px, 36%, 420px)");
+    expect(LOW_COLUMNS).toBe("minmax(0, 1.15fr) minmax(0, 1fr)");
   });
   it("is the mockup's fitRows exactly, at the three sizes it was approved at (the heights are the grid's)", () => {
     // 1568x765 inside the app: the grid has 651px. The band and the journey keep their least, the bottom row its 180px.
