@@ -8,7 +8,7 @@ import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperti
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
 import type { DashboardSummary } from "../../../lib/api";
 import { useNow } from "../live/hooks";
-import { ChartLayer, quarterMax, quarterTicks, rateText, traceHitAt } from "../chart-scale";
+import { ChartLayer, quarterMax, rateText, traceHitAt } from "../chart-scale";
 import { instanceFacts } from "./facts";
 import { countdown, mbps, plainCount, sizeText, tracePaths, upText, wholeRows } from "./logic";
 
@@ -46,18 +46,20 @@ export function traceTop(values: readonly number[], scale: TraceScale): number {
   return quarterMax(Math.max(0, ...values.filter((value) => Number.isFinite(value))) / 1e6);
 }
 
-/** A trace with its scale, time span and the reading under the pointer (#1105), in the box its card gives it. */
+/**
+ * A trace with the reading under the pointer (#1105), in the box its card gives it. No scale is drawn: the figure above it
+ * says the reading now, and pointing at the trace says what it was then (James, 2 Oct 2026). Live's Speed chart keeps its scale.
+ */
 export function TraceChart({ values, scale, colour }: { values: readonly number[]; scale: TraceScale; colour: string }): JSX.Element {
   const top = traceTop(values, scale);
   const percent = scale.kind === "percent";
-  const unit = percent ? "%" : "MB/s";
   const text = useCallback((value: number) => (percent ? `${Math.round(value)}%${scale.noun ? ` ${scale.noun}` : ""}` : rateText(value / 1e6)), [percent, scale]);
   const resolve = useCallback((at: number) => traceHitAt(values, at, Date.now(), text), [values, text]);
   return (
     <div className="cs-plot">
       <Trace values={values} max={percent ? top : top * 1e6} colour={colour} />
       <ChartLayer
-        ticks={quarterTicks(top, unit, (4 / 50) * 100, 100)}
+        ticks={[]}
         resolve={resolve}
       />
     </div>
