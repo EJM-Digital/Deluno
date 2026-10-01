@@ -759,6 +759,8 @@ export interface DashboardLiveExtras {
   cleanedUpToday?: number;
   /** Processors, media servers, Seerr, subtitle providers and import lists (#1098). */
   connections?: LiveConnection[] | null;
+  /** The newest imports of the last seven days (at most thirty, newest first), for the shelf when nothing has arrived today (#1098). */
+  recentArrivals?: LiveArrivalItem[] | null;
 }
 
 export interface DashboardSummary {

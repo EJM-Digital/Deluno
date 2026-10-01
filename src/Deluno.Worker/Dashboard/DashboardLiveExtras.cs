@@ -65,7 +65,8 @@ public sealed record DashboardLiveExtras(
     long RetentionReclaimBytes,
     LiveTurnedDown? TurnedDown = null,
     int CleanedUpToday = 0,
-    IReadOnlyList<LiveConnection>? Connections = null);
+    IReadOnlyList<LiveConnection>? Connections = null,
+    IReadOnlyList<LiveArrival>? RecentArrivals = null);
 
 /// <summary>
 /// The stored rows behind <see cref="DashboardLiveExtras"/>. Each is one small
@@ -82,7 +83,9 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
 
     public async Task<DashboardLiveExtras> GetAsync(DateTimeOffset now, DateTimeOffset sinceUtc, CancellationToken cancellationToken)
     {
-        var imports = await ReadImportsAsync(sinceUtc, cancellationToken);
+        var imports = await ReadImportsAsync(sinceUtc, 500, cancellationToken);
+        // The shelf shows the latest arrivals when nothing has come in today: the newest thirty of the last seven days.
+        var recent = await ReadImportsAsync(now.AddDays(-7), 30, cancellationToken);
         var protectedYou = await ReadProtectedAsync(sinceUtc, cancellationToken);
         var requests = await ReadRequestsAsync(now.AddDays(-7), cancellationToken);
         var reclaim = await ReadReclaimBytesAsync(cancellationToken);
@@ -101,10 +104,11 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             reclaim,
             turnedDown,
             cleanedUp,
-            connections);
+            connections,
+            recent);
     }
 
-    private async Task<List<LiveArrival>> ReadImportsAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    private async Task<List<LiveArrival>> ReadImportsAsync(DateTimeOffset sinceUtc, int limit, CancellationToken cancellationToken)
     {
         var rows = new List<LiveArrival>();
         await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
@@ -115,9 +119,10 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             FROM activity_events
             WHERE category = 'filesystem.import.completed' AND created_utc >= @since
             ORDER BY created_utc DESC
-            LIMIT 500;
+            LIMIT @limit;
             """;
         Add(command, "@since", Iso(sinceUtc));
+        Add(command, "@limit", limit);
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

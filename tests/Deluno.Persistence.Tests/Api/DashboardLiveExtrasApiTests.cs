@@ -82,6 +82,33 @@ public sealed class DashboardLiveExtrasApiTests
     }
 
     [Fact]
+    public async Task Recent_arrivals_are_the_newest_imports_of_the_last_seven_days_when_nothing_came_in_today()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var yesterday = DateTimeOffset.UtcNow.AddHours(-30).ToString("O");
+        var threeDays = DateTimeOffset.UtcNow.AddDays(-3).ToString("O");
+        var tenDays = DateTimeOffset.UtcNow.AddDays(-10).ToString("O");
+
+        await ExecuteAsync(databases, DelunoDatabaseNames.Jobs,
+            $$"""
+            INSERT INTO activity_events (id, category, message, details_json, related_entity_type, related_entity_id, created_utc)
+            VALUES ('r1', 'filesystem.import.completed', 'Imported Moon', '{"ReleaseNameEvidence":"Moon.2009.720p","NewQuality":"WEB 720p","FileSizeBytes":1000}', 'movie', 'm2', '{{threeDays}}'),
+                   ('r2', 'filesystem.import.completed', 'Imported Sintel', '{"ReleaseNameEvidence":"Sintel.2010.1080p","NewQuality":"Bluray 1080p","FileSizeBytes":4000}', 'movie', 'm1', '{{yesterday}}'),
+                   ('r3', 'filesystem.import.completed', 'Imported Old', NULL, 'movie', 'm3', '{{tenDays}}');
+            """);
+
+        var live = await GetAsync(app);
+
+        Assert.Equal(0, live.GetProperty("arrivals").GetArrayLength());
+        var recent = live.GetProperty("recentArrivals");
+        Assert.Equal(2, recent.GetArrayLength());
+        Assert.Equal("m1", recent[0].GetProperty("entityId").GetString());
+        Assert.Equal("Bluray 1080p", recent[0].GetProperty("quality").GetString());
+        Assert.Equal("m2", recent[1].GetProperty("entityId").GetString());
+    }
+
+    [Fact]
     public async Task An_empty_install_has_every_turned_down_group_at_zero_and_no_connections()
     {
         await using var app = await ApplicationTestHost.StartAsync();

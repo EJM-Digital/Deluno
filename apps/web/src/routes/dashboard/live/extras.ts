@@ -4,7 +4,7 @@
  * among them) as its last. Pure functions of the lists, so the board is only
  * ever drawing what is true.
  */
-import type { DashboardLiveExtras, LiveRequestItem } from "../../../lib/api/types/operations";
+import type { DashboardLiveExtras, LiveArrivalItem, LiveRequestItem } from "../../../lib/api/types/operations";
 import { cardLink, releaseKey, titleFromRelease, type JourneyCard } from "./journey";
 import { entityFromRelated, type Entity } from "./titles";
 
@@ -73,26 +73,35 @@ export interface ArrivalItem {
   to: string;
 }
 
+function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyMap<string, string | null>): ArrivalItem {
+  const entity = entityFromRelated(arrival.entityType, arrival.entityId);
+  return {
+    key: `arrival:${arrival.importedUtc}:${arrival.entityId ?? index}`,
+    entity,
+    fallbackTitle: arrival.release ? titleFromRelease(arrival.release) : "A title",
+    release: arrival.release,
+    quality: arrival.quality,
+    previousQuality: arrival.previousQuality,
+    upgraded: arrival.upgraded,
+    sizeBytes: arrival.sizeBytes,
+    at: arrival.importedUtc,
+    requestedBy: (arrival.entityId ? asked.get(arrival.entityId) : null) ?? null,
+    to: cardLink(entity)
+  };
+}
+
+/** The newest arrivals of the last seven days, for the shelf when nothing has arrived today. Empty when the server does not send them. */
+export function recentArrivalItems(extras: DashboardLiveExtras | null | undefined): ArrivalItem[] {
+  if (!extras?.recentArrivals) return [];
+  const asked = new Map((extras.requests ?? []).map((request) => [request.entityId, request.requestedBy]));
+  return extras.recentArrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
+}
+
 /** Today's arrivals, newest first: the day's real imports when the server has them, otherwise the imported cards. */
 export function arrivalItems(extras: DashboardLiveExtras | null | undefined, cards: JourneyCard[]): ArrivalItem[] {
   if (extras) {
     const asked = new Map((extras.requests ?? []).map((request) => [request.entityId, request.requestedBy]));
-    return extras.arrivals.map((arrival, index) => {
-      const entity = entityFromRelated(arrival.entityType, arrival.entityId);
-      return {
-        key: `arrival:${arrival.importedUtc}:${arrival.entityId ?? index}`,
-        entity,
-        fallbackTitle: arrival.release ? titleFromRelease(arrival.release) : "A title",
-        release: arrival.release,
-        quality: arrival.quality,
-        previousQuality: arrival.previousQuality,
-        upgraded: arrival.upgraded,
-        sizeBytes: arrival.sizeBytes,
-        at: arrival.importedUtc,
-        requestedBy: (arrival.entityId ? asked.get(arrival.entityId) : null) ?? null,
-        to: cardLink(entity)
-      };
-    });
+    return extras.arrivals.map((arrival, index) => toArrivalItem(arrival, index, asked));
   }
   return cards
     .filter((card) => card.stage === "imported")
