@@ -128,6 +128,16 @@ public static class WorkerServiceCollectionExtensions
         services.AddScoped<IHealthCheck, ExternalServiceHealthCheck>();
         services.AddScoped<IHealthCheck, MetadataProviderHealthCheck>();
         services.AddScoped<IHealthCheck, SystemDiskSpaceHealthCheck>();
+        // #1098: the Machine area. Each reports nothing when the computer cannot say.
+        services.AddSingleton<Deluno.Worker.HealthChecks.Machine.IMachinePowerReader, Deluno.Worker.HealthChecks.Machine.WindowsMachinePowerReader>();
+        services.AddSingleton<Deluno.Worker.HealthChecks.Machine.IMachineDriveHealthReader, Deluno.Worker.HealthChecks.Machine.WindowsMachineDriveHealthReader>();
+        services.AddSingleton<Deluno.Worker.HealthChecks.Machine.IMachineRebootReader, Deluno.Worker.HealthChecks.Machine.MachineRebootReader>();
+        services.AddSingleton<Deluno.Worker.HealthChecks.Machine.IMachineTemperatureReader, Deluno.Worker.HealthChecks.Machine.MachineTemperatureReader>();
+        services.AddScoped<IHealthCheck, ComputerSleepHealthCheck>();
+        services.AddScoped<IHealthCheck, DriveHealthHealthCheck>();
+        services.AddScoped<IHealthCheck, PendingRebootHealthCheck>();
+        services.AddScoped<IHealthCheck, CpuTemperatureHealthCheck>();
+        services.AddHostedService<Deluno.Worker.HealthChecks.Machine.KeepAwakeService>();
         services.AddScoped<IHealthCheck, DispatchRecoveryPollerHealthCheck>();
         services.AddScoped<IProxyReachabilityTester, HttpProxyReachabilityTester>();
         services.AddScoped<IHealthCheck, ProxyHealthCheck>();

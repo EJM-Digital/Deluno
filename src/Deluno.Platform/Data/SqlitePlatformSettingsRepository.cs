@@ -219,7 +219,17 @@ public sealed class SqlitePlatformSettingsRepository(
         await UpsertSettingAsync(connection, transaction, "cleanup.strikeThreshold", Math.Clamp(request.DownloadHealthStrikeThreshold ?? 3, 1, 20).ToString(CultureInfo.InvariantCulture), updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.blockReleaseAfterThreshold", request.CleanupBlockReleaseAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
         await UpsertSettingAsync(connection, transaction, "cleanup.queueReplacementAfterThreshold", request.CleanupQueueReplacementAfterThreshold is false ? "false" : "true", updatedUtc, cancellationToken);
-        await UpsertSettingAsync(connection, transaction, "connections.checkRegularly", request.CheckConnectionsRegularly is false ? "false" : "true", updatedUtc, cancellationToken);
+        // Left as it is when a caller does not send it, so an older screen saving everything else cannot flip a choice.
+        if (request.CheckConnectionsRegularly is { } checkRegularly)
+        {
+            await UpsertSettingAsync(connection, transaction, "connections.checkRegularly", checkRegularly ? "true" : "false", updatedUtc, cancellationToken);
+        }
+
+        if (request.KeepComputerAwake is { } keepAwake)
+        {
+            await UpsertSettingAsync(connection, transaction, "machine.keepAwake", keepAwake ? "true" : "false", updatedUtc, cancellationToken);
+        }
+
         await UpsertSettingAsync(connection, transaction, "cleanup.removeClientEntryAfterThreshold", request.CleanupRemoveClientEntryAfterThreshold == true ? "true" : "false", updatedUtc, cancellationToken);
         // #659: each rule's own on/off switch plus its threshold, mirroring
         // the strike threshold above. Minutes are clamped to the same 1..1440
@@ -628,6 +638,7 @@ public sealed class SqlitePlatformSettingsRepository(
             CleanupBlockReleaseAfterThreshold: !string.Equals(GetValue(settings, "cleanup.blockReleaseAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CleanupQueueReplacementAfterThreshold: !string.Equals(GetValue(settings, "cleanup.queueReplacementAfterThreshold"), "false", StringComparison.OrdinalIgnoreCase),
             CheckConnectionsRegularly: !string.Equals(GetValue(settings, "connections.checkRegularly"), "false", StringComparison.OrdinalIgnoreCase),
+            KeepComputerAwake: string.Equals(GetValue(settings, "machine.keepAwake"), "true", StringComparison.OrdinalIgnoreCase),
             // #904's "default on" change (commit 2e9f2125) never shipped in a
             // release: v1.0.0-rc.22 already read a missing key here as off
             // (this same "true" comparison), so #936 does not need to change
