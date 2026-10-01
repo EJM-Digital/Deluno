@@ -1078,6 +1078,8 @@ public sealed class ImportPipelineServiceTests
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("PreviousQuality").GetString()), details);
         Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("NewQuality").GetString()), details);
         Assert.Equal(8192, document.RootElement.GetProperty("FileSizeBytes").GetInt64());
+        // And the library it landed in (#1103), so the shelf can tag it.
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("LibraryId").GetString()), details);
     }
 
     /// <summary>
