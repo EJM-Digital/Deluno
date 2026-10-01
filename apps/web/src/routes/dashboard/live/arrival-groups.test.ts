@@ -30,3 +30,19 @@ describe("groupArrivals", () => {
     expect(groupArrivals([ep(1), ep(2, { at: "2026-09-28T03:00:00Z" })], titles)).toHaveLength(2);
   });
 });
+
+describe("groupArrivals and titles that are gone", () => {
+  const answered = { ...titles, answered: { movies: true, series: true } };
+  const gone: ArrivalItem = { ...film, key: "g", entity: { kind: "movie", id: "m404" } };
+  it("leaves off the shelf an arrival whose title is no longer in the library", () => {
+    expect(groupArrivals([gone, film], answered).map((group) => group.key)).toEqual(["f"]);
+    expect(groupArrivals([ep(9, { entity: { kind: "episode", id: "e9" } })], answered)).toHaveLength(0);
+  });
+  it("keeps everything until the library has answered", () => {
+    expect(groupArrivals([gone, film], titles)).toHaveLength(2);
+    expect(groupArrivals([gone, film], { ...titles, answered: { movies: false, series: true } })).toHaveLength(2);
+  });
+  it("keeps a title that exists without a poster", () => {
+    expect(groupArrivals([film], answered)[0].poster).toBeUndefined();
+  });
+});

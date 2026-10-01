@@ -79,6 +79,22 @@ export function stationLayout(count: number, width: number, height: number, card
   return { density: "compact", columns: Math.max(1, Math.min(across(COMPACT_ROW_MIN_REM), Math.ceil(count / compactRows))) };
 }
 
+/**
+ * The journey draws every station with ONE card form (full cards, or compact rows) so the board never mixes sizes: full
+ * cards when every station's cards fit as full cards in its columns and height, otherwise compact rows everywhere. Widths
+ * and columns are still each station's own. `widths` are the cards' widths per station, in px.
+ */
+export function boardLayouts(counts: readonly number[], widths: readonly number[], height: number, cardHeight: number, remPx: number, mode: "columns" | "stacked"): StationLayout[] {
+  const layouts = counts.map((count, index) => stationLayout(count, widths[index] ?? 0, height, cardHeight, remPx, mode));
+  if (layouts.every((layout) => layout.density === "full")) return layouts;
+  const gap = CARD_GAP_REM * remPx;
+  const compactRows = rowsThatFit(height, COMPACT_ROW_REM * remPx, 0);
+  return counts.map((count, index) => {
+    const across = Math.max(1, Math.floor(((widths[index] ?? 0) + gap) / (COMPACT_ROW_MIN_REM * remPx + gap)));
+    return { density: "compact", columns: Math.max(1, Math.min(across, Math.ceil(count / compactRows))) };
+  });
+}
+
 /** The main area must be at least this wide (in rem) for the right column to sit beside the journey. */
 export const SIDE_BY_SIDE_REM = 71.875;
 /** Below this main-area width (in rem) the top band stacks its three cards. */
