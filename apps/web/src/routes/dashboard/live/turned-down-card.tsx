@@ -28,11 +28,13 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
     if (!holder || !(box.height > 0) || fit.latest + fit.reasons <= 1) return;
     if (holder.scrollHeight > holder.clientHeight + 1) setTrim((value) => value + 1);
   });
+  // Nothing turned down: the bars are quiet empty tracks, spread over the card so it is never a big empty box under them.
+  const quiet = view.total === 0 && fit.latest === 0;
   const count = view.total === 1 ? "1 release" : `${view.total.toLocaleString("en-AU")} releases`;
   return (
     <Panel title="Turned down today" count={count} className="min-h-0" bodyClassName="min-h-0">
       <div ref={boxRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <ul aria-label="Reasons" className="grid gap-2 px-[var(--card-pad-x)] pb-3 pt-3">
+        <ul aria-label="Reasons" className={cn("grid gap-2 px-[var(--card-pad-x)] pb-3 pt-3", quiet && "min-h-0 flex-1 content-evenly")}>
           {view.reasons.slice(0, fit.reasons).map((reason) => {
             const hit = lit.has(reason.group);
             return (
@@ -62,7 +64,7 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
             })}
           </ul>
         ) : fit.reasons === view.reasons.length && view.latest.length === 0 ? (
-          <p className="border-t border-hairline px-[var(--card-pad-x)] py-2.5 text-[length:var(--type-caption)] text-muted-foreground">{view.total === 0 ? "Nothing has been turned down yet today." : "The newest ones are in the counts above."}</p>
+          <p className="shrink-0 border-t border-hairline px-[var(--card-pad-x)] py-2.5 text-[length:var(--type-caption)] text-muted-foreground">{view.total === 0 ? "Nothing has been turned down yet today." : "The newest ones are in the counts above."}</p>
         ) : null}
       </div>
     </Panel>

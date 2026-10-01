@@ -26,12 +26,12 @@ import { SpeedCell } from "./speed-chart";
 import { buildNext, whenText, type NextItem } from "./times";
 import { faceOf, type TitleLookup } from "./titles";
 
-const OP_ICON: Record<WorkKind, { icon: LucideIcon; tone: string }> = {
-  search: { icon: Search, tone: "text-[hsl(var(--stage-search))] bg-[hsl(var(--stage-search)/0.15)]" },
-  grab: { icon: Download, tone: "text-[hsl(var(--stage-grab))] bg-[hsl(var(--stage-grab)/0.15)]" },
-  import: { icon: FolderInput, tone: "text-[hsl(var(--stage-import))] bg-[hsl(var(--stage-import)/0.15)]" },
-  processor: { icon: ShieldCheck, tone: "text-[hsl(var(--stage-process))] bg-[hsl(var(--stage-process)/0.15)]" },
-  jobs: { icon: Activity, tone: "text-info bg-info/15" }
+const OP_ICON: Record<WorkKind, { icon: LucideIcon; tone: string; bar: string }> = {
+  search: { icon: Search, tone: "text-[hsl(var(--stage-search))] bg-[hsl(var(--stage-search)/0.15)]", bar: "bg-[hsl(var(--stage-search))]" },
+  grab: { icon: Download, tone: "text-[hsl(var(--stage-grab))] bg-[hsl(var(--stage-grab)/0.15)]", bar: "bg-[hsl(var(--stage-grab))]" },
+  import: { icon: FolderInput, tone: "text-[hsl(var(--stage-import))] bg-[hsl(var(--stage-import)/0.15)]", bar: "bg-[hsl(var(--stage-import))]" },
+  processor: { icon: ShieldCheck, tone: "text-[hsl(var(--stage-process))] bg-[hsl(var(--stage-process)/0.15)]", bar: "bg-[hsl(var(--stage-process))]" },
+  jobs: { icon: Activity, tone: "text-info bg-info/15", bar: "bg-info" }
 };
 
 /** One thing Deluno is doing now: what it is, which title when it is one, and how far along when that is known. */
@@ -87,16 +87,16 @@ function WorkingNow({ summary, operations }: { summary: DashboardSummary | undef
       {shown.length > 0 ? (
         <ul className="min-w-0">
           {shown.map((op) => {
-            const { icon: Icon, tone } = OP_ICON[op.kind];
+            const { icon: Icon, tone, bar } = OP_ICON[op.kind];
             return (
-              <li key={op.key} className="border-b border-hairline py-1 last:border-b-0">
+              <li key={op.key} className="border-b border-hairline py-[7px] last:border-b-0">
                 <Link to={op.to} className="grid grid-cols-[1.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md text-[length:var(--type-body-sm)] leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span aria-hidden className={cn("flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-md", tone)}><Icon className="h-3.5 w-3.5" /></span>
                   <span className="truncate">{op.lead}{op.name ? <> <strong className="font-semibold">{op.name}</strong></> : null}</span>
                   <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{op.right}</span>
                   {op.pct !== undefined ? (
                     <span aria-hidden className="col-span-2 col-start-2 mt-0.5 block h-1 overflow-hidden rounded-full bg-surface-3">
-                      <span className="live-fill block h-full rounded-full bg-[hsl(var(--stage-search))]" style={{ width: `${Math.round(op.pct)}%` }} />
+                      <span className={cn("live-fill block h-full rounded-full", bar)} style={{ width: `${Math.round(op.pct)}%` }} />
                     </span>
                   ) : null}
                 </Link>

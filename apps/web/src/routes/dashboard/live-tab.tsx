@@ -34,7 +34,7 @@ import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { ConnectionTiles } from "./live/connection-tiles";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
-import { arrivalItems, requestCards, withSeerr } from "./live/extras";
+import { arrivalItems, recentArrivalItems, requestCards, withSeerr } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { tileColumns, tileDensity } from "./live/layout";
 import { TileLayoutContext, type TileLayout } from "./live/tile";
@@ -42,7 +42,7 @@ import { ClientTiles } from "./live/clients";
 import { IndexerTiles } from "./live/indexers";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf, useGlide } from "./live/motion";
-import { arrivedHeading, Shelf } from "./live/shelf";
+import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
 import { entityFromRelated, type Entity } from "./live/titles";
@@ -104,15 +104,19 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const cards = useMemo(() => withSeerr([...built, ...requestCards(extras?.requests, built)], extras?.requests), [built, extras?.requests]);
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
+  // With nothing in today, the shelf shows the latest of the last seven days instead of an empty box.
+  const recent = useMemo(() => recentArrivalItems(extras), [extras]);
+  const showingLatest = items.length === 0 && recent.length > 0;
+  const shelfItems = showingLatest ? recent : items;
   const counts = useMemo(() => laneCounts(grouped, summary), [grouped, summary]);
   // Titles are asked for in one request: the cards' and the activity's.
   const extraEntities = useMemo<Array<Entity | undefined>>(
     () => [
       ...latest.slice(0, 40).map((row) => entityFromRelated(row.relatedEntityType, row.relatedEntityId)),
-      ...items.slice(0, 40).map((item) => item.entity),
+      ...shelfItems.slice(0, 40).map((item) => item.entity),
       ...(extras?.requests ?? NO_ROWS).map((request) => entityFromRelated(request.mediaType.toLowerCase().startsWith("movie") ? "movie" : "series", request.entityId))
     ],
-    [latest, items, extras?.requests]
+    [latest, shelfItems, extras?.requests]
   );
   const titles = useTitles(cards, extraEntities);
   // An import, a refused release or a request that has just happened changes what the shelf and counters say: read them again now rather than at the next timer.
@@ -187,7 +191,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <div ref={restRef} className={cn("flex min-h-0 flex-col gap-[var(--grid-gap)]", side && "flex-1")}>
             <Journey budget={budget} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
             <div className={cn("grid min-h-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]", side && "flex-1")}>
-              <Shelf items={items} titles={titles} newest={newestArrivals} heading={arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
+              <Shelf items={shelfItems} titles={titles} newest={newestArrivals} heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
               <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
             </div>
           </div>
