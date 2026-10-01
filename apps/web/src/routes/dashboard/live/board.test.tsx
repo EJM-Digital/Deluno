@@ -75,7 +75,7 @@ describe("the layout rules", () => {
     for (const layout of [short, tall]) {
       expect(layout.height).toBe(Math.round(layout.width * 1.5));
       expect(layout.width).toBeGreaterThanOrEqual(4.4 * 16);
-      expect(layout.width).toBeLessThanOrEqual(16 * 16);
+      expect(layout.width).toBeLessThanOrEqual(9 * 16);
       expect(layout.capacity).toBe(layout.rows * layout.perRow);
     }
     // The rows that are drawn really fit the height they were given.
@@ -87,7 +87,8 @@ describe("the layout rules", () => {
   it("fills the shelf: few posters are one row of the tallest posters, many take more rows only when needed", () => {
     const few = posterLayout(1100, 454, 16, 5);
     expect(few.rows).toBe(1);
-    expect(few.width).toBeGreaterThan(posterLayout(1100, 454, 16).width);
+    // A poster is never bigger than the mockup's (7.5 rem): a few posters sit in one row, and more show across rather than bigger.
+    expect(few.width).toBe(7.5 * 16);
     expect(few.capacity).toBeGreaterThanOrEqual(5);
     const many = posterLayout(1100, 454, 16, 30);
     expect(many.rows).toBeGreaterThan(1);

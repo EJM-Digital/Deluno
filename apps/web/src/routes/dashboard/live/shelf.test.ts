@@ -27,6 +27,9 @@ describe("the shelf's latest arrivals (#1098)", () => {
     expect(POSTER_WIDTH_CSS).toContain("100cqh");
     expect(POSTER_WIDTH_CSS).toContain("var(--poster-rows)");
     expect(POSTER_WIDTH_CSS).toContain("var(--poster-caption)");
+    // And never wider than the mockup's poster: 7.5 rem.
+    expect(POSTER_WIDTH_CSS).toContain("min(var(--poster-cap, 7.5rem), 7.5rem,");
+    expect(POSTER_WIDTH_CSS).not.toContain("16rem");
   });
 });
 

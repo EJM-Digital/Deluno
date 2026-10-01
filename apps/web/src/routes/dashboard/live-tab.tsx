@@ -38,7 +38,7 @@ import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles 
 import { SourcesCard } from "./live/sources-map";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf } from "./live/motion";
-import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
+import { arrivedHeading, LATEST_ARRIVALS_HEADING, SHELF_ROW_HEIGHT_CSS, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
 import { entityFromRelated, type Entity } from "./live/titles";
@@ -142,7 +142,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const rem = useRemPx();
   const layout = pageLayout(page.width, rem);
   const side = layout.sideBySide;
-  const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight);
+  const [lowRef, low] = useElementSize<HTMLDivElement>();
+  const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight, low.height > 0 ? low.height + 16 : 0);
   // The right column (beside the page or under it): the Sources map and Activity share its height; Activity's rows go to one line when it is short.
   const [sideRef, sideBox] = useElementSize<HTMLDivElement>();
   const compactActivity = side && sideBox.height > 0 && sideBox.height < 50 * rem;
@@ -179,7 +180,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} across={layout.band === "across"} />
           <div ref={restRef} className={cn("flex min-h-0 flex-col gap-[var(--grid-gap)]", side && "flex-1")}>
             <Journey budget={budget} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
-            <div className={cn("grid min-h-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]", side && "flex-1")}>
+            <div ref={lowRef} className="grid min-h-0 shrink-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]" style={side ? { height: SHELF_ROW_HEIGHT_CSS } : undefined}>
               <Shelf items={shelfItems} titles={titles} newest={newestArrivals} heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
               <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
             </div>
