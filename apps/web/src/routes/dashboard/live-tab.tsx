@@ -25,7 +25,6 @@
 import type { JSX } from "react";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { cn } from "../../lib/utils";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
@@ -118,7 +117,6 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     }),
     [cards]
   );
-  const nothingNeedsYou = attention.counts.live === 0 && attention.alsoWorthALook.leftovers + attention.alsoWorthALook.suggestions === 0;
   const today = data.activityToday;
   const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
 
@@ -153,7 +151,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)]">
+      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.7fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
           <div className="flex min-h-0 flex-[5] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} />
@@ -167,14 +165,14 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
 
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          {/* A panel with nothing to say shrinks to a line, and what has more to show takes the room. */}
-          <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", nothingNeedsYou ? "shrink-0" : "flex-[4] [&>section]:flex-1")}>
+          {/* Needs you takes the room its rows need (up to most of the column), so a few rows are not lost in a tall empty panel and Latest gets the rest. */}
+          <div className="flex min-h-0 max-h-[55%] flex-initial flex-col [&>section]:min-h-0">
             <NeedsYou attention={attention} action={action} onBoard={onBoard} />
           </div>
           <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <ActivityStream rows={latest} />
           </div>
-          <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", upcoming.length === 0 ? "shrink-0" : "flex-[3] [&>section]:flex-1")}>
+          <div className="flex min-h-0 max-h-[32%] flex-initial flex-col [&>section]:min-h-0">
             <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
               {upcoming.length === 0 ? (
                 <p className="px-[var(--card-pad-x)] py-2 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing airs in the next 72 hours.</p>
