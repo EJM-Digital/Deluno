@@ -113,7 +113,7 @@ export async function send(path: string, failure: string, init: { method?: strin
  * box and only softens its text. Every card and row lines its buttons up in the same
  * columns, and because this is the one class everything shares, they cannot drift.
  */
-export const UNIFORM_BUTTON = "h-7 w-[7.5rem] shrink-0 justify-center px-1.5";
+export const UNIFORM_BUTTON = "h-7 w-[7.5rem] shrink-0 justify-center whitespace-nowrap px-1.5";
 
 /** The one size of button on a card of the Live board: every card puts two side by side in the same place, so they must all be the same box. */
 export const CARD_BUTTON = "h-[calc(var(--type-caption)*2)] w-[5.25rem] shrink-0 justify-center px-1 text-[length:var(--type-caption)]";
@@ -145,7 +145,7 @@ export function ActionButton({
   return (
     <Button
       type="button"
-      variant={(uniform || card) && variant === "ghost" ? "outline" : variant}
+      variant={variant}
       size="sm"
       aria-label={name}
       disabled={state.busy !== null}
