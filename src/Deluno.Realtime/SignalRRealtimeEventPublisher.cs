@@ -12,7 +12,9 @@ public sealed class SignalRRealtimeEventPublisher(
     IHubContext<ActivityHub> hubContext,
     ILogger<SignalRRealtimeEventPublisher> logger,
     TimeProvider timeProvider,
-    int resumeWindowSize = SignalRRealtimeEventPublisher.DefaultResumeWindowSize)
+    int resumeWindowSize = SignalRRealtimeEventPublisher.DefaultResumeWindowSize,
+    IDashboardSectionSource? sectionSource = null,
+    IRealtimeWatchers? watchers = null)
     : BackgroundService, IRealtimeEventPublisher, IRealtimeResumeSource
 {
     /// <summary>How many envelopes a reconnecting client can resume across.</summary>
@@ -368,106 +370,160 @@ public sealed class SignalRRealtimeEventPublisher(
             logger.LogDebug("Realtime event {EventName} was dropped because the outbound queue is saturated.", eventName);
         }
 
-        if (!string.Equals(eventName, "DashboardSummaryChanged", StringComparison.Ordinal))
+        if (!string.Equals(eventName, LiveEventNames.DashboardSummaryUpdated, StringComparison.Ordinal))
         {
             NoteDashboardChange(eventName);
         }
     }
 
     /// <summary>
-    /// The events whose change can move a Dashboard number (#1082). Anything
-    /// else (a search-page event, the nudge itself) never asks the Dashboard to
-    /// refetch.
+    /// Which Dashboard summary sections a change can move (#1097). An event that
+    /// maps to nothing never asks the Dashboard for anything.
     /// </summary>
-    private static readonly HashSet<string> DashboardSourceEvents = new(StringComparer.Ordinal)
+    internal static IReadOnlyCollection<string> SectionsFor(string eventName) => eventName switch
     {
-        "HealthChanged",
-        "DownloadProgress",
-        "ActivityEventAdded",
-        "QueueItemAdded",
-        "QueueItemRemoved",
-        "QueueItemStatusChanged",
-        "SearchRunCompleted",
-        "ImportStateChanged",
-        "DispatchGrabAttempt",
-        "DispatchGrabCompleted",
-        "DispatchDetected",
-        "DispatchImportStarted",
-        "DispatchImportCompleted",
-        "AutomationStateChanged",
-        "MovieChanged",
-        "SeriesChanged",
-        "EpisodeChanged",
-        "IndexerChanged",
-        "DownloadClientChanged",
-        "IndexerProxyChanged",
-        "LibraryChanged",
-        "IntakeSourceChanged",
-        "SettingsChanged"
+        "HealthChanged" => [DashboardSectionNames.Health, DashboardSectionNames.System, DashboardSectionNames.Indexers],
+        "DownloadProgress" or "QueueItemAdded" or "QueueItemRemoved" or "QueueItemStatusChanged"
+            => [DashboardSectionNames.Downloads],
+        "ActivityEventAdded" => [DashboardSectionNames.Activity],
+        "SearchRunCompleted" => [DashboardSectionNames.Automation, DashboardSectionNames.Indexers],
+        "ImportStateChanged" => [DashboardSectionNames.Imports, DashboardSectionNames.Downloads],
+        "DispatchGrabAttempt" or "DispatchGrabCompleted" or "DispatchDetected"
+            or "DispatchImportStarted" or "DispatchImportCompleted"
+            => [DashboardSectionNames.Pipeline, DashboardSectionNames.Downloads, DashboardSectionNames.Imports],
+        LiveEventNames.JourneyStageChanged
+            => [DashboardSectionNames.Pipeline, DashboardSectionNames.Downloads, DashboardSectionNames.Imports],
+        LiveEventNames.ProcessorHandoffChanged => [DashboardSectionNames.Processors, DashboardSectionNames.Imports],
+        LiveEventNames.RecoveryCaseChanged => [DashboardSectionNames.Imports],
+        LiveEventNames.JobChanged or LiveEventNames.SearchCycleProgress => [DashboardSectionNames.Automation],
+        LiveEventNames.IndexerQueryRecorded => [DashboardSectionNames.Indexers],
+        LiveEventNames.ClientStateChanged => [DashboardSectionNames.Downloads, DashboardSectionNames.Health],
+        LiveEventNames.DriveSpaceChanged => [DashboardSectionNames.Storage],
+        "MovieChanged" or "SeriesChanged" or "EpisodeChanged" or "LibraryChanged"
+            => [DashboardSectionNames.Library],
+        "IndexerChanged" or "IndexerProxyChanged" => [DashboardSectionNames.Indexers],
+        "DownloadClientChanged" => [DashboardSectionNames.Downloads, DashboardSectionNames.Health],
+        "AutomationStateChanged" or "IntakeSourceChanged" => [DashboardSectionNames.Automation],
+        "SettingsChanged" => DashboardSectionNames.All,
+        _ => []
     };
 
-    /// <summary>The least time between two Dashboard nudges, however many things changed.</summary>
-    public static readonly TimeSpan DashboardNudgeInterval = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// The most one burst of changes is held back before the changed sections
+    /// are pushed, so a flurry becomes one push per section rather than one per
+    /// change. This is a coalescing window, not a rate limit: a change after a
+    /// quiet spell is pushed within this window, never after a wait.
+    /// </summary>
+    public static readonly TimeSpan DashboardCoalesceWindow = TimeSpan.FromMilliseconds(100);
 
-    private int _nudgePending;
-    private long _lastNudgeUtcTicks;
+    private readonly object _pendingLock = new();
+    private readonly HashSet<string> _pendingSections = new(StringComparer.Ordinal);
+    private bool _flushRunning;
 
     /// <summary>
-    /// One <c>DashboardSummaryChanged</c> on the dashboard group, at most every
-    /// <see cref="DashboardNudgeInterval"/>, whenever something the Dashboard
-    /// reads has changed (#1082). The first change after a quiet spell nudges at
-    /// once; changes during the wait fold into the single nudge that follows it,
-    /// so a busy queue costs the web one refetch every two seconds, not one per
-    /// progress tick. The event carries no numbers: the web refetches
-    /// <c>/api/dashboard/summary</c>.
+    /// Pushes the changed summary sections themselves (#1097): the sections a
+    /// change can move are marked, and after <see cref="DashboardCoalesceWindow"/>
+    /// they are built once and sent as one <c>DashboardSummaryUpdated</c> event
+    /// carrying the data. The web writes them straight into its cache, with no
+    /// fetch afterwards. Nothing is built while no screen watches.
     /// </summary>
     private void NoteDashboardChange(string eventName)
     {
-        if (!DashboardSourceEvents.Contains(eventName)
-            || Interlocked.CompareExchange(ref _nudgePending, 1, 0) != 0)
+        if (sectionSource is null)
         {
             return;
         }
 
-        var now = timeProvider.GetUtcNow();
-        var last = Interlocked.Read(ref _lastNudgeUtcTicks);
-        var dueUtc = last == 0
-            ? now
-            : new DateTimeOffset(last, TimeSpan.Zero) + DashboardNudgeInterval;
-
-        if (dueUtc <= now)
+        var sections = SectionsFor(eventName);
+        if (sections.Count == 0)
         {
-            EmitDashboardNudge();
             return;
         }
 
-        _ = Task.Run(async () =>
+        lock (_pendingLock)
         {
-            try
+            foreach (var section in sections)
             {
-                // Measured against the moment it is due, not from whenever this
-                // task happens to start, so scheduling delay never stretches the gap.
-                var remaining = dueUtc - timeProvider.GetUtcNow();
-                if (remaining > TimeSpan.Zero)
-                {
-                    await Task.Delay(remaining, timeProvider);
-                }
+                _pendingSections.Add(section);
             }
-            catch (OperationCanceledException)
+
+            if (_flushRunning)
             {
                 return;
             }
 
-            EmitDashboardNudge();
-        });
+            _flushRunning = true;
+        }
+
+        _ = Task.Run(FlushSectionsAsync);
     }
 
-    private void EmitDashboardNudge()
+    private bool IsSomeoneWatching()
+        => watchers is null
+           || watchers.Count(RealtimeGroups.Dashboard) > 0
+           || watchers.Count(LiveRealtimeSubject.Name) > 0;
+
+    private async Task FlushSectionsAsync()
     {
-        var now = timeProvider.GetUtcNow();
-        Interlocked.Exchange(ref _lastNudgeUtcTicks, now.UtcTicks);
-        Interlocked.Exchange(ref _nudgePending, 0);
-        Enqueue("DashboardSummaryChanged", RealtimeGroups.Dashboard, new { asOfUtc = now.ToString("O") });
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(DashboardCoalesceWindow, timeProvider);
+
+                string[] batch;
+                lock (_pendingLock)
+                {
+                    if (_pendingSections.Count == 0)
+                    {
+                        _flushRunning = false;
+                        return;
+                    }
+
+                    batch = [.. _pendingSections];
+                    _pendingSections.Clear();
+                }
+
+                if (!IsSomeoneWatching())
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var built = await sectionSource!.BuildSectionsAsync(batch, CancellationToken.None);
+                    if (built.Sections.Count > 0)
+                    {
+                        Enqueue(
+                            LiveEventNames.DashboardSummaryUpdated,
+                            RealtimeGroups.Dashboard,
+                            new
+                            {
+                                asOfUtc = timeProvider.GetUtcNow().ToString("O"),
+                                sections = built.Sections,
+                                unavailable = built.Unavailable
+                            });
+                    }
+                }
+                catch (Exception exception)
+                {
+                    logger.LogDebug(exception, "Dashboard sections could not be pushed.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            lock (_pendingLock)
+            {
+                _flushRunning = false;
+            }
+        }
+    }
+
+    public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+    {
+        Enqueue(eventName, LiveRealtimeSubject.Name, payload);
+        return Task.CompletedTask;
     }
 
     private void AddToResumeWindow(RealtimeEnvelope envelope)

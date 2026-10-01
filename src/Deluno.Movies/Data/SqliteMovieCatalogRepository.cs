@@ -21,7 +21,8 @@ public sealed class SqliteMovieCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     IMediaStateRepository? sharedMediaStateRepository = null,
-    ILibrarySubtitlePreferences? librarySubtitlePreferences = null)
+    ILibrarySubtitlePreferences? librarySubtitlePreferences = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IMovieCatalogRepository
 {
     private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
@@ -37,7 +38,7 @@ public sealed class SqliteMovieCatalogRepository(
     /// exercise the same one production does.</para>
     /// </summary>
     private IMediaStateRepository SharedMediaState =>
-        sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider);
+        sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher);
 
     public async Task<MovieListItem> AddAsync(CreateMovieRequest request, CancellationToken cancellationToken)
     {
@@ -2689,7 +2690,7 @@ public sealed class SqliteMovieCatalogRepository(
         // it wrote every row in its own implicit transaction - 9 seconds for a
         // 20,000-title plan change against 1.6 for the shared one. One rule,
         // one place.
-        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider))
+        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher))
             .ReevaluateLibraryWantedStateAsync(
                 MediaKind.Movie,
                 libraryId,
@@ -2891,6 +2892,9 @@ public sealed class SqliteMovieCatalogRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         await AddImportRecoveryEventAsync(item.Id, "case_opened", "Import recovery case created.", null, cancellationToken);
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+            new RecoveryCaseChangedEvent(item.Id, "opened", item.FailureKind, item.Title, "movie", null, timeProvider.GetUtcNow().ToString("O")),
+            cancellationToken));
 
         return item;
     }
@@ -2904,7 +2908,15 @@ public sealed class SqliteMovieCatalogRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM movie_import_recovery_cases WHERE id = @id;";
         AddParameter(command, "@id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var deleted = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (deleted)
+        {
+            await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+                new RecoveryCaseChangedEvent(id, "closed", null, null, "movie", null, timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken));
+        }
+
+        return deleted;
     }
 
     public async Task<MovieImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken)
@@ -2953,6 +2965,10 @@ public sealed class SqliteMovieCatalogRepository(
                 return null;
             }
         }
+
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+            new RecoveryCaseChangedEvent(id, "closed", null, null, "movie", null, now.ToString("O")),
+            cancellationToken));
 
         using var select = connection.CreateCommand();
         select.CommandText =

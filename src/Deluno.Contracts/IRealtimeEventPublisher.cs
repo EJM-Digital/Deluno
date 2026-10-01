@@ -113,4 +113,11 @@ public interface IRealtimeEventPublisher
         string entityType,
         string entityId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A pushed Live event (#1097) that carries its own data, on the "live" subject.
+    /// The default does nothing, so a test double that does not care needs no change.
+    /// </summary>
+    Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+        => Task.CompletedTask;
 }

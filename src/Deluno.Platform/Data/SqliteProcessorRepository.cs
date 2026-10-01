@@ -12,7 +12,8 @@ namespace Deluno.Platform.Data;
 public sealed class SqliteProcessorRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
-    ISecretProtector secretProtector)
+    ISecretProtector secretProtector,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IProcessorRepository
 {
     public async Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken)
@@ -367,6 +368,7 @@ public sealed class SqliteProcessorRepository(
             DelunoDatabaseNames.Platform,
             cancellationToken);
 
+        var created = false;
         using (var insert = connection.CreateCommand())
         {
             insert.CommandText =
@@ -392,7 +394,7 @@ public sealed class SqliteProcessorRepository(
             AddParameter(insert, "@processorConnectionId", processorConnectionId);
             AddParameter(insert, "@createdUtc", now.ToString("O"));
             AddParameter(insert, "@updatedUtc", now.ToString("O"));
-            await insert.ExecuteNonQueryAsync(cancellationToken);
+            created = await insert.ExecuteNonQueryAsync(cancellationToken) > 0;
         }
 
         // A hand-off that has finished describes a cycle that is over, so being
@@ -499,11 +501,17 @@ public sealed class SqliteProcessorRepository(
             AddParameter(restart, "@processorConnectionId", processorConnectionId);
             AddParameter(restart, "@createdUtc", now.ToString("O"));
             AddParameter(restart, "@updatedUtc", now.ToString("O"));
-            await restart.ExecuteNonQueryAsync(cancellationToken);
+            created |= await restart.ExecuteNonQueryAsync(cancellationToken) > 0;
         }
 
-        return (await FindProcessorHandoffAsync(request.LibraryId, null, sourcePath, cancellationToken))
+        var ensured = (await FindProcessorHandoffAsync(request.LibraryId, null, sourcePath, cancellationToken))
             ?? throw new InvalidOperationException("Processor hand-off could not be created or loaded.");
+        if (created)
+        {
+            await AnnounceHandoffAsync(ensured, ensured.Status, null, cancellationToken);
+        }
+
+        return ensured;
     }
 
     public async Task<ProcessorHandoffItem?> FindProcessorHandoffAsync(
@@ -596,7 +604,13 @@ public sealed class SqliteProcessorRepository(
         select.CommandText = HandoffSelect + " WHERE id = @id LIMIT 1;";
         AddParameter(select, "@id", id.Trim());
         using var reader = await select.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
+        var updated = await reader.ReadAsync(cancellationToken) ? ReadProcessorHandoff(reader) : null;
+        if (updated is not null)
+        {
+            await AnnounceHandoffAsync(updated, updated.Status, updated.FailureMessage, cancellationToken);
+        }
+
+        return updated;
     }
 
     public async Task<IReadOnlyList<ProcessorHandoffItem>> ListProcessorHandoffsAsync(
@@ -683,6 +697,15 @@ public sealed class SqliteProcessorRepository(
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Platform,
             cancellationToken);
+        string? previousState = null;
+        using (var before = connection.CreateCommand())
+        {
+            before.CommandText = "SELECT processor_state FROM processor_handoffs WHERE id = @id;";
+            AddParameter(before, "@id", id.Trim());
+            var current = await before.ExecuteScalarAsync(cancellationToken);
+            previousState = current is string text ? text : null;
+        }
+
         using var update = connection.CreateCommand();
         update.CommandText =
             """
@@ -707,6 +730,48 @@ public sealed class SqliteProcessorRepository(
         AddParameter(update, "@unreachableSince", observation.UnreachableSinceUtc?.ToString("O"));
         AddParameter(update, "@answeringSince", observation.AnsweringSinceUtc?.ToString("O"));
         await update.ExecuteNonQueryAsync(cancellationToken);
+
+        // Said only when the processor reports a new state: every check writes an observation.
+        if (observation.State is { Length: > 0 } state && !string.Equals(state, previousState, StringComparison.Ordinal))
+        {
+            var handoff = await GetProcessorHandoffAsync(id, cancellationToken);
+            if (handoff is not null)
+            {
+                await AnnounceHandoffAsync(handoff, state, observation.Message, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>Tells the Live board the moment a hand-off to the processor moves on (#1097).</summary>
+    private async Task AnnounceHandoffAsync(ProcessorHandoffItem handoff, string state, string? message, CancellationToken cancellationToken)
+    {
+        if (realtimeEventPublisher is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await realtimeEventPublisher.PublishProcessorHandoffChangedAsync(
+                new ProcessorHandoffChangedEvent(
+                    handoff.Id,
+                    handoff.QueueItemId,
+                    handoff.LibraryId,
+                    handoff.ReleaseName,
+                    state,
+                    handoff.ProcessorName,
+                    message,
+                    timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // A push that cannot be made never undoes what was just saved.
+        }
     }
 
     public async Task<ProcessorOutcomeRecord?> GetProcessorOutcomeAsync(string handoffId, CancellationToken cancellationToken)

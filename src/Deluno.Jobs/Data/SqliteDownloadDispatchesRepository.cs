@@ -8,7 +8,8 @@ namespace Deluno.Jobs.Data;
 
 public sealed class SqliteDownloadDispatchesRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IDownloadDispatchesRepository
 {
     /// <summary>
@@ -158,6 +159,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceStageAsync(dispatchId, grabStatus == "succeeded" ? "grab_succeeded" : "grab_failed", grabMessage, cancellationToken);
 
         var result = await GetDispatchAsync(dispatchId, cancellationToken);
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after record");
@@ -250,6 +252,10 @@ public sealed class SqliteDownloadDispatchesRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        if (firstSighting || firstCompletion)
+        {
+            await AnnounceStageAsync(dispatchId, firstSighting ? "detection_succeeded" : "client_completed", null, cancellationToken);
+        }
 
         var result = await GetDispatchAsync(dispatchId, cancellationToken);
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after detection");
@@ -358,6 +364,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceStageAsync(dispatchId, eventType, importFailureMessage, cancellationToken);
 
         var result = await GetDispatchAsync(dispatchId, cancellationToken);
         return result ?? throw new InvalidOperationException($"Dispatch {dispatchId} not found after import outcome");
@@ -669,6 +676,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceStageAsync(dispatchId, eventType, null, cancellationToken);
         return result;
     }
 
@@ -734,6 +742,53 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceStageAsync(dispatchId, "archived", reason, cancellationToken);
+    }
+
+    /// <summary>Timeline entries that are bookkeeping, not a move on the journey.</summary>
+    private static readonly HashSet<string> NotAStageChange = new(StringComparer.Ordinal)
+    {
+        "history",
+        "file_provenance_recorded",
+        "health-remediation-applied"
+    };
+
+    /// <summary>
+    /// Says on the Live board, the moment it is written, that a download moved on its journey (#1097):
+    /// grab sent or refused, seen in the client, finished there, import done or failed, never shown, archived.
+    /// Sent after the commit so a screen never hears of something that did not stick.
+    /// </summary>
+    private async Task AnnounceStageAsync(string dispatchId, string eventType, string? detail, CancellationToken cancellationToken)
+    {
+        if (realtimeEventPublisher is null || NotAStageChange.Contains(eventType))
+        {
+            return;
+        }
+
+        try
+        {
+            var dispatch = await GetDispatchIncludingArchivedAsync(dispatchId, cancellationToken);
+            await realtimeEventPublisher.PublishJourneyStageChangedAsync(
+                new JourneyStageChangedEvent(
+                    dispatchId,
+                    dispatch?.ReleaseName,
+                    dispatch?.MediaType,
+                    dispatch?.EntityType,
+                    dispatch?.EntityId,
+                    dispatch?.LibraryId,
+                    eventType,
+                    detail,
+                    timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // A push that cannot be made never undoes what was just saved.
+        }
     }
 
     private async Task<DispatchTimelineEvent> RecordTimelineEventInternalAsync(
@@ -1313,6 +1368,7 @@ public sealed class SqliteDownloadDispatchesRepository(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        await AnnounceStageAsync(dispatchId, "never_detected", message, cancellationToken);
         return true;
     }
 

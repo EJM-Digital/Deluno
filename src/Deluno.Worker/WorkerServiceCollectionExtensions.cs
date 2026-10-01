@@ -93,7 +93,9 @@ public static class WorkerServiceCollectionExtensions
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardCountsStore>();
         services.AddSingleton<Deluno.Worker.Dashboard.DashboardVolumeCache>();
         services.AddHostedService<Deluno.Worker.Dashboard.DashboardVolumeRefresher>();
-        services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService, Deluno.Worker.Dashboard.DashboardSummaryService>();
+        services.AddSingleton<Deluno.Worker.Dashboard.DashboardSummaryService>();
+        services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
+        services.AddSingleton<Deluno.Contracts.IDashboardSectionSource>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
 
         // #909: every check registers itself here, once, so the runner and the
         // "run right after it changes" scheduler always see the same list.

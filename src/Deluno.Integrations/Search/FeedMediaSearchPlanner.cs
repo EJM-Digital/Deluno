@@ -40,7 +40,8 @@ public sealed class FeedMediaSearchPlanner(
     /// Torznab/Newznab search actually goes out through the proxy assigned
     /// to that indexer instead of always Deluno's own direct connection.
     /// </summary>
-    Deluno.Connections.Data.IIndexerProxyHttpClientFactory? proxyHttpClientFactory = null)
+    Deluno.Connections.Data.IIndexerProxyHttpClientFactory? proxyHttpClientFactory = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : IMediaSearchPlanner
 {
     private const int IndexerResultLimit = 100;
@@ -194,12 +195,29 @@ public sealed class FeedMediaSearchPlanner(
             async (index, token) =>
             {
                 var (source, indexer) = sourceIndexers[index];
+                var queryText = BuildQueryText(title, year, seasonNumber, episodeNumber, numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber);
+                await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
+                    new IndexerQueryRecordedEvent(indexer.Id, indexer.Name, "asked", queryText, null, null, false, null, DateTimeOffset.UtcNow.ToString("O")),
+                    CancellationToken.None));
                 searchResults[index] = await TrySearchIndexerAsync(
                     indexer, source, title, year, mediaType, currentQuality, targetQuality,
                     customFormats, neverGrabPatterns, scoringMode, seasonNumber, episodeNumber, allowedQualities,
                      applicableProfiles, normalizedSearchKind, availableUtc, currentCustomFormatScore, currentReleaseName, upgradeUntilCutoff,
                      numberingScheme, absoluteNumber, airDate, sceneSeasonNumber, sceneEpisodeNumber,
                      currentPreferenceEvaluation, preferencePlan, currentFilePresent, sizeRules, upgradeStop, runtimeMinutes, imdbId, token, scoreLimits, genres, otherTitles, categoryIds);
+                var answer = searchResults[index];
+                await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishIndexerQueryRecordedAsync(
+                    new IndexerQueryRecordedEvent(
+                        indexer.Id,
+                        indexer.Name,
+                        "answered",
+                        queryText,
+                        answer.Candidates?.Count ?? 0,
+                        answer.Telemetry?.ElapsedMilliseconds,
+                        answer.Failed,
+                        answer.Failed ? answer.Failure?.Message ?? answer.ErrorMessage : null,
+                        DateTimeOffset.UtcNow.ToString("O")),
+                    CancellationToken.None));
             });
 
         await RecordQueryTelemetryAsync(searchResults, cancellationToken);

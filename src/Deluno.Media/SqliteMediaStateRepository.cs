@@ -20,7 +20,8 @@ namespace Deluno.Media;
 /// </summary>
 public sealed class SqliteMediaStateRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider) : IMediaStateRepository
+    TimeProvider timeProvider,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : IMediaStateRepository
 {
     private static readonly JsonSerializerOptions PreferenceJsonOptions =
         new(JsonSerializerDefaults.Web)
@@ -818,6 +819,13 @@ public sealed class SqliteMediaStateRepository(
         }
 
         await transaction.CommitAsync(cancellationToken);
+        foreach (var caseId in settled)
+        {
+            await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+                new RecoveryCaseChangedEvent(caseId, "closed", null, null, kind == MediaKind.Movie ? "movie" : "series", null, now),
+                cancellationToken));
+        }
+
         return settled.Count;
     }
 
