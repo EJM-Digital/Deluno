@@ -15,6 +15,13 @@ import { useElementSize } from "./hooks";
 import { activityLink } from "../../../lib/activity-history";
 import { REASON_COLOUR, REASON_LABEL, barFraction, reasonsFit, type TurnedDownView } from "./turned-down";
 
+/** The line under the bars: how many reasons are not shown and what they hold, or that they hold nothing today. */
+export function moreLine(reasons: number, releases: number): string {
+  const head = `and ${reasons.toLocaleString("en-AU")} more ${reasons === 1 ? "reason" : "reasons"}`;
+  if (releases <= 0) return `${head}, none today`;
+  return `${head} · ${releases.toLocaleString("en-AU")} ${releases === 1 ? "release" : "releases"}`;
+}
+
 export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: ReadonlySet<string> }) {
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const firstRef = useRef<HTMLAnchorElement | null>(null);
@@ -52,7 +59,7 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
         })}
         {hidden.length > 0 ? (
           <Link to={activityLink({ type: "turned-down", since: "today" })} className="ltd-more">
-            and {hidden.length.toLocaleString("en-AU")} more {hidden.length === 1 ? "reason" : "reasons"} · {hidden.reduce((sum, reason) => sum + reason.count, 0).toLocaleString("en-AU")} releases
+            {moreLine(hidden.length, hidden.reduce((sum, reason) => sum + reason.count, 0))}
           </Link>
         ) : null}
       </div>
