@@ -3298,16 +3298,18 @@ public sealed class SqliteJobStore(
             DelunoDatabaseNames.Jobs,
             cancellationToken);
 
-        var conditions = new List<string>();
+        // The by-hundreds turned-down rows are left out of a plain recent list; the Activity history asks for them (#1100).
+        var conditions = new List<string> { "category <> '" + ActivityHistory.TurnedDownCategory + "'" };
         if (relatedEntityType is not null) conditions.Add("related_entity_type = @relatedEntityType");
         if (relatedEntityId is not null) conditions.Add("related_entity_id = @relatedEntityId");
-        var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
+        var where = "WHERE " + string.Join(" AND ", conditions);
 
         using var command = connection.CreateCommand();
         command.CommandText =
             $"""
             SELECT
-                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc
+                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc,
+                title, file_path, source_name, reason_group
             FROM activity_events
             {where}
             ORDER BY created_utc DESC
@@ -3327,10 +3329,27 @@ public sealed class SqliteJobStore(
         return events;
     }
 
-    public async Task<Page<ActivityEventItem>> ListActivityPageAsync(
+    public Task<Page<ActivityEventItem>> ListActivityPageAsync(
         PageRequest request,
         string? relatedEntityType,
         string? relatedEntityId,
+        CancellationToken cancellationToken)
+        // The plain recent lists leave the by-hundreds turned-down rows out; the Activity history asks for them (#1100).
+        => QueryActivityPageAsync(request, new ActivityQuery(RelatedEntityType: relatedEntityType, RelatedEntityId: relatedEntityId), includeTurnedDown: false, cancellationToken);
+
+    public Task<Page<ActivityEventItem>> ListActivityPageAsync(
+        PageRequest request,
+        ActivityQuery query,
+        CancellationToken cancellationToken)
+        => QueryActivityPageAsync(request, query, query.IncludesTurnedDown, cancellationToken);
+
+    private static string LikeContains(string text)
+        => "%" + text.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+
+    private async Task<Page<ActivityEventItem>> QueryActivityPageAsync(
+        PageRequest request,
+        ActivityQuery query,
+        bool includeTurnedDown,
         CancellationToken cancellationToken)
     {
         var pageSize = request.BoundedPageSize;
@@ -3342,10 +3361,90 @@ public sealed class SqliteJobStore(
             cancellationToken);
 
         // Only the conditions that apply are written, so SQLite can seek the
-        // (related_entity_type, created_utc) index instead of scanning (#1081).
+        // (related_entity_type, created_utc) or (category, created_utc) index instead of scanning (#1081, #1100).
         var conditions = new List<string>();
-        if (relatedEntityType is not null) conditions.Add("related_entity_type = @relatedEntityType");
-        if (relatedEntityId is not null) conditions.Add("related_entity_id = @relatedEntityId");
+        var parameters = new List<(string Name, object Value)>();
+
+        if (!includeTurnedDown)
+        {
+            conditions.Add("category <> 'release.turned-down'");
+        }
+
+        void AddCategories(IReadOnlyList<string> categories, string prefix)
+        {
+            if (categories.Count == 0)
+            {
+                conditions.Add("1 = 0");
+                return;
+            }
+
+            var names = new List<string>();
+            for (var i = 0; i < categories.Count; i++)
+            {
+                names.Add($"@{prefix}{i}");
+                parameters.Add(($"@{prefix}{i}", categories[i]));
+            }
+
+            conditions.Add($"category IN ({string.Join(", ", names)})");
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Type)) AddCategories(ActivityHistory.CategoriesOfType(query.Type.Trim().ToLowerInvariant()), "type");
+        if (!string.IsNullOrWhiteSpace(query.Source)) AddCategories(ActivityHistory.CategoriesOfSource(query.Source.Trim().ToLowerInvariant()), "source");
+        if (!string.IsNullOrWhiteSpace(query.Outcome)) AddCategories(ActivityHistory.CategoriesOfOutcome(query.Outcome.Trim().ToLowerInvariant()), "outcome");
+
+        if (!string.IsNullOrWhiteSpace(query.SourceName))
+        {
+            conditions.Add("(source_name LIKE @sourceName ESCAPE '\\' OR message LIKE @sourceName ESCAPE '\\')");
+            parameters.Add(("@sourceName", LikeContains(query.SourceName)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.RelatedEntityType)) conditions.Add("related_entity_type = @relatedEntityType");
+        if (!string.IsNullOrWhiteSpace(query.RelatedEntityType)) parameters.Add(("@relatedEntityType", query.RelatedEntityType));
+
+        var hasTitle = !string.IsNullOrWhiteSpace(query.Title);
+        var hasEntity = !string.IsNullOrWhiteSpace(query.RelatedEntityId);
+        if (hasEntity && hasTitle)
+        {
+            // The title's own events, plus any that name it: an episode, a release or a file of that title.
+            conditions.Add("(related_entity_id = @relatedEntityId OR title LIKE @title ESCAPE '\\' OR message LIKE @title ESCAPE '\\')");
+            parameters.Add(("@relatedEntityId", query.RelatedEntityId!));
+            parameters.Add(("@title", LikeContains(query.Title!)));
+        }
+        else if (hasEntity)
+        {
+            conditions.Add("related_entity_id = @relatedEntityId");
+            parameters.Add(("@relatedEntityId", query.RelatedEntityId!));
+        }
+        else if (hasTitle)
+        {
+            conditions.Add("(title LIKE @title ESCAPE '\\' OR message LIKE @title ESCAPE '\\')");
+            parameters.Add(("@title", LikeContains(query.Title!)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.File))
+        {
+            conditions.Add("(file_path LIKE @file ESCAPE '\\' OR message LIKE @file ESCAPE '\\')");
+            parameters.Add(("@file", LikeContains(query.File)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ReasonGroup))
+        {
+            conditions.Add("reason_group = @reasonGroup");
+            parameters.Add(("@reasonGroup", query.ReasonGroup.Trim()));
+        }
+
+        if (query.SinceUtc is { } since)
+        {
+            conditions.Add("created_utc >= @sinceUtc");
+            parameters.Add(("@sinceUtc", since.ToUniversalTime().ToString("O")));
+        }
+
+        if (query.UntilUtc is { } until)
+        {
+            conditions.Add("created_utc < @untilUtc");
+            parameters.Add(("@untilUtc", until.ToUniversalTime().ToString("O")));
+        }
+
         if (token is not null) conditions.Add("(created_utc < @createdUtc OR (created_utc = @createdUtc AND id < @id))");
         var where = conditions.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", conditions);
 
@@ -3353,7 +3452,8 @@ public sealed class SqliteJobStore(
         command.CommandText =
             $"""
             SELECT
-                id, category, message, CASE WHEN octet_length(details_json) <= 65536 THEN details_json END, related_job_id, related_entity_type, related_entity_id, created_utc
+                id, category, message, CASE WHEN octet_length(details_json) <= 65536 THEN details_json END, related_job_id, related_entity_type, related_entity_id, created_utc,
+                title, file_path, source_name, reason_group
             FROM activity_events
             {where}
             ORDER BY created_utc DESC, id DESC
@@ -3361,8 +3461,11 @@ public sealed class SqliteJobStore(
             """;
 
         AddParameter(command, "@take", pageSize + 1);
-        if (relatedEntityType is not null) AddParameter(command, "@relatedEntityType", relatedEntityType);
-        if (relatedEntityId is not null) AddParameter(command, "@relatedEntityId", relatedEntityId);
+        foreach (var (name, value) in parameters)
+        {
+            AddParameter(command, name, value);
+        }
+
         if (token is not null)
         {
             AddParameter(command, "@createdUtc", token[0]);
@@ -3406,7 +3509,7 @@ public sealed class SqliteJobStore(
                 category,
                 COUNT(*)
             FROM activity_events
-            WHERE created_utc >= @sinceUtc
+            WHERE created_utc >= @sinceUtc AND category <> 'release.turned-down'
             GROUP BY 1, category;
             """;
         AddParameter(command, "@sinceUtc", sinceUtc.ToUniversalTime().ToString("O"));
@@ -3547,13 +3650,19 @@ public sealed class SqliteJobStore(
         command.CommandText =
             """
             INSERT INTO activity_events (
-                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc
+                id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc,
+                title, file_path, source_name, reason_group
             )
             VALUES (
-                @id, @category, @message, @detailsJson, @relatedJobId, @relatedEntityType, @relatedEntityId, @createdUtc
+                @id, @category, @message, @detailsJson, @relatedJobId, @relatedEntityType, @relatedEntityId, @createdUtc,
+                @title, @filePath, @sourceName, @reasonGroup
             );
             """;
 
+        AddParameter(command, "@title", null);
+        AddParameter(command, "@filePath", null);
+        AddParameter(command, "@sourceName", null);
+        AddParameter(command, "@reasonGroup", null);
         AddParameter(command, "@id", null);
         AddParameter(command, "@category", null);
         AddParameter(command, "@message", null);
@@ -3572,6 +3681,12 @@ public sealed class SqliteJobStore(
             command.Parameters["@relatedEntityType"].Value = (object?)activity.RelatedEntityType ?? DBNull.Value;
             command.Parameters["@relatedEntityId"].Value = (object?)activity.RelatedEntityId ?? DBNull.Value;
             command.Parameters["@createdUtc"].Value = activity.CreatedUtc.ToString("O");
+            // The title, file and source an event concerns are read once, here, from what its writer put in the details (#1100).
+            var facts = ActivityHistory.FactsFromDetails(activity.DetailsJson);
+            command.Parameters["@title"].Value = (object?)(activity.Title ?? facts.Title) ?? DBNull.Value;
+            command.Parameters["@filePath"].Value = (object?)(activity.FilePath ?? facts.FilePaths) ?? DBNull.Value;
+            command.Parameters["@sourceName"].Value = (object?)(activity.SourceName ?? facts.SourceName) ?? DBNull.Value;
+            command.Parameters["@reasonGroup"].Value = (object?)activity.ReasonGroup ?? DBNull.Value;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -4488,7 +4603,13 @@ public sealed class SqliteJobStore(
             RelatedJobId: reader.IsDBNull(4) ? null : reader.GetString(4),
             RelatedEntityType: reader.IsDBNull(5) ? null : reader.GetString(5),
             RelatedEntityId: reader.IsDBNull(6) ? null : reader.GetString(6),
-            CreatedUtc: ParseTimestamp(reader.GetString(7)));
+            CreatedUtc: ParseTimestamp(reader.GetString(7)))
+        {
+            Title = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null,
+            FilePath = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetString(9) : null,
+            SourceName = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null,
+            ReasonGroup = reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetString(11) : null
+        };
     }
 
     public async Task<JobDailyMetrics> GetDailyMetricsAsync(

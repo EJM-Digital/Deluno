@@ -241,6 +241,7 @@ public static class ActivityEventLabels
             ["metadata.series.refreshed"] = "Show details refreshed",
             ["subtitle.provider.paused"] = "Subtitle source paused",
             ["subtitle.rejected"] = "Subtitle rejected",
+            ["subtitle.fetched"] = "Subtitle fetched",
             ["quality.model.reset"] = "Release ranking reset",
             ["quality.custom-format.guide-moved"] = "Quality rules moved to the new guide",
             ["tags.auto"] = "Tags applied automatically",
@@ -282,6 +283,10 @@ public static class ActivityEventLabels
             ["health.problem"] = "Health problem found",
             ["health.resolved"] = "Health problem cleared",
             ["media_server.refresh.caught_up"] = "Media server told about missed changes",
+            ["media_server.refreshed"] = "Media server told about new files",
+            ["recycle.restored"] = "Restored from the recycle bin",
+            ["recycle.deleted"] = "Deleted for good from the recycle bin",
+            ["release.turned-down"] = "Release turned down",
             ["trackers.definitions.rejected"] = "Indexer definitions update turned down",
             ["trackers.definitions.switch"] = "Switched to another indexer definition",
             ["trackers.definitions.update"] = "Indexer definitions updated"

@@ -106,6 +106,23 @@ public sealed class MediaServerRefreshNotifierTests
     }
 
     [Fact]
+    public async Task Telling_a_server_about_new_files_is_written_to_activity_with_the_server_and_the_file()
+    {
+        var server = Server("s1", MediaServerKinds.Plex);
+        var activity = new FakeActivityFeed();
+        var notifier = new MediaServerRefreshNotifier(
+            new FakeRepository([server], []), new FakeRegistry(new FakeClient(MediaServerKinds.Plex)), TimeProvider.System,
+            new FakeBacklogRepository(), new FakeJobScheduler(), activity);
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        var logged = Assert.Single(activity.Recorded);
+        Assert.Equal(MediaServerRefreshActivity.Refreshed, logged.Category);
+        Assert.Contains("1 new or changed file", logged.Message);
+        Assert.Contains("/media/Movies/Sintel.mkv", logged.DetailsJson);
+    }
+
+    [Fact]
     public async Task No_changes_asks_nothing()
     {
         var server = Server("s1", MediaServerKinds.Plex);
@@ -200,7 +217,7 @@ public sealed class MediaServerRefreshNotifierTests
         Assert.True(answered);
         Assert.Empty(backlogRepo.All());
         Assert.Equal(2, client.Calls[^1].Changes.Count);
-        var logged = Assert.Single(activity.Recorded);
+        var logged = Assert.Single(activity.Recorded, entry => entry.Category == MediaServerRefreshActivity.CaughtUp);
         Assert.Equal(MediaServerRefreshActivity.CaughtUp, logged.Category);
         Assert.Contains("2 changed files", logged.Message);
     }
@@ -267,7 +284,7 @@ public sealed class MediaServerRefreshNotifierTests
 
     private sealed class FakeActivityFeed : IActivityFeedRepository
     {
-        public List<(string Category, string Message)> Recorded { get; } = [];
+        public List<(string Category, string Message, string? DetailsJson)> Recorded { get; } = [];
 
         public Task<int> PruneActivityAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
             => throw new NotSupportedException();
@@ -286,7 +303,7 @@ public sealed class MediaServerRefreshNotifierTests
 
         public Task<ActivityEventItem> RecordActivityAsync(string category, string message, string? detailsJson, string? relatedJobId, string? relatedEntityType, string? relatedEntityId, CancellationToken cancellationToken)
         {
-            Recorded.Add((category, message));
+            Recorded.Add((category, message, detailsJson));
             return Task.FromResult(new ActivityEventItem(Guid.NewGuid().ToString("N"), category, message, detailsJson, relatedJobId, relatedEntityType, relatedEntityId, DateTimeOffset.UtcNow));
         }
 

@@ -45,6 +45,23 @@ public sealed class SubtitleFetchTests
     }
 
     [Fact]
+    public async Task A_subtitle_that_is_written_is_recorded_in_activity_with_its_title_file_and_provider()
+    {
+        var provider = new FakeProvider("first", [Candidate("en")], Srt);
+        var activity = new RecordingActivityFeedRepository();
+        var service = new SubtitleFetchService(
+            new SubtitleProviderRegistry([provider]), new FakeRepository([Connection("first")]), new FakeWriter(),
+            TimeProvider.System, NullLogger<SubtitleFetchService>.Instance, activity);
+
+        await service.FetchAsync(Request(), "en", false, @"D:MediaDuneDune.mkv", SubtitleHearingImpairedPreferences.PlainPreferred, CancellationToken.None);
+
+        var recorded = Assert.Single(activity.Recorded);
+        Assert.Equal("subtitle.fetched", recorded.Category);
+        Assert.Contains("Dune", recorded.Message, StringComparison.Ordinal);
+        Assert.Contains("first", recorded.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Applies_the_library_content_policy_before_writing()
     {
         var provider = new FakeProvider(

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
 
 namespace Deluno.Jobs.Data;
@@ -91,6 +92,42 @@ public sealed class SqliteTurnedDownReleaseRecorder(
             Add(insert, "@entityType", entityType);
             Add(insert, "@entityId", entityId);
             await insert.ExecuteNonQueryAsync(cancellationToken);
+
+            // The group a screen reads: a row written as "other" is worded from its own raw reason, as Live reads it.
+            var group = release.Group == TurnedDownGroups.Other ? TurnedDownReasons.GroupFor(release.RawReason) : release.Group;
+
+            // The same release is also one line of the Activity history (#1100), written here where it is turned
+            // down so the history needs no second pass; Activity's own retention prunes it.
+            using var history = connection.CreateCommand();
+            history.Transaction = transaction;
+            history.CommandText =
+                """
+                INSERT INTO activity_events (
+                    id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc,
+                    title, file_path, source_name, reason_group
+                )
+                VALUES (
+                    @id, @category, @message, @details, NULL, @entityType, @entityId, @createdUtc,
+                    @title, NULL, @indexer, @group
+                );
+                """;
+            Add(history, "@id", Guid.CreateVersion7().ToString("N"));
+            Add(history, "@category", ActivityHistory.TurnedDownCategory);
+            Add(history, "@message", $"Turned down {release.Release} · {TurnedDownGroups.Label(group)}");
+            Add(history, "@details", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                release = release.Release,
+                reason = release.RawReason,
+                indexerName = release.IndexerName,
+                title
+            }));
+            Add(history, "@entityType", entityType);
+            Add(history, "@entityId", entityId);
+            Add(history, "@createdUtc", now.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            Add(history, "@title", title);
+            Add(history, "@indexer", release.IndexerName);
+            Add(history, "@group", group);
+            await history.ExecuteNonQueryAsync(cancellationToken);
         }
 
         using var prune = connection.CreateCommand();

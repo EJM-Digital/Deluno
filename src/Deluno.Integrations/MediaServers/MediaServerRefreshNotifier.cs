@@ -163,6 +163,20 @@ public sealed class MediaServerRefreshNotifier(
                 await connectionUses.ReportAsync(ConnectionKinds.MediaServer, server.Id, server.Name, cancellationToken);
             }
 
+            // Told about new or changed files: one line of Activity naming the server and the files (#1100).
+            if (activityFeed is not null && toSend.Count > 0)
+            {
+                var paths = toSend.Select(change => change.Path).Where(path => !string.IsNullOrWhiteSpace(path)).Distinct(StringComparer.OrdinalIgnoreCase).Take(5).ToArray();
+                await activityFeed.RecordActivityAsync(
+                    MediaServerRefreshActivity.Refreshed,
+                    $"Told {server.Name} about {toSend.Count} new or changed file{(toSend.Count == 1 ? string.Empty : "s")}.",
+                    JsonSerializer.Serialize(new { connectionName = server.Name, path = string.Join(';', paths) }),
+                    null,
+                    "media_server",
+                    server.Id,
+                    cancellationToken);
+            }
+
             if (wasFailing && backlog is not null)
             {
                 await backlog.ClearAsync(server.Id, mediaType, cancellationToken);
@@ -262,4 +276,5 @@ public sealed class MediaServerRefreshNotifier(
 public static class MediaServerRefreshActivity
 {
     public const string CaughtUp = "media_server.refresh.caught_up";
+    public const string Refreshed = "media_server.refreshed";
 }
