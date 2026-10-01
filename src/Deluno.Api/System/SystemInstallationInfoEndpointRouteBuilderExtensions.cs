@@ -16,7 +16,9 @@ public sealed record SystemInstallationInfoResponse(
     string RuntimeVersion,
     string DatabaseType,
     string DatabaseLocation,
-    string AppDataPath);
+    string AppDataPath,
+    string HostName,
+    bool HostLooksLikeContainerId);
 
 /// <summary>
 /// Uptime, runtime, and app-data details for the System screen's "This
@@ -53,6 +55,8 @@ public static class SystemInstallationInfoEndpointRouteBuilderExtensions
             RuntimeVersion: RuntimeInformation.FrameworkDescription,
             DatabaseType: "SQLite",
             DatabaseLocation: dataRoot,
-            AppDataPath: dataRoot);
+            AppDataPath: dataRoot,
+            HostName: Deluno.Contracts.DelunoHostName.Current,
+            HostLooksLikeContainerId: Deluno.Contracts.DelunoHostName.CurrentLooksLikeContainerId);
     }
 }

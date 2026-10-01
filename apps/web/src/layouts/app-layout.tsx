@@ -28,6 +28,7 @@ import { Input } from "../components/ui/input";
 import { getGlobalShortcuts } from "../lib/command-registry";
 import { useAttention } from "../lib/use-attention";
 import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
+import { hostTitle, useHostName } from "../lib/use-host-name";
 import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 import { DisplayPreferencesProvider } from "../lib/display-preferences";
@@ -187,6 +188,14 @@ function AppLayoutContent() {
   const { resolvedTheme, setTheme } = useTheme();
   const attention = useAttention();
   const revalidator = useRevalidator();
+  // The tab says which computer this Deluno is on (#1101); the sign-in page keeps plain "Deluno".
+  const hostName = useHostName();
+  useEffect(() => {
+    document.title = hostTitle(hostName);
+    return () => {
+      document.title = "Deluno";
+    };
+  }, [hostName]);
 
   /**
    * The topbar toggle and the command palette's toggle both changed the theme
@@ -353,6 +362,7 @@ function DesktopSidebar({
   onLogout: () => void;
 }) {
   const { changePassword } = useAuth();
+  const hostName = useHostName();
   const { pathname } = useLocation();
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -394,7 +404,7 @@ function DesktopSidebar({
         <AppMark size={34} />
         <span className="min-w-0">
           <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[0.08em]">Deluno</span>
-          <span className="block whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground">Media console</span>
+          <span className="block truncate whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground" title={hostName ?? undefined}>{hostName ?? "Media console"}</span>
         </span>
       </NavLink>
 

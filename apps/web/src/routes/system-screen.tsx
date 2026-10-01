@@ -21,6 +21,7 @@ import {
 import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
 import { SystemShell } from "../components/app/settings-shell";
 import { LanAccessNotice, type LanAccessStatus } from "../components/app/lan-access-notice";
+import { HostNameTip } from "../components/app/host-name-tip";
 import { LogFilesCard } from "../components/app/log-files-card";
 import { MetadataMaintenanceCard } from "../components/app/metadata-maintenance-card";
 import { ProviderHealthDrawer, type ProviderHealthSelection } from "../components/app/provider-health-drawer";
@@ -81,6 +82,10 @@ interface SystemInstallationInfo {
   databaseType: string;
   databaseLocation: string;
   appDataPath: string;
+  /** The computer this Deluno runs on (#1101). */
+  hostName?: string;
+  /** True in Docker when the name is the container's random id. */
+  hostLooksLikeContainerId?: boolean;
 }
 
 /**
@@ -342,6 +347,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   );
 
   const runtimeCard = (
+    <>
     <ListCard title="This installation" count="Host settings and defaults">
       <ListTable columns={[{ label: "Setting" }, { label: "Value", width: "minmax(0,1.4fr)", align: "end" }]} chevron={false}>
         {[
@@ -355,6 +361,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           },
           { label: "Sign-in", value: "Required" },
           { label: "Interface", value: settings.uiTheme },
+          { label: "Runs on", value: systemInfo?.hostName ?? "Unknown" },
           { label: "Uptime", value: systemInfo ? formatUptime(systemInfo.uptimeSeconds) : "Unknown" },
           { label: "Started", value: systemInfo ? relativeTime(systemInfo.processStartUtc) : "Unknown" },
           { label: "OS", value: systemInfo?.osDescription ?? "Unknown" },
@@ -369,6 +376,8 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
         ))}
       </ListTable>
     </ListCard>
+    <HostNameTip looksLikeContainerId={systemInfo?.hostLooksLikeContainerId} />
+    </>
   );
 
   if (location.pathname.startsWith("/system/backups")) {
