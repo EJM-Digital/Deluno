@@ -43,6 +43,9 @@ export function areaOf(check: Pick<HealthCheckResultItem, "id" | "category" | "n
     case "processor":
     case "remote-path":
       return "processing";
+    // The Machine checks (sleep, drive health, a pending restart, processor heat) always belong to Machine.
+    case "machine":
+      return "machine";
     default:
       if (SECURITY.test(text)) return "security";
       if (STORAGE.test(text) && !MACHINE.test(text)) return "storage";

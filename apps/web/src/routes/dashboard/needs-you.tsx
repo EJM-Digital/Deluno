@@ -79,7 +79,7 @@ export function AlertButtons({ actions, subject, state }: { actions: AlertAction
         key={action.id}
         uniform
         label={action.label}
-        name={`${action.label} ${subject}`}
+        name={`${action.label}: ${subject}`}
         hint={action.hint}
         busyKey={action.id}
         state={state}

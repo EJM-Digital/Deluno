@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { healthProblemActions } from "../../../lib/alert-actions";
+import { bellRows } from "../../../lib/bell-rows";
+import { computeAttention } from "../attention";
+import { emptySummary } from "../summary-fixtures";
+import { buildHealth } from "./problems";
+
+const check = (id: string, name: string, over: Record<string, unknown> = {}) =>
+  ({ id, category: "machine", name, status: "problem", message: `${name} message`, cause: null, fix: null, detailsJson: null, lastRunUtc: "2026-10-01T09:00:00Z", problemSinceUtc: "2026-10-01T08:00:00Z", snoozedUntilUtc: null, ...over }) as never;
+
+const MACHINE = [
+  check("machine:sleep", "Computer sleep"),
+  check("machine:drive:WD Red", "Drive health: WD Red"),
+  check("machine:reboot", "Computer restart"),
+  check("machine:temperature", "Processor temperature")
+];
+
+describe("System's Health and the bell offer the same buttons (#1098)", () => {
+  it("every Machine problem's Health row has exactly the buttons the shared definition gives", () => {
+    const model = buildHealth({ summary: emptySummary(), attention: computeAttention(emptySummary()), checks: MACHINE });
+
+    for (const item of MACHINE) {
+      const row = model.rows.find((candidate) => candidate.id === `problem:${(item as { id: string }).id}`)!;
+      const shared = healthProblemActions({ id: (item as { id: string }).id, category: "system", link: "/system" });
+      expect(row.buttons.map((button) => button.label)).toEqual(shared.map((action) => action.label));
+      expect(row.buttons.map((button) => button.note)).toEqual(shared.map((action) => action.hint));
+      expect(row.buttons.length).toBeLessThanOrEqual(2);
+    }
+    // They are all in the Machine area.
+    expect(model.rows.filter((row) => row.id.startsWith("problem:machine:")).every((row) => row.area === "machine")).toBe(true);
+  });
+
+  it("the bell shows the same labels for the same problem", () => {
+    const summary = emptySummary();
+    summary.health = { ...summary.health!, problems: 1, topProblems: [{ id: "machine:sleep", title: "Computer sleep", category: "machine", message: "m", sinceUtc: null, link: "/system", snoozed: false }] };
+    const rows = bellRows(computeAttention(summary));
+    const model = buildHealth({ summary, attention: computeAttention(summary), checks: [check("machine:sleep", "Computer sleep")] });
+
+    const bell = rows.deluno.find((row) => row.key === "health:machine:sleep")!;
+    const health = model.rows.find((row) => row.id === "problem:machine:sleep")!;
+    expect(bell.actions.map((action) => action.label)).toEqual(health.buttons.map((button) => button.label));
+  });
+
+  it("Keep awake sends the settings change, not a navigation", () => {
+    const model = buildHealth({ summary: emptySummary(), attention: computeAttention(emptySummary()), checks: [check("machine:sleep", "Computer sleep")] });
+
+    const keepAwake = model.rows.find((row) => row.id === "problem:machine:sleep")!.buttons[0]!;
+    expect(keepAwake.to).toBeUndefined();
+    expect(keepAwake.post).toMatchObject({ method: "PATCH", path: "/api/settings", body: { keepComputerAwake: true } });
+  });
+});

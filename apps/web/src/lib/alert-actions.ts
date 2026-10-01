@@ -230,9 +230,14 @@ export function connectionDownActions(kind: "indexer" | "downloadClient", id: st
   ];
 }
 
+/** The Health id prefix of a start-up step that did not finish; it can be tried again. */
+export const STARTUP_PROBLEM_PREFIX = "system:background-problem:startup:";
+
 export interface HealthProblemLike {
   id: string;
   category?: string;
+  /** What the connection is called, for the hover notes; "this connection" when not given. */
+  name?: string;
   /** The screen that clears it, as a web path. */
   link?: string;
 }
@@ -254,6 +259,18 @@ export function healthProblemActions(problem: HealthProblemLike): AlertActions {
   const { id } = problem;
   const link = problem.link || "/system";
 
+  if (id.startsWith(STARTUP_PROBLEM_PREFIX)) {
+    const key = id.slice("system:background-problem:".length);
+    return [
+      {
+        id: `try-again:${id}`,
+        label: "Try again",
+        hint: "Runs the step that did not finish again now. Nothing else is changed.",
+        request: { method: "POST", path: `/api/system/health/background-problems/${encodeURIComponent(key)}/retry`, done: "Tried again", failure: "Deluno could not try that again. Check its logs." }
+      },
+      snooze(id, 24)
+    ];
+  }
   if (id === "machine:sleep") {
     return [
       {
@@ -287,12 +304,30 @@ export function healthProblemActions(problem: HealthProblemLike): AlertActions {
   const kind = colon > 0 ? KIND_OF_PREFIX[id.slice(0, colon)] : undefined;
   if (kind && colon > 0 && id.slice(colon + 1).length > 0 && !id.slice(colon + 1).includes(":")) {
     const connectionId = id.slice(colon + 1);
-    if (kind === "indexer" || kind === "downloadClient") return connectionDownActions(kind, connectionId, "this connection");
-    return [testAgain(kind, connectionId, "this connection"), snooze(id, 24)];
+    if (kind === "indexer" || kind === "downloadClient") return connectionDownActions(kind, connectionId, problem.name ?? "this connection");
+    return [testAgain(kind, connectionId, problem.name ?? "this connection"), snooze(id, 24)];
   }
 
   const screen = screenButton(link);
   return [open(`open:${id}`, screen.label, link, screen.hint), snooze(id, 24)];
+}
+
+/** Jobs that gave up: put them back in the queue, or look at which and why. */
+export function jobsGaveUpActions(): AlertActions {
+  return [
+    {
+      id: "jobs-retry",
+      label: "Retry",
+      hint: "Puts the jobs that gave up back in the queue to run again. Nothing already done is undone.",
+      request: { method: "POST", path: "/api/jobs/retry-failed", done: "Failed jobs requeued", failure: "The failed jobs could not be requeued." }
+    },
+    open("jobs-review", "Review", "/activity", "Opens Activity to see which jobs failed and why. Nothing is changed.")
+  ];
+}
+
+/** A row whose one button goes to the screen that deals with it ("Open Updates", "Collections"). */
+export function screenLinkActions(label: string, to: string, id = `open:${to}`): AlertActions {
+  return [open(id, label, to, `Opens ${label.replace(/^Open /, "")}, where this is dealt with. Nothing is changed.`)];
 }
 
 /** An update is ready: look at it. (A pending update is not a problem to snooze.) */

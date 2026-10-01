@@ -127,10 +127,10 @@ describe("notifications bell (#907)", () => {
 
     const dialog = await screen.findByRole("dialog");
     const needs = within(dialog).getByRole("region", { name: "Needs you" });
-    expect(within(needs).getByRole("button", { name: "Retry failed import 1" })).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Retry: failed import 1" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Retry: Metropolis (1927)" })).toBeInTheDocument();
     // "Give up" is Dismiss now, and says on hover that nothing is deleted.
-    const dismiss = within(needs).getByRole("button", { name: "Dismiss Metropolis (1927)" });
+    const dismiss = within(needs).getByRole("button", { name: "Dismiss: Metropolis (1927)" });
     expect(dismiss).toHaveAttribute("title", "Stop showing this. Nothing is deleted.");
     expect(within(needs).queryByText("Give up")).toBeNull();
     // A Deluno row links into System's Health, and its button goes to where it is cleared.
@@ -358,9 +358,9 @@ describe("the bell is two sections, with the same buttons System's Health shows 
     expect(within(deluno).getByText("Computer sleep")).toBeInTheDocument();
     // The stuck download is named, with its reason, and offers the stronger fix by name.
     expect(within(media).getByText("Not moving in qBittorrent.")).toBeInTheDocument();
-    expect(within(media).getByRole("button", { name: "Find another Sintel (2010)" })).toHaveAttribute("title", expect.stringContaining("blocklists this release"));
-    expect(within(media).getByRole("button", { name: "Search now Obscure Film (1971)" })).toBeInTheDocument();
-    expect(within(media).getByRole("button", { name: "Dismiss Obscure Film (1971)" })).toHaveAttribute("title", expect.stringContaining("Nothing is deleted"));
+    expect(within(media).getByRole("button", { name: "Find another: Sintel (2010)" })).toHaveAttribute("title", expect.stringContaining("blocklists this release"));
+    expect(within(media).getByRole("button", { name: "Search now: Obscure Film (1971)" })).toBeInTheDocument();
+    expect(within(media).getByRole("button", { name: "Dismiss: Obscure Film (1971)" })).toHaveAttribute("title", expect.stringContaining("Nothing is deleted"));
 
     for (const row of within(dialog).getAllByRole("listitem")) {
       const actions = row.querySelector("[data-row-actions]") as HTMLElement;
@@ -374,7 +374,7 @@ describe("the bell is two sections, with the same buttons System's Health shows 
   it("Keep awake turns Deluno's keep-awake on without touching anything else", async () => {
     const { user, dialog } = await open();
 
-    await user.click(within(dialog).getByRole("button", { name: "Keep awake Computer sleep" }));
+    await user.click(within(dialog).getByRole("button", { name: "Keep awake: Computer sleep" }));
 
     await waitFor(() => expect(authedFetch).toHaveBeenCalled());
     const [path, init] = authedFetch.mock.calls[0] as [string, RequestInit];
@@ -386,13 +386,13 @@ describe("the bell is two sections, with the same buttons System's Health shows 
   it("Find another removes that download and searches again, and Dismiss on a title hides it without changing it", async () => {
     const { user, dialog } = await open();
 
-    await user.click(within(dialog).getByRole("button", { name: "Find another Sintel (2010)" }));
+    await user.click(within(dialog).getByRole("button", { name: "Find another: Sintel (2010)" }));
     await waitFor(() => expect(authedFetch).toHaveBeenCalled());
     expect(authedFetch.mock.calls[0][0]).toBe("/api/download-clients/qb/queue/t1/remove");
     expect(JSON.parse(String((authedFetch.mock.calls[0][1] as RequestInit).body))).toEqual({ reason: "failed" });
 
     authedFetch.mockClear();
-    await user.click(within(dialog).getByRole("button", { name: "Dismiss Obscure Film (1971)" }));
+    await user.click(within(dialog).getByRole("button", { name: "Dismiss: Obscure Film (1971)" }));
     await waitFor(() => expect(authedFetch).toHaveBeenCalled());
     expect(authedFetch.mock.calls[0][0]).toBe("/api/attention/no-release/movie/m1/dismiss");
   });

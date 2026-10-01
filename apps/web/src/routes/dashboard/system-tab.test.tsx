@@ -80,9 +80,9 @@ describe("System", () => {
     renderTab(fullSummary);
     const health = screen.getByRole("region", { name: "Health" });
     expect(await within(health).findByRole("button", { name: "Try again: Restart after a crash isn’t set" })).toBeInTheDocument();
-    expect(await within(health).findByRole("link", { name: "Fix it: A drive is nearly full" })).toHaveAttribute("href", "/system");
-    expect(within(health).getByRole("button", { name: "Snooze 1 day: A drive is nearly full" })).toHaveAttribute("title", expect.stringContaining("comes back"));
-    expect(within(health).getByRole("button", { name: "Retry them: 1 job gave up" })).toBeInTheDocument();
+    expect(await within(health).findByRole("link", { name: "Open System: A drive is nearly full" })).toHaveAttribute("href", "/system");
+    expect(within(health).getByRole("button", { name: "Snooze 1 day: A drive is nearly full" })).toHaveAttribute("title", expect.stringContaining("not fixed or changed"));
+    expect(within(health).getByRole("button", { name: "Retry: 1 job gave up" })).toBeInTheDocument();
     expect(within(health).getByRole("button", { name: "Unsnooze: An old problem" })).toBeInTheDocument();
     // An area lists all of its checks, the passing ones too.
     const user = userEvent.setup();
@@ -107,6 +107,28 @@ describe("System", () => {
     authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({ healthStatus: "healthy", message: "ok" }) });
     await user.click(within(connections).getByRole("button", { name: "Test althub.co.za" }));
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/indexers/i1/test", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("Test all asks the server to test every connection at once and shows each answer (#1098)", async () => {
+    seedBusy();
+    renderTab(fullSummary);
+    const connections = screen.getByRole("region", { name: "Connections" });
+    expect(await within(connections).findByText("Nyaa.si")).toBeInTheDocument();
+    const user = userEvent.setup();
+    authedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ tested: 2, results: [
+        { kind: "indexer", id: "i2", name: "Nyaa.si", ok: true, slow: false, message: "Answered.", checkedUtc: new Date().toISOString() },
+        { kind: "indexer", id: "i1", name: "althub.co.za", ok: false, slow: false, message: "Timed out.", checkedUtc: new Date().toISOString() }
+      ] })
+    });
+
+    await user.click(within(connections).getByRole("button", { name: "Test all connections" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/connections/test-all", expect.objectContaining({ method: "POST" })));
+    // One request for everything; the indexers are not each tested by hand as well.
+    expect(authedFetchMock).not.toHaveBeenCalledWith("/api/indexers/i1/test", expect.anything());
+    expect(await within(connections).findByText("Timed out.")).toBeInTheDocument();
   });
 
   it("draws the machine from the overview and leaves out what it could not read", async () => {
