@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -89,6 +90,7 @@ public static class MetadataEndpointRouteBuilderExtensions
             HttpContext httpContext,
             [FromBody] MetadataTestRequest request,
             IMetadataProvider provider,
+            [FromServices] IConnectionCheckRecorder? checks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -111,6 +113,19 @@ public static class MetadataEndpointRouteBuilderExtensions
                 ? await provider.SearchAsync(lookup, cancellationToken)
                 : [];
             var latestStatus = await provider.GetStatusAsync(cancellationToken);
+            if (checks is not null && latestStatus.IsConfigured)
+            {
+                var answered = latestStatus.LastFailure is null;
+                await checks.RecordAsync(
+                    ConnectionKinds.Metadata,
+                    "metadata",
+                    latestStatus.Provider,
+                    answered,
+                    null,
+                    answered ? latestStatus.Message : (latestStatus.LastFailure?.Summary ?? latestStatus.Message),
+                    cancellationToken);
+            }
+
 
             return Results.Ok(new MetadataTestResponse(
                 latestStatus.Provider,

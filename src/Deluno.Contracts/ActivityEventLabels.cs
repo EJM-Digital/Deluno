@@ -169,6 +169,7 @@ public static class ActivityEventLabels
             ["processing.outcome-delayed"] = "Could not tell the processor yet, will keep trying",
             ["processing.outcome-not-reported"] = "Could not tell the processor what happened",
             ["processor.connection.tested"] = "Processor connection tested",
+            ["connection.checked"] = "Connection check",
             ["processor.health-address.added"] = "Added a health address for the processor",
 
             // Importing

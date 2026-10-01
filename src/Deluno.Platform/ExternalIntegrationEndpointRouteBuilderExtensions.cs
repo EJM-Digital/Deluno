@@ -850,6 +850,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IActivityFeedRepository activityFeed,
             IOutboundNotificationService notificationService,
             INotificationService notificationPreferences,
+            [FromServices] IConnectionCheckRecorder? checks,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -859,6 +860,10 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var previousHealthStatus = connection.HealthStatus;
             var result = await processorConnections.TestAsync(connection, cancellationToken);
             await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
+            if (checks is not null)
+            {
+                await checks.RecordAsync(ConnectionKinds.Processor, connection.Id, connection.Name, result.IsReachable, result.LatencyMs, result.Message, cancellationToken);
+            }
             await activityFeed.RecordActivityAsync(
                 "processor.connection.tested",
                 $"{connection.Name}: {result.Message}",

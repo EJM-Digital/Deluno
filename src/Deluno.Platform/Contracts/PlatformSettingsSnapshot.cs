@@ -38,6 +38,9 @@ public sealed record PlatformSettingsSnapshot(
     int DownloadHealthStrikeThreshold = 3,
     bool CleanupBlockReleaseAfterThreshold = true,
     bool CleanupQueueReplacementAfterThreshold = true,
+    // #1098: a read-only real test of every connection every 15 minutes it has not been used. On for new and
+    // existing installs alike because it only reads; a missing key reads as on.
+    bool CheckConnectionsRegularly = true,
     // #936 (27 Sep 2026): off by default. #904 (commit 2e9f2125) had tried to
     // make these on by default, but that change never shipped in a release —
     // v1.0.0-rc.22 already read a missing key as off for both — so there is

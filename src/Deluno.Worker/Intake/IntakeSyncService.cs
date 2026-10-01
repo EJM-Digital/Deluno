@@ -691,6 +691,29 @@ public sealed class IntakeSyncService(
         }
     }
 
+    /// <summary>
+    /// A real, read-only look at a list's feed with nothing added (#1098): the regular connection check and
+    /// Test all use it to say whether a list provider still answers.
+    /// </summary>
+    public async Task<(bool Ok, string Message, int? LatencyMs)> TestSourceAsync(IntakeSourceItem source, CancellationToken cancellationToken)
+    {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            var entries = await FetchEntriesAsync(source, cancellationToken);
+            var elapsed = (int)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            return (true, entries.Count == 1 ? "Answered with 1 title." : $"Answered with {entries.Count} titles.", elapsed);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return (false, exception.Message, null);
+        }
+    }
+
     private async Task<IReadOnlyList<IntakeEntry>> FetchEntriesAsync(IntakeSourceItem source, CancellationToken cancellationToken)
     {
         var provider = source.Provider.Trim().ToLowerInvariant();

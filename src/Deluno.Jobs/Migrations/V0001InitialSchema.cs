@@ -52,7 +52,8 @@ public static class JobsDatabaseMigrations
         new V0044TurnedDownReleaseNameIndex(),
         new V0045ScheduleLastError(),
         new V0046SystemOverviewHistory(),
-        new V0047ActivityHistoryFacts()
+        new V0047ActivityHistoryFacts(),
+        new V0048ConnectionChecks()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration
