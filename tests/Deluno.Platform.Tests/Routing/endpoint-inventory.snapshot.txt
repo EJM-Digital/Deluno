@@ -259,14 +259,17 @@ GET /api/subtitle-providers/
 GET /api/subtitles/wanted
 GET /api/system/bundled-components
 GET /api/system/connectivity
+GET /api/system/databases
 GET /api/system/health/
 GET /api/system/health/summary
 GET /api/system/info
 GET /api/system/lan-access
+GET /api/system/log
 GET /api/system/log-files
 GET /api/system/log-files/folder
 GET /api/system/log-files/{name}/download
 GET /api/system/log-level
+GET /api/system/overview
 GET /api/system/status
 GET /api/system/tasks
 GET /api/tags/
