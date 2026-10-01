@@ -237,6 +237,27 @@ public sealed class ActivityHistoryApiTests
     }
 
     [Fact]
+    public async Task A_release_Deluno_refuses_on_its_own_is_written_once_with_its_reason_and_a_persons_own_block_is_not_doubled()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var blocked = app.Services.GetRequiredService<IBlockedReleaseRepository>();
+
+        await blocked.BlockAsync(new BlockedRelease("b1", "key-1", "Sintel.2010.CAM", "NZBgeek", "movie", "m1", "Sintel", "noVideoStream", "No video in it.", "hash1", null, "qBit", DateTimeOffset.UtcNow, BlockedReleaseStates.Refused, BlockedReleaseOrigins.Automatic), CancellationToken.None);
+        // The same release failing again is one entry, and one line.
+        await blocked.BlockAsync(new BlockedRelease("b2", "key-1", "Sintel.2010.CAM", "NZBgeek", "movie", "m1", "Sintel", "noVideoStream", "No video in it.", "hash1", null, "qBit", DateTimeOffset.UtcNow, BlockedReleaseStates.Refused, BlockedReleaseOrigins.Automatic), CancellationToken.None);
+        // A person's own block is written by the click that made it, not here.
+        await blocked.BlockAsync(new BlockedRelease("b3", "key-2", "Moon.2009.CAM", "NZBgeek", "movie", "m2", "Moon", "manual", "You blocked it.", null, null, null, DateTimeOffset.UtcNow, BlockedReleaseStates.Refused, BlockedReleaseOrigins.Manual), CancellationToken.None);
+
+        var items = await ListAsync(app, "&type=blocklisted");
+
+        var line = Assert.Single(items);
+        Assert.Equal("Deluno blocked Sintel.2010.CAM: No video in it.", line.GetProperty("message").GetString());
+        Assert.Equal("Sintel", line.GetProperty("title").GetString());
+        Assert.Equal("NZBgeek", line.GetProperty("sourceName").GetString());
+        Assert.Equal("m1", line.GetProperty("relatedEntityId").GetString());
+    }
+
+    [Fact]
     public void Every_known_event_kind_has_one_type_and_a_source_or_none()
     {
         foreach (var category in ActivityEventLabels.KnownCategories)

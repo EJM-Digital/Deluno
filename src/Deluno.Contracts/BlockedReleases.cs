@@ -62,6 +62,14 @@ public sealed record BlockedRelease(
     /// under #585, without a client-side rule to keep in sync.</para>
     /// </summary>
     public bool EveryIndexer => true;
+
+    /// <summary>
+    /// True when the caller says the block in its own words in Activity (the import pipeline does, with the
+    /// replacement search it started), so the repository does not write its plain line as well (#1100).
+    /// Never stored and never sent.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool WritesOwnActivity { get; init; }
 }
 
 /// <summary>
