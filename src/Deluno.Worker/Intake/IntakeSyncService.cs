@@ -43,7 +43,8 @@ public sealed class IntakeSyncService(
     ITraktTokenProvider? traktTokenProvider = null,
     ITraktClient? traktClient = null,
     ITitleTagService? titleTagService = null,
-    IAutoTaggingService? autoTagging = null)
+    IAutoTaggingService? autoTagging = null,
+    IConnectionUseReporter? connectionUses = null)
     : IIntakeSyncService, IIntakeListPreviewService, IIntakeListApprovalService
 {
     private const int PreviewLimit = 100;
@@ -246,6 +247,16 @@ public sealed class IntakeSyncService(
         CancellationToken cancellationToken)
     {
         var syncStartedUtc = timeProvider.GetUtcNow();
+        // Checking a list lights its provider's tile on Live (#1098).
+        if (connectionUses is not null)
+        {
+            await connectionUses.ReportAsync(
+                ConnectionKinds.Lists,
+                ListProviderFamilies.KeyFor(source.Provider),
+                ListProviderFamilies.NameFor(source.Provider),
+                cancellationToken);
+        }
+
         var libraries = await librariesRepository.ListLibrariesAsync(cancellationToken);
         var targetLibrary = ResolveTargetLibrary(source, libraries);
         if (targetLibrary is null)

@@ -168,6 +168,7 @@ public sealed class EpisodeSearchJobHandler(
                 SceneEpisodeNumber: targetEpisode?.SceneEpisodeNumber,
                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                 RuntimeMinutes: seriesItem?.RuntimeMinutes,
+                EntityId: payload.SeriesId,
                 ImdbId: seriesItem?.ImdbId,
                 Genres: seriesItem?.Genres,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem?.MetadataJson),

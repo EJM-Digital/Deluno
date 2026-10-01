@@ -1,3 +1,5 @@
+using Deluno.Contracts;
+
 namespace Deluno.Integrations.DownloadClients;
 
 /// <summary>
@@ -25,6 +27,12 @@ public static class DownloadQueueSummary
     public static bool IsWaitingForProcessor(string status) =>
         status == DownloadQueueStatuses.WaitingForProcessor;
 
+    /// <summary>A finished torrent the client is still sharing (#1098): not Usenet, fully downloaded, and not paused or dead.</summary>
+    public static bool IsSeeding(DownloadQueueItem item) =>
+        DownloadProtocols.HasSharingPhase(item.Protocol)
+        && item.Progress >= 100
+        && item.Status is not (DownloadQueueStatuses.Paused or DownloadQueueStatuses.DeadRelease);
+
     public static DownloadTelemetrySummary Of(IEnumerable<DownloadQueueItem> queue)
     {
         var items = queue as IReadOnlyCollection<DownloadQueueItem> ?? queue.ToArray();
@@ -37,6 +45,7 @@ public static class DownloadQueueSummary
             ImportReadyCount: items.Count(item => item.Status is DownloadQueueStatuses.ImportReady or DownloadQueueStatuses.Completed),
             TotalSpeedMbps: Math.Round(items.Sum(item => item.SpeedMbps), 1),
             WaitingForProcessorCount: items.Count(item => IsWaitingForProcessor(item.Status)),
-            TotalUploadSpeedMbps: Math.Round(items.Sum(item => item.UploadSpeedMbps), 1));
+            TotalUploadSpeedMbps: Math.Round(items.Sum(item => item.UploadSpeedMbps), 1),
+            SeedingCount: items.Count(IsSeeding));
     }
 }

@@ -170,7 +170,8 @@ public sealed class SubtitleFetchService(
     ISubtitleFileWriter fileWriter,
     TimeProvider timeProvider,
     ILogger<SubtitleFetchService> logger,
-    IActivityFeedRepository? activityFeedRepository = null)
+    IActivityFeedRepository? activityFeedRepository = null,
+    IConnectionUseReporter? connectionUses = null)
     : ISubtitleFetchService
 {
     public async Task<SubtitleFetchOutcome> FetchAsync(
@@ -314,6 +315,7 @@ public sealed class SubtitleFetchService(
                         && !modification.AppliedRules.Contains("hearing-impaired annotations");
                     var written = await fileWriter.WriteAsync(
                         videoPath, language, writtenAsHearingImpaired, subtitle, cancellationToken, omitLanguageCode);
+                        await NoteFetchedAsync(connection, cancellationToken);
 
                     await RecordAsync(connection, "healthy",
                         $"Fetched a {language} subtitle for {request.Title}.", true, null, cancellationToken);
@@ -478,6 +480,7 @@ public sealed class SubtitleFetchService(
                     subtitle = modification.Content;
                     var written = await fileWriter.WriteAsync(
                         videoPath, language, hearingImpaired: false, subtitle, cancellationToken, omitLanguageCode, forced: true);
+                        await NoteFetchedAsync(connection, cancellationToken);
 
                     return new SubtitleFetchOutcome(
                         Language: language,
@@ -665,6 +668,7 @@ public sealed class SubtitleFetchService(
         subtitle = modification.Content;
         var written = await fileWriter.WriteAsync(
             videoPath, language, pick.HearingImpaired, subtitle, cancellationToken, omitLanguageCode);
+            await NoteFetchedAsync(connection, cancellationToken);
         var match = SubtitleMatchRanking.Rank(pick.ReleaseName, videoPath);
 
         return new SubtitleFetchOutcome(
@@ -769,6 +773,12 @@ public sealed class SubtitleFetchService(
 
     private static SubtitleProviderCredentials Credentials(SubtitleProviderConnection connection)
         => new(connection.Username, connection.Secret, connection.ApiKey);
+
+    /// <summary>A subtitle was written: the provider's tile on Live lights and counts one more today (#1098).</summary>
+    private Task NoteFetchedAsync(SubtitleProviderConnection connection, CancellationToken cancellationToken)
+        => connectionUses is null
+            ? Task.CompletedTask
+            : connectionUses.ReportAsync(ConnectionKinds.Subtitles, connection.Id, connection.Name, cancellationToken);
 
     private Task RecordAsync(
         SubtitleProviderConnection connection,

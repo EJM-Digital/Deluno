@@ -43,7 +43,8 @@ public sealed class MediaServerRefreshNotifier(
     TimeProvider timeProvider,
     IMediaServerRefreshBacklogRepository? backlog = null,
     IJobScheduler? jobScheduler = null,
-    IActivityFeedRepository? activityFeed = null) : IMediaServerRefreshNotifier
+    IActivityFeedRepository? activityFeed = null,
+    IConnectionUseReporter? connectionUses = null) : IMediaServerRefreshNotifier
 {
     public async Task NotifyAsync(string mediaType, IReadOnlyList<MediaServerPathChange> changes, CancellationToken cancellationToken)
     {
@@ -156,6 +157,12 @@ public sealed class MediaServerRefreshNotifier(
 
         if (ok)
         {
+            // The server answered a refresh: its tile on Live lights and counts one more today (#1098).
+            if (connectionUses is not null)
+            {
+                await connectionUses.ReportAsync(ConnectionKinds.MediaServer, server.Id, server.Name, cancellationToken);
+            }
+
             if (wasFailing && backlog is not null)
             {
                 await backlog.ClearAsync(server.Id, mediaType, cancellationToken);

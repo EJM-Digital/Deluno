@@ -40,4 +40,7 @@ public sealed record MediaSearchCandidate(
     // #969: how many times this release has already been grabbed. Blank
     // (null) when the indexer never reports it -- Torznab/Newznab's own
     // "grabs" attr, which the native tracker engine also writes.
-    int? Grabs = null);
+    int? Grabs = null,
+    // #1098: the first gate that refused this release, in the engine's own words, so the Live screen
+    // can say why it was turned down. Null when nothing hard refused it.
+    string? RejectionGate = null);

@@ -30,6 +30,35 @@ public sealed class DownloadQueueSummaryTests
         new($"item-{status}", "qb-1", "qBittorrent", "qbittorrent", "movies", "Title", $"Release.{status}",
             "deluno-movies", status, 100, 0, 0, 1024, 0, 0, "Fixture", null, DateTimeOffset.Parse("2026-08-26T00:00:00Z"));
 
+    private static DownloadQueueItem Torrent(string protocol, string status, double progress) =>
+        new($"item-{protocol}-{status}-{progress}", "c1", "Client", protocol, "movies", "Title", $"Release.{status}",
+            "deluno-movies", status, progress, 0, 0, 1024, 0, 0, "Fixture", null, DateTimeOffset.Parse("2026-08-26T00:00:00Z"));
+
+    /// <summary>#1098: the Live screen says how many torrents each client is seeding.</summary>
+    [Fact]
+    public void Seeding_counts_finished_torrents_still_being_shared_and_nothing_else()
+    {
+        var summary = DownloadQueueSummary.Of(
+        [
+            Torrent("qbittorrent", DownloadQueueStatuses.Imported, 100),
+            Torrent("deluge", DownloadQueueStatuses.Completed, 100),
+            Torrent("transmission", DownloadQueueStatuses.ImportFailed, 100),
+            // Still downloading, paused, or dead: not seeding.
+            Torrent("qbittorrent", DownloadQueueStatuses.Downloading, 54),
+            Torrent("qbittorrent", DownloadQueueStatuses.Paused, 100),
+            Torrent("qbittorrent", DownloadQueueStatuses.DeadRelease, 100),
+            // Usenet has no sharing phase.
+            Torrent("sabnzbd", DownloadQueueStatuses.Imported, 100),
+            Torrent("nzbget", DownloadQueueStatuses.Completed, 100)
+        ]);
+
+        Assert.Equal(3, summary.SeedingCount);
+    }
+
+    [Fact]
+    public void A_client_with_an_empty_queue_is_seeding_nothing()
+        => Assert.Equal(0, DownloadQueueSummary.Of([]).SeedingCount);
+
     [Theory]
     [MemberData(nameof(AllStatuses))]
     public void Waiting_for_a_processor_is_always_also_processing(string status)

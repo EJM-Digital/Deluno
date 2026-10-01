@@ -751,9 +751,9 @@ public sealed class WorkPlanner(
             if (outcome.Reclaimed)
             {
                 await activityFeedRepository.RecordActivityOnChangeAsync(
-                    "download.sharing.reclaimed",
-                    $"{item.Title} finished sharing and was removed from {item.ClientName}. {outcome.Reason}",
-                    null,
+                    SeedingCleanupActivity.Category,
+                    SeedingCleanupActivity.Message(item.Title, item.ClientName),
+                    System.Text.Json.JsonSerializer.Serialize(new { reason = outcome.Reason }),
                     null,
                     dispatch.EntityType,
                     dispatch.EntityId,

@@ -61,7 +61,7 @@
  *   DashboardSummaryChanged { asOfUtc } (no longer sent; kept so old subscribers still compile)
  *   Live events on the "live" subject (#1097), each carrying its own data -- see api/types/live-events.ts and
  *   docs/deluno-ui-api-contract.md: JourneyStageChanged, ProcessorHandoffChanged, RecoveryCaseChanged, JobChanged,
- *   SearchCycleProgress, IndexerQueryRecorded, ClientStateChanged, DriveSpaceChanged, DownloadSpeedSample
+ *   SearchCycleProgress, IndexerQueryRecorded, ClientStateChanged, DriveSpaceChanged, DownloadSpeedSample, ReleasesTurnedDown, ConnectionUsed
  *   *Changed                { id } (identity-only state-change family)
  */
 
@@ -82,6 +82,7 @@ import { applyDashboardSummaryUpdate } from "./realtime-cache";
 import { setRealtimeConnected } from "./realtime-state";
 import type {
   ClientStateChangedEvent,
+  ConnectionUsedEvent,
   DashboardSummaryUpdatedEvent,
   DownloadSpeedSampleEvent,
   DriveSpaceChangedEvent,
@@ -90,6 +91,7 @@ import type {
   JourneyStageChangedEvent,
   ProcessorHandoffChangedEvent,
   RecoveryCaseChangedEvent,
+  ReleasesTurnedDownEvent,
   SearchCycleProgressEvent
 } from "./api/types/live-events";
 
@@ -246,6 +248,8 @@ type EventMap = {
   IndexerQueryRecorded: IndexerQueryRecordedEvent;
   ClientStateChanged: ClientStateChangedEvent;
   DriveSpaceChanged: DriveSpaceChangedEvent;
+  ReleasesTurnedDown: ReleasesTurnedDownEvent;
+  ConnectionUsed: ConnectionUsedEvent;
   DownloadSpeedSample: DownloadSpeedSampleEvent;
 };
 
@@ -625,6 +629,8 @@ const LIVE_EVENT_SUBJECTS = {
   IndexerQueryRecorded: RealtimeGroups.Live,
   ClientStateChanged: RealtimeGroups.Live,
   DriveSpaceChanged: RealtimeGroups.Live,
+  ReleasesTurnedDown: RealtimeGroups.Live,
+  ConnectionUsed: RealtimeGroups.Live,
   DownloadSpeedSample: RealtimeGroups.Live
 } as const satisfies Partial<Record<SignalREventName, string>>;
 

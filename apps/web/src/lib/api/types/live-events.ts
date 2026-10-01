@@ -1,4 +1,4 @@
-import type { DashboardSectionName, DashboardSummary } from "./operations";
+import type { DashboardSectionName, DashboardSummary, TurnedDownGroup } from "./operations";
 
 /**
  * Payloads of the pushed Live events (#1097). Every one carries its own data: a
@@ -114,4 +114,23 @@ export interface DownloadSpeedSampleEvent {
   uploadMbps: number;
   active: number;
   at: string;
+}
+
+/** One search turned releases down (#1098): once per search with any. `items` are those releases, each with its plain group and label. */
+export interface ReleasesTurnedDownEvent {
+  title: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  atUtc: string;
+  items: Array<{ release: string; group: TurnedDownGroup; label: string }>;
+}
+
+/** Deluno just used a connection: handed a title to a processor, sent a media server refresh, received a Seerr request, fetched a subtitle or checked a list (#1098). `countToday` includes this use (lists: lists watched); `busy` is a processor's titles right now. */
+export interface ConnectionUsedEvent {
+  kind: "processor" | "mediaServer" | "requests" | "subtitles" | "lists";
+  id: string;
+  name: string;
+  countToday: number;
+  busy: number;
+  atUtc: string;
 }

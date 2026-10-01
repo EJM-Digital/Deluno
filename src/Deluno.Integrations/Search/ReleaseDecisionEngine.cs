@@ -630,7 +630,8 @@ public static partial class ReleaseDecisionEngine
             releaseGroup,
             estimatedBitrate,
             preferenceEvaluation,
-            preferenceComparison);
+            preferenceComparison,
+            rejectionGate);
     }
 
     private static string BuildTypedSummary(

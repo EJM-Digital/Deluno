@@ -1244,6 +1244,8 @@ export interface DownloadTelemetrySummary {
   totalUploadSpeedMbps: number;
   /** The processor share of processingCount — held back awaiting a cleaned output. */
   waitingForProcessorCount: number;
+  /** Finished torrents the client is still sharing (#1098); always 0 for Usenet. */
+  seedingCount?: number;
 }
 
 export interface DownloadQueueItem {
@@ -1258,6 +1260,7 @@ export interface DownloadQueueItem {
   status: "downloading" | "queued" | "completed" | "stalled" | "processing" | "processed" | "waitingForProcessor" | "importReady" | "importQueued" | "importFailed" | "imported" | "processingFailed" | string;
   progress: number;
   speedMbps: number;
+  /** The client's own time-left reading in seconds; 0 when the client gives none. */
   etaSeconds: number;
   sizeBytes: number;
   downloadedBytes: number;

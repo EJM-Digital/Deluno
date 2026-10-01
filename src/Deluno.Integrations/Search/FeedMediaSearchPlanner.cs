@@ -1211,7 +1211,8 @@ public sealed class FeedMediaSearchPlanner(
                 IndexerProtocol: indexer.Protocol,
                 ReleaseAgeHours: releaseAgeHours,
                 Leechers: leechers,
-                Grabs: grabs));
+                Grabs: grabs,
+                RejectionGate: decision.RejectionGate));
         }
 
         return new ParsedCandidates(results, feedItems.Length == requestedLimit);

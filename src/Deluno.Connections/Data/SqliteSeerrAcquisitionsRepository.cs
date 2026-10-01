@@ -45,7 +45,8 @@ public interface ISeerrAcquisitionsRepository
 
 public sealed class SqliteSeerrAcquisitionsRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    Deluno.Contracts.IConnectionUseReporter? connectionUses = null)
     : ISeerrAcquisitionsRepository
 {
     private const string Columns =
@@ -91,6 +92,12 @@ public sealed class SqliteSeerrAcquisitionsRepository(
         AddParameter(command, "@ruleId", string.IsNullOrWhiteSpace(ruleId) ? null : ruleId.Trim());
         AddParameter(command, "@ruleName", string.IsNullOrWhiteSpace(ruleName) ? null : ruleName.Trim());
         await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // The request is saved: light the Seerr tile on Live and move its count (#1098).
+        if (connectionUses is not null)
+        {
+            await connectionUses.ReportAsync(Deluno.Contracts.ConnectionKinds.Requests, connectionId, connectionName, cancellationToken);
+        }
 
         return new SeerrAcquisitionItem(
             id, connectionId, connectionName, mediaType, entityId, title, seerrMediaId, status, message, now, now,
