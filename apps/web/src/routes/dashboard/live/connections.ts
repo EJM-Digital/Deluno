@@ -49,13 +49,13 @@ export function sortConnections(connections: readonly LiveConnection[]): LiveCon
   return [...connections].sort((a, b) => Number(b.enabled) - Number(a.enabled) || KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name));
 }
 
-/** The header: "6 connected · all answering", or how many are not. */
+/** The header: "6 connected", with how many are not answering or switched off only when some are. */
 export function connectionsSummary(connections: readonly LiveConnection[]): string {
   const on = connections.filter((connection) => connection.enabled);
   if (connections.length === 0) return "nothing connected yet";
   const down = on.filter((connection) => !connection.healthy).length;
   const off = connections.length - on.length;
-  return `${on.length.toLocaleString("en-AU")} connected · ${down === 0 ? "all answering" : `${down.toLocaleString("en-AU")} not answering`}${off > 0 ? ` · ${off.toLocaleString("en-AU")} off` : ""}`;
+  return [`${on.length.toLocaleString("en-AU")} connected`, down > 0 ? `${down.toLocaleString("en-AU")} not answering` : null, off > 0 ? `${off.toLocaleString("en-AU")} off` : null].filter(Boolean).join(" · ");
 }
 
 export const connectionKey = (connection: Pick<LiveConnection, "kind" | "id">) => `${connection.kind}:${connection.id}`;
@@ -75,4 +75,13 @@ export function applyConnectionEvents(base: readonly LiveConnection[], used: Rea
     out.push({ kind: event.kind, id: event.id, name: event.name, enabled: true, healthy: true, countToday: event.countToday, busy: event.busy });
   }
   return out;
+}
+
+/**
+ * The name a tile shows. Deluno names a connection after what it is and where it runs ("Processor on WIN-PC"); the host is
+ * in the tile's tooltip, and the tile says the name the person would use. A name that is only the role ("Processor") is not said again in the line under it.
+ */
+export function tileName(connection: Pick<LiveConnection, "name">): string {
+  const named = connection.name.replace(/\s+on\s+\S+$/i, "").trim();
+  return named || connection.name;
 }

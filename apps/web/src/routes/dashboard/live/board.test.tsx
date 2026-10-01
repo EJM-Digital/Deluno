@@ -7,8 +7,11 @@ import { ClientTiles } from "./clients";
 import { ConnectionTiles } from "./connection-tiles";
 import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
 import { statusOf, type CardContext } from "./card";
+import { Tile, TileLayoutContext } from "./tile";
 import { IndexerTiles, indexerMeta, indexersSummary } from "./indexers";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
+import { MAX_TILE_COLUMNS, tileCardRem, tileColumns, tileDensity } from "./layout";
+import { tileName } from "./connections";
 import { journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity } from "./layout";
 import { departedFromImporting, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
@@ -524,7 +527,7 @@ describe("the indexer tiles", () => {
 
   it("counts answering, switched off and the queries today in the header", () => {
     const today = new Map(board.indexers.map((row) => [row.id, row]));
-    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 switched off · 51 queries today");
+    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 off · 51 today");
     expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
     expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
     // An hourly limit is not a count of today, so only the day's queries are said.
@@ -560,7 +563,7 @@ describe("the connection tiles", () => {
 
   it("orders them by role with the switched-off ones last, and counts them in the header", () => {
     expect(sortConnections(all).map((item) => item.name)).toEqual(["FileFlows", "Weir", "Plex", "Seerr", "OpenSubtitles", "Trakt", "Old Plex"]);
-    expect(connectionsSummary(all)).toBe("6 connected · all answering · 1 off");
+    expect(connectionsSummary(all)).toBe("6 connected · 1 off");
     expect(connectionsSummary([...all, connection("lists", "X", 0, { healthy: false })])).toContain("1 not answering");
     expect(connectionsSummary([])).toBe("nothing connected yet");
   });
@@ -579,5 +582,60 @@ describe("the connection tiles", () => {
     expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("data-state", "busy");
     expect(screen.getByRole("link", { name: "Old Plex: Media server · switched off" })).toHaveAttribute("data-state", "off");
     expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
+  });
+});
+
+describe("the right column's layout (#1098)", () => {
+  const connection = (kind: string, name: string, countToday: number) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0 }) as never;
+  it("goes three across at most, and fewer in a narrow column", () => {
+    expect(tileColumns(448, 16)).toBe(3);
+    expect(tileColumns(352, 16)).toBe(3);
+    expect(tileColumns(900, 16)).toBe(MAX_TILE_COLUMNS);
+    expect(tileColumns(200, 16)).toBe(1);
+  });
+
+  it("draws full tiles while the cards and Activity's least room fit the height, and compact tiles before anything is clipped", () => {
+    const counts = [10, 5, 1];
+    const cols = 3;
+    expect(tileDensity(1300, counts, cols, 16)).toBe("full");
+    expect(tileDensity(615, counts, cols, 16)).toBe("compact");
+    // Not measured yet: full.
+    expect(tileDensity(0, counts, cols, 16)).toBe("full");
+    // Compact tiles take less room than full ones.
+    expect(tileCardRem(10, cols, true)).toBeLessThan(tileCardRem(10, cols, false));
+  });
+
+  it("draws a compact tile as a light and a name only, with the detail in its name and tooltip", () => {
+    render(
+      <MemoryRouter>
+        <TileLayoutContext.Provider value={{ cols: 3, compact: true }}>
+          <ul>
+            <Tile to="/x" name="NZBgeek" tone="ok" meta="46 of 100 today" label="NZBgeek: 46 of 100 today" />
+          </ul>
+        </TileLayoutContext.Provider>
+      </MemoryRouter>
+    );
+    const link = screen.getByRole("link", { name: "NZBgeek: 46 of 100 today" });
+    expect(link).toHaveAttribute("title", "NZBgeek: 46 of 100 today");
+    expect(within(link).queryByText("46 of 100 today")).toBeNull();
+  });
+
+  it("shows the name the tile would be called, not 'Processor on HOST', and does not say the role twice", () => {
+    expect(tileName({ name: "Processor on MEDIA-SERVER" })).toBe("Processor");
+    expect(tileName({ name: "Plex on NAS" })).toBe("Plex");
+    expect(tileName({ name: "My cleaner" })).toBe("My cleaner");
+    render(
+      <MemoryRouter>
+        <ConnectionTiles connections={[connection("processor", "Processor on WIN-PC", 0)]} lit={new Set()} />
+      </MemoryRouter>
+    );
+    const tile = screen.getByRole("link", { name: /^Processor on WIN-PC: Processor · idle/ });
+    expect(within(tile).getByText("Processor")).toBeInTheDocument();
+    expect(within(tile).getByText("idle")).toBeInTheDocument();
+  });
+
+  it("keeps the headers short enough never to be cut", () => {
+    expect(indexersSummary([], new Map(), 576)).toBe("0 answering · 576 today");
+    expect(connectionsSummary([connection("processor", "Processor on WIN-PC", 0)])).toBe("1 connected");
   });
 });

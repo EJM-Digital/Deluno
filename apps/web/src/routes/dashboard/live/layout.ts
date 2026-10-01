@@ -105,3 +105,43 @@ export function posterLayout(width: number, height: number, remPx: number, gap =
   return { rows, perRow, width: pictureWidth, height: Math.round(pictureWidth * 1.5), itemHeight: Math.round(pictureWidth * 1.5) + caption, capacity: rows * perRow };
 }
 
+
+/** The narrowest a tile may be in the right column, in rem. */
+export const MIN_TILE_REM = 6;
+
+const TILE_GAP_REM = 0.375;
+const TILE_PAD_X_REM = 1.125;
+
+/** Tiles go three across, as in the mockup, however wide the column is. */
+export const MAX_TILE_COLUMNS = 3;
+
+/** How many tiles go across a card of `width` px. At least one. */
+export function tileColumns(width: number, remPx: number): number {
+  if (!(width > 0)) return 3;
+  const inner = width - 2 * TILE_PAD_X_REM * remPx;
+  return Math.min(MAX_TILE_COLUMNS, Math.max(1, Math.floor((inner + TILE_GAP_REM * remPx) / ((MIN_TILE_REM + TILE_GAP_REM) * remPx))));
+}
+
+/** The room a tile card takes, in rem: its header, its padding and its rows of tiles. A card with no tiles is one short line. */
+export function tileCardRem(count: number, cols: number, compact: boolean): number {
+  const header = 3.2;
+  if (count === 0) return header + 2.6;
+  const rows = Math.ceil(count / Math.max(1, cols));
+  const tile = compact ? 1.45 : 3.1;
+  const gap = compact ? 0.25 : TILE_GAP_REM;
+  return header + (compact ? 0.5 : 1.25) + rows * tile + (rows - 1) * gap;
+}
+
+/** The least room Activity is given, in rem: its header and about three rows. */
+export const ACTIVITY_MIN_REM = 16.5;
+
+/**
+ * The three tile cards draw full tiles (name and a line of detail) while they and Activity's least room fit the column's height,
+ * and one-line tiles (a light and the name) before anything is clipped. A column with no measured height draws full tiles.
+ */
+export function tileDensity(height: number, counts: readonly number[], cols: number, remPx: number): "full" | "compact" {
+  if (!(height > 0)) return "full";
+  const gap = (counts.length) * 0.5;
+  const need = counts.reduce((sum, count) => sum + tileCardRem(count, cols, false), 0) + gap + ACTIVITY_MIN_REM;
+  return need * remPx <= height ? "full" : "compact";
+}

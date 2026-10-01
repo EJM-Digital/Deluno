@@ -116,15 +116,15 @@ export function indexerMeta(indexer: IndexerItem, today: IndexerToday | undefine
   return { text: latency !== null ? `${queries} · ${latency.toLocaleString("en-AU")} ms` : queries, tone: slow ? "warn" : "ok" };
 }
 
-/** The header: "4 answering · 1 switched off · 128 queries today". */
+/** The header, short enough never to be cut: "4 answering · 1 off · 128 today". */
 export function indexersSummary(indexers: readonly IndexerItem[], today: ReadonlyMap<string, IndexerToday>, fallbackQueries?: number): string {
   const enabled = indexers.filter((indexer) => indexer.isEnabled);
   const answering = enabled.filter((indexer) => !indexerNeedsButton(indexer)).length;
   const off = indexers.length - enabled.length;
   const queries = today.size > 0 ? [...today.values()].reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : fallbackQueries;
   const parts = [`${answering.toLocaleString("en-AU")} answering`];
-  if (off > 0) parts.push(`${off.toLocaleString("en-AU")} switched off`);
-  if (queries !== undefined) parts.push(`${queries.toLocaleString("en-AU")} ${queries === 1 ? "query" : "queries"} today`);
+  if (off > 0) parts.push(`${off.toLocaleString("en-AU")} off`);
+  if (queries !== undefined) parts.push(`${queries.toLocaleString("en-AU")} today`);
   return parts.join(" · ");
 }
 

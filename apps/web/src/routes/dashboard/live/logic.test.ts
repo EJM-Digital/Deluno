@@ -63,7 +63,7 @@ describe("the speed chart's data", () => {
 
   it("always has a reading: no samples is a flat 0, and bad numbers read 0", () => {
     const empty = shapeSpeedSeries([], null, NOW, 6);
-    expect(empty.points).toEqual([{ t: NOW, down: 0, up: 0 }]);
+    expect(empty.points).toEqual([{ t: NOW - 6 * 3_600_000, down: 0, up: 0 }, { t: NOW, down: 0, up: 0 }]);
     const bad = shapeSpeedSeries([{ capturedUtc: iso(-1000), speedMbps: Number.NaN, activeCount: 0, uploadMbps: -3 }], null, NOW, 6);
     expect(bad.points[0]).toMatchObject({ down: 0, up: 0 });
   });
@@ -73,7 +73,7 @@ describe("the speed chart's data", () => {
     const path = linePath(series.points, "down", series.start, series.end, series.peakDown, 100, 50);
     expect(path.startsWith("M50.0 0.0")).toBe(true);
     expect(path).toContain("L100.0 50.0");
-    expect(linePath(shapeSpeedSeries([], null, NOW, 6).points, "down", NOW - 6 * 3_600_000, NOW, 0, 100, 50)).toBe("M100.0 50.0");
+    expect(linePath(shapeSpeedSeries([], null, NOW, 6).points, "down", NOW - 6 * 3_600_000, NOW, 0, 100, 50)).toBe("M0.0 50.0 L100.0 50.0");
   });
 });
 

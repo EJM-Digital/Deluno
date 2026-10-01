@@ -29,7 +29,7 @@ function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEn
   return "/activity";
 }
 
-function renderRow(group: ActivityGroup, titles: TitleLookup): ReactElement {
+function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean): ReactElement {
   const item = group.first;
   const kind = KIND_STYLE[activityKind(item.category, item.severity)];
   const many = group.rows.length;
@@ -38,24 +38,31 @@ function renderRow(group: ActivityGroup, titles: TitleLookup): ReactElement {
       <Link
         to={entityLink(item, titles)}
         title={many > 1 ? group.detail.join("\n") : undefined}
-        className="flex h-full items-center gap-2.5 px-[var(--card-pad-x)] py-2 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className={cn("flex h-full items-center gap-2.5 px-[var(--card-pad-x)] transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", dense ? "py-1" : "py-2")}
       >
-        <span aria-hidden className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg", kind.tile, kind.text)}>
-          <kind.icon className="h-4 w-4" />
+        <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-lg", dense ? "h-6 w-6" : "mt-0.5 h-7 w-7", kind.tile, kind.text)}>
+          <kind.icon className={dense ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[length:var(--type-body-sm)] leading-snug text-foreground">{group.sentence}</span>
-          <span className="block text-[length:var(--type-caption)] text-muted-foreground">
-            <span className={kind.text}>{eventLabel(item)}</span>
-            {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-[length:var(--type-micro)] font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; {ago(item.createdUtc)}
+        {dense ? (
+          <>
+            <span title={`${group.sentence} (${eventLabel(item)})`} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-foreground">{group.sentence}</span>
+            <span className="shrink-0 text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{many > 1 ? `${many.toLocaleString("en-AU")} times · ` : null}{ago(item.createdUtc)}</span>
+          </>
+        ) : (
+          <span className="min-w-0 flex-1">
+            <span title={group.sentence} className="line-clamp-2 text-[length:var(--type-body-sm)] leading-snug text-foreground">{group.sentence}</span>
+            <span className="block text-[length:var(--type-caption)] text-muted-foreground">
+              <span className={kind.text}>{eventLabel(item)}</span>
+              {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-[length:var(--type-micro)] font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; {ago(item.createdUtc)}
+            </span>
           </span>
-        </span>
+        )}
       </Link>
     </li>
   );
 }
 
-export function ActivityStream({ rows, titles }: { rows: LiveActivityRow[]; titles: TitleLookup }) {
+export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActivityRow[]; titles: TitleLookup; /** One-line rows, when the tiles above have been made compact to leave Activity its room. */ dense?: boolean; }) {
   // What Deluno did for a title, not its routine housekeeping: that is one quiet count.
   const { shown, routine } = useMemo(() => {
     const mattering: LiveActivityRow[] = [];
@@ -68,17 +75,13 @@ export function ActivityStream({ rows, titles }: { rows: LiveActivityRow[]; titl
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
   return (
-    <Panel title="Activity" count="as it happens" to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
+    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine ${routine === 1 ? "event" : "events"} left out` : "as it happens"} to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
-        <FitList moreTo="/activity" fill rows={shown.map((group) => renderRow(group, titles))} />
+        <FitList moreTo="/activity" rows={shown.map((group) => renderRow(group, titles, dense))} />
       )}
-      {routine > 0 ? (
-        <Link to="/activity" className="shrink-0 border-t border-hairline px-[var(--card-pad-x)] py-1.5 text-[length:var(--type-caption)] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-          and {routine.toLocaleString("en-AU")} routine background {routine === 1 ? "event" : "events"}, left out
-        </Link>
-      ) : null}
+      
     </Panel>
   );
 }
