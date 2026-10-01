@@ -90,6 +90,41 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
   expect(problems, `${label}: a panel cuts something off`).toEqual([]);
 }
 
+/**
+ * Every card on the Live board is one template (#1096): within a lane all cards are the same height, every card puts its
+ * buttons at the same distance from its top and in the same box, and a card's buttons sit side by side, never stacked.
+ */
+async function expectCardsUniform(page: Page, label: string) {
+  const report = await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-journey-card]")).filter((card) => card.getBoundingClientRect().height > 0);
+    const heights = new Set(cards.map((card) => Math.round(card.getBoundingClientRect().height)));
+    const buttonTops = new Set<number>();
+    const buttonSizes = new Set<string>();
+    const stacked: string[] = [];
+    const posterSizes = new Set<string>();
+    for (const card of cards) {
+      const top = card.getBoundingClientRect().top;
+      const buttons = Array.from(card.querySelectorAll<HTMLElement>("button, a[aria-label^=\"Review\"]")).filter((button) => button.getBoundingClientRect().height > 0);
+      for (const button of buttons) {
+        const box = button.getBoundingClientRect();
+        buttonTops.add(Math.round(box.top - top));
+        buttonSizes.add(`${Math.round(box.width)}x${Math.round(box.height)}`);
+      }
+      if (buttons.length > 1 && new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))).size > 1) stacked.push((card.textContent ?? "").slice(0, 30));
+      const poster = card.firstElementChild?.getBoundingClientRect();
+      if (poster) posterSizes.add(`${Math.round(poster.width)}x${Math.round(poster.height)}`);
+    }
+    return { count: cards.length, heights: [...heights], buttonTops: [...buttonTops], buttonSizes: [...buttonSizes], stacked, posterSizes: [...posterSizes] };
+  });
+  console.log(`${label}: ${report.count} cards, heights ${report.heights.join("/")}, button tops ${report.buttonTops.join("/")}, button sizes ${report.buttonSizes.join("/")}`);
+  expect(report.count, `${label} has no cards`).toBeGreaterThan(0);
+  expect(report.heights, `${label}: cards are not all one height`).toHaveLength(1);
+  expect(report.buttonTops, `${label}: buttons are not at the same place on every card`).toHaveLength(1);
+  expect(report.buttonSizes, `${label}: buttons are not all one size`).toHaveLength(1);
+  expect(report.stacked, `${label}: buttons are stacked`).toEqual([]);
+  expect(report.posterSizes, `${label}: poster slots are not all one size`).toHaveLength(1);
+}
+
 /** A busy install: far more rows than any panel can show, all served from stored lists. */
 async function serveBusyInstall(page: Page) {
   const now = new Date().toISOString();
@@ -280,6 +315,7 @@ test.describe("Dashboard tabs", () => {
       await page.waitForTimeout(1600);
       await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live busy ${size.width}x${size.height}`);
+      await expectCardsUniform(page, `live busy ${size.width}x${size.height}`);
     }
   });
 
@@ -296,6 +332,7 @@ test.describe("Dashboard tabs", () => {
       await page.waitForTimeout(1600);
       await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-riglike-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live rig-like ${size.width}x${size.height}`);
+      await expectCardsUniform(page, `live rig-like ${size.width}x${size.height}`);
     }
   });
 
