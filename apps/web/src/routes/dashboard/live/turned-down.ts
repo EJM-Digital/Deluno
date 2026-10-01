@@ -9,7 +9,7 @@ import type { LiveTurnedDown, TurnedDownGroup } from "../../../lib/api/types/ope
 import type { ReleasesTurnedDownEvent } from "../../../lib/api/types/live-events";
 
 /** The reasons, in the order the bars are drawn. */
-export const REASON_ORDER: TurnedDownGroup[] = ["language", "notBetter", "tooBig", "fewSeeders", "fake", "other"];
+export const REASON_ORDER: TurnedDownGroup[] = ["language", "notBetter", "notQuality", "tooBig", "tooSmall", "fewSeeders", "fake", "rules", "tooOld", "blocklisted", "other"];
 
 /** The words for each reason: the same the server gives. */
 export const REASON_LABEL: Record<TurnedDownGroup, string> = {
@@ -18,6 +18,11 @@ export const REASON_LABEL: Record<TurnedDownGroup, string> = {
   tooBig: "Bigger than your size limit",
   fewSeeders: "Too few people sharing it",
   fake: "Fake or mislabelled",
+  notQuality: "Not a quality you want",
+  tooSmall: "Too small for its quality",
+  rules: "Blocked by your release rules",
+  tooOld: "Older than your indexer keeps",
+  blocklisted: "On your blocklist",
   other: "Other reasons"
 };
 
@@ -28,6 +33,11 @@ export const REASON_COLOUR: Record<TurnedDownGroup, string> = {
   tooBig: "hsl(var(--stage-grab))",
   fewSeeders: "hsl(var(--stage-search))",
   fake: "hsl(var(--warning))",
+  notQuality: "hsl(var(--primary))",
+  tooSmall: "hsl(var(--stage-grab) / 0.7)",
+  rules: "hsl(var(--destructive))",
+  tooOld: "hsl(var(--stage-search) / 0.7)",
+  blocklisted: "hsl(var(--stage-import) / 0.7)",
   other: "hsl(var(--stage-import))"
 };
 
@@ -69,7 +79,8 @@ export function mergeTurnedDown(base: LiveTurnedDown | null | undefined, pushed:
   const latest = [...added.reverse(), ...(base?.latest ?? [])].slice(0, LATEST_LIMIT);
   return {
     total,
-    reasons: REASON_ORDER.map((group) => ({ group, label: base?.reasons.find((reason) => reason.group === group)?.label ?? REASON_LABEL[group], count: counts.get(group) ?? 0 })),
+    // The biggest reasons first (ties keep the fixed order, "other" last), so a short card shows the ones that matter.
+    reasons: REASON_ORDER.map((group) => ({ group, label: base?.reasons.find((reason) => reason.group === group)?.label ?? REASON_LABEL[group], count: counts.get(group) ?? 0 })).sort((a, b) => b.count - a.count),
     latest
   };
 }

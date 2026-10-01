@@ -256,12 +256,14 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT reason_group, COUNT(*) FROM turned_down_releases WHERE searched_utc >= @since GROUP BY reason_group;";
+            command.CommandText = "SELECT reason_group, raw_reason, COUNT(*) FROM turned_down_releases WHERE searched_utc >= @since GROUP BY reason_group, raw_reason;";
             Add(command, "@since", Iso(sinceUtc));
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                counts[reader.GetString(0)] = reader.GetInt32(1);
+                // A row stored as "other" is read again from its raw reason, so rows from before a group existed still land in it.
+                var group = Regrouped(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+                counts[group] = counts.GetValueOrDefault(group) + reader.GetInt32(2);
             }
         }
 
@@ -269,7 +271,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         {
             command.CommandText =
                 """
-                SELECT release_name, reason_group, title, entity_type, entity_id, searched_utc
+                SELECT release_name, reason_group, title, entity_type, entity_id, searched_utc, raw_reason
                 FROM turned_down_releases
                 WHERE searched_utc >= @since
                 ORDER BY searched_utc DESC, rowid DESC
@@ -279,7 +281,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var group = reader.GetString(1);
+                var group = Regrouped(reader.GetString(1), reader.IsDBNull(6) ? null : reader.GetString(6));
                 latest.Add(new LiveTurnedDownRelease(
                     reader.GetString(0),
                     group,
@@ -296,6 +298,11 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             .ToArray();
         return new LiveTurnedDown(reasons.Sum(reason => reason.Count), reasons, latest);
     }
+
+    private static string Regrouped(string stored, string? raw)
+        => string.Equals(stored, TurnedDownGroups.Other, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(raw)
+            ? TurnedDownReasons.GroupFor(raw)
+            : stored;
 
     /// <summary>Finished downloads removed from a client today after they had shared enough (retention); the library copy stays.</summary>
     private async Task<int> ReadCleanedUpAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)

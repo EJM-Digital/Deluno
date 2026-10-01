@@ -462,7 +462,8 @@ describe("turned down today", () => {
 
   it("groups the reasons in their order, one bar each against the biggest, and the newest releases under them", () => {
     const view = mergeTurnedDown(base, [], inMs(0));
-    expect(view.reasons.map((reason) => reason.group)).toEqual(REASON_ORDER);
+    expect(view.reasons.map((reason) => reason.group)).toEqual(["language", "notBetter", "tooBig", "fewSeeders", "fake", "notQuality", "tooSmall", "rules", "tooOld", "blocklisted", "other"]);
+    expect([...view.reasons].map((reason) => reason.group).sort()).toEqual([...REASON_ORDER].sort());
     expect(barFraction(7, view.reasons)).toBeCloseTo(0.5);
     expect(barFraction(0, [{ count: 0 }])).toBe(0);
     withRouter(<TurnedDownCard view={view} lit={new Set()} />);
@@ -504,7 +505,7 @@ describe("turned down today", () => {
     expect(container.querySelector('[data-reason="language"]')).not.toHaveAttribute("data-hit");
     const empty = mergeTurnedDown(null, [], null);
     expect(empty.total).toBe(0);
-    expect(empty.reasons).toHaveLength(6);
+    expect(empty.reasons).toHaveLength(REASON_ORDER.length);
     withRouter(<TurnedDownCard view={empty} lit={new Set()} />);
     expect(screen.getByText("Nothing has been turned down yet today.")).toBeInTheDocument();
   });

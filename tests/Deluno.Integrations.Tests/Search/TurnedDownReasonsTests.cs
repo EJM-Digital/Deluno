@@ -5,7 +5,7 @@ using Deluno.Quality;
 namespace Deluno.Integrations.Tests.Search;
 
 /// <summary>
-/// #1098: the Live screen's "Turned down today" groups every raw decision reason into six plain
+/// #1098: the Live screen's "Turned down today" groups every raw decision reason into plain
 /// groups, in one shared helper. Every sentence the decision engine, the title match and the
 /// preference evaluator can write for a rejection is listed here with the group it must land in,
 /// and the real engine is asked for each kind so the helper cannot drift from what it writes.
@@ -13,9 +13,14 @@ namespace Deluno.Integrations.Tests.Search;
 public sealed class TurnedDownReasonsTests
 {
     [Fact]
-    public void The_six_groups_are_in_the_screens_order_with_the_exact_plain_labels()
+    public void The_groups_are_in_the_screens_order_with_the_exact_plain_labels()
     {
-        Assert.Equal(["language", "notBetter", "tooBig", "fewSeeders", "fake", "other"], TurnedDownGroups.All);
+        Assert.Equal(["language", "notBetter", "notQuality", "tooBig", "tooSmall", "fewSeeders", "fake", "rules", "tooOld", "blocklisted", "other"], TurnedDownGroups.All);
+        Assert.Equal("Not a quality you want", TurnedDownGroups.Label(TurnedDownGroups.NotQuality));
+        Assert.Equal("Too small for its quality", TurnedDownGroups.Label(TurnedDownGroups.TooSmall));
+        Assert.Equal("Blocked by your release rules", TurnedDownGroups.Label(TurnedDownGroups.Rules));
+        Assert.Equal("Older than your indexer keeps", TurnedDownGroups.Label(TurnedDownGroups.TooOld));
+        Assert.Equal("On your blocklist", TurnedDownGroups.Label(TurnedDownGroups.Blocklisted));
         Assert.Equal("Not in a language you want", TurnedDownGroups.Label(TurnedDownGroups.Language));
         Assert.Equal("No better than what you have", TurnedDownGroups.Label(TurnedDownGroups.NotBetter));
         Assert.Equal("Bigger than your size limit", TurnedDownGroups.Label(TurnedDownGroups.TooBig));
@@ -61,20 +66,26 @@ public sealed class TurnedDownReasonsTests
     [InlineData("Installed file already meets every persistent target; automatic upgrades stop here.", TurnedDownGroups.NotBetter)]
     [InlineData("Candidate is acceptable but does not persistently improve the installed file.", TurnedDownGroups.NotBetter)]
     // anything else
-    [InlineData("Release name is missing required term 'REMUX'.", TurnedDownGroups.Other)]
-    [InlineData("Release name contains excluded term 'HDR10'.", TurnedDownGroups.Other)]
-    [InlineData("Release name is missing this indexer's required word 'x264'.", TurnedDownGroups.Other)]
-    [InlineData("Release name contains this indexer's ignored word 'hardsub'.", TurnedDownGroups.Other)]
-    [InlineData("Release is older than this indexer's 1000-day retention window.", TurnedDownGroups.Other)]
-    [InlineData("Release age is unavailable, so the 1000-day retention limit cannot be verified.", TurnedDownGroups.Other)]
-    [InlineData("Bluray 2160p is not one of the qualities this profile allows (Bluray 1080p, WEB 1080p).", TurnedDownGroups.Other)]
-    [InlineData("This indexer is configured for season-pack searches only, and this release is a single episode.", TurnedDownGroups.Other)]
-    [InlineData("This indexer is configured for episode searches only, and this release is a season pack.", TurnedDownGroups.Other)]
-    [InlineData("Not grabbed: TRaSH rates this copy as bad, and you asked Deluno to never grab those.", TurnedDownGroups.Other)]
-    [InlineData("Size 0.4 GB is below the 2.2 GB minimum configured for Bluray 1080p for a 100 min runtime.", TurnedDownGroups.Other)]
-    [InlineData("This release is season 3; the search was for season 2.", TurnedDownGroups.Other)]
-    [InlineData("Candidate failed a hard safety gate.", TurnedDownGroups.Other)]
-    [InlineData(TurnedDownReasons.BlocklistedReason, TurnedDownGroups.Other)]
+    [InlineData("Release name is missing required term 'REMUX'.", TurnedDownGroups.Rules)]
+    [InlineData("Release name contains excluded term 'HDR10'.", TurnedDownGroups.Rules)]
+    [InlineData("Release name is missing this indexer's required word 'x264'.", TurnedDownGroups.Rules)]
+    [InlineData("Release name contains this indexer's ignored word 'hardsub'.", TurnedDownGroups.Rules)]
+    [InlineData("Release is older than this indexer's 1000-day retention window.", TurnedDownGroups.TooOld)]
+    [InlineData("Release age is unavailable, so the 1000-day retention limit cannot be verified.", TurnedDownGroups.TooOld)]
+    [InlineData("Bluray 2160p is not one of the qualities this profile allows (Bluray 1080p, WEB 1080p).", TurnedDownGroups.NotQuality)]
+    [InlineData("This indexer is configured for season-pack searches only, and this release is a single episode.", TurnedDownGroups.Rules)]
+    [InlineData("This indexer is configured for episode searches only, and this release is a season pack.", TurnedDownGroups.Rules)]
+    [InlineData("Not grabbed: TRaSH rates this copy as bad, and you asked Deluno to never grab those.", TurnedDownGroups.Rules)]
+    [InlineData("Size 0.4 GB is below the 2.2 GB minimum configured for Bluray 1080p for a 100 min runtime.", TurnedDownGroups.TooSmall)]
+    [InlineData("This release is season 3; the search was for season 2.", TurnedDownGroups.Fake)]
+    [InlineData("Candidate failed a hard safety gate.", TurnedDownGroups.Rules)]
+    [InlineData(TurnedDownReasons.BlocklistedReason, TurnedDownGroups.Blocklisted)]
+    // quality and rules the typed plan and the engine write
+    [InlineData("Quality WEB 720p is below cutoff Bluray 1080p.", TurnedDownGroups.NotQuality)]
+    [InlineData("resolution is below its target.", TurnedDownGroups.NotQuality)]
+    [InlineData("Custom format score (0) is lower than the current file's score (50).", TurnedDownGroups.NotBetter)]
+    [InlineData("This is a whole-season pack; the search was for one episode.", TurnedDownGroups.Fake)]
+    [InlineData("Indexer did not report release size.", TurnedDownGroups.Other)]
     [InlineData("", TurnedDownGroups.Other)]
     [InlineData(null, TurnedDownGroups.Other)]
     public void Every_known_raw_reason_lands_in_its_group(string? reason, string expected)
@@ -105,8 +116,8 @@ public sealed class TurnedDownReasonsTests
         Assert.Equal("gate", TurnedDownReasons.FirstRejectingReason("gate", ["No seeders were reported."], null));
         Assert.Equal(
             "No seeders were reported.",
-            TurnedDownReasons.FirstRejectingReason(null, ["Quality X is below cutoff Y."], ["Indexer did not report release size.", "No seeders were reported."]));
-        Assert.Null(TurnedDownReasons.FirstRejectingReason(null, ["Quality X is below cutoff Y."], ["Indexer did not report release size."]));
+            TurnedDownReasons.FirstRejectingReason(null, ["Something nobody named."], ["Indexer did not report release size.", "No seeders were reported."]));
+        Assert.Null(TurnedDownReasons.FirstRejectingReason(null, ["Something nobody named."], ["Indexer did not report release size."]));
     }
 
     // The real engine: what each kind of refusal actually writes lands in the right group.
@@ -173,8 +184,8 @@ public sealed class TurnedDownReasonsTests
             GroupOf(Decide("The.Kid.1921.720p.WEB.x264-GRP", quality: "WEB 720p", currentQuality: "Bluray 1080p", target: "WEB 1080p")));
 
     [Fact]
-    public void The_engine_refusing_for_a_size_below_the_floor_is_other_reasons()
-        => Assert.Equal(TurnedDownGroups.Other, GroupOf(Decide("The.Kid.1921.1080p.BluRay.x264-GRP", sizeGb: 0.5)));
+    public void The_engine_refusing_for_a_size_below_the_floor_is_too_small()
+        => Assert.Equal(TurnedDownGroups.TooSmall, GroupOf(Decide("The.Kid.1921.1080p.BluRay.x264-GRP", sizeGb: 0.5)));
 
     // The shared decision of one search: the blocklist, the rules and the comparison, once each.
     private static MediaSearchCandidate Candidate(string release, string status, string? gate = null, IReadOnlyList<string>? risks = null, string indexer = "Idx")
@@ -198,7 +209,7 @@ public sealed class TurnedDownReasonsTests
             ["Blocked.Film.2020", "Cam.Film.2020", "Same.Film.2020", "Worse.Film.2020"],
             turnedDown.Select(item => item.Release).ToArray());
         Assert.Equal(
-            [TurnedDownGroups.Other, TurnedDownGroups.Fake, TurnedDownGroups.NotBetter, TurnedDownGroups.NotBetter],
+            [TurnedDownGroups.Blocklisted, TurnedDownGroups.Fake, TurnedDownGroups.NotBetter, TurnedDownGroups.NotBetter],
             turnedDown.Select(item => item.Group).ToArray());
     }
 }
