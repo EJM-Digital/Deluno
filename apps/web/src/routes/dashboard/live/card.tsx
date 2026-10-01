@@ -81,7 +81,8 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
     const asked = card.startedBy === "seerr" ? "Asked for in Seerr · looking" : indexers > 0 ? `Looking on ${indexers.toLocaleString("en-AU")} ${indexers === 1 ? "indexer" : "indexers"}` : "Looking for it";
     return { text: asked, tone: "info", pulse: true };
   }
-  if (card.stuck) return { text: percent > 0 ? `Stuck at ${percent}% · finding another copy` : "Stuck · finding another copy", tone: "warn", pulse: true };
+  // Only what is known: the download has stopped moving. Why is in its tooltip; Deluno is not claimed to be doing anything it may not be.
+  if (card.stuck) return { text: percent > 0 ? `Stuck at ${percent}% · not moving` : "Stuck · not moving", tone: "warn", pulse: true };
   if (card.stage === "grabbed") {
     const parts = [card.quality, card.indexer ? `from ${card.indexer}` : null].filter(Boolean);
     return { text: parts.length > 0 ? parts.join(" · ") : card.state.label, tone: card.state.tone, pulse: false };

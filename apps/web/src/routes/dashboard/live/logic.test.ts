@@ -177,7 +177,7 @@ describe("the journey of a title", () => {
 describe("stuck downloads", () => {
   const queue = (overrides: Record<string, unknown>) => ({
     id: "q", clientId: "c1", clientName: "Deluge on WIN-7K3", protocol: "torrent", mediaType: "movie", title: "x", releaseName: "Sintel.2010.1080p", category: "", status: "downloading",
-    progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 2e9, downloadedBytes: 2e9, peers: 0, indexerName: "Deluge on WIN-7K3", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null, ...overrides
+    progress: 40, speedMbps: 0, etaSeconds: 0, sizeBytes: 2e9, downloadedBytes: 8e8, peers: 0, indexerName: "Deluge on WIN-7K3", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null, ...overrides
   }) as never;
   const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
   const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge on WIN-7K3", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p", torrentHashOrItemId: "q" } as never;
@@ -202,6 +202,11 @@ describe("stuck downloads", () => {
     expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:d"]);
     expect(grouped.grabbed[0].stuck).toBe(true);
     expect(laneCounts(grouped, undefined).downloading).toBe(3);
+  });
+
+  it("never calls a finished download stuck: one the client reports stalled at 100% is downloaded", () => {
+    const [card] = buildJourney({ ...base, queue: [queue({ status: "stalled", progress: 100, downloadedBytes: 2e9 })], dispatches: [dispatch] });
+    expect(card).toMatchObject({ stage: "importing", stuck: false, state: { tone: "idle", label: "Downloaded" } });
   });
 
   it("finds the library title from the sent download, and keeps the release as the quiet line", () => {

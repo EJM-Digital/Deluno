@@ -230,10 +230,10 @@ describe("what a journey card says", () => {
     expect(statusOf(card({ stage: "processor", processor: null, state: { tone: "info", label: "Being cleaned" } }), 5).text).toBe("The processor is working on it");
   });
 
-  it("goes amber and says it is finding another copy while a download is stuck", () => {
+  it("goes amber and says it is says it is not moving while a download is stuck", () => {
     const stuck = statusOf(card({ stuck: true, state: { tone: "warn", label: "Stuck" } }), 5);
-    expect(stuck).toEqual({ text: "Stuck at 43% · finding another copy", tone: "warn", pulse: true });
-    expect(statusOf(card({ stuck: true, progress: 0 }), 5).text).toBe("Stuck · finding another copy");
+    expect(stuck).toEqual({ text: "Stuck at 43% · not moving", tone: "warn", pulse: true });
+    expect(statusOf(card({ stuck: true, progress: 0 }), 5).text).toBe("Stuck · not moving");
   });
 });
 
@@ -319,7 +319,7 @@ describe("the journey", () => {
   it("puts each title in its station as a card, a stuck one amber, and says why each is moving", () => {
     render5(cards);
     const downloading = screen.getByRole("list", { name: "Downloading titles" });
-    expect(within(downloading).getByRole("link", { name: "Stuck One (2001): Stuck at 43% · finding another copy" })).toBeInTheDocument();
+    expect(within(downloading).getByRole("link", { name: "Stuck One (2001): Stuck at 43% · not moving" })).toBeInTheDocument();
     expect(within(downloading).getByText("done about 2:14 pm")).toBeInTheDocument();
     expect(within(downloading).getByText("You asked")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
