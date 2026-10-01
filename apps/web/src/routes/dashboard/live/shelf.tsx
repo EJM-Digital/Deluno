@@ -2,8 +2,8 @@
  * Arrived today (#1098): the posters of what landed in the library today, newest first,
  * with the quality it came in at and, for an upgrade, the quality it replaced. The
  * header says how many titles, how many were upgrades and how much space they added.
- * Posters keep their 2:3 shape and size themselves to the shelf: one row on a short
- * shelf, more rows on a tall screen, and as many as fit across. The newest one has
+ * Posters keep their 2:3 shape and fill the shelf: the fewest rows that show every
+ * title (one row of tall posters when there are few), more rows only when there are many. The newest one has
  * a green ring for a few seconds; one that has just been imported flies in from the
  * journey (see `useFlyToShelf`) and simply appears with reduced motion.
  */
@@ -40,7 +40,7 @@ export function arrivedWhen(at: string, now = Date.now()): string {
  * be taller than its row whatever the timing of a measurement: the row is a share of the box, the poster the row less its
  * caption, 2:3. JavaScript only decides how many rows and how many posters to draw.
  */
-export const POSTER_WIDTH_CSS = "min(10rem, max(2.5rem, calc((((100cqh - (var(--poster-rows) - 1) * var(--poster-gap)) / var(--poster-rows)) - var(--poster-caption)) * 2 / 3)))";
+export const POSTER_WIDTH_CSS = "min(var(--poster-cap, 16rem), 16rem, max(2.5rem, calc((((100cqh - (var(--poster-rows) - 1) * var(--poster-gap)) / var(--poster-rows)) - var(--poster-caption)) * 2 / 3)))";
 
 /** "12 titles · 4 upgraded · 54 GB added": what today has brought in. */
 export function arrivedHeading(titles: number, upgraded: number, bytes: number): string {
@@ -84,9 +84,9 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   // The box is measured inside its padding, so the posters across are worked out from the real space, not an assumed padding.
-  const layout = posterLayout(box.width, box.height, rem);
   // Until the shelf has been measured every arrival is drawn.
   const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
+  const layout = posterLayout(box.width, box.height, rem, groups.length);
   const shown = box.width > 0 ? groups.slice(0, layout.capacity) : groups;
   return (
     <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="min-h-[12rem]">
@@ -98,7 +98,7 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
           ) : (
             <ul
               className="flex flex-wrap content-start gap-3.5"
-              style={{ ["--poster-rows" as string]: layout.rows, ["--poster-gap" as string]: "0.875rem", ["--poster-caption" as string]: "2.25rem", ["--poster-w" as string]: POSTER_WIDTH_CSS }}
+              style={{ ["--poster-rows" as string]: layout.rows, ["--poster-gap" as string]: "0.875rem", ["--poster-caption" as string]: "2.25rem", ["--poster-cap" as string]: box.width > 0 ? `${layout.width}px` : undefined, ["--poster-w" as string]: POSTER_WIDTH_CSS }}
             >
               {shown.map((group) => <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} />)}
             </ul>

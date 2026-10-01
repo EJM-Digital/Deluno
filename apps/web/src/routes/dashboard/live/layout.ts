@@ -33,6 +33,52 @@ export function stationDensity(count: number, height: number, cardHeight: number
   return count <= rowsThatFit(height, cardHeight, gap) ? "full" : "compact";
 }
 
+/** What a station with nothing in it is given, in rem: its dot, its name and "none", so the rail stays readable. */
+export const EMPTY_STATION_REM = 9.5;
+/** The narrowest a full card and a compact row draw in, in rem, so a station knows how many columns its width allows. */
+export const FULL_CARD_MIN_REM = 14;
+export const COMPACT_ROW_MIN_REM = 10.5;
+/** The height of one compact row with its gap, in rem. */
+export const COMPACT_ROW_REM = 2.5;
+
+/**
+ * The width of each station, in px, out of `total`: stations with nothing shrink to a narrow column, and the busy ones share
+ * the rest by how many cards they hold (never narrower than a station may be). With nothing anywhere they are equal.
+ */
+export function stationWidths(total: number, counts: readonly number[], remPx: number): number[] {
+  const n = counts.length;
+  if (!(total > 0) || n === 0) return counts.map(() => 0);
+  const busy = counts.filter((count) => count > 0).length;
+  const empty = EMPTY_STATION_REM * remPx;
+  const min = MIN_STATION_REM * remPx;
+  if (busy === 0 || busy === n || total - (n - busy) * empty < busy * min) return counts.map(() => total / n);
+  const pool = total - (n - busy) * empty;
+  const weight = counts.reduce((sum, count) => sum + Math.max(0, count), 0);
+  const extra = pool - busy * min;
+  return counts.map((count) => (count > 0 ? min + (extra * count) / weight : empty));
+}
+
+export interface StationLayout {
+  density: "full" | "compact";
+  /** Columns of cards the station's width allows and its cards need. */
+  columns: number;
+}
+
+/**
+ * How a station draws its cards in `width` x `height`: full cards, in as many columns as fit, while they all fit; otherwise
+ * compact rows in as many columns as fit before it scrolls. Stacked stations are one column of full cards.
+ */
+export function stationLayout(count: number, width: number, height: number, cardHeight: number, remPx: number, mode: "columns" | "stacked"): StationLayout {
+  if (mode === "stacked" || !(height > 0) || !(width > 0)) return { density: "full", columns: 1 };
+  const gap = CARD_GAP_REM * remPx;
+  const across = (min: number) => Math.max(1, Math.floor((width + gap) / (min * remPx + gap)));
+  const fullRows = rowsThatFit(height, cardHeight, gap);
+  const fullColumns = across(FULL_CARD_MIN_REM);
+  if (count <= fullRows * fullColumns) return { density: "full", columns: Math.max(1, Math.min(fullColumns, Math.ceil(count / fullRows))) };
+  const compactRows = rowsThatFit(height, COMPACT_ROW_REM * remPx, 0);
+  return { density: "compact", columns: Math.max(1, Math.min(across(COMPACT_ROW_MIN_REM), Math.ceil(count / compactRows))) };
+}
+
 /** The main area must be at least this wide (in rem) for the right column to sit beside the journey. */
 export const SIDE_BY_SIDE_REM = 71.875;
 /** Below this main-area width (in rem) the top band stacks its three cards. */
@@ -81,30 +127,53 @@ export interface PosterLayout {
   capacity: number;
 }
 
+/** The largest a poster's picture may be, in rem (a lone poster on a big shelf is tall, not absurd). */
+export const MAX_POSTER_REM = 16;
+
 /**
- * Posters keep their 2:3 shape and size themselves to the shelf: one row on a short shelf, more rows on a tall screen, and
- * a poster is never smaller or larger than reads well. `captionHeight` is the title under each, `gap` the space between.
+ * Posters keep their 2:3 shape and fill the shelf. Given how many there are (`count`), it picks the fewest rows that show
+ * them all, which is the largest poster that does: one row of tall posters when there are few. If they cannot all fit even
+ * at the smallest poster, it takes the row count that shows the most, then the larger poster. Without a count it aims for
+ * a poster about 7.5 rem wide. `caption` is the title under each, `gap` the space between.
  */
-export function posterLayout(width: number, height: number, remPx: number, gap = 0.875 * remPx): PosterLayout {
+export function posterLayout(width: number, height: number, remPx: number, count?: number, gap = 0.875 * remPx): PosterLayout {
   const caption = 2.25 * remPx;
   const minPoster = 4.4 * remPx;
-  const maxPoster = 10 * remPx;
+  const maxPoster = MAX_POSTER_REM * remPx;
   if (!(width > 0) || !(height > 0)) return { rows: 1, perRow: 1, width: minPoster, height: minPoster * 1.5, itemHeight: minPoster * 1.5 + caption, capacity: 1 };
-  // A row is a poster, its caption and the gap; the target is a poster about 7.5 rem wide.
-  const target = (7.5 * 1.5 * remPx) + caption + gap;
-  let rows = Math.max(1, Math.round((height + gap) / target));
-  let pictureWidth = minPoster;
-  for (; rows >= 1; rows -= 1) {
+  const shape = (rows: number) => {
     const rowHeight = (height - (rows - 1) * gap) / rows;
     // One row on a very short shelf may go below the usual smallest poster rather than be cut off.
-    pictureWidth = Math.min(maxPoster, Math.max(rows === 1 ? 2.5 * remPx : minPoster, Math.floor(((rowHeight - caption) * 2) / 3)));
-    // The rows must really fit: the smallest poster can be taller than a share of a short shelf.
-    if (rows === 1 || rows * (pictureWidth * 1.5 + caption) + (rows - 1) * gap <= height) break;
+    const pictureWidth = Math.min(maxPoster, Math.max(rows === 1 ? 2.5 * remPx : minPoster, Math.floor(((rowHeight - caption) * 2) / 3)));
+    const fits = rows === 1 || rows * (pictureWidth * 1.5 + caption) + (rows - 1) * gap <= height;
+    const perRow = Math.max(1, Math.floor((width + gap) / (pictureWidth + gap)));
+    return { rows, pictureWidth, fits, perRow };
+  };
+  let best = shape(1);
+  if (count !== undefined && count > 0) {
+    // The widest poster that shows every title: each row count is limited by the height and by the width it needs.
+    let widest: ReturnType<typeof shape> | undefined;
+    let most = best;
+    for (let rows = 1; rows <= 12; rows += 1) {
+      const candidate = shape(rows);
+      if (!candidate.fits) break;
+      if (candidate.rows * candidate.perRow > most.rows * most.perRow) most = candidate;
+      const across = Math.ceil(count / rows);
+      const pictureWidth = Math.min(candidate.pictureWidth, Math.floor((width + gap) / across - gap));
+      if (pictureWidth < (rows === 1 ? 2.5 * remPx : minPoster)) continue;
+      if (!widest || pictureWidth > widest.pictureWidth) widest = { ...candidate, pictureWidth, perRow: across };
+    }
+    best = widest ?? most;
+  } else {
+    const target = (7.5 * 1.5 * remPx) + caption + gap;
+    for (let rows = Math.max(1, Math.round((height + gap) / target)); rows >= 1; rows -= 1) {
+      best = shape(rows);
+      if (best.fits) break;
+    }
   }
-  const perRow = Math.max(1, Math.floor((width + gap) / (pictureWidth + gap)));
+  const { rows, pictureWidth, perRow } = best;
   return { rows, perRow, width: pictureWidth, height: Math.round(pictureWidth * 1.5), itemHeight: Math.round(pictureWidth * 1.5) + caption, capacity: rows * perRow };
 }
-
 
 /** The narrowest a tile may be in the right column, in rem. */
 export const MIN_TILE_REM = 7;

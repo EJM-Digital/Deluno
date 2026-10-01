@@ -21,7 +21,7 @@ import type { WorkItem, WorkKind } from "../live-events";
 import { BandCard, FigureUnit } from "./band-card";
 import { countdown, formatCountdown } from "./countdown";
 import { useNow } from "./hooks";
-import type { JourneyCard } from "./journey";
+import { IMPORTING_NOW, type JourneyCard } from "./journey";
 import { SpeedCell } from "./speed-chart";
 import { buildNext, whenText, type NextItem } from "./times";
 import { faceOf, type TitleLookup } from "./titles";
@@ -61,7 +61,7 @@ export function buildOperations(work: readonly WorkItem[], cards: readonly Journ
   for (const card of cards) {
     const name = faceOf(card, titles).title;
     if (card.stage === "processor" && card.state.tone !== "bad") ops.push({ key: `process:${card.key}`, kind: "processor", lead: `${card.processor ?? "The processor"} is working on`, name, to: card.to });
-    if (card.stage === "importing" && card.state.tone !== "bad") ops.push({ key: `import:${card.key}`, kind: "import", lead: "Importing", name, to: card.to });
+    if (card.stage === "importing" && card.state.label === IMPORTING_NOW) ops.push({ key: `import:${card.key}`, kind: "import", lead: "Importing", name, to: card.to });
   }
   for (const item of work) {
     if (item.kind === "jobs") ops.push({ key: item.key, kind: "jobs", lead: item.text, to: item.to });
