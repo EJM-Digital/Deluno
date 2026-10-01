@@ -63,6 +63,8 @@ export function mergeTurnedDown(base: LiveTurnedDown | null | undefined, pushed:
     const at = Date.parse(event.atUtc);
     if (Number.isFinite(since) && Number.isFinite(at) && at <= since) continue;
     for (const item of event.items) {
+      // A release already counted today (a repeat search) is in the stored counts; only a new one adds.
+      if (item.newToday === false) continue;
       counts.set(item.group, (counts.get(item.group) ?? 0) + 1);
       total += 1;
       added.push({

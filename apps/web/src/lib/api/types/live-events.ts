@@ -122,7 +122,7 @@ export interface ReleasesTurnedDownEvent {
   entityType: string | null;
   entityId: string | null;
   atUtc: string;
-  items: Array<{ release: string; group: TurnedDownGroup; label: string }>;
+  items: Array<{ release: string; group: TurnedDownGroup; label: string; newToday?: boolean }>;
 }
 
 /** Deluno just used a connection: handed a title to a processor, sent a media server refresh, received a Seerr request, fetched a subtitle or checked a list (#1098). `countToday` includes this use (lists: lists watched); `busy` is a processor's titles right now. */

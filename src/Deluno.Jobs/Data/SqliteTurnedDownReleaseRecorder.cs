@@ -10,22 +10,29 @@ public sealed class SqliteTurnedDownReleaseRecorder(
     /// <summary>How long turned-down releases are kept; the screen only ever asks for today.</summary>
     internal static readonly TimeSpan Retention = TimeSpan.FromDays(14);
 
+    /// <summary>The same reason for the same release inside this window is not written again; the table stays small and the card loses nothing.</summary>
+    internal static readonly TimeSpan RepeatWindow = TimeSpan.FromHours(1);
+
     /// <summary>A search lists at most this many; the rest of a long candidate list adds nothing a person reads.</summary>
     internal const int MaxPerSearch = 200;
 
-    public async Task RecordAsync(
+    public async Task<IReadOnlySet<string>> RecordAsync(
         string? title,
         string? entityType,
         string? entityId,
         IReadOnlyList<TurnedDownRelease> releases,
         CancellationToken cancellationToken)
     {
+        var newToday = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (releases.Count == 0)
         {
-            return;
+            return newToday;
         }
 
         var now = timeProvider.GetUtcNow();
+        var local = TimeZoneInfo.ConvertTime(now, timeProvider.LocalTimeZone);
+        var dayStart = new DateTimeOffset(local.Date, local.Offset).UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+        var repeatSince = now.Subtract(RepeatWindow).UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
         var at = now.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
         await using var connection = await databases.OpenConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -37,6 +44,34 @@ public sealed class SqliteTurnedDownReleaseRecorder(
             if (seen.Count >= MaxPerSearch || !seen.Add(release.Release))
             {
                 continue;
+            }
+
+            // The release's newest row today: none means it is new today; the same reason within the hour means there is nothing to add.
+            using (var lookup = connection.CreateCommand())
+            {
+                lookup.Transaction = transaction;
+                lookup.CommandText =
+                    """
+                    SELECT reason_group, raw_reason, searched_utc FROM turned_down_releases
+                    WHERE release_name = @release COLLATE NOCASE AND searched_utc >= @day
+                    ORDER BY searched_utc DESC LIMIT 1;
+                    """;
+                Add(lookup, "@release", release.Release);
+                Add(lookup, "@day", dayStart);
+                await using var reader = await lookup.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    var sameReason = string.Equals(reader.GetString(0), release.Group, StringComparison.Ordinal)
+                        && string.Equals(reader.IsDBNull(1) ? null : reader.GetString(1), release.RawReason, StringComparison.Ordinal);
+                    if (sameReason && string.CompareOrdinal(reader.GetString(2), repeatSince) >= 0)
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    newToday.Add(release.Release);
+                }
             }
 
             using var insert = connection.CreateCommand();
@@ -65,6 +100,7 @@ public sealed class SqliteTurnedDownReleaseRecorder(
         await prune.ExecuteNonQueryAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        return newToday;
     }
 
     private static void Add(System.Data.Common.DbCommand command, string name, object? value)

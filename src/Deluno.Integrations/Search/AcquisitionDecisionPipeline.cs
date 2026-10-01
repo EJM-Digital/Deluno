@@ -219,9 +219,10 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         }
 
         var entityType = string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie";
+        IReadOnlySet<string>? newToday = null;
         try
         {
-            await turnedDownRecorder.RecordAsync(request.Title, entityType, request.EntityId, turnedDown, cancellationToken);
+            newToday = await turnedDownRecorder.RecordAsync(request.Title, entityType, request.EntityId, turnedDown, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -236,7 +237,7 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var items = turnedDown
             .Where(release => seen.Add(release.Release))
-            .Select(release => new TurnedDownItemEvent(release.Release, release.Group, TurnedDownGroups.Label(release.Group)))
+            .Select(release => new TurnedDownItemEvent(release.Release, release.Group, TurnedDownGroups.Label(release.Group), newToday?.Contains(release.Release) ?? true))
             .ToArray();
         await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishReleasesTurnedDownAsync(
             new ReleasesTurnedDownEvent(
