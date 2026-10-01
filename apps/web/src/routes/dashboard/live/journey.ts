@@ -201,7 +201,12 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     const key = releaseKey(dispatch.releaseName);
     const known = dispatchByRelease.get(key);
     if (!known || Date.parse(dispatch.createdUtc) > Date.parse(known.createdUtc)) dispatchByRelease.set(key, dispatch);
-    if (dispatch.torrentHashOrItemId) dispatchByClientItem.set(`${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase(), dispatch);
+    // A release sent again keeps its torrent: the newest record is the one events name, so it wins.
+    if (dispatch.torrentHashOrItemId) {
+      const itemKey = `${dispatch.downloadClientId}:${dispatch.torrentHashOrItemId}`.toLowerCase();
+      const held = dispatchByClientItem.get(itemKey);
+      if (!held || Date.parse(dispatch.createdUtc) > Date.parse(held.createdUtc)) dispatchByClientItem.set(itemKey, dispatch);
+    }
   }
   const handoffByQueue = new Map(handoffs.filter((item) => item.status.toLowerCase() !== "dismissed").map((item) => [item.queueItemId, item]));
   const seenReleases = new Set<string>();
@@ -219,6 +224,9 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     const fresher = reading && reading.at > (Number.isFinite(storedAt) ? storedAt : 0) && DOWNLOADING.includes(reading.status) ? reading : undefined;
     const item = fresher ? { ...raw, progress: fresher.progress, speedMbps: fresher.speedMbps, status: fresher.status } : raw;
     const dispatch = dispatchByClientItem.get(`${item.clientId}:${item.id}`.toLowerCase()) ?? dispatchByRelease.get(releaseKey(item.releaseName));
+    // Imported means in the library: it leaves the journey the moment the import lands (and flies to Arrived today),
+    // even while the client keeps seeding it.
+    if (dispatch?.importCompletedUtc) continue;
     const handoff = handoffByQueue.get(item.id);
     let stage: Stage | null = null;
     let state: JourneyCard["state"] = { tone: "info", label: "Working" };

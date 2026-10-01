@@ -11,7 +11,7 @@ import { clientNodes, connectionNodes, flowOf, indexerNodes, layoutMap } from ".
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
 import { journeyMode, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
-import { departedFromImporting, sameTitle } from "./motion";
+import { departedCards, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
 import { allInBy, buildNext, clockTime, doneAbout, journeyHeading, usualTimes, whenText } from "./times";
@@ -412,10 +412,11 @@ describe("the journey", () => {
 });
 
 describe("flying into Arrived today", () => {
-  it("finds the cards that left Importing because the title was imported, and not those that moved on", () => {
-    const before = new Map<string, Stage>([["a", "importing"], ["b", "importing"], ["c", "downloading"]]);
-    const now = [card({ key: "b", stage: "importing" })];
-    expect(departedFromImporting(before, now)).toEqual(["a"]);
+  it("finds every card that left the board, from any station, and not those that only moved on", () => {
+    // An import can finish between two readings, so a card may leave straight from Downloading; only one whose title arrives flies.
+    const before = new Map<string, Stage>([["a", "importing"], ["b", "importing"], ["c", "downloading"], ["d", "grabbed"]]);
+    const now = [card({ key: "b", stage: "importing" }), card({ key: "d", stage: "downloading" })];
+    expect(departedCards(before, now)).toEqual(["a", "c"]);
   });
 
   it("matches the arrival to the card by library title, or by release", () => {
