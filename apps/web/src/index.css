@@ -1266,6 +1266,17 @@ html .text-\[64px\] {
   --stage-grab: 190 85% 42%;
   --stage-process: 168 70% 38%;
   --stage-import: 232 82% 68%;
+  /* The journey's own stage colours (the stations, the cards' edge and bar): richer in the dark theme, as the approved mockup. */
+  --journey-grab: 190 85% 42%;
+  --journey-download: 211 90% 52%;
+  --journey-process: 168 70% 38%;
+  --journey-import: 36 92% 46%;
+}
+.dark {
+  --journey-grab: 190 90% 56%;
+  --journey-download: 207 96% 62%;
+  --journey-process: 166 72% 50%;
+  --journey-import: 40 96% 60%;
 }
 
 /* A card that has just changed lane or arrived: it slides in and its edge glows once. */

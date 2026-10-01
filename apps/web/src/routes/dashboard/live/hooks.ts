@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
-import { fetchMovieTitles, fetchSeriesTitles, NO_TITLES, wantedTitles, type Entity, type TitleLookup } from "./titles";
+import { fetchByName, fetchMovieTitles, fetchSeriesTitles, NO_TITLES, nameSearchOf, wantedTitles, type Entity, type NameSearch, type TitleInfo, type TitleLookup } from "./titles";
 
 /** The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden). */
 export function useNow(intervalMs = 1000): number {
@@ -68,14 +68,46 @@ export function useTitles(cards: JourneyCard[], extra: ReadonlyArray<Entity | un
     placeholderData: keepPreviousData,
     retry: false
   });
+  // Downloads that no sent download names (put in the client some other way) are matched to the library by the release's own name.
+  const searches = useMemo(() => {
+    const found = new Map<string, NameSearch>();
+    for (const card of cards) {
+      const search = nameSearchOf(card);
+      if (search) found.set(card.key, search);
+    }
+    return found;
+  }, [cards]);
+  const searchKey = useMemo(() => [...new Set([...searches.values()].map((search) => `${search.kind}|${search.name}|${search.year ?? ""}`))].sort().join("\n"), [searches]);
+  const byName = useQuery({
+    queryKey: ["dashboard", "titles", "by-name", searchKey],
+    enabled: searchKey.length > 0,
+    queryFn: async () => {
+      const answers: Record<string, { kind: "movie" | "series"; id: string; info: TitleInfo } | null> = {};
+      for (const key of searchKey.split("\n").slice(0, 24)) {
+        const [kind, name, year] = key.split("|");
+        const search: NameSearch = { kind: kind as NameSearch["kind"], name, year: year ? Number(year) : undefined };
+        const hit = await fetchByName(search);
+        answers[key] = hit ? { kind: search.kind, ...hit } : null;
+      }
+      return answers;
+    },
+    staleTime: 30 * 60_000,
+    placeholderData: keepPreviousData,
+    retry: false
+  });
   return useMemo(() => {
-    if (!movies.data && !series.data) return NO_TITLES;
-    return {
-      movies: new Map(Object.entries(movies.data ?? {})),
-      series: new Map(Object.entries(series.data?.series ?? {})),
-      episodes: new Map(Object.entries(series.data?.episodes ?? {}))
-    };
-  }, [movies.data, series.data]);
+    if (!movies.data && !series.data && !byName.data) return NO_TITLES;
+    const movieMap = new Map(Object.entries(movies.data ?? {}));
+    const seriesMap = new Map(Object.entries(series.data?.series ?? {}));
+    const matched = new Map<string, Entity>();
+    for (const [cardKey, search] of searches) {
+      const hit = byName.data?.[`${search.kind}|${search.name}|${search.year ?? ""}`];
+      if (!hit) continue;
+      (hit.kind === "movie" ? movieMap : seriesMap).set(hit.id, hit.info);
+      matched.set(cardKey, { kind: hit.kind, id: hit.id });
+    }
+    return { movies: movieMap, series: seriesMap, episodes: new Map(Object.entries(series.data?.episodes ?? {})), matched };
+  }, [movies.data, series.data, byName.data, searches]);
 }
 
 const NO_EXTRA: ReadonlyArray<Entity | undefined> = [];

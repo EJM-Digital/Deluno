@@ -7,7 +7,7 @@
  *
  * The space decides everything. Stations sit side by side when each has room and
  * stack on a phone. A station draws full cards while they fit its height; with more
- * titles than that its cards become compact poster tiles, so every title is on
+ * titles than that its cards become the same card in miniature (a list), so every title is on
  * screen, and if even the tiles run past the height the station scrolls inside
  * itself. Nothing says "and N more".
  */
@@ -64,7 +64,7 @@ function Cards({ stage, cards, density, context }: { stage: Stage; cards: Journe
   return (
     <ul
       aria-label={`${LANES[stage].label} titles`}
-      className={cn("grid", compact ? "grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] content-start" : "grid-cols-1")}
+      className="grid grid-cols-1 content-start"
       style={{ gap: `${CARD_GAP_REM}rem` } satisfies CSSProperties}
     >
       {cards.map((card) => (compact ? <CompactTile key={card.key} card={card} {...context} /> : <JourneyCardView key={card.key} card={card} {...context} />))}

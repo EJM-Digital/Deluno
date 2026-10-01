@@ -24,6 +24,8 @@ export interface TitleLookup {
   movies: ReadonlyMap<string, TitleInfo>;
   series: ReadonlyMap<string, TitleInfo>;
   episodes: ReadonlyMap<string, EpisodeInfo>;
+  /** Cards no sent download names (a download Deluno did not send itself), matched to the library by the release's own name: card key to title. */
+  matched?: ReadonlyMap<string, Entity>;
 }
 
 export const NO_TITLES: TitleLookup = { movies: new Map(), series: new Map(), episodes: new Map() };
@@ -83,9 +85,9 @@ export function namedTitle(entity: Entity | undefined, lookup: TitleLookup, rele
 }
 
 export function faceOf(card: JourneyCard, lookup: TitleLookup): CardFace {
-  const named = namedTitle(card.entity, lookup, card.release);
+  const entity = card.entity ?? lookup.matched?.get(card.key);
+  const named = namedTitle(entity, lookup, card.release);
   if (named) return { title: named.title, poster: named.poster, linked: true, to: named.to };
-  const entity = card.entity;
   // The poster alone (an older server) still makes the card; the name stays the release's.
   const poster = entity?.kind === "movie" ? lookup.movies.get(entity.id)?.posterUrl : entity?.kind === "series" ? lookup.series.get(entity.id)?.posterUrl : undefined;
   return { title: card.title, poster: poster ?? undefined, linked: false, to: card.to };
@@ -100,7 +102,53 @@ export function wantedTitles(cards: JourneyCard[], extra: ReadonlyArray<Entity |
     if (!entity) continue;
     (entity.kind === "movie" ? movies : entity.kind === "series" ? series : episodes).add(entity.id);
   }
-  return { movies: [...movies].sort().slice(0, 80), series: [...series].sort().slice(0, 80), episodes: [...episodes].sort().slice(0, 80) };
+  // The server answers at most 48 of each in one request.
+  return { movies: [...movies].sort().slice(0, 48), series: [...series].sort().slice(0, 48), episodes: [...episodes].sort().slice(0, 48) };
+}
+
+/** What to look for in the library for a card that no sent download names: the release read as a film (with its year) or a show. */
+export interface NameSearch {
+  kind: "movie" | "series";
+  name: string;
+  year?: number;
+}
+
+export function nameSearchOf(card: JourneyCard): NameSearch | null {
+  if (card.entity || card.stage === "requested") return null;
+  const title = card.title.trim();
+  const episode = /^(.*?)\s+S\d{1,2}E\d{1,3}$/i.exec(title);
+  if (episode?.[1].trim()) return { kind: "series", name: episode[1].trim() };
+  const year = /^(.*?)\s+\(((?:19|20)\d{2})\)$/.exec(title);
+  if (year?.[1].trim()) return { kind: "movie", name: year[1].trim(), year: Number(year[2]) };
+  return null;
+}
+
+const squash = (value: string) => value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+
+interface LibraryRow {
+  id: string;
+  title?: string | null;
+  releaseYear?: number | null;
+  startYear?: number | null;
+  posterUrl?: string | null;
+}
+
+/** The library's answer to a search by name: the title whose name is exactly the release's (and whose year agrees, for a film). */
+export function pickByName(search: NameSearch, rows: ReadonlyArray<LibraryRow>): { id: string; info: TitleInfo } | null {
+  const wanted = squash(search.name);
+  const row = rows.find((candidate) => squash(candidate.title ?? "") === wanted && (search.kind === "series" || !search.year || !candidate.releaseYear || candidate.releaseYear === search.year));
+  return row ? { id: row.id, info: { title: row.title, year: search.kind === "movie" ? row.releaseYear : row.startYear, posterUrl: row.posterUrl } } : null;
+}
+
+/** Looks the name up in the library (read only). A name the library does not have, or a failed request, is simply no match. */
+export async function fetchByName(search: NameSearch) {
+  const path = search.kind === "movie" ? "/api/movies/page" : "/api/series/page";
+  try {
+    const page = await fetchJson<{ items?: LibraryRow[] }>(`${path}?search=${encodeURIComponent(search.name)}&pageSize=10&facets=false`);
+    return pickByName(search, page.items ?? []);
+  } catch {
+    return null;
+  }
 }
 
 interface SeriesTitlesAnswer {
