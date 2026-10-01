@@ -67,7 +67,7 @@ describe("Live", () => {
     expect(screen.queryByRole("region", { name: /airing soon/i })).toBeNull();
     expect(screen.queryByText(/Protected you/)).toBeNull();
     // The top band is three cards of one template, then the journey, the shelf and what was turned down, and the right column.
-    for (const name of ["Speed", "Working on now", "Next", "The journey", "Your library", "Turned down today", "Sources", "Activity"]) {
+    for (const name of ["Speed", "Working on now", "Next", "Pipeline", "Your library", "Turned down today", "Sources", "Activity"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
@@ -84,7 +84,7 @@ describe("Live", () => {
     const cell = (area: string) => Array.from(grid!.children).find((child) => (child as HTMLElement).style.gridArea.replace(/\s/g, "") === area) as HTMLElement;
     expect(within(cell("now")).getByRole("region", { name: "Speed" })).toBeInTheDocument();
     expect(cell("now").firstElementChild?.className).toContain("lb-now");
-    expect(within(cell("board")).getByRole("region", { name: "The journey" })).toBeInTheDocument();
+    expect(within(cell("board")).getByRole("region", { name: "Pipeline" })).toBeInTheDocument();
     // The bottom row is Your library beside Activity; Turned down today is the right column's last row.
     expect(within(cell("low")).getByRole("region", { name: "Your library" })).toBeInTheDocument();
     expect(within(cell("low")).getByRole("region", { name: "Activity" })).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("Live", () => {
     const summary = { ...fullSummary, activity: { ...fullSummary.activity!, recent: [{ ...fullSummary.activity!.recent[0], relatedEntityType: "movie", relatedEntityId: "m9" }] } };
     renderTab(summary);
 
-    const journey = screen.getByRole("region", { name: "The journey" });
+    const journey = screen.getByRole("region", { name: "Pipeline" });
     expect(await within(journey).findByText("Photographer (2026)")).toBeInTheDocument();
     expect(within(journey).getByRole("link", { name: /^Photographer \(2026\): 61% · 1.8 MB\/s · Deluge/ })).toBeInTheDocument();
     // The download that has stopped stays on the journey, amber, and says what Deluno is doing about it.

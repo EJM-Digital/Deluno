@@ -54,7 +54,7 @@ test("a failed job buried under newer work is listed on Activity and can be dism
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(buried) });
   });
 
-  await page.goto("/activity");
+  await page.goto("/activity?section=jobs");
 
   await expect(page.getByRole("button", { name: "Retry 1 job" })).toBeEnabled();
   const failedCard = page.getByRole("region", { name: "Failed jobs" }).or(page.locator("section", { hasText: "Failed jobs" })).first();

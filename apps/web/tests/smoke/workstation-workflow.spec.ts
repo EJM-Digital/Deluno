@@ -963,6 +963,10 @@ test.describe("dashboard workflow", () => {
   test("keeps activity as a readable history", async ({ page }) => {
     await authenticateAndNavigate(page, "/activity");
 
+    // Activity opens on the History (#1100); the jobs and downloads are one choice away.
+    await expect(page.getByRole("radio", { name: "History" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: "Jobs & downloads" }).click();
+    await expect(page).toHaveURL(/section=jobs/);
     await expect(page.getByRole("heading", { name: "Job Queue" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sent to Downloads" })).toBeVisible();
   });

@@ -27,11 +27,11 @@ export function allInBy(cards: readonly JourneyCard[]): number | undefined {
   return latest;
 }
 
-/** "8 on their way to your library · all in by about 2:28 pm"; the time is left off when no client gives a reading. */
+/** "8 in progress · all done by about 2:28 pm"; the time is left off when no client gives a reading. */
 export function journeyHeading(onTheirWay: number, by: number | undefined): string {
-  if (onTheirWay <= 0) return "nothing on its way right now";
-  const base = `${onTheirWay.toLocaleString("en-AU")} on their way to your library`;
-  return by === undefined ? base : `${base} · all in by about ${clockTime(by)}`;
+  if (onTheirWay <= 0) return "nothing in progress right now";
+  const base = `${onTheirWay.toLocaleString("en-AU")} in progress`;
+  return by === undefined ? base : `${base} · all done by about ${clockTime(by)}`;
 }
 
 /** The time a download should be done, as the card says it. */

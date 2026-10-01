@@ -51,7 +51,7 @@ test("Activity explains a failed download handoff with retry and trace attributi
     });
   });
 
-  await page.goto("/activity");
+  await page.goto("/activity?section=jobs");
   await page.getByText("Example.Movie.2026.2160p.WEB-DL", { exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "Why it failed" })).toBeVisible();

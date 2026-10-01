@@ -105,7 +105,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
   it("keeps a title with the processor when its hand-off fails, saying so, and says it is working again when the processor takes it up", async () => {
     seed();
     renderTab();
-    const board = screen.getByRole("region", { name: /^the journey/i });
+    const board = screen.getByRole("region", { name: /^pipeline/i });
     const titles = () => board.querySelector<HTMLElement>('[data-glide-stage="processor"]')!;
     expect(await within(board).findByText("Metropolis (1927)")).toBeInTheDocument();
     expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Cleaner is working on it");
@@ -126,7 +126,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     seed();
     renderTab();
     const band = screen.getByRole("region", { name: "Working on now" });
-    const board = screen.getByRole("region", { name: /^the journey/i });
+    const board = screen.getByRole("region", { name: /^pipeline/i });
     await within(board).findByText("Metropolis (1927)");
     const before = asked.paths.length;
 
