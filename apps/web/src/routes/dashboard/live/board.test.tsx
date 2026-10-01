@@ -6,15 +6,16 @@ import { Band, buildOperations, nextFigure } from "./band";
 import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
 import { statusOf, type CardContext } from "./card";
 import { indexerMeta, indexersSummary } from "./indexers";
+import { fitRows } from "./fit-rows";
 import { SourcesCard } from "./sources-card";
 import { tileHeight, tileLayout } from "./source-tiles";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
-import { journeyMode, journeySize, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
+import { journeyMode, journeySize, MIN_STATION_REM, posterLayout } from "./layout";
 import { departedCards, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
-import { allInBy, buildNext, clockTime, doneAbout, journeyHeading, usualTimes, whenText } from "./times";
+import { allInBy, buildNext, clockTime, doneAbout, isMediaJob, journeyHeading, usualTimes, whenText } from "./times";
 import { NO_TITLES } from "./titles";
 import { Journey, stationsFor } from "./track";
 import { barFraction, mergeTurnedDown, REASON_ORDER, turnedDownFit } from "./turned-down";
@@ -62,30 +63,24 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("the layout rules", () => {
-  it("draws every title when nothing is measured, and as many rows as fit when it is", () => {
-    expect(lanePlan([2, 5, 0], undefined)).toEqual({ rows: 5, more: false, slot: false, height: 462 });
-    expect(lanePlan([2, 3, 0], 274)).toEqual({ rows: 3, more: false, slot: false, height: 274 });
+  it("sizes the journey's cards from the lanes' height, the mockup's rule: three rows always, 60px cards at the least, a 130px step at the most", () => {
+    expect(journeySize(undefined)).toEqual({ card: 86, step: 94, poster: 69, oneLine: false });
+    // (lanes 208 - 22 for the and-more line + 8) / 3 = 64.67, so the least: step 68, card 60, one-line title
+    expect(journeySize(208)).toEqual({ card: 60, step: 68, poster: 43, oneLine: true });
+    // 292px of lanes (the 398px journey): step floor((292 - 22 + 8) / 3) = 92, card 84
+    expect(journeySize(292)).toEqual({ card: 84, step: 92, poster: 67, oneLine: false });
+    // 256px: step 80, card 72, a one-line title
+    expect(journeySize(256)).toEqual({ card: 72, step: 80, poster: 55, oneLine: true });
+    // a tall window: the step stops at 130, a 122px card
+    expect(journeySize(900)).toEqual({ card: 122, step: 130, poster: 105, oneLine: false });
+    expect(journeySize(40)).toMatchObject({ card: 60, step: 68 });
   });
 
-  it("ends a station that has more than fit with an and-more line that takes less than a row", () => {
-    expect(lanePlan([1, 7], 274)).toMatchObject({ rows: 2, more: true, slot: false });
-    expect(lanePlan([1, 7], 100)).toMatchObject({ rows: 1, more: true, slot: true, height: 86 });
-    expect(lanePlan([], 100)).toMatchObject({ rows: 1, more: false });
-  });
-
-  it("sizes the journey's cards so three rows always fit: full size with room, smaller without, never under 60px", () => {
-    expect(journeySize([2, 1], undefined)).toEqual({ card: 86, step: 94, poster: 69, oneLine: false });
-    expect(journeySize([2, 1], 274)).toMatchObject({ card: 86, step: 94 });
-    expect(journeySize([2, 1], 600)).toMatchObject({ card: 86, step: 94 });
-    // 256px of lanes less 22px for the and-more line: step (256 - 22 + 8) / 3 = 80, card 72
-    expect(journeySize([1, 7], 256)).toEqual({ card: 72, step: 80, poster: 55, oneLine: true });
-    expect(journeySize([1, 7], 40)).toMatchObject({ card: 60, step: 68 });
-    expect(journeySize([1], 252)).toMatchObject({ card: 78, step: 86, oneLine: false });
-  });
-
-  it("then shows three rows and an and-more line at the smaller size", () => {
-    const size = journeySize([1, 7], 256);
-    expect(lanePlan([1, 7], 256, size)).toMatchObject({ rows: 3, more: true, slot: false });
+  it("makes the poster 2:3 at every size: its width is (card - 17) / 1.5", () => {
+    for (const room of [208, 256, 292, 380, 900]) {
+      const { card, poster } = journeySize(room);
+      expect(poster).toBe(card - 17);
+    }
   });
 
   it("keeps the stations side by side while each has room, and stacks them when it does not", () => {
@@ -134,10 +129,19 @@ describe("what comes next", () => {
 
   it("merges scheduled jobs and episodes about to air into one list, soonest first, and leaves out what is not scheduled", () => {
     const items = buildNext(summary(), [episode("e1", 1.5), episode("e2", -3)], NOW.getTime());
-    expect(items.map((item) => item.label)).toEqual(["Watch indexers for new releases", "Search Movies", "Check health", "Lioness S03E08 airs"]);
-    expect(items.map((item) => item.kind)).toEqual(["job", "job", "job", "airing"]);
+    // Only what Deluno does for your media: housekeeping ("Check health") is on System, never here.
+    expect(items.map((item) => item.label)).toEqual(["Watch indexers for new releases", "Search Movies", "Lioness S03E08 airs"]);
+    expect(items.map((item) => item.kind)).toEqual(["job", "job", "airing"]);
     // An episode that aired hours ago is not next.
     expect(items.some((item) => item.key === "airs:e2")).toBe(false);
+  });
+
+  it("never lists housekeeping: only searches, list checks, new-release watching and episodes airing are Deluno's work for your media", () => {
+    expect(["search:l1", "task:intake.automation", "task:rss.sync"].every((key) => isMediaJob({ key }))).toBe(true);
+    for (const key of ["task:health.checks", "task:dispatch.cleanup", "task:backup.schedule", "task:metadata.refresh", "task:download.state", "task:media.probe", "task:artwork.cache.cleanup"]) expect(isMediaJob({ key })).toBe(false);
+    const busy = summary();
+    busy.automation!.tasks = ["health.checks", "dispatch.cleanup", "backup.schedule", "intake.automation"].map((key) => ({ key, name: key, lastResult: "completed", lastCompletedUtc: inMs(-60_000), nextRunUtc: inMs(30_000) }));
+    expect(buildNext(busy, [], NOW.getTime()).map((item) => item.key)).toEqual(["task:intake.automation", "search:l1"]);
   });
 
   it("puts a job that is running now first", () => {
@@ -186,7 +190,7 @@ describe("what comes next", () => {
 });
 
 describe("working on now", () => {
-  it("counts what is running, shows the two newest with a bar where it knows, and says how many more are in Activity", () => {
+  it("counts what is running, lists up to four with a bar where it knows (the rest fit by the card's height), and says how many more are in Activity", () => {
     const ops = buildOperations(
       [{ key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" }, { key: "job:a", kind: "jobs", text: "Reading your files", to: "/activity" }],
       [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Importing now" } }), card({ key: "w", stage: "importing", title: "Waiting (2001)", state: { tone: "idle", label: "Downloaded" } })],
@@ -200,9 +204,37 @@ describe("working on now", () => {
     expect(within(region).getByText("things running")).toBeInTheDocument();
     expect(within(region).getByText("12 of 40")).toBeInTheDocument();
     expect(region.querySelector<HTMLElement>(".lb-bar i")?.style.width).toBe("30%");
+    // All four are drawn, and all four fit (nothing is measured here, so nothing is hidden): there is nothing more to say.
+    expect(within(region).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(region).queryByRole("link", { name: /more in Activity/ })).toBeNull();
+  });
+
+  it("lists at most four, and says how many more there are", () => {
+    const six = Array.from({ length: 6 }, (_, index) => ({ key: `grab:${index}`, kind: "grab" as const, text: `Sending Movie ${index}`, to: "/queue" }));
+    withRouter(<Band summary={fullSummary} samples={[]} operations={buildOperations(six, [], NO_TITLES)} upcoming={[]} />);
+    const region = screen.getByRole("region", { name: "Working on now" });
+    expect(within(region).getAllByRole("listitem")).toHaveLength(4);
     expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity");
-    // Only two operations are drawn.
-    expect(within(region).getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("shows only the rows that fit its height, hiding the rest and counting them", () => {
+    const host = document.createElement("div");
+    host.innerHTML = '<div data-fit></div><div data-fit></div><div data-fit></div>';
+    const rows = Array.from(host.children) as HTMLElement[];
+    host.getBoundingClientRect = () => ({ bottom: 100 }) as DOMRect;
+    // rows end at 40, 80 and 120: the third runs past the card
+    rows.forEach((row, index) => { row.getBoundingClientRect = () => ({ bottom: 40 * (index + 1) }) as DOMRect; });
+    expect(fitRows(host)).toBe(2);
+    expect(rows.map((row) => row.style.visibility)).toEqual(["", "", "hidden"]);
+    // A row's own bottom padding may run past the card; its content may not
+    const padded = document.createElement("div");
+    padded.innerHTML = '<div data-fit style="padding-bottom: 7px"></div>';
+    padded.getBoundingClientRect = () => ({ bottom: 100 }) as DOMRect;
+    (padded.firstElementChild as HTMLElement).getBoundingClientRect = () => ({ bottom: 105 }) as DOMRect;
+    expect(fitRows(padded)).toBe(1);
+    // A card that grows with its rows shows them all
+    expect(fitRows(host, false)).toBe(3);
+    expect(rows.map((row) => row.style.visibility)).toEqual(["", "", ""]);
   });
 
   it("does not name a processor failure as something it is working on", () => {
@@ -306,8 +338,9 @@ describe("how long a station usually takes today", () => {
   it("is on the station that has it, and left off the others", () => {
     const grouped = byStage([]);
     withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={{ titles: NO_TITLES, arrivals: new Set(), indexers: 3 }} hasProcessor usual={{ downloading: "usually 12 min" }} by={undefined} lastArrival={null} />);
-    expect(screen.getByRole("link", { name: "Downloading: 0" }).textContent).toContain("usually 12 min");
-    expect(screen.getByRole("link", { name: "Grabbed: 0" }).textContent).not.toContain("usually");
+    // The ribbon segment keeps to its icon, name and count; how long it usually takes is on hover.
+    expect(screen.getByRole("link", { name: "Downloading: 0" })).toHaveAttribute("title", "Downloading: 0 · usually 12 min");
+    expect(screen.getByRole("link", { name: "Grabbed: 0" })).not.toHaveAttribute("title");
   });
 });
 
@@ -357,6 +390,29 @@ describe("the journey", () => {
   it("tags a download that came from Seerr, a list, an upgrade hunt or a missing episode", () => {
     render5([card({ key: "a", title: "A (2001)", startedBy: "seerr" }), card({ key: "b", title: "B (2002)", startedBy: "list" }), card({ key: "c", title: "C (2003)", startedBy: "upgrade" }), card({ key: "d", title: "D (2004)", startedBy: "missing" })]);
     for (const words of ["Seerr", "From a list", "Upgrade hunt", "Missing episode"]) expect(screen.getByText(words)).toBeInTheDocument();
+  });
+
+  it("shows a title whose import has finished full and green: Imported, in your library", () => {
+    render5([card({ key: "a", stage: "importing", title: "Done (2001)", landed: true, progress: 100, state: { tone: "ok", label: "Imported" } })]);
+    const token = screen.getByRole("link", { name: "Done (2001): ✓ Imported · in your library" });
+    expect(token).toHaveClass("lj-done");
+    expect(token.querySelector(".lj-pb i")).toHaveStyle({ width: "100%" });
+    expect(token.querySelector(".lj-wait")).toBeNull();
+  });
+
+  it("draws the ribbon: one segment per station with its icon, name and count, the busy ones lit and the empty ones dimmed", () => {
+    render5(cards);
+    const requested = screen.getByRole("group", { name: "Requested" });
+    expect(requested).toHaveClass("lj-station", "lj-active");
+    expect(requested.textContent).toContain("Requested");
+    expect(requested.textContent).toContain("1 here");
+    render5([]);
+    expect(screen.getAllByRole("group", { name: "Importing" }).at(-1)).toHaveClass("lj-empty");
+  });
+
+  it("an import that is under way moves its bar without claiming how far it is", () => {
+    render5([card({ key: "a", stage: "importing", title: "Busy (2001)", state: { tone: "info", label: "Importing now" } })]);
+    expect(screen.getByRole("link", { name: /^Busy \(2001\)/ }).querySelector(".lj-pb")).toHaveClass("lj-wait");
   });
 
   it("opens the title's page from any card", () => {

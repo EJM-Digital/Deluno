@@ -39,7 +39,7 @@ export function buildCountdownRows(summary: DashboardSummary | undefined): Count
   }
   for (const task of automation?.tasks ?? []) {
     if (!task.nextRunUtc) continue;
-    const named = task.key === "health.checks" || task.key === "intake.automation";
+    const named = task.key === "intake.automation";
     rows.push({
       key: `task:${task.key}`,
       label: task.name,

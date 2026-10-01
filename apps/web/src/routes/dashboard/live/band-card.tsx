@@ -4,12 +4,12 @@
  * mockup (band.css): a label row (the name on the left, a quiet aside on the
  * right), a big figure row, and a body that takes the rest.
  */
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import "./band.css";
 
-export function BandCard({ label, aside, figure, to, linkName, children, className }: {
+export function BandCard({ label, aside, figure, to, linkName, children, className, bodyRef }: {
   label: string;
   /** The quiet note at the right of the label row. */
   aside?: ReactNode;
@@ -20,6 +20,8 @@ export function BandCard({ label, aside, figure, to, linkName, children, classNa
   linkName?: string;
   children: ReactNode;
   className?: string;
+  /** The body under the figure, for a card that measures how many of its rows fit it. */
+  bodyRef?: Ref<HTMLDivElement>;
 }) {
   return (
     <section aria-label={label} className={cn("lb-tile", className)}>
@@ -28,7 +30,7 @@ export function BandCard({ label, aside, figure, to, linkName, children, classNa
         {aside ? <span className="lb-aside">{aside}</span> : null}
       </div>
       <div className="lb-fig">{figure}</div>
-      <div className="lb-body">{children}</div>
+      <div ref={bodyRef} className="lb-body">{children}</div>
     </section>
   );
 }

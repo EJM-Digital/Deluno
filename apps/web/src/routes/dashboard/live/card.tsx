@@ -2,12 +2,15 @@
  * The cards of the Live journey (#1098), ported from the mockup's token. Every card is one template, the same size
  * wherever it is (see journey.css):
  *
- *   poster 46x69 | title (two lines)
- *                | one status line (the percentage bold in the station's colour) with the time and why it is moving
- *                | a thin bar with a shimmer while bytes move
+ *   poster (2:3, as tall as the card allows) | title (one or two lines)
+ *                                            | one status line (the percentage bold in the station's colour)
+ *                                            | a thin bar with a shimmer while bytes move
+ *                                            | the detail block: up to three lines of what matters at this stage (detail.ts)
  *
- * The station's colour is the card's 3px left edge, on a card that fades from one surface to the next. Clicking a card
- * opens the title's own page. A title the library truly has no poster for is a plain tile with its initials.
+ * The station's colour is the card's 3px left edge, on a card that fades from one surface to the next. When its import
+ * has finished the card is full and green, "Imported · in your library", for a moment before its poster flies to the
+ * shelf. Clicking a card opens the title's own page. A title the library truly has no poster for is a plain tile with its
+ * initials.
  */
 import type { LucideIcon } from "lucide-react";
 import type { CSSProperties, ReactElement } from "react";
@@ -17,10 +20,10 @@ import { CountUp } from "../../../components/ui/count-up";
 import { motionAllowed } from "../../../lib/page-motion";
 import { cn } from "../../../lib/utils";
 import { formatSpeed } from "../downloads-kit";
-import { routeOf, type JourneyCard } from "./journey";
+import { IMPORTING_NOW, routeOf, type JourneyCard } from "./journey";
 import { LANES } from "./lanes";
-import { STARTED_LABEL, STARTED_TONE, type StartedBy } from "./provenance";
-import { doneAbout } from "./times";
+import { STARTED_LABEL } from "./provenance";
+import { detailLines, type Part } from "./detail";
 import { faceOf, type TitleLookup } from "./titles";
 
 export interface CardContext {
@@ -71,6 +74,8 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
     return { text: asked, tone: "info", pulse: true };
   }
   // Only what is known: the download has stopped moving. Why is in its tooltip; Deluno is not claimed to be doing anything it may not be.
+  // The import has finished: full and green for a moment, before the poster flies to the library.
+  if (card.landed) return { text: "✓ Imported · in your library", tone: "ok", pulse: false, lead: "✓ Imported" };
   if (card.stuck) return { text: percent > 0 ? `Stuck at ${percent}% · not moving` : "Stuck · not moving", tone: "warn", pulse: true };
   if (card.stage === "grabbed") {
     const parts = [card.quality, card.indexer ? `from ${card.indexer}` : null].filter(Boolean);
@@ -89,12 +94,23 @@ export function statusOf(card: JourneyCard, indexers: number): CardStatus {
   return { text: card.state.label, tone: card.state.tone, pulse: false };
 }
 
-function barOf(card: JourneyCard): { width: number } | null {
-  return card.stage === "downloading" ? { width: Math.round(card.progress ?? 0) } : null;
+/**
+ * The thin bar: a download's progress; an import under way (no client reports how far it is, so it only shows that it is
+ * moving) that fills to 100% when the import finishes. Nothing for a card that is only waiting.
+ */
+function barOf(card: JourneyCard): { width: number; waiting: boolean } | null {
+  if (card.stage === "downloading") return { width: Math.round(card.progress ?? 0), waiting: false };
+  if (card.stage === "importing" && card.landed) return { width: 100, waiting: false };
+  if (card.stage === "importing" && card.state.label === IMPORTING_NOW) return { width: 35, waiting: true };
+  return null;
+}
+
+function Parts({ parts }: { parts: Part[] }) {
+  return <>{parts.map((part, index) => (typeof part === "string" ? <span key={index}>{part}</span> : <b key={index}>{part.bold}</b>))}</>;
 }
 
 /** The status line: the percentage bold in the station's colour and the rest quiet; a stuck download is all amber, a failure plain red. */
-function StatusLine({ card, status, done, tag }: { card: JourneyCard; status: CardStatus; done: string | null; tag: StartedBy | null }) {
+function StatusLine({ card, status }: { card: JourneyCard; status: CardStatus }) {
   const lead = status.lead && status.text.startsWith(status.lead) ? status.lead : null;
   const tone = card.stuck || status.tone === "warn" ? "lj-s-warn" : status.tone === "bad" ? "lj-s-bad" : status.tone === "ok" ? "lj-s-ok" : undefined;
   return (
@@ -104,8 +120,6 @@ function StatusLine({ card, status, done, tag }: { card: JourneyCard; status: Ca
         {lead ? <b>{lead}</b> : null}
         {lead ? status.text.slice(lead.length) : status.text}
       </span>
-      {done ? <span className="lj-when">{done}</span> : null}
-      {tag ? <span title={tag === "seerr" ? "Asked for in Seerr" : undefined} className={cn("lj-tag", STARTED_TONE[tag])}>{STARTED_LABEL[tag]}</span> : null}
     </span>
   );
 }
@@ -126,8 +140,7 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
   const status = statusOf(card, indexers);
   const bar = barOf(card);
   const moving = card.stage === "downloading" && !card.stuck && (card.speedMbps ?? 0) > 0;
-  const done = card.stage === "downloading" && !card.stuck ? doneAbout(card.finishAtMs) : null;
-  const tag = card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr") ? card.startedBy : null;
+  const lines = detailLines(card, indexers, Date.now());
   const route = routeOf(card) || card.routeNote || "";
   const style: CSSProperties & Record<string, string | number> = { "--lj-st": card.stuck ? "var(--lj-warning)" : `hsl(var(${lane.accent}))` };
   if (place) {
@@ -140,16 +153,26 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
       data-journey-card=""
       data-glide-stage={card.stage}
       aria-label={`${face.title}: ${status.text}`}
-      title={[card.release && face.linked ? card.release : face.title, card.reasonFull || card.reason, route].filter(Boolean).join(" · ")}
-      className={cn("lj-token lj-fresh", place?.hidden && "lj-hidden", arrivals.has(card.key) && motionAllowed() && "lj-arrive")}
+      title={[card.release && face.linked ? card.release : face.title, card.startedBy ? STARTED_LABEL[card.startedBy] : null, card.reasonFull || card.reason, route].filter(Boolean).join(" · ")}
+      className={cn("lj-token lj-fresh", card.landed && "lj-done", place?.hidden && "lj-hidden", arrivals.has(card.key) && motionAllowed() && "lj-arrive")}
       style={style}
       tabIndex={place?.hidden ? -1 : undefined}
     >
       <span data-card-poster={card.key}><PosterSlot src={face.poster} title={face.title} icon={lane.icon} /></span>
       <span className="lj-body">
         <span className="lj-t">{face.title}</span>
-        <StatusLine card={card} status={status} done={done} tag={tag} />
-        {bar ? <span aria-hidden className={cn("lj-pb block", moving && "lj-moving")}><i style={{ width: `${bar.width}%` }} /></span> : null}
+        <StatusLine card={card} status={status} />
+        {bar ? <span aria-hidden className={cn("lj-pb block", (moving || bar.waiting) && "lj-moving", bar.waiting && "lj-wait")}><i style={{ width: `${bar.width}%` }} /></span> : null}
+        {lines.length > 0 ? (
+          <span className="lj-x">
+            {lines.map((line, index) => (
+              <span key={index} className="lj-xl">
+                <span className={cn(line.mono && "lj-rel")}><Parts parts={line.parts} /></span>
+                <span>{line.right}</span>
+              </span>
+            ))}
+          </span>
+        ) : null}
       </span>
     </Link>
   );

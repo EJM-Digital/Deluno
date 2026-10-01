@@ -1,15 +1,19 @@
 /**
  * The journey (#1098): the titles that are on their way to the library, as stations
  * left to right (requested, grabbed, downloading, with the processor when one is
- * connected, importing). It is the approved mockup's journey, ported rule for rule
- * (see journey.css): equal columns with dashed dividers the height of the lanes, a
- * rail whose dashes flow while anything is moving, and every title one card of one
- * size, placed in its station's column. A card whose stage changes glides to its new
- * column (a CSS transition on left and top), and a new one fades in.
+ * connected, importing). It is the approved mockup's journey ported rule for rule (see
+ * journey.css): the stations are one arrow-shaped ribbon, each segment tinted in its
+ * stage colour with its icon, name and count (busy ones stronger with a moving sheen,
+ * empty ones dimmed); under it equal columns with dashed dividers hold every title as
+ * one card of one size, placed in its station's column. There are always three rows of
+ * cards: on a short window the cards shrink (down to 60px, a one-line title and a
+ * smaller poster) and on a tall one they grow, rather than losing a row. A card whose
+ * stage changes glides to its new column (a CSS transition on left and top), and a new
+ * one fades in.
  *
- * A station with more titles than its rows hold shows as many as fit and ends with
- * "and N more" to Transfers; every title of it is in that link's tooltip. On a phone
- * the stations stack and the same cards flow one under another.
+ * A station with more titles than the three rows shows three and ends with "and N more"
+ * to Transfers; every title of it is in that link's tooltip. On a phone the stations
+ * stack and the same cards flow one under another.
  */
 import type { CSSProperties, ReactElement } from "react";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -18,10 +22,12 @@ import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import { Count, JourneyToken, type CardContext } from "./card";
-import { cardsBudget, journeyMode, journeySize, lanePlan } from "./layout";
+import { fitDetails } from "./detail-fit";
+import { cardsBudget, journeyMode, journeySize, JOURNEY_ROWS, MORE_PX } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
 import type { JourneyCard, Stage } from "./journey";
 import { LANES } from "./lanes";
+import { useStillWhileResizing } from "./motion";
 import { faceOf } from "./titles";
 import { journeyHeading } from "./times";
 import "./journey.css";
@@ -34,17 +40,16 @@ export function stationsFor(hasProcessor: boolean): Stage[] {
 /** The space under the lanes inside the card, in px. */
 const LANES_BOTTOM_PX = 10;
 
+/** One segment of the ribbon: the stage's icon, its name and how many titles are there. */
 function Station({ stage, count, usual }: { stage: Stage; count: number; usual?: string }) {
   const lane = LANES[stage];
   return (
     <div role="group" aria-label={lane.label} className={cn("lj-station", count > 0 ? "lj-active" : "lj-empty")} style={{ ["--lj-st" as string]: `hsl(var(${lane.accent}))` } satisfies CSSProperties}>
-      <Link to={lane.to} aria-label={`${lane.label}: ${count}`} className="lj-station-link">
+      <Link to={lane.to} aria-label={`${lane.label}: ${count}`} title={usual ? `${lane.label}: ${count} · ${usual}` : undefined} className="lj-station-link">
         <span aria-hidden className="lj-dot"><lane.icon /></span>
         <span className="lj-text">
-          <span className="lj-nm block">{lane.label}</span>
-          <span className="lj-ct block">
-            {count === 0 ? "none" : <><Count value={count} /> {stage === "downloading" ? "moving" : "here"}</>}{usual ? <> · {usual}</> : null}
-          </span>
+          <span className="lj-nm">{lane.label}</span>
+          <span className="lj-ct">{count === 0 ? "none" : <><Count value={count} /> {stage === "downloading" ? "moving" : "here"}</>}</span>
         </span>
       </Link>
     </div>
@@ -85,46 +90,60 @@ export function Journey({
 }): ReactElement {
   const stations = useMemo(() => stationsFor(hasProcessor), [hasProcessor]);
   const n = stations.length;
+  useStillWhileResizing();
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
+  const [lanesRef, lanesBox] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   const stacked = journeyMode(body.width, n, rem) === "stacked";
   const onTheirWay = stations.reduce((sum, stage) => sum + counts[stage], 0);
-  const [boxRef, box] = useElementSize<HTMLDivElement>();
-  const lanesRef = useRef<HTMLDivElement>(null);
-  // What sits above the lanes (header, stations): measured, so the rows that fit the budget are counted in real pixels.
+  const boxRef = useRef<HTMLDivElement>(null);
+  // What sits above the lanes (header, stations): measured, so a page that scrolls can count the rows its budget holds in real pixels.
   const [chrome, setChrome] = useState(0);
   useLayoutEffect(() => {
     const box = boxRef.current;
     const lanes = lanesRef.current;
-    if (!box || !lanes) return;
+    if (!box || !lanes || fill) return;
     const next = Math.round(lanes.getBoundingClientRect().top - box.getBoundingClientRect().top);
     if (next !== chrome) setChrome(next);
   });
-  const room = stacked ? undefined : cardsBudget(fill ? (box.height > 0 ? box.height : undefined) : budget, chrome + LANES_BOTTOM_PX);
-  const lengths = stations.map((stage) => grouped[stage].length);
-  const size = journeySize(lengths, room);
-  const plan = lanePlan(lengths, room, size);
-  const ROW_PX = size.step;
-  const { rows } = plan;
-  /** The cards a station draws: all that fit, less the last row when the "and N more" line takes it. */
-  const shownIn = (count: number) => (plan.slot && count > rows ? rows - 1 : rows);
+  const budgeted = cardsBudget(budget, chrome + LANES_BOTTOM_PX);
+  const room = stacked ? undefined : fill ? (lanesBox.height > 0 ? lanesBox.height : undefined) : budgeted;
+  const size = journeySize(room);
+  const rows = JOURNEY_ROWS;
+  const lanesHeight = fill ? undefined : room !== undefined ? room : rows * size.step - (size.step - size.card) + MORE_PX;
 
   const places = new Map<string, { column: number; top: number; hidden: boolean }>();
-  const more: { stage: Stage; column: number; top: number; left: number; titles: string }[] = [];
+  const more: { stage: Stage; column: number; left: number; titles: string }[] = [];
   stations.forEach((stage, column) => {
     const here = grouped[stage];
-    const shown = shownIn(here.length);
-    const left = Math.max(0, here.length - shown);
-    here.forEach((card, row) => places.set(card.key, { column, top: Math.min(row, rows - 1) * ROW_PX, hidden: row >= shown }));
-    if (left > 0) more.push({ stage, column, top: plan.slot ? (rows - 1) * ROW_PX + 30 : rows * ROW_PX - 4, left, titles: here.map((card) => faceOf(card, context.titles).title).join(", ") });
+    here.forEach((card, row) => places.set(card.key, { column, top: Math.min(row, rows - 1) * size.step, hidden: row >= rows }));
+    if (here.length > rows) more.push({ stage, column, left: here.length - rows, titles: here.map((card) => faceOf(card, context.titles).title).join(", ") });
   });
   // One stable order for every card, so a card that changes station keeps its element and glides instead of being re-made.
   const everyCard = stations.flatMap((stage) => grouped[stage]).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
+  // The detail block of each card shows as many whole lines as the card's height holds: measured after every change, and again once the fonts are in.
+  useLayoutEffect(() => {
+    const host = lanesRef.current ?? bodyRef.current;
+    if (!host) return undefined;
+    fitDetails(host);
+    let live = true;
+    const again = () => {
+      if (live) fitDetails(host);
+    };
+    void document.fonts?.ready.then(again);
+    // A weight that loads later than the first paint moves the lines the room is counted from.
+    document.fonts?.addEventListener?.("loadingdone", again);
+    return () => {
+      live = false;
+      document.fonts?.removeEventListener?.("loadingdone", again);
+    };
+  });
+
   return (
     <div ref={boxRef} className={cn("flex min-h-0 min-w-0 flex-col", fill && "h-full")} style={fill || budget === undefined ? undefined : { maxHeight: budget }}>
-      <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
-        <div ref={bodyRef} className={cn("lj relative min-h-0 flex-1", stacked && "lj-stack overflow-y-auto", !stacked && onTheirWay > 0 && "lj-run")} style={{ ["--lj-n" as string]: n, ["--lj-card-h" as string]: `${size.card}px`, ["--lj-step" as string]: `${size.step}px`, ["--lj-poster-h" as string]: `${size.poster}px`, ["--lj-title-lines" as string]: size.oneLine ? 1 : 2 } satisfies CSSProperties}>
+      <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1 [&>header]:min-h-[calc(44px*var(--ui-scale,1))] [&>header>h2]:text-[length:calc(16px*var(--ui-scale,1))] [&>header>h2]:font-bold [&>header>span]:text-[length:calc(14px*var(--ui-scale,1))]">
+        <div ref={bodyRef} className={cn("lj relative flex min-h-0 flex-1 flex-col", stacked && "lj-stack overflow-y-auto")} style={{ ["--lj-n" as string]: n, ["--lj-card-h" as string]: `${size.card}px`, ["--lj-step" as string]: `${size.step}px`, ["--lj-poster-h" as string]: `${size.poster}px`, ["--lj-title-lines" as string]: size.oneLine ? 1 : 2 } satisfies CSSProperties}>
           {stacked ? (
             <>
               {onTheirWay === 0 ? <p className="lj-calm" style={{ position: "static" }}>{calmLine(lastArrival)}</p> : null}
@@ -141,10 +160,9 @@ export function Journey({
           ) : (
             <>
               <div className="lj-stations">
-                <div aria-hidden className="lj-rail"><i /></div>
                 {stations.map((stage) => <Station key={stage} stage={stage} count={counts[stage]} usual={usual[stage]} />)}
               </div>
-              <div ref={lanesRef} className="lj-lanes" style={{ height: fill && room !== undefined ? Math.max(plan.height, room) : plan.height, marginBottom: LANES_BOTTOM_PX }}>
+              <div ref={lanesRef} className="lj-lanes" style={{ height: lanesHeight, flex: lanesHeight === undefined ? undefined : "none", marginBottom: LANES_BOTTOM_PX }}>
                 {stations.slice(1).map((stage, index) => <div key={`bg-${stage}`} aria-hidden className="lj-lane-bg" style={{ left: `${((index + 1) * 100) / n}%` }} />)}
                 {onTheirWay === 0 ? <p className="lj-calm">{calmLine(lastArrival)}</p> : null}
                 {everyCard.map((card) => {
@@ -152,7 +170,7 @@ export function Journey({
                   return <JourneyToken key={card.key} card={card} {...context} place={place ? { column: place.column, stations: n, top: place.top, hidden: place.hidden } : undefined} />;
                 })}
                 {more.map((line) => (
-                  <Link key={`more-${line.stage}`} to="/queue" title={`${LANES[line.stage].label}: ${line.titles}`} className="lj-more" style={{ left: `calc(${line.column} * 100% / ${n} + 8px)`, top: line.top }}>
+                  <Link key={`more-${line.stage}`} to="/queue" title={`${LANES[line.stage].label}: ${line.titles}`} className="lj-more" style={{ left: `calc(${line.column} * 100% / ${n} + 8px)`, top: rows * size.step }}>
                     and {line.left.toLocaleString("en-AU")} more →
                   </Link>
                 ))}
