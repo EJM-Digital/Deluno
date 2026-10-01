@@ -11,14 +11,16 @@ import { useMemo } from "react";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { DownloadThroughputSample } from "../../../lib/api";
 import { CountUp } from "../../../components/ui/count-up";
-import { motionAllowed } from "../../../lib/page-motion";
 import { formatSpeed } from "../downloads-kit";
 import { BandCard, FigureUnit } from "./band-card";
 import { useNow } from "./hooks";
 import { linePath, shapeSpeedSeries } from "./series";
 
-const WIDTH = 400;
-const HEIGHT = 100;
+/** The mockup's chart box: 600 by 110, the trace kept 6 units off the bottom and 10 off the top. */
+const WIDTH = 600;
+const HEIGHT = 110;
+const PAD_TOP = 10;
+const PLOT = HEIGHT - PAD_TOP - 6;
 const HOURS = 6;
 
 /** The figure's number and its unit apart, so the unit can be small: "6.2" and "MB/s". */
@@ -49,14 +51,14 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
     [readingAt, downloads?.downloadMbps, downloads?.uploadMbps, now]
   );
   const series = useMemo(() => shapeSpeedSeries(Array.isArray(samples) ? samples : [], live, now, HOURS), [samples, live, now]);
-  const top = Math.max(series.peakDown, series.peakUp, 1);
+  const top = Math.max(series.peakDown, series.peakUp, 1) * 1.15;
   const last = series.points[series.points.length - 1];
   const dotY = 100 - Math.min(1, last.down / top) * 100;
-  const downPath = linePath(series.points, "down", series.start, series.end, top, WIDTH, HEIGHT);
-  const upPath = linePath(series.points, "up", series.start, series.end, top, WIDTH, HEIGHT);
-  const area = `${downPath} L${WIDTH} ${HEIGHT} L0 ${HEIGHT} Z`;
+  const downPath = linePath(series.points, "down", series.start, series.end, top, WIDTH, PLOT);
+  const upPath = linePath(series.points, "up", series.start, series.end, top, WIDTH, PLOT);
+  const area = `${downPath} L${WIDTH} ${HEIGHT - PAD_TOP} L0 ${HEIGHT - PAD_TOP} Z`;
   const summaryText = `Download peaked at ${formatSpeed(series.peakDown)} and upload at ${formatSpeed(series.peakUp)} in the last ${HOURS} hours.`;
-  const upArea = `${upPath} L${WIDTH} ${HEIGHT} L0 ${HEIGHT} Z`;
+  const upArea = `${upPath} L${WIDTH} ${HEIGHT - PAD_TOP} L0 ${HEIGHT - PAD_TOP} Z`;
   const unit = speedParts(live.down).unit;
   const aside = speedAside(series.peakDown, series.peakUp, HOURS);
 
@@ -70,35 +72,31 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
         <>
           <CountUp value={live.down} format={(value) => speedParts(value).value} />
           <FigureUnit>{unit} down</FigureUnit>
-          <span className="ml-auto shrink-0 text-[length:var(--type-body-sm)] font-semibold tracking-normal text-success">
+          <span className="lb-side">
             ↑ <CountUp value={live.up} format={formatSpeed} />
           </span>
         </>
       }
     >
-      <div className="relative h-full min-h-[3rem]">
-        <svg role="img" aria-label={summaryText} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
-          <defs>
-            <linearGradient id="live-speed-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--info))" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="hsl(var(--info))" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="live-speed-up-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity="0.14" />
-              <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <line x1="0" x2={WIDTH} y1="50" y2="50" stroke="hsl(var(--hairline))" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-          <path d={area} fill="url(#live-speed-fill)" />
-          <path d={upArea} fill="url(#live-speed-up-fill)" />
-          <path d={upPath} pathLength={1} fill="none" stroke="hsl(var(--success))" strokeWidth="1" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
+      <svg role="img" aria-label={summaryText} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="lb-chart">
+        <defs>
+          <linearGradient id="gd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="hsl(var(--info))" stopOpacity=".45" />
+            <stop offset="1" stopColor="hsl(var(--info))" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="gu" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="hsl(var(--success))" stopOpacity=".3" />
+            <stop offset="1" stopColor="hsl(var(--success))" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <g transform={`translate(0 ${PAD_TOP})`}>
+          <path d={area} fill="url(#gd)" />
+          <path d={upArea} fill="url(#gu)" />
           <path d={downPath} pathLength={1} fill="none" stroke="hsl(var(--info))" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
-        </svg>
-        <span aria-hidden className="absolute right-0 h-2.5 w-2.5 -translate-y-1/2 translate-x-1/2" style={{ top: `${dotY}%` }}>
-          {motionAllowed() ? <span className="live-beat absolute inset-0 rounded-full bg-info" /> : null}
-          <span className="absolute inset-0 rounded-full bg-info" />
-        </span>
-      </div>
+          <path d={upPath} pathLength={1} fill="none" stroke="hsl(var(--success))" strokeWidth="1.6" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
+        </g>
+      </svg>
+      <span aria-hidden className="lb-dot" style={{ top: `${((PAD_TOP + dotY * (PLOT / 100)) / HEIGHT) * 100}%` }} />
     </BandCard>
   );
 }

@@ -12,6 +12,7 @@
  * search was.
  */
 import { Activity, Download, FolderInput, Search, ShieldCheck, type LucideIcon } from "lucide-react";
+import type { CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import type { DownloadThroughputSample, SeriesUpcomingEpisodeItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
@@ -26,12 +27,12 @@ import { SpeedCell } from "./speed-chart";
 import { buildNext, whenText, type NextItem } from "./times";
 import { faceOf, type TitleLookup } from "./titles";
 
-const OP_ICON: Record<WorkKind, { icon: LucideIcon; tone: string; bar: string }> = {
-  search: { icon: Search, tone: "text-[hsl(var(--stage-search))] bg-[hsl(var(--stage-search)/0.15)]", bar: "bg-[hsl(var(--stage-search))]" },
-  grab: { icon: Download, tone: "text-[hsl(var(--stage-grab))] bg-[hsl(var(--stage-grab)/0.15)]", bar: "bg-[hsl(var(--stage-grab))]" },
-  import: { icon: FolderInput, tone: "text-[hsl(var(--stage-import))] bg-[hsl(var(--stage-import)/0.15)]", bar: "bg-[hsl(var(--stage-import))]" },
-  processor: { icon: ShieldCheck, tone: "text-[hsl(var(--stage-process))] bg-[hsl(var(--stage-process)/0.15)]", bar: "bg-[hsl(var(--stage-process))]" },
-  jobs: { icon: Activity, tone: "text-info bg-info/15", bar: "bg-info" }
+const OP_ICON: Record<WorkKind, { icon: LucideIcon; colour: string }> = {
+  search: { icon: Search, colour: "var(--stage-search)" },
+  grab: { icon: Download, colour: "var(--journey-grab)" },
+  import: { icon: FolderInput, colour: "var(--journey-import)" },
+  processor: { icon: ShieldCheck, colour: "var(--journey-process)" },
+  jobs: { icon: Activity, colour: "var(--info)" }
 };
 
 /** One thing Deluno is doing now: what it is, which title when it is one, and how far along when that is known. */
@@ -76,7 +77,7 @@ function WorkingNow({ summary, operations }: { summary: DashboardSummary | undef
   return (
     <BandCard
       label="Working on now"
-      aside={more > 0 ? <Link to="/activity" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
+      aside={more > 0 ? <Link to="/activity" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
       figure={
         <>
           <span>{operations.length.toLocaleString("en-AU")}</span>
@@ -85,27 +86,23 @@ function WorkingNow({ summary, operations }: { summary: DashboardSummary | undef
       }
     >
       {shown.length > 0 ? (
-        <ul className="min-w-0">
+        <ul className="lb-ops">
           {shown.map((op) => {
-            const { icon: Icon, tone, bar } = OP_ICON[op.kind];
+            const { icon: Icon, colour } = OP_ICON[op.kind];
             return (
-              <li key={op.key} className="border-b border-hairline py-[7px] last:border-b-0">
-                <Link to={op.to} className="grid grid-cols-[1.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md text-[length:var(--type-body-sm)] leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span aria-hidden className={cn("flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-md", tone)}><Icon className="h-3.5 w-3.5" /></span>
-                  <span className="truncate">{op.lead}{op.name ? <> <strong className="font-semibold">{op.name}</strong></> : null}</span>
-                  <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{op.right}</span>
-                  {op.pct !== undefined ? (
-                    <span aria-hidden className="col-span-2 col-start-2 mt-0.5 block h-1 overflow-hidden rounded-full bg-surface-3">
-                      <span className={cn("live-fill block h-full rounded-full", bar)} style={{ width: `${Math.round(op.pct)}%` }} />
-                    </span>
-                  ) : null}
+              <li key={op.key}>
+                <Link to={op.to} className="lb-op focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ "--c": colour } as CSSProperties}>
+                  <span aria-hidden className="lb-ico"><Icon /></span>
+                  <span className="lb-txt">{op.lead}{op.name ? <> <b>{op.name}</b></> : null}</span>
+                  <span className="lb-right">{op.right}</span>
+                  {op.pct !== undefined ? <span aria-hidden className="lb-bar"><i style={{ width: `${Math.max(0, Math.min(100, op.pct))}%` }} /></span> : null}
                 </Link>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">
+        <p className="lb-idle">
           {cycle
             ? `Nothing is running right now. The last search was ${cycle.libraryName}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}: ${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.queued.toLocaleString("en-AU")} sent to a client.`
             : "Nothing is running right now. No search has run yet."}
@@ -136,7 +133,7 @@ function NextCard({ items, now }: { items: NextItem[]; now: number }) {
       figure={
         first && figure ? (
           <>
-            <span className={cn(figure.kind === "running" && "text-info", figure.kind === "due" && "text-success")}>{figure.text}</span>
+            <span>{figure.text}</span>
             <FigureUnit>{first.label}</FigureUnit>
           </>
         ) : (
@@ -146,20 +143,18 @@ function NextCard({ items, now }: { items: NextItem[]; now: number }) {
     >
       {first ? (
         <div className="min-w-0">
-          <span aria-hidden className="mb-1.5 block h-1 overflow-hidden rounded-full bg-surface-3">
-            <span className="live-fill block h-full rounded-full bg-primary" style={{ width: `${Math.round((figure?.kind === "running" || figure?.kind === "due" ? 1 : fraction ?? 0) * 100)}%` }} />
-          </span>
-          <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+          <span aria-hidden className="lb-next-bar"><i style={{ width: `${Math.round((figure?.kind === "running" || figure?.kind === "due" ? 1 : fraction ?? 0) * 100)}%` }} /></span>
+          <ul className="lb-then">
             {rest.slice(0, 3).map((item) => (
-              <li key={item.key} className="flex min-w-0 items-baseline justify-between gap-3">
-                <Link to={item.to} className="min-w-0 truncate hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
-                <span className="shrink-0 tabular-nums text-foreground">{whenText(item.at, now)}</span>
+              <li key={item.key}>
+                <Link to={item.to} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
+                <span>{whenText(item.at, now)}</span>
               </li>
             ))}
           </ul>
         </div>
       ) : (
-        <p className="text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">Searches and tasks that are switched off do not count down.</p>
+        <p className="lb-idle">Searches and tasks that are switched off do not count down.</p>
       )}
     </BandCard>
   );
@@ -176,7 +171,7 @@ export function Band({ summary, samples, operations, upcoming, across = true }: 
   const now = useNow(1000);
   const items = buildNext(summary, upcoming, now);
   return (
-    <div className={"grid shrink-0 gap-[var(--grid-gap)] " + (across ? "grid-cols-3" : "grid-cols-1")}>
+    <div className={cn("lb-now shrink-0", !across && "lb-stacked")}>
       <SpeedCell samples={samples} summary={summary} />
       <WorkingNow summary={summary} operations={operations} />
       <NextCard items={items} now={now} />
