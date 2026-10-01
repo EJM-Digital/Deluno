@@ -27,7 +27,8 @@ public sealed class DownloadProgressPublisher(
     ILogger<DownloadProgressPublisher> logger,
     IServiceScopeFactory scopeFactory,
     IRealtimeEventPublisher realtimeEventPublisher,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IRealtimeWatchers? watchers = null)
     : BackgroundService
 {
     /// <summary>
@@ -43,6 +44,18 @@ public sealed class DownloadProgressPublisher(
     /// events say when something arrives.
     /// </summary>
     private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// How often to look while something is moving and a screen (Live or
+    /// Transfers) is open (#1097): once a second, with a speed sample each time.
+    /// Nobody watching means the ordinary interval, so there is no extra cost.
+    /// </summary>
+    internal static readonly TimeSpan WatchedActiveInterval = TimeSpan.FromSeconds(1);
+
+    internal static TimeSpan NextInterval(bool moving, bool watched)
+        => !moving ? IdleInterval : watched ? WatchedActiveInterval : ActiveInterval;
+
+    private bool IsWatched => watchers is not null && watchers.Count(LiveRealtimeSubject.Name) > 0;
 
     /// <summary>
     /// Below this, a reading is the same reading. Without it a forty-file
@@ -61,6 +74,8 @@ public sealed class DownloadProgressPublisher(
     private readonly Dictionary<string, Published> _published = new(StringComparer.OrdinalIgnoreCase);
 
     private bool _reportedFailure;
+
+    private readonly Dictionary<string, (bool Reachable, bool? Paused)> _clientStates = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly record struct Published(double Progress, double SpeedMbps, string Status);
 
@@ -81,7 +96,7 @@ public sealed class DownloadProgressPublisher(
 
             try
             {
-                interval = await PublishAsync(stoppingToken) ? ActiveInterval : IdleInterval;
+                interval = NextInterval(await PublishAsync(stoppingToken), IsWatched);
                 _reportedFailure = false;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -126,6 +141,21 @@ public sealed class DownloadProgressPublisher(
             .Where(item => item.Status is DownloadQueueStatuses.Downloading or DownloadQueueStatuses.Stalled or DownloadQueueStatuses.Queued or DownloadQueueStatuses.NotTransferring)
             .ToArray();
 
+        await PublishClientStatesAsync(overview, cancellationToken);
+
+        // A speed sample with every reading while someone watches (#1097), so a
+        // chart moves once a second whether or not any one item changed.
+        if (IsWatched)
+        {
+            await realtimeEventPublisher.PublishDownloadSpeedSampleAsync(
+                new DownloadSpeedSampleEvent(
+                    Math.Round(overview.Summary.TotalSpeedMbps, 2),
+                    Math.Round(overview.Summary.TotalUploadSpeedMbps, 2),
+                    live.Count(item => item.Status == DownloadQueueStatuses.Downloading),
+                    timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken);
+        }
+
         foreach (var item in live)
         {
             var current = new Published(item.Progress, item.SpeedMbps, item.Status);
@@ -156,6 +186,31 @@ public sealed class DownloadProgressPublisher(
         }
 
         return live.Length > 0;
+    }
+
+    /// <summary>Says so the moment a client turns unreachable, comes back, is paused or resumed (#1097).</summary>
+    private async Task PublishClientStatesAsync(DownloadTelemetryOverview overview, CancellationToken cancellationToken)
+    {
+        foreach (var client in overview.Clients)
+        {
+            var state = (Reachable: client.LastFailure is null, Paused: client.ClientPaused);
+            var known = _clientStates.TryGetValue(client.ClientId, out var last);
+            _clientStates[client.ClientId] = state;
+            if (!known || last == state)
+            {
+                continue;
+            }
+
+            await realtimeEventPublisher.PublishClientStateChangedAsync(
+                new ClientStateChangedEvent(
+                    client.ClientId,
+                    client.ClientName,
+                    state.Reachable,
+                    state.Paused,
+                    client.LastFailure?.Message ?? client.LastHealthMessage,
+                    timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken);
+        }
     }
 
     private static bool IsSameReading(Published last, Published current)

@@ -1022,6 +1022,10 @@ public sealed class SqliteJobStore(
         {
             await realtimeEventPublisher.PublishEntityChangedAsync("AutomationState", libraryId!, cancellationToken);
         }
+        foreach (var started in leasedJobs)
+        {
+            await PublishJobChangedAsync(started, "started", null, now, cancellationToken);
+        }
         return leasedJobs;
     }
 
@@ -1157,8 +1161,22 @@ public sealed class SqliteJobStore(
                 now.ToString("O"),
                 cancellationToken);
         }
+        await PublishJobChangedAsync(job, "finished", completionMessage, now, cancellationToken);
         DelunoObservability.JobsCompleted.Add(1, new("job.type", job.JobType), new("source", job.Source));
     }
+
+    /// <summary>Says on Live, at the moment it happens, that a job started, finished or failed (#1097).</summary>
+    private Task PublishJobChangedAsync(JobQueueItem job, string state, string? message, DateTimeOffset at, CancellationToken cancellationToken)
+        => realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishJobChangedAsync(
+            new JobChangedEvent(
+                job.Id,
+                job.JobType,
+                state,
+                JobTypeLabels.For(job.JobType),
+                string.Equals(job.RelatedEntityType, "library", StringComparison.OrdinalIgnoreCase) ? job.RelatedEntityId : null,
+                message,
+                at.ToString("O")),
+            cancellationToken));
 
     public async Task DeferAsync(string jobId, string workerId, DateTimeOffset runAtUtc, CancellationToken cancellationToken)
     {
@@ -1318,6 +1336,7 @@ public sealed class SqliteJobStore(
                 now.ToString("O"),
                 cancellationToken);
         }
+        await PublishJobChangedAsync(job, shouldDeadLetter ? "failed" : "retrying", storedError, now, cancellationToken);
         DelunoObservability.JobsFailed.Add(1, new("job.type", job.JobType), new("status", nextStatus));
         if (!shouldDeadLetter)
         {
@@ -3174,6 +3193,9 @@ public sealed class SqliteJobStore(
 
         await transaction.CommitAsync(cancellationToken);
         var cycleTimestamp = (request.CompletedUtc ?? request.StartedUtc).ToString("O");
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishSearchCycleProgressAsync(
+            new SearchCycleProgressEvent(request.LibraryId, request.LibraryName, request.MediaType, "finished", request.PlannedCount, request.PlannedCount, cycleTimestamp),
+            cancellationToken));
         await realtimeEventPublisher.PublishActivityEventAddedAsync(
             Guid.CreateVersion7().ToString("N"),
             $"Checked {request.LibraryName}: {request.PlannedCount} planned, {request.QueuedCount} sent, {request.SkippedCount} waiting.",

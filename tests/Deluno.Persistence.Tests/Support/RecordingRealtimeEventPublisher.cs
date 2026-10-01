@@ -2,8 +2,22 @@ using System.Collections.Concurrent;
 
 namespace Deluno.Persistence.Tests.Support;
 
-internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublisher
+internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublisher, Deluno.Contracts.IRealtimeEventPublisher
 {
+    private readonly ConcurrentQueue<(string Name, object Payload)> liveEvents = new();
+
+    /// <summary>Every pushed Live event (#1097), in the order it was published.</summary>
+    public IReadOnlyList<(string Name, object Payload)> LiveEvents => liveEvents.ToArray();
+
+    public IReadOnlyList<T> LiveEventsOf<T>(string name) where T : class
+        => liveEvents.Where(item => item.Name == name).Select(item => (T)item.Payload).ToArray();
+
+    public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+    {
+        liveEvents.Enqueue((eventName, payload));
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentQueue<(string Type, string Id)> published = new();
     private readonly ConcurrentQueue<(string DispatchId, string ReleaseName, string MediaType)> dispatchImportsStarted = new();
     private readonly ConcurrentQueue<(string Category, string Severity)> activityEvents = new();

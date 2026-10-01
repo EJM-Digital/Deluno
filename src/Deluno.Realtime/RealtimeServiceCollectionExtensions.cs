@@ -47,6 +47,8 @@ public static class RealtimeServiceCollectionExtensions
             options.ClientTimeoutInterval = ClientTimeout;
             options.KeepAliveInterval = KeepAlive;
         });
+        services.AddSingleton<RealtimeWatcherTracker>();
+        services.AddSingleton<IRealtimeWatchers>(provider => provider.GetRequiredService<RealtimeWatcherTracker>());
         services.AddSingleton<SignalRRealtimeEventPublisher>();
         services.AddSingleton<IRealtimeEventPublisher>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());
         services.AddSingleton<IRealtimeResumeSource>(provider => provider.GetRequiredService<SignalRRealtimeEventPublisher>());

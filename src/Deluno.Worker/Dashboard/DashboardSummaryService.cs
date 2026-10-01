@@ -37,7 +37,7 @@ public interface IDashboardSummaryService
 /// answer is remembered for <see cref="MemoLifetime"/> and built once for any
 /// number of simultaneous callers.</para>
 /// </summary>
-public sealed class DashboardSummaryService : IDashboardSummaryService
+public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboardSectionSource
 {
     /// <summary>How long one built summary answers every caller.</summary>
     public static readonly TimeSpan MemoLifetime = TimeSpan.FromSeconds(4);
@@ -73,6 +73,63 @@ public sealed class DashboardSummaryService : IDashboardSummaryService
 
     /// <summary>Drop the remembered summary; the next caller builds a fresh one.</summary>
     public void Invalidate() => _memo.Invalidate();
+
+    /// <summary>
+    /// Builds just the named sections, fresh, for the realtime hub to push the
+    /// moment they change (#1097). Each section keeps its own scope, budget and
+    /// failure, as in the full summary; the remembered summary is dropped so the
+    /// next fetch cannot answer with older numbers than what was just pushed.
+    /// </summary>
+    public async Task<DashboardSectionBuild> BuildSectionsAsync(IReadOnlyCollection<string> sections, CancellationToken cancellationToken)
+    {
+        var now = _timeProvider.GetUtcNow();
+        var unavailable = new ConcurrentBag<string>();
+        using var scope = _scopeFactory.CreateScope();
+        var services = scope.ServiceProvider;
+
+        var tasks = new Dictionary<string, Task<object?>>(StringComparer.Ordinal);
+        foreach (var name in sections.Distinct(StringComparer.Ordinal))
+        {
+            Task<object?>? task = name switch
+            {
+                DashboardSectionNames.Library => Run<object>("library", unavailable, async () => await LibraryAsync(services, now))!,
+                DashboardSectionNames.Downloads => Run<object>("downloads", unavailable, async () => await DownloadsAsync(services, now))!,
+                DashboardSectionNames.Pipeline => Run<object>("pipeline", unavailable, async () => await PipelineAsync(services, now))!,
+                DashboardSectionNames.Imports => Run<object>("imports", unavailable, async () => await ImportsAsync(services, now))!,
+                DashboardSectionNames.Automation => Run<object>("automation", unavailable, async () => await AutomationAsync(services, now))!,
+                DashboardSectionNames.Indexers => Run<object>("indexers", unavailable, async () => await IndexersAsync(services, now))!,
+                DashboardSectionNames.Processors => Run<object>("processors", unavailable, async () => await ProcessorsAsync(services, now))!,
+                DashboardSectionNames.Retention => Run<object>("retention", unavailable, async () => await RetentionAsync(services, now))!,
+                DashboardSectionNames.Subtitles => Run<object>("subtitles", unavailable, async () => await SubtitlesAsync(services, now))!,
+                DashboardSectionNames.Requests => Run<object>("requests", unavailable, async () => await RequestsAsync(services, now))!,
+                DashboardSectionNames.Blocklist => Run<object>("blocklist", unavailable, async () => await BlocklistAsync(services, now))!,
+                DashboardSectionNames.Health => Run<object>("health", unavailable, async () => await HealthAsync(services, now))!,
+                DashboardSectionNames.Storage => Run<object>("storage", unavailable, async () => await StorageAsync(services, now))!,
+                DashboardSectionNames.System => Run<object>("system", unavailable, async () => await SystemAsync(services, now))!,
+                DashboardSectionNames.Activity => Run<object>("activity", unavailable, async () => await ActivityAsync(services, now))!,
+                _ => null
+            };
+
+            if (task is not null)
+            {
+                tasks[name] = task;
+            }
+        }
+
+        await Task.WhenAll(tasks.Values);
+        _memo.Invalidate();
+
+        var built = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var (name, task) in tasks)
+        {
+            if (task.Result is { } value)
+            {
+                built[name] = value;
+            }
+        }
+
+        return new DashboardSectionBuild(built, unavailable.Order(StringComparer.Ordinal).ToArray());
+    }
 
     private async Task<DashboardSummary> BuildAsync(CancellationToken cancellationToken)
     {

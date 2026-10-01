@@ -41,7 +41,8 @@ public sealed class MoviesLibrarySearchJobHandler(
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    ISearchQueuePauseGate? queuePauseGate = null) : LibrarySearchJobHandler(
+    ISearchQueuePauseGate? queuePauseGate = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -57,7 +58,8 @@ public sealed class MoviesLibrarySearchJobHandler(
         blockedReleases,
         jobScheduler,
         platformSettingsRepository,
-        queuePauseGate)
+        queuePauseGate,
+        realtimeEventPublisher)
 {
     public override string JobType => LibrarySearchJobTypes.Movies;
 }
@@ -79,7 +81,8 @@ public sealed class TvLibrarySearchJobHandler(
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    ISearchQueuePauseGate? queuePauseGate = null) : LibrarySearchJobHandler(
+    ISearchQueuePauseGate? queuePauseGate = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : LibrarySearchJobHandler(
         librariesRepository,
         qualityRepository,
         jobQueueRepository,
@@ -95,7 +98,8 @@ public sealed class TvLibrarySearchJobHandler(
         blockedReleases,
         jobScheduler,
         platformSettingsRepository,
-        queuePauseGate)
+        queuePauseGate,
+        realtimeEventPublisher)
 {
     public override string JobType => LibrarySearchJobTypes.Tv;
 }

@@ -227,11 +227,13 @@ public sealed class DownloadTelemetrySnapshotStore : IDownloadTelemetrySnapshotS
 public sealed class DownloadTelemetryRefreshService(
     IDownloadTelemetrySnapshotStore store,
     TimeProvider timeProvider,
-    ILogger<DownloadTelemetryRefreshService> logger)
+    ILogger<DownloadTelemetryRefreshService> logger,
+    IRealtimeWatchers? watchers = null)
     : BackgroundService
 {
     private static readonly TimeSpan ActiveInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan IdleInterval = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan WatchedActiveInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(2);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -253,7 +255,7 @@ public sealed class DownloadTelemetryRefreshService(
             {
                 // Zero reuse: the whole point of this loop is a new reading.
                 var entry = await store.RefreshAsync(TimeSpan.FromTicks(-1), stoppingToken);
-                interval = AnythingMoving(entry.Value.Overview) ? ActiveInterval : IdleInterval;
+                interval = NextInterval(AnythingMoving(entry.Value.Overview), watchers is not null && watchers.Count(LiveRealtimeSubject.Name) > 0);
                 reportedFailure = false;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -275,6 +277,10 @@ public sealed class DownloadTelemetryRefreshService(
             }
         }
     }
+
+    /// <summary>Once a second while something is moving and a screen watches (#1097); otherwise the ordinary cadence.</summary>
+    internal static TimeSpan NextInterval(bool moving, bool watched)
+        => !moving ? IdleInterval : watched ? WatchedActiveInterval : ActiveInterval;
 
     internal static bool AnythingMoving(DownloadTelemetryOverview overview)
         => overview.Clients

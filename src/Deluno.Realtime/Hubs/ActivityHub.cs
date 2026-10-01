@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace Deluno.Realtime.Hubs;
 
-public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
+public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatcherTracker? watchers = null) : Hub
 {
     private const string SubjectsKey = "Deluno.Realtime.Subjects";
     private static readonly Regex LibrarySubjectPattern = new(
@@ -24,7 +24,10 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
         var currentSubjects = GetSubjects();
         foreach (var subject in requestedSubjects)
         {
-            currentSubjects.Add(subject);
+            if (currentSubjects.Add(subject))
+            {
+                watchers?.Joined(subject);
+            }
         }
     }
 
@@ -38,7 +41,10 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
         var currentSubjects = GetSubjects();
         foreach (var subject in requestedSubjects)
         {
-            currentSubjects.Remove(subject);
+            if (currentSubjects.Remove(subject))
+            {
+                watchers?.Left(subject);
+            }
         }
     }
 
@@ -65,6 +71,18 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
     /// matching <c>ClientTimeoutInterval</c>.
     /// </summary>
     public Task Ping() => Task.CompletedTask;
+
+    /// <summary>A dropped connection stops watching everything it had joined.</summary>
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        foreach (var subject in GetSubjects())
+        {
+            watchers?.Left(subject);
+        }
+
+        GetSubjects().Clear();
+        return base.OnDisconnectedAsync(exception);
+    }
 
     private HashSet<string> GetSubjects()
     {
@@ -94,7 +112,7 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource) : Hub
     }
 
     private static bool IsValidSubject(string subject) =>
-        subject is RealtimeGroups.Dashboard or RealtimeGroups.Queue or RealtimeGroups.Activity
+        subject is RealtimeGroups.Dashboard or RealtimeGroups.Queue or RealtimeGroups.Activity or RealtimeGroups.Live
         || LibrarySubjectPattern.IsMatch(subject);
 }
 

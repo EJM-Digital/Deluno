@@ -589,6 +589,7 @@ public sealed partial class ImportPipelineService(
                         importedPath: preview.DestinationPath,
                         failureReason: null,
                         cancellationToken);
+                    await AnnounceDriveSpaceAsync(preview.DestinationFolder, cancellationToken);
                 }
 
                 await RemoveCompletedDownloadIfConfiguredAsync(request.DispatchId, cancellationToken);
@@ -1677,6 +1678,7 @@ public sealed partial class ImportPipelineService(
                         importedPath: plan.Summary.DestinationFolder,
                         failureReason: null,
                         cancellationToken);
+                    await AnnounceDriveSpaceAsync(plan.Summary.DestinationFolder, cancellationToken);
                 }
 
                 // #950: a season pack never asked the client to let go of
@@ -5277,6 +5279,32 @@ public sealed partial class ImportPipelineService(
     /// to decide, and guessing wrong on an unreadable volume would fail an
     /// import Radarr/Sonarr would have allowed.
     /// </summary>
+    /// <summary>
+    /// The drive the file just landed on has less room now: say how much is left, so Live shows it
+    /// without waiting for the next storage check (#1097). A drive that cannot be read says nothing.
+    /// </summary>
+    private Task AnnounceDriveSpaceAsync(string destinationFolder, CancellationToken cancellationToken)
+        => realtimeEventPublisher.PublishSafelyAsync(async publisher =>
+        {
+            if (string.IsNullOrWhiteSpace(destinationFolder) || _freeSpaceBytesProbe(destinationFolder) is not { } free)
+            {
+                return;
+            }
+
+            long? total = null;
+            try
+            {
+                total = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(destinationFolder))!).TotalSize;
+            }
+            catch
+            {
+            }
+
+            await publisher.PublishDriveSpaceChangedAsync(
+                new DriveSpaceChangedEvent(destinationFolder, free, total, DateTimeOffset.UtcNow.ToString("O")),
+                cancellationToken);
+        });
+
     private string? DescribeInsufficientFreeSpace(string destinationFolder, int minimumFreeSpaceMb)
     {
         if (minimumFreeSpaceMb <= 0)

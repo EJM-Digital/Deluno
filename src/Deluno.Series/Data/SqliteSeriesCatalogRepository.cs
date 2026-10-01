@@ -24,7 +24,8 @@ public sealed class SqliteSeriesCatalogRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     IMediaStateRepository? sharedMediaStateRepository = null,
-    ILibrarySubtitlePreferences? librarySubtitlePreferences = null)
+    ILibrarySubtitlePreferences? librarySubtitlePreferences = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null)
     : ISeriesCatalogRepository
 {
     private readonly IMediaStateRepository? sharedMediaStateRepository = sharedMediaStateRepository;
@@ -40,7 +41,7 @@ public sealed class SqliteSeriesCatalogRepository(
     /// exercise the same one production does.</para>
     /// </summary>
     private IMediaStateRepository SharedMediaState =>
-        sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider);
+        sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher);
 
     public async Task<SeriesListItem> AddAsync(CreateSeriesRequest request, CancellationToken cancellationToken)
     {
@@ -4283,7 +4284,7 @@ public sealed class SqliteSeriesCatalogRepository(
         // See the note on the movie repository: the local copy of this routine
         // had drifted from the shared rule and wrote a row at a time. One
         // rule, one place.
-        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider))
+        => (sharedMediaStateRepository ?? new SqliteMediaStateRepository(databaseConnectionFactory, timeProvider, realtimeEventPublisher))
             .ReevaluateLibraryWantedStateAsync(
                 MediaKind.Series,
                 libraryId,
@@ -4485,6 +4486,9 @@ public sealed class SqliteSeriesCatalogRepository(
         await command.ExecuteNonQueryAsync(cancellationToken);
 
         await AddImportRecoveryEventAsync(item.Id, "case_opened", "Import recovery case created.", null, cancellationToken);
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+            new RecoveryCaseChangedEvent(item.Id, "opened", item.FailureKind, item.Title, "series", null, timeProvider.GetUtcNow().ToString("O")),
+            cancellationToken));
 
         return item;
     }
@@ -4498,7 +4502,15 @@ public sealed class SqliteSeriesCatalogRepository(
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM series_import_recovery_cases WHERE id = @id;";
         AddParameter(command, "@id", id);
-        return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        var deleted = await command.ExecuteNonQueryAsync(cancellationToken) > 0;
+        if (deleted)
+        {
+            await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+                new RecoveryCaseChangedEvent(id, "closed", null, null, "series", null, timeProvider.GetUtcNow().ToString("O")),
+                cancellationToken));
+        }
+
+        return deleted;
     }
 
     public async Task<SeriesImportRecoveryCase?> GetImportRecoveryCaseAsync(string id, CancellationToken cancellationToken)
@@ -4547,6 +4559,10 @@ public sealed class SqliteSeriesCatalogRepository(
                 return null;
             }
         }
+
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishRecoveryCaseChangedAsync(
+            new RecoveryCaseChangedEvent(id, "closed", null, null, "series", null, now.ToString("O")),
+            cancellationToken));
 
         using var select = connection.CreateCommand();
         select.CommandText =

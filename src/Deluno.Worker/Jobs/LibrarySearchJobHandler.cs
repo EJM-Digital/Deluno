@@ -35,7 +35,8 @@ public abstract class LibrarySearchJobHandler(
     IBlockedReleaseRepository? blockedReleases = null,
     IJobScheduler? jobScheduler = null,
     IPlatformSettingsRepository? platformSettingsRepository = null,
-    ISearchQueuePauseGate? queuePauseGate = null) : IJobHandler
+    ISearchQueuePauseGate? queuePauseGate = null,
+    IRealtimeEventPublisher? realtimeEventPublisher = null) : IJobHandler
 {
     /// <summary>
     /// Both catalogues run the same handler; only the lane differs.
@@ -48,6 +49,12 @@ public abstract class LibrarySearchJobHandler(
     /// lines each and exist only to give the registry two job types to route.
     /// </summary>
     public abstract string JobType { get; }
+
+    /// <summary>Tells Live which library is being checked and how far along it is, as each title is done (#1097).</summary>
+    private Task PublishCycleProgressAsync(JobPayloads.LibrarySearchPayload payload, int checkedSoFar, int planned, DateTimeOffset at)
+        => realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishSearchCycleProgressAsync(
+            new SearchCycleProgressEvent(payload.LibraryId, payload.LibraryName, payload.MediaType, "running", checkedSoFar, planned, timeProvider.GetUtcNow().ToString("O")),
+            CancellationToken.None));
 
     public async Task<string> HandleAsync(JobQueueItem job, CancellationToken cancellationToken)
     {
@@ -320,6 +327,8 @@ public abstract class LibrarySearchJobHandler(
             {
                 checkedCount++;
             }
+
+            await PublishCycleProgressAsync(payload, checkedCount + heldCount + blockedCount, candidates.Length, now);
 
             if (onItsWay is null && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
@@ -974,6 +983,8 @@ public abstract class LibrarySearchJobHandler(
             {
                 seriesCheckedCount++;
             }
+
+            await PublishCycleProgressAsync(payload, seriesCheckedCount + seriesHeldCount + seriesBlockedCount, seriesCandidates.Length, now);
 
             if (onItsWay is null && decisionPlan.ShouldDispatch && decisionPlan.SelectedDownloadClient is not null && decisionPlan.DispatchRequest is not null)
             {
