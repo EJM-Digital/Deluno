@@ -92,7 +92,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
         {
             Task<object?>? task = name switch
             {
-                DashboardSectionNames.Library => Run<object>("library", unavailable, async () => await LibraryAsync(services, now))!,
+                DashboardSectionNames.Library => Run<object>("library", unavailable, async () => await LibraryAsync(services, now, StartOfToday(now)))!,
                 DashboardSectionNames.Downloads => Run<object>("downloads", unavailable, async () => await DownloadsAsync(services, now))!,
                 DashboardSectionNames.Pipeline => Run<object>("pipeline", unavailable, async () => await PipelineAsync(services, now))!,
                 DashboardSectionNames.Imports => Run<object>("imports", unavailable, async () => await ImportsAsync(services, now))!,
@@ -140,7 +140,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
         using var scope = _scopeFactory.CreateScope();
         var services = scope.ServiceProvider;
 
-        var library = Run("library", unavailable, () => LibraryAsync(services, now));
+        var library = Run("library", unavailable, () => LibraryAsync(services, now, StartOfToday(now)));
         var downloads = Run("downloads", unavailable, () => DownloadsAsync(services, now));
         var pipeline = Run("pipeline", unavailable, () => PipelineAsync(services, now));
         var imports = Run("imports", unavailable, () => ImportsAsync(services, now));
@@ -211,7 +211,7 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
 
     // --------------------------------------------------------------- library
 
-    private static async Task<DashboardLibrarySection> LibraryAsync(IServiceProvider sp, DateTimeOffset now)
+    private static async Task<DashboardLibrarySection> LibraryAsync(IServiceProvider sp, DateTimeOffset now, DateTimeOffset sinceUtc)
     {
         var moviesTask = sp.GetRequiredService<IMovieCatalogRepository>().GetDashboardCountsAsync(CancellationToken.None);
         var showsTask = sp.GetRequiredService<ISeriesCatalogRepository>().GetDashboardCountsAsync(CancellationToken.None);
@@ -219,7 +219,8 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
         var store = sp.GetRequiredService<DashboardCountsStore>();
         var mixTask = store.GetLibraryMixAsync(CancellationToken.None);
         var collectionsTask = store.GetCollectionCountsAsync(CancellationToken.None);
-        await Task.WhenAll(moviesTask, showsTask, librariesTask, mixTask, collectionsTask);
+        var arrivedTask = sp.GetRequiredService<DashboardLiveStore>().CountArrivedByLibraryAsync(sinceUtc, CancellationToken.None);
+        await Task.WhenAll(moviesTask, showsTask, librariesTask, mixTask, collectionsTask, arrivedTask);
 
         var movies = moviesTask.Result;
         var shows = showsTask.Result;
@@ -250,7 +251,23 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
                 collectionsTask.Result.Members,
                 collectionsTask.Result.InLibrary,
                 collectionsTask.Result.SyncFailing,
-                collectionsTask.Result.LastSyncedUtc));
+                collectionsTask.Result.LastSyncedUtc),
+            librariesTask.Result
+                .Select(library =>
+                {
+                    var isTv = string.Equals(library.MediaType, "tv", StringComparison.OrdinalIgnoreCase);
+                    var facets = (isTv ? shows : movies).FacetsByLibrary?.GetValueOrDefault(library.Id);
+                    return new DashboardLibraryCounts(
+                        library.Id,
+                        library.Name,
+                        library.MediaType,
+                        facets?.Covered ?? 0,
+                        facets?.Upgrades ?? 0,
+                        facets?.Downloading ?? 0,
+                        facets?.Missing ?? 0,
+                        arrivedTask.Result.GetValueOrDefault(library.Id));
+                })
+                .ToArray());
 
         static DashboardMediaCounts Counts(MediaDashboardCounts counts) => new(
             counts.Facets.All,

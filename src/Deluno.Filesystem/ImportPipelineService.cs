@@ -3045,7 +3045,9 @@ public sealed partial class ImportPipelineService(
         long? FileSizeBytes = null,
         bool Upgraded = false,
         // Whether the file landed at the quality the library asked for (the poster bar on Live: gold when met, green when it can still be upgraded).
-        bool? QualityMet = null);
+        bool? QualityMet = null,
+        // The library the file landed in, so Live's shelf can tag each arrival with it (#1103).
+        string? LibraryId = null);
 
     /// <summary>
     /// Names the release the copy actually came from. Without it the feed says
@@ -3318,7 +3320,8 @@ public sealed partial class ImportPipelineService(
             PreviousQuality: catalog.PreviousQuality,
             FileSizeBytes: catalog.FileSizeBytes,
             Upgraded: catalog.ReplacedFilePaths.Count > 0 && !string.IsNullOrWhiteSpace(catalog.PreviousQuality),
-            QualityMet: catalog.QualityMet);
+            QualityMet: catalog.QualityMet,
+            LibraryId: request.Preview.LibraryId ?? library?.Id);
     }
 
     private sealed class CatalogImportResult

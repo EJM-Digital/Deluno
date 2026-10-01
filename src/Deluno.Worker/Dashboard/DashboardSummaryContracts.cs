@@ -41,7 +41,8 @@ public sealed record DashboardLibrarySection(
     long TotalBytes,
     IReadOnlyList<DashboardLibraryBytes> Libraries,
     DashboardLibraryMix Mix,
-    DashboardCollections Collections);
+    DashboardCollections Collections,
+    IReadOnlyList<DashboardLibraryCounts>? LibraryCounts = null);
 
 /// <summary>
 /// What the files on disk are, biggest first. An empty label in the stored data
@@ -79,6 +80,17 @@ public sealed record DashboardMediaCounts(
     long FileBytes);
 
 public sealed record DashboardLibraryBytes(string Id, string Name, string MediaType, long Bytes);
+
+/// <summary>One library's own counts, in the same words as its page (#1103): quality met, upgradable, downloading, missing, and what arrived in it today. In Settings › Libraries order.</summary>
+public sealed record DashboardLibraryCounts(
+    string LibraryId,
+    string LibraryName,
+    string MediaType,
+    int Met,
+    int Upgradable,
+    int Downloading,
+    int Missing,
+    int ArrivedToday);
 
 // -------------------------------------------------------------- downloads
 

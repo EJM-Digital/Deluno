@@ -5729,7 +5729,30 @@ public sealed class SqliteSeriesCatalogRepository(
             byLibrary[reader.GetString(0)] = reader.GetInt64(1);
         }
 
-        return new MediaDashboardCounts(facets, byLibrary.Values.Sum(), byLibrary);
+        return new MediaDashboardCounts(facets, byLibrary.Values.Sum(), byLibrary, await FacetsByLibraryAsync(connection, cancellationToken));
+    }
+
+    /// <summary>The library page's own facet counts for each library that holds a title, so the Live shelf's chips match the page they link to (#1103).</summary>
+    private async Task<IReadOnlyDictionary<string, CatalogueFacets>> FacetsByLibraryAsync(System.Data.Common.DbConnection connection, CancellationToken cancellationToken)
+    {
+        var ids = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT DISTINCT library_id FROM series_wanted_state;";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                ids.Add(reader.GetString(0));
+            }
+        }
+
+        var result = new Dictionary<string, CatalogueFacets>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ids)
+        {
+            result[id] = await CountCatalogueFacetsAsync(connection, null, id, "all", null, null, cancellationToken);
+        }
+
+        return result;
     }
 
     public async Task<MediaDailyMetrics> GetDailyMetricsAsync(

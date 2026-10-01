@@ -8,7 +8,9 @@ namespace Deluno.Contracts;
 /// <param name="Facets">Every title counted under exactly one rung, as the shelf counts them.</param>
 /// <param name="FileBytes">Sum of the tracked file sizes Deluno already stores.</param>
 /// <param name="FileBytesByLibrary">The same sum per library id.</param>
+/// <param name="FacetsByLibrary">The same facet counts the library's own page prints, per library id (#1103), for every library that holds a title.</param>
 public sealed record MediaDashboardCounts(
     CatalogueFacets Facets,
     long FileBytes,
-    IReadOnlyDictionary<string, long> FileBytesByLibrary);
+    IReadOnlyDictionary<string, long> FileBytesByLibrary,
+    IReadOnlyDictionary<string, CatalogueFacets>? FacetsByLibrary = null);
