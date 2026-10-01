@@ -332,7 +332,8 @@ public static class ManualSearchEndpointRouteBuilderExtensions
                 grabFailureCode: grabResult.Failure?.Code ?? grabResult.FailureCode,
                 cancellationToken: cancellationToken,
                 failure: grabResult.Failure,
-                clientExternalId: grabResult.ExternalId);
+                clientExternalId: grabResult.ExternalId,
+                startedBy: DownloadStartedBy.Manual);
             }
 
             // #978: a grab made from the Search page shows in Indexer

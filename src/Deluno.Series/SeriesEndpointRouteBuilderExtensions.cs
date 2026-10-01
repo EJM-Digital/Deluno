@@ -2037,7 +2037,9 @@ public static class SeriesEndpointRouteBuilderExtensions
                         failure: grabResult.Failure,
                         replacementAuthorized: !string.IsNullOrWhiteSpace(baseline.FilePath),
                         replacementExpectedPath: baseline.FilePath,
-                        clientExternalId: grabResult.ExternalId);
+                        clientExternalId: grabResult.ExternalId,
+                        startedBy: DownloadStartedBy.Manual,
+                        titleEntityId: seriesItem.Id);
                 }
 
                 await repository.RecordSearchAttemptAsync(

@@ -291,7 +291,9 @@ public interface IJobQueueRepository
         bool forceReplacementAuthorized = false,
         string? replacementExpectedPath = null,
         IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
-        string? clientExternalId = null);
+        string? clientExternalId = null,
+        string? startedBy = null,
+        string? titleEntityId = null);
 
     Task RecordSearchCycleRunAsync(
         RecordSearchCycleRunRequest request,

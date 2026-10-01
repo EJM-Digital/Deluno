@@ -401,7 +401,8 @@ public sealed class SeasonSearchExecutor(
                 failure: grabResult.Failure,
                 replacementAuthorized: replacementDecision is { Authorized: true, Targets.Count: > 0 },
                 replacementTargets: replacementDecision?.Targets,
-                clientExternalId: grabResult.ExternalId);
+                clientExternalId: grabResult.ExternalId,
+                startedBy: DownloadStartedBy.ForSearch(triggeredBy, true, replacementDecision is { Authorized: true }));
 
             // A season's release puts the show on its way, as any grab does (#555).
             await mediaStateRepository.MarkDownloadingIfSentAsync(MediaKind.Series, seriesItem.Id, grabResult.Status, now, cancellationToken);
