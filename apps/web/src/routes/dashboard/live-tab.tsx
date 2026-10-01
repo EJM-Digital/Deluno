@@ -35,7 +35,7 @@ import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
 import { arrivalItems, recentArrivalItems, requestCards, withSeerr } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
-import { SourcesCard } from "./live/sources-map";
+import { SourcesCard } from "./live/sources-card";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf } from "./live/motion";
 import { arrivedHeading, LATEST_ARRIVALS_HEADING, SHELF_ROW_HEIGHT_CSS, Shelf } from "./live/shelf";
