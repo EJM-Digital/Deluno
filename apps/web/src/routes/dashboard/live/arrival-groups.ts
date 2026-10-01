@@ -5,7 +5,7 @@
 import type { ArrivalItem } from "./extras";
 import { nameOf } from "./arrivals";
 import { episodeFromRelease } from "./journey";
-import type { TitleLookup } from "./titles";
+import { isGone, type TitleLookup } from "./titles";
 
 export interface ArrivalGroup {
   key: string;
@@ -54,6 +54,8 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
   const order: string[] = [];
   const buckets = new Map<string, ArrivalItem[]>();
   for (const item of items) {
+    // A title that is no longer in the library is not on the shelf.
+    if (isGone(item.entity, titles)) continue;
     const series = seriesOf(item, titles);
     const key = series ? `show:${series}:${dayOf(item.at)}` : `one:${item.key}`;
     const bucket = buckets.get(key);

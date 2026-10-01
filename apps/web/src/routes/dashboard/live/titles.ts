@@ -26,6 +26,18 @@ export interface TitleLookup {
   episodes: ReadonlyMap<string, EpisodeInfo>;
   /** Cards no sent download names (a download Deluno did not send itself), matched to the library by the release's own name: card key to title. */
   matched?: ReadonlyMap<string, Entity>;
+  /** Which kinds the library has answered for: an id missing from an answered kind is a title that no longer exists. */
+  answered?: { movies: boolean; series: boolean };
+}
+
+/** True when the library has answered and the title an entity names is not in it any more. */
+export function isGone(entity: Entity | undefined, lookup: TitleLookup): boolean {
+  if (!entity || !lookup.answered) return false;
+  if (entity.kind === "movie") return lookup.answered.movies && !lookup.movies.get(entity.id)?.title;
+  if (!lookup.answered.series) return false;
+  if (entity.kind === "series") return !lookup.series.get(entity.id)?.title;
+  const episode = lookup.episodes.get(entity.id);
+  return !episode || !lookup.series.get(episode.seriesId)?.title;
 }
 
 export const NO_TITLES: TitleLookup = { movies: new Map(), series: new Map(), episodes: new Map() };

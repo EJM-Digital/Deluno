@@ -18,7 +18,7 @@ import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import { CARD_HEIGHT, Count, CompactTile, JourneyCardView, type CardContext } from "./card";
-import { CARD_GAP_REM, cardsBudget, journeyMode, stationLayout, stationWidths } from "./layout";
+import { boardLayouts, CARD_GAP_REM, cardsBudget, journeyMode, stationWidths } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
 import type { JourneyCard, Stage } from "./journey";
 import { LANES } from "./lanes";
@@ -117,6 +117,8 @@ export function Journey({
   // Stations get width by need: the empty ones shrink to a narrow column, the busy ones share the rest by their cards.
   const widths = useMemo(() => stationWidths(Math.max(0, body.width - 1.5 * rem), stations.map((stage) => grouped[stage].length), rem), [body.width, stations, grouped, rem]);
   const measured = !stacked && widths.every((width) => width > 0);
+  // One card form for the whole board: every station draws what the others draw.
+  const layouts = useMemo(() => boardLayouts(stations.map((stage) => grouped[stage].length), widths.map((width) => width - 0.5 * rem), room, probe.height, rem, mode), [stations, grouped, widths, room, probe.height, rem, mode]);
 
   return (
     <div ref={boxRef} className="flex min-h-0 min-w-0 flex-col" style={budget === undefined ? undefined : { maxHeight: budget }}>
@@ -144,7 +146,7 @@ export function Journey({
             ? null
             : stations.map((stage, index) => {
                 const cards = grouped[stage];
-                const { density, columns } = stationLayout(cards.length, (widths[index] ?? 0) - 0.5 * rem, room, probe.height, rem, mode);
+                const { density, columns } = layouts[index];
                 return (
                   <div key={`cards-${stage}`} data-station={stage} data-cards={density} data-columns={columns} style={{ gridColumn: index + 1, gridRow: 2 }} className={cn("min-h-0 min-w-0 overflow-y-auto px-1 pb-2", SCROLLER)}>
                     <Cards stage={stage} cards={cards} density={density} columns={columns} context={context} />

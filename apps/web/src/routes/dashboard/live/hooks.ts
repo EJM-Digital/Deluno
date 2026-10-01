@@ -106,8 +106,9 @@ export function useTitles(cards: JourneyCard[], extra: ReadonlyArray<Entity | un
       (hit.kind === "movie" ? movieMap : seriesMap).set(hit.id, hit.info);
       matched.set(cardKey, { kind: hit.kind, id: hit.id });
     }
-    return { movies: movieMap, series: seriesMap, episodes: new Map(Object.entries(series.data?.episodes ?? {})), matched };
-  }, [movies.data, series.data, byName.data, searches]);
+    const answered = { movies: wanted.movies.length === 0 || movies.data !== undefined, series: (wanted.series.length === 0 && wanted.episodes.length === 0) || series.data !== undefined };
+    return { movies: movieMap, series: seriesMap, episodes: new Map(Object.entries(series.data?.episodes ?? {})), matched, answered };
+  }, [movies.data, series.data, byName.data, searches, wanted]);
 }
 
 const NO_EXTRA: ReadonlyArray<Entity | undefined> = [];
