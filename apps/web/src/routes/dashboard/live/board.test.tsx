@@ -589,7 +589,7 @@ describe("the right column's layout (#1098)", () => {
   const connection = (kind: string, name: string, countToday: number) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0 }) as never;
   it("goes three across at most, and fewer in a narrow column", () => {
     expect(tileColumns(448, 16)).toBe(3);
-    expect(tileColumns(352, 16)).toBe(3);
+    expect(tileColumns(352, 16)).toBe(2);
     expect(tileColumns(900, 16)).toBe(MAX_TILE_COLUMNS);
     expect(tileColumns(200, 16)).toBe(1);
   });

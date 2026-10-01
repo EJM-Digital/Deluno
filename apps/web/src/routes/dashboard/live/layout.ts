@@ -107,7 +107,7 @@ export function posterLayout(width: number, height: number, remPx: number, gap =
 
 
 /** The narrowest a tile may be in the right column, in rem. */
-export const MIN_TILE_REM = 6;
+export const MIN_TILE_REM = 7;
 
 const TILE_GAP_REM = 0.375;
 const TILE_PAD_X_REM = 1.125;
