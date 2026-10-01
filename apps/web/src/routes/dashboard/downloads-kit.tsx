@@ -115,6 +115,9 @@ export async function send(path: string, failure: string, init: { method?: strin
  */
 export const UNIFORM_BUTTON = "h-7 w-[7.5rem] shrink-0 justify-center px-1.5";
 
+/** The one size of button on a card of the Live board: every card puts two side by side in the same place, so they must all be the same box. */
+export const CARD_BUTTON = "h-[calc(var(--type-caption)*2)] w-[5.25rem] shrink-0 justify-center px-1 text-[length:var(--type-caption)]";
+
 /** A small button with its own busy spinner and a unique accessible name. */
 export function ActionButton({
   label,
@@ -123,7 +126,8 @@ export function ActionButton({
   state,
   onClick,
   variant = "outline",
-  uniform = false
+  uniform = false,
+  card = false
 }: {
   label: string;
   /** Names the button for assistive tech: "Retry Sintel (2010)", never just "Retry". */
@@ -134,17 +138,19 @@ export function ActionButton({
   variant?: "outline" | "ghost" | "destructive";
   /** The one size every button on the Live board and in the bell shares: see UNIFORM_BUTTON. A "ghost" action keeps the box and softens its text. */
   uniform?: boolean;
+  /** The smaller box every card on the Live board shares (CARD_BUTTON). */
+  card?: boolean;
 }) {
   const working = state.busy === busyKey;
   return (
     <Button
       type="button"
-      variant={uniform && variant === "ghost" ? "outline" : variant}
+      variant={(uniform || card) && variant === "ghost" ? "outline" : variant}
       size="sm"
       aria-label={name}
       disabled={state.busy !== null}
       onClick={onClick}
-      className={uniform ? cn(UNIFORM_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : undefined}
+      className={card ? cn(CARD_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : uniform ? cn(UNIFORM_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : undefined}
     >
       {working ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" /> : null}
       {label}

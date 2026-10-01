@@ -173,7 +173,8 @@ export function FitList({
   moreLabel = (hidden) => `and ${hidden.toLocaleString("en-AU")} more`,
   extra = 0,
   isHeading,
-  fill = false
+  fill = false,
+  columns = false
 }: {
   rows: ReactElement[];
   wrap?: (shown: ReactElement[]) => ReactNode;
@@ -184,6 +185,8 @@ export function FitList({
   isHeading?: (index: number) => boolean;
   /** Shares the room left over after the whole rows between them, so the list fills its panel. Rows that stretch must lay their content out to fit. */
   fill?: boolean;
+  /** The rows sit in a grid of columns: the number shown is a whole number of rows of the grid, so a row never ends with a hole. */
+  columns?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState<number | null>(null);
@@ -200,8 +203,14 @@ export function FitList({
       return;
     }
     const bottoms = marked.map((element) => element.getBoundingClientRect().bottom - boxTop);
-    setFit(rowsThatFit(bottoms, box.getBoundingClientRect().height, MORE_LINE_PX, isHeading, extra > 0));
-  }, [rows.length, isHeading, extra]);
+    let count = rowsThatFit(bottoms, box.getBoundingClientRect().height, MORE_LINE_PX, isHeading, extra > 0);
+    if (columns && count < rows.length) {
+      const firstTop = marked[0].getBoundingClientRect().top;
+      const across = marked.filter((element) => Math.abs(element.getBoundingClientRect().top - firstTop) < 1).length;
+      if (across > 1) count -= count % across;
+    }
+    setFit(count);
+  }, [rows.length, isHeading, extra, columns]);
 
   // Whenever the rows change, show them all again and measure before anything is painted.
   useLayoutEffect(() => setFit(null), [signature, extra]);

@@ -248,6 +248,18 @@ describe("stuck downloads", () => {
     expect(counts.downloading).toBe(1);
   });
 
+  it("makes one card of every problem with the same title, led by the most urgent, and counts the folded problems once", () => {
+    const grab = (id: string, release: string, torrent: string) => ({ ...(dispatch as object), id, entityType: "episode", entityId: "e9", releaseName: release, torrentHashOrItemId: torrent }) as never;
+    const caseFor = (id: string, release: string, dispatchId: string) => ({ id, mediaType: "series", title: release, failureKind: "importFailed", summary: "Import failed: release refused", recommendedAction: "review", detailsJson: JSON.stringify({ DispatchId: dispatchId }), detectedUtc: iso(-3_600_000) }) as never;
+    // Two sent downloads for one episode, each with its own import case that needs a person.
+    const cards = buildJourney({ ...base, dispatches: [grab("d9", "Show.S01E02.720p", "t9"), grab("d10", "Show.S01E02.1080p", "t10")], cases: [caseFor("r1", "Show.S01E02.720p", "d9"), caseFor("r2", "Show.S01E02.1080p", "d10")] });
+    const needs = byStage(cards).needs;
+    expect(needs).toHaveLength(1);
+    expect(needs[0].alsoProblems).toHaveLength(2);
+    // The summary counts problems, so the lane says one title for the two problems.
+    expect(laneCounts(byStage(cards), undefined, 2).needs).toBe(1);
+  });
+
   it("finds the library title from the sent download, and keeps the release as the quiet line", () => {
     const [card] = buildJourney({ ...base, queue: [queue({ status: "downloading", speedMbps: 2 })], dispatches: [dispatch] });
     expect(card.entity).toEqual({ kind: "movie", id: "m1" });

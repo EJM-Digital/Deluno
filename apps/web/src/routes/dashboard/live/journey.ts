@@ -20,9 +20,9 @@ import type { LiveProgress, WorkItem } from "../live-events";
 import { plainReason } from "./plain";
 
 /** `needs` is the first lane: every problem a person has to settle (a download that has stopped, an import that did not finish, a hand-off the processor refused). */
-export type Stage = "needs" | "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
+export type Stage = "needs" | "requested" | "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
-export const STAGES: Stage[] = ["needs", "searching", "grabbed", "downloading", "processor", "importing", "imported"];
+export const STAGES: Stage[] = ["needs", "requested", "searching", "grabbed", "downloading", "processor", "importing", "imported"];
 
 /** What a card is about in the library: a film, a show (a season pack or a whole show) or one episode. */
 export type EntityKind = "movie" | "series" | "episode";
@@ -65,6 +65,8 @@ export interface JourneyCard {
   canSearchAgain?: boolean;
   /** The processor hand-off, when it failed and a person has to Retry or Give up. */
   failedHandoffId?: string;
+  /** Other problems with the same title, folded into this card so a title is one card: each in plain words. The primary action settles this card's own problem first. */
+  alsoProblems?: string[];
   /** Where to act on it when its title is not known. */
   to: string;
 }
@@ -374,7 +376,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     });
   }
 
-  // Searches: running now, or the last one if it was recent.
+  // Searches that are running now. The last one that finished is not a card: it is a line in the quiet column, because nothing is searching.
   const automation = summary?.automation;
   for (const library of automation?.libraries ?? []) {
     if (library.status !== "running") continue;
@@ -387,23 +389,45 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       to: "/search-cycles"
     });
   }
-  const cycle = automation?.lastSearchCycle;
-  if (cycle && !cards.some((card) => card.key === `search:${cycle.libraryId}`)) {
-    const finished = Date.parse(cycle.completedUtc ?? cycle.startedUtc);
-    if (Number.isFinite(finished) && now - finished < 24 * 3_600_000) {
-      cards.push({
-        key: `search:last:${cycle.libraryId}`,
-        stage: "searching",
-        title: cycle.libraryName,
-        state: cycle.queued > 0 ? { tone: "ok", label: `Grabbed ${cycle.queued}` } : { tone: "idle", label: "Nothing new to grab" },
-        quality: `${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.skipped.toLocaleString("en-AU")} passed over`,
-        at: cycle.completedUtc ?? cycle.startedUtc,
-        to: "/search-cycles"
-      });
+  return oneCardPerTitle(cards);
+}
+
+/** How urgent a problem card is to settle, lowest first: a refused hand-off, a failed import, a stopped download, an import case to review. */
+export function needsRank(card: JourneyCard): number {
+  return card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 3 : 2;
+}
+
+/**
+ * One card per title. Several problems with the same film or episode (a download that stopped and an import case for it, a
+ * refused hand-off and a stopped download) are one card in Needs you: the most urgent problem is the card's reason and
+ * action, and the rest are counted and listed in its tooltip.
+ */
+export function oneCardPerTitle(cards: JourneyCard[]): JourneyCard[] {
+  const groups = new Map<string, JourneyCard[]>();
+  const out: JourneyCard[] = [];
+  for (const card of cards) {
+    if (card.stage !== "needs") {
+      out.push(card);
+      continue;
+    }
+    const key = card.entity ? `${card.entity.kind}:${card.entity.id}` : card.release ? `release:${releaseKey(card.release)}` : card.key;
+    const known = groups.get(key);
+    if (known) known.push(card);
+    else {
+      groups.set(key, [card]);
+      out.push(card);
     }
   }
-
-  return cards;
+  return out.map((card) => {
+    if (card.stage !== "needs") return card;
+    const key = card.entity ? `${card.entity.kind}:${card.entity.id}` : card.release ? `release:${releaseKey(card.release)}` : card.key;
+    const group = groups.get(key);
+    if (!group || group.length < 2) return card;
+    const ordered = [...group].sort((a, b) => needsRank(a) - needsRank(b));
+    const [primary, ...rest] = ordered;
+    const said = (item: JourneyCard) => item.reason ?? item.state.label;
+    return { ...primary, alsoProblems: [said(primary), ...rest.map(said)] };
+  });
 }
 
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
@@ -423,7 +447,6 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   grouped.imported.sort((a, b) => Date.parse(b.at ?? "") - Date.parse(a.at ?? ""));
   grouped.downloading.sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
   // In the first lane a refused hand-off and a failed import come first (one click each), then the stopped downloads (Search again), then the import cases to review.
-  const needsRank = (card: JourneyCard) => (card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 3 : 2);
   grouped.needs.sort((a, b) => needsRank(a) - needsRank(b) || toneRank[a.state.tone] - toneRank[b.state.tone]);
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
@@ -439,10 +462,12 @@ export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: Dashb
   const downloads = summary?.downloads;
   const pick = (cards: JourneyCard[], fromSummary: number | undefined) => Math.max(cards.length, fromSummary ?? 0);
   return {
+    requested: grouped.requested.length,
     searching: grouped.searching.length,
     grabbed: pick(grouped.grabbed, downloads?.queued),
     downloading: pick(grouped.downloading, downloads?.active),
-    needs: pick(grouped.needs, needsYou ?? downloads?.stalled),
+    // The summary counts problems; a title with two problems is one card, so what was folded away is taken off its count.
+    needs: pick(grouped.needs, (needsYou ?? downloads?.stalled ?? 0) - grouped.needs.reduce((sum, card) => sum + (card.alsoProblems ? card.alsoProblems.length - 1 : 0), 0)),
     processor: pick(grouped.processor, downloads ? downloads.processing + downloads.waitingForProcessor : undefined),
     importing: pick(grouped.importing, downloads?.importReady),
     imported: pick(grouped.imported, summary?.pipeline?.today.imported)

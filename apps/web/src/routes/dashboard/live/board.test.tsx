@@ -232,7 +232,7 @@ describe("the journey board", () => {
     render(board([card({}), card({ key: "c1:b", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "info", label: "Being cleaned" } })]));
     const downloading = screen.getByRole("group", { name: "Downloading" });
     expect(within(downloading).getByText("Sintel 2010 1080p")).toBeInTheDocument();
-    expect(within(downloading).getByText("Bluray 1080p · 1.9 GB")).toBeInTheDocument();
+    expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
     expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "With the processor" })).getByText("NZBgeek → Deluge → Cleaner")).toBeInTheDocument();
     // The empty stages are not lanes: one Quiet column names each of them in full.
@@ -251,7 +251,8 @@ describe("the journey board", () => {
     ], [], named));
     const downloading = screen.getByRole("group", { name: "Downloading" });
     expect(within(downloading).getByText("Sintel (2010)")).toBeInTheDocument();
-    expect(within(downloading).getByText("Sintel.2010.1080p.BluRay")).toBeInTheDocument();
+    // The release as the indexer named it is the tooltip of the title, not a second line.
+    expect(within(downloading).getByTitle("Sintel.2010.1080p.BluRay")).toHaveTextContent("Sintel (2010)");
     expect(within(downloading).getByText("Say Yes to the Dress S04E02")).toBeInTheDocument();
     // A title that no longer exists keeps the release's own name and gets no failing request.
     expect(within(downloading).getByText("Nobody 2020")).toBeInTheDocument();
@@ -287,7 +288,7 @@ describe("the journey board", () => {
     expect(buttons.length).toBeGreaterThanOrEqual(5);
     const sizeOf = (element: HTMLElement) => element.className.split(/s+/).filter((name) => /^(h|w)-/.test(name) && !/^h-3.5|^w-3.5/.test(name)).sort().join(" ");
     expect(new Set(buttons.map(sizeOf)).size).toBe(1);
-    for (const button of buttons) expect(button.className).toContain("w-[7.5rem]");
+    for (const button of buttons) expect(button.className).toContain("w-[5.25rem]");
     // The quiet action is boxed like the others, only softer.
     expect(screen.getByRole("button", { name: "Give up on Metropolis (1927)" }).className).toContain("border");
   });
