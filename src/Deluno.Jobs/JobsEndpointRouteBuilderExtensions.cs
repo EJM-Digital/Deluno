@@ -91,16 +91,49 @@ public static class JobsEndpointRouteBuilderExtensions
             string? pageToken,
             string? relatedEntityType,
             string? relatedEntityId,
+            string? type,
+            string? title,
+            string? file,
+            string? source,
+            string? sourceName,
+            string? outcome,
+            string? since,
+            string? until,
+            string? reason,
             IActivityFeedRepository repository,
             CancellationToken cancellationToken) =>
         {
+            var query = new ActivityQuery(
+                Type: Clean(type),
+                Title: Clean(title),
+                File: Clean(file),
+                Source: Clean(source),
+                SourceName: Clean(sourceName),
+                Outcome: Clean(outcome),
+                SinceUtc: ParseInstant(since),
+                UntilUtc: ParseInstant(until),
+                ReasonGroup: Clean(reason),
+                RelatedEntityType: Clean(relatedEntityType),
+                RelatedEntityId: Clean(relatedEntityId));
             var page = await repository.ListActivityPageAsync(
                 new PageRequest(pageSize ?? 50, pageToken),
-                relatedEntityType,
-                relatedEntityId,
+                query,
                 cancellationToken);
             return Results.Ok(page);
         });
+
+        // The words each filter on the Activity history offers, so the screen never carries a second list (#1100).
+        endpoints.MapGet("/api/activity/filters", () => Results.Ok(new
+        {
+            types = ActivityHistory.Types.All.Select(value => new { value, label = ActivityHistory.Types.Label(value) }),
+            sources = ActivityHistory.Sources.All.Select(value => new { value, label = ActivityHistory.Sources.Label(value) }),
+            outcomes = new[]
+            {
+                new { value = ActivityHistory.Outcomes.Good, label = "Went well" },
+                new { value = ActivityHistory.Outcomes.Problem, label = "Went wrong" }
+            },
+            reasons = TurnedDownGroups.All.Select(value => new { value, label = TurnedDownGroups.Label(value) })
+        }));
 
         // Today's Activity by the hour (#1096): real counts, not the newest page.
         endpoints.MapGet("/api/activity/by-hour", async (
@@ -263,6 +296,13 @@ public static class JobsEndpointRouteBuilderExtensions
     /// a raw hour count a caller would have to work out themselves. Anything
     /// else, including a missing window, is the safe default.
     /// </summary>
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static DateTimeOffset? ParseInstant(string? value)
+        => DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
+
     private static int NormalizeStatsWindowHours(string? window) => window?.Trim().ToLowerInvariant() switch
     {
         "7d" => 24 * 7,

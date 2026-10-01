@@ -17,6 +17,17 @@ public interface IActivityFeedRepository
         string? relatedEntityId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// The Activity history (#1100): newest first, paged, filtered by kind, title, file, source, outcome,
+    /// date range and (for turned-down releases) the reason group. Every filter combines with the rest.
+    /// </summary>
+    // Default falls back to the entity filters so a test double need not implement it; SqliteJobStore does the real work.
+    Task<Page<ActivityEventItem>> ListActivityPageAsync(
+        PageRequest request,
+        ActivityQuery query,
+        CancellationToken cancellationToken)
+        => ListActivityPageAsync(request, query.RelatedEntityType, query.RelatedEntityId, cancellationToken);
+
     Task<ActivityEventItem> RecordActivityAsync(
         string category,
         string message,

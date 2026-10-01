@@ -16,6 +16,27 @@ public sealed record ActivityEventItem(
     /// <summary>The event kind in plain words (#1086); screens show this, never <see cref="Category"/>.</summary>
     public string Label => Deluno.Contracts.ActivityEventLabels.For(Category);
 
+    /// <summary>The title (film, show, season or episode) the event concerns, when its writer named one (#1100).</summary>
+    public string? Title { get; init; }
+
+    /// <summary>The file path or paths (one per line) the event concerns (#1100).</summary>
+    public string? FilePath { get; init; }
+
+    /// <summary>The name of the indexer, download client, processor or connection it came from (#1100).</summary>
+    public string? SourceName { get; init; }
+
+    /// <summary>For a turned-down release, the plain group of its reason (#1100).</summary>
+    public string? ReasonGroup { get; init; }
+
+    /// <summary>The plain kind of event the Activity filter offers (#1100).</summary>
+    public string Type => Deluno.Contracts.ActivityHistory.TypeOf(Category);
+
+    /// <summary>indexer, client, processor or connection when an outside thing was involved (#1100).</summary>
+    public string? Source => Deluno.Contracts.ActivityHistory.SourceOf(Category);
+
+    /// <summary>"good" or "problem" (#1100).</summary>
+    public string Outcome => Deluno.Contracts.ActivityHistory.OutcomeOf(Category);
+
     /// <summary>
     /// A decision explanation written before #1086 starts with its scope code
     /// ("series.season-search: Best feed candidate is ..."); the reason is what

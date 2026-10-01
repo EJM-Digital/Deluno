@@ -76,9 +76,20 @@ public static class PlatformEndpointRouteBuilderExtensions
         recycleBin.MapPost("/{id}/restore", async (
             string id,
             IRecycleBinService service,
+            IActivityFeedRepository activity,
             CancellationToken cancellationToken) =>
         {
             var result = await service.RestoreAsync(id, cancellationToken);
+            if (result.Success && result.Item is { } restored)
+            {
+                // A file put back is written once, with where it went (#1100).
+                await activity.RecordActivityAsync(
+                    "recycle.restored",
+                    $"Restored {Path.GetFileName(restored.OriginalPath)} from the recycle bin to {restored.OriginalPath}.",
+                    System.Text.Json.JsonSerializer.Serialize(new { path = restored.OriginalPath, libraryName = restored.LibraryName }),
+                    null, "recycle-bin", restored.Id, cancellationToken);
+            }
+
             return result.Success
                 ? Results.Ok(result)
                 : Results.Conflict(result);
@@ -87,9 +98,19 @@ public static class PlatformEndpointRouteBuilderExtensions
         recycleBin.MapDelete("/{id}", async (
             string id,
             IRecycleBinService service,
+            IActivityFeedRepository activity,
             CancellationToken cancellationToken) =>
         {
             var result = await service.PermanentlyDeleteAsync(id, cancellationToken);
+            if (result.Success && result.Item is { } gone)
+            {
+                await activity.RecordActivityAsync(
+                    "recycle.deleted",
+                    $"Deleted {Path.GetFileName(gone.OriginalPath)} for good from the recycle bin, as you asked.",
+                    System.Text.Json.JsonSerializer.Serialize(new { path = gone.OriginalPath, libraryName = gone.LibraryName }),
+                    null, "recycle-bin", gone.Id, cancellationToken);
+            }
+
             return result.Success
                 ? Results.Ok(result)
                 : Results.NotFound(result);
