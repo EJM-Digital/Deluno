@@ -32,7 +32,7 @@ export function stationsFor(hasProcessor: boolean): Stage[] {
 }
 
 /** The space under the lanes inside the card, in px. */
-const LANES_BOTTOM_PX = 4;
+const LANES_BOTTOM_PX = 10;
 
 function Station({ stage, count, usual }: { stage: Stage; count: number; usual?: string }) {
   const lane = LANES[stage];
@@ -64,7 +64,8 @@ export function Journey({
   usual,
   by,
   lastArrival,
-  budget
+  budget,
+  fill = false
 }: {
   grouped: Record<Stage, JourneyCard[]>;
   counts: Record<Stage, number>;
@@ -77,7 +78,9 @@ export function Journey({
   by: number | undefined;
   /** The newest title in the library, for the line that says nothing is moving. */
   lastArrival: { title: string; at: string } | null;
-  /** The tallest the whole journey may be, in pixels. It is only a ceiling: the journey is as tall as its cards need, and gives the rest back. */
+  /** The journey fills its grid cell (the shared page grid): its lanes take the height left under the stations and the rows that fit are counted from it. */
+  fill?: boolean;
+  /** Without a grid cell (the page scrolls): the tallest the whole journey may be, in pixels. It is only a ceiling. */
   budget?: number;
 }): ReactElement {
   const stations = useMemo(() => stationsFor(hasProcessor), [hasProcessor]);
@@ -86,7 +89,7 @@ export function Journey({
   const rem = useRemPx();
   const stacked = journeyMode(body.width, n, rem) === "stacked";
   const onTheirWay = stations.reduce((sum, stage) => sum + counts[stage], 0);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const [boxRef, box] = useElementSize<HTMLDivElement>();
   const lanesRef = useRef<HTMLDivElement>(null);
   // What sits above the lanes (header, stations): measured, so the rows that fit the budget are counted in real pixels.
   const [chrome, setChrome] = useState(0);
@@ -97,7 +100,8 @@ export function Journey({
     const next = Math.round(lanes.getBoundingClientRect().top - box.getBoundingClientRect().top);
     if (next !== chrome) setChrome(next);
   });
-  const plan = lanePlan(stations.map((stage) => grouped[stage].length), budget === undefined || stacked ? undefined : cardsBudget(budget, chrome + LANES_BOTTOM_PX));
+  const room = stacked ? undefined : cardsBudget(fill ? (box.height > 0 ? box.height : undefined) : budget, chrome + LANES_BOTTOM_PX);
+  const plan = lanePlan(stations.map((stage) => grouped[stage].length), room);
   const { rows } = plan;
   /** The cards a station draws: all that fit, less the last row when the "and N more" line takes it. */
   const shownIn = (count: number) => (plan.slot && count > rows ? rows - 1 : rows);
@@ -115,7 +119,7 @@ export function Journey({
   const everyCard = stations.flatMap((stage) => grouped[stage]).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
   return (
-    <div ref={boxRef} className="flex min-h-0 min-w-0 flex-col" style={budget === undefined ? undefined : { maxHeight: budget }}>
+    <div ref={boxRef} className={cn("flex min-h-0 min-w-0 flex-col", fill && "h-full")} style={fill || budget === undefined ? undefined : { maxHeight: budget }}>
       <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
         <div ref={bodyRef} className={cn("lj relative min-h-0 flex-1", stacked && "lj-stack overflow-y-auto", !stacked && onTheirWay > 0 && "lj-run")} style={{ ["--lj-n" as string]: n } satisfies CSSProperties}>
           {stacked ? (
@@ -137,7 +141,7 @@ export function Journey({
                 <div aria-hidden className="lj-rail"><i /></div>
                 {stations.map((stage) => <Station key={stage} stage={stage} count={counts[stage]} usual={usual[stage]} />)}
               </div>
-              <div ref={lanesRef} className="lj-lanes" style={{ height: plan.height, marginBottom: LANES_BOTTOM_PX }}>
+              <div ref={lanesRef} className="lj-lanes" style={{ height: fill && room !== undefined ? Math.max(plan.height, room) : plan.height, marginBottom: LANES_BOTTOM_PX }}>
                 {stations.slice(1).map((stage, index) => <div key={`bg-${stage}`} aria-hidden className="lj-lane-bg" style={{ left: `${((index + 1) * 100) / n}%` }} />)}
                 {onTheirWay === 0 ? <p className="lj-calm">{calmLine(lastArrival)}</p> : null}
                 {everyCard.map((card) => {

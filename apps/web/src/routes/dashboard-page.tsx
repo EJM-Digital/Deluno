@@ -127,7 +127,7 @@ function useHeaderSlot(): HTMLElement | null {
  * On a wide screen the page is exactly as tall as the window, so a tab that has
  * too much to show scrolls inside its own panels rather than pushing the page
  * down. On a phone it flows and scrolls as any page does, and a window shorter
- * than 720px scrolls rather than crushing the panels.
+ * than 600px scrolls rather than crushing the panels.
  */
 function useFitToScreen(element: HTMLDivElement | null) {
   useLayoutEffect(() => {
@@ -140,7 +140,7 @@ function useFitToScreen(element: HTMLDivElement | null) {
       const top = element.getBoundingClientRect().top + window.scrollY;
       const main = element.closest("main");
       const below = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
-      element.style.height = `${Math.max(720, Math.floor(window.innerHeight - top - below))}px`;
+      element.style.height = `${Math.max(600, Math.floor(window.innerHeight - top - below))}px`;
     };
     fit();
     window.addEventListener("resize", fit);

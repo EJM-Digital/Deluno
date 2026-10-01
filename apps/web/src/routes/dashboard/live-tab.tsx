@@ -19,8 +19,8 @@
  * storage and system problems are on System.
  */
 import type { JSX } from "react";
-import { useEffect, useMemo, useRef } from "react";
-import { journeyBudget, pageLayout } from "./live/layout";
+import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { GRID_AREAS, GRID_COLUMNS, gridRows, LOW_COLUMNS, pageLayout, stackedJourneyBudget } from "./live/layout";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
@@ -38,7 +38,7 @@ import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles 
 import { SourcesCard } from "./live/sources-card";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf } from "./live/motion";
-import { arrivedHeading, LATEST_ARRIVALS_HEADING, SHELF_ROW_HEIGHT_CSS, Shelf } from "./live/shelf";
+import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
 import { entityFromRelated, type Entity } from "./live/titles";
@@ -138,15 +138,16 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
 
   const root = useRef<HTMLDivElement>(null);
   const [pageRef, page] = useElementSize<HTMLDivElement>();
-  const [restRef, rest] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   const layout = pageLayout(page.width, rem);
   const side = layout.sideBySide;
-  const [lowRef, low] = useElementSize<HTMLDivElement>();
-  const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight, low.height > 0 ? low.height + 16 : 0);
-  // The right column (beside the page or under it): the Sources map and Activity share its height; Activity's rows go to one line when it is short.
-  const [sideRef, sideBox] = useElementSize<HTMLDivElement>();
-  const compactActivity = side && sideBox.height > 0 && sideBox.height < 50 * rem;
+  // The one shared grid (beside the right column): its rows come from the height the tab itself has.
+  const [gridRef, grid] = useElementSize<HTMLDivElement>();
+  // The mockup's row heights are shares of the window's height (the page is fit to the window beside the right column), re-read whenever the grid is resized.
+  const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
+  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height);
+  // Activity's rows go to one line when its row is short.
+  const compactActivity = side && rows.low < 12.5 * rem;
   useFlyToShelf(root, cards, items);
 
   function dismissOnboarding() {
@@ -175,33 +176,37 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className={cn("grid gap-[var(--grid-gap)]", side && "min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(22rem,28%,38rem)]")}>
-        <div className="flex min-h-0 min-w-0 flex-col gap-[var(--grid-gap)]">
+      <div
+        ref={gridRef}
+        data-live-grid={side ? "shared" : "stacked"}
+        className={cn("gap-[var(--grid-gap)]", side ? "grid min-h-0 flex-1" : "flex flex-col")}
+        style={side ? ({ gridTemplateColumns: GRID_COLUMNS, gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS } satisfies CSSProperties) : undefined}
+      >
+        <div className={cn("min-h-0 min-w-0", side && "[&>.lb-now]:h-full [&>.lb-now]:grid-rows-[minmax(0,1fr)] [&>.lb-now>*]:h-full [&>.lb-now>*]:min-h-0 [&>.lb-now>*]:overflow-hidden")} style={side ? { gridArea: "now" } : undefined}>
           <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} across={layout.band === "across"} />
-          <div ref={restRef} className={cn("flex min-h-0 flex-col gap-[var(--grid-gap)]", side && "flex-1")}>
-            <Journey budget={budget} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
-            <div ref={lowRef} className="grid min-h-0 shrink-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]" style={side ? { height: SHELF_ROW_HEIGHT_CSS } : undefined}>
-              <Shelf items={shelfItems} titles={titles} newest={newestArrivals} heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
-              <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
-            </div>
-          </div>
         </div>
-
-        <div ref={sideRef} className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "flex flex-col")}>
-          <div className={cn("flex min-h-0 flex-col", side ? "flex-[5_1_0%]" : "h-[26rem]")}>
-            <SourcesCard
-              indexers={data.indexers ?? NO_ROWS}
-              scoreboard={data.scoreboard}
-              summary={summary}
-              now={now}
-              clientRows={summary?.downloads?.clients ?? NO_ROWS}
-              clients={data.clients ?? NO_ROWS}
-              speeds={clientSpeeds}
-              seeding={seeding}
-              connections={connections.connections}
-            />
-          </div>
-          {side ? <div className="flex min-h-0 flex-[3_1_0%] flex-col"><ActivityStream rows={latest} titles={titles} dense={compactActivity} /></div> : <div className="flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
+        <div className="flex min-h-0 min-w-0 flex-col" style={side ? { gridArea: "board" } : undefined}>
+          <Journey fill={side} budget={side ? undefined : stackedJourneyBudget(windowHeight)} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
+        </div>
+        <div className="grid min-h-0 min-w-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
+          <Shelf items={shelfItems} titles={titles} newest={newestArrivals} heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
+          <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
+        </div>
+        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "src" } : undefined}>
+          <SourcesCard
+            indexers={data.indexers ?? NO_ROWS}
+            scoreboard={data.scoreboard}
+            summary={summary}
+            now={now}
+            clientRows={summary?.downloads?.clients ?? NO_ROWS}
+            clients={data.clients ?? NO_ROWS}
+            speeds={clientSpeeds}
+            seeding={seeding}
+            connections={connections.connections}
+          />
+        </div>
+        <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "act" } : undefined}>
+          <ActivityStream rows={latest} titles={titles} dense={compactActivity} />
         </div>
       </div>
     </div>

@@ -2,8 +2,7 @@
  * Arrived today (#1098): the posters of what landed in the library today, newest first,
  * with the quality it came in at and, for an upgrade, the quality it replaced. The
  * header says how many titles, how many were upgrades and how much space they added.
- * Posters keep their 2:3 shape and fill the shelf: the fewest rows that show every
- * title (one row of tall posters when there are few), more rows only when there are many. The newest one has
+ * Posters keep their 2:3 shape and fill the shelf: one row sized from the shelf's height (at most 130px wide): more across rather than bigger, never a partial second row. The newest one has
  * a green ring for a few seconds; one that has just been imported flies in from the
  * journey (see `useFlyToShelf`) and simply appears with reduced motion.
  */
@@ -17,8 +16,8 @@ import { LiveCard as Panel } from "./live-card";
 import "./shelf.css";
 import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
-import { useElementSize, useRemPx } from "./hooks";
-import { MAX_POSTER_REM, posterLayout } from "./layout";
+import { useElementSize } from "./hooks";
+import { MAX_POSTER_PX, MIN_POSTER_PX, POSTER_CAPTION_PX, POSTER_GAP_PX, posterLayout } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
@@ -36,15 +35,8 @@ export function arrivedWhen(at: string, now = Date.now()): string {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
-/**
- * The size of a poster, worked out by the browser from the box it sits in (a container query unit), so a poster can never
- * be taller than its row whatever the timing of a measurement: the row is a share of the box, the poster the row less its
- * caption, 2:3. JavaScript only decides how many rows and how many posters to draw.
- */
-export const POSTER_WIDTH_CSS = "min(var(--poster-cap, 7.5rem), 7.5rem, max(2.5rem, calc((((100cqh - (var(--poster-rows) - 1) * var(--poster-gap)) / var(--poster-rows)) - var(--poster-caption)) * 2 / 3)))";
-
-/** The height of the row under the journey: the shelf is its header and one row of posters, as in the mockup, and the page gives all the rest to the journey. */
-export const SHELF_ROW_HEIGHT_CSS = `min(calc(var(--list-header-height) + ${MAX_POSTER_REM * 1.5 + 2.25 + 1.4}rem), 42%)`;
+/** The size of a poster from the box it sits in (a container query unit): one row, 2:3, the box less its caption, between 40px and 130px, so it can never be taller than the shelf whatever the timing of a measurement. */
+export const POSTER_WIDTH_CSS = `min(${MAX_POSTER_PX}px, max(${MIN_POSTER_PX}px, calc((100cqh - var(--poster-caption)) * 2 / 3)))`;
 
 /** "12 titles · 4 upgraded · 54 GB added": what today has brought in. */
 export function arrivedHeading(titles: number, upgraded: number, bytes: number): string {
@@ -85,14 +77,13 @@ function Poster({ group, isNew }: { group: ArrivalGroup; isNew: boolean }) {
 
 export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]; titles: TitleLookup; /** Keys that have just arrived: the newest has the ring. */ newest: ReadonlySet<string>; heading: string }) {
   const [boxRef, box] = useElementSize<HTMLDivElement>();
-  const rem = useRemPx();
   // The box is measured inside its padding, so the posters across are worked out from the real space, not an assumed padding.
   // Until the shelf has been measured every arrival is drawn.
   const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
-  const layout = posterLayout(box.width, box.height, rem, groups.length);
+  const layout = posterLayout(box.width, box.height);
   const shown = box.width > 0 ? groups.slice(0, layout.capacity) : groups;
   return (
-    <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="lsh min-h-[12rem]">
+    <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="lsh min-h-[11rem]">
       {/* The measured box is always drawn (never swapped in later), so it is observed from the first render and the posters follow every size change. */}
       <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] py-1.5">
         <div ref={boxRef} className="min-h-0 flex-1 overflow-hidden [container-type:size]">
@@ -101,7 +92,7 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
           ) : (
             <ul
               className="lsh-posters"
-              style={{ ["--poster-rows" as string]: layout.rows, ["--poster-gap" as string]: "0.875rem", ["--poster-caption" as string]: "2.25rem", ["--poster-cap" as string]: box.width > 0 ? `${layout.width}px` : undefined, ["--poster-w" as string]: POSTER_WIDTH_CSS }}
+              style={{ ["--poster-gap" as string]: `${POSTER_GAP_PX}px`, ["--poster-caption" as string]: `${POSTER_CAPTION_PX}px`, ["--poster-w" as string]: POSTER_WIDTH_CSS }}
             >
               {shown.map((group) => <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} />)}
             </ul>

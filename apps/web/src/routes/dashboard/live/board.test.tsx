@@ -83,34 +83,24 @@ describe("the layout rules", () => {
     expect(journeyMode(0, 5, 16)).toBe("columns");
   });
 
-  it("sizes posters to the shelf: 2:3, one row on a short shelf, more rows on a tall one, never absurdly small or large", () => {
-    const short = posterLayout(900, 290, 16);
-    const tall = posterLayout(900, 700, 16);
-    expect(short.rows).toBe(1);
-    expect(tall.rows).toBeGreaterThan(short.rows);
+  it("sizes posters as the mockup does: one row, 2:3, from the shelf's height, between 64px and 130px, more across rather than bigger", () => {
+    const short = posterLayout(900, 150);
+    const tall = posterLayout(900, 400);
     for (const layout of [short, tall]) {
+      expect(layout.rows).toBe(1);
       expect(layout.height).toBe(Math.round(layout.width * 1.5));
-      expect(layout.width).toBeGreaterThanOrEqual(4.4 * 16);
-      expect(layout.width).toBeLessThanOrEqual(9 * 16);
-      expect(layout.capacity).toBe(layout.rows * layout.perRow);
+      expect(layout.width).toBeGreaterThanOrEqual(40);
+      expect(layout.width).toBeLessThanOrEqual(130);
+      expect(layout.capacity).toBe(layout.perRow);
     }
-    // The rows that are drawn really fit the height they were given.
-    expect(tall.rows * tall.itemHeight + (tall.rows - 1) * 14).toBeLessThanOrEqual(700);
-    // A wider shelf holds more across.
-    expect(posterLayout(1800, 290, 16).perRow).toBeGreaterThan(short.perRow);
-  });
-
-  it("fills the shelf: few posters are one row of the tallest posters, many take more rows only when needed", () => {
-    const few = posterLayout(1100, 454, 16, 5);
-    expect(few.rows).toBe(1);
-    // A poster is never bigger than the mockup's (7.5 rem): a few posters sit in one row, and more show across rather than bigger.
-    expect(few.width).toBe(7.5 * 16);
-    expect(few.capacity).toBeGreaterThanOrEqual(5);
-    const many = posterLayout(1100, 454, 16, 30);
-    expect(many.rows).toBeGreaterThan(1);
-    expect(many.rows * many.itemHeight + (many.rows - 1) * 14).toBeLessThanOrEqual(454);
-    const mid = posterLayout(600, 454, 16, 9);
-    expect(mid.capacity).toBeGreaterThanOrEqual(9);
+    // The height less the 36px caption gives the poster: (150 - 36) * 2/3 = 76.
+    expect(short.width).toBe(76);
+    expect(tall.width).toBe(130);
+    expect(posterLayout(10, 20).width).toBe(40);
+    // A wider shelf holds more across, not bigger posters.
+    expect(posterLayout(1800, 400).perRow).toBeGreaterThan(posterLayout(900, 400).perRow);
+    expect(posterLayout(1800, 400).width).toBe(130);
+    expect(posterLayout(0, 0).perRow).toBe(1);
   });
 });
 
