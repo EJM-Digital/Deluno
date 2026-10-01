@@ -20,7 +20,9 @@
  */
 import type { JSX } from "react";
 import { useEffect, useMemo, useRef } from "react";
+import { journeyBudget, pageLayout } from "./live/layout";
 import { Link } from "react-router-dom";
+import { cn } from "../../lib/utils";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
@@ -33,7 +35,7 @@ import { ConnectionTiles } from "./live/connection-tiles";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
 import { arrivalItems, requestCards, withSeerr } from "./live/extras";
-import { useArrivals, useFreshKeys, useNow, useTitles } from "./live/hooks";
+import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { ClientTiles } from "./live/clients";
 import { IndexerTiles } from "./live/indexers";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
@@ -134,6 +136,12 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const peak = (data.throughput?.samples ?? NO_ROWS).reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
 
   const root = useRef<HTMLDivElement>(null);
+  const [pageRef, page] = useElementSize<HTMLDivElement>();
+  const [restRef, rest] = useElementSize<HTMLDivElement>();
+  const rem = useRemPx();
+  const layout = pageLayout(page.width, rem);
+  const side = layout.sideBySide;
+  const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight);
   useGlide(root);
   useFlyToShelf(root, cards, items);
 
@@ -146,7 +154,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }
 
   return (
-    <div ref={root} className="flex flex-col gap-[var(--grid-gap)] lg:h-full lg:min-h-0">
+    <div ref={(node) => { root.current = node; pageRef.current = node; }} data-page-layout={side ? "beside" : "below"} className={cn("flex flex-col gap-[var(--grid-gap)]", side && "h-full min-h-0")}>
       {showSetup ? (
         <div className="flex shrink-0 flex-col gap-[var(--grid-gap)]">
           <OnboardingBanner isSetupSuppressed={setup.progress.isSkipped || setup.progress.isCompleted} onDismiss={dismissOnboarding} />
@@ -163,23 +171,23 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_clamp(20rem,25%,34rem)]">
+      <div className={cn("grid gap-[var(--grid-gap)]", side && "min-h-0 flex-1 grid-cols-[minmax(0,1fr)_clamp(22rem,28%,38rem)]")}>
         <div className="flex min-h-0 min-w-0 flex-col gap-[var(--grid-gap)]">
-          <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} />
-          <div className="grid min-h-0 gap-[var(--grid-gap)] lg:flex-1 lg:grid-rows-[minmax(0,1.05fr)_minmax(0,1fr)]">
-            <Journey grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
-            <div className="grid min-h-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]">
+          <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} across={layout.band === "across"} />
+          <div ref={restRef} className={cn("flex min-h-0 flex-col gap-[var(--grid-gap)]", side && "flex-1")}>
+            <Journey budget={budget} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
+            <div className={cn("grid min-h-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]", side && "flex-1")}>
               <Shelf items={items} titles={titles} newest={newestArrivals} heading={arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
               <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
             </div>
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-[var(--grid-gap)]">
+        <div className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] items-start")}>
           <IndexerTiles indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
           <ClientTiles rows={summary?.downloads?.clients ?? NO_ROWS} all={data.clients ?? NO_ROWS} speeds={clientSpeeds} scaleMbps={peak} seeding={seeding} />
           {connections.connections ? <ConnectionTiles connections={connections.connections} lit={connections.lit} /> : null}
-          <ActivityStream rows={latest} titles={titles} />
+          {side ? <ActivityStream rows={latest} titles={titles} /> : <div className="col-span-full flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
         </div>
       </div>
     </div>

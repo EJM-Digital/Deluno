@@ -76,7 +76,7 @@ describe("Live", () => {
 
   it("puts the right column beside the main column on a wide screen and under it below, with the band first", () => {
     const { container } = renderTab(fullSummary);
-    const columns = container.querySelector<HTMLElement>("div.grid.lg\\:grid-cols-\\[minmax\\(0\\,1fr\\)_clamp\\(20rem\\,25\\%\\,34rem\\)\\]");
+    const columns = container.querySelector<HTMLElement>("[data-page-layout] > div.grid");
     expect(columns).not.toBeNull();
     const [main, side] = Array.from(columns!.children);
     expect(within(main as HTMLElement).getByRole("region", { name: "Speed" })).toBeInTheDocument();

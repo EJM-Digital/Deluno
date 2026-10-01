@@ -33,6 +33,40 @@ export function stationDensity(count: number, height: number, cardHeight: number
   return count <= rowsThatFit(height, cardHeight, gap) ? "full" : "compact";
 }
 
+/** The main area must be at least this wide (in rem) for the right column to sit beside the journey. */
+export const SIDE_BY_SIDE_REM = 71.875;
+/** Below this main-area width (in rem) the top band stacks its three cards. */
+export const BAND_ACROSS_REM = 56.25;
+/** The journey's share of the height of the space under the top band (the rest goes to Arrived and Turned down today). */
+export const JOURNEY_SHARE = 0.512;
+
+export interface PageLayout {
+  /** The right column sits beside the page (full height) rather than below it. */
+  sideBySide: boolean;
+  /** The top band keeps its three cards across, or stacks them. */
+  band: "across" | "stacked";
+}
+
+/** The page decides from the width of its own main area, not the window: unmeasured (0) is the roomy layout. */
+export function pageLayout(width: number, remPx: number): PageLayout {
+  if (!(width > 0)) return { sideBySide: true, band: "across" };
+  return { sideBySide: width >= SIDE_BY_SIDE_REM * remPx, band: width >= BAND_ACROSS_REM * remPx ? "across" : "stacked" };
+}
+
+/**
+ * The tallest the journey may be: its share of the space under the top band when the page is held to the window, or
+ * most of a window's height when the page scrolls. It is a ceiling, not a size: the journey is as tall as its cards need.
+ */
+export function journeyBudget(sideBySide: boolean, restHeight: number, windowHeight: number): number | undefined {
+  if (sideBySide) return restHeight > 0 ? Math.floor(restHeight * JOURNEY_SHARE) : undefined;
+  return windowHeight > 0 ? Math.floor(windowHeight * 0.7) : undefined;
+}
+
+/** The height the journey's cards may use: its budget less the header, stations and spacing around them (chrome). */
+export function cardsBudget(budget: number | undefined, chrome: number): number | undefined {
+  return budget === undefined ? undefined : Math.max(0, budget - chrome);
+}
+
 export interface PosterLayout {
   /** Rows of posters the shelf holds. */
   rows: number;
