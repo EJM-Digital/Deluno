@@ -101,6 +101,10 @@ describe("the layout rules", () => {
     expect(libraryPosters(10).width).toBe(24);
     expect(libraryPosters(2000).width).toBe(170);
     // 89px posters with a 12px gap in a 410px box (400px inside its padding): 4 whole ones, never a part one.
+    // At least five whole posters across: a wide-and-short row keeps its height's size, a narrow one makes them smaller, still 2:3.
+    expect(libraryPosters(180, 2000)).toEqual({ captions: true, width: 89 });
+    expect(libraryPosters(180, 410)).toEqual({ captions: true, width: 70 });
+    expect(postersAcross(410, libraryPosters(180, 410).width)).toBe(5);
     expect(postersAcross(410, 89)).toBe(4);
     expect(postersAcross(400, 89)).toBe(3);
     expect(postersAcross(30, 89)).toBe(1);

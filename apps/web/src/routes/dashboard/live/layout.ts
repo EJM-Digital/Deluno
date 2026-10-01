@@ -167,12 +167,21 @@ export interface LibraryPosters {
   width: number;
 }
 
-/** The poster size, from the shelf row's own measured height. */
-export function libraryPosters(boxHeight: number): LibraryPosters {
+/** The fewest whole posters the shelf shows across (the owner, 2 Oct 2026, the same rule as Weir's Just finished). */
+export const MIN_SHELF_POSTERS = 5;
+
+/**
+ * The poster size, from the shelf row's own measured height, and no wider than lets `MIN_SHELF_POSTERS` whole posters fit
+ * across the row's measured width. Posters stay exactly 2:3: a narrower poster is also shorter, never stretched.
+ */
+export function libraryPosters(boxHeight: number, boxWidth = 0): LibraryPosters {
   const rowH = boxHeight - POSTERS_PAD_Y;
   const captions = rowH >= 130;
   const art = Math.max(36, Math.min(255, rowH - (captions ? POSTER_CAPTION_PX : 0)));
-  return { captions, width: Math.floor(art / 1.5) };
+  const fromHeight = Math.floor(art / 1.5);
+  if (!(boxWidth > 0)) return { captions, width: fromHeight };
+  const forFive = Math.floor((boxWidth - POSTERS_PAD_X + POSTER_GAP_PX) / MIN_SHELF_POSTERS - POSTER_GAP_PX);
+  return { captions, width: Math.max(24, Math.min(fromHeight, forFive)) };
 }
 
 /** Whole posters across a row of `boxWidth` px, at least one; never a part of one. */
