@@ -118,9 +118,9 @@ describe("DashboardPage tabs", () => {
     // Each number counts its own tab only: Live does not add System's problems to its own.
     expect(expected.system).toBeGreaterThan(0);
     expect(expected.live).toBeGreaterThan(0);
-    // The first lane of the board says the same number.
-    const lane = within(screen.getByRole("region", { name: /^every title/i })).getByRole("link", { name: /^Needs you: [0-9]+/ });
-    expect(Number(lane.getAttribute("aria-label")?.match(/^Needs you: ([0-9]+)/)?.[1])).toBeGreaterThanOrEqual(expected.live);
+    // The Needs you strip says the same number.
+    const strip = screen.getByRole("region", { name: "Needs you" });
+    expect(Number(within(strip).getByText(/^[0-9]+$/).textContent)).toBe(expected.live);
   });
 
   it("shows no badges on a new install", async () => {

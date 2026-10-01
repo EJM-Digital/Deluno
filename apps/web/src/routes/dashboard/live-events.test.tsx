@@ -111,11 +111,12 @@ describe("Live follows real changes", () => {
     renderTab(emptySummary);
     const board = screen.getByRole("region", { name: /^every title/i });
     // Idle says something true rather than nothing.
-    expect(within(within(board).getByRole("group", { name: "Quiet" })).getByText("None yet")).toBeInTheDocument();
+    expect(within(board).getByText("Nothing moving right now")).toBeInTheDocument();
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
     const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });
     expect(within(within(board).getByRole("group", { name: "Grabbed" })).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(board).queryByText("Nothing moving right now")).toBeNull();
     send("DispatchGrabCompleted", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", succeeded: true, message: null, timestamp: new Date().toISOString() });
     await waitFor(() => expect(grab).not.toBeInTheDocument());
 
@@ -125,14 +126,13 @@ describe("Live follows real changes", () => {
     await waitFor(() => expect(within(board).queryByText("Big Buck Bunny (2008)")).toBeNull());
   });
 
-  it("shows a running search and the lanes' counts from the summary while they are true", () => {
+  it("says a running search in Right now, and the stages' counts from the summary while they are true", () => {
     const summary = structuredClone(fullSummary);
     summary.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "running", nextSearchUtc: null, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: null, lastError: null }];
     summary.downloads!.processing = 2;
     renderTab(summary);
     const board = screen.getByRole("region", { name: /^every title/i });
-    const searching = within(board).getByRole("group", { name: "Searching" });
-    expect(within(searching).getByRole("link", { name: "Movies: Searching now" })).toHaveAttribute("href", "/search-cycles");
+    expect(within(screen.getByRole("region", { name: "Doing now" })).getByText(/Searching Movies/)).toBeInTheDocument();
     expect(within(board).getByRole("link", { name: "With the processor: 3" })).toBeInTheDocument();
   });
 

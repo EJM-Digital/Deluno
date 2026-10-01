@@ -91,38 +91,32 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
 }
 
 /**
- * Every card on the Live board is one template (#1096): within a lane all cards are the same height, every card puts its
- * buttons at the same distance from its top and in the same box, and a card's buttons sit side by side, never stacked.
+ * Every token on the Live journey is one template (#1096): all the same height with the same poster slot, and the
+ * journey itself carries no buttons (problems are in the Needs you strip). Every button in the Needs you strip is the
+ * same size and sits at the same height, never stacked.
  */
 async function expectCardsUniform(page: Page, label: string) {
   const report = await page.evaluate(() => {
     const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-journey-card]")).filter((card) => card.getBoundingClientRect().height > 0);
     const heights = new Set(cards.map((card) => Math.round(card.getBoundingClientRect().height)));
-    const buttonTops = new Set<number>();
-    const buttonSizes = new Set<string>();
-    const stacked: string[] = [];
     const posterSizes = new Set<string>();
     for (const card of cards) {
-      const top = card.getBoundingClientRect().top;
-      const buttons = Array.from(card.querySelectorAll<HTMLElement>("button, a[aria-label^=\"Review\"]")).filter((button) => button.getBoundingClientRect().height > 0);
-      for (const button of buttons) {
-        const box = button.getBoundingClientRect();
-        buttonTops.add(Math.round(box.top - top));
-        buttonSizes.add(`${Math.round(box.width)}x${Math.round(box.height)}`);
-      }
-      if (buttons.length > 1 && new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top))).size > 1) stacked.push((card.textContent ?? "").slice(0, 30));
       const poster = card.firstElementChild?.getBoundingClientRect();
       if (poster) posterSizes.add(`${Math.round(poster.width)}x${Math.round(poster.height)}`);
     }
-    return { count: cards.length, heights: [...heights], buttonTops: [...buttonTops], buttonSizes: [...buttonSizes], stacked, posterSizes: [...posterSizes] };
+    const journey = document.querySelector('[role="tabpanel"] section[aria-labelledby]:not([aria-label])');
+    const strip = document.querySelector('section[aria-label="Needs you"]');
+    const stripButtons = Array.from(strip?.querySelectorAll<HTMLElement>("button, a[aria-label^=\"Open Transfers\"]") ?? []).filter((button) => button.getBoundingClientRect().height > 0);
+    const sizes = new Set(stripButtons.map((button) => `${Math.round(button.getBoundingClientRect().width)}x${Math.round(button.getBoundingClientRect().height)}`));
+    const rows = new Set(stripButtons.map((button) => Math.round(button.getBoundingClientRect().top - (button.closest("li")?.getBoundingClientRect().top ?? 0))));
+    return { count: cards.length, heights: [...heights], posterSizes: [...posterSizes], stripButtons: stripButtons.length, sizes: [...sizes], rows: [...rows], buttonsOnTheJourney: Array.from(document.querySelectorAll('[data-journey-card] button')).length, hasJourney: Boolean(journey) };
   });
-  console.log(`${label}: ${report.count} cards, heights ${report.heights.join("/")}, button tops ${report.buttonTops.join("/")}, button sizes ${report.buttonSizes.join("/")}`);
-  expect(report.count, `${label} has no cards`).toBeGreaterThan(0);
-  expect(report.heights, `${label}: cards are not all one height`).toHaveLength(1);
-  expect(report.buttonTops, `${label}: buttons are not at the same place on every card`).toHaveLength(1);
-  expect(report.buttonSizes, `${label}: buttons are not all one size`).toHaveLength(1);
-  expect(report.stacked, `${label}: buttons are stacked`).toEqual([]);
-  expect(report.posterSizes, `${label}: poster slots are not all one size`).toHaveLength(1);
+  console.log(`${label}: ${report.count} tokens, heights ${report.heights.join("/")}, strip buttons ${report.stripButtons} of ${report.sizes.join("/")}`);
+  expect(report.heights, `${label}: tokens are not all one height`).toHaveLength(report.count > 0 ? 1 : 0);
+  expect(report.posterSizes, `${label}: poster slots are not all one size`).toHaveLength(report.count > 0 ? 1 : 0);
+  expect(report.buttonsOnTheJourney, `${label}: the journey carries buttons`).toBe(0);
+  expect(report.sizes, `${label}: the strip buttons are not all one size`).toHaveLength(report.stripButtons > 0 ? 1 : 0);
+  expect(report.rows, `${label}: the strip buttons are not at the same place in their group`).toHaveLength(report.stripButtons > 0 ? 1 : 0);
 }
 
 /** A busy install: far more rows than any panel can show, all served from stored lists. */
@@ -248,7 +242,8 @@ test.describe("Dashboard tabs", () => {
     }
     // The rest are named, with a way to them, rather than dropped.
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
+    // Live: every problem is grouped in the strip with a Review button, and the rest are named, not hidden.
+    await expect(page.getByRole("region", { name: "Needs you" }).getByRole("button", { name: /^Review/ }).first()).toBeVisible();
     await page.goto("/?tab=system");
     await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
   });
@@ -276,8 +271,8 @@ test.describe("Dashboard tabs", () => {
       // The indexers say what happened today, not a latency from days ago.
       await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^NZBgeek: 96 queries/ })).toBeVisible();
       expect(perTitle).toEqual([]);
-      // Needs you is the first lane of the board, not a panel; the next run is in the band.
-      await expect(page.getByRole("region", { name: /^needs you/i })).toHaveCount(0);
+      // Needs you is one strip under the band; the next run is in the band.
+      await expect(page.getByRole("region", { name: "Needs you" })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Search TV shows: running now/ })).toBeVisible();
       // A set-up install has no guided-setup banners above the board. The checks below run with them (a fresh
       // install), then the photograph is taken without them, as it looks once set up.
@@ -294,23 +289,28 @@ test.describe("Dashboard tabs", () => {
       await expect(activity.getByText("searches", { exact: true })).toBeVisible();
       await expect(activity.getByText("routine", { exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: /^(today|latest)/i })).toHaveCount(0);
-      // Every lane has its own cards, and the countdown reads by the second.
+      // Only titles that are moving are on the journey, each with its library title; the countdown reads by the second.
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
       await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "Requested" }).getByText("Shogun")).toBeVisible();
       await expect(page.getByRole("group", { name: "In the library" }).getByRole("link", { name: /^Coherence \(2013\): in the library/ })).toBeVisible();
-      // Cards carry the library's title, never the raw release name; stopped downloads are Stuck, not Downloading; a
-      // deleted title keeps its release's own name; the speed is read once; what the board shows is one line in Needs you.
-      const stuck = page.getByRole("group", { name: "Needs you" });
-      await expect(stuck.getByText("The Wild Robot (2024)")).toBeVisible();
-      await expect(stuck.getByText("Say Yes to the Dress S04E02")).toBeVisible();
-      await expect(stuck.getByRole("button", { name: /^Search again for/ }).first()).toBeVisible();
+      await expect(page.getByRole("group", { name: "In the library" }).getByRole("link", { name: /^Moon \(2009\): upgraded from WEB 720p to Bluray 1080p/ })).toBeVisible();
+      // Problems are grouped in the strip, once, and never a token: stopped downloads, a refused hand-off, a request that could not be searched.
+      const strip = page.getByRole("region", { name: "Needs you" });
+      await expect(strip.getByText("1 hand-off refused")).toBeVisible();
+      await expect(strip.getByText("7 stuck downloads")).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Stuck")).toHaveCount(0);
-      // Stopped downloads and refused hand-offs are in the first lane (the rig-like fixture has the Quiet column).
-      await expect(page.getByRole("group", { name: "Needs you" })).toBeVisible();
-      // The processor refused one hand-off: that is a problem to settle, so it is a card in Needs you with its button.
-      await expect(stuck.getByRole("button", { name: /^Retry Metropolis/ })).toBeVisible();
-      await expect(page.getByRole("group", { name: "With the processor" }).getByRole("button", { name: /^Retry Metropolis/ })).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "With the processor" }).getByText("Metropolis")).toHaveCount(0);
+      // The drawer lists them with their own buttons.
+      await strip.getByRole("button", { name: "Review 1 hand-off refused" }).click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer.getByRole("button", { name: /^Retry Metropolis/ })).toBeVisible();
+      await page.keyboard.press("Escape");
+      // Space and standing facts are on System, not here.
+      await expect(page.getByText("Drive space")).toHaveCount(0);
+      await expect(page.getByRole("img", { name: /meets its quality goal/ })).toHaveCount(0);
       await expect(page.getByText("Speed now")).toHaveCount(0);
       await page.waitForTimeout(1600);
       await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-${size.width}.png` });
@@ -319,7 +319,7 @@ test.describe("Dashboard tabs", () => {
     }
   });
 
-  test("a Live board shaped like the real rig fits both sizes, shows no empty lane and says each thing once", async ({ page }) => {
+  test("a Live board shaped like the real rig fits both sizes and says each thing once", async ({ page }) => {
     test.setTimeout(120_000);
     await authenticateAndNavigate(page, "/");
     await serveLiveRig(page);
@@ -349,8 +349,8 @@ test.describe("Dashboard tabs", () => {
     await expect.poll(() => bell(page), { timeout: 15_000 }).toBe(now + setup);
     console.log(`busy fixture: Live ${now}, System ${setup}, bell ${now + setup}`);
 
-    // The first lane of the board says the same number as the badge.
-    await expect(page.getByRole("link", { name: new RegExp(`^Needs you: ${now}$`) })).toBeVisible();
+    // The Needs you strip says the same number as the badge.
+    await expect(page.getByRole("region", { name: "Needs you" }).getByText(String(now), { exact: true })).toBeVisible();
 
     // The left menu no longer carries a Needs a look card; the bell is the one place for problems.
     await expect(page.locator("aside").getByText("Needs a look")).toHaveCount(0);
