@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Globalization;
 using Deluno.Infrastructure.Storage;
+using Deluno.Platform.Contracts;
 
 namespace Deluno.Worker.Dashboard;
 
@@ -16,6 +17,9 @@ namespace Deluno.Worker.Dashboard;
 public sealed class DashboardCountsStore(IDelunoDatabaseConnectionFactory databases)
 {
     private static string Iso(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+
+    /// <summary>Known status constants as a quoted SQL list; never person-supplied text.</summary>
+    private static string SqlList(IEnumerable<string> statuses) => string.Join(", ", statuses.Select(status => $"'{status}'"));
 
     // ------------------------------------------------------------------ jobs
 
@@ -117,12 +121,13 @@ public sealed class DashboardCountsStore(IDelunoDatabaseConnectionFactory databa
         int today = 0, waiting = 0, failedHandoffs = 0;
         using (var command = connection.CreateCommand())
         {
+            // The hand-off statuses, not the processor's own job states (#1099).
             command.CommandText =
-                """
+                $"""
                 SELECT
                     COALESCE(SUM(CASE WHEN created_utc >= @since THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN status IN ('queued', 'scheduled', 'working') THEN 1 ELSE 0 END), 0),
-                    COALESCE(SUM(CASE WHEN status IN ('failed', 'rejected') THEN 1 ELSE 0 END), 0)
+                    COALESCE(SUM(CASE WHEN status IN ({SqlList(ProcessorHandoffStatuses.WithProcessor)}) THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN status IN ({SqlList(ProcessorHandoffStatuses.WentWrong)}) THEN 1 ELSE 0 END), 0)
                 FROM processor_handoffs;
                 """;
             Add(command, "@since", Iso(sinceUtc));
