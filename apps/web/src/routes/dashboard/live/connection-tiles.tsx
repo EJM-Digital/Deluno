@@ -8,7 +8,7 @@
 import type { LiveConnection } from "../../../lib/api/types/operations";
 import type { LiveConnectionKind } from "./connections";
 import type { Tone } from "../../../lib/status-tones";
-import { connectionKey, connectionWords, connectionsSummary } from "./connections";
+import { connectionKey, connectionWords, connectionsSummary, ROLE_LABEL, tileName } from "./connections";
 import { Tile, TileGroup, type TileState } from "./tile";
 
 const MANAGE: Record<LiveConnectionKind, string> = {
@@ -27,7 +27,10 @@ export function ConnectionTiles({ connections, lit }: { connections: readonly Li
         const busy = connection.kind === "processor" && connection.busy > 0;
         const state: TileState | null = !connection.enabled ? "off" : lit.has(connectionKey(connection)) ? "lit" : busy ? "busy" : !connection.healthy ? "failed" : null;
         const words = connectionWords(connection);
-        return <Tile key={connectionKey(connection)} to={MANAGE[connection.kind]} name={connection.name} tone={tone} state={state} pulse={busy} meta={words} label={`${connection.name}: ${words}`} />;
+        const name = tileName(connection);
+        // A processor called "Processor" says only what it did, not its role again.
+        const meta = name.toLowerCase() === ROLE_LABEL[connection.kind].toLowerCase() ? words.replace(`${ROLE_LABEL[connection.kind]} · `, "") : words;
+        return <Tile key={connectionKey(connection)} to={MANAGE[connection.kind]} name={name} tone={tone} state={state} pulse={busy} meta={meta} label={`${connection.name}: ${words}`} />;
       })}
     </TileGroup>
   );

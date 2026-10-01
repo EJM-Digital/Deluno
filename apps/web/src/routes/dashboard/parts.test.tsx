@@ -19,6 +19,12 @@ describe("rowsThatFit", () => {
     expect(rowsThatFit(bottoms, 30)).toBe(0);
   });
 
+  it("always shows the newest row when the box can hold it, even with no room left for the and-N-more line", () => {
+    // A 100 high box and a 90 high first row: 100 - 36 leaves 64, so no row fits beside the link, but the newest is never dropped.
+    expect(rowsThatFit([90, 180, 270], 100)).toBe(1);
+    expect(rowsThatFit([120, 240], 100)).toBe(0);
+  });
+
   it("keeps room for the and-N-more line when more rows exist that the list was never given", () => {
     // Every row it has ends by 200, but 17 more exist elsewhere: the line still needs its 36, so the last row goes.
     expect(rowsThatFit(bottoms, 200, 36, () => false, true)).toBe(4);

@@ -36,6 +36,8 @@ import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
 import { arrivalItems, requestCards, withSeerr } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
+import { tileColumns, tileDensity } from "./live/layout";
+import { TileLayoutContext, type TileLayout } from "./live/tile";
 import { ClientTiles } from "./live/clients";
 import { IndexerTiles } from "./live/indexers";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
@@ -142,6 +144,14 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const layout = pageLayout(page.width, rem);
   const side = layout.sideBySide;
   const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight);
+  // The right column (beside the page or under it): tiles go three across, and turn compact (a light and a name) before anything is clipped, so Activity keeps its room.
+  const [sideRef, sideBox] = useElementSize<HTMLDivElement>();
+  const clientCount = Math.max((data.clients ?? NO_ROWS).length, (summary?.downloads?.clients ?? NO_ROWS).length);
+  const tileLayout = useMemo<TileLayout>(() => {
+    const cols = side ? tileColumns(sideBox.width, rem) : 2;
+    const counts = [(data.indexers ?? NO_ROWS).length, clientCount, connections.connections ? Math.max(1, connections.connections.length) : 0].filter((count) => count > 0);
+    return { cols, compact: side && tileDensity(sideBox.height, counts, cols, rem) === "compact" };
+  }, [side, sideBox.width, sideBox.height, data.indexers, clientCount, connections.connections, rem]);
   useGlide(root);
   useFlyToShelf(root, cards, items);
 
@@ -183,12 +193,14 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           </div>
         </div>
 
-        <div className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] items-start")}>
+        <TileLayoutContext.Provider value={tileLayout}>
+        <div ref={sideRef} data-tiles={tileLayout.compact ? "compact" : "full"} className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] items-start")}>
           <IndexerTiles indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
           <ClientTiles rows={summary?.downloads?.clients ?? NO_ROWS} all={data.clients ?? NO_ROWS} speeds={clientSpeeds} scaleMbps={peak} seeding={seeding} />
           {connections.connections ? <ConnectionTiles connections={connections.connections} lit={connections.lit} /> : null}
-          {side ? <ActivityStream rows={latest} titles={titles} /> : <div className="col-span-full flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
+          {side ? <ActivityStream rows={latest} titles={titles} dense={tileLayout.compact} /> : <div className="col-span-full flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
         </div>
+        </TileLayoutContext.Provider>
       </div>
     </div>
   );

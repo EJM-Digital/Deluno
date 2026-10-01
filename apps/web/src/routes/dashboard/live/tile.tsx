@@ -5,12 +5,21 @@
  * the thing it stands for is used: asked (blue), answered (green) or failed (red);
  * a switched-off one is grey.
  */
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { motionAllowed } from "../../../lib/page-motion";
+import { MIN_TILE_REM } from "./layout";
 import { cn } from "../../../lib/utils";
 import type { Tone } from "../../../lib/status-tones";
 import { LiveCard as Panel } from "./live-card";
+
+/** How the tiles of the right column are drawn: `cols` across when the column is held to the window (otherwise as many as fit), and `compact` as a light and a name on one line. */
+export interface TileLayout {
+  cols?: number;
+  compact: boolean;
+}
+
+export const TileLayoutContext = createContext<TileLayout>({ compact: false });
 
 export type TileState = "asked" | "answered" | "failed" | "busy" | "lit" | "off";
 
@@ -38,6 +47,7 @@ export function Tile({ to, name, tone, state, pulse = false, meta, bar, label }:
   /** The accessible name: "NZBgeek: 46 of 100 today". */
   label: string;
 }) {
+  const { compact } = useContext(TileLayoutContext);
   return (
     <li className="min-w-0">
       <Link
@@ -46,7 +56,8 @@ export function Tile({ to, name, tone, state, pulse = false, meta, bar, label }:
         title={label}
         data-state={state ?? undefined}
         className={cn(
-          "block min-w-0 rounded-[10px] border border-hairline bg-surface-2/60 px-2.5 py-1.5 transition-[border-color,box-shadow,background-color] duration-300 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "block min-w-0 rounded-[10px] border border-hairline bg-surface-2/60 px-2.5 transition-[border-color,box-shadow,background-color] duration-300 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          compact ? "py-[3px]" : "py-1.5",
           state ? STATE_CLASS[state] : null
         )}
       >
@@ -54,8 +65,8 @@ export function Tile({ to, name, tone, state, pulse = false, meta, bar, label }:
           <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", DOT_CLASS[state === "asked" ? "info" : tone], pulse && motionAllowed() && "live-blink")} />
           <span className="min-w-0 truncate">{name}</span>
         </span>
-        <span className="mt-0.5 block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{meta}</span>
-        {bar !== undefined ? (
+        {compact ? null : <span className="mt-0.5 block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{meta}</span>}
+        {bar !== undefined && !compact ? (
           <span aria-hidden className="mt-1 block h-[3px] overflow-hidden rounded-full bg-surface-3">
             <span className="live-gauge block h-full rounded-full bg-info" style={{ width: `${Math.max(0, Math.min(100, bar))}%` }} />
           </span>
@@ -66,7 +77,7 @@ export function Tile({ to, name, tone, state, pulse = false, meta, bar, label }:
 }
 
 /** A group of tiles in a card of its own: the title, a count line, a link to where it is managed, and the tiles in a grid that fills the width it has. */
-export function TileGroup({ title, count, to, toLabel = "Manage", empty, children, scroll = true }: {
+export function TileGroup({ title, count, to, toLabel = "Manage", empty, children }: {
   title: string;
   count: ReactNode;
   to: string;
@@ -74,15 +85,20 @@ export function TileGroup({ title, count, to, toLabel = "Manage", empty, childre
   /** What the card says when it has no tiles. */
   empty: string;
   children: ReactNode[] | ReactNode;
-  scroll?: boolean;
 }) {
+  const { cols, compact } = useContext(TileLayoutContext);
   const none = Array.isArray(children) ? children.length === 0 : !children;
   return (
     <Panel title={title} count={count} to={to} toLabel={toLabel} iconOnly className="shrink-0">
       {none ? (
         <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-body-sm)] text-muted-foreground">{empty}</p>
       ) : (
-        <ul className={cn("grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-1.5 px-[var(--card-pad-x)] py-2.5", scroll && "max-h-[28vh] overflow-y-auto [scrollbar-width:thin]")}>{children}</ul>
+        <ul
+          className={cn("grid px-[var(--card-pad-x)]", compact ? "gap-1 py-1" : "gap-1.5 py-2.5")}
+          style={{ gridTemplateColumns: cols ? `repeat(${cols}, minmax(0, 1fr))` : `repeat(auto-fill, minmax(${MIN_TILE_REM + 1}rem, 1fr))` }}
+        >
+          {children}
+        </ul>
       )}
     </Panel>
   );

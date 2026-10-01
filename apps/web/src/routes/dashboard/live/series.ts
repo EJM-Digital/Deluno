@@ -46,6 +46,8 @@ export function shapeSpeedSeries(
     points.push({ t: Math.max(start, live.atMs), down: finite(live.down), up: finite(live.up) });
   }
   if (points.length === 0) points.push({ t: now, down: 0, up: 0 });
+  // Nothing has moved in the whole window: a flat line across all of it, not a stub from the last reading.
+  if (points.every((point) => point.down === 0 && point.up === 0)) points.splice(0, points.length, { t: start, down: 0, up: 0 }, { t: now, down: 0, up: 0 });
   const last = points[points.length - 1];
   if (last.t < now) points.push({ t: now, down: last.down, up: last.up });
   return {

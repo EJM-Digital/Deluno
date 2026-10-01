@@ -152,6 +152,8 @@ export function rowsThatFit(
   let count = 0;
   while (count < bottoms.length && bottoms[count] <= boxHeight - moreLine) count += 1;
   while (count > 0 && isHeading(count - 1)) count -= 1;
+  // The newest row is always shown when the box can hold it, even with no room left for the "and N more" line.
+  if (count === 0 && bottoms[0] <= boxHeight && !isHeading(0)) return 1;
   return count;
 }
 
