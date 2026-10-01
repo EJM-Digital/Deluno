@@ -27,16 +27,16 @@ describe("the shared page grid", () => {
     expect(LOW_COLUMNS).toBe("minmax(0, 1fr) clamp(260px, 36%, 420px)");
   });
   it("holds the journey at three rows of cards, the band at 20% of the window within 150 to 200px, and gives the bottom row the rest", () => {
-    expect(JOURNEY_PX).toBe(96 + 2 * 94 + 86 + 28);
+    expect(JOURNEY_PX).toBe(116 + 2 * 94 + 86 + 22);
     expect(gridRows(1000, 900)).toEqual({ band: 200, journey: JOURNEY_PX, low: 900 - 28 - 200 - JOURNEY_PX, template: `200px ${JOURNEY_PX}px minmax(0, 1fr)` });
     expect(gridRows(2000, 1300)).toMatchObject({ band: 200, journey: JOURNEY_PX });
   });
-  it("on a short page gives the band way first, then journey rows, keeping the bottom row 180px", () => {
-    const short = gridRows(765, 640);
-    expect(short.band).toBe(150);
-    expect(short.low).toBeGreaterThanOrEqual(180);
-    expect(short.journey).toBeLessThanOrEqual(JOURNEY_PX);
-    expect(gridRows(765, 300).journey).toBe(96 + 86 + 28);
+  it("on a short page gives the band way first (down to 130px), then the journey's cards shrink, keeping the bottom row 170px", () => {
+    const short = gridRows(765, 690);
+    expect(short.band).toBe(130);
+    expect(short.low).toBeGreaterThanOrEqual(170);
+    expect(short.journey).toBeLessThan(JOURNEY_PX);
+    expect(gridRows(765, 300).journey).toBe(116 + 2 * 68 + 60 + 22);
   });
   it("uses a roomy window until measured", () => {
     expect(gridRows(0)).toMatchObject({ band: 200, journey: JOURNEY_PX, low: 270 });

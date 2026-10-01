@@ -10,7 +10,7 @@ import { SourcesCard } from "./sources-card";
 import { tileHeight, tileLayout } from "./source-tiles";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
-import { journeyMode, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
+import { journeyMode, journeySize, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
 import { departedCards, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
@@ -71,6 +71,21 @@ describe("the layout rules", () => {
     expect(lanePlan([1, 7], 274)).toMatchObject({ rows: 2, more: true, slot: false });
     expect(lanePlan([1, 7], 100)).toMatchObject({ rows: 1, more: true, slot: true, height: 86 });
     expect(lanePlan([], 100)).toMatchObject({ rows: 1, more: false });
+  });
+
+  it("sizes the journey's cards so three rows always fit: full size with room, smaller without, never under 60px", () => {
+    expect(journeySize([2, 1], undefined)).toEqual({ card: 86, step: 94, poster: 69, oneLine: false });
+    expect(journeySize([2, 1], 274)).toMatchObject({ card: 86, step: 94 });
+    expect(journeySize([2, 1], 600)).toMatchObject({ card: 86, step: 94 });
+    // 256px of lanes less 22px for the and-more line: step (256 - 22 + 8) / 3 = 80, card 72
+    expect(journeySize([1, 7], 256)).toEqual({ card: 72, step: 80, poster: 55, oneLine: true });
+    expect(journeySize([1, 7], 40)).toMatchObject({ card: 60, step: 68 });
+    expect(journeySize([1], 252)).toMatchObject({ card: 78, step: 86, oneLine: false });
+  });
+
+  it("then shows three rows and an and-more line at the smaller size", () => {
+    const size = journeySize([1, 7], 256);
+    expect(lanePlan([1, 7], 256, size)).toMatchObject({ rows: 3, more: true, slot: false });
   });
 
   it("keeps the stations side by side while each has room, and stacks them when it does not", () => {
