@@ -102,3 +102,17 @@ describe("system screen dangerous-file health check Fix button (#944)", () => {
     expect(source).toMatch(/title="Suggestions"/);
   });
 });
+
+/** #1101: the installation card says which computer this is, and how to name a container. */
+describe("system screen host name (#1101)", () => {
+  const source = readFileSync(resolve(__dirname, "system-screen.tsx"), "utf8");
+
+  it("leads the installation card with a Runs on row from the served name", () => {
+    expect(source).toMatch(/label: "Runs on", value: systemInfo\?\.hostName/);
+    expect(source.indexOf('label: "Runs on"')).toBeLessThan(source.indexOf('label: "Uptime"'));
+  });
+
+  it("shows the container tip from the served flag", () => {
+    expect(source).toMatch(/<HostNameTip looksLikeContainerId=\{systemInfo\?\.hostLooksLikeContainerId\}/);
+  });
+});

@@ -24,6 +24,22 @@ public sealed class SystemInstallationInfoEndpointTests
         Assert.Equal("SQLite", info.DatabaseType);
         Assert.Equal(Path.GetFullPath(app.DataRoot), info.DatabaseLocation);
         Assert.Equal(Path.GetFullPath(app.DataRoot), info.AppDataPath);
+        Assert.Equal(Deluno.Contracts.DelunoHostName.Current, info.HostName);
+    }
+
+    [Theory]
+    [InlineData("3f9a1c2b7d4e", true, true)]
+    [InlineData("3f9a1c2b7d4e", false, false)]
+    [InlineData("WORKSTATION", true, false)]
+    [InlineData("deluno-nas", true, false)]
+    [InlineData("3F9A1C2B7D4E", true, false)]
+    [InlineData("3f9a1c2b7d4", true, false)]
+    [InlineData("3f9a1c2b7d4eaa", true, false)]
+    [InlineData("3f9a1c2b7d4g", true, false)]
+    [InlineData(null, true, false)]
+    public void Container_id_hostnames_are_told_apart_from_real_names(string? name, bool inContainer, bool expected)
+    {
+        Assert.Equal(expected, Deluno.Contracts.DelunoHostName.LooksLikeContainerId(name, inContainer));
     }
 
     private sealed record InfoBody(
@@ -33,5 +49,7 @@ public sealed class SystemInstallationInfoEndpointTests
         string RuntimeVersion,
         string DatabaseType,
         string DatabaseLocation,
-        string AppDataPath);
+        string AppDataPath,
+        string HostName,
+        bool HostLooksLikeContainerId);
 }
