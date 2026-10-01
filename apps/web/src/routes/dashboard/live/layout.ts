@@ -81,20 +81,32 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * less what is above it, such as setup banners) is too short for both rows and a journey, they give way together so the
  * journey keeps at least 250px of it. Unmeasured (0) is a roomy window.
  */
-export function gridRows(basis: number, available = 0): { band: number; low: number; template: string } {
+/** The journey is three rows of cards tall (the owner, 1 Oct 2026: "cut the journey height to 3"). */
+export const JOURNEY_ROWS = 3;
+/** Its header and stations (96px), three rows of cards, and the "and N more" line with the padding under it (28px). */
+export const JOURNEY_PX = 96 + (JOURNEY_ROWS - 1) * ROW_PX + TOKEN_PX + 28;
+const JOURNEY_MIN_PX = 96 + TOKEN_PX + 28;
+const LOW_MIN_PX = 180;
+const GRID_GAPS_PX = 28;
+
+/**
+ * The rows of the shared grid: the band (20% of the window, 150 to 200px), the journey at three rows of cards, and the
+ * bottom row (Arrived today, Turned down, Activity) with the rest. On a short page the band gives way first (to 150px),
+ * then the journey loses rows (never below one), so the bottom row keeps at least 180px.
+ */
+export function gridRows(basis: number, available = 0): { band: number; journey: number; low: number; template: string } {
   const h = basis > 0 ? basis : 1000;
   let band = clamp(h * 0.2, 150, 200);
-  let low = clamp(h * 0.27, 180, 300);
-  // The journey keeps 250px (its header, stations and one row of cards) and at least 35% of the grid.
-  const room = available > 0 ? Math.max(available * 0.4, Math.min(available * 0.65, available - 28 - 250)) : 0;
-  if (available > 0 && band + low > room) {
-    const scale = room / (band + low);
-    band *= scale;
-    low *= scale;
+  let journey = JOURNEY_PX;
+  if (available > 0) {
+    const room = available - GRID_GAPS_PX;
+    if (band + journey + LOW_MIN_PX > room) band = Math.max(150, room - journey - LOW_MIN_PX);
+    if (band + journey + LOW_MIN_PX > room) journey = Math.max(JOURNEY_MIN_PX, room - band - LOW_MIN_PX);
   }
   band = Math.round(band);
-  low = Math.round(low);
-  return { band, low, template: `${band}px minmax(0, 1fr) ${low}px` };
+  journey = Math.round(journey);
+  const low = available > 0 ? Math.max(0, Math.round(available - GRID_GAPS_PX - band - journey)) : 270;
+  return { band, journey, low, template: `${band}px ${journey}px minmax(0, 1fr)` };
 }
 
 /** Under the side-by-side threshold the page scrolls, and the journey may be at most most of a window tall. */

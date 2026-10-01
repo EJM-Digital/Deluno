@@ -194,11 +194,11 @@ describe("stuck downloads", () => {
       ]
     });
     const grouped = byStage(cards);
-    // The stuck ones lead their station and carry the client's own words only as a tooltip.
-    expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:a", "c1:b", "c1:c"]);
-    expect(grouped.downloading[0]).toMatchObject({ stuck: true, state: { tone: "warn", label: "Stuck" }, reason: "It stopped moving in the download client." });
-    expect(grouped.downloading[1]).toMatchObject({ stuck: true, reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
-    expect(grouped.downloading[2].stuck).toBe(false);
+    // The moving one leads its station; the stuck ones follow and carry the client's own words only as a tooltip.
+    expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:c", "c1:a", "c1:b"]);
+    expect(grouped.downloading[0].stuck).toBe(false);
+    expect(grouped.downloading[1]).toMatchObject({ stuck: true, state: { tone: "warn", label: "Stuck" }, reason: "It stopped moving in the download client." });
+    expect(grouped.downloading[2]).toMatchObject({ stuck: true, reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
     // A stuck download that was never started stays in Grabbed; another copy grabbed later is simply a new card there.
     expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:d"]);
     expect(grouped.grabbed[0].stuck).toBe(true);
