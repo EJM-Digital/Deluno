@@ -924,10 +924,12 @@ html,
   --section-subtitle-size: calc(14px * var(--font-scale));
 }
 
-/* The mockup's own body type: 14px at the browser's normal line height, and its card titles at the browser's bold. */
+/* The mockup's own body type: 14px at the browser's normal line height, its 14px gap between cards, and its card
+   titles at the browser's bold. */
 .dash-mockup-size {
   font-size: 14px;
   line-height: normal;
+  --grid-gap: 14px;
 }
 .dash-mockup-size h2 {
   font-weight: 700;
