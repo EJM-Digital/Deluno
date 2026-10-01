@@ -18,7 +18,7 @@ import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import { CARD_HEIGHT, Count, CompactTile, JourneyCardView, type CardContext } from "./card";
-import { CARD_GAP_REM, journeyMode, stationDensity } from "./layout";
+import { CARD_GAP_REM, cardsBudget, journeyMode, stationDensity } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
 import type { JourneyCard, Stage } from "./journey";
 import { LANES } from "./lanes";
@@ -84,7 +84,8 @@ export function Journey({
   hasProcessor,
   usual,
   by,
-  lastArrival
+  lastArrival,
+  budget
 }: {
   grouped: Record<Stage, JourneyCard[]>;
   counts: Record<Stage, number>;
@@ -97,6 +98,8 @@ export function Journey({
   by: number | undefined;
   /** The newest title in the library, for the line that says nothing is moving. */
   lastArrival: { title: string; at: string } | null;
+  /** The tallest the whole journey may be, in pixels. It is only a ceiling: the journey is as tall as its cards need, and gives the rest back. */
+  budget?: number;
 }): ReactElement {
   const stations = useMemo(() => stationsFor(hasProcessor), [hasProcessor]);
   const [bodyRef, body] = useElementSize<HTMLDivElement>();
@@ -108,12 +111,17 @@ export function Journey({
   const onTheirWay = stations.reduce((sum, stage) => sum + counts[stage], 0);
   const gap = CARD_GAP_REM * rem;
   const rail = onTheirWay > 0;
+  const [boxRef, box] = useElementSize<HTMLDivElement>();
+  // What the cards may use: the ceiling less everything around them (header, stations, spacing), which does not change with the cards.
+  const available = cardsBudget(budget, Math.max(0, box.height - area.height));
+  const room = available !== undefined && !stacked ? available : area.height;
 
   return (
-    <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-[14rem]">
+    <div ref={boxRef} className="flex min-h-0 min-w-0 flex-col" style={budget === undefined ? undefined : { maxHeight: budget }}>
+    <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
       <div ref={bodyRef} className="relative flex min-h-0 flex-1 flex-col">
-        {onTheirWay === 0 ? <p className="shrink-0 px-[var(--card-pad-x)] pt-2 text-[length:var(--type-body-sm)] text-muted-foreground">{calmLine(lastArrival)}</p> : null}
         <div className={cn("relative min-h-0 flex-1", stacked ? "flex flex-col gap-1 overflow-y-auto px-2 pb-2 pt-1" : "grid px-3")} style={stacked ? undefined : { gridTemplateColumns: `repeat(${stations.length}, minmax(0, 1fr))`, gridTemplateRows: "auto minmax(0, 1fr)" }}>
+          {onTheirWay === 0 ? <p className={cn("flex items-center px-[var(--card-pad-x)] text-[length:var(--type-body-sm)] text-muted-foreground", stacked ? "min-h-10" : "col-span-full row-start-2 pb-2")} style={stacked ? undefined : { minHeight: probe.height || undefined }}>{calmLine(lastArrival)}</p> : null}
           {stacked ? null : <div aria-hidden className="pointer-events-none absolute inset-x-12 top-[1.3125rem] h-0.5 rounded-full bg-hairline"><span className={cn("live-rail absolute inset-0 opacity-60", rail && "live-rail-run")} /></div>}
           {stacked
             ? stations.map((stage) => {
@@ -134,7 +142,7 @@ export function Journey({
             ? null
             : stations.map((stage, index) => {
                 const cards = grouped[stage];
-                const density = stationDensity(cards.length, area.height, probe.height, gap, mode);
+                const density = stationDensity(cards.length, room, probe.height, gap, mode);
                 return (
                   <div key={`cards-${stage}`} data-station={stage} data-cards={density} style={{ gridColumn: index + 1, gridRow: 2 }} className={cn("min-h-0 min-w-0 overflow-y-auto px-1 pb-2", SCROLLER)}>
                     <Cards stage={stage} cards={cards} density={density} context={context} />
@@ -148,5 +156,6 @@ export function Journey({
         </div>
       </div>
     </Panel>
+    </div>
   );
 }

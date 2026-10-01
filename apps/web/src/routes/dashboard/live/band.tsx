@@ -165,7 +165,9 @@ function NextCard({ items, now }: { items: NextItem[]; now: number }) {
   );
 }
 
-export function Band({ summary, samples, operations, upcoming }: {
+export function Band({ summary, samples, operations, upcoming, across = true }: {
+  /** Three cards across; false stacks them one under another. */
+  across?: boolean;
   summary: DashboardSummary | undefined;
   samples: DownloadThroughputSample[];
   operations: Operation[];
@@ -174,7 +176,7 @@ export function Band({ summary, samples, operations, upcoming }: {
   const now = useNow(1000);
   const items = buildNext(summary, upcoming, now);
   return (
-    <div className="grid shrink-0 gap-[var(--grid-gap)] grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
+    <div className={"grid shrink-0 gap-[var(--grid-gap)] " + (across ? "grid-cols-3" : "grid-cols-1")}>
       <SpeedCell samples={samples} summary={summary} />
       <WorkingNow summary={summary} operations={operations} />
       <NextCard items={items} now={now} />
