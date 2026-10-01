@@ -207,7 +207,9 @@ describe("System", () => {
     expect(screen.getByText(/No drive has been read yet/)).toBeInTheDocument();
     expect(screen.getByText("no backup yet")).toBeInTheDocument();
     expect(screen.getByText("no requests measured yet")).toBeInTheDocument();
-    expect(screen.getByText("none yet")).toBeInTheDocument();
+    // The library counts moved here from Live: nothing in the library yet says so, once for the films and once for the shows.
+    expect(screen.getAllByText("none yet").length).toBeGreaterThan(0);
+    expect(screen.getByRole("region", { name: /^library/i })).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN/);
   });

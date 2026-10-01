@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
-import { fetchMovieTitles, fetchSeriesTitles, NO_TITLES, wantedTitles, type TitleLookup } from "./titles";
+import { fetchMovieTitles, fetchSeriesTitles, NO_TITLES, wantedTitles, type Entity, type TitleLookup } from "./titles";
 
 /** The clock, advanced every `intervalMs` from the shared ticker (which keeps running while the tab is hidden). */
 export function useNow(intervalMs = 1000): number {
@@ -45,8 +45,8 @@ export function useSummaryUpdatedAt(summary: DashboardSummary | undefined): numb
  * download is still in the history) is left out and its card keeps the
  * release's own name and its stage icon, with no failing request.
  */
-export function useTitles(cards: JourneyCard[]): TitleLookup {
-  const wanted = useMemo(() => wantedTitles(cards), [cards]);
+export function useTitles(cards: JourneyCard[], extra: ReadonlyArray<Entity | undefined> = NO_EXTRA): TitleLookup {
+  const wanted = useMemo(() => wantedTitles(cards, extra), [cards, extra]);
   const movieIds = wanted.movies.join(",");
   const showIds = wanted.series.join(",");
   const episodeIds = wanted.episodes.join(",");
@@ -77,6 +77,8 @@ export function useTitles(cards: JourneyCard[]): TitleLookup {
     };
   }, [movies.data, series.data]);
 }
+
+const NO_EXTRA: ReadonlyArray<Entity | undefined> = [];
 
 /** How long a card keeps its arrival glow. */
 const ARRIVAL_MS = 2400;

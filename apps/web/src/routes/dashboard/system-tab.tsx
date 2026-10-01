@@ -16,7 +16,7 @@ import type { DashboardSummary } from "../../lib/api";
 import { attentionSources } from "./attention";
 import { Connections } from "./connections-panel";
 import { useAction } from "./downloads-kit";
-import { Automation, Health, Machine, ScheduledTasks, Storage, SystemStrip, UpdatesAndBackups, systemPanelSources } from "./system-panels";
+import { Automation, Health, LibraryCounts, Machine, ScheduledTasks, Storage, SystemStrip, UpdatesAndBackups, systemPanelSources } from "./system-panels";
 import { useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
 
@@ -42,6 +42,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
           <UpdatesAndBackups summary={summary} />
         </div>
         <div className="flex min-h-0 flex-col gap-3">
+          <LibraryCounts summary={summary} />
           <Automation summary={summary} />
           <ScheduledTasks summary={summary} />
         </div>

@@ -173,4 +173,5 @@ export async function serveLiveBusy(page: Page) {
     for (const episode of Object.values(episodeRows)) showIds.add(episode.seriesId);
     return route.fulfill(json({ series: Object.fromEntries([...showIds].filter((id) => showTitles[id]).map((id) => [id, { ...showTitles[id], posterUrl: poster(showTitles[id].title, numberOf(id) + 7) }])), episodes: episodeRows }));
   });
+  return { summary, queue, dispatches, handoffs, indexers, scoreboard, samples, events, movieTitles, showTitles, episodes, poster, numberOf, at, json, host, clients, byHour };
 }

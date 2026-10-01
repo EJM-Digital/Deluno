@@ -7,19 +7,22 @@
  * Nothing here reaches a client while the screen waits.
  *
  * A download that has stopped moving, or that its client reports a problem
- * with, is not "downloading": it is Stuck, in its own lane, with its reason.
+ * with, is not "downloading": it is in the Needs you lane with its reason, beside
+ * the failed hand-offs, the imports that did not finish and the import cases.
  * Which title a card is comes from the sent download it matches (the film, show
  * or episode it was grabbed for); the release name is only its quiet second line.
  */
-import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
+import type { DownloadDispatchItem, DownloadQueueItem, JobQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
-import { isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
+import { dispatchIdIn, isProcessorFailure, isWithProcessor, queueItemNeedsAttention, type RecoveryCaseRow } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
+import { plainReason } from "./plain";
 
-export type Stage = "searching" | "grabbed" | "downloading" | "stuck" | "processor" | "importing" | "imported";
+/** `needs` is the first lane: every problem a person has to settle (a download that has stopped, an import that did not finish, a hand-off the processor refused). */
+export type Stage = "needs" | "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
-export const STAGES: Stage[] = ["searching", "grabbed", "downloading", "stuck", "processor", "importing", "imported"];
+export const STAGES: Stage[] = ["needs", "searching", "grabbed", "downloading", "processor", "importing", "imported"];
 
 /** What a card is about in the library: a film, a show (a season pack or a whole show) or one episode. */
 export type EntityKind = "movie" | "series" | "episode";
@@ -37,6 +40,10 @@ export interface JourneyCard {
   state: { tone: Tone; label: string };
   /** Why it is stuck or has failed, in the words the client or processor gave. */
   reason?: string | null;
+  /** What the client or processor actually said, for the tooltip when `reason` is a plainer sentence. */
+  reasonFull?: string | null;
+  /** The sent download this card matches, so an import case for the same download is known to be on the board. */
+  dispatchId?: string;
   quality?: string | null;
   sizeBytes?: number | null;
   indexer?: string | null;
@@ -50,6 +57,10 @@ export interface JourneyCard {
   at?: string | null;
   /** The download in its client, when it is one (for its Search again button). */
   queueRef?: { clientId: string; itemId: string };
+  /** An import case a person has to settle: Retry (or Search again) and Give up. */
+  recovery?: RecoveryCaseRow;
+  /** A failed import job: Retry and Give up. */
+  importJobId?: string;
   /** Search again can act on it: the client says it stopped or failed. */
   canSearchAgain?: boolean;
   /** The processor hand-off, when it failed and a person has to Retry or Give up. */
@@ -70,6 +81,9 @@ export function releaseKey(name: string | null | undefined): string {
 export function titleFromRelease(name: string): string {
   // A site's own banner in front of the name ("www Torrenting com ", "[ www.site.org ] - ") is not part of the title.
   const cleaned = name.replace(/^[\s[(]*(?:www[\s._-]+)?[a-z0-9-]+[\s._-]+(?:com|org|net|to|cc|me|info)[\s\])._-]+(?=[A-Za-z0-9])/i, "");
+  // A show's episode ("Lioness.S03E08.1080p...") reads "Lioness S03E08": what follows the code is the release's, not the title's.
+  const episode = /^(.*?)[.\s_-]+(S\d{1,2}E\d{1,3})\b/i.exec(cleaned);
+  if (episode && episode[1].trim()) return `${titleFromRelease(episode[1])} ${episode[2].toUpperCase()}`;
   const match = /^(.*?)[.\s_(-]+((?:19|20)\d{2})(?![0-9])/.exec(cleaned);
   if (!match) return cleaned.replace(/[._]+/g, " ").trim();
   const words = match[1].replace(/[._]+/g, " ").trim();
@@ -139,6 +153,9 @@ export interface JourneyInput {
   queueCapturedUtc?: string;
   /** A grab on its way to a client or an import under way, from the events that start and end them. */
   work?: WorkItem[];
+  /** The import cases and failed import jobs that need a person: cards in the Needs you lane unless a card for the same download is already there. */
+  cases?: RecoveryCaseRow[];
+  importJobs?: JobQueueItem[];
 }
 
 function sameLocalDay(a: number, b: number): boolean {
@@ -157,7 +174,7 @@ function stuckReason(item: DownloadQueueItem): string | null {
 }
 
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [], cases = [], importJobs = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   const dispatchByClientItem = new Map<string, DownloadDispatchItem>();
@@ -190,7 +207,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
 
     const beforeTheProcessor = item.status === "queued" || DOWNLOADING.includes(item.status);
     if (beforeTheProcessor && queueItemNeedsAttention(item)) {
-      stage = "stuck";
+      stage = "needs";
       state = { tone: "bad", label: "Stuck" };
       reason = stuckReason(item);
       canSearchAgain = item.status === "stalled" || Boolean(item.errorMessage);
@@ -212,6 +229,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     const entity = entityOf(dispatch);
     const failedHandoff = stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) ? handoff : undefined;
     if (failedHandoff && !reason) reason = failedHandoff.failureMessage;
+    // A hand-off the processor refused is for a person to settle: it moves to the first lane.
+    if (failedHandoff) stage = "needs";
     cards.push({
       key: `${item.clientId}:${item.id}`,
       queueRef: { clientId: item.clientId, itemId: item.id },
@@ -220,7 +239,9 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       release: item.releaseName || item.title,
       entity,
       state,
-      reason,
+      reason: plainReason(reason)?.text ?? null,
+      reasonFull: reason,
+      dispatchId: dispatch?.id,
       canSearchAgain,
       failedHandoffId: failedHandoff?.id,
       quality: dispatch?.decisionQuality ?? null,
@@ -232,7 +253,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       speedMbps: item.speedMbps,
       etaSeconds: item.etaSeconds,
       at: item.addedUtc,
-      to: stage === "processor" || stage === "importing" || stage === "stuck" ? "/queue" : cardLink(entity)
+      to: stage === "processor" || stage === "importing" || stage === "needs" ? "/queue" : cardLink(entity)
     });
   }
 
@@ -250,6 +271,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     seenReleases.add(releaseKey(handoff.releaseName));
     const entity = entityOf(dispatch);
     const failed = stage === "processor" && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage));
+    if (failed) stage = "needs";
     cards.push({
       key: `handoff:${handoff.id}`,
       stage,
@@ -257,7 +279,9 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       release: handoff.releaseName,
       entity,
       state: stage === "importing" ? { tone: "info", label: "Back from the processor" } : handoffState(handoff),
-      reason: failed ? handoff.failureMessage : null,
+      reason: failed ? plainReason(handoff.failureMessage)?.text ?? null : null,
+      reasonFull: failed ? handoff.failureMessage : null,
+      dispatchId: dispatch?.id,
       failedHandoffId: failed ? handoff.id : undefined,
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
@@ -285,6 +309,48 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       indexer: dispatch?.indexerName ?? null,
       client: short(item.client ?? dispatch?.downloadClientName),
       to: item.to
+    });
+  }
+
+  // Import cases and failed import jobs: a card each, unless the download they are about is already a card.
+  const cardReleases = new Set(cards.filter((card) => card.release).map((card) => releaseKey(card.release)));
+  const cardDispatches = new Set(cards.flatMap((card) => (card.dispatchId ? [card.dispatchId] : [])));
+  const dispatchById = new Map(dispatches.map((dispatch) => [dispatch.id, dispatch]));
+  for (const entry of cases) {
+    const dispatchId = dispatchIdIn(entry.detailsJson);
+    if ((dispatchId && cardDispatches.has(dispatchId)) || cardReleases.has(releaseKey(entry.title))) continue;
+    const dispatch = (dispatchId ? dispatchById.get(dispatchId) : undefined) ?? dispatchByRelease.get(releaseKey(entry.title));
+    const said = plainReason(entry.summary);
+    cards.push({
+      key: `case:${entry.mediaType}:${entry.id}`,
+      stage: "needs",
+      title: titleFromRelease(entry.title),
+      release: entry.title,
+      entity: entityOf(dispatch),
+      state: { tone: "warn", label: "Import needs a look" },
+      reason: said?.text ?? null,
+      reasonFull: said?.full ?? null,
+      dispatchId: dispatch?.id ?? dispatchId ?? undefined,
+      recovery: entry,
+      quality: dispatch?.decisionQuality ?? null,
+      indexer: dispatch?.indexerName ?? null,
+      client: short(dispatch?.downloadClientName),
+      at: entry.detectedUtc,
+      to: "/queue"
+    });
+  }
+  for (const job of importJobs) {
+    const said = plainReason(job.lastError ?? "It stopped without saying why.");
+    cards.push({
+      key: `job:${job.id}`,
+      stage: "needs",
+      title: "An import did not finish",
+      state: { tone: "bad", label: "Import failed" },
+      reason: said?.text ?? null,
+      reasonFull: said?.full ?? null,
+      importJobId: job.id,
+      at: job.completedUtc ?? job.createdUtc,
+      to: "/queue"
     });
   }
 
@@ -356,6 +422,9 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   for (const card of cards) grouped[card.stage].push(card);
   grouped.imported.sort((a, b) => Date.parse(b.at ?? "") - Date.parse(a.at ?? ""));
   grouped.downloading.sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
+  // In the first lane the quick fixes come first (a refused hand-off, a failed import, an import case), then the stopped downloads, which are many and alike.
+  const needsRank = (card: JourneyCard) => (card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 2 : 3);
+  grouped.needs.sort((a, b) => needsRank(a) - needsRank(b) || toneRank[a.state.tone] - toneRank[b.state.tone]);
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
 }
@@ -366,14 +435,14 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
  * two and the list says "and N more" for the difference. Stuck downloads are not
  * downloading: they have their own count.
  */
-export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: DashboardSummary | undefined): Record<Stage, number> {
+export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: DashboardSummary | undefined, needsYou?: number): Record<Stage, number> {
   const downloads = summary?.downloads;
   const pick = (cards: JourneyCard[], fromSummary: number | undefined) => Math.max(cards.length, fromSummary ?? 0);
   return {
     searching: grouped.searching.length,
     grabbed: pick(grouped.grabbed, downloads?.queued),
     downloading: pick(grouped.downloading, downloads?.active),
-    stuck: pick(grouped.stuck, downloads?.stalled),
+    needs: pick(grouped.needs, needsYou ?? downloads?.stalled),
     processor: pick(grouped.processor, downloads ? downloads.processing + downloads.waitingForProcessor : undefined),
     importing: pick(grouped.importing, downloads?.importReady),
     imported: pick(grouped.imported, summary?.pipeline?.today.imported)

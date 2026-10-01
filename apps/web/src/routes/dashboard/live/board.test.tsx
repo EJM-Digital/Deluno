@@ -2,14 +2,15 @@ import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fullSummary } from "../downloads-fixtures";
-import { buildCountdownRows, Countdowns } from "./countdowns";
+import { RightNow } from "./band";
+import { buildCountdownRows } from "./countdowns";
 import { Flow } from "./flow";
 import { HeartbeatValue } from "./heartbeat";
 import { byStage, laneCounts, type JourneyCard } from "./journey";
 import { NO_TITLES, type TitleLookup } from "./titles";
-import { Indexers } from "./indexers";
-import { Rhythm } from "./rhythm";
-import { SpeedChart } from "./speed-chart";
+import { IndexerLights } from "./indexers";
+import { RhythmChart } from "./rhythm";
+import { SpeedCell } from "./speed-chart";
 import { ActivityStream } from "./stream";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
@@ -35,7 +36,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe("the countdowns", () => {
+describe("the next thing Deluno will do", () => {
   const summary = () => {
     const copy = structuredClone(fullSummary);
     copy.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "active", nextSearchUtc: inMs(12 * 60_000 + 4_000), nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: inMs(-48 * 60_000), lastError: null }];
@@ -51,18 +52,31 @@ describe("the countdowns", () => {
     expect(buildCountdownRows(summary()).map((row) => row.label)).toEqual(["Search Movies", "Check health", "Watch indexers for new releases"]);
   });
 
-  it("counts down by the second, and the next search reads 12:04", () => {
+  it("counts down by the second, with the soonest run in the ring and the one after it beside", () => {
     vi.useFakeTimers({ now: NOW });
-    withRouter(<Countdowns summary={summary()} />);
-    const search = screen.getByRole("link", { name: /^Search Movies/ });
-    expect(within(search).getByText("12:04")).toBeInTheDocument();
+    withRouter(<RightNow summary={summary()} samples={[]} indexers={[]} work={[]} updatedAt={NOW.getTime()} now={NOW.getTime()} />);
+    const next = screen.getByRole("link", { name: /^Watch indexers for new releases/ });
+    expect(within(next).getByText("9:00")).toBeInTheDocument();
+    expect(screen.getByText(/Then Search Movies/).textContent).toContain("12:04");
     act(() => { vi.advanceTimersByTime(3_000); });
-    expect(within(screen.getByRole("link", { name: /^Search Movies/ })).getByText("12:01")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Search Movies/ })).toHaveAttribute("href", "/search-cycles");
+    expect(within(screen.getByRole("link", { name: /^Watch indexers for new releases/ })).getByText("8:57")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Watch indexers for new releases/ })).toHaveAttribute("href", "/?tab=system");
+  });
+
+  it("says what is running now, and when the last search was when nothing is", () => {
+    const now = NOW.getTime();
+    const { unmount } = withRouter(<RightNow summary={summary()} samples={[]} indexers={[]} work={[{ key: "s", kind: "search", text: "Searching TV for what is missing or could be better", to: "/search-cycles" }]} updatedAt={now} now={now} />);
+    expect(screen.getByText("Searching TV for what is missing or could be better")).toBeInTheDocument();
+    unmount();
+    const idle = summary();
+    idle.automation!.lastSearchCycle = { libraryId: "l1", libraryName: "Movies", mediaType: "movies", status: "completed", planned: 14, queued: 2, skipped: 12, startedUtc: inMs(-49 * 60_000), completedUtc: inMs(-48 * 60_000) };
+    withRouter(<RightNow summary={idle} samples={[]} indexers={[]} work={[]} updatedAt={now} now={now} />);
+    expect(screen.getByText("Nothing is running right now.")).toBeInTheDocument();
+    expect(screen.getByText(/The last search was Movies/).textContent).toContain("14 checked, 2 sent to a client");
   });
 
   it("says something true when nothing is scheduled", () => {
-    withRouter(<Countdowns summary={undefined} />);
+    withRouter(<RightNow summary={undefined} samples={[]} indexers={[]} work={[]} updatedAt={NOW.getTime()} now={NOW.getTime()} />);
     expect(screen.getByText(/Nothing is scheduled/)).toBeInTheDocument();
   });
 });
@@ -91,7 +105,7 @@ describe("the heartbeat", () => {
 describe("the charts", () => {
   it("draws the speed trace with a reading even when nothing has ever been stored", () => {
     vi.useFakeTimers({ now: NOW });
-    const { container } = withRouter(<SpeedChart samples={[]} summary={undefined} />);
+    const { container } = withRouter(<SpeedCell samples={[]} summary={undefined} />);
     expect(container.querySelectorAll("path.live-trace").length).toBe(2);
     expect(screen.getByRole("img", { name: /Download peaked at 0 MB\/s/ })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/NaN|undefined/);
@@ -102,7 +116,7 @@ describe("the charts", () => {
     const summary = structuredClone(fullSummary);
     summary.downloads!.readingUtc = inMs(-30_000);
     summary.downloads!.downloadMbps = 12;
-    withRouter(<SpeedChart samples={[{ capturedUtc: inMs(-3_600_000), speedMbps: 4, activeCount: 1, uploadMbps: 0 }]} summary={summary} />);
+    withRouter(<SpeedCell samples={[{ capturedUtc: inMs(-3_600_000), speedMbps: 4, activeCount: 1, uploadMbps: 0 }]} summary={summary} />);
     expect(screen.getByRole("img", { name: /Download peaked at 12 MB\/s/ })).toBeInTheDocument();
   });
 
@@ -113,14 +127,14 @@ describe("the charts", () => {
       { id: "1", category: "wanted.search.completed", createdUtc: at(2) },
       { id: "2", category: "filesystem.import.completed", createdUtc: at(2) }
     ];
-    const page = (list: typeof rows) => <MemoryRouter><Rhythm rows={list} /></MemoryRouter>;
+    const page = (list: typeof rows) => <MemoryRouter><RhythmChart rows={list} /></MemoryRouter>;
     const { container, rerender } = render(page(rows));
     expect(container.querySelectorAll(".live-bar")).toHaveLength(2);
     rerender(page([...rows, { id: "3", category: "filesystem.import.completed", createdUtc: at(2) }]));
     expect(container.querySelectorAll(".live-bar")).toHaveLength(2);
     expect(screen.getByRole("img", { name: /3 events today: 1 searches, 2 imports/ })).toBeInTheDocument();
     rerender(page([]));
-    expect(screen.getByText(/Quiet so far today/)).toBeInTheDocument();
+    expect(screen.getByText("quiet so far")).toBeInTheDocument();
   });
 });
 
@@ -128,7 +142,7 @@ describe("today's count", () => {
   it("shows the day's real total from the server counts, never the size of a page", () => {
     vi.useFakeTimers({ now: NOW });
     const counts = [{ hour: 3, category: "wanted.search.completed", count: 340 }, { hour: 5, category: "movies.release.grabbed", count: 60 }];
-    const { container } = withRouter(<Rhythm rows={[]} counts={counts} countedAt={NOW.getTime()} />);
+    const { container } = withRouter(<RhythmChart rows={[]} counts={counts} countedAt={NOW.getTime()} />);
     expect(screen.getByRole("img", { name: /400 events today/ })).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/last 200/);
   });
@@ -136,7 +150,7 @@ describe("today's count", () => {
   it("says so when it only has the newest page, and does not present the cap as the total", () => {
     vi.useFakeTimers({ now: NOW });
     const rows = [{ id: "1", category: "wanted.search.completed", createdUtc: inMs(-3_600_000) }];
-    withRouter(<Rhythm rows={rows} capped />);
+    withRouter(<RhythmChart rows={rows} capped />);
     expect(screen.getByText("last 200 events")).toBeInTheDocument();
   });
 });
@@ -148,7 +162,7 @@ describe("the speed peaks", () => {
     summary.downloads!.readingUtc = inMs(-30_000);
     summary.downloads!.downloadMbps = 12;
     summary.downloads!.uploadMbps = 3;
-    withRouter(<SpeedChart samples={[]} summary={summary} />);
+    withRouter(<SpeedCell samples={[]} summary={summary} />);
     expect(screen.getByText(/^Download peak/).textContent).toContain("12 MB/s");
     expect(screen.getByText(/^Upload peak/).textContent).toContain("3.0 MB/s");
   });
@@ -156,12 +170,45 @@ describe("the speed peaks", () => {
 
 describe("the indexers", () => {
   const indexer = (id: string, name: string, healthStatus: string) => ({ id, name, protocol: "usenet", isEnabled: true, priority: 1, healthStatus, lastHealthMessage: healthStatus === "healthy" ? null : "HTTP 504", lastHealthLatencyMs: 200, lastHealthTestUtc: inMs(-60_000), consecutiveFailures: 0, rateLimitedUntilUtc: null }) as never;
+  const scoreboard = (stamp: string) => ({ indexers: [{ id: "a", name: "NZBgeek", totalQueries: 96, failedQueries: 0, successfulGrabs: 5, lastQueryUtc: stamp }] });
 
-  it("leaves a failing indexer to Needs you, which has its button, so it is never listed twice", () => {
+  it("shows every indexer as a named light, and a broken one links to System where its Test again button is", () => {
     vi.useFakeTimers({ now: NOW });
-    withRouter(<Indexers indexers={[indexer("a", "NZBgeek", "healthy"), indexer("b", "Nyaa.si", "unreachable")]} summary={undefined} now={NOW.getTime()} />);
-    expect(screen.getByText("NZBgeek")).toBeInTheDocument();
-    expect(screen.queryByText("Nyaa.si")).toBeNull();
+    withRouter(<IndexerLights indexers={[indexer("a", "NZBgeek", "healthy"), indexer("b", "Nyaa.si", "unreachable")]} summary={undefined} now={NOW.getTime()} />);
+    expect(screen.getByRole("link", { name: /^NZBgeek: not asked today/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Nyaa.si: not answering: HTTP 504/ })).toHaveAttribute("href", "/?tab=system");
+  });
+
+  it("says what each did today in its tooltip and flashes the light of the one that has just been asked", () => {
+    vi.useFakeTimers({ now: NOW });
+    const list = [indexer("a", "NZBgeek", "healthy")];
+    const page = (stamp: string) => <MemoryRouter><IndexerLights indexers={list} scoreboard={scoreboard(stamp)} summary={undefined} now={NOW.getTime()} /></MemoryRouter>;
+    const { container, rerender } = render(page(inMs(-120_000)));
+    expect(screen.getByRole("link", { name: /^NZBgeek: 96 queries/ })).toBeInTheDocument();
+    expect(container.querySelector(".live-beat")).toBeNull();
+    rerender(page(inMs(-1_000)));
+    expect(container.querySelector(".live-beat")).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(2_600); });
+    expect(container.querySelector(".live-beat")).toBeNull();
+  });
+});
+
+describe("the indexer lights", () => {
+  const indexer = (id: string, name: string, extra: Record<string, unknown>) => ({ id, name, protocol: "usenet", isEnabled: true, priority: 1, healthStatus: "healthy", lastHealthMessage: null, lastHealthLatencyMs: 300, lastHealthTestUtc: inMs(-60_000), consecutiveFailures: 0, rateLimitedUntilUtc: null, ...extra }) as never;
+
+  it("shows a switched-off indexer grey and after the enabled ones, a slow one amber, and says what each did in its tooltip", () => {
+    vi.useFakeTimers({ now: NOW });
+    const scoreboard = { indexers: [{ id: "a", name: "NZBgeek", totalQueries: 96, failedQueries: 0, successfulGrabs: 5, lastQueryUtc: inMs(-120_000) }] };
+    const { container } = withRouter(<IndexerLights indexers={[indexer("off", "Nyaa.si", { isEnabled: false }), indexer("slow", "DrunkenSlug", { lastHealthLatencyMs: 4200 }), indexer("a", "NZBgeek", {})]} scoreboard={scoreboard} summary={undefined} now={NOW.getTime()} />);
+    const names = [...container.querySelectorAll("li a")].map((link) => link.textContent);
+    expect(names).toEqual(["NZBgeek", "DrunkenSlug", "Nyaa.si"]);
+    const led = (name: string) => screen.getByRole("link", { name: new RegExp("^" + name.replace(".", "[.]") + ":") }).querySelector("[class*='bg-']:not(.live-beat)")?.outerHTML ?? "";
+    expect(screen.getByRole("link", { name: /^DrunkenSlug: slow, 4200 ms to answer/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Nyaa.si: switched off/ })).toBeInTheDocument();
+    expect(led("Nyaa.si")).toContain("bg-muted-foreground");
+    expect(led("DrunkenSlug")).toContain("bg-warning");
+    expect(led("NZBgeek")).toContain("bg-success");
+    expect(screen.getByRole("link", { name: /^NZBgeek: 96 queries/ })).toHaveAttribute("title", expect.stringMatching(/Last answer 300 ms, .*Today 96 queries, last asked/));
   });
 });
 
@@ -181,17 +228,19 @@ describe("the journey board", () => {
     );
   };
 
-  it("puts each title in its lane with its details, and an empty lane shrinks to one true line", () => {
+  it("puts each title in its lane with its details, and every empty lane is named in full, with its state, in one Quiet column", () => {
     render(board([card({}), card({ key: "c1:b", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "info", label: "Being cleaned" } })]));
     const downloading = screen.getByRole("group", { name: "Downloading" });
     expect(within(downloading).getByText("Sintel 2010 1080p")).toBeInTheDocument();
     expect(within(downloading).getByText("Bluray 1080p · 1.9 GB")).toBeInTheDocument();
     expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "With the processor" })).getByText("NZBgeek → Deluge → Cleaner")).toBeInTheDocument();
-    const importing = screen.getByRole("group", { name: "Importing" });
-    expect(within(importing).getByText("Nothing waiting")).toBeInTheDocument();
-    expect(importing.className).toContain("lg:w-[6.75rem]");
-    expect(downloading.className).not.toContain("lg:w-[6.75rem]");
+    // The empty stages are not lanes: one Quiet column names each of them in full.
+    expect(screen.queryByRole("group", { name: "Importing" })).toBeNull();
+    const quiet = screen.getByRole("group", { name: "Quiet" });
+    for (const name of ["Needs you", "Searching", "Grabbed", "Importing", "In the library"]) expect(within(quiet).getByText(name)).toBeInTheDocument();
+    expect(within(quiet).getByRole("link", { name: /^Importing: 0. Nothing waiting to import/ })).toBeInTheDocument();
+    expect(within(quiet).queryByText("Downloading")).toBeNull();
   });
 
   it("names a card by its library title with the release as a quiet second line, and shows an episode as show plus SxxEyy", () => {
@@ -210,22 +259,37 @@ describe("the journey board", () => {
     expect(within(downloading).getByRole("link", { name: /^Say Yes to the Dress S04E02/ })).toHaveAttribute("href", "/tv/s1");
   });
 
-  it("puts a stopped download in Stuck with its reason and Search again, and keeps it out of Downloading", () => {
+  it("puts a stopped download in Needs you with its reason and Search again, and keeps it out of Downloading", () => {
     render(board([
-      card({ key: "c1:s", stage: "stuck", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" }, progress: 100, speedMbps: 0 }),
+      card({ key: "c1:s", stage: "needs", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" }, progress: 100, speedMbps: 0 }),
       card({})
     ]));
-    const stuck = screen.getByRole("group", { name: "Stuck" });
+    const stuck = screen.getByRole("group", { name: "Needs you" });
     expect(within(stuck).getByText("missing or invalid torrent data")).toBeInTheDocument();
     expect(within(stuck).getByRole("button", { name: /^Search again for/ })).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "Downloading" })).queryByText("Stuck")).toBeNull();
   });
 
-  it("gives a failed processor hand-off its Retry and Give up on the card", () => {
-    render(board([card({ key: "h:1", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" })]));
-    const lane = screen.getByRole("group", { name: "With the processor" });
+  it("gives a failed processor hand-off its Retry and Give up on the card, in Needs you", () => {
+    render(board([card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" })]));
+    const lane = screen.getByRole("group", { name: "Needs you" });
     expect(within(lane).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
     expect(within(lane).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
+  });
+
+  it("makes every action button on a card the same size and the same box, even the quiet Give up", () => {
+    render(board([
+      card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" }),
+      card({ key: "c1:s", stage: "needs", title: "The Kid (1921)", state: { tone: "bad", label: "Stuck" }, reason: "Nobody is sharing it.", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" } }),
+      card({ key: "case:movie:r1", stage: "needs", title: "Sintel (2010)", state: { tone: "warn", label: "Import needs a look" }, recovery: { id: "r1", mediaType: "movie", title: "Sintel", failureKind: "unmatched", summary: "x", recommendedAction: "", detailsJson: null, detectedUtc: inMs(-1000) } })
+    ]));
+    const buttons = [...within(screen.getByRole("group", { name: "Needs you" })).getAllByRole("button"), screen.getByRole("link", { name: "Review Sintel (2010)" })];
+    expect(buttons.length).toBeGreaterThanOrEqual(5);
+    const sizeOf = (element: HTMLElement) => element.className.split(/s+/).filter((name) => /^(h|w)-/.test(name) && !/^h-3.5|^w-3.5/.test(name)).sort().join(" ");
+    expect(new Set(buttons.map(sizeOf)).size).toBe(1);
+    for (const button of buttons) expect(button.className).toContain("w-[7.5rem]");
+    // The quiet action is boxed like the others, only softer.
+    expect(screen.getByRole("button", { name: "Give up on Metropolis (1927)" }).className).toContain("border");
   });
 
   it("only shimmers a download bar while bytes are really moving", () => {
@@ -253,7 +317,7 @@ describe("what Today and Latest show", () => {
 
   it("leaves routine background work out of Latest and says so once, quietly", () => {
     withRouter(
-      <ActivityStream
+      <ActivityStream titles={NO_TITLES}
         rows={[
           row("1", "movies.release.grabbed", "Grabbed Dune Part Two (2024) from NZBgeek."),
           row("2", "job.started", "Task started"),
@@ -276,7 +340,7 @@ describe("what Today and Latest show", () => {
       { hour: 5, category: "filesystem.import.completed", count: 6 },
       { hour: 6, category: "job.completed", count: 471 }
     ];
-    const { container } = withRouter(<Rhythm rows={[]} counts={counts} countedAt={NOW.getTime()} />);
+    const { container } = withRouter(<RhythmChart rows={[]} counts={counts} countedAt={NOW.getTime()} />);
     expect(screen.getByRole("img", { name: /143 events today/ })).toBeInTheDocument();
     for (const words of ["searches", "grabbed", "imported", "routine"]) expect(screen.getByText(words)).toBeInTheDocument();
     expect(container.querySelectorAll(".live-bar")).toHaveLength(3);

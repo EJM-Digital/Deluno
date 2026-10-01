@@ -6,8 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryClient } from "../../lib/route-cache";
 import { computeAttention } from "./attention";
 import { emptySummary, fullSummary } from "./downloads-fixtures";
-import { buildLiveCells, LiveTab } from "./live-tab";
-import * as library from "./summary-fixtures";
+import { LiveTab } from "./live-tab";
 
 const authedFetchMock = vi.fn();
 vi.mock("../../lib/use-auth", () => ({ authedFetch: (...args: unknown[]) => authedFetchMock(...args) }));
@@ -63,43 +62,34 @@ beforeEach(() => {
   for (const key of Object.keys(lists)) delete lists[key];
 });
 
-describe("the Live strip", () => {
-  it("states each fact once: the library counts (the speed, the connection and the countdowns have their own places)", () => {
-    const cells = buildLiveCells(library.fullSummary());
-    const value = (label: string) => cells.find((cell) => cell.label === label)?.value;
-    expect(cells.map((cell) => cell.label)).toEqual(["Movies", "TV shows", "Missing", "Upgradable"]);
-    expect(value("Movies")).toBe("20");
-    expect(value("TV shows")).toBe("2");
-    expect(value("Missing")).toBe("3");
-    expect(value("Upgradable")).toBe("2");
-  });
-
-  it("has no speed cell: the speed is read once, in its own panel, and always as a reading", () => {
-    expect(buildLiveCells(library.emptySummary()).map((cell) => cell.label)).not.toContain("Speed now");
-    expect(JSON.stringify(buildLiveCells(undefined))).not.toMatch(/undefined|NaN/);
-  });
-});
-
 describe("Live", () => {
-  it("lists the real problems about downloads, imports and titles, each with its own button", async () => {
+  it("has the library counts and the scheduled tasks on System, not here: Live opens on what Deluno is doing", () => {
+    renderTab(fullSummary);
+    expect(screen.queryByText("Upgradable")).toBeNull();
+    expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
+    expect(screen.getByRole("region", { name: "Speed" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Doing now" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Next up" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Indexers" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /^activity/i })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
+  });
+
+  it("lists every problem a person has to settle as a card in the first lane, each with its own button", async () => {
     seedBusy();
     renderTab(fullSummary);
 
-    const needs = screen.getByRole("region", { name: /^needs you/i });
+    const board = screen.getByRole("region", { name: /^every title/i });
+    const needs = await within(board).findByRole("group", { name: "Needs you" });
     expect(await within(needs).findByRole("button", { name: "Retry Say Yes to the Dress" })).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Give up on Say Yes to the Dress" })).toBeInTheDocument();
-    expect(await within(needs).findByRole("button", { name: "Retry failed import 1" })).toBeInTheDocument();
+    expect(await within(needs).findByRole("button", { name: "Retry the failed import" })).toBeInTheDocument();
+    expect(await within(needs).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    expect(within(needs).getByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
+    // The hand-off the processor refused is a problem to settle, so it is not in the processor's lane.
+    expect(within(board).queryByRole("group", { name: "With the processor" })?.textContent ?? "").not.toContain("Metropolis");
 
-    // What the board already shows, with its own buttons, is one line here and is not listed twice:
-    // the stalled download is a card in Stuck, the failed hand-off a card with the processor.
-    expect(within(needs).getByText("1 stuck download")).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Show the stuck downloads on the board" })).toBeInTheDocument();
-    const board = screen.getByRole("region", { name: /^every title/i });
-    expect(await within(board).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
-    await waitFor(() => expect(within(needs).queryByRole("button", { name: "Retry Metropolis (1927)" })).toBeNull());
-    expect(within(within(board).getByRole("group", { name: "Stuck" })).getByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
-
-    // The badge number and the list are the same thing.
+    // The lane's number and the badge's number are the same thing.
     const now = computeAttention(fullSummary, {
       movieRecovery: lists["/api/movies/import-recovery"] as never,
       seriesRecovery: lists["/api/series/import-recovery"] as never,
@@ -107,7 +97,7 @@ describe("Live", () => {
       handoffs: lists["/api/integrations/processors/handoffs"] as never,
       telemetry: lists["/api/download-clients/telemetry"] as never
     }).counts.live;
-    await waitFor(() => expect(within(needs).getAllByText(String(now)).length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(needs).getByRole("link", { name: `Needs you: ${now}` })).toBeInTheDocument());
 
     // The setup problems are on the other tab, not repeated here.
     expect(screen.queryByRole("button", { name: "Test Nyaa.si again" })).toBeNull();
@@ -117,18 +107,7 @@ describe("Live", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("puts leftover folders and suggestions in one quiet line that is not counted", async () => {
-    seedBusy();
-    renderTab(fullSummary);
-    const needs = screen.getByRole("region", { name: /^needs you/i });
-    const quiet = (await within(needs).findByText(/Also worth a look/)).parentElement as HTMLElement;
-    await waitFor(() => expect(quiet.textContent).toMatch(/2 leftover folders/));
-    expect(quiet.textContent).toMatch(/1 suggestion/);
-    expect(within(quiet).getByRole("link", { name: "2 leftover folders" })).toHaveAttribute("href", "/queue");
-    expect(within(quiet).getByRole("link", { name: "1 suggestion" })).toHaveAttribute("href", "/system");
-  });
-
-  it("shows the journey board with Search again, Coming up and Latest in plain words", async () => {
+  it("shows the journey board with Search again, Coming up and the activity in plain words", async () => {
     seedBusy();
     const summary = { ...fullSummary, activity: { ...fullSummary.activity!, recent: [{ ...fullSummary.activity!.recent[0], relatedEntityType: "movie", relatedEntityId: "m9" }] } };
     renderTab(summary);
@@ -141,9 +120,9 @@ describe("Live", () => {
     const coming = screen.getByRole("region", { name: /^coming up/i });
     expect(await within(coming).findByRole("link", { name: /Lioness/ })).toHaveAttribute("href", "/tv/s1");
 
-    const latest = screen.getByRole("region", { name: /^latest/i });
-    expect(within(latest).getByText(/Imported into the library/)).toBeInTheDocument();
-    expect(within(latest).getByRole("link", { name: /Sintel/ })).toHaveAttribute("href", "/movies/m9");
+    const activity = screen.getByRole("region", { name: /^activity/i });
+    expect(within(activity).getByText(/Imported into the library/)).toBeInTheDocument();
+    expect(within(activity).getByRole("link", { name: /Sintel/ })).toHaveAttribute("href", "/movies/m9");
     expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|importFailed|notTransferring|filesystem\.import/);
   });
 
@@ -160,11 +139,11 @@ describe("Live", () => {
 
   it("says something true on a new install, with no button and no blank panel", () => {
     const { container } = renderTab(emptySummary);
-    expect(screen.getByText(/Nothing needs you/)).toBeInTheDocument();
-    expect(screen.queryByText(/Also worth a look/)).toBeNull();
-    expect(within(screen.getByRole("group", { name: "Downloading" })).getByText("Nothing moving")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "In the library" })).getByText("None today")).toBeInTheDocument();
-    // An empty library says so and offers the next step, in a slim row under the strip.
+    const quiet = screen.getByRole("group", { name: "Quiet" });
+    for (const name of ["Needs you", "Downloading", "In the library"]) expect(within(quiet).getByText(name)).toBeInTheDocument();
+    expect(within(quiet).getByText("Nothing moving")).toBeInTheDocument();
+    expect(within(quiet).getByText("None today")).toBeInTheDocument();
+    // An empty library says so and offers the next step, in a slim row under the band.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
     expect(screen.getByText(/Nothing airs in the next 72 hours/)).toBeInTheDocument();
@@ -174,7 +153,6 @@ describe("Live", () => {
 
   it("renders before the summary has arrived without inventing numbers", () => {
     const { container } = renderTab(undefined);
-    expect(container.textContent).toContain("Movies");
     expect(container.textContent).toContain("0 MB/s");
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

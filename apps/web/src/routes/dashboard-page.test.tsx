@@ -69,7 +69,7 @@ describe("DashboardPage tabs", () => {
     const user = userEvent.setup();
     open("/");
 
-    expect(await screen.findByRole("region", { name: /^needs you/i })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /^every title/i })).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Live", "System"]);
     expect(screen.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("address").textContent).toBe("/");
@@ -78,7 +78,7 @@ describe("DashboardPage tabs", () => {
     expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
     expect(screen.getByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: /^health/i })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^every title/i })).toBeNull();
 
     // Live carries no tab at all.
     await user.click(screen.getByRole("tab", { name: /^Live/ }));
@@ -104,7 +104,7 @@ describe("DashboardPage tabs", () => {
   it("badges each tab with the real problems on it, once, and the Live badge is not a total", async () => {
     open("/");
     await screen.findByRole("tab", { name: /^Live/ });
-    // The same count the Needs you list and the sidebar read.
+    // The same count the first lane of the board and the bell read.
     // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
     const none = [] as never;
     const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
@@ -118,8 +118,9 @@ describe("DashboardPage tabs", () => {
     // Each number counts its own tab only: Live does not add System's problems to its own.
     expect(expected.system).toBeGreaterThan(0);
     expect(expected.live).toBeGreaterThan(0);
-    const listed = Number(within(screen.getByRole("region", { name: /^needs you/i })).getAllByText(/^[0-9]+$/)[0].textContent);
-    expect(listed).toBeGreaterThanOrEqual(expected.live);
+    // The first lane of the board says the same number.
+    const lane = within(screen.getByRole("region", { name: /^every title/i })).getByRole("link", { name: /^Needs you: [0-9]+/ });
+    expect(Number(lane.getAttribute("aria-label")?.match(/^Needs you: ([0-9]+)/)?.[1])).toBeGreaterThanOrEqual(expected.live);
   });
 
   it("shows no badges on a new install", async () => {

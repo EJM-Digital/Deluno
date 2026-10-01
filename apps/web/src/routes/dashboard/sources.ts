@@ -11,6 +11,7 @@ import {
   fetchJson,
   fetchPageItems,
   type ActivityEventItem,
+  type DownloadDispatchItem,
   type DownloadThroughputWindow,
   type DashboardSummary,
   type PolicySetItem,
@@ -103,6 +104,8 @@ export const liveSources = defineSources({
   upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), []),
   // The journey of each title (#1096): the sent downloads, the processor hand-offs and the indexers, all stored lists the other screens already keep.
   dispatches: { ...sharedSources.dispatches, fallback: [] },
+  // Every card is matched to the title it was grabbed for. The shared list holds only the newest 60, and a download that has been stuck for days is older than that (or archived), so the board reads a longer list that includes the archived ones.
+  boardDispatches: source<DownloadDispatchItem[]>("dashboard-board-dispatches", "Sent downloads for the board", () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=300&includeArchived=true"), []),
   handoffs: { ...sharedSources.handoffs, fallback: [] },
   indexers: { ...sharedSources.indexers, fallback: [] },
   // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.

@@ -2,14 +2,16 @@
  * Dashboard, Live (#1087, #1096): everything Deluno is doing, as it does it, in
  * one place.
  *
- * Across the top, one strip: the library counts, the speed (always a reading)
- * and the connection's heartbeat. Under it, the centre is the journey of every
- * title in flight, as lanes (searching, grabbed, downloading, with the
- * processor, importing, in the library) with a card for each title, and beneath
- * it the speed over six hours, today's activity by the hour, the countdowns to
- * the next searches and tasks, and the indexers. Down the right: Needs you (the
- * real problems, each with its button), what Deluno just did as a live stream,
- * and what airs next.
+ * Along the top, the Right now band: the speed with its live trace, what is
+ * running this second, the next thing it will do with a countdown ring, and the
+ * indexers as lights that flash when they are asked. Under it, the hero: the
+ * journey of every title as lanes, with Needs you as the first (every problem a
+ * person must settle, as cards with their buttons: a download that stopped, an
+ * import that did not finish, a hand-off the processor refused), then searching,
+ * grabbed, downloading, with the processor, importing and in the library, and the
+ * stages with nothing in them as one quiet column. Down the right, one activity
+ * stream (today by the hour as a sparkline, then what Deluno did, in plain words
+ * with titles) and what airs next.
  *
  * Everything that moves is moved by a real change or by the clock: a bar and a
  * speed follow the readings the download clients push, a card glides to the
@@ -17,10 +19,10 @@
  * counts to its new value, and countdowns tick by the second. Nothing loops for
  * decoration, and with reduced motion the new value is simply shown.
  *
- * Each fact appears once. The connection, storage and system problems are on
- * System. Where the numbers come from: the Dashboard summary (a prop), stored
- * lists the other screens already cache, and the realtime events. Nothing here
- * reaches a client, indexer or disk while the screen waits.
+ * Each fact appears once. The library counts, the connection, storage and system
+ * problems are on System. Where the numbers come from: the Dashboard summary (a
+ * prop), stored lists the other screens already cache, and the realtime events.
+ * Nothing here reaches a client, indexer or disk while the screen waits.
  */
 import type { JSX } from "react";
 import { useMemo } from "react";
@@ -28,58 +30,25 @@ import { Link } from "react-router-dom";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
-import { CountUp } from "../../components/ui/count-up";
-import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
-import type { DashboardSummary, SeriesUpcomingEpisodeItem } from "../../lib/api";
+import type { DashboardSummary, DownloadDispatchItem, SeriesUpcomingEpisodeItem } from "../../lib/api";
 import { useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
 import { useAction } from "./downloads-kit";
 import { until } from "./format";
-import { NeedsYou, type OnBoard } from "./needs-you";
 import { FitList, Line, Panel } from "./parts";
 import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
-import { Countdowns } from "./live/countdowns";
+import { RightNow } from "./live/band";
 import { Flow } from "./live/flow";
-import { HeartbeatValue, UpdatedAgo } from "./live/heartbeat";
 import { useArrivals, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
-import { Indexers } from "./live/indexers";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
-import { Rhythm } from "./live/rhythm";
-import { SpeedChart } from "./live/speed-chart";
+import { entityFromRelated, type Entity } from "./live/titles";
 import { ActivityStream } from "./live/stream";
 import { liveSources, useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
 
 function episodeCode(item: SeriesUpcomingEpisodeItem): string {
   return `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`;
-}
-
-/** One cell of the strip. A number that can change carries `count`, so it travels to its new value. */
-export interface LiveCell extends Omit<SummaryCell, "value"> {
-  value: string;
-  count?: { value: number; format?: (value: number) => string };
-}
-
-/** The strip's numbers: the library counts. The speed is in its own panel (once), and the connection cell is added beside them. */
-export function buildLiveCells(summary: DashboardSummary | undefined): LiveCell[] {
-  const library = summary?.library;
-  const movies = library?.movies;
-  const shows = library?.shows;
-  const missing = (movies?.missing ?? 0) + (shows?.missing ?? 0);
-  const upgradable = (movies?.upgradable ?? 0) + (shows?.upgradable ?? 0);
-
-  const whole = (value: number) => Math.round(value).toLocaleString("en-AU");
-  return [
-    { label: "Movies", value: (movies?.total ?? 0).toLocaleString("en-AU"), count: { value: movies?.total ?? 0, format: whole }, help: movies && movies.total > 0 ? "in your library" : "none yet", href: "/movies" },
-    { label: "TV shows", value: (shows?.total ?? 0).toLocaleString("en-AU"), count: { value: shows?.total ?? 0, format: whole }, help: shows && shows.total > 0 ? "in your library" : "none yet", href: "/tv" },
-    { label: "Missing", value: missing.toLocaleString("en-AU"), count: { value: missing, format: whole }, help: "no acceptable release yet", tone: missing > 0 ? "danger" : undefined, href: "/search-cycles/missing" },
-    { label: "Upgradable", value: upgradable.toLocaleString("en-AU"), count: { value: upgradable, format: whole }, help: "a better release would be taken", tone: upgradable > 0 ? "warning" : undefined, href: "/search-cycles/upgrades" }
-  ];
-}
-
-function toSummaryCells(cells: LiveCell[]): SummaryCell[] {
-  return cells.map(({ count, value, ...cell }) => ({ ...cell, value: count ? <CountUp value={count.value} format={count.format} /> : value }));
 }
 
 const NO_ROWS: never[] = [];
@@ -99,26 +68,37 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const showSetup = setup.ready && !setup.status.isComplete;
 
   const queue = useMemo(() => (data.telemetry?.clients ?? []).flatMap((client) => client.queue), [data.telemetry]);
+  // The newest sent downloads and the longer list with the archived ones, as one list.
+  const dispatches = useMemo(() => {
+    const seen = new Set<string>();
+    const all: DownloadDispatchItem[] = [];
+    for (const dispatch of [...(data.dispatches ?? NO_ROWS), ...(data.boardDispatches ?? NO_ROWS)]) {
+      if (seen.has(dispatch.id)) continue;
+      seen.add(dispatch.id);
+      all.push(dispatch);
+    }
+    return all;
+  }, [data.dispatches, data.boardDispatches]);
   const cards = useMemo(
-    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches: data.dispatches ?? NO_ROWS, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work }),
+    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, cases: attention.downloads.recoveryCases, importJobs: attention.downloads.failedImportJobs }),
     // `now` moves the clock-dependent parts (today, recent) along once a minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queue, data.handoffs, data.dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, now]
+    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, attention.downloads.recoveryCases, attention.downloads.failedImportJobs, now]
   );
   const grouped = useMemo(() => byStage(cards), [cards]);
-  const counts = useMemo(() => laneCounts(grouped, summary), [grouped, summary]);
-  const titles = useTitles(cards);
-  const arrivals = useArrivals(cards);
-  // What the board already shows with its own buttons is not listed again in Needs you.
-  const onBoard = useMemo<OnBoard>(
-    () => ({
-      queueKeys: new Set(cards.filter((card) => card.queueRef).map((card) => card.key)),
-      handoffIds: new Set(cards.flatMap((card) => (card.failedHandoffId ? [card.failedHandoffId] : [])))
-    }),
-    [cards]
+  const counts = useMemo(() => laneCounts(grouped, summary, attention.counts.live), [grouped, summary, attention.counts.live]);
+  // Titles are asked for in one request: the cards' and the activity's.
+  const extraEntities = useMemo<Array<Entity | undefined>>(
+    () => [
+            ...latest.slice(0, 40).map((row) => entityFromRelated(row.relatedEntityType, row.relatedEntityId))
+    ],
+    [latest]
   );
+  const titles = useTitles(cards, extraEntities);
+  const arrivals = useArrivals(cards);
   const today = data.activityToday;
   const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
+  const activityToday = useMemo(() => ({ rows: rhythmRows, counts: today?.counts, countedAt: today?.fetchedAt, capped: today?.capped }), [rhythmRows, today]);
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -127,9 +107,6 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
       body: JSON.stringify({ lastCompletedStep: setup.progress.lastCompletedStep, isSkipped: true, isCompleted: setup.progress.isCompleted })
     }).catch(() => undefined);
   }
-
-  const connection: SummaryCell = { label: "Connection", value: <HeartbeatValue />, help: <UpdatedAgo updatedAt={updatedAt} /> };
-  const cells = [...toSummaryCells(buildLiveCells(summary)), connection];
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)] lg:h-full lg:min-h-0">
@@ -140,7 +117,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <SummaryStrip className="shrink-0 lg:grid-cols-5" cells={cells} />
+      <RightNow summary={summary} samples={data.throughput?.samples ?? []} indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} work={work} updatedAt={updatedAt} now={now} />
 
       {emptyLibrary ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
@@ -152,27 +129,15 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
       ) : null}
 
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.7fr)_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          <div className="flex min-h-0 flex-[5] flex-col [&>section]:min-h-0 [&>section]:flex-1">
-            <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} />
-          </div>
-          <div className="grid min-h-0 flex-[3] gap-[var(--grid-gap)] sm:grid-cols-2 lg:grid-cols-[1.25fr_1.25fr_1fr_1fr] [&>section]:min-h-0">
-            <SpeedChart samples={data.throughput?.samples ?? []} summary={summary} />
-            <Rhythm rows={rhythmRows} counts={today?.counts} countedAt={today?.fetchedAt} capped={today?.capped} />
-            <Countdowns summary={summary} />
-            <Indexers indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
-          </div>
+        <div className="flex min-h-0 flex-col [&>section]:min-h-0 [&>section]:flex-1">
+          <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} />
         </div>
 
         <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          {/* Needs you takes the room its rows need (up to most of the column), so a few rows are not lost in a tall empty panel and Latest gets the rest. */}
-          <div className="flex min-h-0 max-h-[55%] flex-initial flex-col [&>section]:min-h-0">
-            <NeedsYou attention={attention} action={action} onBoard={onBoard} />
-          </div>
           <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
-            <ActivityStream rows={latest} />
+            <ActivityStream rows={latest} titles={titles} today={activityToday} />
           </div>
-          <div className="flex min-h-0 max-h-[32%] flex-initial flex-col [&>section]:min-h-0">
+          <div className="flex min-h-0 max-h-[24%] flex-initial flex-col [&>section]:min-h-0">
             <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
               {upcoming.length === 0 ? (
                 <p className="px-[var(--card-pad-x)] py-2 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing airs in the next 72 hours.</p>

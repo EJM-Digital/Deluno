@@ -172,7 +172,8 @@ export function FitList({
   moreTo,
   moreLabel = (hidden) => `and ${hidden.toLocaleString("en-AU")} more`,
   extra = 0,
-  isHeading
+  isHeading,
+  fill = false
 }: {
   rows: ReactElement[];
   wrap?: (shown: ReactElement[]) => ReactNode;
@@ -181,6 +182,8 @@ export function FitList({
   moreLabel?: (hidden: number) => string;
   extra?: number;
   isHeading?: (index: number) => boolean;
+  /** Shares the room left over after the whole rows between them, so the list fills its panel. Rows that stretch must lay their content out to fit. */
+  fill?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState<number | null>(null);
@@ -228,7 +231,7 @@ export function FitList({
 
   return (
     <div ref={boxRef} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className={cn(fit === null && "invisible")}>{shown.length > 0 ? wrap(shown) : null}</div>
+      <div className={cn(fit === null && "invisible", fit !== null && fill && "flex min-h-0 flex-1 flex-col [&>ul]:flex [&>ul]:min-h-0 [&>ul]:flex-1 [&>ul]:flex-col [&>ul>li]:min-h-0 [&>ul>li]:flex-1")}>{shown.length > 0 ? wrap(shown) : null}</div>
       {hiddenCount > 0 && fit !== null ? (
         <Link
           to={to}
