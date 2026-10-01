@@ -15,8 +15,10 @@ import {
   failedImportActions,
   handoffActions,
   healthProblemActions,
+  jobsGaveUpActions,
   noReleaseActions,
   recoveryActions,
+  screenLinkActions,
   stuckDownloadActions,
   stuckDownloadReason,
   updateReadyActions,
@@ -342,15 +344,7 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
         title: item.title,
         text: item.text,
         to: HEALTH,
-        actions: [
-          {
-            id: "jobs-retry",
-            label: "Retry",
-            hint: "Puts the jobs that gave up back in the queue to run again. Nothing already done is undone.",
-            request: { method: "POST", path: "/api/jobs/retry-failed", done: "Failed jobs requeued", failure: "The failed jobs could not be requeued." }
-          },
-          link("jobs-review", "Review", "/activity", "Opens Activity to see which jobs failed and why. Nothing is changed.")
-        ],
+        actions: jobsGaveUpActions(),
         sinceUtc: null,
         count: item.count
       });
@@ -364,7 +358,7 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
       title: item.title,
       text: item.text,
       to: item.to.startsWith("/?tab=") ? HEALTH : item.to,
-      actions: [link(`open:${item.id}`, item.action, item.to.startsWith("/?tab=") ? HEALTH : item.to, `Opens ${item.action.replace(/^Open /, "")}. Nothing is changed.`)],
+      actions: screenLinkActions(item.action, item.to.startsWith("/?tab=") ? HEALTH : item.to, `open:${item.id}`),
       sinceUtc: null,
       count: item.count
     });

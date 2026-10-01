@@ -6,12 +6,15 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { Link } from "react-router-dom";
+import type { ConnectionCheckedEvent } from "../../../lib/api/types/system-overview";
+import { fetchJson } from "../../../lib/api";
+import type { ConnectionCheckItem } from "../../../lib/api/types/operations";
 import { authedFetch } from "../../../lib/use-auth";
 import { useLiveEvent } from "../../../lib/use-signalr";
 import { ago } from "../format";
 import { connectionsLine, connKey, groupConnections, resultOfEvent, resultOfTest, type ConnResult, type ConnRow } from "./connections-model";
 
-/** How many connections are tested at once by Test all. */
+/** How many connections the legacy per-connection Test all runs at once (the server's own Test all does the same). */
 const AT_ONCE = 4;
 const PASS_MS = 1200;
 
@@ -40,7 +43,33 @@ export function useConnectionTesting(): ConnectionTesting {
     timers.current.push(setTimeout(() => setPassed((current) => { const next = new Set(current); next.delete(key); return next; }), PASS_MS));
   }, []);
 
-  useLiveEvent("ConnectionChecked", useCallback((event) => note(connKey(event.kind, event.id), resultOfEvent(event)), [note]));
+  // What Deluno last really checked, whoever asked (the regular check, Test all, a Test button), so a connection with
+  // no reading of its own (a list, the metadata service) still shows its true "checked" time.
+  useEffect(() => {
+    let live = true;
+    fetchJson<ConnectionCheckItem[]>("/api/connections/checks")
+      .then((items) => {
+        if (!live || !Array.isArray(items)) return;
+        setResults((current) => {
+          const next = new Map(current);
+          for (const item of items) {
+            const key = connKey(item.kind, item.id);
+            const seen = next.get(key);
+            if (!seen || Date.parse(item.checkedUtc) > Date.parse(seen.checkedUtc)) next.set(key, resultOfEvent(item));
+          }
+          return next;
+        });
+      })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, []);
+
+  // A result pushed by the server (the regular check, Test all, a Test button): the row shows it and stops lighting.
+  useLiveEvent("ConnectionChecked", useCallback((event) => {
+    const key = connKey(event.kind, event.id);
+    note(key, resultOfEvent(event));
+    setChecking((current) => { if (!current.has(key)) return current; const next = new Set(current); next.delete(key); return next; });
+  }, [note]));
 
   const test = useCallback(async (row: ConnRow) => {
     if (!row.testPath) return;
@@ -56,15 +85,36 @@ export function useConnectionTesting(): ConnectionTesting {
     }
   }, [note]);
 
+  /**
+   * Test all: the server tests every connection that is switched on, a few at a time, and pushes each answer as it
+   * finishes (`POST /api/connections/test-all`); the rows it does not know (subtitle sources) are tested here one by
+   * one. A server from before that endpoint is tested row by row, as before.
+   */
   const testAll = useCallback(async (rows: readonly ConnRow[]) => {
     const queue = rows.filter((row) => row.state !== "off" && row.testPath);
+    const serverKnows = rows.filter((row) => row.state !== "off" && row.kind !== "subtitles");
     setAllBusy(true);
+    setChecking((current) => new Set([...current, ...serverKnows.map((row) => row.key)]));
     try {
-      for (let at = 0; at < queue.length; at += AT_ONCE) await Promise.all(queue.slice(at, at + AT_ONCE).map(test));
+      let tested = false;
+      try {
+        const response = await authedFetch("/api/connections/test-all", { method: "POST" });
+        if (response.ok) {
+          tested = true;
+          const body = (await response.json().catch(() => null)) as { results?: ConnectionCheckedEvent[] } | null;
+          for (const result of body?.results ?? []) note(connKey(result.kind, result.id), resultOfEvent(result));
+        }
+      } catch {
+        tested = false;
+      }
+      setChecking((current) => { const next = new Set(current); for (const row of serverKnows) next.delete(row.key); return next; });
+      const rest = tested ? queue.filter((row) => row.kind === "subtitles") : queue;
+      for (let at = 0; at < rest.length; at += AT_ONCE) await Promise.all(rest.slice(at, at + AT_ONCE).map(test));
     } finally {
+      setChecking((current) => { const next = new Set(current); for (const row of serverKnows) next.delete(row.key); return next; });
       setAllBusy(false);
     }
-  }, [test]);
+  }, [test, note]);
 
   return { results, checking, passed, test, testAll, allBusy };
 }

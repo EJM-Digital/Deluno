@@ -50,6 +50,7 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
             [FromBody] SaveSubtitleProviderRequest request,
             [FromServices] ISubtitleProviderRegistry registry,
             [FromServices] ISubtitleProviderRepository repository,
+            [FromServices] IConnectionCheckRecorder? checks,
             CancellationToken cancellationToken) =>
         {
             var provider = registry.Find(key);
@@ -99,6 +100,7 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
             [FromBody] SaveSubtitleProviderRequest request,
             [FromServices] ISubtitleProviderRegistry registry,
             [FromServices] ISubtitleProviderRepository repository,
+            [FromServices] IConnectionCheckRecorder? checks,
             CancellationToken cancellationToken) =>
         {
             var provider = registry.Find(key);
@@ -141,6 +143,11 @@ public static class SubtitleProviderEndpointRouteBuilderExtensions
                     rateLimitedUntilUtc: null,
                     cancellationToken,
                     result.Failure);
+
+                if (checks is not null)
+                {
+                    await checks.RecordAsync(ConnectionKinds.Subtitles, stored.Id, stored.Name, result.Ok, result.LatencyMs, result.Message, cancellationToken);
+                }
             }
 
             return Results.Ok(result);

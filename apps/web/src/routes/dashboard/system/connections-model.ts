@@ -116,7 +116,9 @@ export function buildConnections(input: ConnInputs): ConnRow[] {
   const rows: ConnRow[] = [];
   const add = (row: Omit<ConnRow, "key" | "testPath"> & { testPath?: string | null }) => {
     const key = connKey(row.kind, row.id);
-    const result = row.state === "off" ? undefined : input.results.get(key);
+    // A newer answer wins: one seeded from the stored checks never covers a fresher reading the row already carries.
+    const known = row.state === "off" ? undefined : input.results.get(key);
+    const result = known && (!row.checkedUtc || Date.parse(known.checkedUtc) >= Date.parse(row.checkedUtc)) ? known : undefined;
     rows.push({
       ...row,
       key,

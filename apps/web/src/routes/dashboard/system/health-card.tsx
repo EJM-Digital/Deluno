@@ -31,7 +31,7 @@ function ProblemButtonView({ button, row, action }: { button: ProblemButton; row
       onClick={() => {
         if (!post || action.busy === key) return;
         void action.run(key, async () => {
-          await send(post.path, post.failure, { body: post.body });
+          await send(post.path, post.failure, { method: post.method, body: post.body });
           return post.done;
         });
       }}
