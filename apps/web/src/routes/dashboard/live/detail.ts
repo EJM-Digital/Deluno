@@ -80,7 +80,7 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       break;
   }
   // Why Deluno is fetching it, when what it recorded says (a request already says so in its own line).
-  if (card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr")) lines.push({ parts: [bold(STARTED_LABEL[card.startedBy])], right: "why it is moving" });
+  if (card.startedBy && !(card.stage === "requested" && card.startedBy === "seerr")) lines.push({ parts: [bold(STARTED_LABEL[card.startedBy])] });
   return lines.slice(0, 4);
 }
 

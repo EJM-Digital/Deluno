@@ -379,19 +379,19 @@ describe("the journey", () => {
     const downloading = screen.getByRole("link", { name: "Stuck One (2001): Stuck at 43% · not moving" });
     expect(downloading).toHaveAttribute("data-glide-stage", "downloading");
     expect(screen.getByText("done about 2:14 pm")).toBeInTheDocument();
-    expect(screen.getByText("You asked")).toBeInTheDocument();
+    expect(screen.getByText("You asked for it")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
     const requested = document.querySelector<HTMLElement>('[data-glide-stage="requested"]')!;
     expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · looking");
-    expect(within(requested).queryByText("Seerr")).toBeNull();
+    expect(within(requested).queryByText("Asked for in Seerr")).toBeNull();
     // A card with no recorded reason has no tag rather than a guess.
-    expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/You asked|Seerr|From a list|Upgrade hunt|Missing episode/)).toBeNull();
+    expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/You asked for it|Asked for in Seerr|On one of your lists|Looking for an upgrade|A missing episode/)).toBeNull();
     expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".lj-pulse")).not.toBeNull();
   });
 
   it("tags a download that came from Seerr, a list, an upgrade hunt or a missing episode", () => {
     render5([card({ key: "a", title: "A (2001)", startedBy: "seerr" }), card({ key: "b", title: "B (2002)", startedBy: "list" }), card({ key: "c", title: "C (2003)", startedBy: "upgrade" }), card({ key: "d", title: "D (2004)", startedBy: "missing" })]);
-    for (const words of ["Seerr", "From a list", "Upgrade hunt", "Missing episode"]) expect(screen.getByText(words)).toBeInTheDocument();
+    for (const words of ["Asked for in Seerr", "On one of your lists", "Looking for an upgrade", "A missing episode"]) expect(screen.getByText(words)).toBeInTheDocument();
   });
 
   it("shows a title whose import has finished full and green: Imported, in your library", () => {
