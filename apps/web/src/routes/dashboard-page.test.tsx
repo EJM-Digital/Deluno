@@ -69,7 +69,7 @@ describe("DashboardPage tabs", () => {
     const user = userEvent.setup();
     open("/");
 
-    expect(await screen.findByRole("region", { name: /^the journey/i })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /^pipeline/i })).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Live", "System"]);
     expect(screen.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("address").textContent).toBe("/");
@@ -78,7 +78,7 @@ describe("DashboardPage tabs", () => {
     expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
     expect(screen.getByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: /^health/i })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^the journey/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^pipeline/i })).toBeNull();
 
     // Live carries no tab at all.
     await user.click(screen.getByRole("tab", { name: /^Live/ }));

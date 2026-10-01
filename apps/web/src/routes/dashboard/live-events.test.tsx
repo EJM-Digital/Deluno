@@ -79,7 +79,7 @@ describe("Live follows real changes", () => {
   it("moves a download's bar and speed when the server pushes a reading, and not before", async () => {
     seed();
     renderTab(fullSummary);
-    const downloads = screen.getByRole("region", { name: /^the journey/i });
+    const downloads = screen.getByRole("region", { name: /^pipeline/i });
     expect((await within(downloads).findAllByText(/^61%/)).length).toBeGreaterThan(0);
     const bar = () => downloads.querySelector<HTMLElement>(".lj-pb i")?.style.width;
     expect(bar()).toBe("61%");
@@ -109,7 +109,7 @@ describe("Live follows real changes", () => {
 
   it("shows a grab on its way and an import under way as cards, and takes them away when they end", async () => {
     renderTab(emptySummary);
-    const board = screen.getByRole("region", { name: /^the journey/i });
+    const board = screen.getByRole("region", { name: /^pipeline/i });
     // Idle says something true rather than nothing.
     expect(within(board).getByText("Nothing moving right now")).toBeInTheDocument();
 
@@ -131,7 +131,7 @@ describe("Live follows real changes", () => {
     summary.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "running", nextSearchUtc: null, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: null, lastError: null }];
     summary.downloads!.processing = 2;
     renderTab(summary);
-    const board = screen.getByRole("region", { name: /^the journey/i });
+    const board = screen.getByRole("region", { name: /^pipeline/i });
     expect(within(screen.getByRole("region", { name: "Working on now" })).getByText(/Searching Movies/)).toBeInTheDocument();
     expect(within(board).getByRole("link", { name: "Processing: 3" })).toBeInTheDocument();
   });

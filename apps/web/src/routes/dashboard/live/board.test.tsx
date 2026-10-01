@@ -18,7 +18,7 @@ import { allInBy, buildNext, clockTime, doneAbout, isMediaJob, journeyHeading, u
 import { NO_TITLES } from "./titles";
 import { Journey, stationsFor } from "./track";
 import { barFraction, mergeTurnedDown, REASON_ORDER, reasonsFit } from "./turned-down";
-import { TurnedDownCard } from "./turned-down-card";
+import { moreLine, TurnedDownCard } from "./turned-down-card";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
@@ -303,9 +303,9 @@ describe("when everything should be in", () => {
 
   it("writes the header with the time, and without it when no reading says", () => {
     const by = new Date("2026-10-01T14:28:00").getTime();
-    expect(journeyHeading(8, by)).toBe("8 on their way to your library · all in by about 2:28 pm");
-    expect(journeyHeading(8, undefined)).toBe("8 on their way to your library");
-    expect(journeyHeading(0, by)).toBe("nothing on its way right now");
+    expect(journeyHeading(8, by)).toBe("8 in progress · all done by about 2:28 pm");
+    expect(journeyHeading(8, undefined)).toBe("8 in progress");
+    expect(journeyHeading(0, by)).toBe("nothing in progress right now");
   });
 
   it("says a card's own finish time", () => {
@@ -369,9 +369,9 @@ describe("the journey", () => {
 
   it("says how many are on their way and when they should all be in", () => {
     render5(cards);
-    const journey = screen.getByRole("region", { name: "The journey" });
-    expect(within(journey).getByText("4 on their way to your library · all in by about 2:28 pm")).toBeInTheDocument();
-    expect(within(journey).getByRole("link", { name: "Transfers: The journey" })).toHaveAttribute("href", "/queue");
+    const journey = screen.getByRole("region", { name: "Pipeline" });
+    expect(within(journey).getByText("4 in progress · all done by about 2:28 pm")).toBeInTheDocument();
+    expect(within(journey).getByRole("link", { name: "Transfers: Pipeline" })).toHaveAttribute("href", "/queue");
   });
 
   it("puts each title in its station as a card, a stuck one amber, and says why each is moving", () => {
@@ -594,13 +594,23 @@ describe("turned down today", () => {
     expect(within(card).getByRole("link", { name: /Bigger than your size limit: 9/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=tooBig");
   });
 
-  it("holds whole bars only: as many as the height holds (never under three), then how many more", () => {
+  it("holds whole bars only: as many as the height holds above the 'and N more' line, never more than fit", () => {
     expect(reasonsFit(0, 30, 11)).toBe(11);
     expect(reasonsFit(300, 0, 11)).toBe(11);
-    // 300px less 24 of padding over a 30px bar and an 8px gap is 7 whole bars.
+    // 300px less 14 of padding and 24 for the line, over a 30px bar and an 8px gap, is 7 whole bars.
     expect(reasonsFit(300, 30, 11)).toBe(7);
-    expect(reasonsFit(60, 30, 11)).toBe(3);
+    // A short card shows what fits, not three that spill out of it (the 1920x1080 busy board: 120px, 26px bars).
+    expect(reasonsFit(120, 26, 11)).toBe(2);
+    expect(reasonsFit(60, 30, 11)).toBe(1);
+    // When every reason fits there is no line, so the room it would take is used.
+    expect(reasonsFit(158, 30, 4)).toBe(4);
     expect(reasonsFit(900, 30, 11)).toBe(11);
+  });
+
+  it("says what the reasons it does not show hold, in plain words, and that they hold nothing when they are empty", () => {
+    expect(moreLine(8, 0)).toBe("and 8 more reasons, none today");
+    expect(moreLine(1, 1)).toBe("and 1 more reason · 1 release");
+    expect(moreLine(3, 1204)).toBe("and 3 more reasons · 1,204 releases");
   });
 
   it("adds a release pushed since the counts, once, and ignores one the counts already hold", () => {

@@ -10,7 +10,7 @@ import { serveLiveRig } from "../helpers/live-rig";
 // problems on every screen).
 
 const TABS = [
-  { name: "Live", query: "", panel: /^the journey/i },
+  { name: "Live", query: "", panel: /^pipeline/i },
   { name: "System", query: "?tab=system", panel: /^health/i }
 ] as const;
 
@@ -185,7 +185,7 @@ test.describe("Dashboard tabs", () => {
     await authenticateAndNavigate(page, "/");
     await expect(page.getByRole("tab")).toHaveCount(2);
     await expect(page.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
     await expect(page.getByRole("region", { name: "Working on now" })).toBeVisible();
 
     for (const tab of TABS.slice(1)) {
@@ -266,27 +266,32 @@ test.describe("Dashboard tabs", () => {
     for (const size of SIZES) {
       await page.setViewportSize(size);
       await page.goto("/");
-      await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
-      // The speed says its unit, and the indexers, clients and connections are one card: a failing indexer is a red tile that goes to System.
+      await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
+      // The speed says its unit. Sources is the Scoreboard: a table of today's indexers with a Good/Slow/Down/Off status,
+      // one speed bar of the download clients, and the connections as pills with today's counts.
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^MB\/s down/)).toBeVisible();
       const sources = page.getByRole("region", { name: "Sources" });
-      await expect(sources.getByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
-      // The tiles say what happened today, and where a limit is set how much of it is used; a switched-off one is grey.
-      await expect(sources.getByRole("link", { name: /^NZBgeek: 46 of 100 today/ })).toBeVisible();
-      await expect(sources.getByRole("link", { name: /^OldIndexer: switched off/ })).toHaveAttribute("data-tone", "idle");
+      // An indexer that is not answering is Down and goes to System; a switched-off one is Off.
+      await expect(sources.getByRole("link", { name: /^Nyaa\.si: Down,/ })).toHaveAttribute("href", "/?tab=system");
+      await expect(sources.getByRole("link", { name: /^NZBgeek: (Good|Slow),/ })).toBeVisible();
+      await expect(sources.getByRole("link", { name: /^OldIndexer: Off,/ })).toBeAttached();
       await expect(sources.getByText("14 seeding", { exact: false }).first()).toBeVisible();
-      await expect(sources.getByRole("link", { name: "Weir: Processor · working on 1" })).toBeVisible();
-      // The card holds every tile inside it and leaves Activity room for rows.
+      await expect(sources.getByRole("link", { name: /^Weir: Processor · working on 1, \d+ today$/ })).toBeVisible();
+      // The table scrolls inside the card: its rows are one height and never wider than it, and the card ends inside its cell.
       const fit = await page.evaluate(() => {
-        const box = (name: string) => [...document.querySelectorAll("section")].find((el) => el.querySelector("h2")?.textContent === name)?.getBoundingClientRect();
-        const map = box("Sources");
-        const activity = box("Activity");
-        const tiles = [...document.querySelectorAll("a.ls-ix, a.ls-cl")].map((el) => el.getBoundingClientRect());
-        return { mapBottom: map?.bottom ?? 0, activityTop: activity?.top ?? 0, activityHeight: activity?.height ?? 0, tilesInside: !!map && tiles.length > 0 && tiles.every((box) => box.left >= map.left - 1 && box.right <= map.right + 1 && box.bottom <= map.bottom + 1), tileHeights: [...new Set(tiles.map((box) => Math.round(box.height)))] };
+        const card = [...document.querySelectorAll("section")].find((el) => el.querySelector("h2")?.textContent === "Sources");
+        const scroll = document.querySelector("[data-testid='live-scoreboard']")?.getBoundingClientRect();
+        const box = card?.getBoundingClientRect();
+        const rows = [...document.querySelectorAll("a.ls-row")].map((el) => el.getBoundingClientRect());
+        return {
+          scrollInside: !!box && !!scroll && scroll.top >= box.top - 1 && scroll.bottom <= box.bottom + 1,
+          rowsInside: !!box && rows.length > 0 && rows.every((row) => row.left >= box.left - 1 && row.right <= box.right + 1),
+          rowHeights: [...new Set(rows.map((row) => Math.round(row.height)))]
+        };
       });
-      expect(fit.tilesInside, "every Sources tile is inside its card").toBe(true);
-      expect(fit.tileHeights.length, "every tile is the same height").toBe(1);
-      expect(fit.activityTop, "Activity is below Sources").toBeGreaterThanOrEqual(fit.mapBottom - 1);
+      expect(fit.scrollInside, "the indexers table is inside the Sources card").toBe(true);
+      expect(fit.rowsInside, "every indexer row is as wide as the card or narrower").toBe(true);
+      expect(fit.rowHeights.length, "every indexer row is the same height").toBe(1);
       await expect(page.getByRole("region", { name: /^turned down today/i }).getByText("Not in a language you want").first()).toBeVisible();
       expect(perTitle).toEqual([]);
       // Needs you is not on Live; the next run is in the band.
@@ -318,8 +323,8 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
       // A station with more titles than its rows hold ends with "and N more" to Transfers, as the mockup does.
-      await expect(page.getByRole("region", { name: /^the journey/i }).getByRole("link", { name: /^and [0-9]+ more/ }).first()).toHaveAttribute("href", "/queue");
-      await expect(page.getByRole("region", { name: /^the journey/i }).getByText(/on their way to your library · all in by about/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^pipeline/i }).getByRole("link", { name: /^and [0-9]+ more/ }).first()).toHaveAttribute("href", "/queue");
+      await expect(page.getByRole("region", { name: /^pipeline/i }).getByText(/in progress · all done by about/)).toBeVisible();
       // Space and standing facts are on System, not here.
       await expect(page.getByText("Drive space")).toHaveCount(0);
       await expect(page.getByRole("img", { name: /meets its quality goal/ })).toHaveCount(0);
@@ -338,7 +343,7 @@ test.describe("Dashboard tabs", () => {
     for (const size of SIZES) {
       await page.setViewportSize(size);
       await page.goto("/");
-      await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
       await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
       await expectFitsOneScreen(page, `live rig-like ${size.width}x${size.height}`);
       await page.waitForTimeout(1600);
@@ -353,7 +358,7 @@ test.describe("Dashboard tabs", () => {
     await authenticateAndNavigate(page, "/");
     await serveBusyInstall(page);
     await page.goto("/");
-    await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
     // The lists the count reads arrive after the summary; the bell holds the problems of both tabs.
     await expect.poll(() => bell(page), { timeout: 15_000 }).toBeGreaterThan(0);
     // No number beside the Live or System tab, however many things need you (#1098).
@@ -380,7 +385,7 @@ test.describe("Dashboard tabs", () => {
   test("a fresh install shows no number on either tab and a bell that is quiet or counts what needs you", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
-    await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
     await page.waitForTimeout(1500);
     expect(await badge(page, "System")).toBe(0);
     expect(await badge(page, "Live")).toBe(0);
