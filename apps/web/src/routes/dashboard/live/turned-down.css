@@ -2,8 +2,9 @@
 .ltd > header { border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
 .ltd-bars { list-style: none; margin: 0; padding: 2px 18px 12px; display: grid; gap: 10px; align-content: start; }
 .ltd-bars.quiet { flex: 1 1 0; min-height: 0; align-content: space-evenly; }
-.ltd-br { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: hsl(220 14% 80%); }
-.ltd-br > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ltd-br > a { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; font-size: 12.5px; color: hsl(220 14% 80%); }
+.ltd-br > a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 4px; }
+.ltd-br > a > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ltd-num { font-weight: 600; color: hsl(var(--foreground)); transition: color .3s; font-variant-numeric: tabular-nums; }
 .ltd-tr { grid-column: 1 / -1; height: 6px; background: hsl(var(--surface-3)); border-radius: 9px; overflow: hidden; }
 .ltd-tr i { display: block; height: 100%; border-radius: 9px; background: var(--c); transition: width .7s cubic-bezier(.2, .8, .2, 1), box-shadow .3s; }

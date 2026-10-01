@@ -17,6 +17,7 @@
  */
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
@@ -34,7 +35,6 @@ import { dismissFailedJob } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
-import { ColumnPicker } from "../components/ui/column-picker";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerDanger, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
 import {
@@ -46,7 +46,6 @@ import {
   ListRow,
   ListTable
 } from "../components/ui/list-card";
-import { MenuSelect } from "../components/ui/menu-select";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -54,17 +53,11 @@ import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
-import {
-  ACTIVITY_EVENT_TYPE_LABELS,
-  activityEventType,
-  eventLabel,
-  foldCrossMediaJobRuns,
-  foldRoutineJobEvents,
-  type ActivityEventType
-} from "../lib/activity-format";
+import { eventLabel, foldCrossMediaJobRuns, foldRoutineJobEvents } from "../lib/activity-format";
+import { ActivityHistory, useActivityFilterChoices } from "../components/app/activity-history";
+import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
 import { reasonWords } from "../lib/failure-reasons";
 import { isChosenOnSearch, relatedEntityLabel } from "../lib/dispatch-target";
-import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 import {
   fileNameFromPath,
   parseDeletedLeftoverPaths,
@@ -74,15 +67,6 @@ import {
 } from "../lib/season-pack-leftovers";
 
 type Section = "jobs" | "events" | "imports";
-
-/** Persisted column choice for the Events table (#798). Category and When are
- * always useful; Type and Related are the ones worth hiding on a narrow list. */
-const EVENT_OPTIONAL_COLUMNS: readonly ColumnDefinition[] = [
-  { key: "category", label: "Category", defaultVisible: true },
-  { key: "type", label: "Type", defaultVisible: true },
-  { key: "related", label: "Related", defaultVisible: false },
-  { key: "when", label: "When", defaultVisible: true }
-];
 
 /**
  * Active work needs a short refresh, so only the lists that move (jobs,
@@ -95,7 +79,6 @@ const ACTIVE_REFRESH = { refetchInterval: 10_000, pauseWhenHidden: true } as con
 export const activitySources = defineSources({
   jobs: { key: ["src", "jobs-24"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24&includePayload=true"), ...ACTIVE_REFRESH },
   failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[], ...ACTIVE_REFRESH },
-  activity: { key: ["src", "activity-40"], label: "Events", fetch: () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=40"), ...ACTIVE_REFRESH },
   dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[], ...ACTIVE_REFRESH },
   movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
   seriesRecovery: { ...sharedSources.seriesRecovery, fallback: emptyRecovery as SeriesImportRecoverySummary }
@@ -114,17 +97,29 @@ export function ActivityPage() {
 
 function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSourceData<typeof activitySources>; revalidator: RouteSourceState<typeof activitySources>["revalidator"] }) {
   const lastDispatchRefresh = useRef(0);
-  const [section, setSection] = useState<Section>("jobs");
+  // The section is in the address too, so a link can land on the history (#1100). With nothing asked for, the
+  // page opens on the history: it is what Live's "All activity" and a title's link mean.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterChoices = useActivityFilterChoices();
+  const requestedSection = searchParams.get("section");
+  const section: Section = requestedSection === "jobs" || requestedSection === "imports" || requestedSection === "events"
+    ? requestedSection
+    : "events";
+  const setSection = (next: Section) =>
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current);
+      params.set("section", next);
+      return params;
+    }, { replace: true });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
-  const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [openEvent, setOpenEvent] = useState<ActivityEventItem | null>(null);
+  const [historyEvents, setHistoryEvents] = useState<ActivityEventItem[]>([]);
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
-  const [eventTypeFilter, setEventTypeFilter] = useState<"all" | ActivityEventType>("all");
   const [busy, setBusy] = useState(false);
   const [confirmingLeftoverDelete, setConfirmingLeftoverDelete] = useState(false);
   const [deletingLeftovers, setDeletingLeftovers] = useState(false);
   const { preferences } = useDisplayPreferences();
-  const eventColumns = useColumnVisibility("activity-page.events-columns", EVENT_OPTIONAL_COLUMNS);
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();
@@ -136,7 +131,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
 
-  const { activity, dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
+  const { dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
   // A failed job has its own card, so it is not listed again among the latest.
   // A job with another attempt coming belongs with the work in flight, not
   // with the ones that stopped and need a person (#562).
@@ -170,10 +165,8 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   // a Movies run and a TV run of the same job finishing within fifteen
   // minutes of each other fold into one line too (James, 27 Sep 2026) — the
   // drawer is where either original run's own wording still shows.
-  const foldedActivity = useMemo(() => foldCrossMediaJobRuns(foldRoutineJobEvents(activity)), [activity]);
-  const openEventEntry = foldedActivity.find((folded) => folded.event.id === openEventId);
-  const openEvent = openEventEntry?.event ?? activity.find((event) => event.id === openEventId) ?? null;
-  const openEventFoldedFrom = openEventEntry?.foldedFrom ?? [];
+  const foldedActivity = useMemo(() => foldCrossMediaJobRuns(foldRoutineJobEvents(historyEvents)), [historyEvents]);
+  const openEventFoldedFrom = foldedActivity.find((folded) => folded.event.id === openEvent?.id)?.foldedFrom ?? [];
 
   // #889: a season-pack import names, in the same event, every file that did
   // not go in - an extra the catalogue never listed, or one that matched an
@@ -182,30 +175,16 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   // there for the life of the browser tab.
   const deletedLeftoverPaths = useMemo(() => {
     const paths = new Set<string>();
-    for (const event of activity) {
+    for (const event of historyEvents) {
       if (event.category !== SEASON_PACK_LEFTOVERS_DELETED_CATEGORY) continue;
       for (const path of parseDeletedLeftoverPaths(event.detailsJson)) paths.add(path);
     }
     return paths;
-  }, [activity]);
+  }, [historyEvents]);
   const openEventLeftovers = useMemo(() => {
     if (!openEvent || openEvent.category !== SEASON_PACK_COMPLETED_CATEGORY) return [];
     return parseSeasonPackSkippedFiles(openEvent.detailsJson).filter((file) => !deletedLeftoverPaths.has(file.sourcePath));
   }, [openEvent, deletedLeftoverPaths]);
-
-  // Only the types actually present are offered (#798): a dropdown of eight
-  // options where six are always empty is not a filter, it is a maze.
-  const presentEventTypes = useMemo(
-    () => [...new Set(foldedActivity.map((folded) => activityEventType(folded.event)))],
-    [foldedActivity]
-  );
-  const filteredActivity = useMemo(
-    () =>
-      eventTypeFilter === "all"
-        ? foldedActivity
-        : foldedActivity.filter((folded) => activityEventType(folded.event) === eventTypeFilter),
-    [foldedActivity, eventTypeFilter]
-  );
 
   async function handleRetryFailedJobs() {
     setBusy(true);
@@ -278,7 +257,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             onValueChange={setSection}
             options={[
               { value: "jobs", label: "Jobs & downloads" },
-              { value: "events", label: "Events" },
+              { value: "events", label: "History" },
               { value: "imports", label: "Import issues" }
             ]}
           />
@@ -397,70 +376,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
       ) : null}
 
       {section === "events" ? (
-        <ListCard
-          title="Events"
-          count={
-            filteredActivity.length !== foldedActivity.length
-              ? `${filteredActivity.length} of ${foldedActivity.length}`
-              : foldedActivity.length
-                ? `Latest ${foldedActivity.length}`
-                : undefined
-          }
-          actions={
-            <>
-              {presentEventTypes.length > 1 ? (
-                <MenuSelect
-                  label="Filter by event type"
-                  value={eventTypeFilter}
-                  onChange={(value) => setEventTypeFilter(value as "all" | ActivityEventType)}
-                  options={[
-                    { value: "all", label: "All events" },
-                    ...presentEventTypes.map((type) => ({ value: type, label: ACTIVITY_EVENT_TYPE_LABELS[type] }))
-                  ]}
-                  triggerClassName="h-[var(--control-height-sm)] rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-[length:var(--type-caption)] font-semibold text-muted-foreground hover:text-foreground"
-                />
-              ) : null}
-              <ColumnPicker columns={EVENT_OPTIONAL_COLUMNS} isVisible={eventColumns.isVisible} onToggle={eventColumns.toggle} />
-            </>
-          }
-        >
-          {activity.length === 0 ? (
-            <ListEmpty title="Nothing has happened yet" description="Every consequential thing Deluno does is recorded here, with the reason behind it." />
-          ) : filteredActivity.length === 0 ? (
-            <ListEmpty title="Nothing of this type" description="Choose a different event type, or All events, to see the rest of the list." />
-          ) : (
-            <ListTable
-              columns={[
-                { label: "Event" },
-                ...(eventColumns.isVisible("category") ? [{ label: "Category", mobile: true as const }] : []),
-                ...(eventColumns.isVisible("type") ? [{ label: "Type" }] : []),
-                ...(eventColumns.isVisible("related") ? [{ label: "Related" }] : []),
-                ...(eventColumns.isVisible("when") ? [{ label: "When" }] : [])
-              ]}
-            >
-              {filteredActivity.map(({ event, foldedFrom }) => (
-                <ListRow key={event.id} onClick={() => setOpenEventId(event.id)} selected={openEventId === event.id}>
-                  <ListNameCell
-                    name={event.message}
-                    sub={
-                      foldedFrom.length
-                        ? [event.detail, `+${foldedFrom.length} more step${foldedFrom.length === 1 ? "" : "s"} for this run — open to see them`]
-                            .filter(Boolean)
-                            .join(" · ")
-                        : event.detail
-                    }
-                  />
-                  {eventColumns.isVisible("category") ? <ListCell primary={eventLabel(event)} mobile /> : null}
-                  {eventColumns.isVisible("type") ? <ListCell primary={ACTIVITY_EVENT_TYPE_LABELS[activityEventType(event)]} /> : null}
-                  {eventColumns.isVisible("related") ? (
-                    <ListCell {...relatedEntityLabel(event.relatedEntityType, event.relatedEntityId)} />
-                  ) : null}
-                  {eventColumns.isVisible("when") ? <ListCell primary={formatPreferenceDateTime(event.createdUtc, preferences)} /> : null}
-                </ListRow>
-              ))}
-            </ListTable>
-          )}
-        </ListCard>
+        <ActivityHistory openEventId={openEvent?.id ?? null} onOpenEvent={setOpenEvent} onLoaded={setHistoryEvents} />
       ) : null}
 
       {section === "imports" ? (
@@ -570,13 +486,13 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         open={openEvent !== null}
         onOpenChange={(next) => {
           if (!next) {
-            setOpenEventId(null);
+            setOpenEvent(null);
             setConfirmingLeftoverDelete(false);
           }
         }}
         title={openEvent?.message ?? "Event"}
         description={openEvent ? `${eventLabel(openEvent)} · ${formatPreferenceDateTime(openEvent.createdUtc, preferences)}` : undefined}
-        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenEventId(null)} />}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenEvent(null)} />}
       >
         {openEvent ? (
           <>
@@ -587,14 +503,33 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
               ) : null}
             </DrawerSection>
 
-            {openEvent.relatedEntityId ? (
+            {openEvent.title || openEvent.filePath || openEvent.sourceName || openEvent.reasonGroup ? (
               <DrawerSection title="What it was about">
                 <DrawerFacts
                   items={[
-                    { label: "Type", value: relatedEntityLabel(openEvent.relatedEntityType, openEvent.relatedEntityId).primary },
-                    ...(isChosenOnSearch(openEvent.relatedEntityType) ? [] : [{ label: "Id", value: openEvent.relatedEntityId, mono: true }])
+                    ...(openEvent.title ? [{ label: "Title", value: openEvent.title }] : []),
+                    ...(openEvent.sourceName ? [{ label: "From", value: openEvent.sourceName }] : []),
+                    ...(openEvent.filePath ? openEvent.filePath.split(/[\r\n;]+/).map((path, index) => ({
+                      label: index === 0 ? "File" : "",
+                      value: (
+                        <Link to={activityLinkForFile(path)} onClick={() => setOpenEvent(null)} title="Everything that happened to this file" className="text-primary hover:underline">
+                          {path}
+                        </Link>
+                      ),
+                      mono: true
+                    })) : []),
+                    ...(openEvent.reasonGroup ? [{ label: "Reason", value: filterChoices.data?.reasons.find((reason) => reason.value === openEvent.reasonGroup)?.label ?? openEvent.reasonGroup }] : [])
                   ]}
                 />
+                {openEvent.title && openEvent.relatedEntityId && (openEvent.relatedEntityType === "movie" || openEvent.relatedEntityType === "series") ? (
+                  <Link
+                    to={activityLinkForTitle(openEvent.title, openEvent.relatedEntityType, openEvent.relatedEntityId)}
+                    onClick={() => setOpenEvent(null)}
+                    className="mt-2 inline-block text-[length:var(--type-caption)] font-semibold text-primary hover:underline"
+                  >
+                    Everything about {openEvent.title}
+                  </Link>
+                ) : null}
               </DrawerSection>
             ) : null}
 

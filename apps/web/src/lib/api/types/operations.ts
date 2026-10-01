@@ -119,6 +119,28 @@ export interface ActivityEventItem {
   relatedEntityType: string | null;
   relatedEntityId: string | null;
   createdUtc: string;
+  /** The title (film, show, season or episode) the event concerns (#1100). */
+  title?: string | null;
+  /** The file path or paths (one per line) the event concerns (#1100). */
+  filePath?: string | null;
+  /** The indexer, download client, processor or connection it came from (#1100). */
+  sourceName?: string | null;
+  /** For a turned-down release, the plain group of its reason (#1100). */
+  reasonGroup?: string | null;
+  /** The plain kind of event (#1100). */
+  type?: string;
+  /** indexer, client, processor or connection when an outside thing was involved (#1100). */
+  source?: string | null;
+  /** good or problem (#1100). */
+  outcome?: "good" | "problem";
+}
+
+/** GET /api/activity/filters: the words each Activity filter offers (#1100). */
+export interface ActivityFilterChoices {
+  types: { value: string; label: string }[];
+  sources: { value: string; label: string }[];
+  outcomes: { value: string; label: string }[];
+  reasons: { value: string; label: string }[];
 }
 
 /**

@@ -551,6 +551,15 @@ describe("turned down today", () => {
     expect(within(card).getByRole("link", { name: /Dune.2024.iTA.1080p/ })).toHaveAttribute("href", "/movies/m1");
   });
 
+  it("opens Activity on today's turned-down releases, and a reason's bar opens just that reason (#1100)", () => {
+    withRouter(<TurnedDownCard view={mergeTurnedDown(base, [], inMs(0))} lit={new Set()} />);
+    const card = screen.getByRole("region", { name: "Turned down today" });
+
+    expect(within(card).getByRole("link", { name: /See them all/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
+    expect(within(card).getByRole("link", { name: /Not in a language you want: 14/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=language");
+    expect(within(card).getByRole("link", { name: /Bigger than your size limit: 9/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=tooBig");
+  });
+
   it("draws only the whole rows the height holds: fewer bars on a short card, the newest releases only where there is room", () => {
     expect(turnedDownFit(0, 16, 6, 20)).toEqual({ reasons: 6, latest: 20 });
     expect(turnedDownFit(140, 16, 6, 20)).toEqual({ reasons: 2, latest: 0 });

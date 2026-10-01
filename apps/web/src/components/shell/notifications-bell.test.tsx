@@ -196,20 +196,15 @@ describe("notifications bell (#907)", () => {
     expect(within(quietRow).queryByText("Attention")).toBeNull();
   });
 
-  it("sends a movie event to the title, a dispatch event to the Queue, and an untargeted one to Activity", async () => {
+  it("sends every row to its own entry in the Activity history, opened on that event's day (#1100)", async () => {
     fetchPageItems.mockResolvedValue(events);
     const user = await openPanel();
 
-    await user.click(await screen.findByRole("button", { name: /Import failed for The Newest Film/ }));
-    expect(navigate).toHaveBeenLastCalledWith("/movies/movie-3");
-
-    await user.click(screen.getByRole("button", { name: /Notifications/i }));
-    await user.click(await screen.findByRole("button", { name: /Sent The Middle Episode/ }));
-    expect(navigate).toHaveBeenLastCalledWith("/queue");
-
-    await user.click(screen.getByRole("button", { name: /Notifications/i }));
-    await user.click(await screen.findByRole("button", { name: /Imported The Oldest Film/ }));
-    expect(navigate).toHaveBeenLastCalledWith("/activity");
+    for (const [name, id] of [[/Import failed for The Newest Film/, "evt-3"], [/Sent The Middle Episode/, "evt-2"], [/Imported The Oldest Film/, "evt-1"]] as const) {
+      await user.click(await screen.findByRole("button", { name }));
+      expect(String(navigate.mock.lastCall?.[0])).toMatch(new RegExp("^/activity\\?event=" + id + "&since=\\d{4}-\\d{2}-\\d{2}&until=\\d{4}-\\d{2}-\\d{2}$"));
+      await user.click(screen.getByRole("button", { name: /Notifications/i }));
+    }
   });
 
   it("ends the list with Show all activity, which goes to Activity and closes the panel", async () => {

@@ -35,6 +35,7 @@ import { useAction } from "../../routes/dashboard/downloads-kit";
 import { AlsoWorthALook, needsYouRows, setupProblemRows } from "../../routes/dashboard/needs-you";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
+import { activityLinkForEvent } from "../../lib/activity-history";
 import { eventLabel, foldRoutineJobEvents, formatEventAge, mattersToTheBell } from "../../lib/activity-format";
 import { Chip } from "../ui/chip";
 import { TOPBAR_ICON, TOPBAR_ICON_BUTTON } from "../../layouts/topbar-tokens";
@@ -64,12 +65,9 @@ function bellEvents(raw: ActivityEventItem[]): ActivityEventItem[] {
     .slice(0, LIMIT);
 }
 
-/** Where clicking an event goes: the title, the Queue item, or (failing that) its own Activity entry. */
-function eventHref(event: Pick<ActivityEventItem, "relatedEntityType" | "relatedEntityId">): string {
-  if (event.relatedEntityType === "movie" && event.relatedEntityId) return `/movies/${event.relatedEntityId}`;
-  if (event.relatedEntityType === "series" && event.relatedEntityId) return `/tv/${event.relatedEntityId}`;
-  if (event.relatedEntityType === "download_dispatch") return "/queue";
-  return "/activity";
+/** Where clicking an event goes: its own entry in the Activity history (#1100), which links on to the title or the Queue. */
+function eventHref(event: Pick<ActivityEventItem, "id" | "createdUtc">): string {
+  return activityLinkForEvent(event);
 }
 
 /** Failed and errored jobs are the ones a person has to act on; everything else is just news. */

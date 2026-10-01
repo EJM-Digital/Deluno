@@ -13,6 +13,7 @@
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
+import { activityLinkForFile, activityLinkForTitle } from "../lib/activity-history";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
@@ -1561,7 +1562,22 @@ export function MovieDetailPage() {
             )}
           </ListCard>
 
-          <ListCard title="Activity" count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}>
+          <ListCard
+            title="Activity"
+            count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}
+            actions={
+              <>
+                <Button asChild variant="ghost" size="sm" className="text-primary">
+                  <Link to={activityLinkForTitle(movie.title, "movie", movie.id)}>Everything about this film</Link>
+                </Button>
+                {movie.filePath ? (
+                  <Button asChild variant="ghost" size="sm" className="text-primary">
+                    <Link to={activityLinkForFile(movie.filePath)}>This file's history</Link>
+                  </Button>
+                ) : null}
+              </>
+            }
+          >
             {activity.length === 0 ? (
               <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this movie shows up here." />
             ) : (
