@@ -23,14 +23,16 @@ async function authHeaders(page: import("@playwright/test").Page) {
 /**
  * A broker that answers every lookup with one status code.
  *
- * 404 is the provider saying the record is gone. 503 is the provider saying
- * nothing at all - and the whole risk in this area is that the second gets
- * read as the first, which would tell an owner their title had been removed
- * from TMDb every time TMDb had a bad afternoon.
+ * 404 is the gateway saying the record is gone, in its own words
+ * (`provider_record_missing`, #1091): a bare 404 is no longer enough, since
+ * the shared gateway also answers 404 for other reasons. 503 is the provider
+ * saying nothing at all - and the whole risk in this area is that the second
+ * gets read as the first, which would tell an owner their title had been
+ * removed from TMDb every time TMDb had a bad afternoon.
  */
 function startBrokerAnswering(status: 404 | 503): Promise<{ url: string; close: () => Promise<void> }> {
   const body = status === 404
-    ? { status_code: 34, status_message: "The resource you requested could not be found." }
+    ? { error: "provider_record_missing", provider: "tmdb", providerId: "999999901" }
     : { status_code: 43, status_message: "The service is temporarily unavailable. Try again later." };
   return new Promise((resolve) => {
     const server: Server = createServer((_request, response) => {
