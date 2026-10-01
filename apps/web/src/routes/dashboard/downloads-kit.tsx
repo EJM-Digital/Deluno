@@ -106,6 +106,15 @@ export async function send(path: string, failure: string, init: { method?: strin
   return (await response.json().catch(() => null)) as { message?: string } | null;
 }
 
+/**
+ * One size for every action button on the Live board and in the bell's list (#1096):
+ * the same height, the same width (wide enough for "Search again" and "Open
+ * Transfers", never cut), the same outlined box. A quieter action (Give up) keeps the
+ * box and only softens its text. Every card and row lines its buttons up in the same
+ * columns, and because this is the one class everything shares, they cannot drift.
+ */
+export const UNIFORM_BUTTON = "h-7 w-[7.5rem] shrink-0 justify-center px-1.5";
+
 /** A small button with its own busy spinner and a unique accessible name. */
 export function ActionButton({
   label,
@@ -113,7 +122,8 @@ export function ActionButton({
   busyKey,
   state,
   onClick,
-  variant = "outline"
+  variant = "outline",
+  uniform = false
 }: {
   label: string;
   /** Names the button for assistive tech: "Retry Sintel (2010)", never just "Retry". */
@@ -122,10 +132,20 @@ export function ActionButton({
   state: ActionState;
   onClick: () => void;
   variant?: "outline" | "ghost" | "destructive";
+  /** The one size every button on the Live board and in the bell shares: see UNIFORM_BUTTON. A "ghost" action keeps the box and softens its text. */
+  uniform?: boolean;
 }) {
   const working = state.busy === busyKey;
   return (
-    <Button type="button" variant={variant} size="sm" aria-label={name} disabled={state.busy !== null} onClick={onClick}>
+    <Button
+      type="button"
+      variant={uniform && variant === "ghost" ? "outline" : variant}
+      size="sm"
+      aria-label={name}
+      disabled={state.busy !== null}
+      onClick={onClick}
+      className={uniform ? cn(UNIFORM_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : undefined}
+    >
       {working ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" /> : null}
       {label}
     </Button>

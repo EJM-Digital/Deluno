@@ -184,7 +184,7 @@ export function isProcessorFault(item: Pick<RecoveryCase, "failureKind">): boole
 }
 
 /** The download a recovery case is about, from the details the poller wrote with it. */
-function dispatchIdIn(detailsJson: string | null | undefined): string | null {
+export function dispatchIdIn(detailsJson: string | null | undefined): string | null {
   if (!detailsJson) return null;
   try {
     const details = JSON.parse(detailsJson) as Record<string, unknown>;

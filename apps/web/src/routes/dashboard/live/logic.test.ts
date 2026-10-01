@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
 import { buildJourney, byStage, episodeFromRelease, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { plainReason } from "./plain";
 import { faceOf, NO_TITLES, wantedTitles } from "./titles";
 import { activityKind, isRoutine } from "./kinds";
 import { addBuckets, bucketByHour, bucketsFromCounts, linePath, shapeSpeedSeries } from "./series";
@@ -171,7 +172,7 @@ describe("the journey of a title", () => {
     const handoff = (overrides: Record<string, unknown>) => ({ id: "h", libraryId: "l", mediaType: "movie", clientId: "c1", queueItemId: "q", releaseName: "Metropolis.1927", sourcePath: "", processorName: "Cleaner", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-3_600_000), updatedUtc: iso(-60_000), ...overrides }) as never;
     const working = byStage(buildJourney({ ...base, handoffs: [handoff({})] })).processor;
     expect(working[0]).toMatchObject({ processor: "Cleaner", state: { label: "Being cleaned", tone: "info" }, title: "Metropolis (1927)" });
-    const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).processor;
+    const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).needs;
     expect(failed[0].state).toEqual({ tone: "bad", label: "Processor failed" });
     const returned = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "completed" })] }));
     expect(returned.importing[0].state.label).toBe("Back from the processor");
@@ -190,7 +191,7 @@ describe("the journey of a title", () => {
     const counts = laneCounts(grouped, fullSummary);
     expect(counts.grabbed).toBe(1);
     expect(counts.downloading).toBe(fullSummary.downloads!.active);
-    expect(counts.stuck).toBe(fullSummary.downloads!.stalled);
+    expect(counts.needs).toBe(fullSummary.downloads!.stalled);
     expect(counts.imported).toBe(4);
   });
 
@@ -207,7 +208,9 @@ describe("the journey of a title", () => {
     expect(titleFromRelease("Some Show S01E02")).toBe("Some Show S01E02");
     // A site's banner in front of the name is not part of the title.
     expect(titleFromRelease("www Torrenting com The Wild Robot 2024 1080p")).toBe("The Wild Robot (2024)");
-    expect(titleFromRelease("www.UIndex.org - Say.Yes.to.the.Dress.2007.S04E02")).toBe("Say Yes to the Dress (2007)");
+    expect(titleFromRelease("www.UIndex.org - Say.Yes.to.the.Dress.2007.S04E02")).toBe("Say Yes to the Dress (2007) S04E02");
+    // A show episode reads as the show and the code; what follows the code is the release itself.
+    expect(titleFromRelease("Lioness.S03E08.1080p.WEB.h264-ETHEL")).toBe("Lioness S03E08");
   });
 
   it("reads the episode or season of a release", () => {
@@ -225,7 +228,7 @@ describe("stuck downloads", () => {
   const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
   const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge on WIN-7K3", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p", torrentHashOrItemId: "q" } as never;
 
-  it("puts a stalled download, or one its client has a problem with, in Stuck and not in Downloading", () => {
+  it("puts a stalled download, or one its client has a problem with, in Needs you and not in Downloading", () => {
     const cards = buildJourney({
       ...base,
       queue: [
@@ -235,12 +238,13 @@ describe("stuck downloads", () => {
       ]
     });
     const grouped = byStage(cards);
-    expect(grouped.stuck.map((card) => card.key)).toEqual(["c1:a", "c1:b"]);
-    expect(grouped.stuck[0]).toMatchObject({ state: { tone: "bad", label: "Stuck" }, canSearchAgain: true, reason: "It has stopped moving in the download client." });
-    expect(grouped.stuck[1].reason).toBe("missing or invalid torrent data");
+    expect(grouped.needs.map((card) => card.key)).toEqual(["c1:a", "c1:b"]);
+    expect(grouped.needs[0]).toMatchObject({ state: { tone: "bad", label: "Stuck" }, canSearchAgain: true, reason: "It stopped moving in the download client." });
+    // The clients own words become a plain sentence, and stay as the tooltip.
+    expect(grouped.needs[1]).toMatchObject({ reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
     expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:c"]);
     const counts = laneCounts(grouped, undefined);
-    expect(counts.stuck).toBe(2);
+    expect(counts.needs).toBe(2);
     expect(counts.downloading).toBe(1);
   });
 
@@ -277,7 +281,41 @@ describe("stuck downloads", () => {
   it("puts a failed hand-off's Retry and Give up on its card, with problems first in the lane", () => {
     const handoff = (id: string, status: string) => ({ id, queueItemId: "gone", releaseName: `Film.${id}.2000`, processorName: "Cleaner", status, libraryId: "l", mediaType: "movie", clientId: "c1", sourcePath: "", outputPath: null, importJobId: null, failureMessage: status === "failed" ? "timed out" : null, createdUtc: iso(-1), updatedUtc: iso(-60_000) }) as never;
     const grouped = byStage(buildJourney({ ...base, handoffs: [handoff("ok", "started"), handoff("bad", "failed")] }));
-    expect(grouped.processor[0]).toMatchObject({ failedHandoffId: "bad", state: { tone: "bad" } });
-    expect(grouped.processor[1].failedHandoffId).toBeUndefined();
+    // A hand-off the processor refused is for a person to settle: it is in the first lane, and the healthy one stays with the processor.
+    expect(grouped.needs[0]).toMatchObject({ failedHandoffId: "bad", state: { tone: "bad" }, reason: "The processor took too long and Deluno stopped waiting.", reasonFull: "timed out" });
+    expect(grouped.processor).toHaveLength(1);
+    expect(grouped.processor[0].failedHandoffId).toBeUndefined();
+  });
+});
+
+describe("what needs a person", () => {
+  const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
+  const entry = (id: string, title: string, detailsJson: string | null = null) => ({ id, title, failureKind: "importFailed", summary: "Import failed: release refused; replacement blocked.", recommendedAction: "", detailsJson, detectedUtc: iso(-3_600_000), mediaType: "movie" as const });
+
+  it("makes a card of an import case, named from its sent download, and one of a failed import job", () => {
+    const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p" } as never;
+    const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch], cases: [entry("r1", "Sintel.2010.1080p", JSON.stringify({ DispatchId: "d1" }))], importJobs: [{ id: "j1", lastError: "Disk was full", createdUtc: iso(-1000), completedUtc: null } as never] }));
+    expect(grouped.needs.map((card) => card.key).sort()).toEqual(["case:movie:r1", "job:j1"]);
+    const card = grouped.needs.find((item) => item.key === "case:movie:r1")!;
+    expect(card).toMatchObject({ entity: { kind: "movie", id: "m1" }, indexer: "NZBgeek", dispatchId: "d1", state: { tone: "warn", label: "Import needs a look" } });
+    expect(card.recovery?.id).toBe("r1");
+    expect(grouped.needs.find((item) => item.key === "job:j1")).toMatchObject({ importJobId: "j1", title: "An import did not finish", reason: "Disk was full" });
+  });
+
+  it("does not make a second card for an import case whose download is already a card", () => {
+    const stuck = { id: "q", clientId: "c1", clientName: "Deluge", protocol: "torrent", mediaType: "movie", title: "x", releaseName: "The.Kid.1921.1080p", category: "", status: "stalled", progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 1, downloadedBytes: 1, peers: 0, indexerName: "Deluge", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null } as never;
+    const grouped = byStage(buildJourney({ ...base, queue: [stuck], cases: [entry("r1", "The.Kid.1921.1080p")] }));
+    expect(grouped.needs.map((card) => card.key)).toEqual(["c1:q"]);
+  });
+});
+
+describe("plain words for a failure", () => {
+  it("says what a refused hand-off, a timeout, a broken torrent and a vanished download mean, and keeps the original", () => {
+    expect(plainReason("The processor refused the hand-off with HTTP 400: The hand-off names 'X' which does not exist.")).toEqual({ text: "The processor refused the hand-off.", full: "The processor refused the hand-off with HTTP 400: The hand-off names 'X' which does not exist." });
+    expect(plainReason("The processor refused the hand-off with HTTP 401")?.text).toMatch(/refused Deluno's key/);
+    expect(plainReason("Missing or invalid torrent data!")?.text).toBe("Torrent data missing or broken.");
+    expect(plainReason("qBittorrent no longer lists this download.")?.text).toBe("The download client no longer has it.");
+    expect(plainReason("Something nobody wrote a rule for")?.text).toBe("Something nobody wrote a rule for");
+    expect(plainReason("  ")).toBeNull();
   });
 });

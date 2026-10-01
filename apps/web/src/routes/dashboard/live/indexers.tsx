@@ -4,9 +4,10 @@
  * how many times it was asked, how many releases were grabbed from it, how many
  * asks failed, and when it last answered. A quiet one says it was not asked.
  *
- * An indexer that is not answering is not listed here: Needs you owns it, with
- * its own Test again button, so a problem is in one place with one button.
+ * An indexer that is not answering shows as a red light that links to System, where
+ * its Test again button is.
  */
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { StatusLed } from "../../../components/ui/status-led";
 import type { IndexerItem } from "../../../lib/api";
@@ -15,7 +16,7 @@ import type { Tone } from "../../../lib/status-tones";
 import { cn } from "../../../lib/utils";
 import { indexerNeedsButton } from "../attention";
 import { ago } from "../format";
-import { FitList, Panel, Plain } from "../parts";
+import { motionAllowed } from "../../../lib/page-motion";
 
 /** One indexer's row of today's scoreboard (`GET /api/indexers/scoreboard?days=1`). */
 export interface IndexerToday {
@@ -45,43 +46,113 @@ export function indexerAnswer(indexer: IndexerItem, today: IndexerToday | undefi
   return { tone: failed > 0 ? "warn" : "ok", text: parts.join(" · ") };
 }
 
-export function Indexers({ indexers, scoreboard, summary, now }: { indexers: IndexerItem[]; scoreboard?: IndexerScoreboardToday | null; summary: DashboardSummary | undefined; now: number }) {
-  const stats = summary?.indexers;
+const MAX_LIGHTS = 12;
+
+/** An indexer that takes longer than this to answer is slow, and its light is amber. */
+const SLOW_MS = 2000;
+
+/** Indexers asked since the last look, so each can flash once as it is asked and answers. */
+function useFlashing(todayById: ReadonlyMap<string, IndexerToday>): ReadonlySet<string> {
+  const previous = useRef<ReadonlyMap<string, string> | null>(null);
+  const [flashing, setFlashing] = useState<ReadonlySet<string>>(() => new Set());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signature = [...todayById.values()].map((row) => `${row.id}=${row.lastQueryUtc ?? ""}:${row.totalQueries}`).join("|");
+  useEffect(() => {
+    const current = new Map([...todayById.values()].map((row) => [row.id, `${row.lastQueryUtc ?? ""}:${row.totalQueries}`]));
+    const before = previous.current;
+    previous.current = current;
+    if (before === null) return;
+    const asked = new Set<string>();
+    for (const [id, stamp] of current) if (before.has(id) && before.get(id) !== stamp) asked.add(id);
+    if (asked.size === 0) return;
+    setFlashing(asked);
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFlashing(new Set()), 2400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  useEffect(() => () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+  }, []);
+  return flashing;
+}
+
+/**
+ * The indexers as a row of named lights (the last cell of the Right now band): green
+ * when answering, amber when some asks failed, red when not answering, grey when
+ * switched off, and a light flashes when that indexer has just been asked.
+ * Each says what it did today in its tooltip. A broken one links to System, where
+ * its Test again button is.
+ */
+export function IndexerLights({ indexers, scoreboard, summary, now }: { indexers: IndexerItem[]; scoreboard?: IndexerScoreboardToday | null; summary: DashboardSummary | undefined; now: number }) {
   const rows = Array.isArray(scoreboard?.indexers) ? scoreboard.indexers : null;
-  const todayById = new Map((rows ?? []).map((row) => [row.id, row]));
-  const asked = rows ? rows.reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : stats?.queriesToday;
-  const count = asked !== undefined ? `${asked.toLocaleString("en-AU")} today` : undefined;
-  const sorted = indexers
-    .filter((indexer) => !indexerNeedsButton(indexer))
-    .sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled) || (todayById.get(b.id)?.totalQueries ?? 0) - (todayById.get(a.id)?.totalQueries ?? 0) || a.priority - b.priority);
+  const todayById = useMemo(() => new Map((rows ?? []).map((row) => [row.id, row])), [rows]);
+  const flashing = useFlashing(todayById);
+  const asked = rows ? rows.reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : summary?.indexers?.queriesToday;
+  const failed = rows ? rows.reduce((sum, row) => sum + (row.failedQueries ?? 0), 0) : summary?.indexers?.failedQueriesToday;
+  const sorted = [...indexers].sort(
+    (a, b) => Number(indexerNeedsButton(b)) - Number(indexerNeedsButton(a)) || Number(b.isEnabled) - Number(a.isEnabled) || (todayById.get(b.id)?.totalQueries ?? 0) - (todayById.get(a.id)?.totalQueries ?? 0) || a.priority - b.priority
+  );
+  const shown = sorted.slice(0, MAX_LIGHTS);
+  const hidden = sorted.length - shown.length;
   return (
-    <Panel title="Indexers" count={count ? <span className="whitespace-nowrap">{count}</span> : undefined} to="/indexers/indexers" toLabel="Manage">
+    <section aria-label="Indexers" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <Link to="/indexers/indexers" aria-label="Manage: Indexers" className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Indexers</Link>
+        {asked !== undefined ? (
+          <span className="whitespace-nowrap text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
+            {asked.toLocaleString("en-AU")} {asked === 1 ? "query" : "queries"} today{failed ? <span className="text-warning"> · {failed.toLocaleString("en-AU")} failed</span> : null}
+          </span>
+        ) : null}
+      </div>
       {sorted.length === 0 ? (
-        <Plain>{indexers.length === 0 ? "No indexers are set up, so nothing can be searched for." : "No indexer is answering. Needs you has each one."}</Plain>
+        <p className="mt-1.5 text-[length:var(--type-body-sm)] text-muted-foreground">No indexers are set up, so nothing can be searched for.</p>
       ) : (
-        <FitList
-          moreTo="/indexers/indexers"
-          rows={sorted.map((indexer) => {
+        <ul className="mt-1.5 flex flex-wrap content-start gap-1.5">
+          {shown.map((indexer) => {
             const today = todayById.get(indexer.id);
+            const broken = indexerNeedsButton(indexer);
             const answer = indexerAnswer(indexer, today, now);
+            const latency = indexer.lastHealthLatencyMs ?? null;
+            // Grey when switched off, green when it answers, amber when it answers slowly, red when it does not answer.
+            const slow = !broken && indexer.isEnabled && latency !== null && latency > SLOW_MS;
+            const tone: Tone = broken ? (indexer.healthStatus === "unreachable" ? "bad" : "warn") : slow ? "warn" : answer.tone;
             const last = today?.lastQueryUtc ?? null;
+            const text = broken ? `not answering${indexer.lastHealthMessage ? `: ${indexer.lastHealthMessage}` : ""}` : slow ? `slow, ${latency} ms to answer` : answer.text;
+            const queries = today?.totalQueries ?? 0;
+            const tip = [
+              `${indexer.name}: ${text}.`,
+              indexer.isEnabled && latency !== null ? `Last answer ${latency} ms${indexer.lastHealthTestUtc ? `, ${ago(indexer.lastHealthTestUtc, now)}` : ""}.` : null,
+              `Today ${queries.toLocaleString("en-AU")} ${queries === 1 ? "query" : "queries"}${today?.failedQueries ? `, ${today.failedQueries.toLocaleString("en-AU")} failed` : ""}${last ? `, last asked ${ago(last, now)}` : ""}.`
+            ].filter(Boolean).join(" ");
+            const asking = flashing.has(indexer.id);
             return (
-              <li key={indexer.id} className="border-b border-hairline last:border-b-0">
-                <Link to="/indexers/indexers" aria-label={`${indexer.name}: ${answer.text}`} className="flex items-center gap-2.5 px-[var(--card-pad-x)] py-1.5 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-                  <StatusLed tone={answer.tone} pulse={answer.tone === "warn"} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="block min-w-0 truncate text-[length:var(--type-body-sm)] text-foreground">{indexer.name}</span>
-                      {last ? <span className="shrink-0 whitespace-nowrap text-[length:var(--type-caption)] tabular-nums text-muted-foreground" title="When it last answered">{ago(last, now)}</span> : null}
-                    </span>
-                    <span className={cn("block truncate text-[length:var(--type-caption)]", answer.tone === "warn" ? "text-warning" : "text-muted-foreground")}>{answer.text}</span>
+              <li key={indexer.id}>
+                <Link
+                  to={broken ? "/?tab=system" : "/indexers/indexers"}
+                  title={tip}
+                  aria-label={`${indexer.name}: ${text}`}
+                  className={cn(
+                    "inline-flex max-w-[9.5rem] items-center gap-1.5 rounded-full border border-hairline bg-surface-1/60 px-2 py-0.5 text-[length:var(--type-caption)] text-foreground transition-colors hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    asking && "border-primary/50 bg-primary/[0.08]",
+                    tone === "bad" && "border-destructive/40"
+                  )}
+                >
+                  <span className="relative inline-flex shrink-0">
+                    {asking && motionAllowed() ? <span aria-hidden className="live-beat absolute -inset-1 rounded-full bg-primary/50" /> : null}
+                    <StatusLed tone={tone} size={7} pulse={tone === "warn" || tone === "bad"} />
                   </span>
+                  <span className="truncate">{indexer.name}</span>
                 </Link>
               </li>
             );
           })}
-        />
+          {hidden > 0 ? (
+            <li>
+              <Link to="/indexers/indexers" className="inline-flex items-center rounded-full px-2 py-0.5 text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">and {hidden.toLocaleString("en-AU")} more</Link>
+            </li>
+          ) : null}
+        </ul>
       )}
-    </Panel>
+    </section>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * The journey of every title in flight (#1096), as one living board: searching,
- * grabbed, downloading, stuck, with the processor, importing, in the library.
+ * grabbed, downloading, with the processor, importing, in the library.
  * Each stage is a lane with its own accent and a count that ticks; each title is
  * a card with its poster, its name, its details and its route (indexer, client,
  * processor), and a card glides into the next lane (with a brief glow) when its
@@ -15,15 +15,18 @@
 import { AlertOctagon, Download, FolderInput, HardDriveDownload, Library, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
 import { CountUp } from "../../../components/ui/count-up";
 import { StatusLed } from "../../../components/ui/status-led";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { motionAllowed } from "../../../lib/page-motion";
+import { dismissFailedJob } from "../../../lib/failed-jobs";
+import { canTryAgain, isVanished } from "../../../lib/needs-action";
 import { submitQueueRemoval } from "../../../lib/remove-download";
 import type { Tone } from "../../../lib/status-tones";
 import { cn } from "../../../lib/utils";
-import { ActionButton, formatEta, formatSize, formatSpeed, send, type ActionState } from "../downloads-kit";
+import { ActionButton, UNIFORM_BUTTON, formatEta, formatSize, formatSpeed, send, type ActionState } from "../downloads-kit";
 import { ago } from "../format";
 import { FitList, Panel } from "../parts";
 import { routeOf, STAGES, type JourneyCard, type Stage } from "./journey";
@@ -44,8 +47,16 @@ interface LaneStyle {
 const LANES: Record<Stage, LaneStyle> = {
   searching: { label: "Searching", short: "Searching", icon: Search, accent: "--stage-search", bar: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", to: "/search-cycles" },
   grabbed: { label: "Grabbed", short: "Grabbed", icon: HardDriveDownload, accent: "--stage-grab", bar: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", to: "/queue" },
-  downloading: { label: "Downloading", short: "Downloading", icon: Download, accent: "--info", bar: "bg-info", text: "text-info", to: "/queue" },
-  stuck: { label: "Stuck", short: "Stuck", icon: AlertOctagon, accent: "--destructive", bar: "bg-destructive", text: "text-destructive", to: "/queue" },
+  downloading: {
+    label: "Downloading",
+    short: "Downloading",
+    icon: Download,
+    accent: "--info",
+    bar: "bg-info",
+    text: "text-info",
+    to: "/queue"
+  },
+  needs: { label: "Needs you", short: "Needs you", icon: AlertOctagon, accent: "--destructive", bar: "bg-destructive", text: "text-destructive", to: "/queue" },
   processor: { label: "With the processor", short: "Processing", icon: ShieldCheck, accent: "--stage-process", bar: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", to: "/queue" },
   importing: { label: "Importing", short: "Importing", icon: FolderInput, accent: "--stage-import", bar: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", to: "/queue" },
   imported: { label: "In the library", short: "In the library", icon: Library, accent: "--success", bar: "bg-success", text: "text-success", to: "/activity" }
@@ -63,7 +74,7 @@ function emptyNote(stage: Stage, summary: DashboardSummary | undefined): { line:
     }
     case "grabbed": return { line: "Nothing waiting", full: "Nothing waiting to start." };
     case "downloading": return { line: "Nothing moving", full: `Nothing downloading. ${imported > 0 ? `${imported.toLocaleString("en-AU")} imported today.` : "Nothing imported yet today."}` };
-    case "stuck": return { line: "Nothing stuck", full: "No download is stuck." };
+    case "needs": return { line: "Nothing needs you", full: "Nothing needs you: no download is stuck and no import or hand-off has failed." };
     case "processor": return { line: "Nothing with it", full: "Nothing with the processor." };
     case "importing": return { line: "Nothing waiting", full: "Nothing waiting to import." };
     default: return imported > 0 ? { line: `${imported.toLocaleString("en-AU")} today`, full: `${imported.toLocaleString("en-AU")} imported today.` } : { line: "None today", full: "Nothing imported yet today." };
@@ -71,54 +82,104 @@ function emptyNote(stage: Stage, summary: DashboardSummary | undefined): { line:
 }
 
 interface CardContext {
+  compact?: boolean;
   titles: TitleLookup;
   arrivals: ReadonlySet<string>;
   action: ActionState;
 }
 
-function CardButtons({ card, action }: { card: JourneyCard; action: ActionState }) {
-  const searchAgain = card.stage === "stuck" && card.canSearchAgain && card.queueRef ? card.queueRef : null;
+function CardButtons({ card, action, inline = false }: { card: JourneyCard; action: ActionState; inline?: boolean }) {
+  const searchAgain = card.stage === "needs" && card.canSearchAgain && card.queueRef ? card.queueRef : null;
   const handoffId = card.failedHandoffId;
-  if (!searchAgain && !handoffId) return null;
+  const entry = card.recovery;
+  const jobId = card.importJobId;
+  if (!searchAgain && !handoffId && !entry && !jobId) return null;
+  const button = (label: string, name: string, busyKey: string, run: () => Promise<string>, variant: "outline" | "ghost" = "outline") => (
+    <ActionButton uniform label={label} name={name} busyKey={busyKey} state={action} variant={variant} onClick={() => void action.run(busyKey, run)} />
+  );
+  const base = entry ? `/api/${entry.mediaType === "movie" ? "movies" : "series"}/import-recovery/${encodeURIComponent(entry.id)}` : "";
   return (
-    <div className="relative flex gap-1.5 px-1.5 pb-1.5">
-      {searchAgain ? (
-        <ActionButton
-          label="Search again"
-          name={`Search again for ${card.title}`}
-          busyKey={`stalled:${searchAgain.clientId}:${searchAgain.itemId}`}
-          state={action}
-          onClick={() => void action.run(`stalled:${searchAgain.clientId}:${searchAgain.itemId}`, async () => (await submitQueueRemoval(searchAgain.clientId, searchAgain.itemId, "failed")).message)}
-        />
-      ) : null}
+    <div className={cn("relative flex flex-wrap gap-1.5", inline ? "mt-1" : "px-1.5 pb-1.5")}>
+      {searchAgain
+        ? button("Search again", `Search again for ${card.title}`, `stalled:${searchAgain.clientId}:${searchAgain.itemId}`, async () => (await submitQueueRemoval(searchAgain.clientId, searchAgain.itemId, "failed")).message)
+        : null}
       {handoffId ? (
         <>
-          <ActionButton
-            label="Retry"
-            name={`Retry ${card.title}`}
-            busyKey={`handoff-retry:${handoffId}`}
-            state={action}
-            onClick={() => void action.run(`handoff-retry:${handoffId}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoffId)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
-          />
-          <ActionButton
-            label="Give up"
-            name={`Give up on ${card.title}`}
-            busyKey={`handoff-dismiss:${handoffId}`}
-            state={action}
-            variant="ghost"
-            onClick={() => void action.run(`handoff-dismiss:${handoffId}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoffId)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
-          />
+          {button("Retry", `Retry ${card.title}`, `handoff-retry:${handoffId}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoffId)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
+          {button("Give up", `Give up on ${card.title}`, `handoff-dismiss:${handoffId}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoffId)}/dismiss`, "That could not be dismissed."); return "Dismissed"; }, "ghost")}
+        </>
+      ) : null}
+      {entry ? (
+        <>
+          {canTryAgain(entry)
+            ? button(isVanished(entry) ? "Search again" : "Retry", `${isVanished(entry) ? "Search again for" : "Retry"} ${card.title}`, `recovery-retry:${entry.id}`, async () => (await send(`${base}/retry`, "That could not be tried again."))?.message ?? `${card.title} is being tried again.`)
+            : (
+              <Button asChild size="sm" variant="outline" className={UNIFORM_BUTTON}>
+                <Link to="/queue" aria-label={`Review ${card.title}`}>Review</Link>
+              </Button>
+            )}
+          {button("Give up", `Give up on ${card.title}`, `recovery-dismiss:${entry.id}`, async () => { await send(`${base}/dismiss`, "That case could not be dismissed."); return `${card.title} dismissed`; }, "ghost")}
+        </>
+      ) : null}
+      {jobId ? (
+        <>
+          {button("Retry", `Retry the failed import`, `job-retry:${jobId}`, async () => { await send("/api/jobs/retry-failed", "The failed imports could not be tried again."); return "Failed imports requeued"; })}
+          {button("Give up", `Give up on the failed import`, `job-dismiss:${jobId}`, async () => { await dismissFailedJob(jobId); return "Import dismissed"; }, "ghost")}
         </>
       ) : null}
     </div>
   );
 }
 
-function renderCard(card: JourneyCard, { titles, arrivals, action }: CardContext): ReactElement {
+function renderCompactCard(card: JourneyCard, { titles, arrivals, action }: CardContext): ReactElement {
+  const lane = LANES[card.stage];
+  const face = faceOf(card, titles);
+  const route = routeOf(card);
+  const stuck = card.stage === "needs";
+  const failed = Boolean(card.reason) && (stuck || card.state.tone === "bad");
+  const second = failed ? card.reason : card.state.label;
+  return (
+    <li
+      key={card.key}
+      className={cn(
+        "relative overflow-hidden rounded-lg border border-l-[3px] border-hairline bg-surface-1/60",
+        stuck && "border-destructive/30 bg-destructive/[0.05]",
+        arrivals.has(card.key) && motionAllowed() && "live-card-arrive"
+      )}
+      style={{ ["--card-glow" as string]: `var(${lane.accent})`, borderLeftColor: `hsl(var(${lane.accent}))` }}
+    >
+      <Link
+        to={face.to}
+        aria-label={`${face.title}: ${card.state.label}`}
+        className="relative flex min-w-0 items-center gap-2 rounded-lg p-1.5 pb-0 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ArtworkImage
+          src={face.poster}
+          alt=""
+          loading="lazy"
+          className="h-[2.375rem] w-[1.625rem] shrink-0 rounded bg-surface-3 object-cover shadow-sm"
+          fallback={<span aria-hidden className={cn("flex h-[2.375rem] w-[1.625rem] shrink-0 items-center justify-center rounded bg-surface-3", lane.text)}><lane.icon className="h-3.5 w-3.5" /></span>}
+        />
+        <span className="min-w-0 flex-1">
+          <span title={card.release && face.linked ? card.release : face.title} className="block truncate text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
+          <span title={card.reasonFull ?? second ?? undefined} className={cn("block truncate text-[length:var(--type-caption)] leading-tight", failed ? "text-destructive" : TONE_TEXT[card.state.tone])}>{second}</span>
+        </span>
+      </Link>
+      <div className="relative pb-1.5 pl-[2.55rem] pr-1.5 pt-0.5">
+        {route ? <span title={route} className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{route}</span> : null}
+        <CardButtons card={card} action={action} inline />
+      </div>
+    </li>
+  );
+}
+
+function renderCard(card: JourneyCard, context: CardContext): ReactElement {
+  if (context.compact) return renderCompactCard(card, context);
+  const { titles, arrivals, action } = context;
   const lane = LANES[card.stage];
   const face = faceOf(card, titles);
   const downloading = card.stage === "downloading";
-  const stuck = card.stage === "stuck";
+  const stuck = card.stage === "needs";
   const moving = downloading && (card.speedMbps ?? 0) > 0;
   const meta = stuck ? "" : [card.quality, card.sizeBytes ? formatSize(card.sizeBytes) : null].filter(Boolean).join(" · ");
   const route = routeOf(card);
@@ -157,11 +218,11 @@ function renderCard(card: JourneyCard, { titles, arrivals, action }: CardContext
             <span aria-hidden className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-4 w-4" /></span>
           )}
           <span className="min-w-0 flex-1">
-            <span title={card.release && face.linked ? card.release : face.title} className="line-clamp-3 break-words text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
+            <span title={card.release && face.linked ? card.release : face.title} className="line-clamp-2 break-words text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
             {showReason ? (
-              <span title={card.reason ?? undefined} className="mt-0.5 line-clamp-3 break-words text-[length:var(--type-caption)] leading-tight text-destructive">{card.reason}</span>
+              <span title={card.reasonFull ?? card.reason ?? undefined} className="mt-0.5 line-clamp-2 break-words text-[length:var(--type-caption)] leading-tight text-destructive">{card.reason}</span>
             ) : null}
-            {!stuck ? (
+            {!stuck || !card.reason ? (
               <span className={cn("mt-0.5 flex flex-wrap items-start gap-x-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
                 <span className="flex min-w-0 max-w-full items-start gap-1.5">
                   <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
@@ -209,8 +270,12 @@ export function Flow({
   arrivals: ReadonlySet<string>;
   action: ActionState;
 }) {
-  const inFlight = counts.grabbed + counts.downloading + counts.stuck + counts.processor + counts.importing;
+  const inFlight = counts.grabbed + counts.downloading + counts.processor + counts.importing;
   const context: CardContext = { titles, arrivals, action };
+  // Lanes with something in them share the width; the empty ones are one short column that names each of them.
+  // A stage the summary counts but whose cards are not listed yet is still a lane: it says how many and links to them.
+  const busy = STAGES.filter((stage) => grouped[stage].length > 0 || counts[stage] > 0);
+  const quiet = STAGES.filter((stage) => !busy.includes(stage));
   return (
     <Panel
       title="Every title's journey"
@@ -219,42 +284,72 @@ export function Flow({
       toLabel="Transfers"
     >
       <div className="grid min-h-0 flex-1 grid-cols-2 lg:flex">
-        {STAGES.map((stage) => {
+        {busy.map((stage) => {
           const lane = LANES[stage];
           const cards = grouped[stage];
           const count = counts[stage];
-          const empty = cards.length === 0;
-          const note = emptyNote(stage, summary);
+          // Many cards in a lane become compact rows, so the lane is filled with titles and not with a few tall cards and "and N more".
+          const lots = cards.length > 3;
+          const laneContext: CardContext = lots ? { ...context, compact: true } : context;
           return (
             <div
               key={stage}
               id={`live-lane-${stage}`}
               role="group"
               aria-label={lane.label}
-              // A lane with nothing in it keeps to a narrow strip; the lanes with cards share the rest.
-              className={cn("relative flex min-h-0 flex-col border-hairline transition-[flex-grow] duration-500 lg:border-l lg:first:border-l-0", empty ? "lg:w-[6.75rem] lg:shrink-0" : "lg:min-w-0 lg:flex-1 lg:basis-0")}
+              className={cn("relative flex min-h-0 flex-col border-hairline transition-[flex-grow] duration-500 lg:min-w-0 lg:basis-0 lg:border-l lg:first:border-l-0", stage === "needs" ? "lg:flex-[1.35]" : "lg:flex-1")}
             >
               <div aria-hidden className={cn("h-0.5 w-full", lane.bar, count === 0 && "opacity-30")} />
               <Link to={lane.to} aria-label={`${lane.label}: ${count}`} className="flex items-center gap-1.5 px-2.5 pb-1 pt-2 hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                 <lane.icon aria-hidden className={cn("h-3.5 w-3.5 shrink-0", lane.text)} />
-                <span title={lane.label} className="min-w-0 flex-1 truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{lane.short}</span>
+                <span className="min-w-0 flex-1 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{lane.label}</span>
                 <span className={cn("text-[length:var(--type-body-sm)] font-semibold tabular-nums", count > 0 ? lane.text : "text-muted-foreground")}>
                   <CountUp value={count} format={(value) => Math.round(value).toLocaleString("en-AU")} />
                 </span>
-                              </Link>
-              {empty ? (
-                <p title={note.full} className="px-2.5 pb-2 text-[length:var(--type-caption)] leading-snug text-muted-foreground">{note.line}</p>
-              ) : (
-                <FitList
-                  moreTo={lane.to}
-                  extra={Math.max(0, count - cards.length)}
-                  wrap={(shown) => <ul className="space-y-1.5 px-1.5">{shown}</ul>}
-                  rows={cards.map((card) => renderCard(card, context))}
-                />
-              )}
+              </Link>
+              <FitList
+                moreTo={lane.to}
+                extra={Math.max(0, count - cards.length)}
+                wrap={(shown) => <ul className={cn("px-1.5", lots ? "space-y-1" : "space-y-1.5")}>{shown}</ul>}
+                rows={cards.map((card) => renderCard(card, laneContext))}
+              />
             </div>
           );
         })}
+        {quiet.length > 0 ? (
+          <div
+            id="live-lane-quiet"
+            role="group"
+            aria-label="Quiet"
+            className={cn("relative col-span-2 flex min-h-0 flex-col border-hairline lg:border-l lg:first:border-l-0", busy.length === 0 ? "lg:min-w-0 lg:flex-1" : "lg:w-[12.5rem] lg:shrink-0")}
+          >
+            <div aria-hidden className="h-0.5 w-full bg-hairline" />
+            <p className="px-2.5 pb-1 pt-2 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Quiet</p>
+            <ul className="min-h-0 flex-1 overflow-hidden px-1.5">
+              {quiet.map((stage) => {
+                const lane = LANES[stage];
+                const note = emptyNote(stage, summary);
+                return (
+                  <li key={stage} id={`live-lane-${stage}`}>
+                    <Link
+                      to={lane.to}
+                      title={note.full}
+                      aria-label={`${lane.label}: ${counts[stage]}. ${note.full}`}
+                      className="flex items-start gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <lane.icon aria-hidden className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60", lane.text)} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[length:var(--type-body-sm)] font-medium leading-tight text-foreground">{lane.label}</span>
+                        <span className="block text-[length:var(--type-caption)] leading-tight text-muted-foreground">{note.line}</span>
+                      </span>
+                      <span className="text-[length:var(--type-body-sm)] font-semibold tabular-nums text-muted-foreground">{counts[stage].toLocaleString("en-AU")}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </Panel>
   );

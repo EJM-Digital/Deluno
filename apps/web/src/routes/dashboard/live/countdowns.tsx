@@ -1,17 +1,13 @@
 /**
- * Coming up for Deluno (#1096): the next search for each library and the next
- * run of each scheduled task, each counting down by the second with a ring that
- * fills between one run and the next. The times come from the summary's
+ * What Deluno will do next (#1096): the next search for each library and the next
+ * run of each scheduled task, for the ring in the Right now band that counts down
+ * and fills between one run and the next. The times come from the summary's
  * automation section; the ring shows the last run against the next. A task
  * that is not scheduled has no row, and a search running shows as running.
  */
-import { Link } from "react-router-dom";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
-import { FitList, Panel, Plain } from "../parts";
-import { countdown, type Countdown } from "./countdown";
-import { useNow } from "./hooks";
 
 const RING = 11;
 const CIRCUMFERENCE = 2 * Math.PI * RING;
@@ -81,47 +77,4 @@ export function buildCountdownRows(summary: DashboardSummary | undefined): Count
     });
   }
   return rows.sort((a, b) => a.rank - b.rank || Date.parse(a.next || "9999") - Date.parse(b.next || "9999"));
-}
-
-function CountdownText({ value, running }: { value: Countdown | null; running: boolean }) {
-  if (running) return <span className="text-info">running</span>;
-  if (!value) return <span className="text-muted-foreground">not scheduled</span>;
-  return <span className={cn(value.due && "text-success")}>{value.due ? "due now" : value.text}</span>;
-}
-
-export function Countdowns({ summary }: { summary: DashboardSummary | undefined }) {
-  const now = useNow(1000);
-  const rows = buildCountdownRows(summary);
-  return (
-    <Panel title="Next runs" to="/?tab=system" toLabel="Schedule">
-      {rows.length === 0 ? (
-        <Plain>Nothing is scheduled. Searches and tasks that are switched off do not count down.</Plain>
-      ) : (
-        <FitList
-          moreTo="/?tab=system"
-          rows={rows.map((row) => {
-            const value = row.next ? countdown(row.next, row.last, now) : null;
-            return (
-              <li key={row.key} className="border-b border-hairline last:border-b-0">
-                <Link
-                  to={row.to}
-                  aria-label={`${row.label}: ${row.running ? "running now" : value ? (value.due ? "due now" : `in ${value.text}`) : "not scheduled"}`}
-                  className="flex items-center gap-2.5 px-[var(--card-pad-x)] py-1.5 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                >
-                  <ProgressRing fraction={value?.fraction ?? null} due={value?.due ?? false} running={row.running} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[length:var(--type-body-sm)] text-foreground">{row.label}</span>
-                    <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{row.hint}</span>
-                  </span>
-                  <span className="shrink-0 text-right text-[length:var(--type-body-sm)] font-medium tabular-nums text-foreground">
-                    <CountdownText value={value} running={row.running} />
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        />
-      )}
-    </Panel>
-  );
 }

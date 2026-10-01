@@ -232,7 +232,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       title: "Deluno can't reach the internet",
       text: "Searching and cleanup are paused until it is back. Nothing was marked as a bad release.",
       to: "/system",
-      action: "See System"
+      action: "Open System"
     });
   }
   const gate = summary?.automation?.queuePause;
@@ -244,7 +244,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       title: "Deluno can't read the download queue",
       text: "Pausing searches when the queue is long is not working until it can.",
       to: "/settings/automation",
-      action: "Fix it in Automation & Recovery"
+      action: "Open Automation"
     });
   }
   add({
@@ -254,7 +254,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(otherQueue.length, "download has", "downloads have")} a warning`,
     text: "The download client reported a problem with them.",
     to: "/queue",
-    action: "Look in Transfers",
+    action: "Open Transfers",
     count: otherQueue.length
   });
 
@@ -266,7 +266,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(collectionsFailing, "collection")} could not update`,
     text: "The list a collection follows could not be read.",
     to: "/collections",
-    action: "Look in Collections",
+    action: "Collections",
     count: collectionsFailing > 0 ? 1 : 0
   });
   add({
@@ -276,7 +276,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(requestServersFailing, "request server")} not answering`,
     text: "New requests can't arrive until it answers.",
     to: "/indexers/media-servers",
-    action: "Look in Find & Download",
+    action: "Find & Download",
     count: requestServersFailing > 0 ? 1 : 0
   });
 
@@ -288,7 +288,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(stalledCount, "download is", "downloads are")} stalled`,
     text: "They have stopped moving in the download client.",
     to: "/queue",
-    action: "Look in Transfers",
+    action: "Open Transfers",
     count: stalledCount
   });
   add({
@@ -298,7 +298,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(clients.length, "download client")} needs a look`,
     text: "It is not answering, is paused, or has warnings to clear.",
     to: "/?tab=system",
-    action: "Fix it in System",
+    action: "Open System",
     count: clients.length
   });
   add({
@@ -308,7 +308,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: indexerOnly?.title ?? `${plural(indexerCount, "indexer")} not answering`,
     text: indexerOnly?.text ?? "Deluno can't search a site until it answers.",
     to: "/?tab=system",
-    action: "Test again in System",
+    action: "Open System",
     count: indexerCount
   });
   add({
@@ -318,7 +318,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(recoveryCount, "import needs", "imports need")} a look`,
     text: "Deluno could not finish these on its own. Retry them or give up on them.",
     to: "/",
-    action: "Fix it in Needs you",
+    action: "Open Dashboard",
     count: recoveryCount
   });
   add({
@@ -328,7 +328,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(importJobsCount, "import")} didn't finish`,
     text: "They stopped and won't be tried again on their own.",
     to: "/",
-    action: "Fix it in Needs you",
+    action: "Open Dashboard",
     count: importJobsCount
   });
   add({
@@ -338,7 +338,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(handoffCount, "hand-off")} to the processor failed`,
     text: "The finished download was not handed over for cleaning.",
     to: "/",
-    action: "Fix it in Needs you",
+    action: "Open Dashboard",
     count: handoffCount
   });
   add({
@@ -348,7 +348,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: processorOnly?.title ?? `${plural(processorCount, "processor")} not answering`,
     text: processorOnly?.text ?? "Finished downloads can't be cleaned until it answers.",
     to: "/?tab=system",
-    action: "Test again in System",
+    action: "Open System",
     count: processorCount
   });
 
@@ -381,7 +381,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       title: `${plural(healthTotal - shown, "more problem")} to look at`,
       text: "The health checks found more than fit here.",
       to: "/system",
-      action: "See them in System",
+      action: "Open System",
       count: healthTotal - shown
     });
   }
@@ -392,7 +392,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(jobsGaveUp, "background job")} gave up`,
     text: "Nothing else waits on them, but the work was not done.",
     to: "/?tab=system",
-    action: "Fix it in System",
+    action: "Open System",
     count: jobsGaveUp > 0 ? 1 : 0
   });
   add({
@@ -402,7 +402,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     title: `${plural(failingLanes, "background worker")} keeps failing`,
     text: "Deluno keeps trying, but this part is not getting its work done.",
     to: "/?tab=system",
-    action: "Fix it in System",
+    action: "Open System",
     count: failingLanes
   });
 

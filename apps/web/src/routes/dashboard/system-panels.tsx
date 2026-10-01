@@ -25,7 +25,7 @@ import { defineSources } from "../../lib/route-cache";
 import { cn } from "../../lib/utils";
 import type { DashboardAttention } from "./attention";
 import { ActionButton, FactRow, Panel, PanelLink, PanelNote, ago, formatSize, plainWords, plural, send, until, useAction } from "./downloads-kit";
-import { FitList } from "./parts";
+import { FitList, Line } from "./parts";
 
 const MACHINE_HOURS = 6;
 
@@ -332,6 +332,28 @@ export function Health({
       ) : (
         <FitList moreTo="/system" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Health`} extra={more} rows={rows} />
       )}
+    </Panel>
+  );
+}
+
+/* ------------------------------------------------------------- library */
+
+/** The library in four numbers (moved here from Live): what is in it, what has no acceptable release yet, and what a better release would replace. */
+export function LibraryCounts({ summary }: { summary: DashboardSummary | undefined }) {
+  const library = summary?.library;
+  const movies = library?.movies;
+  const shows = library?.shows;
+  const missing = (movies?.missing ?? 0) + (shows?.missing ?? 0);
+  const upgradable = (movies?.upgradable ?? 0) + (shows?.upgradable ?? 0);
+  const whole = (value: number) => value.toLocaleString("en-AU");
+  return (
+    <Panel title="Library" to="/movies" linkLabel="Movies" className="shrink-0">
+      <div>
+        <Line label="Movies" hint={movies && movies.total > 0 ? "in your library" : "none yet"} value={whole(movies?.total ?? 0)} to="/movies" />
+        <Line label="TV shows" hint={shows && shows.total > 0 ? "in your library" : "none yet"} value={whole(shows?.total ?? 0)} to="/tv" />
+        <Line label="Missing" hint="no acceptable release yet" value={whole(missing)} tone={missing > 0 ? "bad" : undefined} to="/search-cycles/missing" />
+        <Line label="Upgradable" hint="a better release would be taken" value={whole(upgradable)} tone={upgradable > 0 ? "warn" : undefined} to="/search-cycles/upgrades" />
+      </div>
     </Panel>
   );
 }

@@ -100,7 +100,7 @@ describe("computeAttention", () => {
       expect(attention.counts).toEqual({ live: 0, system: 1 });
       expect(attention.items).toHaveLength(1);
       // The one row says which indexer and why, and its button is where Test again is.
-      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Test again in System" });
+      expect(attention.items[0]).toMatchObject({ title: "Nyaa.si isn't answering", text: "nyaa.si answered HTTP 504", action: "Open System" });
       expect(attention.healthListed).toHaveLength(0);
     });
 

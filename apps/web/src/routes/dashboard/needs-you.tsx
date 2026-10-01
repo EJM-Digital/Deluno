@@ -13,33 +13,16 @@
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/button";
-import { CountUp } from "../../components/ui/count-up";
 import { StatusLed } from "../../components/ui/status-led";
 import { dismissFailedJob } from "../../lib/failed-jobs";
 import { canTryAgain, isVanished, type RecoveryCaseRow } from "../../lib/needs-action";
-import { ActionButton, Panel, PanelNote, plural, send, useAction } from "./downloads-kit";
-import { FitList } from "./parts";
+import { ActionButton, plural, send, UNIFORM_BUTTON, useAction } from "./downloads-kit";
 import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
 
-/** What the Live board already shows, each with its own buttons: the downloads (as `clientId:id`) and the failed processor hand-offs. */
-export interface OnBoard {
-  queueKeys: ReadonlySet<string>;
-  handoffIds: ReadonlySet<string>;
-}
-
-/** Draws the eye to a lane of the board for a moment, so "on the board" is shown and not only said. */
-export function flashLane(stage: string): void {
-  const lane = document.getElementById(`live-lane-${stage}`);
-  if (!lane) return;
-  lane.classList.add("live-lane-flash");
-  window.setTimeout(() => lane.classList.remove("live-lane-flash"), 1800);
-}
-
 const row = "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
-const linkButton =
-  "inline-flex h-[var(--control-height-sm)] items-center justify-center truncate rounded-[10px] border border-hairline px-3 text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center rounded-[10px] border border-hairline text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
 
 /**
  * The same action area on every row: the main button in one column, "Give up"
@@ -50,9 +33,9 @@ const linkButton =
  */
 export function RowActions({ primary, secondary }: { primary: ReactElement; secondary?: ReactElement }) {
   return (
-    <span className="ml-4 grid w-[calc(100%-1rem)] shrink-0 grid-cols-[minmax(0,1fr)_4.75rem] gap-1.5 sm:ml-0 sm:w-[13.5rem] [&>span>*]:w-full [&>span>*]:min-w-0 [&>span>*]:justify-center">
-      <span className={secondary ? "flex min-w-0" : "col-span-2 flex min-w-0"}>{primary}</span>
-      {secondary ? <span className="flex min-w-0">{secondary}</span> : null}
+    <span className="ml-4 flex shrink-0 gap-1.5 sm:ml-0">
+      <span className="flex">{primary}</span>
+      {secondary ? <span className="flex">{secondary}</span> : <span aria-hidden className="w-[7.5rem]" />}
     </span>
   );
 }
@@ -68,6 +51,7 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
     <RowActions
       primary={canTryAgain(item) ? (
         <ActionButton
+          uniform
           label={isVanished(item) ? "Search again" : "Retry"}
           name={`${isVanished(item) ? "Search again for" : "Retry"} ${item.title}`}
           busyKey={`recovery-retry:${item.id}`}
@@ -78,6 +62,7 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
         <Link to="/queue" aria-label={`Review ${item.title}`} className={linkButton}>Review</Link>
       )}
       secondary={<ActionButton
+        uniform
         label="Give up"
         name={`Give up on ${item.title}`}
         busyKey={`recovery-dismiss:${item.id}`}
@@ -94,32 +79,11 @@ function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Acti
  * with its button. The Dashboard's Live tab and the bell's panel both draw these
  * rows, so they are one list.
  */
-export function needsYouRows(attention: DashboardAttention, action: Action, onBoard?: OnBoard): ReactElement[] {
-  const { recoveryCases, failedImportJobs, handoffs, queueAttention } = attention.downloads;
-  // What the journey board already shows, with its own buttons, is not listed a second time: one line says so and points at it.
-  const coveredDownloads = onBoard ? queueAttention.filter((entry) => onBoard.queueKeys.has(`${entry.clientId}:${entry.id}`)).length : 0;
-  const collapseDownloads = queueAttention.length > 0 && coveredDownloads === queueAttention.length;
-  let lineShown = false;
-  // "Stuck" when every one has stopped; "need a look" when some only have a warning from their client.
-  const allStalled = queueAttention.every((entry) => entry.status === "stalled");
-  const lineTitle = allStalled ? `${queueAttention.length.toLocaleString("en-AU")} stuck ${queueAttention.length === 1 ? "download" : "downloads"}` : plural(queueAttention.length, "download needs a look", "downloads need a look");
+export function needsYouRows(attention: DashboardAttention, action: Action): ReactElement[] {
+  const { recoveryCases, failedImportJobs, handoffs } = attention.downloads;
   return attention.items
     .filter((item) => item.tab === "live")
     .flatMap((item) => {
-      if (collapseDownloads && (item.id === "stalled" || item.id === "queue-warnings")) {
-        if (lineShown) return [];
-        lineShown = true;
-        return [
-          <li key="downloads-on-board" className={row}>
-            <StatusLed tone="warn" pulse />
-            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{lineTitle}</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">On the board, each with its button.</span>
-            </div>
-            <RowActions primary={<Button type="button" variant="outline" size="sm" aria-label="Show the stuck downloads on the board" onClick={() => flashLane("stuck")}>Show them</Button>} />
-          </li>
-        ];
-      }
       if (item.id === "recovery") {
         return recoveryCases.map((entry) => (
           <li key={`recovery:${entry.mediaType}:${entry.id}`} className={row}>
@@ -142,6 +106,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
             </div>
             <RowActions
               primary={<ActionButton
+          uniform
               label="Retry"
               name={`Retry failed import ${index + 1}`}
               busyKey={`job-retry:${job.id}`}
@@ -149,6 +114,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
               onClick={() => void action.run(`job-retry:${job.id}`, async () => { await send("/api/jobs/retry-failed", "The failed imports could not be tried again."); return "Failed imports requeued"; })}
             />}
               secondary={<ActionButton
+        uniform
               label="Give up"
               name={`Give up on failed import ${index + 1}`}
               busyKey={`job-dismiss:${job.id}`}
@@ -161,7 +127,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
         ));
       }
       if (item.id === "handoffs") {
-        return handoffs.filter((handoff) => !onBoard?.handoffIds.has(handoff.id)).map((handoff) => (
+        return handoffs.map((handoff) => (
           <li key={`handoff:${handoff.id}`} className={row}>
             <StatusLed tone="bad" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
@@ -170,6 +136,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
             </div>
             <RowActions
               primary={<ActionButton
+          uniform
               label="Retry"
               name={`Retry ${handoff.releaseName}`}
               busyKey={`handoff-retry:${handoff.id}`}
@@ -177,6 +144,7 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
               onClick={() => void action.run(`handoff-retry:${handoff.id}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
             />}
               secondary={<ActionButton
+        uniform
               label="Give up"
               name={`Give up on ${handoff.releaseName}`}
               busyKey={`handoff-dismiss:${handoff.id}`}
@@ -246,28 +214,5 @@ export function AlsoWorthALook({ attention }: { attention: DashboardAttention })
         <span key={index} className="inline-flex items-center gap-1.5">{index > 0 ? <span aria-hidden>·</span> : null}{node}</span>
       ))}
     </span>
-  );
-}
-
-export function NeedsYou({ attention, action, onBoard }: { attention: DashboardAttention; action: Action; onBoard?: OnBoard }) {
-  const total = attention.counts.live;
-  const rows = needsYouRows(attention, action, onBoard);
-  const { leftovers, suggestions } = attention.alsoWorthALook;
-
-  return (
-    <Panel
-      title="Needs you"
-      count={total > 0 ? <CountUp value={total} /> : undefined}
-      to="/queue"
-      linkLabel="Transfers"
-      className="min-h-0"
-      footer={leftovers + suggestions > 0 ? <AlsoWorthALook attention={attention} /> : undefined}
-    >
-      {rows.length === 0 ? (
-        <PanelNote>Nothing needs you. Anything that does will be listed here with a button that fixes it.</PanelNote>
-      ) : (
-        <FitList moreTo="/queue" moreLabel={(hidden) => `and ${hidden.toLocaleString("en-AU")} more on Transfers`} rows={rows} />
-      )}
-    </Panel>
   );
 }

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
 import { serveLiveBusy } from "../helpers/live-busy";
+import { serveLiveRig } from "../helpers/live-rig";
 
 // #1087: the Dashboard is two tabs, Live and System. Each fits one screen
 // at 1920x1080 and 2560x1440: the page never scrolls, whatever the tab holds,
@@ -9,7 +10,7 @@ import { serveLiveBusy } from "../helpers/live-busy";
 // added together.
 
 const TABS = [
-  { name: "Live", query: "", panel: /^needs you/i },
+  { name: "Live", query: "", panel: /^every title/i },
   { name: "System", query: "?tab=system", panel: /^health/i }
 ] as const;
 
@@ -77,6 +78,8 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
       }
       for (const element of [section as HTMLElement, ...Array.from(section.querySelectorAll<HTMLElement>("*"))]) {
         const style = getComputedStyle(element);
+        // Text clamped to a few lines, with all of it in its tooltip, is a design choice and not a cut-off row.
+        if (style.webkitLineClamp && style.webkitLineClamp !== "none") continue;
         if ((style.overflowY === "hidden" || style.overflowY === "clip") && element.clientHeight > 2 && element.scrollHeight > element.clientHeight + 1) {
           found.push(`${name}: something is hidden inside it (${element.tagName.toLowerCase()} is ${element.scrollHeight}px tall in ${element.clientHeight}px)`);
         }
@@ -150,7 +153,8 @@ test.describe("Dashboard tabs", () => {
     await authenticateAndNavigate(page, "/");
     await expect(page.getByRole("tab")).toHaveCount(2);
     await expect(page.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Doing now" })).toBeVisible();
 
     for (const tab of TABS.slice(1)) {
       await page.goto(`/${tab.query}`);
@@ -209,7 +213,7 @@ test.describe("Dashboard tabs", () => {
     }
     // The rest are named, with a way to them, rather than dropped.
     await page.goto("/");
-    await expect(page.getByRole("link", { name: /^and [0-9]+ more on Transfers/ }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
     await page.goto("/?tab=system");
     await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
   });
@@ -228,48 +232,70 @@ test.describe("Dashboard tabs", () => {
       await page.goto("/");
       await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
       // Today is the day's real count (the fixture holds more than the 200 a page of events could), the speed
-      // peaks are labelled apart, and a failing indexer is left to Needs you instead of being listed twice.
-      await expect(page.getByRole("region", { name: /^today/i }).getByText(/^[0-9,]{3,} events$/).first()).toBeVisible();
+      // peaks are labelled apart, and a failing indexer is a red light that goes to System.
+      await expect(page.getByRole("region", { name: /^activity/i }).getByText(/^[0-9,]{3,} events$/).first()).toBeVisible();
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Download peak/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Upload peak/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^indexers/i }).getByText("NZBgeek")).toBeVisible();
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByText("Nyaa.si")).toHaveCount(0);
+      await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
       // The indexers say what happened today, not a latency from days ago.
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByText(/96 queries/)).toBeVisible();
-      // Latest and Today show what Deluno did for the titles, name each colour, and leave the housekeeping out.
-      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/Grabbed Dune Part Two/)).toBeVisible();
-      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/Task (started|finished|queued)/)).toHaveCount(0);
-      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/routine background events?, left out/)).toBeVisible();
-      await expect(page.getByRole("region", { name: /^today/i }).getByText("searches", { exact: true })).toBeVisible();
-      await expect(page.getByRole("region", { name: /^today/i }).getByText("routine", { exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^NZBgeek: 96 queries/ })).toBeVisible();
       expect(perTitle).toEqual([]);
-      await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
-      await expect(page.getByRole("link", { name: /^Search Movies: in/ })).toBeVisible();
+      // Needs you is the first lane of the board, not a panel; the next run is in the band.
+      await expect(page.getByRole("region", { name: /^needs you/i })).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /^Search TV shows: running now/ })).toBeVisible();
       // A set-up install has no guided-setup banners above the board. The checks below run with them (a fresh
       // install), then the photograph is taken without them, as it looks once set up.
       await expectFitsOneScreen(page, `live busy with setup banners ${size.width}x${size.height}`);
       await expectNoPanelCutsAnything(page, `live busy with setup banners ${size.width}x${size.height}`);
       await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
       await expectFitsOneScreen(page, `live busy ${size.width}x${size.height}`);
+      await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-early-${size.width}.png` });
+      // The one activity stream shows what Deluno did for the titles, names each colour, and leaves the housekeeping out.
+      const activity = page.getByRole("region", { name: /^activity/i });
+      await expect(activity.getByText(/Grabbed Dune Part Two/).first()).toBeVisible();
+      await expect(activity.getByText(/Task (started|finished|queued)/)).toHaveCount(0);
+      await expect(activity.getByText(/routine background events?, left out/)).toBeVisible();
+      await expect(activity.getByText("searches", { exact: true })).toBeVisible();
+      await expect(activity.getByText("routine", { exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^(today|latest)/i })).toHaveCount(0);
       // Every lane has its own cards, and the countdown reads by the second.
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
       await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
       await expect(page.getByRole("group", { name: "In the library" }).getByText("Coherence (2013)")).toBeVisible();
       // Cards carry the library's title, never the raw release name; stopped downloads are Stuck, not Downloading; a
       // deleted title keeps its release's own name; the speed is read once; what the board shows is one line in Needs you.
-      const stuck = page.getByRole("group", { name: "Stuck" });
+      const stuck = page.getByRole("group", { name: "Needs you" });
       await expect(stuck.getByText("The Wild Robot (2024)")).toBeVisible();
       await expect(stuck.getByText("Say Yes to the Dress S04E02")).toBeVisible();
       await expect(stuck.getByRole("button", { name: /^Search again for/ }).first()).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Stuck")).toHaveCount(0);
-      await expect(page.getByRole("group", { name: "With the processor" }).getByRole("button", { name: /^Retry Metropolis/ })).toBeVisible();
-      await expect(page.getByRole("region", { name: /^needs you/i }).getByText("7 stuck downloads")).toBeVisible();
-      await expect(page.getByRole("region", { name: /^needs you/i }).getByRole("button", { name: /^Retry Metropolis/ })).toHaveCount(0);
+      // Stopped downloads and refused hand-offs are in the first lane (the rig-like fixture has the Quiet column).
+      await expect(page.getByRole("group", { name: "Needs you" })).toBeVisible();
+      // The processor refused one hand-off: that is a problem to settle, so it is a card in Needs you with its button.
+      await expect(stuck.getByRole("button", { name: /^Retry Metropolis/ })).toBeVisible();
+      await expect(page.getByRole("group", { name: "With the processor" }).getByRole("button", { name: /^Retry Metropolis/ })).toHaveCount(0);
       await expect(page.getByText("Speed now")).toHaveCount(0);
       await page.waitForTimeout(1600);
       await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live busy ${size.width}x${size.height}`);
+    }
+  });
+
+  test("a Live board shaped like the real rig fits both sizes, shows no empty lane and says each thing once", async ({ page }) => {
+    test.setTimeout(120_000);
+    await authenticateAndNavigate(page, "/");
+    await serveLiveRig(page);
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.goto("/");
+      await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
+      await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
+      await expectFitsOneScreen(page, `live rig-like ${size.width}x${size.height}`);
+      await page.waitForTimeout(1600);
+      await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-riglike-${size.width}.png` });
+      await expectNoPanelCutsAnything(page, `live rig-like ${size.width}x${size.height}`);
     }
   });
 
@@ -278,7 +304,7 @@ test.describe("Dashboard tabs", () => {
     await authenticateAndNavigate(page, "/");
     await serveBusyInstall(page);
     await page.goto("/");
-    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
     // The lists the count reads arrive after the summary; wait until the badges settle.
     await expect.poll(async () => (await badge(page, "Live")) > 0 && (await badge(page, "System")) > 0, { timeout: 15_000 }).toBe(true);
     const now = await badge(page, "Live");
@@ -286,10 +312,8 @@ test.describe("Dashboard tabs", () => {
     await expect.poll(() => bell(page), { timeout: 15_000 }).toBe(now + setup);
     console.log(`busy fixture: Live ${now}, System ${setup}, bell ${now + setup}`);
 
-    // The 20 leftover folders are reachable and not counted: one quiet line under Needs you.
-    const quiet = page.getByRole("region", { name: /^needs you/i }).getByText(/Also worth a look/);
-    await expect(quiet).toBeVisible();
-    await expect(page.getByRole("link", { name: "20 leftover folders" })).toHaveAttribute("href", "/queue");
+    // The first lane of the board says the same number as the badge.
+    await expect(page.getByRole("link", { name: new RegExp(`^Needs you: ${now}$`) })).toBeVisible();
 
     // The left menu no longer carries a Needs a look card; the bell is the one place for problems.
     await expect(page.locator("aside").getByText("Needs a look")).toHaveCount(0);
@@ -307,7 +331,7 @@ test.describe("Dashboard tabs", () => {
   test("a fresh install's badges add up to the bell, and none shows at zero", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
-    await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
+    await expect(page.getByRole("region", { name: /^every title/i })).toBeVisible();
     await page.waitForTimeout(1500);
     const now = await badge(page, "Live");
     const setup = await badge(page, "System");

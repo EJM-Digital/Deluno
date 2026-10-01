@@ -92,7 +92,7 @@ describe("Live follows real changes", () => {
 
   it("puts a new activity row at the top the moment it arrives, once, and marks it as arrived", async () => {
     renderTab(emptySummary);
-    const latest = screen.getByRole("region", { name: /^latest/i });
+    const latest = screen.getByRole("region", { name: /^activity/i });
     expect(within(latest).getByText(/Nothing has happened yet/)).toBeInTheDocument();
 
     const event = { id: "evt-1", message: "Imported Sintel (2010).", category: "filesystem.import.completed", label: "Imported into the library", severity: "info", createdUtc: new Date().toISOString() };
@@ -111,7 +111,7 @@ describe("Live follows real changes", () => {
     renderTab(emptySummary);
     const board = screen.getByRole("region", { name: /^every title/i });
     // Idle says something true rather than nothing.
-    expect(within(within(board).getByRole("group", { name: "Searching" })).getByText("None yet")).toBeInTheDocument();
+    expect(within(within(board).getByRole("group", { name: "Quiet" })).getByText("None yet")).toBeInTheDocument();
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
     const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });

@@ -195,7 +195,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       title: "Connection health needs review",
       text: `${formatHealthParts(unhealthyIndexers, unhealthyClients)} not reporting healthy.`,
       href: "/indexers",
-      action: "Review connections",
+      action: "Connections",
       tone: "warn"
     });
   }
