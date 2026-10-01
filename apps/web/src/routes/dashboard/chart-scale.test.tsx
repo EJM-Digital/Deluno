@@ -91,10 +91,9 @@ describe("the reading under the pointer", () => {
     expect(traceTop([12], { kind: "percent" })).toBe(100);
   });
 
-  it("shows the scale on a trace, and a reading on hover that hides on leave", () => {
+  it("draws no scale on a System trace, only the reading under the pointer, which hides on leave (the owner, 2 Oct 2026)", () => {
     const { container } = render(<TraceChart values={[10, 20, 30, 40]} scale={{ kind: "percent" }} colour="red" />);
-    expect(container.textContent).toContain("100%");
-    expect(container.textContent).toContain("50%");
+    expect(container.querySelectorAll(".cs-grid, .cs-tick")).toHaveLength(0);
     // The card says "last 10 minutes" in its heading, so the trace does not say its span again.
     expect(container.querySelector(".cs-now")).toBeNull();
     const layer = container.querySelector<HTMLElement>(".cs-layer")!;
