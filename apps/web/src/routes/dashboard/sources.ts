@@ -27,43 +27,6 @@ import { sharedSources } from "../../lib/shared-sources";
 import type { SetupNeed } from "./attention";
 import type { IndexerScoreboardToday } from "./live/indexers";
 
-/** What the newest page of Activity holds; when today's counts cannot be had, this is all the bars can show. */
-export const ACTIVITY_PAGE_SIZE = 200;
-
-export interface ActivityHourCount {
-  hour: number;
-  category: string;
-  count: number;
-}
-
-export interface ActivityToday {
-  /** When the counts were read here; events that arrive after this are added on top. */
-  fetchedAt: number;
-  /** The day's counts by the hour, or null when the server cannot give them (an older server). */
-  counts: ActivityHourCount[] | null;
-  /** The newest events, used only when there are no counts. */
-  rows: ActivityEventItem[];
-  /** True when `rows` stopped at the page size, so it is not the whole day. */
-  capped: boolean;
-}
-
-/** Today's activity: real counts by the hour from the server, or, from an older server, the newest page and the fact that it is only that. */
-export async function fetchActivityToday(): Promise<ActivityToday> {
-  const fetchedAt = Date.now();
-  const midnight = new Date(fetchedAt);
-  midnight.setHours(0, 0, 0, 0);
-  try {
-    const result = await fetchJson<{ buckets: ActivityHourCount[] }>(
-      `/api/activity/by-hour?sinceUtc=${encodeURIComponent(midnight.toISOString())}&offsetMinutes=${-midnight.getTimezoneOffset()}`
-    );
-    if (Array.isArray(result?.buckets)) return { fetchedAt, counts: result.buckets, rows: [], capped: false };
-  } catch {
-    // An older server has no such count; fall through to the newest page.
-  }
-  const rows = await fetchPageItems<ActivityEventItem>(`/api/activity?pageSize=${ACTIVITY_PAGE_SIZE}`);
-  return { fetchedAt, counts: null, rows, capped: rows.length >= ACTIVITY_PAGE_SIZE };
-}
-
 /** The Live extras for the person's own day; null from an older server that has none. */
 export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
   const midnight = new Date();
@@ -124,7 +87,6 @@ export const liveSources = defineSources({
   indexers: { ...sharedSources.indexers, fallback: [] },
   // The speed over the last six hours: the readings the server stores, refreshed behind realtime as a safety net.
   throughput: { ...source<DownloadThroughputWindow>("dashboard-throughput-6h", "Speed over six hours", () => fetchJson("/api/download-clients/throughput?hours=6"), { hours: 6, samples: [] }), refetchInterval: 60_000 },
-  // Today's activity for the hourly bars: the day's real counts by the hour; live events are added as they arrive.
   // What each indexer did today (queries, grabs, failures, when it last answered): a stored count, cached on the server for a minute.
   scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null), refetchInterval: 60_000 },
   // The newest Activity, for the Latest stream: read from the stored list, refreshed behind realtime as a safety net. The summary carries only eight rows, most of them routine.
@@ -132,8 +94,7 @@ export const liveSources = defineSources({
   // Download clients with their on/off switch (the summary lists only the enabled ones): a switched-off client is a grey light.
   clients: { ...sharedSources.downloadClients, fallback: [] },
   // Today's arrivals and upgrades, what was refused, requests in flight and what retention will give back: stored rows, cached on the server for five seconds.
-  liveExtras: { ...source<DashboardLiveExtras | null>("dashboard-live-extras", "Today on Live", fetchLiveExtras, null), refetchInterval: 30_000 },
-  activityToday: { ...source<ActivityToday | null>("dashboard-activity-today", "Today's activity", fetchActivityToday, null), refetchInterval: 120_000 }
+  liveExtras: { ...source<DashboardLiveExtras | null>("dashboard-live-extras", "Today on Live", fetchLiveExtras, null), refetchInterval: 30_000 }
 });
 
 export interface SetupState {

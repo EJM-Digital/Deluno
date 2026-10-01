@@ -79,13 +79,13 @@ describe("Live follows real changes", () => {
   it("moves a download's bar and speed when the server pushes a reading, and not before", async () => {
     seed();
     renderTab(fullSummary);
-    const downloads = screen.getByRole("region", { name: /^every title/i });
-    expect((await within(downloads).findAllByText("61%")).length).toBeGreaterThan(0);
+    const downloads = screen.getByRole("region", { name: /^the journey/i });
+    expect((await within(downloads).findAllByText(/^61%/)).length).toBeGreaterThan(0);
     const bar = () => downloads.querySelector<HTMLElement>(".live-fill")?.style.width;
     expect(bar()).toBe("61%");
 
     send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 88, speedMbps: 5.5, eta: null, status: "downloading" });
-    await waitFor(() => expect(within(downloads).getAllByText("88%").length).toBeGreaterThan(0));
+    await waitFor(() => expect(within(downloads).getAllByText(/^88%/).length).toBeGreaterThan(0));
     expect(bar()).toBe("88%");
     expect(downloads.textContent).toContain("5.5 MB/s");
   });
@@ -109,31 +109,31 @@ describe("Live follows real changes", () => {
 
   it("shows a grab on its way and an import under way as cards, and takes them away when they end", async () => {
     renderTab(emptySummary);
-    const board = screen.getByRole("region", { name: /^every title/i });
+    const board = screen.getByRole("region", { name: /^the journey/i });
     // Idle says something true rather than nothing.
     expect(within(board).getByText("Nothing moving right now")).toBeInTheDocument();
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
     const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });
-    expect(within(within(board).getByRole("group", { name: "Grabbed" })).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(within(board).getByRole("list", { name: "Grabbed titles" })).getByText("Sintel (2010)")).toBeInTheDocument();
     expect(within(board).queryByText("Nothing moving right now")).toBeNull();
     send("DispatchGrabCompleted", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", succeeded: true, message: null, timestamp: new Date().toISOString() });
     await waitFor(() => expect(grab).not.toBeInTheDocument());
 
     send("DispatchImportStarted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", mediaType: "movie", timestamp: new Date().toISOString() });
-    expect(await within(within(board).getByRole("group", { name: "Importing" })).findByText("Big Buck Bunny (2008)")).toBeInTheDocument();
+    expect(await within(within(board).getByRole("list", { name: "Importing titles" })).findByText("Big Buck Bunny (2008)")).toBeInTheDocument();
     send("DispatchImportCompleted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", succeeded: true, importedPath: "/m", failureReason: null, timestamp: new Date().toISOString() });
     await waitFor(() => expect(within(board).queryByText("Big Buck Bunny (2008)")).toBeNull());
   });
 
-  it("says a running search in Right now, and the stages' counts from the summary while they are true", () => {
+  it("says a running search in Working on now, and the stations' counts from the summary while they are true", () => {
     const summary = structuredClone(fullSummary);
     summary.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "running", nextSearchUtc: null, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: null, lastError: null }];
     summary.downloads!.processing = 2;
     renderTab(summary);
-    const board = screen.getByRole("region", { name: /^every title/i });
-    expect(within(screen.getByRole("region", { name: "Doing now" })).getByText(/Searching Movies/)).toBeInTheDocument();
-    expect(within(board).getByRole("link", { name: "With the processor: 3" })).toBeInTheDocument();
+    const board = screen.getByRole("region", { name: /^the journey/i });
+    expect(within(screen.getByRole("region", { name: "Working on now" })).getByText(/Searching Movies/)).toBeInTheDocument();
+    expect(within(board).getByRole("link", { name: "Processing: 3" })).toBeInTheDocument();
   });
 
   it("does not animate anything by itself: the page has no looping animation of its own", () => {

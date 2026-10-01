@@ -1,61 +1,58 @@
 /**
- * Dashboard, Live (#1087, #1096): everything Deluno is doing, as it does it, in
- * one place.
+ * Dashboard, Live (#1087, #1098): everything Deluno is doing, as it does it, in one
+ * place, and nothing that needs a person (problems are in the bell).
  *
- * Along the top, the Right now band: the speed with its live trace, what is
- * running this second, the next thing it will do with a countdown ring, and the
- * indexers as lights that flash when they are asked. Under it, the hero: the
- * journey of every title as lanes, with Needs you as the first (every problem a
- * person must settle, as cards with their buttons: a download that stopped, an
- * import that did not finish, a hand-off the processor refused), then searching,
- * grabbed, downloading, with the processor, importing and in the library, and the
- * stages with nothing in them as one quiet column. Down the right, one activity
- * stream (today by the hour as a sparkline, then what Deluno did, in plain words
- * with titles) and what airs next.
+ * Along the top, three cards of one template: Speed with its live trace, Working on
+ * now, and Next (scheduled jobs and episodes about to air). Under them the journey:
+ * every title on its way as a card in its station, gliding on as it moves. Under the
+ * journey, side by side, Arrived today (posters) and Turned down today (a bar per
+ * plain reason). Down the right, at full height: the indexers, the download clients,
+ * everything else Deluno is connected to, and the activity stream.
  *
- * Everything that moves is moved by a real change or by the clock: a bar and a
- * speed follow the readings the download clients push, a card glides to the
- * next lane when its stage changes, a new activity row slides in, a number
- * counts to its new value, and countdowns tick by the second. Nothing loops for
- * decoration, and with reduced motion the new value is simply shown.
- *
- * Each fact appears once. The library counts, the connection, storage and system
- * problems are on System. Where the numbers come from: the Dashboard summary (a
- * prop), stored lists the other screens already cache, and the realtime events.
- * Nothing here reaches a client, indexer or disk while the screen waits.
+ * The page is fluid. Nothing is a fixed pixel size: the journey shows the rows its
+ * measured height holds and falls back to compact tiles when there are more, the
+ * shelf sizes its posters to its space, the right column is about a quarter of the
+ * width within bounds, and below the `lg` breakpoint it moves under the journey and
+ * everything stacks and scrolls. Everything that moves is moved by a real change: a
+ * pushed event (#1097) or the clock. Nothing loops for decoration, and with reduced
+ * motion the new value is simply shown. Each fact appears once: the library counts,
+ * storage and system problems are on System.
  */
 import type { JSX } from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
-import { cn } from "../../lib/utils";
 import type { DashboardSummary, DownloadDispatchItem } from "../../lib/api";
 import { queryClient, useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
-import { useAction } from "./downloads-kit";
 import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
-import { AiringSoon } from "./live/airing";
-import { RightNow } from "./live/band";
-import { Flow } from "./live/flow";
-import { NeedsStrip } from "./live/needs-strip";
-import { arrivalItems, requestCards } from "./live/extras";
-import { useLiveBoardEvents } from "./live/use-live-board";
-import { useArrivals, useElementHeight, useFreshKeys, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
-import { byStage, buildJourney, laneCounts, oneCardPerTitle } from "./live/journey";
-import { entityFromRelated, type Entity } from "./live/titles";
+import { ConnectionTiles } from "./live/connection-tiles";
+import { Band, buildOperations } from "./live/band";
+import { type CardContext } from "./live/card";
+import { arrivalItems, requestCards, withSeerr } from "./live/extras";
+import { useArrivals, useFreshKeys, useNow, useTitles } from "./live/hooks";
+import { ClientTiles } from "./live/clients";
+import { IndexerTiles } from "./live/indexers";
+import { byStage, buildJourney, laneCounts } from "./live/journey";
+import { useFlyToShelf, useGlide } from "./live/motion";
+import { arrivedHeading, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
+import { allInBy, usualTimes } from "./live/times";
+import { entityFromRelated, type Entity } from "./live/titles";
+import { nameOf } from "./live/arrivals";
+import { Journey } from "./live/track";
+import { TurnedDownCard } from "./live/turned-down-card";
+import { useConnections, useTurnedDown } from "./live/use-pushed";
+import { useLiveBoardEvents } from "./live/use-live-board";
 import { liveSources, useSetupState } from "./sources";
-import { useDashboardAttention } from "./use-dashboard-attention";
 
 const NO_ROWS: never[] = [];
 
 export function LiveTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
   const setup = useSetupState();
-  const action = useAction();
-  const attention = useDashboardAttention(summary, setup.needs);
   const { data } = useRouteSources({ ...attentionSources, ...liveSources });
   const liveProgress = useLiveProgress();
   const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
@@ -63,7 +60,6 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const pushed = useLiveBoardEvents();
   const work = useWorkingNow(summary, pushed);
   const now = useNow(60_000);
-  const updatedAt = useSummaryUpdatedAt(summary);
   const upcoming = data.upcoming ?? [];
   const emptyLibrary = summary?.library ? summary.library.movies.total + summary.library.shows.total === 0 : false;
   const showSetup = setup.ready && !setup.status.isComplete;
@@ -81,6 +77,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     }
     return speeds;
   }, [queue, liveProgress, data.telemetry?.capturedUtc]);
+  const seeding = useMemo(() => new Map((data.telemetry?.clients ?? []).map((client) => [client.clientId, client.seedingCount ?? 0])), [data.telemetry]);
   // The newest sent downloads and the longer list with the archived ones, as one list.
   const dispatches = useMemo(() => {
     const seen = new Set<string>();
@@ -94,19 +91,16 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }, [data.dispatches, data.boardDispatches]);
   const extras = data.liveExtras ?? undefined;
   const built = useMemo(
-    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, cases: attention.downloads.recoveryCases, importJobs: attention.downloads.failedImportJobs, searches: pushed.searches }),
+    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work }),
     // `now` moves the clock-dependent parts (today, recent) along once a minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, attention.downloads.recoveryCases, attention.downloads.failedImportJobs, pushed.searches, now]
+    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, now]
   );
-  // Seerr requests are the first stage of the journey: one that already has a card further along is that card.
-  const cards = useMemo(() => oneCardPerTitle([...built, ...requestCards(extras?.requests, built)]), [built, extras?.requests]);
+  // Seerr requests are the first station of the journey: one that already has a card further along is that card.
+  const cards = useMemo(() => withSeerr([...built, ...requestCards(extras?.requests, built)], extras?.requests), [built, extras?.requests]);
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
-  const counts = useMemo(() => {
-    const base = laneCounts(grouped, summary, attention.counts.live);
-    return { ...base, imported: Math.max(base.imported, extras?.importsToday ?? 0) };
-  }, [grouped, summary, attention.counts.live, extras?.importsToday]);
+  const counts = useMemo(() => laneCounts(grouped, summary), [grouped, summary]);
   // Titles are asked for in one request: the cards' and the activity's.
   const extraEntities = useMemo<Array<Entity | undefined>>(
     () => [
@@ -117,17 +111,31 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     [latest, items, extras?.requests]
   );
   const titles = useTitles(cards, extraEntities);
-  // An import, a refused release or a request that has just happened changes what the wall and counters say: read them again now rather than at the next timer.
+  // An import, a refused release or a request that has just happened changes what the shelf and counters say: read them again now rather than at the next timer.
   const newest = latest[0];
   useEffect(() => {
     if (newest?.fresh && /import|block|refus|seerr|request|upgrade/i.test(newest.category)) void queryClient.invalidateQueries({ queryKey: liveSources.liveExtras.key });
   }, [newest?.id, newest?.fresh, newest?.category]);
-  const [sideRef, sideHeight] = useElementHeight<HTMLDivElement>();
+
   const arrivals = useArrivals(cards);
-  const freshArrivals = useFreshKeys(useMemo(() => items.map((item) => item.key), [items]));
-  const today = data.activityToday;
-  const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
-  const activityToday = useMemo(() => ({ rows: rhythmRows, counts: today?.counts, countedAt: today?.fetchedAt, capped: today?.capped }), [rhythmRows, today]);
+  const newestArrivals = useFreshKeys(useMemo(() => items.map((item) => item.key), [items]), 6000);
+  const turnedDown = useTurnedDown(extras);
+  const connections = useConnections(extras);
+  const operations = useMemo(() => buildOperations(work, cards, titles), [work, cards, titles]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const usual = useMemo(() => usualTimes(dispatches, data.handoffs ?? NO_ROWS, Date.now()), [dispatches, data.handoffs, now]);
+  const by = useMemo(() => allInBy(cards), [cards]);
+  const hasProcessor = grouped.processor.length > 0 || (summary?.processors?.total ?? 0) > 0 || (connections.connections ?? NO_ROWS).some((connection) => connection.kind === "processor" && connection.enabled);
+  const indexerCount = (data.indexers ?? NO_ROWS).filter((indexer) => indexer.isEnabled).length;
+  const context: CardContext = { titles, arrivals, indexers: indexerCount };
+  const first = items[0];
+  const lastArrival = first ? { title: nameOf(first, titles).title, at: first.at } : null;
+  const upgraded = Math.max(items.filter((item) => item.upgraded).length, extras?.upgrades?.length ?? 0);
+  const peak = (data.throughput?.samples ?? NO_ROWS).reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
+
+  const root = useRef<HTMLDivElement>(null);
+  useGlide(root);
+  useFlyToShelf(root, cards, items);
 
   function dismissOnboarding() {
     void authedFetch("/api/setup/progress", {
@@ -138,17 +146,13 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }
 
   return (
-    <div className="flex flex-col gap-[var(--grid-gap)] lg:h-full lg:min-h-0">
+    <div ref={root} className="flex flex-col gap-[var(--grid-gap)] lg:h-full lg:min-h-0">
       {showSetup ? (
         <div className="flex shrink-0 flex-col gap-[var(--grid-gap)]">
           <OnboardingBanner isSetupSuppressed={setup.progress.isSkipped || setup.progress.isCompleted} onDismiss={dismissOnboarding} />
           <SetupProgressLadder status={setup.status} />
         </div>
       ) : null}
-
-      <RightNow summary={summary} samples={data.throughput?.samples ?? []} indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} work={work} updatedAt={updatedAt} now={now} clients={data.clients ?? NO_ROWS} clientSpeeds={clientSpeeds} extras={extras ?? null} />
-
-      <NeedsStrip cards={grouped.needs} total={attention.counts.live} titles={titles} action={action} />
 
       {emptyLibrary ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
@@ -159,18 +163,23 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3.4fr)_minmax(0,1fr)]">
-        <div className="flex min-h-0 flex-col [&>section]:min-h-0 [&>section]:flex-1">
-          <Flow grouped={grouped} counts={counts} titles={titles} arrivals={arrivals} arrivalItems={items} freshArrivals={freshArrivals} />
+      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_clamp(20rem,25%,34rem)]">
+        <div className="flex min-h-0 min-w-0 flex-col gap-[var(--grid-gap)]">
+          <Band summary={summary} samples={data.throughput?.samples ?? NO_ROWS} operations={operations} upcoming={upcoming} />
+          <div className="grid min-h-0 gap-[var(--grid-gap)] lg:flex-1 lg:grid-rows-[minmax(0,1.05fr)_minmax(0,1fr)]">
+            <Journey grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
+            <div className="grid min-h-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]">
+              <Shelf items={items} titles={titles} newest={newestArrivals} heading={arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
+              <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
+            </div>
+          </div>
         </div>
 
-        <div ref={sideRef} className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          <div className="flex min-h-0 flex-[2.3] flex-col [&>section]:min-h-0 [&>section]:flex-1">
-            <ActivityStream rows={latest} titles={titles} today={activityToday} />
-          </div>
-          {sideHeight > 0 && sideHeight < 480 ? null : <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", sideHeight > 0 && sideHeight < 620 ? "shrink-0" : "flex-[1.5] [&>section]:flex-1")}>
-            <AiringSoon upcoming={upcoming} summary={summary} compact={sideHeight > 0 && sideHeight < 620} />
-          </div>}
+        <div className="flex min-h-0 min-w-0 flex-col gap-[var(--grid-gap)]">
+          <IndexerTiles indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
+          <ClientTiles rows={summary?.downloads?.clients ?? NO_ROWS} all={data.clients ?? NO_ROWS} speeds={clientSpeeds} scaleMbps={peak} seeding={seeding} />
+          {connections.connections ? <ConnectionTiles connections={connections.connections} lit={connections.lit} /> : null}
+          <ActivityStream rows={latest} titles={titles} />
         </div>
       </div>
     </div>

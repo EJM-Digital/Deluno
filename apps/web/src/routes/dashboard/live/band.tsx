@@ -1,170 +1,183 @@
 /**
- * The Right now band (#1096): along the top of Live, four cells of what Deluno
- * is doing this second. Speed with its live trace (down and up), what is
- * running now (a search, an import, a download with the processor, with the
- * connection's heartbeat), the next thing it will do with a ring counting down,
- * and the indexers as named lights that flash when they are asked.
+ * The top band of Live (#1098): three cards of one template, Speed, Working on now
+ * and Next. Speed is in `speed-chart.tsx`. Working on now says what Deluno is doing
+ * this second: the count, and the two newest operations with a bar where it knows
+ * how far along they are. Next is the one list of what comes next, scheduled jobs
+ * and episodes about to air together, with a countdown to the first and a clock
+ * time for the ones beyond the hour.
  *
- * Every word is real: what is running comes from the events that start and end
- * it and from the summary, the next run from the schedule, the lights from the
- * stored count of each indexer's queries. With nothing running it says so, and
- * says when the last search was.
+ * Every word is real: what is running comes from the events that start and end it,
+ * from the journey cards and from the summary; what is next from the schedule and
+ * the airing episodes. With nothing running it says so, and says when the last
+ * search was.
  */
 import { Activity, Download, FolderInput, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useRealtimeConnected } from "../../../lib/realtime-state";
-import type { DownloadClientItem, DownloadThroughputSample, IndexerItem } from "../../../lib/api";
-import type { DashboardLiveExtras, DashboardSummary } from "../../../lib/api/types/operations";
+import type { DownloadThroughputSample, SeriesUpcomingEpisodeItem } from "../../../lib/api";
+import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import type { WorkItem, WorkKind } from "../live-events";
-import { ClientLights } from "./clients";
-import { buildCountdownRows, ProgressRing } from "./countdowns";
-import { countdown } from "./countdown";
-import { HeartbeatValue, UpdatedAgo } from "./heartbeat";
+import { BandCard, FigureUnit } from "./band-card";
+import { countdown, formatCountdown } from "./countdown";
 import { useNow } from "./hooks";
-import { IndexerLights, type IndexerScoreboardToday } from "./indexers";
+import type { JourneyCard } from "./journey";
 import { SpeedCell } from "./speed-chart";
-import { ProtectedYou } from "./standing";
+import { buildNext, whenText, type NextItem } from "./times";
+import { faceOf, type TitleLookup } from "./titles";
 
-const WORK_ICON: Record<WorkKind, LucideIcon> = { search: Search, grab: Download, import: FolderInput, processor: ShieldCheck, jobs: Activity };
+const OP_ICON: Record<WorkKind, { icon: LucideIcon; tone: string }> = {
+  search: { icon: Search, tone: "text-[hsl(var(--stage-search))] bg-[hsl(var(--stage-search)/0.15)]" },
+  grab: { icon: Download, tone: "text-[hsl(var(--stage-grab))] bg-[hsl(var(--stage-grab)/0.15)]" },
+  import: { icon: FolderInput, tone: "text-[hsl(var(--stage-import))] bg-[hsl(var(--stage-import)/0.15)]" },
+  processor: { icon: ShieldCheck, tone: "text-[hsl(var(--stage-process))] bg-[hsl(var(--stage-process)/0.15)]" },
+  jobs: { icon: Activity, tone: "text-info bg-info/15" }
+};
 
-function Label({ children, to, name }: { children: string; to?: string; name?: string }) {
-  const className = "text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
-  return to ? (
-    <Link to={to} aria-label={name} className={cn(className, "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>{children}</Link>
-  ) : (
-    <span className={className}>{children}</span>
-  );
+/** One thing Deluno is doing now: what it is, which title when it is one, and how far along when that is known. */
+export interface Operation {
+  key: string;
+  kind: WorkKind;
+  lead: string;
+  name?: string;
+  right?: string;
+  /** 0 to 100, or nothing when it does not know how far along it is. */
+  pct?: number;
+  to: string;
 }
 
-/** What Deluno is doing this second, and when the last search was when it is doing nothing. */
-function DoingNow({ summary, work, updatedAt }: { summary: DashboardSummary | undefined; work: WorkItem[]; updatedAt: number }) {
+/**
+ * What is running, newest first within each kind: searches, grabs on their way to a client, titles with the processor,
+ * titles being imported, and background jobs. The processor is named for whichever one has the title.
+ */
+export function buildOperations(work: readonly WorkItem[], cards: readonly JourneyCard[], titles: TitleLookup): Operation[] {
+  const ops: Operation[] = [];
+  for (const item of work) {
+    if (item.kind === "search") ops.push({ key: item.key, kind: "search", lead: item.text, right: item.detail, pct: item.progress, to: item.to });
+  }
+  for (const item of work) {
+    if (item.kind === "grab") ops.push({ key: item.key, kind: "grab", lead: item.text, to: item.to });
+  }
+  for (const card of cards) {
+    const name = faceOf(card, titles).title;
+    if (card.stage === "processor" && card.state.tone !== "bad") ops.push({ key: `process:${card.key}`, kind: "processor", lead: `${card.processor ?? "The processor"} is working on`, name, to: card.to });
+    if (card.stage === "importing" && card.state.tone !== "bad") ops.push({ key: `import:${card.key}`, kind: "import", lead: "Importing", name, to: card.to });
+  }
+  for (const item of work) {
+    if (item.kind === "jobs") ops.push({ key: item.key, kind: "jobs", lead: item.text, to: item.to });
+  }
+  return ops;
+}
+
+function WorkingNow({ summary, operations }: { summary: DashboardSummary | undefined; operations: Operation[] }) {
   const cycle = summary?.automation?.lastSearchCycle;
-  const shown = work.slice(0, 3);
-  // Connected, the pulse says Live and every change arrives as it happens; "updated N s ago" is for when it is not.
-  const connected = useRealtimeConnected();
+  const shown = operations.slice(0, 2);
+  const more = operations.length - shown.length;
   return (
-    <section aria-label="Doing now" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label>Right now</Label>
-        <span className="flex items-center gap-2 whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">
-          <span className="font-medium"><HeartbeatValue /></span>
-          {connected ? null : <span><UpdatedAgo updatedAt={updatedAt} /></span>}
-        </span>
-      </div>
+    <BandCard
+      label="Working on now"
+      aside={more > 0 ? <Link to="/activity" className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
+      figure={
+        <>
+          <span>{operations.length.toLocaleString("en-AU")}</span>
+          <FigureUnit>{operations.length === 1 ? "thing running" : "things running"}</FigureUnit>
+        </>
+      }
+    >
       {shown.length > 0 ? (
-        <ul className="mt-1.5 space-y-1">
-          {shown.map((item) => {
-            const Icon = WORK_ICON[item.kind];
+        <ul className="min-w-0">
+          {shown.map((op) => {
+            const { icon: Icon, tone } = OP_ICON[op.kind];
             return (
-              <li key={item.key}>
-                <Link to={item.to} className="flex items-start gap-2 rounded-md text-[length:var(--type-body-sm)] leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span aria-hidden className="relative mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-info/15 text-info">
-                    <Icon className="h-3.5 w-3.5" />
-                  </span>
-                  <span className="line-clamp-2 min-w-0">{item.text}</span>
+              <li key={op.key} className="border-b border-hairline py-1 last:border-b-0">
+                <Link to={op.to} className="grid grid-cols-[1.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md text-[length:var(--type-body-sm)] leading-snug text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span aria-hidden className={cn("flex h-[1.375rem] w-[1.375rem] items-center justify-center rounded-md", tone)}><Icon className="h-3.5 w-3.5" /></span>
+                  <span className="truncate">{op.lead}{op.name ? <> <strong className="font-semibold">{op.name}</strong></> : null}</span>
+                  <span className="text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{op.right}</span>
+                  {op.pct !== undefined ? (
+                    <span aria-hidden className="col-span-2 col-start-2 mt-0.5 block h-1 overflow-hidden rounded-full bg-surface-3">
+                      <span className="live-fill block h-full rounded-full bg-[hsl(var(--stage-search))]" style={{ width: `${Math.round(op.pct)}%` }} />
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );
           })}
-          {work.length > shown.length ? <li className="pl-7 text-[length:var(--type-caption)] text-muted-foreground">and {(work.length - shown.length).toLocaleString("en-AU")} more</li> : null}
         </ul>
       ) : (
-        <div className="mt-1.5 text-[length:var(--type-body-sm)] leading-snug">
-          <p className="font-medium text-foreground">Nothing is running right now.</p>
-          <p className="mt-0.5 text-[length:var(--type-caption)] text-muted-foreground">
-            {cycle
-              ? `The last search was ${cycle.libraryName}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}: ${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.queued.toLocaleString("en-AU")} sent to a client.`
-              : "No search has run yet."}
-          </p>
-        </div>
+        <p className="text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">
+          {cycle
+            ? `Nothing is running right now. The last search was ${cycle.libraryName}, ${ago(cycle.completedUtc ?? cycle.startedUtc)}: ${cycle.planned.toLocaleString("en-AU")} checked, ${cycle.queued.toLocaleString("en-AU")} sent to a client.`
+            : "Nothing is running right now. No search has run yet."}
+        </p>
       )}
-    </section>
+    </BandCard>
   );
 }
 
-/** The next thing Deluno will do, counting down, and the one after it. */
-function NextUp({ summary }: { summary: DashboardSummary | undefined }) {
-  const now = useNow(1000);
-  const rows = buildCountdownRows(summary)
-    .filter((row) => row.next || row.running)
-    .sort((a, b) => Number(b.running) - Number(a.running) || Date.parse(a.next || "9999") - Date.parse(b.next || "9999"));
-  const first = rows[0];
-  const second = rows[1];
-  const firstValue = first?.next ? countdown(first.next, first.last, now) : null;
-  const secondValue = second?.next ? countdown(second.next, second.last, now) : null;
+/** What the big figure of Next says: a countdown under the hour, a clock time beyond it, "running" while it runs. */
+export function nextFigure(item: NextItem, now: number): { text: string; kind: "running" | "due" | "count" | "clock" } {
+  if (item.running) return { text: "running", kind: "running" };
+  const remaining = item.at - now;
+  if (remaining <= 0) return { text: "due now", kind: "due" };
+  if (remaining < 3_600_000) return { text: formatCountdown(remaining), kind: "count" };
+  return { text: whenText(item.at, now), kind: "clock" };
+}
+
+function NextCard({ items, now }: { items: NextItem[]; now: number }) {
+  const first = items[0];
+  const rest = items.slice(1);
+  const figure = first ? nextFigure(first, now) : null;
+  const fraction = first && !first.running && first.last !== null ? countdown(new Date(first.at).toISOString(), new Date(first.last).toISOString(), now)?.fraction ?? null : null;
   return (
-    <section aria-label="Next up" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Label to="/?tab=system" name="Schedule: Next up">Next up</Label>
-      </div>
+    <BandCard
+      label="Next"
+      aside="on its own"
+      figure={
+        first && figure ? (
+          <>
+            <span className={cn(figure.kind === "running" && "text-info", figure.kind === "due" && "text-success")}>{figure.text}</span>
+            <FigureUnit>{first.label}</FigureUnit>
+          </>
+        ) : (
+          <FigureUnit>nothing is scheduled</FigureUnit>
+        )
+      }
+    >
       {first ? (
-        <>
-          <Link to={first.to} aria-label={`${first.label}: ${first.running ? "running now" : firstValue ? (firstValue.due ? "due now" : `in ${firstValue.text}`) : "not scheduled"}`} className="mt-1.5 flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="shrink-0 [&>svg]:h-11 [&>svg]:w-11"><ProgressRing fraction={firstValue?.fraction ?? null} due={firstValue?.due ?? false} running={first.running} /></span>
-            <span className="min-w-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-medium text-foreground">{first.label}</span>
-              <span className="block text-[length:var(--type-card-title)] font-semibold leading-tight tabular-nums text-foreground">
-                {first.running ? <span className="text-info">running</span> : firstValue?.due ? <span className="text-success">due now</span> : firstValue?.text ?? "not scheduled"}
-              </span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{first.hint}</span>
-            </span>
-          </Link>
-          {second ? (
-            <p className="mt-1 truncate text-[length:var(--type-caption)] text-muted-foreground">
-              Then {second.label}: <span className="tabular-nums text-foreground">{second.running ? "running" : secondValue?.due ? "due now" : secondValue?.text ?? "not scheduled"}</span>
-            </p>
-          ) : null}
-        </>
+        <div className="min-w-0">
+          <span aria-hidden className="mb-1.5 block h-1 overflow-hidden rounded-full bg-surface-3">
+            <span className="live-fill block h-full rounded-full bg-primary" style={{ width: `${Math.round((figure?.kind === "running" || figure?.kind === "due" ? 1 : fraction ?? 0) * 100)}%` }} />
+          </span>
+          <ul className="grid gap-0.5 text-[length:var(--type-caption)] text-muted-foreground">
+            {rest.slice(0, 3).map((item) => (
+              <li key={item.key} className="flex min-w-0 items-baseline justify-between gap-3">
+                <Link to={item.to} className="min-w-0 truncate hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
+                <span className="shrink-0 tabular-nums text-foreground">{whenText(item.at, now)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
-        <p className="mt-1.5 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing is scheduled. Searches and tasks that are switched off do not count down.</p>
+        <p className="text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">Searches and tasks that are switched off do not count down.</p>
       )}
-    </section>
+    </BandCard>
   );
 }
 
-export function RightNow({
-  summary,
-  samples,
-  indexers,
-  scoreboard,
-  work,
-  updatedAt,
-  now,
-  clients = [],
-  clientSpeeds,
-  extras
-}: {
+export function Band({ summary, samples, operations, upcoming }: {
   summary: DashboardSummary | undefined;
   samples: DownloadThroughputSample[];
-  indexers: IndexerItem[];
-  scoreboard?: IndexerScoreboardToday | null;
-  work: WorkItem[];
-  updatedAt: number;
-  now: number;
-  /** Every download client, with its on/off switch: a switched-off one is a grey light. */
-  clients?: DownloadClientItem[];
-  /** What each client is downloading at now, from the readings it pushes. */
-  clientSpeeds?: ReadonlyMap<string, number>;
-  /** Today's arrivals, refusals and reclaimable space; null from an older server. */
-  extras?: DashboardLiveExtras | null;
+  operations: Operation[];
+  upcoming: readonly SeriesUpcomingEpisodeItem[];
 }) {
-  const peak = samples.reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
+  const now = useNow(1000);
+  const items = buildNext(summary, upcoming, now);
   return (
-    <div className="shrink-0 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-[1.2fr_1.05fr_0.95fr_1.5fr_1fr] lg:divide-x lg:divide-hairline">
-        <SpeedCell samples={samples} summary={summary} />
-        <DoingNow summary={summary} work={work} updatedAt={updatedAt} />
-        <NextUp summary={summary} />
-        <div className="flex min-w-0 flex-col">
-          <IndexerLights indexers={indexers} scoreboard={scoreboard} summary={summary} now={now} />
-          <ClientLights rows={summary?.downloads?.clients ?? []} all={clients} speeds={clientSpeeds ?? NO_SPEEDS} scaleMbps={peak} />
-        </div>
-        <ProtectedYou extras={extras} blocklistCount={summary?.blocklist?.count} />
-      </div>
+    <div className="grid shrink-0 gap-[var(--grid-gap)] md:grid-cols-3">
+      <SpeedCell samples={samples} summary={summary} />
+      <WorkingNow summary={summary} operations={operations} />
+      <NextCard items={items} now={now} />
     </div>
   );
 }
-
-const NO_SPEEDS: ReadonlyMap<string, number> = new Map();

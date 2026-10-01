@@ -1,24 +1,17 @@
 /**
- * The indexers Deluno is asking (#1096): what each one did today, from the
- * stored record of every query (no indexer is asked while the screen waits):
- * how many times it was asked, how many releases were grabbed from it, how many
- * asks failed, and when it last answered. A quiet one says it was not asked.
- *
- * An indexer that is not answering shows as a red light that links to System, where
- * its Test again button is.
+ * The indexers Deluno is asking (#1098): what each one did today, from the stored record of every query (no indexer is asked
+ * while the screen waits), and a flash on its tile as it is asked and answers. An indexer that is not answering links to System,
+ * where its Test again button is.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { StatusLed } from "../../../components/ui/status-led";
 import type { IndexerItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { Tone } from "../../../lib/status-tones";
-import { cn } from "../../../lib/utils";
 import { indexerNeedsButton } from "../attention";
 import { ago } from "../format";
-import { motionAllowed } from "../../../lib/page-motion";
 import { useRealtimeConnected } from "../../../lib/realtime-state";
 import { useLiveEvent } from "../../../lib/use-signalr";
+import { Tile, TileGroup, type TileState } from "./tile";
 
 /** One indexer's row of today's scoreboard (`GET /api/indexers/scoreboard?days=1`). */
 export interface IndexerToday {
@@ -33,22 +26,6 @@ export interface IndexerToday {
 export interface IndexerScoreboardToday {
   indexers: IndexerToday[];
 }
-
-export function indexerAnswer(indexer: IndexerItem, today: IndexerToday | undefined, now: number): { tone: Tone; text: string } {
-  if (!indexer.isEnabled) return { tone: "idle", text: "switched off" };
-  if (indexer.rateLimitedUntilUtc && Date.parse(indexer.rateLimitedUntilUtc) > now) return { tone: "warn", text: "asked too often, waiting" };
-  if (indexer.healthStatus === "unknown" || !indexer.healthStatus) return { tone: "idle", text: "not asked yet" };
-  const asked = today?.totalQueries ?? 0;
-  if (asked === 0) return { tone: "ok", text: "not asked today" };
-  const failed = today?.failedQueries ?? 0;
-  const grabbed = today?.successfulGrabs ?? 0;
-  const parts = [`${asked.toLocaleString("en-AU")} ${asked === 1 ? "query" : "queries"}`];
-  if (grabbed > 0) parts.push(`${grabbed.toLocaleString("en-AU")} grabbed`);
-  if (failed > 0) parts.push(`${failed.toLocaleString("en-AU")} failed`);
-  return { tone: failed > 0 ? "warn" : "ok", text: parts.join(" · ") };
-}
-
-const MAX_LIGHTS = 12;
 
 /** An indexer that takes longer than this to answer is slow, and its light is amber. */
 const SLOW_MS = 2000;
@@ -122,90 +99,75 @@ function usePulses(): ReadonlyMap<string, IndexerPulse> {
   return pulses;
 }
 
+/** What an indexer says about itself today: "46 of 100 today · 320 ms", "switched off", "not answering · 5 today". */
+export function indexerMeta(indexer: IndexerItem, today: IndexerToday | undefined, now: number): { text: string; tone: Tone } {
+  if (!indexer.isEnabled) return { text: "switched off", tone: "idle" };
+  const asked = today?.totalQueries ?? 0;
+  const status = indexer.queryLimitStatus;
+  const limit = status?.limit ?? indexer.queryLimit ?? null;
+  const unit = (status?.unit ?? indexer.limitsUnit ?? "day").toLowerCase() === "hour" ? "this hour" : "today";
+  // With a limit set the tile says how much of it is used; the count is the limiter's own when it has one.
+  const used = status ? status.count : asked;
+  const queries = limit !== null && limit > 0 ? `${used.toLocaleString("en-AU")} of ${limit.toLocaleString("en-AU")} ${unit}` : `${asked.toLocaleString("en-AU")} today`;
+  if (indexerNeedsButton(indexer)) return { text: `not answering · ${queries}`, tone: indexer.healthStatus === "unreachable" ? "bad" : "warn" };
+  if (indexer.rateLimitedUntilUtc && Date.parse(indexer.rateLimitedUntilUtc) > now) return { text: `asked too often, waiting · ${queries}`, tone: "warn" };
+  const latency = indexer.lastHealthLatencyMs ?? null;
+  const slow = latency !== null && latency > SLOW_MS;
+  return { text: latency !== null ? `${queries} · ${latency.toLocaleString("en-AU")} ms` : queries, tone: slow ? "warn" : "ok" };
+}
+
+/** The header: "4 answering · 1 switched off · 128 queries today". */
+export function indexersSummary(indexers: readonly IndexerItem[], today: ReadonlyMap<string, IndexerToday>, fallbackQueries?: number): string {
+  const enabled = indexers.filter((indexer) => indexer.isEnabled);
+  const answering = enabled.filter((indexer) => !indexerNeedsButton(indexer)).length;
+  const off = indexers.length - enabled.length;
+  const queries = today.size > 0 ? [...today.values()].reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : fallbackQueries;
+  const parts = [`${answering.toLocaleString("en-AU")} answering`];
+  if (off > 0) parts.push(`${off.toLocaleString("en-AU")} switched off`);
+  if (queries !== undefined) parts.push(`${queries.toLocaleString("en-AU")} ${queries === 1 ? "query" : "queries"} today`);
+  return parts.join(" · ");
+}
+
 /**
- * The indexers as a row of named lights (the last cell of the Right now band): green
- * when answering, amber when some asks failed, red when not answering, grey when
- * switched off, and a light flashes when that indexer has just been asked.
- * Each says what it did today in its tooltip. A broken one links to System, where
- * its Test again button is.
+ * The indexers as tiles, one each (#1098): the busy ones first, the switched-off ones grey at the end. A tile flashes when its
+ * indexer is asked, then green or red on the answer; where a daily limit is set it says how much of it is used.
  */
-export function IndexerLights({ indexers, scoreboard, summary, now }: { indexers: IndexerItem[]; scoreboard?: IndexerScoreboardToday | null; summary: DashboardSummary | undefined; now: number }) {
+export function IndexerTiles({ indexers, scoreboard, summary, now }: { indexers: IndexerItem[]; scoreboard?: IndexerScoreboardToday | null; summary: DashboardSummary | undefined; now: number }) {
   const rows = Array.isArray(scoreboard?.indexers) ? scoreboard.indexers : null;
   const todayById = useMemo(() => new Map((rows ?? []).map((row) => [row.id, row])), [rows]);
   const connected = useRealtimeConnected();
   const pulses = usePulses();
-  // Connected, each light follows the questions as they are asked and answered; disconnected, a light flashes when its count moved at the next read.
+  // Connected, each tile follows the questions as they are asked and answered; disconnected, a tile flashes when its count moved at the next read.
   const polled = useFlashing(todayById);
   const flashing = connected ? new Set<string>() : polled;
-  const asked = rows ? rows.reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : summary?.indexers?.queriesToday;
-  const failed = rows ? rows.reduce((sum, row) => sum + (row.failedQueries ?? 0), 0) : summary?.indexers?.failedQueriesToday;
-  const sorted = [...indexers].sort(
-    (a, b) => Number(indexerNeedsButton(b)) - Number(indexerNeedsButton(a)) || Number(b.isEnabled) - Number(a.isEnabled) || (todayById.get(b.id)?.totalQueries ?? 0) - (todayById.get(a.id)?.totalQueries ?? 0) || a.priority - b.priority
-  );
-  const shown = sorted.slice(0, MAX_LIGHTS);
-  const hidden = sorted.length - shown.length;
+  const sorted = [...indexers].sort((a, b) => Number(b.isEnabled) - Number(a.isEnabled) || a.name.localeCompare(b.name));
   return (
-    <section aria-label="Indexers" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Link to="/indexers/indexers" aria-label="Manage: Indexers" className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Indexers</Link>
-        {asked !== undefined ? (
-          <span className="whitespace-nowrap text-[length:var(--type-caption)] tabular-nums text-muted-foreground">
-            {asked.toLocaleString("en-AU")} {asked === 1 ? "query" : "queries"} today{failed ? <span className="text-warning"> · {failed.toLocaleString("en-AU")} failed</span> : null}
-          </span>
-        ) : null}
-      </div>
-      {sorted.length === 0 ? (
-        <p className="mt-1.5 text-[length:var(--type-body-sm)] text-muted-foreground">No indexers are set up, so nothing can be searched for.</p>
-      ) : (
-        <ul className="mt-1.5 flex flex-wrap content-start gap-1.5">
-          {shown.map((indexer) => {
-            const today = todayById.get(indexer.id);
-            const broken = indexerNeedsButton(indexer);
-            const answer = indexerAnswer(indexer, today, now);
-            const latency = indexer.lastHealthLatencyMs ?? null;
-            // Grey when switched off, green when it answers, amber when it answers slowly, red when it does not answer.
-            const slow = !broken && indexer.isEnabled && latency !== null && latency > SLOW_MS;
-            const pulse = pulses.get(indexer.id);
-            const restingTone: Tone = broken ? (indexer.healthStatus === "unreachable" ? "bad" : "warn") : slow ? "warn" : answer.tone;
-            // A question just answered shows its own colour for a moment; one being asked shows as asking.
-            const tone: Tone = pulse && pulse.phase === "answered" ? pulse.tone : restingTone;
-            const last = today?.lastQueryUtc ?? null;
-            const text = broken ? `not answering${indexer.lastHealthMessage ? `: ${indexer.lastHealthMessage}` : ""}` : slow ? `slow, ${latency} ms to answer` : answer.text;
-            const queries = today?.totalQueries ?? 0;
-            const tip = [
-              `${indexer.name}: ${pulse ? pulse.words : text}.`,
-              indexer.isEnabled && latency !== null ? `Last answer ${latency} ms${indexer.lastHealthTestUtc ? `, ${ago(indexer.lastHealthTestUtc, now)}` : ""}.` : null,
-              `Today ${queries.toLocaleString("en-AU")} ${queries === 1 ? "query" : "queries"}${today?.failedQueries ? `, ${today.failedQueries.toLocaleString("en-AU")} failed` : ""}${last ? `, last asked ${ago(last, now)}` : ""}.`
-            ].filter(Boolean).join(" ");
-            const asking = flashing.has(indexer.id) || pulse?.phase === "asking" || pulse?.phase === "answered";
-            return (
-              <li key={indexer.id}>
-                <Link
-                  to={broken ? "/?tab=system" : "/indexers/indexers"}
-                  title={tip}
-                  aria-label={`${indexer.name}: ${text}`}
-                  className={cn(
-                    "inline-flex max-w-[9.5rem] items-center gap-1.5 rounded-full border border-hairline bg-surface-1/60 px-2 py-0.5 text-[length:var(--type-caption)] text-foreground transition-colors hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    asking && "border-primary/50 bg-primary/[0.08]",
-                    tone === "bad" && "border-destructive/40"
-                  )}
-                >
-                  <span className="relative inline-flex shrink-0">
-                    {asking && motionAllowed() ? <span aria-hidden className="live-beat absolute -inset-1 rounded-full bg-primary/50" /> : null}
-                    <StatusLed tone={tone} size={7} pulse={tone === "warn" || tone === "bad"} />
-                  </span>
-                  <span className="truncate">{indexer.name}</span>
-                </Link>
-              </li>
-            );
-          })}
-          {hidden > 0 ? (
-            <li>
-              <Link to="/indexers/indexers" className="inline-flex items-center rounded-full px-2 py-0.5 text-[length:var(--type-caption)] font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">and {hidden.toLocaleString("en-AU")} more</Link>
-            </li>
-          ) : null}
-        </ul>
-      )}
-    </section>
+    <TileGroup title="Indexers" count={indexersSummary(indexers, todayById, summary?.indexers?.queriesToday)} to="/indexers/indexers" empty="No indexers are set up, so nothing can be searched for.">
+      {sorted.map((indexer) => {
+        const today = todayById.get(indexer.id);
+        const meta = indexerMeta(indexer, today, now);
+        const pulse = pulses.get(indexer.id);
+        const state: TileState | null = !indexer.isEnabled
+          ? "off"
+          : pulse?.phase === "asking" || flashing.has(indexer.id)
+            ? "asked"
+            : pulse?.phase === "answered"
+              ? pulse.tone === "bad" ? "failed" : "answered"
+              : null;
+        const tone: Tone = pulse?.phase === "answered" && pulse.tone === "bad" ? "bad" : meta.tone;
+        return (
+          <Tile
+            key={indexer.id}
+            to={indexerNeedsButton(indexer) ? "/?tab=system" : "/indexers/indexers"}
+            name={indexer.name}
+            tone={tone}
+            state={state}
+            pulse={pulse?.phase === "asking"}
+            meta={pulse && pulse.phase === "answered" ? pulse.words : meta.text}
+            label={`${indexer.name}: ${meta.text}${pulse ? `, ${pulse.words}` : ""}${today?.lastQueryUtc ? `, last asked ${ago(today.lastQueryUtc, now)}` : ""}`}
+          />
+        );
+      })}
+    </TileGroup>
   );
 }

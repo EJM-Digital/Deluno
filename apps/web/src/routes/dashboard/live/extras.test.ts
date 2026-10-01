@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { airsIn, searchesTvAutomatically } from "./airing";
-import { clientLights } from "./clients";
-import { arrivalItems, requestCards } from "./extras";
+import { clientLights, clientMeta, clientsSummary } from "./clients";
+import { arrivalItems, requestCards, withSeerr } from "./extras";
 import type { JourneyCard } from "./journey";
 import { qualityShare } from "./standing";
 
@@ -15,10 +14,15 @@ describe("requests in the flow", () => {
     expect(cards[0]).toMatchObject({ stage: "requested", state: { label: "Requested · searching" }, routeNote: "Asked by Sam" });
   });
 
-  it("makes a request whose search failed a problem to settle, and ignores one that is in the library", () => {
-    const cards = requestCards([request("s6", "search-failed"), request("s7", "available")], []);
+  it("says Seerr on a request, leaves out one whose search failed (the bell has it) and one that is in the library", () => {
+    const cards = requestCards([request("s6", "search-failed"), request("s7", "available"), request("s8", "added")], []);
     expect(cards).toHaveLength(1);
-    expect(cards[0]).toMatchObject({ stage: "needs", state: { tone: "bad" } });
+    expect(cards[0]).toMatchObject({ stage: "requested", startedBy: "seerr" });
+  });
+
+  it("tags a card that came from a Seerr request wherever it is on its way, and no other", () => {
+    const tagged = withSeerr([card({ key: "a", entity: { kind: "movie", id: "m1" } }), card({ key: "b", entity: { kind: "movie", id: "m2" } })], [request("m1", "available", "Dune", "movie")]);
+    expect(tagged.map((item) => item.startedBy)).toEqual(["seerr", undefined]);
   });
 });
 
@@ -39,6 +43,14 @@ describe("download client lights", () => {
     expect([tone("a"), tone("b"), tone("c"), tone("d"), tone("e")]).toEqual(["info", "bad", "warn", "ok", "idle"]);
     expect(lights[0]).toMatchObject({ id: "a", moving: true });
   });
+
+  it("says the speed while moving and how many it is seeding, and counts both in the header", () => {
+    const lights = clientLights([row("a"), row("d")], [item("a"), item("d"), item("e", false)], new Map([["a", 6.4]]), new Map([["a", 8], ["d", 6]]));
+    expect(clientMeta(lights.find((light) => light.id === "a")!)).toBe("6.4 MB/s · 8 seeding");
+    expect(clientMeta(lights.find((light) => light.id === "d")!)).toBe("6 seeding");
+    expect(clientMeta(lights.find((light) => light.id === "e")!)).toBe("switched off");
+    expect(clientsSummary(lights)).toBe("1 moving · 14 seeding");
+  });
 });
 
 describe("standing facts", () => {
@@ -46,14 +58,5 @@ describe("standing facts", () => {
     const counts = (total: number, qualityMet: number, upgradable: number) => ({ total, qualityMet, upgradable });
     expect(qualityShare({ library: { movies: counts(100, 60, 5), shows: counts(100, 80, 3) } } as never)).toMatchObject({ percent: 70, upgradable: 8 });
     expect(qualityShare({ library: { movies: counts(0, 0, 0), shows: counts(0, 0, 0) } } as never)).toBeNull();
-  });
-
-  it("counts down to an air time and says whether TV is searched on its own", () => {
-    const now = Date.parse("2026-10-01T00:00:00Z");
-    expect(airsIn("2026-10-01T00:24:00Z", now).text).toBe("in 24 min");
-    expect(airsIn("2026-10-01T03:20:00Z", now).text).toBe("in 3 h 20 min");
-    const summary = (next: string | null) => ({ automation: { libraries: [{ mediaType: "tv", nextSearchUtc: next, nextMissingSearchUtc: null, nextUpgradeSearchUtc: null }] } }) as never;
-    expect(searchesTvAutomatically(summary("2026-10-01T01:00:00Z"))).toBe(true);
-    expect(searchesTvAutomatically(summary(null))).toBe(false);
   });
 });

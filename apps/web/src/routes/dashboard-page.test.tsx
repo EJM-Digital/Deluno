@@ -69,7 +69,7 @@ describe("DashboardPage tabs", () => {
     const user = userEvent.setup();
     open("/");
 
-    expect(await screen.findByRole("region", { name: /^every title/i })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /^the journey/i })).toBeInTheDocument();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/[0-9]+$/, ""))).toEqual(["Live", "System"]);
     expect(screen.getByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("address").textContent).toBe("/");
@@ -78,7 +78,7 @@ describe("DashboardPage tabs", () => {
     expect(screen.getByLabelText("address").textContent).toBe("/?tab=system");
     expect(screen.getByRole("tab", { name: /^System/ })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("region", { name: /^health/i })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^every title/i })).toBeNull();
+    expect(screen.queryByRole("region", { name: /^the journey/i })).toBeNull();
 
     // Live carries no tab at all.
     await user.click(screen.getByRole("tab", { name: /^Live/ }));
@@ -101,26 +101,22 @@ describe("DashboardPage tabs", () => {
     expect(await screen.findByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("badges each tab with the real problems on it, once, and the Live badge is not a total", async () => {
+  it("badges System with the real problems on it and never badges Live: problems are in the bell, counted once", async () => {
     open("/");
     await screen.findByRole("tab", { name: /^Live/ });
-    // The same count the first lane of the board and the bell read.
     // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
     const none = [] as never;
     const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
-    const expected = attention.counts;
-    expect(attention.total).toBe(expected.live + expected.system);
+    expect(attention.total).toBe(attention.counts.live + attention.counts.system);
     const label = (tab: string) => within(screen.getByRole("tab", { name: new RegExp(`^${tab}`) })).queryByLabelText(/need a look|needs a look/)?.getAttribute("aria-label") ?? null;
     const words = (n: number) => (n === 1 ? "1 thing needs a look" : `${n} things need a look`);
-    // The stored lists arrive after the summary; the badges settle on them.
-    await waitFor(() => expect(label("System")).toBe(expected.system === 0 ? null : words(expected.system)));
-    expect(label("Live")).toBe(expected.live === 0 ? null : words(expected.live));
-    // Each number counts its own tab only: Live does not add System's problems to its own.
-    expect(expected.system).toBeGreaterThan(0);
-    expect(expected.live).toBeGreaterThan(0);
-    // The Needs you strip says the same number.
-    const strip = screen.getByRole("region", { name: "Needs you" });
-    expect(Number(within(strip).getByText(/^[0-9]+$/).textContent)).toBe(expected.live);
+    // The stored lists arrive after the summary; the badge settles on them.
+    await waitFor(() => expect(label("System")).toBe(attention.counts.system === 0 ? null : words(attention.counts.system)));
+    expect(attention.counts.system).toBeGreaterThan(0);
+    expect(attention.counts.live).toBeGreaterThan(0);
+    // Live carries no badge, and no Needs you strip: those problems are in the bell.
+    expect(label("Live")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 
   it("shows no badges on a new install", async () => {

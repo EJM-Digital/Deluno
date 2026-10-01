@@ -2,17 +2,22 @@ import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fullSummary } from "../downloads-fixtures";
-import { RightNow } from "./band";
-import { buildCountdownRows } from "./countdowns";
-import type { ArrivalItem } from "./extras";
-import { Flow } from "./flow";
-import { HeartbeatValue } from "./heartbeat";
-import { byStage, laneCounts, type JourneyCard } from "./journey";
-import { NO_TITLES, type TitleLookup } from "./titles";
-import { IndexerLights } from "./indexers";
-import { RhythmChart } from "./rhythm";
+import { Band, buildOperations, nextFigure } from "./band";
+import { ClientTiles } from "./clients";
+import { ConnectionTiles } from "./connection-tiles";
+import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
+import { statusOf, type CardContext } from "./card";
+import { IndexerTiles, indexerMeta, indexersSummary } from "./indexers";
+import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
+import { journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity } from "./layout";
+import { departedFromImporting, sameTitle } from "./motion";
+import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
-import { ActivityStream } from "./stream";
+import { allInBy, buildNext, clockTime, doneAbout, journeyHeading, usualTimes, whenText } from "./times";
+import { NO_TITLES } from "./titles";
+import { Journey, stationsFor } from "./track";
+import { barFraction, mergeTurnedDown, REASON_ORDER } from "./turned-down";
+import { TurnedDownCard } from "./turned-down-card";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
 vi.mock("../../../lib/use-signalr", async (importOriginal) => ({
@@ -20,7 +25,7 @@ vi.mock("../../../lib/use-signalr", async (importOriginal) => ({
   useSignalRStatus: () => status.value
 }));
 
-const NOW = new Date("2026-10-01T10:00:00Z");
+const NOW = new Date("2026-10-01T10:00:00");
 const inMs = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
 
 function withRouter(node: React.ReactNode) {
@@ -31,13 +36,64 @@ function setReducedMotion(reduce: boolean) {
   window.matchMedia = ((query: string) => ({ matches: reduce && query.includes("prefers-reduced-motion"), media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false, onchange: null })) as typeof window.matchMedia;
 }
 
+const card = (extra: Partial<JourneyCard>): JourneyCard => ({ key: "k", stage: "downloading", title: "Sintel (2010)", state: { tone: "info", label: "Downloading" }, to: "/queue", progress: 43, speedMbps: 6.2, client: "qBittorrent", ...extra });
+
 beforeEach(() => {
   status.value = "connected";
   setReducedMotion(false);
 });
 afterEach(() => vi.useRealTimers());
 
-describe("the next thing Deluno will do", () => {
+describe("the layout rules", () => {
+  it("counts the whole card rows a height holds, and always at least one", () => {
+    expect(rowsThatFit(300, 88, 6)).toBe(3);
+    expect(rowsThatFit(276, 88, 6)).toBe(3);
+    expect(rowsThatFit(275, 88, 6)).toBe(2);
+    expect(rowsThatFit(900, 88, 6)).toBe(9);
+    expect(rowsThatFit(20, 88, 6)).toBe(1);
+    expect(rowsThatFit(0, 88, 6)).toBe(1);
+  });
+
+  it("keeps the stations side by side while each has room, and stacks them when it does not", () => {
+    expect(journeyMode(5 * MIN_STATION_REM * 16, 5, 16)).toBe("columns");
+    expect(journeyMode(5 * MIN_STATION_REM * 16 - 1, 5, 16)).toBe("stacked");
+    expect(journeyMode(390, 5, 16)).toBe("stacked");
+    // Fewer stations (no processor connected) need less room.
+    expect(journeyMode(4 * MIN_STATION_REM * 16, 4, 16)).toBe("columns");
+    // Nothing measured yet: the columns.
+    expect(journeyMode(0, 5, 16)).toBe("columns");
+  });
+
+  it("draws full cards while they fit, compact tiles when they do not, and full cards when stacked (the page scrolls)", () => {
+    expect(stationDensity(3, 300, 88, 6, "columns")).toBe("full");
+    expect(stationDensity(4, 300, 88, 6, "columns")).toBe("compact");
+    expect(stationDensity(40, 300, 88, 6, "stacked")).toBe("full");
+    expect(stationDensity(40, 0, 88, 6, "columns")).toBe("full");
+  });
+
+  it("shows more rows of cards on a taller screen", () => {
+    expect(rowsThatFit(1080 * 0.3, 88, 6)).toBeLessThan(rowsThatFit(1440 * 0.3, 88, 6));
+  });
+
+  it("sizes posters to the shelf: 2:3, one row on a short shelf, more rows on a tall one, never absurdly small or large", () => {
+    const short = posterLayout(900, 290, 16);
+    const tall = posterLayout(900, 700, 16);
+    expect(short.rows).toBe(1);
+    expect(tall.rows).toBeGreaterThan(short.rows);
+    for (const layout of [short, tall]) {
+      expect(layout.height).toBe(Math.round(layout.width * 1.5));
+      expect(layout.width).toBeGreaterThanOrEqual(4.4 * 16);
+      expect(layout.width).toBeLessThanOrEqual(10 * 16);
+      expect(layout.capacity).toBe(layout.rows * layout.perRow);
+    }
+    // The rows that are drawn really fit the height they were given.
+    expect(tall.rows * tall.itemHeight + (tall.rows - 1) * 14).toBeLessThanOrEqual(700);
+    // A wider shelf holds more across.
+    expect(posterLayout(1800, 290, 16).perRow).toBeGreaterThan(short.perRow);
+  });
+});
+
+describe("what comes next", () => {
   const summary = () => {
     const copy = structuredClone(fullSummary);
     copy.automation!.libraries = [{ libraryId: "l1", name: "Movies", mediaType: "movies", status: "active", nextSearchUtc: inMs(12 * 60_000 + 4_000), nextMissingSearchUtc: null, nextUpgradeSearchUtc: null, lastCompletedUtc: inMs(-48 * 60_000), lastError: null }];
@@ -48,285 +104,468 @@ describe("the next thing Deluno will do", () => {
     ];
     return copy;
   };
+  const episode = (id: string, hours: number) => ({ seriesId: "s1", title: "Lioness", startYear: 2023, posterUrl: null, episodeId: id, seasonNumber: 3, episodeNumber: 8, episodeTitle: "x", airDateUtc: inMs(hours * 3_600_000) }) as never;
 
-  it("lists the searches first, then the named tasks, and leaves out what is not scheduled", () => {
-    expect(buildCountdownRows(summary()).map((row) => row.label)).toEqual(["Search Movies", "Check health", "Watch indexers for new releases"]);
+  it("merges scheduled jobs and episodes about to air into one list, soonest first, and leaves out what is not scheduled", () => {
+    const items = buildNext(summary(), [episode("e1", 1.5), episode("e2", -3)], NOW.getTime());
+    expect(items.map((item) => item.label)).toEqual(["Watch indexers for new releases", "Search Movies", "Check health", "Lioness S03E08 airs"]);
+    expect(items.map((item) => item.kind)).toEqual(["job", "job", "job", "airing"]);
+    // An episode that aired hours ago is not next.
+    expect(items.some((item) => item.key === "airs:e2")).toBe(false);
   });
 
-  it("counts down by the second, with the soonest run in the ring and the one after it beside", () => {
-    vi.useFakeTimers({ now: NOW });
-    withRouter(<RightNow summary={summary()} samples={[]} indexers={[]} work={[]} updatedAt={NOW.getTime()} now={NOW.getTime()} />);
-    const next = screen.getByRole("link", { name: /^Watch indexers for new releases/ });
-    expect(within(next).getByText("9:00")).toBeInTheDocument();
-    expect(screen.getByText(/Then Search Movies/).textContent).toContain("12:04");
-    act(() => { vi.advanceTimersByTime(3_000); });
-    expect(within(screen.getByRole("link", { name: /^Watch indexers for new releases/ })).getByText("8:57")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Watch indexers for new releases/ })).toHaveAttribute("href", "/?tab=system");
+  it("puts a job that is running now first", () => {
+    const running = summary();
+    running.automation!.libraries[0] = { ...running.automation!.libraries[0], status: "running" };
+    expect(buildNext(running, [], NOW.getTime())[0]).toMatchObject({ label: "Search Movies", running: true });
   });
 
-  it("says what is running now, and when the last search was when nothing is", () => {
+  it("says a countdown under an hour and a clock time beyond it, with the day when it is not today", () => {
     const now = NOW.getTime();
-    const { unmount } = withRouter(<RightNow summary={summary()} samples={[]} indexers={[]} work={[{ key: "s", kind: "search", text: "Searching TV for what is missing or could be better", to: "/search-cycles" }]} updatedAt={now} now={now} />);
-    expect(screen.getByText("Searching TV for what is missing or could be better")).toBeInTheDocument();
-    unmount();
-    const idle = summary();
-    idle.automation!.lastSearchCycle = { libraryId: "l1", libraryName: "Movies", mediaType: "movies", status: "completed", planned: 14, queued: 2, skipped: 12, startedUtc: inMs(-49 * 60_000), completedUtc: inMs(-48 * 60_000) };
-    withRouter(<RightNow summary={idle} samples={[]} indexers={[]} work={[]} updatedAt={now} now={now} />);
-    expect(screen.getByText("Nothing is running right now.")).toBeInTheDocument();
-    expect(screen.getByText(/The last search was Movies/).textContent).toContain("14 checked, 2 sent to a client");
+    expect(whenText(now + 252_000, now)).toBe("4:12");
+    expect(whenText(now + 5_040_000, now)).toBe("11:24 am");
+    expect(whenText(now + 5 * 3_600_000, now)).toBe("3:00 pm");
+    expect(whenText(now + 24 * 3_600_000, now)).toBe("tomorrow 10:00 am");
+    expect(whenText(now - 1000, now)).toBe("now");
+    expect(clockTime(new Date("2026-10-01T00:05:00").getTime())).toBe("12:05 am");
+    expect(clockTime(new Date("2026-10-01T15:34:00").getTime())).toBe("3:34 pm");
+  });
+
+  it("shows the countdown to the first in the figure with the others under it, and counts down by the second", () => {
+    vi.useFakeTimers({ now: NOW });
+    withRouter(<Band summary={summary()} samples={[]} operations={[]} upcoming={[episode("e1", 3.5)]} />);
+    const next = screen.getByRole("region", { name: "Next" });
+    expect(within(next).getByText("9:00")).toBeInTheDocument();
+    expect(within(next).getByText("Watch indexers for new releases")).toBeInTheDocument();
+    expect(next.textContent).toContain("then Search Movies");
+    expect(next.textContent).toContain("then Lioness S03E08 airs");
+    expect(next.textContent).toContain("1:30 pm");
+    act(() => { vi.advanceTimersByTime(3_000); });
+    expect(within(next).getByText("8:57")).toBeInTheDocument();
+  });
+
+  it("figures: running, due now, a countdown or a clock time", () => {
+    const now = NOW.getTime();
+    const item = { key: "k", label: "x", at: now, last: null, running: false, to: "/", kind: "job" as const };
+    expect(nextFigure({ ...item, running: true }, now).kind).toBe("running");
+    expect(nextFigure({ ...item, at: now - 1 }, now).kind).toBe("due");
+    expect(nextFigure({ ...item, at: now + 60_000 }, now)).toEqual({ text: "1:00", kind: "count" });
+    expect(nextFigure({ ...item, at: now + 7_200_000 }, now).kind).toBe("clock");
   });
 
   it("says something true when nothing is scheduled", () => {
-    withRouter(<RightNow summary={undefined} samples={[]} indexers={[]} work={[]} updatedAt={NOW.getTime()} now={NOW.getTime()} />);
-    expect(screen.getByText(/Nothing is scheduled/)).toBeInTheDocument();
+    withRouter(<Band summary={undefined} samples={[]} operations={[]} upcoming={[]} />);
+    expect(screen.getByText("nothing is scheduled")).toBeInTheDocument();
   });
 });
 
-describe("the heartbeat", () => {
-  it("pulses while connected and says so in words when it is not", () => {
-    const { container, rerender } = render(<HeartbeatValue />);
-    expect(screen.getByText("Live")).toBeInTheDocument();
-    expect(container.querySelector(".live-beat")).not.toBeNull();
-    for (const [state, words] of [["reconnecting", "Reconnecting"], ["disconnected", "Offline"]] as const) {
-      status.value = state;
-      rerender(<HeartbeatValue />);
-      expect(screen.getByText(words)).toBeInTheDocument();
-      expect(container.querySelector(".live-beat")).toBeNull();
-    }
+describe("working on now", () => {
+  it("counts what is running, shows the two newest with a bar where it knows, and says how many more are in Activity", () => {
+    const ops = buildOperations(
+      [{ key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" }, { key: "job:a", kind: "jobs", text: "Reading your files", to: "/activity" }],
+      [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Ready to import" } })],
+      NO_TITLES
+    );
+    expect(ops.map((op) => op.kind)).toEqual(["search", "processor", "import", "jobs"]);
+    expect(ops[1]).toMatchObject({ lead: "FileFlows is working on", name: "Sintel (2010)" });
+    withRouter(<Band summary={fullSummary} samples={[]} operations={ops} upcoming={[]} />);
+    const region = screen.getByRole("region", { name: "Working on now" });
+    expect(within(region).getByText("4")).toBeInTheDocument();
+    expect(within(region).getByText("things running")).toBeInTheDocument();
+    expect(within(region).getByText("12 of 40")).toBeInTheDocument();
+    expect(region.querySelector<HTMLElement>(".live-fill")?.style.width).toBe("30%");
+    expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity");
+    // Only two operations are drawn.
+    expect(within(region).getAllByRole("listitem")).toHaveLength(2);
   });
 
-  it("does not pulse when motion is reduced, and the word stays", () => {
-    setReducedMotion(true);
-    const { container } = render(<HeartbeatValue />);
-    expect(screen.getByText("Live")).toBeInTheDocument();
-    expect(container.querySelector(".live-beat")).toBeNull();
+  it("does not name a processor failure as something it is working on", () => {
+    expect(buildOperations([], [card({ stage: "processor", state: { tone: "bad", label: "Processor failed" } })], NO_TITLES)).toEqual([]);
+  });
+
+  it("says when the last search was when nothing is running", () => {
+    const idle = structuredClone(fullSummary);
+    idle.automation!.lastSearchCycle = { libraryId: "l1", libraryName: "Movies", mediaType: "movies", status: "completed", planned: 14, queued: 2, skipped: 12, startedUtc: inMs(-49 * 60_000), completedUtc: inMs(-48 * 60_000) };
+    withRouter(<Band summary={idle} samples={[]} operations={[]} upcoming={[]} />);
+    expect(screen.getByText(/The last search was Movies/).textContent).toContain("14 checked, 2 sent to a client");
   });
 });
 
-describe("the charts", () => {
-  it("draws the speed trace with a reading even when nothing has ever been stored", () => {
-    vi.useFakeTimers({ now: NOW });
+describe("speed", () => {
+  it("draws a trace with a reading even when nothing has ever been stored, and says the unit beside the figure", () => {
     const { container } = withRouter(<SpeedCell samples={[]} summary={undefined} />);
-    expect(container.querySelectorAll("path.live-trace").length).toBe(2);
-    expect(screen.getByRole("img", { name: /Download peaked at 0 MB\/s/ })).toBeInTheDocument();
+    expect(container.querySelector("svg path")).not.toBeNull();
+    expect(container.textContent).toContain("0 MB/s");
     expect(container.textContent).not.toMatch(/NaN|undefined/);
   });
 
-  it("extends the trace with the newest reading from the summary", () => {
-    vi.useFakeTimers({ now: NOW });
+  it("extends the trace with the newest reading and says download and upload apart", () => {
     const summary = structuredClone(fullSummary);
-    summary.downloads!.readingUtc = inMs(-30_000);
-    summary.downloads!.downloadMbps = 12;
-    withRouter(<SpeedCell samples={[{ capturedUtc: inMs(-3_600_000), speedMbps: 4, activeCount: 1, uploadMbps: 0 }]} summary={summary} />);
-    expect(screen.getByRole("img", { name: /Download peaked at 12 MB\/s/ })).toBeInTheDocument();
-  });
-
-  it("shows today's hours as bars from stored activity, growing with new events, and says so when quiet", () => {
-    vi.useFakeTimers({ now: NOW });
-    const at = (hour: number) => new Date(new Date(NOW).setHours(hour, 10, 0, 0)).toISOString();
-    const rows = [
-      { id: "1", category: "wanted.search.completed", createdUtc: at(2) },
-      { id: "2", category: "filesystem.import.completed", createdUtc: at(2) }
-    ];
-    const page = (list: typeof rows) => <MemoryRouter><RhythmChart rows={list} /></MemoryRouter>;
-    const { container, rerender } = render(page(rows));
-    expect(container.querySelectorAll(".live-bar")).toHaveLength(2);
-    rerender(page([...rows, { id: "3", category: "filesystem.import.completed", createdUtc: at(2) }]));
-    expect(container.querySelectorAll(".live-bar")).toHaveLength(2);
-    expect(screen.getByRole("img", { name: /3 events today: 1 searches, 2 imports/ })).toBeInTheDocument();
-    rerender(page([]));
-    expect(screen.getByText("quiet so far")).toBeInTheDocument();
+    summary.downloads!.downloadMbps = 14.2;
+    summary.downloads!.uploadMbps = 1.3;
+    summary.downloads!.readingUtc = new Date().toISOString();
+    const { container } = withRouter(<SpeedCell samples={[{ capturedUtc: inMs(-3_600_000), speedMbps: 4, activeCount: 1, uploadMbps: 0 }]} summary={summary} />);
+    expect(container.textContent).toContain("14 MB/s");
+    expect(container.textContent).toContain("down");
+    expect(container.textContent).toContain("1.3 MB/s");
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/Download peaked at 14 MB\/s/);
   });
 });
 
-describe("today's count", () => {
-  it("shows the day's real total from the server counts, never the size of a page", () => {
-    vi.useFakeTimers({ now: NOW });
-    const counts = [{ hour: 3, category: "wanted.search.completed", count: 340 }, { hour: 5, category: "movies.release.grabbed", count: 60 }];
-    const { container } = withRouter(<RhythmChart rows={[]} counts={counts} countedAt={NOW.getTime()} />);
-    expect(screen.getByRole("img", { name: /400 events today/ })).toBeInTheDocument();
-    expect(container.textContent).not.toMatch(/last 200/);
+describe("what a journey card says", () => {
+  it("looks on the indexers, or says Seerr asked", () => {
+    expect(statusOf(card({ stage: "requested" }), 5).text).toBe("Looking on 5 indexers");
+    expect(statusOf(card({ stage: "requested" }), 1).text).toBe("Looking on 1 indexer");
+    expect(statusOf(card({ stage: "requested", startedBy: "seerr" }), 5).text).toBe("Asked for in Seerr · looking");
+    expect(statusOf(card({ stage: "requested" }), 0).text).toBe("Looking for it");
   });
 
-  it("says so when it only has the newest page, and does not present the cap as the total", () => {
-    vi.useFakeTimers({ now: NOW });
-    const rows = [{ id: "1", category: "wanted.search.completed", createdUtc: inMs(-3_600_000) }];
-    withRouter(<RhythmChart rows={rows} capped />);
-    expect(screen.getByText("last 200 events")).toBeInTheDocument();
+  it("says the quality and where it came from, the progress and speed, and who is working on it", () => {
+    expect(statusOf(card({ stage: "grabbed", quality: "Bluray 1080p", indexer: "NZBgeek" }), 5).text).toBe("Bluray 1080p · from NZBgeek");
+    expect(statusOf(card({}), 5).text).toBe("43% · 6.2 MB/s · qBittorrent");
+    expect(statusOf(card({ stage: "processor", processor: "Weir", state: { tone: "info", label: "Being cleaned" } }), 5).text).toBe("Weir is working on it");
+    expect(statusOf(card({ stage: "processor", processor: null, state: { tone: "info", label: "Being cleaned" } }), 5).text).toBe("The processor is working on it");
   });
-});
 
-describe("the speed peaks", () => {
-  it("labels the download peak and the upload peak separately", () => {
-    vi.useFakeTimers({ now: NOW });
-    const summary = structuredClone(fullSummary);
-    summary.downloads!.readingUtc = inMs(-30_000);
-    summary.downloads!.downloadMbps = 12;
-    summary.downloads!.uploadMbps = 3;
-    withRouter(<SpeedCell samples={[]} summary={summary} />);
-    expect(screen.getByText(/^Download peak/).textContent).toContain("12 MB/s");
-    expect(screen.getByText(/^Upload peak/).textContent).toContain("3.0 MB/s");
+  it("goes amber and says it is finding another copy while a download is stuck", () => {
+    const stuck = statusOf(card({ stuck: true, state: { tone: "warn", label: "Stuck" } }), 5);
+    expect(stuck).toEqual({ text: "Stuck at 43% · finding another copy", tone: "warn", pulse: true });
+    expect(statusOf(card({ stuck: true, progress: 0 }), 5).text).toBe("Stuck · finding another copy");
   });
 });
 
-describe("the indexers", () => {
-  const indexer = (id: string, name: string, healthStatus: string) => ({ id, name, protocol: "usenet", isEnabled: true, priority: 1, healthStatus, lastHealthMessage: healthStatus === "healthy" ? null : "HTTP 504", lastHealthLatencyMs: 200, lastHealthTestUtc: inMs(-60_000), consecutiveFailures: 0, rateLimitedUntilUtc: null }) as never;
-  const scoreboard = (stamp: string) => ({ indexers: [{ id: "a", name: "NZBgeek", totalQueries: 96, failedQueries: 0, successfulGrabs: 5, lastQueryUtc: stamp }] });
-
-  it("shows every indexer as a named light, and a broken one links to System where its Test again button is", () => {
-    vi.useFakeTimers({ now: NOW });
-    withRouter(<IndexerLights indexers={[indexer("a", "NZBgeek", "healthy"), indexer("b", "Nyaa.si", "unreachable")]} summary={undefined} now={NOW.getTime()} />);
-    expect(screen.getByRole("link", { name: /^NZBgeek: not asked today/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Nyaa.si: not answering: HTTP 504/ })).toHaveAttribute("href", "/?tab=system");
+describe("when everything should be in", () => {
+  it("is the latest finish time the clients give, leaving out stuck titles and titles with no reading", () => {
+    const cards = [card({ key: "a", finishAtMs: 1000 }), card({ key: "b", finishAtMs: 5000 }), card({ key: "c", finishAtMs: 9000, stuck: true }), card({ key: "d" }), card({ key: "e", stage: "imported", finishAtMs: 99_000 })];
+    expect(allInBy(cards)).toBe(5000);
+    expect(allInBy([card({})])).toBeUndefined();
   });
 
-  it("says what each did today in its tooltip and flashes the light of the one that has just been asked", () => {
-    vi.useFakeTimers({ now: NOW });
-    const list = [indexer("a", "NZBgeek", "healthy")];
-    const page = (stamp: string) => <MemoryRouter><IndexerLights indexers={list} scoreboard={scoreboard(stamp)} summary={undefined} now={NOW.getTime()} /></MemoryRouter>;
-    const { container, rerender } = render(page(inMs(-120_000)));
-    expect(screen.getByRole("link", { name: /^NZBgeek: 96 queries/ })).toBeInTheDocument();
-    expect(container.querySelector(".live-beat")).toBeNull();
-    rerender(page(inMs(-1_000)));
-    expect(container.querySelector(".live-beat")).not.toBeNull();
-    act(() => { vi.advanceTimersByTime(2_600); });
-    expect(container.querySelector(".live-beat")).toBeNull();
+  it("writes the header with the time, and without it when no reading says", () => {
+    const by = new Date("2026-10-01T14:28:00").getTime();
+    expect(journeyHeading(8, by)).toBe("8 on their way to your library · all in by about 2:28 pm");
+    expect(journeyHeading(8, undefined)).toBe("8 on their way to your library");
+    expect(journeyHeading(0, by)).toBe("nothing on its way right now");
+  });
+
+  it("says a card's own finish time", () => {
+    expect(doneAbout(new Date("2026-10-01T14:14:00").getTime())).toBe("done about 2:14 pm");
+    expect(doneAbout(undefined)).toBeNull();
   });
 });
 
-describe("the indexer lights", () => {
-  const indexer = (id: string, name: string, extra: Record<string, unknown>) => ({ id, name, protocol: "usenet", isEnabled: true, priority: 1, healthStatus: "healthy", lastHealthMessage: null, lastHealthLatencyMs: 300, lastHealthTestUtc: inMs(-60_000), consecutiveFailures: 0, rateLimitedUntilUtc: null, ...extra }) as never;
-
-  it("shows a switched-off indexer grey and after the enabled ones, a slow one amber, and says what each did in its tooltip", () => {
-    vi.useFakeTimers({ now: NOW });
-    const scoreboard = { indexers: [{ id: "a", name: "NZBgeek", totalQueries: 96, failedQueries: 0, successfulGrabs: 5, lastQueryUtc: inMs(-120_000) }] };
-    const { container } = withRouter(<IndexerLights indexers={[indexer("off", "Nyaa.si", { isEnabled: false }), indexer("slow", "DrunkenSlug", { lastHealthLatencyMs: 4200 }), indexer("a", "NZBgeek", {})]} scoreboard={scoreboard} summary={undefined} now={NOW.getTime()} />);
-    const names = [...container.querySelectorAll("li a")].map((link) => link.textContent);
-    expect(names).toEqual(["NZBgeek", "DrunkenSlug", "Nyaa.si"]);
-    const led = (name: string) => screen.getByRole("link", { name: new RegExp("^" + name.replace(".", "[.]") + ":") }).querySelector("[class*='bg-']:not(.live-beat)")?.outerHTML ?? "";
-    expect(screen.getByRole("link", { name: /^DrunkenSlug: slow, 4200 ms to answer/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Nyaa.si: switched off/ })).toBeInTheDocument();
-    expect(led("Nyaa.si")).toContain("bg-muted-foreground");
-    expect(led("DrunkenSlug")).toContain("bg-warning");
-    expect(led("NZBgeek")).toContain("bg-success");
-    expect(screen.getByRole("link", { name: /^NZBgeek: 96 queries/ })).toHaveAttribute("title", expect.stringMatching(/Last answer 300 ms, .*Today 96 queries, last asked/));
-  });
-});
-
-describe("the journey track", () => {
-  const card = (overrides: Partial<JourneyCard>): JourneyCard => ({ key: "c1:a", stage: "downloading", title: "Sintel 2010 1080p", release: "Sintel.2010.1080p.BluRay", state: { tone: "info", label: "Downloading" }, progress: 40, speedMbps: 2, etaSeconds: 600, sizeBytes: 2e9, quality: "Bluray 1080p", indexer: "NZBgeek", client: "Deluge", to: "/queue", ...overrides });
-  const named: TitleLookup = {
-    movies: new Map([["m1", { title: "Sintel", year: 2010, posterUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>" }]]),
-    series: new Map([["s1", { title: "Say Yes to the Dress", year: 2007, posterUrl: null }]]),
-    episodes: new Map([["e1", { seriesId: "s1", season: 4, episode: 2 }]])
+describe("how long a station usually takes today", () => {
+  const dispatch = (id: string, minutes: { grab: number; down: number; imp: number }, doneHoursAgo = 1) => {
+    const done = NOW.getTime() - doneHoursAgo * 3_600_000;
+    const imported = done;
+    const importDetected = imported - minutes.imp * 60_000;
+    const detected = importDetected - minutes.down * 60_000;
+    const created = detected - minutes.grab * 60_000;
+    return { id, createdUtc: new Date(created).toISOString(), detectedUtc: new Date(detected).toISOString(), importDetectedUtc: new Date(importDetected).toISOString(), importCompletedUtc: new Date(imported).toISOString() } as never;
   };
-  const board = (cards: JourneyCard[], arrivals: string[] = [], titles: TitleLookup = NO_TITLES, arrivalItems: ArrivalItem[] = []) => {
+  const handoff = (id: string, minutes: number) => ({ id, status: "completed", createdUtc: inMs(-minutes * 60_000 - 3_600_000), updatedUtc: inMs(-3_600_000) }) as never;
+
+  it("averages today's finished journeys once there are at least three, and says nothing before", () => {
+    const some = [dispatch("1", { grab: 1, down: 10, imp: 1 }), dispatch("2", { grab: 3, down: 14, imp: 2 })];
+    expect(usualTimes(some, [], NOW.getTime())).toEqual({});
+    const three = [...some, dispatch("3", { grab: 2, down: 12, imp: 3 })];
+    expect(usualTimes(three, [handoff("a", 4), handoff("b", 6), handoff("c", 8)], NOW.getTime())).toEqual({ grabbed: "usually 2 min", downloading: "usually 12 min", importing: "usually 2 min", processor: "usually 6 min" });
+  });
+
+  it("only counts journeys finished today", () => {
+    const old = [dispatch("1", { grab: 1, down: 10, imp: 1 }, 30), dispatch("2", { grab: 1, down: 10, imp: 1 }, 30), dispatch("3", { grab: 1, down: 10, imp: 1 }, 30)];
+    expect(usualTimes(old, [], NOW.getTime())).toEqual({});
+  });
+
+  it("is on the station that has it, and left off the others", () => {
+    const grouped = byStage([]);
+    withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={{ titles: NO_TITLES, arrivals: new Set(), indexers: 3 }} hasProcessor usual={{ downloading: "usually 12 min" }} by={undefined} lastArrival={null} />);
+    expect(screen.getByRole("link", { name: "Downloading: 0" }).textContent).toContain("usually 12 min");
+    expect(screen.getByRole("link", { name: "Grabbed: 0" }).textContent).not.toContain("usually");
+  });
+});
+
+describe("the journey", () => {
+  const context: CardContext = { titles: NO_TITLES, arrivals: new Set(), indexers: 4 };
+  const render5 = (cards: JourneyCard[], hasProcessor = true) => {
     const grouped = byStage(cards);
-    return (
-      <MemoryRouter>
-        <Flow grouped={grouped} counts={laneCounts(grouped, undefined)} titles={titles} arrivals={new Set(arrivals)} arrivalItems={arrivalItems} />
-      </MemoryRouter>
-    );
+    return withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={context} hasProcessor={hasProcessor} usual={{}} by={new Date("2026-10-01T14:28:00").getTime()} lastArrival={null} />);
   };
+  const cards = [
+    card({ key: "r", stage: "requested", title: "Shogun", startedBy: "seerr", state: { tone: "info", label: "Requested" } }),
+    card({ key: "d1", title: "Dune (2024)", startedBy: "you", finishAtMs: new Date("2026-10-01T14:14:00").getTime() }),
+    card({ key: "d2", title: "Stuck One (2001)", stuck: true, state: { tone: "warn", label: "Stuck" }, progress: 43, speedMbps: 0 }),
+    card({ key: "p", stage: "processor", title: "Sintel (2010)", processor: "Weir", state: { tone: "info", label: "Being cleaned" } })
+  ];
 
-  it("puts each moving title in its stage as a token with its details, and draws no stage that has nothing in it", () => {
-    render(board([card({}), card({ key: "c1:b", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "info", label: "Being cleaned" } })]));
-    const downloading = screen.getByRole("group", { name: "Downloading" });
-    expect(within(downloading).getByText("Sintel 2010 1080p")).toBeInTheDocument();
-    expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "With the processor" })).getByText("NZBgeek → Deluge → Cleaner")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Importing" })).toBeNull();
-    expect(screen.queryByRole("group", { name: "Quiet" })).toBeNull();
-    expect(screen.getByRole("group", { name: "In the library" })).toBeInTheDocument();
+  it("has a station for the processor only when one is connected", () => {
+    expect(stationsFor(true)).toContain("processor");
+    expect(stationsFor(false)).not.toContain("processor");
+    render5(cards, false);
+    expect(screen.queryByRole("group", { name: "Processing" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Importing" })).toBeInTheDocument();
   });
 
-  it("names a token by its library title with the release as its tooltip, and shows an episode as show plus SxxEyy", () => {
-    render(board([
-      card({ entity: { kind: "movie", id: "m1" } }),
-      card({ key: "c1:b", title: "Say Yes 2007", release: "Say.Yes.to.the.Dress.2007.S04E02.720p", entity: { kind: "episode", id: "e1" }, progress: 10 }),
-      card({ key: "c1:c", title: "Nobody 2020", release: "Nobody.2020.1080p", entity: { kind: "movie", id: "gone" } })
-    ], [], named));
-    const downloading = screen.getByRole("group", { name: "Downloading" });
-    expect(within(downloading).getByTitle("Sintel.2010.1080p.BluRay")).toHaveAttribute("href", "/movies/m1");
-    expect(within(downloading).getByText("Sintel (2010)")).toBeInTheDocument();
-    expect(within(downloading).getByText("Say Yes to the Dress S04E02")).toBeInTheDocument();
-    // A title that no longer exists keeps the release's own name and gets no failing request.
-    expect(within(downloading).getByText("Nobody 2020")).toBeInTheDocument();
-    expect(within(downloading).getByRole("link", { name: /^Say Yes to the Dress S04E02/ })).toHaveAttribute("href", "/tv/s1");
+  it("says how many are on their way and when they should all be in", () => {
+    render5(cards);
+    const journey = screen.getByRole("region", { name: "The journey" });
+    expect(within(journey).getByText("4 on their way to your library · all in by about 2:28 pm")).toBeInTheDocument();
+    expect(within(journey).getByRole("link", { name: "Transfers: The journey" })).toHaveAttribute("href", "/queue");
   });
 
-  it("keeps problems off the track: a stopped download or a refused hand-off is not a token", () => {
-    render(board([
-      card({ key: "c1:s", stage: "needs", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" } }),
-      card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", failedHandoffId: "h1", state: { tone: "bad", label: "Processor failed" } }),
-      card({})
-    ]));
-    expect(screen.queryByRole("group", { name: "Needs you" })).toBeNull();
-    expect(screen.queryByText("Metropolis (1927)")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Search again/ })).toBeNull();
-    expect(within(screen.getByRole("group", { name: "Downloading" })).getAllByRole("link")).toHaveLength(2);
+  it("puts each title in its station as a card, a stuck one amber, and says why each is moving", () => {
+    render5(cards);
+    const downloading = screen.getByRole("list", { name: "Downloading titles" });
+    expect(within(downloading).getByRole("link", { name: "Stuck One (2001): Stuck at 43% · finding another copy" })).toBeInTheDocument();
+    expect(within(downloading).getByText("done about 2:14 pm")).toBeInTheDocument();
+    expect(within(downloading).getByText("You asked")).toBeInTheDocument();
+    // A card that came from Seerr says so; a request card says it in its line and not twice.
+    const requested = screen.getByRole("list", { name: "Requested titles" });
+    expect(within(requested).getByRole("link", { name: "Shogun: Asked for in Seerr · looking" })).toBeInTheDocument();
+    expect(within(requested).queryByText("Seerr")).toBeNull();
+    // A card with no recorded reason has no tag rather than a guess.
+    expect(within(screen.getByRole("list", { name: "Processing titles" })).queryByText(/You asked|Seerr|From a list|Upgrade hunt|Missing episode/)).toBeNull();
+    expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".live-blink")).not.toBeNull();
   });
 
-  it("says one calm, true line when nothing is moving, with the last arrival, and gives the arrivals the room", () => {
-    const arrival: ArrivalItem = { key: "a1", entity: { kind: "movie", id: "m1" }, fallbackTitle: "Sintel (2010)", release: null, quality: "WEB 1080p", previousQuality: "WEB 720p", upgraded: true, sizeBytes: 5, at: new Date(Date.now() - 2 * 3_600_000).toISOString(), requestedBy: null, to: "/movies/m1" };
-    render(board([], [], named, [arrival]));
-    expect(screen.getByText("Nothing moving right now · last arrival Sintel (2010) 2 h ago")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Downloading" })).toBeNull();
-    // The upgrade is shown as before and after.
-    expect(screen.getByRole("link", { name: "Sintel (2010): upgraded from WEB 720p to WEB 1080p" })).toBeInTheDocument();
+  it("tags a download that came from Seerr, a list, an upgrade hunt or a missing episode", () => {
+    render5([card({ key: "a", title: "A (2001)", startedBy: "seerr" }), card({ key: "b", title: "B (2002)", startedBy: "list" }), card({ key: "c", title: "C (2003)", startedBy: "upgrade" }), card({ key: "d", title: "D (2004)", startedBy: "missing" })]);
+    for (const words of ["Seerr", "From a list", "Upgrade hunt", "Missing episode"]) expect(screen.getByText(words)).toBeInTheDocument();
+  });
+
+  it("opens the title's page from any card", () => {
+    render5([card({ key: "a", title: "A (2001)", to: "/movies/m1" })]);
+    expect(screen.getByRole("link", { name: /^A \(2001\)/ })).toHaveAttribute("href", "/movies/m1");
+  });
+
+  it("says one calm line when nothing is moving, with the last arrival", () => {
+    const grouped = byStage([]);
+    withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={context} hasProcessor usual={{}} by={undefined} lastArrival={{ title: "Moon (2009)", at: new Date().toISOString() }} />);
+    expect(screen.getByText(/Nothing moving right now · last arrival Moon \(2009\)/)).toBeInTheDocument();
+  });
+
+  it("never says and N more: when the cards do not fit the station they become compact tiles, every title still there", () => {
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    const observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;
+    HTMLElement.prototype.getBoundingClientRect = function sized() {
+      const name = typeof this.className === "string" ? this.className : "";
+      const make = (width: number, height: number) => ({ width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+      if (name.includes("w-px")) return make(1, 88);
+      if (name.includes("inset-0")) return make(1100, 300);
+      if (name.includes("relative flex min-h-0 flex-1 flex-col")) return make(1200, 400);
+      return make(0, 0);
+    };
+    try {
+      const many = Array.from({ length: 12 }, (_, n) => card({ key: `m${n}`, title: `Film ${n} (2001)` }));
+      render5(many);
+      const station = screen.getByRole("list", { name: "Downloading titles" }).parentElement!;
+      expect(station).toHaveAttribute("data-cards", "compact");
+      expect(screen.getAllByRole("link", { name: /^Film [0-9]+ \(2001\)/ })).toHaveLength(12);
+      expect(document.body.textContent).not.toMatch(/and [0-9]+ more/);
+      // Few enough to fit stay full cards.
+      expect(screen.getByRole("list", { name: "Downloading titles" }).querySelector("[data-compact]")).not.toBeNull();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+      globalThis.ResizeObserver = observer;
+    }
+  });
+
+  it("stacks the stations under one another when the journey is narrow, each with its own cards", () => {
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    const observer = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;
+    HTMLElement.prototype.getBoundingClientRect = function sized() {
+      const name = typeof this.className === "string" ? this.className : "";
+      const make = (width: number, height: number) => ({ width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+      if (name.includes("relative flex min-h-0 flex-1 flex-col")) return make(360, 600);
+      return make(0, 0);
+    };
+    try {
+      render5(cards);
+      // Each station's heading is followed by its own cards, and a station with nothing is left out.
+      const stacked = Array.from(document.querySelectorAll('[data-station]'));
+      expect(stacked.map((element) => element.getAttribute("data-station"))).toEqual(["requested", "downloading", "processor"]);
+      expect(within(stacked[1] as HTMLElement).getByRole("group", { name: "Downloading" })).toBeInTheDocument();
+      expect(stacked.every((element) => element.getAttribute("data-cards") === "full")).toBe(true);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+      globalThis.ResizeObserver = observer;
+    }
   });
 
   it("only shimmers a download bar while bytes are really moving", () => {
-    const { container, unmount } = render(board([card({ speedMbps: 3 })]));
+    const { container, unmount } = render5([card({ key: "a" })]);
     expect(container.querySelector(".live-shimmer")).not.toBeNull();
     unmount();
-    const idle = render(board([card({ speedMbps: 0 })]));
+    const idle = render5([card({ key: "a", speedMbps: 0 })]);
     expect(idle.container.querySelector(".live-shimmer")).toBeNull();
   });
 
-  it("glows a token that has just changed stage, and does not when motion is reduced", () => {
-    const { container, unmount } = render(board([card({})], ["c1:a"]));
-    expect(container.querySelector(".live-card-arrive")).not.toBeNull();
-    unmount();
+  it("glows a card that has just changed station, and does not when motion is reduced", () => {
+    const grouped = byStage([card({ key: "a" })]);
+    const draw = () => withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={{ ...context, arrivals: new Set(["a"]) }} hasProcessor usual={{}} by={undefined} lastArrival={null} />);
+    expect(draw().container.querySelector(".live-card-arrive")).not.toBeNull();
     setReducedMotion(true);
-    const reduced = render(board([card({})], ["c1:a"]));
-    expect(reduced.container.querySelector(".live-card-arrive")).toBeNull();
-    // The numbers stay.
-    expect(within(reduced.container).getAllByText("40%").length).toBeGreaterThan(0);
+    expect(draw().container.querySelector(".live-card-arrive")).toBeNull();
   });
 });
 
-describe("what Today and Latest show", () => {
-  const row = (id: string, category: string, message: string, createdUtc = inMs(-60_000)) => ({ id, category, message, createdUtc, fresh: false });
-
-  it("leaves routine background work out of Latest and says so once, quietly", () => {
-    withRouter(
-      <ActivityStream titles={NO_TITLES}
-        rows={[
-          row("1", "movies.release.grabbed", "Grabbed Dune Part Two (2024) from NZBgeek."),
-          row("2", "job.started", "Task started"),
-          row("3", "job.completed", "Task finished"),
-          row("4", "metadata.artwork.cleanup", "Artwork cache cleanup found nothing to remove.")
-        ]}
-      />
-    );
-    expect(screen.getByText(/Grabbed Dune Part Two/)).toBeInTheDocument();
-    expect(screen.queryByText("Task started")).toBeNull();
-    expect(screen.queryByText(/Artwork cache/)).toBeNull();
-    expect(screen.getByText(/and 3 routine background events, left out/)).toBeInTheDocument();
+describe("flying into Arrived today", () => {
+  it("finds the cards that left Importing because the title was imported, and not those that moved on", () => {
+    const before = new Map<string, Stage>([["a", "importing"], ["b", "importing"], ["c", "downloading"]]);
+    const now = [card({ key: "b", stage: "importing" })];
+    expect(departedFromImporting(before, now)).toEqual(["a"]);
   });
 
-  it("names each colour of Today in words and keeps routine work out of the bars", () => {
-    vi.useFakeTimers({ now: NOW });
-    const counts = [
-      { hour: 3, category: "wanted.search.completed", count: 135 },
-      { hour: 4, category: "movies.release.grabbed", count: 2 },
-      { hour: 5, category: "filesystem.import.completed", count: 6 },
-      { hour: 6, category: "job.completed", count: 471 }
-    ];
-    const { container } = withRouter(<RhythmChart rows={[]} counts={counts} countedAt={NOW.getTime()} />);
-    expect(screen.getByRole("img", { name: /143 events today/ })).toBeInTheDocument();
-    for (const words of ["searches", "grabbed", "imported", "routine"]) expect(screen.getByText(words)).toBeInTheDocument();
-    expect(container.querySelectorAll(".live-bar")).toHaveLength(3);
+  it("matches the arrival to the card by library title, or by release", () => {
+    const arrival = (extra: object) => ({ entity: undefined, release: null, ...extra }) as never;
+    expect(sameTitle({ entity: { kind: "movie", id: "m1" }, release: "A.2001" }, arrival({ entity: { kind: "movie", id: "m1" } }))).toBe(true);
+    expect(sameTitle({ entity: undefined, release: "Sintel.2010.1080p" }, arrival({ release: "sintel 2010 1080p" }))).toBe(true);
+    expect(sameTitle({ entity: { kind: "movie", id: "m1" }, release: "A.2001" }, arrival({ entity: { kind: "movie", id: "m2" }, release: "B.2002" }))).toBe(false);
+    expect(sameTitle({ entity: undefined, release: undefined }, arrival({}))).toBe(false);
+  });
+});
+
+describe("arrived today", () => {
+  const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "WEB 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, ...extra }) as never;
+
+  it("says the titles, the upgrades and the space added", () => {
+    expect(arrivedHeading(12, 4, 54 * 1024 ** 3)).toBe("12 titles · 4 upgraded · 54 GB added");
+    expect(arrivedHeading(1, 0, 0)).toBe("1 title");
+  });
+
+  it("shows each arrival as a poster with its quality, and an upgrade as the quality it replaced; the newest has the ring", () => {
+    withRouter(<Shelf items={[item("1"), item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p" })]} titles={NO_TITLES} newest={new Set(["1"])} heading="2 titles" />);
+    expect(screen.getByText("WEB 720p → Bluray 1080p")).toBeInTheDocument();
+    const first = screen.getByRole("link", { name: /^Film 1 \(2001\): in the library/ });
+    expect(first.querySelector("[data-arrival-poster='1']")?.className).toContain("shadow-[0_0_0_2px");
+    expect(screen.getByRole("link", { name: /^Film 2 \(2001\)/ }).querySelector("[data-arrival-poster='2']")?.className).not.toContain("shadow-[0_0_0_2px");
+    expect(screen.getByRole("link", { name: /^Film 1/ })).toHaveAttribute("href", "/movies/1");
+  });
+
+  it("says something true when nothing has arrived", () => {
+    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 titles" />);
+    expect(screen.getByText("Nothing has arrived yet today.")).toBeInTheDocument();
+  });
+});
+
+describe("turned down today", () => {
+  const base = {
+    total: 43,
+    reasons: [{ group: "language", label: "Not in a language you want", count: 14 }, { group: "notBetter", label: "No better than what you have", count: 11 }, { group: "tooBig", label: "Bigger than your size limit", count: 9 }, { group: "fewSeeders", label: "Too few people sharing it", count: 5 }, { group: "fake", label: "Fake or mislabelled", count: 4 }, { group: "other", label: "Other reasons", count: 0 }],
+    latest: [{ release: "Dune.2024.iTA.1080p", group: "language", label: "Not in a language you want", title: "Dune", entityType: "movie", entityId: "m1", atUtc: inMs(-60_000) }]
+  } as never;
+
+  it("groups the reasons in their order, one bar each against the biggest, and the newest releases under them", () => {
+    const view = mergeTurnedDown(base, [], inMs(0));
+    expect(view.reasons.map((reason) => reason.group)).toEqual(REASON_ORDER);
+    expect(barFraction(7, view.reasons)).toBeCloseTo(0.5);
+    expect(barFraction(0, [{ count: 0 }])).toBe(0);
+    withRouter(<TurnedDownCard view={view} lit={new Set()} />);
+    const card = screen.getByRole("region", { name: "Turned down today" });
+    expect(within(card).getByText("43 releases")).toBeInTheDocument();
+    for (const words of ["Not in a language you want", "No better than what you have", "Bigger than your size limit", "Too few people sharing it", "Fake or mislabelled", "Other reasons"]) expect(within(card).getAllByText(words).length).toBeGreaterThan(0);
+    expect((card.querySelector('[data-reason="language"] span[aria-hidden] span') as HTMLElement).style.width).toBe("100%");
+    expect((card.querySelector('[data-reason="notBetter"] span[aria-hidden] span') as HTMLElement).style.width).toBe("79%");
+    expect(within(card).getByRole("link", { name: /Dune.2024.iTA.1080p/ })).toHaveAttribute("href", "/movies/m1");
+  });
+
+  it("adds a release pushed since the counts, once, and ignores one the counts already hold", () => {
+    const pushed = [
+      { atUtc: inMs(5_000), title: "Moon", entityType: "movie", entityId: "m2", items: [{ release: "Moon.FRENCH", group: "language", label: "Not in a language you want" }] },
+      { atUtc: inMs(-5_000), items: [{ release: "Old", group: "fake", label: "Fake or mislabelled" }] }
+    ] as never;
+    const view = mergeTurnedDown(base, pushed, inMs(0));
+    expect(view.total).toBe(44);
+    expect(view.reasons.find((reason) => reason.group === "language")?.count).toBe(15);
+    expect(view.reasons.find((reason) => reason.group === "fake")?.count).toBe(4);
+    expect(view.latest[0]).toMatchObject({ release: "Moon.FRENCH", title: "Moon" });
+  });
+
+  it("flashes the bar of a decision just made, and says something true when nothing has been turned down", () => {
+    const view = mergeTurnedDown(base, [], inMs(0));
+    const { container } = withRouter(<TurnedDownCard view={view} lit={new Set(["fake"])} />);
+    expect(container.querySelector('[data-reason="fake"]')).toHaveAttribute("data-hit");
+    expect(container.querySelector('[data-reason="language"]')).not.toHaveAttribute("data-hit");
+    const empty = mergeTurnedDown(null, [], null);
+    expect(empty.total).toBe(0);
+    expect(empty.reasons).toHaveLength(6);
+    withRouter(<TurnedDownCard view={empty} lit={new Set()} />);
+    expect(screen.getByText("Nothing has been turned down yet today.")).toBeInTheDocument();
+  });
+});
+
+describe("the indexer tiles", () => {
+  const indexer = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, isEnabled: true, priority: 0, healthStatus: "healthy", lastHealthLatencyMs: 320, rateLimitedUntilUtc: null, ...extra }) as never;
+  const board = { indexers: [{ id: "NZBgeek", name: "NZBgeek", totalQueries: 46, failedQueries: 0, successfulGrabs: 1, lastQueryUtc: null }, { id: "Nyaa", name: "Nyaa", totalQueries: 5, failedQueries: 5, successfulGrabs: 0, lastQueryUtc: null }] };
+  const list = [indexer("Zeta"), indexer("NZBgeek", { queryLimit: 100, limitsUnit: "day", queryLimitStatus: { allowed: true, limit: 100, count: 46, resetsAtUtc: null, unit: "day" } }), indexer("Nyaa", { healthStatus: "unreachable" }), indexer("Old", { isEnabled: false })];
+
+  it("says what each did today, the limit where one is set, and a switched-off one is grey and last", () => {
+    withRouter(<IndexerTiles indexers={list} scoreboard={board} summary={undefined} now={NOW.getTime()} />);
+    const group = screen.getByRole("region", { name: "Indexers" });
+    const names = within(group).getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(":")[0]).filter((name) => name && !name.startsWith("Manage"));
+    expect(names).toEqual(["Nyaa", "NZBgeek", "Zeta", "Old"]);
+    expect(within(group).getByRole("link", { name: /^NZBgeek: 46 of 100 today · 320 ms/ })).toBeInTheDocument();
+    expect(within(group).getByRole("link", { name: /^Nyaa: not answering · 5 today/ })).toHaveAttribute("href", "/?tab=system");
+    expect(within(group).getByRole("link", { name: /^Old: switched off/ })).toHaveAttribute("data-state", "off");
+  });
+
+  it("counts answering, switched off and the queries today in the header", () => {
+    const today = new Map(board.indexers.map((row) => [row.id, row]));
+    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 switched off · 51 queries today");
+    expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
+    expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
+    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 of 20 this hour · 320 ms");
+  });
+});
+
+describe("the download client tiles", () => {
+  it("shows a tile each with its speed and what it is seeding, and the header counts both", () => {
+    const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, protocol: "torrent", reachable: true, paused: false, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0, ...extra }) as never;
+    withRouter(<ClientTiles rows={[row("qBittorrent"), row("SABnzbd")]} all={[{ id: "qBittorrent", name: "qBittorrent", isEnabled: true }, { id: "SABnzbd", name: "SABnzbd", isEnabled: true }] as never} speeds={new Map([["qBittorrent", 6.2]])} scaleMbps={12} seeding={new Map([["qBittorrent", 8], ["SABnzbd", 0]])} />);
+    const group = screen.getByRole("region", { name: "Download clients" });
+    expect(within(group).getByText("1 moving · 8 seeding")).toBeInTheDocument();
+    expect(within(group).getByRole("link", { name: "qBittorrent: moving 6.2 MB/s, seeding 8" })).toBeInTheDocument();
+    expect(within(group).getByRole("link", { name: "SABnzbd: connected, idle" })).toBeInTheDocument();
+  });
+});
+
+describe("the connection tiles", () => {
+  const connection = (kind: string, name: string, countToday: number, extra: object = {}) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0, ...extra }) as never;
+  const all = [connection("lists", "Trakt", 2), connection("processor", "Weir", 6, { busy: 1 }), connection("subtitles", "OpenSubtitles", 12), connection("requests", "Seerr", 3), connection("mediaServer", "Plex", 5), connection("processor", "FileFlows", 0), connection("mediaServer", "Old Plex", 0, { enabled: false })];
+
+  it("says each one's role and what it did today", () => {
+    expect(connectionWords(connection("processor", "Weir", 6, { busy: 1 }))).toBe("Processor · working on 1");
+    expect(connectionWords(connection("processor", "FileFlows", 0))).toBe("Processor · idle");
+    expect(connectionWords(connection("mediaServer", "Plex", 5))).toBe("Media server · 5 sent today");
+    expect(connectionWords(connection("requests", "Seerr", 3))).toBe("Requests · 3 today");
+    expect(connectionWords(connection("subtitles", "OpenSubtitles", 12))).toBe("Subtitles · 12 fetched today");
+    expect(connectionWords(connection("lists", "Trakt", 2))).toBe("Lists · watching 2");
+    expect(connectionWords(connection("lists", "Trakt", 2, { enabled: false }))).toBe("Lists · switched off");
+    expect(connectionWords(connection("lists", "Trakt", 2, { healthy: false }))).toBe("Lists · not answering");
+  });
+
+  it("orders them by role with the switched-off ones last, and counts them in the header", () => {
+    expect(sortConnections(all).map((item) => item.name)).toEqual(["FileFlows", "Weir", "Plex", "Seerr", "OpenSubtitles", "Trakt", "Old Plex"]);
+    expect(connectionsSummary(all)).toBe("6 connected · all answering · 1 off");
+    expect(connectionsSummary([...all, connection("lists", "X", 0, { healthy: false })])).toContain("1 not answering");
+    expect(connectionsSummary([])).toBe("nothing connected yet");
+  });
+
+  it("lays a newer pushed count over the stored one, ignores an older one and adds one it has not seen", () => {
+    const used = new Map([["mediaServer:Plex", { kind: "mediaServer", id: "Plex", name: "Plex", countToday: 9, busy: 0, atUtc: inMs(5_000) }], ["requests:Seerr", { kind: "requests", id: "Seerr", name: "Seerr", countToday: 99, busy: 0, atUtc: inMs(-5_000) }], ["lists:New", { kind: "lists", id: "New", name: "New", countToday: 1, busy: 0, atUtc: inMs(5_000) }]]) as never;
+    const merged = applyConnectionEvents(all, used, inMs(0));
+    expect(merged.find((item) => item.name === "Plex")?.countToday).toBe(9);
+    expect(merged.find((item) => item.name === "Seerr")?.countToday).toBe(3);
+    expect(merged.some((item) => item.name === "New")).toBe(true);
+  });
+
+  it("lights the tile that was just used and glows a processor while it works", () => {
+    withRouter(<ConnectionTiles connections={sortConnections(all)} lit={new Set(["mediaServer:Plex"])} />);
+    expect(screen.getByRole("link", { name: "Plex: Media server · 5 sent today" })).toHaveAttribute("data-state", "lit");
+    expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("data-state", "busy");
+    expect(screen.getByRole("link", { name: "Old Plex: Media server · switched off" })).toHaveAttribute("data-state", "off");
+    expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
   });
 });

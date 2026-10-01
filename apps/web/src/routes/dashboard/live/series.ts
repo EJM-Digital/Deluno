@@ -5,7 +5,6 @@
  * today. Nothing here is invented: a window with no readings is a line at 0.
  */
 import type { DownloadThroughputSample } from "../../../lib/api";
-import { activityKind, type ActivityKind } from "./kinds";
 
 export interface SpeedPoint {
   t: number;
@@ -70,69 +69,4 @@ export function linePath(points: SpeedPoint[], pick: "down" | "up", start: numbe
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(" ");
-}
-
-/* ---------------------------------------------------------- rhythm */
-
-export interface HourBucket {
-  hour: number;
-  total: number;
-  counts: Partial<Record<ActivityKind, number>>;
-}
-
-export interface RhythmRow {
-  id: string;
-  category: string;
-  severity?: string | null;
-  createdUtc: string;
-}
-
-function sameLocalDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-export interface HourCountRow {
-  hour: number;
-  category: string;
-  count: number;
-}
-
-/** 24 buckets from the server's counts by hour and category. */
-export function bucketsFromCounts(counts: HourCountRow[]): HourBucket[] {
-  const buckets: HourBucket[] = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, counts: {} }));
-  for (const row of counts) {
-    if (!Number.isInteger(row.hour) || row.hour < 0 || row.hour > 23 || !(row.count > 0)) continue;
-    const kind = activityKind(row.category);
-    const bucket = buckets[row.hour];
-    bucket.counts[kind] = (bucket.counts[kind] ?? 0) + row.count;
-    bucket.total += row.count;
-  }
-  return buckets;
-}
-
-/** Adds `extra` buckets (events that arrived since the counts were read) onto `base`. */
-export function addBuckets(base: HourBucket[], extra: HourBucket[]): HourBucket[] {
-  return base.map((bucket, hour) => {
-    const counts = { ...bucket.counts };
-    for (const [kind, count] of Object.entries(extra[hour].counts) as [ActivityKind, number][]) counts[kind] = (counts[kind] ?? 0) + count;
-    return { hour, total: bucket.total + extra[hour].total, counts };
-  });
-}
-
-/** 24 buckets for today's hours (local time); a row counts once however many sources carried it. */
-export function bucketByHour(rows: RhythmRow[], now: number): HourBucket[] {
-  const today = new Date(now);
-  const buckets: HourBucket[] = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, counts: {} }));
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (seen.has(row.id)) continue;
-    seen.add(row.id);
-    const at = new Date(row.createdUtc);
-    if (Number.isNaN(at.getTime()) || !sameLocalDay(at, today)) continue;
-    const kind = activityKind(row.category, row.severity);
-    const bucket = buckets[at.getHours()];
-    bucket.counts[kind] = (bucket.counts[kind] ?? 0) + 1;
-    bucket.total += 1;
-  }
-  return buckets;
 }

@@ -115,7 +115,7 @@ export function useArrivals(cards: JourneyCard[]): ReadonlySet<string> {
  * Keys that have appeared in a list since it was first drawn, for a moment each, so what arrives can be shown arriving.
  * Nothing is marked the first time the list is drawn: only a real change is.
  */
-export function useFreshKeys(keys: readonly string[]): ReadonlySet<string> {
+export function useFreshKeys(keys: readonly string[], holdMs = 1600): ReadonlySet<string> {
   const previous = useRef<ReadonlySet<string> | null>(null);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,7 +128,7 @@ export function useFreshKeys(keys: readonly string[]): ReadonlySet<string> {
     if (arrived.size === 0) return;
     setFresh(arrived);
     if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setFresh(new Set()), 1600);
+    timer.current = setTimeout(() => setFresh(new Set()), holdMs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
   useEffect(() => () => {
@@ -151,4 +151,30 @@ export function useElementHeight<T extends HTMLElement>(): [RefObject<T | null>,
     return () => observer.disconnect();
   }, []);
   return [ref, height];
+}
+
+/** The width and height of an element, kept up to date as it changes (0 until it has been laid out). */
+export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, { width: number; height: number }] {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const read = () => {
+      const box = element.getBoundingClientRect();
+      const next = { width: Math.round(box.width), height: Math.round(box.height) };
+      setSize((current) => (current.width === next.width && current.height === next.height ? current : next));
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
+}
+
+/** The size of one rem in pixels, read once (the app's own type scale is in rem, so measured space is compared in rem). */
+export function useRemPx(): number {
+  const [rem] = useState(() => (typeof window === "undefined" ? 16 : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
+  return rem;
 }

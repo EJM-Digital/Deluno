@@ -132,12 +132,15 @@ export async function serveLiveBusy(page: Page) {
   const handoffs = [handoff("h1", "q7", "Sintel.2010.1080p.WEB-DL", "started", null), handoff("h2", "gone", "Metropolis.1927.REMASTERED", "failed", "The processor timed out.")];
   const indexers = ["NZBgeek", "DrunkenSlug", "Nyaa.si", "NZBFinder"].map((name, n) => ({
     id: `i${n}`, name, protocol: "usenet", isEnabled: true, priority: n, healthStatus: name === "Nyaa.si" ? "unreachable" : "healthy",
-    lastHealthMessage: name === "Nyaa.si" ? "HTTP 504" : null, lastHealthLatencyMs: 180 + n * 90, lastHealthTestUtc: at(-2 * 86_400_000), consecutiveFailures: 0, rateLimitedUntilUtc: null
+    lastHealthMessage: name === "Nyaa.si" ? "HTTP 504" : null, lastHealthLatencyMs: 180 + n * 90, lastHealthTestUtc: at(-2 * 86_400_000), consecutiveFailures: 0, rateLimitedUntilUtc: null,
+    ...(name === "NZBgeek" ? { queryLimit: 100, limitsUnit: "day", queryLimitStatus: { allowed: true, limit: 100, count: 46, resetsAtUtc: at(8 * 3_600_000), unit: "day" } } : {})
   }));
+  // One more that is switched off: its tile is grey and last.
+  indexers.push({ id: "i9", name: "OldIndexer", protocol: "usenet", isEnabled: false, priority: 9, healthStatus: "healthy", lastHealthMessage: null, lastHealthLatencyMs: 300, lastHealthTestUtc: at(-3 * 86_400_000), consecutiveFailures: 0, rateLimitedUntilUtc: null });
   // What each indexer did today, from the stored record of its queries.
   const scoreboard = {
     windowDays: 1,
-    indexers: indexers.map((indexer, n) => ({ id: indexer.id, name: indexer.name, isEnabled: true, healthStatus: indexer.healthStatus, totalQueries: [96, 58, 12, 46][n], failedQueries: [0, 3, 12, 0][n], successfulGrabs: [5, 3, 0, 1][n], lastQueryUtc: at(-[2, 7, 41, 12][n] * 60_000) }))
+    indexers: indexers.slice(0, 4).map((indexer, n) => ({ id: indexer.id, name: indexer.name, isEnabled: true, healthStatus: indexer.healthStatus, totalQueries: [96, 58, 12, 46][n], failedQueries: [0, 3, 12, 0][n], successfulGrabs: [5, 3, 0, 1][n], lastQueryUtc: at(-[2, 7, 41, 12][n] * 60_000) }))
   };
   const samples = Array.from({ length: 48 }, (_, n) => ({ capturedUtc: at(-(48 - n) * 7.5 * 60_000), speedMbps: Math.max(0, 8 + 7 * Math.sin(n / 4) + (n % 5)), activeCount: 2, uploadMbps: Math.max(0, 1.5 + Math.sin(n / 3)) }));
 
@@ -185,7 +188,38 @@ export async function serveLiveBusy(page: Page) {
       { mediaType: "movie", entityId: "m29", title: "Perfect Days", status: "search-failed", requestedBy: "Alex", createdUtc: importAt(300), updatedUtc: importAt(300) },
       { mediaType: "movie", entityId: "m26", title: "Past Lives", status: "available", requestedBy: "Sam", createdUtc: importAt(500), updatedUtc: importAt(170) }
     ],
-    retentionReclaimBytes: 38e9
+    retentionReclaimBytes: 38e9,
+    cleanedUpToday: 3,
+    // Every release looked at and not taken today, by plain reason, and the newest ones.
+    turnedDown: {
+      total: 43,
+      reasons: [
+        { group: "language", label: "Not in a language you want", count: 14 },
+        { group: "notBetter", label: "No better than what you have", count: 11 },
+        { group: "tooBig", label: "Bigger than your size limit", count: 9 },
+        { group: "fewSeeders", label: "Too few people sharing it", count: 5 },
+        { group: "fake", label: "Fake or mislabelled", count: 4 },
+        { group: "other", label: "Other reasons", count: 0 }
+      ],
+      latest: [
+        { release: "Dune.Part.Two.2024.iTA.1080p.WEB-DL-NTb", group: "language", label: "Not in a language you want", title: "Dune Part Two", entityType: "movie", entityId: "m1", atUtc: importAt(2) },
+        { release: "Oppenheimer.2023.720p.WEB-EVO", group: "notBetter", label: "No better than what you have", title: "Oppenheimer", entityType: "movie", entityId: "m2", atUtc: importAt(5) },
+        { release: "Barbie.2023.2160p.REMUX.HDR-FLUX", group: "tooBig", label: "Bigger than your size limit", title: "Barbie", entityType: "movie", entityId: "m4", atUtc: importAt(9) },
+        { release: "Primer.2004.1080p.WEB-DL-FAKE", group: "fake", label: "Fake or mislabelled", title: "Primer", entityType: "movie", entityId: "m21", atUtc: importAt(14) },
+        { release: "Moon.2009.1080p.BluRay-SPARKS", group: "fewSeeders", label: "Too few people sharing it", title: "Moon", entityType: "movie", entityId: "m22", atUtc: importAt(21) },
+        { release: "Her.2013.FRENCH.1080p.WEB-playWEB", group: "language", label: "Not in a language you want", title: "Her", entityType: "movie", entityId: "m23", atUtc: importAt(30) },
+        { release: "Arrival.2016.720p.WEB-EVO", group: "notBetter", label: "No better than what you have", title: "Arrival", entityType: "movie", entityId: "m25", atUtc: importAt(44) }
+      ]
+    },
+    // Everything else Deluno is connected to.
+    connections: [
+      { kind: "processor", id: "p1", name: "Weir", enabled: true, healthy: true, countToday: 6, busy: 1 },
+      { kind: "processor", id: "p2", name: "FileFlows", enabled: true, healthy: true, countToday: 0, busy: 0 },
+      { kind: "mediaServer", id: "ms1", name: "Plex", enabled: true, healthy: true, countToday: 5, busy: 0 },
+      { kind: "requests", id: "rq1", name: "Seerr", enabled: true, healthy: true, countToday: 3, busy: 0 },
+      { kind: "subtitles", id: "sb1", name: "OpenSubtitles", enabled: true, healthy: true, countToday: 12, busy: 0 },
+      { kind: "lists", id: "ls1", name: "Trakt", enabled: true, healthy: true, countToday: 2, busy: 0 }
+    ]
   };
   const airs = (hours: number) => at(hours * 3_600_000);
   const upcoming = [
@@ -202,7 +236,7 @@ export async function serveLiveBusy(page: Page) {
   await page.route(/\/api\/series\/upcoming/, (route) => route.fulfill(json(upcoming)));
   await page.route(/\/api\/download-clients(\?|$)/, (route) => route.fulfill(json(clientList)));
   await page.route(/\/api\/download-clients\/telemetry/, (route) =>
-    route.fulfill(json({ summary: { activeCount: 3, queuedCount: 2, stalledCount: 7, importReadyCount: 2, waitingForProcessorCount: 1 }, clients: [{ clientId: "c1", clientName: `Deluge${host}`, queue }], capturedUtc: at(-30_000) }))
+    route.fulfill(json({ summary: { activeCount: 3, queuedCount: 2, stalledCount: 7, importReadyCount: 2, waitingForProcessorCount: 1 }, clients: [{ clientId: "c1", clientName: `Deluge${host}`, queue, seedingCount: 14 }, { clientId: "c2", clientName: `SABnzbd${host}`, queue: [], seedingCount: 0 }], capturedUtc: at(-30_000) }))
   );
   await page.route(/\/api\/download-dispatches/, (route) => route.fulfill(json({ items: dispatches, hasMore: false, nextPageToken: null })));
   await page.route(/\/api\/integrations\/processors\/handoffs/, (route) => route.fulfill(json(handoffs)));

@@ -1,25 +1,31 @@
 /**
- * Speed over the last six hours (#1096), the first cell of the Right now band:
- * download and upload as the server has stored them, plus the newest reading
- * the summary carries, so the trace reaches "now" and extends when a new
- * reading arrives. It always has a reading: with nothing moving it is a line
- * at 0 MB/s, and the words never contradict the trace ("nothing downloading,
- * uploading 0.1 MB/s"). The trace draws itself in once when the tab opens; the
+ * Speed (#1098), the first card of the top band: the clients' combined download
+ * speed as a big figure with the upload beside it, and under it the last six hours
+ * as the server stored them, plus the newest reading the summary carries, so the
+ * trace reaches "now" and extends when a new reading arrives. It always has a
+ * reading: with nothing moving it is a line at 0 MB/s, and the words never
+ * contradict the trace. The trace draws itself in once when the tab opens; the
  * newest reading glows.
  */
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { DownloadThroughputSample } from "../../../lib/api";
 import { CountUp } from "../../../components/ui/count-up";
+import { motionAllowed } from "../../../lib/page-motion";
 import { formatSpeed } from "../downloads-kit";
+import { BandCard, FigureUnit } from "./band-card";
 import { useNow } from "./hooks";
 import { linePath, shapeSpeedSeries } from "./series";
-import { motionAllowed } from "../../../lib/page-motion";
 
 const WIDTH = 400;
 const HEIGHT = 100;
 const HOURS = 6;
+
+/** The figure's number and its unit apart, so the unit can be small: "6.2" and "MB/s". */
+function speedParts(mbps: number): { value: string; unit: string } {
+  const [value, ...unit] = formatSpeed(mbps).split(" ");
+  return { value, unit: unit.join(" ") };
+}
 
 export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSample[]; summary: DashboardSummary | undefined }) {
   // The hold-to-now edge moves on; once a minute is as often as a six hour trace shows.
@@ -38,36 +44,33 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
   const upPath = linePath(series.points, "up", series.start, series.end, top, WIDTH, HEIGHT);
   const area = `${downPath} L${WIDTH} ${HEIGHT} L0 ${HEIGHT} Z`;
   const summaryText = `Download peaked at ${formatSpeed(series.peakDown)} and upload at ${formatSpeed(series.peakUp)} in the last ${HOURS} hours.`;
-  const words =
-    downloads?.hasReading === false
-      ? "waiting for the first reading"
-      : live.down > 0
-        ? `downloading ${(downloads?.active ?? 0).toLocaleString("en-AU")}${live.up > 0 ? ` · uploading ${formatSpeed(live.up)}` : ""}`
-        : live.up > 0
-          ? `nothing downloading · uploading ${formatSpeed(live.up)}`
-          : "nothing moving";
+  const unit = speedParts(live.down).unit;
 
   return (
-    <section aria-label="Speed" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <Link to="/queue" aria-label="Transfers: Speed" className="text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Speed</Link>
-        <span className="whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">last {HOURS} hours</span>
-      </div>
-      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-        <span className="whitespace-nowrap text-[length:var(--type-card-title)] font-semibold leading-none tabular-nums text-foreground"><CountUp value={live.down} format={formatSpeed} /></span>
-        <span className="text-[length:var(--type-caption)] text-muted-foreground">{words}</span>
-      </div>
-      <div className="relative mt-1.5 min-h-[3rem] flex-1">
+    <BandCard
+      label="Speed"
+      to="/queue"
+      linkName="Transfers: Speed"
+      aside={`peak ${formatSpeed(series.peakDown)} · last ${HOURS} hours`}
+      figure={
+        <>
+          <CountUp value={live.down} format={(value) => speedParts(value).value} />
+          <FigureUnit>{unit} down</FigureUnit>
+          <span className="ml-auto shrink-0 text-[length:var(--type-body-sm)] font-semibold tracking-normal text-success">
+            ↑ <CountUp value={live.up} format={formatSpeed} />
+          </span>
+        </>
+      }
+    >
+      <div className="relative h-full min-h-[3rem]">
         <svg role="img" aria-label={summaryText} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
           <defs>
             <linearGradient id="live-speed-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--info))" stopOpacity="0.32" />
+              <stop offset="0%" stopColor="hsl(var(--info))" stopOpacity="0.4" />
               <stop offset="100%" stopColor="hsl(var(--info))" stopOpacity="0" />
             </linearGradient>
           </defs>
-          {[50].map((y) => (
-            <line key={y} x1="0" x2={WIDTH} y1={y} y2={y} stroke="hsl(var(--hairline))" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-          ))}
+          <line x1="0" x2={WIDTH} y1="50" y2="50" stroke="hsl(var(--hairline))" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           <path d={area} fill="url(#live-speed-fill)" />
           <path d={upPath} pathLength={1} fill="none" stroke="hsl(var(--success))" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
           <path d={downPath} pathLength={1} fill="none" stroke="hsl(var(--info))" strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
@@ -77,10 +80,6 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
           <span className="absolute inset-0 rounded-full bg-info" />
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[length:var(--type-caption)] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-info" />Download peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakDown)}</span></span>
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className="h-1.5 w-3 rounded-full bg-success" />Upload peak <span className="font-medium tabular-nums text-foreground">{formatSpeed(series.peakUp)}</span></span>
-      </div>
-    </section>
+    </BandCard>
   );
 }

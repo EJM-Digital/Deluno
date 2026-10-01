@@ -1,23 +1,13 @@
 /**
  * Facts that stand beside what Deluno is doing (#1096).
  *
- * - Protected you today (the last cell of the Right now band on Live): how many
- *   bad releases were refused today and how many of them were fake or unplayable
- *   files, with the latest named. It is something Deluno is doing, so it is Live.
  * - The quality ring and the drive facts (today's space used and what retention
  *   will give back) are how things stand, so they are on System, inside its
  *   Library and Storage panels.
  */
-import { ShieldCheck } from "lucide-react";
-import { Link } from "react-router-dom";
 import { CountUp } from "../../../components/ui/count-up";
 import type { DashboardLiveExtras, DashboardSummary, DashboardVolume } from "../../../lib/api/types/operations";
-import { cn } from "../../../lib/utils";
 import { formatSize } from "../downloads-kit";
-import { ago } from "../format";
-import { plainReason } from "./plain";
-
-const LABEL = "text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.08em] text-muted-foreground";
 
 /** The share of titles meeting their goal, as a whole percent; null when there is nothing in the library. */
 export function qualityShare(summary: DashboardSummary | undefined): { percent: number; met: number; total: number; upgradable: number } | null {
@@ -51,35 +41,6 @@ export function QualityRing({ summary }: { summary: DashboardSummary | undefined
         <span className="block text-[length:var(--type-caption)] text-muted-foreground">{share.met.toLocaleString("en-AU")} of {share.total.toLocaleString("en-AU")} titles</span>
       </span>
     </div>
-  );
-}
-
-export function ProtectedYou({ extras, blocklistCount }: { extras: DashboardLiveExtras | null | undefined; blocklistCount: number | undefined }) {
-  const guard = extras?.protected;
-  const latest = guard?.latest[0];
-  const said = latest ? plainReason(latest.reason)?.text ?? latest.reason : null;
-  return (
-    <section aria-label="Protected you" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
-      <Link to="/search-cycles/blocklist" aria-label="Blocklist" className={cn(LABEL, "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>Protected you today</Link>
-      <span className="mt-1.5 flex items-start gap-2.5">
-        <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
-          <ShieldCheck className="h-5 w-5" />
-        </span>
-        {guard ? (
-          <span className="min-w-0 flex-1 text-[length:var(--type-body-sm)] leading-snug text-foreground">
-            <span className="font-semibold tabular-nums"><CountUp value={guard.refusedToday} format={(value) => Math.round(value).toLocaleString("en-AU")} /></span> {guard.refusedToday === 1 ? "bad release" : "bad releases"} refused
-            {guard.unsafeToday > 0 ? <>, <span className="font-semibold tabular-nums">{guard.unsafeToday.toLocaleString("en-AU")}</span> fake or unplayable {guard.unsafeToday === 1 ? "file" : "files"} blocked</> : null}
-          </span>
-        ) : (
-          <span className="min-w-0 flex-1 text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">{blocklistCount ? `${blocklistCount.toLocaleString("en-AU")} releases on your blocklist.` : "Nothing is on your blocklist."}</span>
-        )}
-      </span>
-      {guard ? (
-        <span title={latest ? `${latest.release}: ${latest.reason}` : undefined} className="mt-1 line-clamp-2 break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">
-          {latest ? `Latest: ${latest.release}, ${said}, ${ago(latest.blockedUtc)}` : blocklistCount ? `Nothing bad today. ${blocklistCount.toLocaleString("en-AU")} on your blocklist.` : "Nothing bad has needed refusing today."}
-        </span>
-      ) : null}
-    </section>
   );
 }
 
