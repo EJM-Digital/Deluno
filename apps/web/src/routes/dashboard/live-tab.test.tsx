@@ -68,7 +68,7 @@ describe("Live", () => {
     expect(screen.queryByRole("region", { name: /airing soon/i })).toBeNull();
     expect(screen.queryByText(/Protected you/)).toBeNull();
     // The top band is three cards of one template, then the journey, the shelf and what was turned down, and the right column.
-    for (const name of ["Speed", "Working on now", "Next", "The journey", "Arrived today", "Turned down today", "Indexers", "Download clients", "Activity"]) {
+    for (const name of ["Speed", "Working on now", "Next", "The journey", "Arrived today", "Turned down today", "Sources", "Activity"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
@@ -81,7 +81,7 @@ describe("Live", () => {
     const [main, side] = Array.from(columns!.children);
     expect(within(main as HTMLElement).getByRole("region", { name: "Speed" })).toBeInTheDocument();
     expect(within(main as HTMLElement).getByRole("region", { name: "The journey" })).toBeInTheDocument();
-    expect(within(side as HTMLElement).getByRole("region", { name: "Indexers" })).toBeInTheDocument();
+    expect(within(side as HTMLElement).getByRole("region", { name: "Sources" })).toBeInTheDocument();
     expect(within(side as HTMLElement).getByRole("region", { name: "Activity" })).toBeInTheDocument();
     // The band is the first thing in the main column, three cards that stack on a phone.
     expect(main.firstElementChild?.className).toContain("lb-now");
@@ -113,7 +113,7 @@ describe("Live", () => {
     expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|importFailed|notTransferring|filesystem\.import/);
   });
 
-  it("says each thing once: the indexers and clients are tiles, the next jobs and airing episodes are one list", async () => {
+  it("says each thing once: the indexers and clients are one map, the next jobs and airing episodes are one list", async () => {
     seedBusy();
     renderTab(fullSummary);
     expect(await screen.findByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
