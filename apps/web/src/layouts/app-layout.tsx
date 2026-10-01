@@ -352,6 +352,11 @@ function AppLayoutContent() {
   );
 }
 
+/* Group labels take Weir's spacing exactly (#1107): 20px above (plus the 5.6px between groups), 8px below
+   (plus 5.6px before the first link), and a 19px line, so Deluno's and Weir's sidebars line up. */
+const SIDEBAR_GROUP_LABEL =
+  "mb-[13.6px] mt-[25.6px] border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase leading-[19px] tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0";
+
 function DesktopSidebar({
   attention,
   user,
@@ -400,7 +405,7 @@ function DesktopSidebar({
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground lg:flex lg:flex-col">
-      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[calc(var(--shell-pill-height)*1.45)] items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-sidebar-foreground no-underline">
+      <NavLink to="/" aria-label="Deluno home" className="flex min-h-[61px] items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-sidebar-foreground no-underline">
         <AppMark size={34} />
         <span className="min-w-0">
           <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[0.08em]">Deluno</span>
@@ -408,8 +413,8 @@ function DesktopSidebar({
         </span>
       </NavLink>
 
-      <div className="mt-5 min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+      <div className="mt-[17.6px] min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className={SIDEBAR_GROUP_LABEL}>
           Your media
         </div>
         <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -422,7 +427,7 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className={SIDEBAR_GROUP_LABEL}>
           Live operations
         </div>
         <nav aria-label="Live operational status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -435,14 +440,14 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className={SIDEBAR_GROUP_LABEL}>
           Setup
         </div>
         <nav aria-label="Media Management" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <ConfigurationSidebarTree pathname={pathname} />
         </nav>
 
-        <div className="mb-2 mt-5 border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0">
+        <div className={SIDEBAR_GROUP_LABEL}>
           Deluno
         </div>
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -743,7 +748,7 @@ function SidebarItem({
 
 function TopbarTitle({ as: Tag, children }: { as: "h1" | "p"; children: React.ReactNode }) {
   return (
-    <Tag className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-tight tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
+    <Tag className="mt-0.5 font-display text-[length:var(--type-title-sm)] font-semibold leading-[1.15] tracking-tight text-foreground sm:mt-1 sm:text-[length:var(--type-title-md)]">
       {children}
     </Tag>
   );
@@ -789,7 +794,7 @@ function ContentTopbar({
 
         <div className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
         <div className="min-w-0 shrink">
-          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase tracking-[0.14em] text-muted-foreground">{subtitle}</p>
+          <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. */}
