@@ -12,7 +12,7 @@ import { IndexerTiles, indexerMeta, indexersSummary } from "./indexers";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { MAX_TILE_COLUMNS, tileCardRem, tileColumns, tileDensity } from "./layout";
 import { tileName } from "./connections";
-import { journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity } from "./layout";
+import { EMPTY_STATION_REM, journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity, stationLayout, stationWidths } from "./layout";
 import { departedFromImporting, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
@@ -78,6 +78,33 @@ describe("the layout rules", () => {
     expect(rowsThatFit(1080 * 0.3, 88, 6)).toBeLessThan(rowsThatFit(1440 * 0.3, 88, 6));
   });
 
+  it("gives stations width by need: empty ones narrow, busy ones share the rest by their cards", () => {
+    const widths = stationWidths(1400, [0, 0, 13, 4, 4], 16);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(1400);
+    expect(widths[0]).toBe(EMPTY_STATION_REM * 16);
+    expect(widths[1]).toBe(EMPTY_STATION_REM * 16);
+    expect(widths[2]).toBeGreaterThan(widths[3]);
+    expect(widths[3]).toBeCloseTo(widths[4]);
+    for (const width of widths.slice(2)) expect(width).toBeGreaterThanOrEqual(MIN_STATION_REM * 16);
+    // Nothing anywhere, or everywhere: equal shares. Too narrow to shrink anything: equal shares.
+    expect(stationWidths(1000, [0, 0, 0, 0], 16)).toEqual([250, 250, 250, 250]);
+    expect(stationWidths(1000, [2, 2, 2, 2], 16)).toEqual([250, 250, 250, 250]);
+    expect(stationWidths(300, [0, 5, 5], 16).every((width) => width === 100)).toBe(true);
+  });
+
+  it("a busy station shows its cards in as many columns as its width allows before it scrolls", () => {
+    // Plenty of height for 4 full cards: 13 cards in a wide station are compact rows in several columns.
+    const wide = stationLayout(13, 700, 420, 88, 16, "columns");
+    expect(wide.density).toBe("compact");
+    expect(wide.columns).toBeGreaterThan(1);
+    // A narrow station keeps one column.
+    expect(stationLayout(13, 220, 420, 88, 16, "columns").columns).toBe(1);
+    // Cards that fit as full cards across a wide station stay full, side by side only as needed.
+    expect(stationLayout(4, 700, 420, 88, 16, "columns")).toEqual({ density: "full", columns: 1 });
+    expect(stationLayout(8, 700, 420, 88, 16, "columns")).toMatchObject({ density: "full", columns: 2 });
+    expect(stationLayout(40, 700, 420, 88, 16, "stacked")).toEqual({ density: "full", columns: 1 });
+  });
+
   it("sizes posters to the shelf: 2:3, one row on a short shelf, more rows on a tall one, never absurdly small or large", () => {
     const short = posterLayout(900, 290, 16);
     const tall = posterLayout(900, 700, 16);
@@ -86,13 +113,25 @@ describe("the layout rules", () => {
     for (const layout of [short, tall]) {
       expect(layout.height).toBe(Math.round(layout.width * 1.5));
       expect(layout.width).toBeGreaterThanOrEqual(4.4 * 16);
-      expect(layout.width).toBeLessThanOrEqual(10 * 16);
+      expect(layout.width).toBeLessThanOrEqual(16 * 16);
       expect(layout.capacity).toBe(layout.rows * layout.perRow);
     }
     // The rows that are drawn really fit the height they were given.
     expect(tall.rows * tall.itemHeight + (tall.rows - 1) * 14).toBeLessThanOrEqual(700);
     // A wider shelf holds more across.
     expect(posterLayout(1800, 290, 16).perRow).toBeGreaterThan(short.perRow);
+  });
+
+  it("fills the shelf: few posters are one row of the tallest posters, many take more rows only when needed", () => {
+    const few = posterLayout(1100, 454, 16, 5);
+    expect(few.rows).toBe(1);
+    expect(few.width).toBeGreaterThan(posterLayout(1100, 454, 16).width);
+    expect(few.capacity).toBeGreaterThanOrEqual(5);
+    const many = posterLayout(1100, 454, 16, 30);
+    expect(many.rows).toBeGreaterThan(1);
+    expect(many.rows * many.itemHeight + (many.rows - 1) * 14).toBeLessThanOrEqual(454);
+    const mid = posterLayout(600, 454, 16, 9);
+    expect(mid.capacity).toBeGreaterThanOrEqual(9);
   });
 });
 
@@ -166,7 +205,7 @@ describe("working on now", () => {
   it("counts what is running, shows the two newest with a bar where it knows, and says how many more are in Activity", () => {
     const ops = buildOperations(
       [{ key: "search:l1", kind: "search", text: "Searching Movies for what is missing or could be better", progress: 30, detail: "12 of 40", to: "/search-cycles" }, { key: "job:a", kind: "jobs", text: "Reading your files", to: "/activity" }],
-      [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Ready to import" } })],
+      [card({ key: "p", stage: "processor", processor: "FileFlows", state: { tone: "info", label: "Being cleaned" } }), card({ key: "i", stage: "importing", title: "Moon (2009)", state: { tone: "info", label: "Importing now" } }), card({ key: "w", stage: "importing", title: "Waiting (2001)", state: { tone: "idle", label: "Downloaded" } })],
       NO_TITLES
     );
     expect(ops.map((op) => op.kind)).toEqual(["search", "processor", "import", "jobs"]);

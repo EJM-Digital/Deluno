@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
-import { buildJourney, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { buildJourney, IMPORTING_NOW, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { buildOperations } from "./band";
 import { plainReason } from "./plain";
 import { faceOf, NO_TITLES, wantedTitles } from "./titles";
 import { activityKind, isRoutine } from "./kinds";
@@ -207,6 +208,16 @@ describe("stuck downloads", () => {
   it("never calls a finished download stuck: one the client reports stalled at 100% is downloaded", () => {
     const [card] = buildJourney({ ...base, queue: [queue({ status: "stalled", progress: 100, downloadedBytes: 2e9 })], dispatches: [dispatch] });
     expect(card).toMatchObject({ stage: "importing", stuck: false, state: { tone: "idle", label: "Downloaded" } });
+  });
+
+  it("a download whose import is under way says Importing now, and one still waiting says Downloaded, so the band and the journey agree", () => {
+    const finished = queue({ status: "stalled", progress: 100, downloadedBytes: 2e9 });
+    const waiting = buildJourney({ ...base, queue: [finished], dispatches: [dispatch] })[0];
+    const running = buildJourney({ ...base, queue: [finished], dispatches: [dispatch], work: [{ key: "import:d1", kind: "import", text: "Importing x", release: "Sintel.2010.1080p", to: "/queue" }] })[0];
+    expect(waiting.state.label).toBe("Downloaded");
+    expect(running).toMatchObject({ stage: "importing", state: { tone: "info", label: IMPORTING_NOW } });
+    expect(buildOperations([], [waiting], NO_TITLES).map((op) => op.kind)).not.toContain("import");
+    expect(buildOperations([], [running], NO_TITLES).map((op) => op.kind)).toContain("import");
   });
 
   it("finds the library title from the sent download, and keeps the release as the quiet line", () => {

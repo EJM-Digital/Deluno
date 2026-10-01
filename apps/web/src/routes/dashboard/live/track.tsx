@@ -18,7 +18,7 @@ import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import { CARD_HEIGHT, Count, CompactTile, JourneyCardView, type CardContext } from "./card";
-import { CARD_GAP_REM, cardsBudget, journeyMode, stationDensity } from "./layout";
+import { CARD_GAP_REM, cardsBudget, journeyMode, stationLayout, stationWidths } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
 import type { JourneyCard, Stage } from "./journey";
 import { LANES } from "./lanes";
@@ -58,14 +58,14 @@ function Station({ stage, count, usual, quiet }: { stage: Stage; count: number; 
   );
 }
 
-function Cards({ stage, cards, density, context }: { stage: Stage; cards: JourneyCard[]; density: "full" | "compact"; context: CardContext }) {
+function Cards({ stage, cards, density, columns = 1, context }: { stage: Stage; cards: JourneyCard[]; density: "full" | "compact"; columns?: number; context: CardContext }) {
   if (cards.length === 0) return null;
   const compact = density === "compact";
   return (
     <ul
       aria-label={`${LANES[stage].label} titles`}
-      className="grid grid-cols-1 content-start"
-      style={{ gap: `${CARD_GAP_REM}rem` } satisfies CSSProperties}
+      className="grid content-start"
+      style={{ gap: `${CARD_GAP_REM}rem`, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } satisfies CSSProperties}
     >
       {cards.map((card) => (compact ? <CompactTile key={card.key} card={card} {...context} /> : <JourneyCardView key={card.key} card={card} {...context} />))}
     </ul>
@@ -109,18 +109,20 @@ export function Journey({
   const mode = journeyMode(body.width, stations.length, rem);
   const stacked = mode === "stacked";
   const onTheirWay = stations.reduce((sum, stage) => sum + counts[stage], 0);
-  const gap = CARD_GAP_REM * rem;
   const rail = onTheirWay > 0;
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   // What the cards may use: the ceiling less everything around them (header, stations, spacing), which does not change with the cards.
   const available = cardsBudget(budget, Math.max(0, box.height - area.height));
   const room = available !== undefined && !stacked ? available : area.height;
+  // Stations get width by need: the empty ones shrink to a narrow column, the busy ones share the rest by their cards.
+  const widths = useMemo(() => stationWidths(Math.max(0, body.width - 1.5 * rem), stations.map((stage) => grouped[stage].length), rem), [body.width, stations, grouped, rem]);
+  const measured = !stacked && widths.every((width) => width > 0);
 
   return (
     <div ref={boxRef} className="flex min-h-0 min-w-0 flex-col" style={budget === undefined ? undefined : { maxHeight: budget }}>
     <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
       <div ref={bodyRef} className="relative flex min-h-0 flex-1 flex-col">
-        <div className={cn("relative min-h-0 flex-1", stacked ? "flex flex-col gap-1 overflow-y-auto px-2 pb-2 pt-1" : "grid px-3")} style={stacked ? undefined : { gridTemplateColumns: `repeat(${stations.length}, minmax(0, 1fr))`, gridTemplateRows: "auto minmax(0, 1fr)" }}>
+        <div className={cn("relative min-h-0 flex-1", stacked ? "flex flex-col gap-1 overflow-y-auto px-2 pb-2 pt-1" : "grid px-3")} style={stacked ? undefined : { gridTemplateColumns: measured ? widths.map((width) => `${width}px`).join(" ") : `repeat(${stations.length}, minmax(0, 1fr))`, gridTemplateRows: "auto minmax(0, 1fr)" }}>
           {onTheirWay === 0 ? <p className={cn("flex items-center px-[var(--card-pad-x)] text-[length:var(--type-body-sm)] text-muted-foreground", stacked ? "min-h-10" : "col-span-full row-start-2 pb-2")} style={stacked ? undefined : { minHeight: probe.height || undefined }}>{calmLine(lastArrival)}</p> : null}
           {stacked ? null : <div aria-hidden className="pointer-events-none absolute inset-x-12 top-[1.3125rem] h-0.5 rounded-full bg-hairline"><span className={cn("live-rail absolute inset-0 opacity-60", rail && "live-rail-run")} /></div>}
           {stacked
@@ -142,10 +144,10 @@ export function Journey({
             ? null
             : stations.map((stage, index) => {
                 const cards = grouped[stage];
-                const density = stationDensity(cards.length, room, probe.height, gap, mode);
+                const { density, columns } = stationLayout(cards.length, (widths[index] ?? 0) - 0.5 * rem, room, probe.height, rem, mode);
                 return (
-                  <div key={`cards-${stage}`} data-station={stage} data-cards={density} style={{ gridColumn: index + 1, gridRow: 2 }} className={cn("min-h-0 min-w-0 overflow-y-auto px-1 pb-2", SCROLLER)}>
-                    <Cards stage={stage} cards={cards} density={density} context={context} />
+                  <div key={`cards-${stage}`} data-station={stage} data-cards={density} data-columns={columns} style={{ gridColumn: index + 1, gridRow: 2 }} className={cn("min-h-0 min-w-0 overflow-y-auto px-1 pb-2", SCROLLER)}>
+                    <Cards stage={stage} cards={cards} density={density} columns={columns} context={context} />
                   </div>
                 );
               })}

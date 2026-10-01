@@ -189,6 +189,9 @@ export function finishAt(item: Pick<DownloadQueueItem, "etaSeconds" | "sizeBytes
   return (Number.isFinite(readAtMs) && readAtMs > 0 ? readAtMs : now) + eta * 1000;
 }
 
+/** What a card in Importing says while its import is actually running (a finished download waiting its turn says "Downloaded"). */
+export const IMPORTING_NOW = "Importing now";
+
 /** Every card on the Live board, grouped by the caller with `byStage`. */
 export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
@@ -202,6 +205,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   }
   const handoffByQueue = new Map(handoffs.filter((item) => item.status.toLowerCase() !== "dismissed").map((item) => [item.queueItemId, item]));
   const seenReleases = new Set<string>();
+  // Imports that have said they started and not yet ended: a card for the same release says so, so the card and the band agree.
+  const importingNow = new Set(work.filter((item) => item.kind === "import" && item.release).map((item) => releaseKey(item.release!)));
   const storedAt = Date.parse(queueCapturedUtc ?? "");
   const short = shortNamer([
     ...queue.map((item) => item.clientName),
@@ -246,6 +251,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       state = item.status === "importFailed" ? { tone: "bad", label: "Import failed" } : item.status === "importQueued" ? { tone: "info", label: "Import queued" } : { tone: "info", label: "Ready to import" };
     }
     if (!stage) continue;
+    if (stage === "importing" && state.tone !== "bad" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
     seenReleases.add(releaseKey(item.releaseName));
     const entity = entityOf(dispatch);
     if (stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) && !reason) reason = handoff.failureMessage;
@@ -297,7 +303,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       title: titleFromRelease(handoff.releaseName),
       release: handoff.releaseName,
       entity,
-      state: stage === "importing" ? { tone: "info", label: "Back from the processor" } : handoffState(handoff),
+      state: stage === "importing" ? { tone: "info", label: importingNow.has(releaseKey(handoff.releaseName)) ? IMPORTING_NOW : "Back from the processor" } : handoffState(handoff),
       reason: failed ? plainReason(handoff.failureMessage)?.text ?? null : null,
       reasonFull: failed ? handoff.failureMessage : null,
       dispatchId: dispatch?.id,
@@ -323,7 +329,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       title: titleFromRelease(item.release),
       release: item.release,
       entity,
-      state: item.kind === "grab" ? { tone: "info", label: item.client ? `Sending to ${short(item.client)}` : "Sending to the client" } : { tone: "info", label: "Importing now" },
+      state: item.kind === "grab" ? { tone: "info", label: item.client ? `Sending to ${short(item.client)}` : "Sending to the client" } : { tone: "info", label: IMPORTING_NOW },
       startedBy: startedByOfDispatch(dispatch),
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
