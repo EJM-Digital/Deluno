@@ -35,6 +35,7 @@ public sealed record UpdatePlatformSettingsRequest(
     bool? CleanupBlockReleaseAfterThreshold = null,
     bool? CleanupQueueReplacementAfterThreshold = null,
     bool? CheckConnectionsRegularly = null,
+    bool? KeepComputerAwake = null,
     bool? CleanupRemoveClientEntryAfterThreshold = null,
     bool? CleanupPurgePayloadAfterThreshold = null,
     string? SharingMode = null,

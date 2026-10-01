@@ -39,6 +39,9 @@ public static class HealthCheckCategories
     public const string System = "system";
     public const string Grab = "grab";
 
+    /// <summary>The computer Deluno runs on: sleep settings, drive health, a pending restart, processor heat (#1098).</summary>
+    public const string Machine = "machine";
+
     /// <summary>A one-time note (an upgrade changed something), never re-run by a check and cleared by hand.</summary>
     public const string Notice = "notice";
 

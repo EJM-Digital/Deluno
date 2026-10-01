@@ -204,6 +204,12 @@ public static class PlatformEndpointRouteBuilderExtensions
             await realtimeEventPublisher.PublishEntityChangedAsync("Settings", "settings", cancellationToken);
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Library, cancellationToken);
             await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Metadata, cancellationToken);
+            if (request.KeepComputerAwake is not null)
+            {
+                // The Keep awake button: the sleep check is fine (or a problem) the moment it is pressed.
+                await healthChecks.RequestImmediateRunAsync(HealthCheckCategories.Machine, cancellationToken);
+            }
+
             return Results.Ok(snapshot);
         });
 

@@ -115,6 +115,13 @@ public sealed class PlatformSettingsPersistenceTests
         var again = PlatformSettingsPatchMerger.Apply(await repository.GetAsync(CancellationToken.None), new PatchPlatformSettingsRequest(UiTheme: "dark"));
         await repository.SaveAsync(again, CancellationToken.None);
         Assert.False((await repository.GetAsync(CancellationToken.None)).CheckConnectionsRegularly);
+
+        // Keep awake starts off for everyone, is on only after the button, and an unrelated save leaves it as it was.
+        Assert.False((await repository.GetAsync(CancellationToken.None)).KeepComputerAwake);
+        await repository.SaveAsync(PlatformSettingsPatchMerger.Apply(await repository.GetAsync(CancellationToken.None), new PatchPlatformSettingsRequest(KeepComputerAwake: true)), CancellationToken.None);
+        Assert.True((await repository.GetAsync(CancellationToken.None)).KeepComputerAwake);
+        await repository.SaveAsync(PlatformSettingsPatchMerger.Apply(await repository.GetAsync(CancellationToken.None), new PatchPlatformSettingsRequest(UiTheme: "light")), CancellationToken.None);
+        Assert.True((await repository.GetAsync(CancellationToken.None)).KeepComputerAwake);
     }
 
     [Fact]
