@@ -41,6 +41,7 @@ import { AiringSoon } from "./live/airing";
 import { RightNow } from "./live/band";
 import { Flow } from "./live/flow";
 import { arrivalItems, requestCards } from "./live/extras";
+import { useLiveBoardEvents } from "./live/use-live-board";
 import { useArrivals, useElementHeight, useFreshKeys, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
 import { byStage, buildJourney, laneCounts, oneCardPerTitle } from "./live/journey";
 import { entityFromRelated, type Entity } from "./live/titles";
@@ -57,7 +58,9 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const { data } = useRouteSources({ ...attentionSources, ...liveSources });
   const liveProgress = useLiveProgress();
   const latest = useLiveActivity(data.latestActivity?.length ? data.latestActivity : summary?.activity?.recent ?? []);
-  const work = useWorkingNow(summary);
+  // Every pushed change is applied to the list it changes, so the board below moves as it happens (#1097).
+  const pushed = useLiveBoardEvents();
+  const work = useWorkingNow(summary, pushed);
   const now = useNow(60_000);
   const updatedAt = useSummaryUpdatedAt(summary);
   const upcoming = data.upcoming ?? [];
@@ -90,10 +93,10 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   }, [data.dispatches, data.boardDispatches]);
   const extras = data.liveExtras ?? undefined;
   const built = useMemo(
-    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, cases: attention.downloads.recoveryCases, importJobs: attention.downloads.failedImportJobs }),
+    () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, cases: attention.downloads.recoveryCases, importJobs: attention.downloads.failedImportJobs, searches: pushed.searches }),
     // `now` moves the clock-dependent parts (today, recent) along once a minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, attention.downloads.recoveryCases, attention.downloads.failedImportJobs, now]
+    [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, attention.downloads.recoveryCases, attention.downloads.failedImportJobs, pushed.searches, now]
   );
   // Seerr requests are the first stage of the journey: one that already has a card further along is that card.
   const cards = useMemo(() => oneCardPerTitle([...built, ...requestCards(extras?.requests, built)]), [built, extras?.requests]);

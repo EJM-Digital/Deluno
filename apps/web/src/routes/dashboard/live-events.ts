@@ -135,7 +135,7 @@ interface Started {
  * jobs running come from the summary, which is refreshed whenever any of them
  * change. Nothing here is invented: with nothing running the list is empty.
  */
-export function useWorkingNow(summary: DashboardSummary | undefined): WorkItem[] {
+export function useWorkingNow(summary: DashboardSummary | undefined, pushed?: { searches: ReadonlyMap<string, { libraryName: string; state: string; checked: number; planned: number }>; jobs: ReadonlyMap<string, { title: string }> }): WorkItem[] {
   const [started, setStarted] = useState<ReadonlyMap<string, Started>>(() => new Map());
   const begin = useCallback((key: string, entry: Started) => setStarted((current) => new Map(current).set(key, entry)), []);
   const end = useCallback((key: string) => setStarted((current) => {
@@ -153,8 +153,18 @@ export function useWorkingNow(summary: DashboardSummary | undefined): WorkItem[]
   return useMemo(() => {
     const items: WorkItem[] = [];
     const now = Date.now();
+    // A search is running when the summary says so or its own progress does; one that has said it finished is not, whatever the summary last held.
+    const searching = new Set<string>();
     for (const library of summary?.automation?.libraries ?? []) {
-      if (library.status === "running") items.push({ key: `search:${library.libraryId}`, kind: "search", text: `Searching ${library.name} for what is missing or could be better`, to: "/search-cycles" });
+      const pushedSearch = pushed?.searches.get(library.libraryId);
+      if (pushedSearch?.state === "finished") continue;
+      if (library.status === "running" || pushedSearch?.state === "running") {
+        searching.add(library.libraryId);
+        items.push({ key: `search:${library.libraryId}`, kind: "search", text: pushedSearch && pushedSearch.planned > 0 ? `Searching ${library.name}: ${pushedSearch.checked.toLocaleString("en-AU")} of ${pushedSearch.planned.toLocaleString("en-AU")} checked` : `Searching ${library.name} for what is missing or could be better`, to: "/search-cycles" });
+      }
+    }
+    for (const [libraryId, search] of pushed?.searches ?? []) {
+      if (search.state === "running" && !searching.has(libraryId)) items.push({ key: `search:${libraryId}`, kind: "search", text: search.planned > 0 ? `Searching ${search.libraryName}: ${search.checked.toLocaleString("en-AU")} of ${search.planned.toLocaleString("en-AU")} checked` : `Searching ${search.libraryName}`, to: "/search-cycles" });
     }
     for (const [key, entry] of started) {
       if (now - entry.at > WORK_EXPIRES_MS) continue;
@@ -167,8 +177,12 @@ export function useWorkingNow(summary: DashboardSummary | undefined): WorkItem[]
     if ((downloads?.importReady ?? 0) > 0) {
       items.push({ key: "import-ready", kind: "import", text: `${downloads?.importReady} ${downloads?.importReady === 1 ? "download is" : "downloads are"} ready to import`, to: "/queue" });
     }
+    // The jobs that have said they started are named; with none named, the summary's count stands.
+    const named = pushed ? [...pushed.jobs.values()] : [];
     const running = summary?.system?.jobs.running ?? 0;
-    if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${running} background ${running === 1 ? "job is" : "jobs are"} running`, to: "/activity" });
+    if (named.length > 0) {
+      for (const title of [...new Set(named.map((job) => job.title))]) items.push({ key: `job:${title}`, kind: "jobs", text: title, to: "/activity" });
+    } else if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${running} background ${running === 1 ? "job is" : "jobs are"} running`, to: "/activity" });
     return items;
-  }, [summary, started]);
+  }, [summary, started, pushed]);
 }

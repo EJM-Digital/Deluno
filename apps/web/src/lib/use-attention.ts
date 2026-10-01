@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveInterval } from "../hooks/use-live-interval";
+import { usePollInterval } from "./realtime-state";
 import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
@@ -182,7 +183,8 @@ export function useAttention(pollMs = 45000) {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  useLiveInterval(() => void load(), pollMs);
+  // The safety-net read runs only while the realtime connection is down (#1097): connected, every change is pushed and no timer runs.
+  useLiveInterval(() => void load(), usePollInterval(pollMs));
 
   // Whatever a screen reads and finds changed (Transfers finishing a leftover
   // folder scan, Activity dismissing a failure) moves the count now, without a

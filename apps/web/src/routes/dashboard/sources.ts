@@ -20,6 +20,7 @@ import {
   type SeriesUpcomingEpisodeItem,
   type SetupProgressItem
 } from "../../lib/api";
+import { usePollInterval } from "../../lib/realtime-state";
 import { queryClient, defineSources, useRouteSources, type RouteSource } from "../../lib/route-cache";
 import { buildSetupStatus, type SetupStatusModel } from "../../lib/setup-status";
 import { sharedSources } from "../../lib/shared-sources";
@@ -80,14 +81,14 @@ export const SUMMARY_KEY = ["dashboard", "summary"] as const;
 export const summaryQuery = {
   queryKey: SUMMARY_KEY,
   queryFn: () => fetchJson<DashboardSummary>("/api/dashboard/summary"),
-  // Realtime nudges drive freshness; this is the safety net for a missed one.
+  // The server pushes the changed sections (#1097); the page asks for the whole summary once, and again only after a reconnect.
   staleTime: 3_000,
-  refetchInterval: 60_000,
   refetchOnMount: "always"
 } as const;
 
 export function useDashboardSummary() {
-  return useQuery(summaryQuery);
+  // A safety net for while the connection is down; with it up there is no timer at all.
+  return useQuery({ ...summaryQuery, refetchInterval: usePollInterval(60_000) });
 }
 
 /** Ask for a fresh summary now (the realtime nudge, a reconnect, a Retry). */

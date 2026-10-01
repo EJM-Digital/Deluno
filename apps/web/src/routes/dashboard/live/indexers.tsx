@@ -17,6 +17,8 @@ import { cn } from "../../../lib/utils";
 import { indexerNeedsButton } from "../attention";
 import { ago } from "../format";
 import { motionAllowed } from "../../../lib/page-motion";
+import { useRealtimeConnected } from "../../../lib/realtime-state";
+import { useLiveEvent } from "../../../lib/use-signalr";
 
 /** One indexer's row of today's scoreboard (`GET /api/indexers/scoreboard?days=1`). */
 export interface IndexerToday {
@@ -76,6 +78,50 @@ function useFlashing(todayById: ReadonlyMap<string, IndexerToday>): ReadonlySet<
   return flashing;
 }
 
+/** What an indexer is doing right now, from the pushed events: being asked, or just answered (and how). */
+export interface IndexerPulse {
+  phase: "asking" | "answered";
+  tone: Tone;
+  words: string;
+}
+
+/** An answer that took longer than this is slow, and its flash is amber. */
+export const SLOW_ANSWER_MS = 2000;
+
+/** How a pushed answer reads: green when it came back fast, amber when it was slow or empty-handed on a failure, red when it failed. */
+export function pulseOf(event: { phase: "asked" | "answered"; resultCount: number | null; elapsedMs: number | null; failed: boolean; failure: string | null }): IndexerPulse {
+  if (event.phase === "asked") return { phase: "asking", tone: "info", words: "being asked" };
+  if (event.failed) return { phase: "answered", tone: "bad", words: event.failure ? `failed: ${event.failure}` : "failed" };
+  const slow = (event.elapsedMs ?? 0) > SLOW_ANSWER_MS;
+  const found = event.resultCount === null ? "answered" : `${event.resultCount.toLocaleString("en-AU")} ${event.resultCount === 1 ? "result" : "results"}`;
+  return { phase: "answered", tone: slow ? "warn" : "ok", words: `${found} in ${event.elapsedMs ?? 0} ms` };
+}
+
+/** Each indexer asked or answered just now: a light pulses while it is asked, and flashes its answer for a moment. */
+function usePulses(): ReadonlyMap<string, IndexerPulse> {
+  const [pulses, setPulses] = useState<ReadonlyMap<string, IndexerPulse>>(() => new Map());
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useLiveEvent("IndexerQueryRecorded", (event) => {
+    const pulse = pulseOf(event);
+    setPulses((current) => new Map(current).set(event.indexerId, pulse));
+    const known = timers.current.get(event.indexerId);
+    if (known) clearTimeout(known);
+    // A question that never reports its answer, or an answer shown long enough, goes back to the light's own colour.
+    timers.current.set(event.indexerId, setTimeout(() => {
+      timers.current.delete(event.indexerId);
+      setPulses((current) => {
+        const next = new Map(current);
+        next.delete(event.indexerId);
+        return next;
+      });
+    }, pulse.phase === "asking" ? 15_000 : 2400));
+  });
+  useEffect(() => () => {
+    for (const timer of timers.current.values()) clearTimeout(timer);
+  }, []);
+  return pulses;
+}
+
 /**
  * The indexers as a row of named lights (the last cell of the Right now band): green
  * when answering, amber when some asks failed, red when not answering, grey when
@@ -86,7 +132,11 @@ function useFlashing(todayById: ReadonlyMap<string, IndexerToday>): ReadonlySet<
 export function IndexerLights({ indexers, scoreboard, summary, now }: { indexers: IndexerItem[]; scoreboard?: IndexerScoreboardToday | null; summary: DashboardSummary | undefined; now: number }) {
   const rows = Array.isArray(scoreboard?.indexers) ? scoreboard.indexers : null;
   const todayById = useMemo(() => new Map((rows ?? []).map((row) => [row.id, row])), [rows]);
-  const flashing = useFlashing(todayById);
+  const connected = useRealtimeConnected();
+  const pulses = usePulses();
+  // Connected, each light follows the questions as they are asked and answered; disconnected, a light flashes when its count moved at the next read.
+  const polled = useFlashing(todayById);
+  const flashing = connected ? new Set<string>() : polled;
   const asked = rows ? rows.reduce((sum, row) => sum + (row.totalQueries ?? 0), 0) : summary?.indexers?.queriesToday;
   const failed = rows ? rows.reduce((sum, row) => sum + (row.failedQueries ?? 0), 0) : summary?.indexers?.failedQueriesToday;
   const sorted = [...indexers].sort(
@@ -115,16 +165,19 @@ export function IndexerLights({ indexers, scoreboard, summary, now }: { indexers
             const latency = indexer.lastHealthLatencyMs ?? null;
             // Grey when switched off, green when it answers, amber when it answers slowly, red when it does not answer.
             const slow = !broken && indexer.isEnabled && latency !== null && latency > SLOW_MS;
-            const tone: Tone = broken ? (indexer.healthStatus === "unreachable" ? "bad" : "warn") : slow ? "warn" : answer.tone;
+            const pulse = pulses.get(indexer.id);
+            const restingTone: Tone = broken ? (indexer.healthStatus === "unreachable" ? "bad" : "warn") : slow ? "warn" : answer.tone;
+            // A question just answered shows its own colour for a moment; one being asked shows as asking.
+            const tone: Tone = pulse && pulse.phase === "answered" ? pulse.tone : restingTone;
             const last = today?.lastQueryUtc ?? null;
             const text = broken ? `not answering${indexer.lastHealthMessage ? `: ${indexer.lastHealthMessage}` : ""}` : slow ? `slow, ${latency} ms to answer` : answer.text;
             const queries = today?.totalQueries ?? 0;
             const tip = [
-              `${indexer.name}: ${text}.`,
+              `${indexer.name}: ${pulse ? pulse.words : text}.`,
               indexer.isEnabled && latency !== null ? `Last answer ${latency} ms${indexer.lastHealthTestUtc ? `, ${ago(indexer.lastHealthTestUtc, now)}` : ""}.` : null,
               `Today ${queries.toLocaleString("en-AU")} ${queries === 1 ? "query" : "queries"}${today?.failedQueries ? `, ${today.failedQueries.toLocaleString("en-AU")} failed` : ""}${last ? `, last asked ${ago(last, now)}` : ""}.`
             ].filter(Boolean).join(" ");
-            const asking = flashing.has(indexer.id);
+            const asking = flashing.has(indexer.id) || pulse?.phase === "asking" || pulse?.phase === "answered";
             return (
               <li key={indexer.id}>
                 <Link
