@@ -623,6 +623,9 @@ public static partial class TrackerResponseParser
             return false;
         }
 
+        // #1102: undo a UTF-8 name that the tracker already re-read as Windows-1252.
+        release.Title = ReleaseNameText.RepairMojibake(release.Title);
+
         if (release.MagnetUrl is null && release.DownloadUrl is null && release.InfoHash is { Length: > 0 } hash)
         {
             release.MagnetUrl = TrackerMagnet.Build(hash, release.Title);
