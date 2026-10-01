@@ -1,0 +1,31 @@
+/*
+ * The values on a graph (#1105): a faint gridline at the top and at half with its label at the right edge, the time span
+ * at the two ends, and the reading under the pointer. All of it sits inside the chart's own box, so no card grows.
+ */
+.cs-layer { position: absolute; inset: 0; z-index: 1; touch-action: pan-y; font-size: 10px; line-height: 11px; font-variant-numeric: tabular-nums; color: hsl(var(--muted-foreground)); }
+.cs-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid hsl(var(--hairline) / .35); pointer-events: none; }
+.cs-tick, .cs-end { position: absolute; padding: 0 3px; border-radius: 3px; font-weight: 500; white-space: nowrap; background: hsl(var(--card) / .78); pointer-events: none; }
+.cs-tick { right: 8px; }
+.cs-above { transform: translateY(-100%); }
+.cs-below { transform: translateY(1px); }
+.cs-end { bottom: 0; }
+.cs-start { left: 0; }
+.cs-now { right: 8px; }
+.cs-cursor { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid hsl(var(--foreground) / .45); pointer-events: none; }
+.cs-read {
+  position: absolute;
+  top: 2px;
+  z-index: 2;
+  padding: 3px 7px;
+  border-radius: 7px;
+  border: 1px solid hsl(var(--hairline));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--foreground));
+  font-size: 11px;
+  line-height: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px hsl(0 0% 0% / .35);
+  pointer-events: none;
+}
+.cs-layer.cs-on { z-index: 5; }

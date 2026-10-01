@@ -241,6 +241,30 @@ test.describe("Dashboard tabs", () => {
         await expect(page.getByRole("tab", { name: new RegExp(`^${tab.name}`) })).toHaveAttribute("aria-selected", "true");
         await expectFitsOneScreen(page, `busy ${tab.name} ${size.width}x${size.height}`);
         await expectNoPanelCutsAnything(page, `busy ${tab.name} ${size.width}x${size.height}`);
+        // #1105: the scale, span and pointer reading on every graph: labels inside their chart, none over another.
+        const overlaps = await page.evaluate(() => {
+          const bad: string[] = [];
+          for (const layer of Array.from(document.querySelectorAll<HTMLElement>(".cs-layer"))) {
+            const box = layer.getBoundingClientRect();
+            const labels = Array.from(layer.querySelectorAll<HTMLElement>(".cs-tick, .cs-end")).map((el) => ({ text: el.textContent ?? "", r: el.getBoundingClientRect(), clipped: el.scrollWidth > el.clientWidth }));
+            for (const [i, a] of labels.entries()) {
+              if (a.clipped || a.r.left < box.left - 1 || a.r.right > box.right + 1 || a.r.top < box.top - 4 || a.r.bottom > box.bottom + 1) bad.push(`${a.text} outside its chart`);
+              for (const b of labels.slice(i + 1)) if (a.r.left < b.r.right && b.r.left < a.r.right && a.r.top < b.r.bottom && b.r.top < a.r.bottom) bad.push(`${a.text} over ${b.text} (chart ${Math.round(box.width)}x${Math.round(box.height)} a ${Math.round(a.r.top-box.top)}-${Math.round(a.r.bottom-box.top)} b ${Math.round(b.r.top-box.top)}-${Math.round(b.r.bottom-box.top)})`);
+            }
+          }
+          return bad;
+        });
+        expect(overlaps, `graph labels ${tab.name} ${size.width}`).toEqual([]);
+        const layers = page.locator(".cs-layer");
+        expect(await layers.count()).toBeGreaterThan(0);
+        const at = await layers.first().boundingBox();
+        if (at) {
+          await page.mouse.move(at.x + at.width * 0.6, at.y + at.height / 2);
+          await expect(page.locator(".cs-read")).toBeVisible();
+          await page.screenshot({ path: `test-results/e2e-rig/${tab.name.toLowerCase()}-graphs-${size.width}.png` });
+          await page.mouse.move(0, 0);
+          await expect(page.locator(".cs-read")).toHaveCount(0);
+        }
       }
     }
     // The rest are named, with a way to them, rather than dropped.

@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -244,6 +244,23 @@ describe("working on now", () => {
 });
 
 describe("speed", () => {
+  it("labels the scale at a round number, the six hour span, and shows a reading under the pointer", () => {
+    const summary = structuredClone(fullSummary);
+    summary.downloads!.downloadMbps = 7.4;
+    summary.downloads!.uploadMbps = 1.1;
+    summary.downloads!.readingUtc = new Date().toISOString();
+    const { container } = withRouter(<SpeedCell samples={[]} summary={summary} />);
+    const text = container.textContent ?? "";
+    expect(text).toContain("6 h ago");
+    expect(text).toContain("now");
+    expect(text).toContain("10 MB/s");
+    expect(text).toContain("5 MB/s");
+    const layer = container.querySelector<HTMLElement>(".cs-layer")!;
+    layer.getBoundingClientRect = () => ({ left: 0, right: 600, top: 0, bottom: 100, width: 600, height: 100, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerMove(layer, { clientX: 590, pointerType: "mouse" });
+    expect(container.querySelector(".cs-read")?.textContent).toMatch(/^\d{1,2}:\d\d [ap]m · 7\.4 MB\/s down · 1\.1 MB\/s up$/);
+  });
+
   it("draws a trace with a reading even when nothing has ever been stored, and says the unit beside the figure", () => {
     const { container } = withRouter(<SpeedCell samples={[]} summary={undefined} />);
     expect(container.querySelector("svg path")).not.toBeNull();

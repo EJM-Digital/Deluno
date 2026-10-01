@@ -274,3 +274,7 @@
 .sy-btn:disabled { opacity: .6; cursor: default; }
 .sy-tk-row .sy-nm span.sy-why { display: block; font-weight: 500; font-size: 11px; color: var(--sy-danger-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sy-bk-h .sy-muted.sy-bad { color: var(--sy-danger-text); }
+
+/* The room a trace takes in its column; the scale and the pointer reading (#1105) live inside it. */
+.cs-plot { position: relative; min-height: 0; min-width: 0; }
+.cs-plot > svg { position: absolute; inset: 0; }

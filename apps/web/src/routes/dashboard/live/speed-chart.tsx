@@ -7,14 +7,15 @@
  * contradict the trace. The trace draws itself in once when the tab opens; the
  * newest reading glows.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import type { DownloadThroughputSample } from "../../../lib/api";
 import { CountUp } from "../../../components/ui/count-up";
 import { formatSpeed } from "../downloads-kit";
 import { BandCard, FigureUnit } from "./band-card";
 import { useNow } from "./hooks";
-import { linePath, shapeSpeedSeries } from "./series";
+import { linePath, shapeSpeedSeries, type SpeedSeries } from "./series";
+import { ChartLayer, clockAt, nearestIndex, niceMax, rateText, scaleLabel, type ChartHit } from "../chart-scale";
 
 /** The mockup's chart box: 600 by 110, the trace kept 6 units off the bottom and 10 off the top. */
 const WIDTH = 600;
@@ -41,6 +42,15 @@ export function speedAside(peakDown: number, peakUp: number, hours: number): str
   return `nothing moved in ${hours} hours`;
 }
 
+/** The reading nearest a fraction across the six hours: its time and both speeds ("2:14 pm", "6.2 MB/s down · 1.1 MB/s up"). */
+export function speedHitAt(series: SpeedSeries, at: number): ChartHit | null {
+  if (series.points.length === 0) return null;
+  const span = Math.max(1, series.end - series.start);
+  const fractions = series.points.map((point) => Math.min(1, Math.max(0, (point.t - series.start) / span)));
+  const point = series.points[nearestIndex(fractions, at)];
+  return { x: Math.min(1, Math.max(0, (point.t - series.start) / span)), time: clockAt(point.t), text: `${rateText(point.down)} down · ${rateText(point.up)} up` };
+}
+
 export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSample[]; summary: DashboardSummary | undefined }) {
   // The hold-to-now edge moves on; once a minute is as often as a six hour trace shows.
   const now = useNow(30_000);
@@ -51,7 +61,8 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
     [readingAt, downloads?.downloadMbps, downloads?.uploadMbps, now]
   );
   const series = useMemo(() => shapeSpeedSeries(Array.isArray(samples) ? samples : [], live, now, HOURS), [samples, live, now]);
-  const top = Math.max(series.peakDown, series.peakUp, 1) * 1.15;
+  const top = niceMax(Math.max(series.peakDown, series.peakUp));
+  const resolve = useCallback((at: number) => speedHitAt(series, at), [series]);
   const last = series.points[series.points.length - 1];
   const dotY = 100 - Math.min(1, last.down / top) * 100;
   const downPath = linePath(series.points, "down", series.start, series.end, top, WIDTH, PLOT);
@@ -96,6 +107,15 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
           <path d={upPath} pathLength={1} fill="none" stroke="hsl(var(--success))" strokeWidth="1.6" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className="live-trace" />
         </g>
       </svg>
+      <ChartLayer
+        ticks={[
+          { top: (PAD_TOP / HEIGHT) * 100, label: scaleLabel(top, "MB/s"), side: "below" },
+          { top: ((PAD_TOP + PLOT / 2) / HEIGHT) * 100, label: scaleLabel(top / 2, "MB/s"), side: "below" }
+        ]}
+        startLabel={`${HOURS} h ago`}
+        endLabel="now"
+        resolve={resolve}
+      />
       <span aria-hidden className="lb-dot" style={{ top: `${((PAD_TOP + dotY * (PLOT / 100)) / HEIGHT) * 100}%` }} />
     </BandCard>
   );

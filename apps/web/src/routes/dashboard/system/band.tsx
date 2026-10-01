@@ -4,12 +4,13 @@
  * adapter's in and out with a trace, beside an aligned table of checks). Every figure is a reading from
  * GET /api/system/overview; one that could not be read is left out.
  */
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
 import type { DashboardSummary } from "../../../lib/api";
 import { useNow } from "../live/hooks";
+import { ChartLayer, niceMax, rateText, scaleLabel, spanLabel, traceHitAt } from "../chart-scale";
 import { instanceFacts } from "./facts";
-import { countdown, mbps, plainCount, sizeText, tracePaths, traceMax, upText, wholeRows } from "./logic";
+import { countdown, mbps, plainCount, sizeText, tracePaths, upText, wholeRows } from "./logic";
 
 const RING = 201.1;
 const FACT_ROW_PX = 42;
@@ -33,6 +34,38 @@ export function Trace({ values, max, colour }: { values: readonly number[]; max:
         </>
       ) : null}
     </svg>
+  );
+}
+
+/** What a trace's scale and reading are in: a percentage (top 100) or a rate that arrives in bytes a second. */
+export type TraceScale = { kind: "percent"; noun?: string } | { kind: "rate" };
+
+/** The top of a trace's scale in its own units: 100 for a percentage, else a round number of MB/s just above the highest reading. */
+export function traceTop(values: readonly number[], scale: TraceScale): number {
+  if (scale.kind === "percent") return 100;
+  return niceMax(Math.max(0, ...values.filter((value) => Number.isFinite(value))) / 1e6);
+}
+
+/** A trace with its scale, time span and the reading under the pointer (#1105), in the box its card gives it. */
+export function TraceChart({ values, scale, colour }: { values: readonly number[]; scale: TraceScale; colour: string }): JSX.Element {
+  const top = traceTop(values, scale);
+  const percent = scale.kind === "percent";
+  const unit = percent ? "%" : "MB/s";
+  const text = useCallback((value: number) => (percent ? `${Math.round(value)}%${scale.noun ? ` ${scale.noun}` : ""}` : rateText(value / 1e6)), [percent, scale]);
+  const resolve = useCallback((at: number) => traceHitAt(values, at, Date.now(), text), [values, text]);
+  return (
+    <div className="cs-plot">
+      <Trace values={values} max={percent ? top : top * 1e6} colour={colour} />
+      <ChartLayer
+        ticks={[
+          { top: (4 / 50) * 100, label: scaleLabel(top, unit), side: "below" },
+          { top: (27 / 50) * 100, label: scaleLabel(top / 2, unit), side: "below" }
+        ]}
+        startLabel={spanLabel(values.length)}
+        endLabel="now"
+        resolve={resolve}
+      />
+    </div>
   );
 }
 
@@ -111,13 +144,13 @@ export function InstanceCard({ instance, summary, health, short, onJump }: { ins
 
 /* ---------------------------------------------------------- this computer */
 
-function Column({ colour, label, value, unit, sub, values, max }: { colour: string; label: string; value: string; unit: string; sub: string; values: readonly number[]; max: number }): JSX.Element {
+function Column({ colour, label, value, unit, sub, values, scale }: { colour: string; label: string; value: string; unit: string; sub: string; values: readonly number[]; scale: TraceScale }): JSX.Element {
   return (
     <div className="sy-col" style={{ "--m": colour } as CSSProperties}>
       <span className="sy-mh"><i />{label}</span>
       <span className="sy-v">{value}<small>{unit}</small></span>
       <span className="sy-sub" title={sub}>{sub}</span>
-      <Trace values={values} max={max} colour={colour} />
+      <TraceChart values={values} scale={scale} colour={colour} />
     </div>
   );
 }
@@ -147,9 +180,9 @@ export function ComputerCard({ overview }: { overview: SystemOverview | null }):
       </div>
       {machine ? (
         <div className="sy-cols3">
-          <Column colour={GREEN} label="CPU" value={String(Math.round(machine.cpuPercent))} unit="%" sub={[`${machine.cores} cores`, instance ? `Deluno ${Math.round(instance.cpuPercent)}%` : null].filter(Boolean).join(" · ")} values={history?.cpu ?? []} max={100} />
-          <Column colour={BLUE} label="Memory" value={(machine.memoryUsedBytes / 1e9).toFixed(1)} unit=" GB" sub={[`of ${(machine.memoryTotalBytes / 1e9).toFixed(1)} GB`, instance ? `Deluno ${sizeText(instance.memoryBytes)}` : null].filter(Boolean).join(" · ")} values={history?.memory ?? []} max={traceMax(history?.memory ?? [], undefined, 1.5)} />
-          <Column colour={VIOLET} label="Disk" value={mbps(machine.diskReadBytesPerSec + machine.diskWriteBytesPerSec)} unit=" MB/s" sub={`read ${mbps(machine.diskReadBytesPerSec)} · write ${mbps(machine.diskWriteBytesPerSec)} · ${plainCount(machine.diskIops)} IOPS`} values={history?.disk ?? []} max={traceMax(history?.disk ?? [], undefined, 1.4)} />
+          <Column colour={GREEN} label="CPU" value={String(Math.round(machine.cpuPercent))} unit="%" sub={[`${machine.cores} cores`, instance ? `Deluno ${Math.round(instance.cpuPercent)}%` : null].filter(Boolean).join(" · ")} values={history?.cpu ?? []} scale={{ kind: "percent" }} />
+          <Column colour={BLUE} label="Memory" value={(machine.memoryUsedBytes / 1e9).toFixed(1)} unit=" GB" sub={[`of ${(machine.memoryTotalBytes / 1e9).toFixed(1)} GB`, instance ? `Deluno ${sizeText(instance.memoryBytes)}` : null].filter(Boolean).join(" · ")} values={history?.memory ?? []} scale={{ kind: "percent" }} />
+          <Column colour={VIOLET} label="Disk" value={mbps(machine.diskReadBytesPerSec + machine.diskWriteBytesPerSec)} unit=" MB/s" sub={`read ${mbps(machine.diskReadBytesPerSec)} · write ${mbps(machine.diskWriteBytesPerSec)} · ${plainCount(machine.diskIops)} IOPS`} values={history?.disk ?? []} scale={{ kind: "percent", noun: "busy" }} />
         </div>
       ) : (
         <div className="sy-empty sy-muted">Deluno has not read this computer yet. The first reading arrives within a few seconds.</div>
@@ -195,7 +228,7 @@ export function NetworkCard({ overview }: { overview: SystemOverview | null }): 
             <span className="sy-mh"><i />{network.adapter ?? "Network"}</span>
             <span className="sy-v">{mbps(network.inBytesPerSec)}<small> MB/s in</small></span>
             <span className="sy-sub" title={network.adapter ?? undefined}>{[`↑ ${mbps(network.outBytesPerSec)} out`, linkText(network.linkMbps), network.ip].filter(Boolean).join(" · ")}</span>
-            <Trace values={overview?.history.netIn ?? []} max={traceMax(overview?.history.netIn ?? [], undefined, 1.4)} colour={CYAN} />
+            <TraceChart values={overview?.history.netIn ?? []} scale={{ kind: "rate" }} colour={CYAN} />
           </div>
           <div className="sy-col sy-checks2">
             <span className="sy-mh">Checks</span>
