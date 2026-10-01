@@ -780,8 +780,15 @@ html[data-page-hidden] *::after {
    Expanded switch: these are today's former "Standard" values, and the
    scalars now move only with the viewport (see the breakpoints below),
    never with a user choice.
+
+   `.dash-mockup-size` (the Dashboard's Live and System tabs) takes the same
+   tokens at scale 1 on every screen, so the tabs are the approved mockup's
+   sizes exactly (the owner, 2 Oct 2026: "when I switch between mock and live
+   some of the stuff appears bigger in live"). The breakpoints below set the
+   scalars on `html` only, so they never reach it.
 ═══════════════════════════════════════════════════════════════ */
-html {
+html,
+.dash-mockup-size {
   font-size: 16px;
   --ui-scale: 1;
   --font-scale: 1;
@@ -915,6 +922,12 @@ html {
   --settings-nav-pad-x: calc(12px * var(--ui-scale));
   --section-eyebrow-size: calc(11px * var(--font-scale));
   --section-subtitle-size: calc(14px * var(--font-scale));
+}
+
+/* The mockup's own body type: 14px at the browser's normal line height. */
+.dash-mockup-size {
+  font-size: 14px;
+  line-height: normal;
 }
 
 /*
