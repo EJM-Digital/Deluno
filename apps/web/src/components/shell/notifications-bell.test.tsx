@@ -140,6 +140,31 @@ describe("notifications bell (#907)", () => {
     expect(await within(dialog).findByRole("button", { name: /Import failed for The Newest Film/ })).toBeInTheDocument();
   });
 
+
+  it("draws every row with the same two action columns and unique button names", async () => {
+    fetchPageItems.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<MemoryRouter><NotificationsBell attention={busy()} /></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: /notifications/i }));
+    const needs = within(await screen.findByRole("dialog")).getByRole("region", { name: "Needs you" });
+
+    const rows = within(needs).getAllByRole("listitem");
+    expect(rows.length).toBeGreaterThan(2);
+    for (const row of rows) {
+      const actions = row.querySelector("[data-row-actions]") as HTMLElement;
+      // Two fixed columns on every row; a single action sits in the first and the second stays empty.
+      expect(actions.children).toHaveLength(2);
+      expect(actions.children[0].children.length).toBe(1);
+      expect(actions.children[1].children.length).toBeLessThanOrEqual(1);
+      for (const control of actions.querySelectorAll("button, a")) {
+        expect(control.className).toContain("w-[7.5rem]");
+        expect(control.className).toContain("h-7");
+        expect(control.className).toContain("whitespace-nowrap");
+      }
+    }
+    const names = within(needs).getAllByRole("button").concat(within(needs).getAllByRole("link")).map((el) => el.getAttribute("aria-label") ?? el.textContent);
+    expect(new Set(names).size).toBe(names.length);
+  });
   it("says nothing needs you when nothing does", async () => {
     fetchPageItems.mockResolvedValue([]);
     await openPanel();
@@ -150,7 +175,7 @@ describe("notifications bell (#907)", () => {
     fetchPageItems.mockResolvedValue(events);
     await openPanel();
 
-    expect(fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=60");
+    expect(fetchPageItems).toHaveBeenCalledWith("/api/activity?pageSize=400");
     const rows = await screen.findAllByRole("button", { name: /Import failed|Sent The Middle|Imported The Oldest/ });
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("Import failed for The Newest Film"),
@@ -277,7 +302,8 @@ describe("the bell shows what matters, not routine job noise (#916)", () => {
     fetchPageItems.mockResolvedValue(routineRun);
     await openPanel();
 
-    expect(screen.getByText("Nothing has happened yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing has happened yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument();
   });
 
   it("shows what needs attention beside routine noise, not crowded out by it", async () => {

@@ -45,9 +45,13 @@ const LIMIT = 10;
  * How far back the bell reads before filtering (#916). Routine job noise
  * used to fill all ten slots on its own every half hour; reading a wider
  * page and then keeping only what matters means the ten shown are still ten
- * once the noise is filtered out, not "however many were left after it".
+ * once the noise is filtered out, not "however many were left after it". A busy
+ * library writes hundreds of search lines between two notable events, so 60 was
+ * often all noise and the section read "Nothing has happened yet" beside a full
+ * Activity page; 400 reaches back to the last real events, and with none the
+ * section is not drawn (Needs you above and Show all activity cover the rest).
  */
-const FETCH_PAGE_SIZE = 60;
+const FETCH_PAGE_SIZE = 400;
 
 /**
  * What the bell actually shows: folded to one row per job run, filtered to
@@ -187,7 +191,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
       // Wide enough for a title, its reason and the row's buttons side by side
       // (the owner, 1 Oct: "i think this can be wider"); a phone gets its width less
       // the margins.
-      const width = Math.min(560, window.innerWidth - margin * 2);
+      const width = Math.min(608, window.innerWidth - margin * 2);
       let right = Math.max(margin, window.innerWidth - rect.right);
       // The bell sits near the right edge of a phone's narrow header, so a
       // panel anchored purely off the trigger's right edge ran off the left
@@ -275,12 +279,10 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
             ) : null}
           </section>
 
-          <p className="px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent</p>
-          {events.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[length:var(--type-body-sm)] text-muted-foreground">
-              {loaded ? "Nothing has happened yet." : "Loading…"}
-            </p>
-          ) : (
+          {loaded && events.length === 0 ? null : <p className="px-4 pb-1 pt-3 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Recent</p>}
+          {!loaded ? (
+            <p className="px-4 py-4 text-center text-[length:var(--type-body-sm)] text-muted-foreground">Loading…</p>
+          ) : events.length === 0 ? null : (
             <div className="max-h-[240px] overflow-y-auto">
               {events.map((event, index) => (
                 <button
@@ -294,7 +296,7 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
                   className="flex w-full min-w-0 flex-col items-start gap-0.5 border-b border-hairline px-4 py-2.5 text-left transition last:border-b-0 hover:bg-muted/45"
                 >
                   <span className="flex w-full min-w-0 items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-foreground">
+                    <span title={event.message} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-foreground">
                       {event.message}
                     </span>
                     {needsAttention(event.severity) ? (

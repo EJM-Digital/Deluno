@@ -21,21 +21,38 @@ import type { DashboardAttention } from "./attention";
 
 export type Action = ReturnType<typeof useAction>;
 
-const row = "flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2 last:border-b-0";
-const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center rounded-[10px] border border-hairline text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
+const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center whitespace-nowrap rounded-[10px] border border-hairline text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
 
 /**
- * The same action area on every row: the main button in one column, "Give up"
- * in a second column of fixed width, so buttons line up down the list whatever
- * their words (the owner, 1 Oct: "make sure all the buttons align and are neat and
- * tidy depending on the scenario"). A row with one button spans both columns,
- * so every row ends at the same edge.
+ * One Needs-you row, the same on the Dashboard and in the bell: status dot, bold
+ * one-line title, muted one-line reason (both whole in the tooltip), then the two
+ * fixed action columns. One padding and a hairline divider on every row; on a phone
+ * the buttons drop under the text.
+ */
+export function NeedsYouRow({ tone, title, text, actions }: { tone: "bad" | "warn"; title: string; text: string; actions: ReactElement }) {
+  return (
+    <li className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2.5 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+      <StatusLed tone={tone} pulse />
+      <div className="min-w-0 leading-tight">
+        <span title={title} className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{title}</span>
+        <span title={text} className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{text}</span>
+      </div>
+      <div className="col-start-2 sm:col-start-auto">{actions}</div>
+    </li>
+  );
+}
+
+/**
+ * The same action area on every row: two fixed columns of one width, so every
+ * row's first button lines up with every other row's first button and the second
+ * with the second, whatever their words. A row with one action puts it in the
+ * first column and leaves the second empty, so every row ends at the same edge.
  */
 export function RowActions({ primary, secondary }: { primary: ReactElement; secondary?: ReactElement }) {
   return (
-    <span className="ml-4 flex shrink-0 gap-1.5 sm:ml-0">
+    <span className="grid grid-cols-[7.5rem_7.5rem] gap-1.5" data-row-actions>
       <span className="flex">{primary}</span>
-      {secondary ? <span className="flex">{secondary}</span> : <span aria-hidden className="w-[7.5rem]" />}
+      <span className="flex">{secondary ?? null}</span>
     </span>
   );
 }
@@ -86,25 +103,12 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
     .flatMap((item) => {
       if (item.id === "recovery") {
         return recoveryCases.map((entry) => (
-          <li key={`recovery:${entry.mediaType}:${entry.id}`} className={row}>
-            <StatusLed tone="warn" pulse />
-            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{entry.title}</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{recoveryLabel(entry)}: {entry.summary}</span>
-            </div>
-            <RecoveryButtons item={entry} action={action} />
-          </li>
+          <NeedsYouRow key={`recovery:${entry.mediaType}:${entry.id}`} tone="warn" title={entry.title} text={`${recoveryLabel(entry)}: ${entry.summary}`} actions={<RecoveryButtons item={entry} action={action} />} />
         ));
       }
       if (item.id === "failed-imports") {
         return failedImportJobs.map((job, index) => (
-          <li key={`import:${job.id}`} className={row}>
-            <StatusLed tone="bad" pulse />
-            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">An import didn{"’"}t finish</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{job.lastError ?? "It stopped without saying why."}</span>
-            </div>
-            <RowActions
+          <NeedsYouRow key={`import:${job.id}`} tone="bad" title="An import didn’t finish" text={job.lastError ?? "It stopped without saying why."} actions={<RowActions
               primary={<ActionButton
           uniform
               label="Retry"
@@ -122,19 +126,12 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
               variant="ghost"
               onClick={() => void action.run(`job-dismiss:${job.id}`, async () => { await dismissFailedJob(job.id); return "Import dismissed"; })}
             />}
-            />
-          </li>
+            />} />
         ));
       }
       if (item.id === "handoffs") {
         return handoffs.map((handoff) => (
-          <li key={`handoff:${handoff.id}`} className={row}>
-            <StatusLed tone="bad" pulse />
-            <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{handoff.releaseName}</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`}</span>
-            </div>
-            <RowActions
+          <NeedsYouRow key={`handoff:${handoff.id}`} tone="bad" title={handoff.releaseName} text={handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`} actions={<RowActions
               primary={<ActionButton
           uniform
               label="Retry"
@@ -152,20 +149,12 @@ export function needsYouRows(attention: DashboardAttention, action: Action): Rea
               variant="ghost"
               onClick={() => void action.run(`handoff-dismiss:${handoff.id}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
             />}
-            />
-          </li>
+            />} />
         ));
       }
       // A stalled download or one with a warning: the download is in Downloads now, the button is in Transfers.
       return [
-        <li key={item.id} className={row}>
-          <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} pulse />
-          <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-            <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
-            <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
-          </div>
-          <RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />
-        </li>
+        <NeedsYouRow key={item.id} tone={item.tone === "bad" ? "bad" : "warn"} title={item.title} text={item.text} actions={<RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />} />
       ];
     });
 }
@@ -181,14 +170,7 @@ export function setupProblemRows(attention: DashboardAttention): ReactElement[] 
   return attention.items
     .filter((item) => item.tab === "system")
     .map((item) => (
-      <li key={item.id} className={row}>
-        <StatusLed tone={item.tone === "bad" ? "bad" : "warn"} pulse />
-        <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-          <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{item.title}</span>
-          <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{item.text}</span>
-        </div>
-        <RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />
-      </li>
+      <NeedsYouRow key={item.id} tone={item.tone === "bad" ? "bad" : "warn"} title={item.title} text={item.text} actions={<RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />} />
     ));
 }
 
