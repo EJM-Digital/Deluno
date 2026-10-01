@@ -422,8 +422,8 @@ export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   for (const card of cards) grouped[card.stage].push(card);
   grouped.imported.sort((a, b) => Date.parse(b.at ?? "") - Date.parse(a.at ?? ""));
   grouped.downloading.sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
-  // In the first lane the quick fixes come first (a refused hand-off, a failed import, an import case), then the stopped downloads, which are many and alike.
-  const needsRank = (card: JourneyCard) => (card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 2 : 3);
+  // In the first lane a refused hand-off and a failed import come first (one click each), then the stopped downloads (Search again), then the import cases to review.
+  const needsRank = (card: JourneyCard) => (card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 3 : 2);
   grouped.needs.sort((a, b) => needsRank(a) - needsRank(b) || toneRank[a.state.tone] - toneRank[b.state.tone]);
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
