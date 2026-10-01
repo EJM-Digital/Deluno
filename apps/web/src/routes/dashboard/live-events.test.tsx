@@ -81,7 +81,7 @@ describe("Live follows real changes", () => {
     renderTab(fullSummary);
     const downloads = screen.getByRole("region", { name: /^the journey/i });
     expect((await within(downloads).findAllByText(/^61%/)).length).toBeGreaterThan(0);
-    const bar = () => downloads.querySelector<HTMLElement>(".live-fill")?.style.width;
+    const bar = () => downloads.querySelector<HTMLElement>(".lj-pb i")?.style.width;
     expect(bar()).toBe("61%");
 
     send("DownloadProgress", { id: "q1", title: "Photographer (2026)", progress: 88, speedMbps: 5.5, eta: null, status: "downloading" });
@@ -115,13 +115,13 @@ describe("Live follows real changes", () => {
 
     send("DispatchGrabAttempt", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", clientName: "Deluge", timestamp: new Date().toISOString() });
     const grab = await within(board).findByRole("link", { name: /Sintel \(2010\): Sending to Deluge/ });
-    expect(within(within(board).getByRole("list", { name: "Grabbed titles" })).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(board.querySelector<HTMLElement>('[data-glide-stage="grabbed"]')!).getByText("Sintel (2010)")).toBeInTheDocument();
     expect(within(board).queryByText("Nothing moving right now")).toBeNull();
     send("DispatchGrabCompleted", { dispatchId: "d1", releaseName: "Sintel.2010.1080p", clientId: "c1", succeeded: true, message: null, timestamp: new Date().toISOString() });
     await waitFor(() => expect(grab).not.toBeInTheDocument());
 
     send("DispatchImportStarted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", mediaType: "movie", timestamp: new Date().toISOString() });
-    expect(await within(within(board).getByRole("list", { name: "Importing titles" })).findByText("Big Buck Bunny (2008)")).toBeInTheDocument();
+    expect(await within(board.querySelector<HTMLElement>('[data-glide-stage="importing"]')!).findByText("Big Buck Bunny (2008)")).toBeInTheDocument();
     send("DispatchImportCompleted", { dispatchId: "d2", releaseName: "Big.Buck.Bunny.2008", succeeded: true, importedPath: "/m", failureReason: null, timestamp: new Date().toISOString() });
     await waitFor(() => expect(within(board).queryByText("Big Buck Bunny (2008)")).toBeNull());
   });

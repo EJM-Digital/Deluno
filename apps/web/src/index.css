@@ -1279,16 +1279,6 @@ html .text-\[64px\] {
   --journey-import: 40 96% 60%;
 }
 
-/* A card that has just changed lane or arrived: it slides in and its edge glows once. */
-@keyframes live-card-arrive {
-  from { opacity: 0; transform: translateX(-14px) scale(0.97); box-shadow: 0 0 0 0 hsl(var(--card-glow, var(--primary)) / 0.55); }
-  60%  { opacity: 1; transform: translateX(0) scale(1); box-shadow: 0 0 0 6px hsl(var(--card-glow, var(--primary)) / 0.18); }
-  to   { opacity: 1; transform: translateX(0) scale(1); box-shadow: 0 0 0 0 hsl(var(--card-glow, var(--primary)) / 0); }
-}
-.live-card-arrive {
-  animation: live-card-arrive 900ms var(--ease-emphasis) both;
-}
-
 /* A new activity row: slides in and its background glows once, then settles. */
 @keyframes live-stream-glow {
   from { background-color: hsl(var(--card-glow, var(--primary)) / 0.22); }
@@ -1350,25 +1340,6 @@ html .text-\[64px\] {
   }
 }
 
-/* A download bar shimmers only while bytes are really moving (its card adds the class only with a speed above zero). */
-@media (prefers-reduced-motion: no-preference) {
-  .live-shimmer {
-    position: relative;
-    overflow: hidden;
-  }
-  .live-shimmer::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent 0%, hsl(0 0% 100% / 0.45) 50%, transparent 100%);
-    transform: translateX(-100%);
-    animation: live-shimmer 1.8s ease-in-out infinite;
-  }
-  @keyframes live-shimmer {
-    to { transform: translateX(100%); }
-  }
-}
-
 /* The speed trace draws in once, and its newest reading glows. */
 @keyframes live-trace-draw {
   from { stroke-dashoffset: 1; }
@@ -1378,20 +1349,6 @@ html .text-\[64px\] {
   .live-trace {
     stroke-dasharray: 1;
     animation: live-trace-draw 1100ms var(--ease-emphasis) both;
-  }
-}
-
-/* The journey's rail: the dashes run along it while titles are on their way, and hold still when none are or motion is reduced. */
-@keyframes live-rail-run {
-  to { background-position: 26px 0; }
-}
-.live-rail {
-  background-image: repeating-linear-gradient(90deg, hsl(var(--primary) / 0.85) 0 10px, transparent 10px 26px);
-  background-size: 26px 2px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .live-rail-run {
-    animation: live-rail-run 1.2s linear infinite;
   }
 }
 

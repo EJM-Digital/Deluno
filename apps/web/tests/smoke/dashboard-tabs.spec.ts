@@ -301,7 +301,7 @@ test.describe("Dashboard tabs", () => {
       await expect(activity.getByText(/Task (started|finished|queued)/)).toHaveCount(0);
       await expect(activity.getByText(/[0-9]+ routine left out/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^(today|latest)/i })).toHaveCount(0);
-      // Only titles that are moving are on the journey, each with its library title; a station with too many to fit shows compact tiles.
+      // Only titles that are moving are on the journey, each with its library title; a station with too many to fit ends with an and-N-more link.
       await expect(page.getByRole("link", { name: /^Oppenheimer \(2023\): 88%/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Sintel \(2010\): Cleaner is working on it/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Shogun: Asked for in Seerr · looking/ })).toBeVisible();
@@ -310,8 +310,8 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("link", { name: /^The Kid \(1921\): Stuck at 34% · not moving/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
-      // Every title is on screen: nothing on the journey says "and N more".
-      await expect(page.getByRole("region", { name: /^the journey/i }).getByText(/^and [0-9]+ more/)).toHaveCount(0);
+      // A station with more titles than its rows hold ends with "and N more" to Transfers, as the mockup does.
+      await expect(page.getByRole("region", { name: /^the journey/i }).getByRole("link", { name: /^and [0-9]+ more/ }).first()).toHaveAttribute("href", "/queue");
       await expect(page.getByRole("region", { name: /^the journey/i }).getByText(/on their way to your library · all in by about/)).toBeVisible();
       // Space and standing facts are on System, not here.
       await expect(page.getByText("Drive space")).toHaveCount(0);

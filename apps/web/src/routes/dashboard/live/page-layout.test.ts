@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardLayouts, cardsBudget, journeyBudget, pageLayout } from "./layout";
+import { cardsBudget, journeyBudget, pageLayout } from "./layout";
 
 describe("page layout from the measured main area", () => {
   it("puts the right column beside the page from about 1150px of main area", () => {
@@ -32,22 +32,5 @@ describe("journey budget", () => {
     expect(cardsBudget(500, 120)).toBe(380);
     expect(cardsBudget(undefined, 120)).toBeUndefined();
     expect(cardsBudget(100, 120)).toBe(0);
-  });
-});
-
-
-describe("the journey draws one card form on every station", () => {
-  const rem = 16;
-  it("uses full cards everywhere when every station's cards fit", () => {
-    const layouts = boardLayouts([1, 2, 0, 1], [300, 300, 150, 300], 600, 120, rem, "columns");
-    expect(layouts.map((layout) => layout.density)).toEqual(["full", "full", "full", "full"]);
-  });
-  it("makes every station compact when one station's cards do not fit as full cards", () => {
-    const layouts = boardLayouts([1, 2, 30, 1], [300, 300, 400, 300], 400, 120, rem, "columns");
-    expect(layouts.map((layout) => layout.density)).toEqual(["compact", "compact", "compact", "compact"]);
-    expect(layouts[2].columns).toBeGreaterThan(1);
-  });
-  it("stays full when stacked", () => {
-    expect(boardLayouts([50, 1], [300, 300], 400, 120, rem, "stacked").map((layout) => layout.density)).toEqual(["full", "full"]);
   });
 });

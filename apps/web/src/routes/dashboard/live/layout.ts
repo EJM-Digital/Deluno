@@ -7,92 +7,44 @@
  */
 
 /** The narrowest a station may be, in rem, before the journey stacks its stations one under another. */
-export const MIN_STATION_REM = 9;
+export const MIN_STATION_REM = 10;
 
-/** The gap between cards and between tiles, in rem. */
-export const CARD_GAP_REM = 0.375;
+/** One row of the journey's lanes, as the mockup: a card is 86px tall and a row is 94px (8px between). */
+export const TOKEN_PX = 86;
+export const ROW_PX = 94;
 
-/** How many whole rows of `rowHeight` (with `gap` between) fit in `height`. Always at least one, so a station is never empty. */
-export function rowsThatFit(height: number, rowHeight: number, gap: number): number {
-  if (!(height > 0) || !(rowHeight > 0)) return 1;
-  return Math.max(1, Math.floor((height + gap) / (rowHeight + gap)));
+/** The line "and N more" takes under the last card: a gap and one line of text, in px. */
+export const MORE_PX = 22;
+
+export interface LanePlan {
+  /** Rows of cards the lanes draw. */
+  rows: number;
+  /** Some station has more titles than the rows, so each such station ends with "and N more". */
+  more: boolean;
+  /** So little room that the "and N more" line takes the last row itself, as in the mockup, instead of a line under the cards. */
+  slot: boolean;
+  /** The height of the lanes, in px. */
+  height: number;
+}
+
+/**
+ * How the lanes use `room` px for stations holding `counts` titles. All the cards that fit are drawn; when the busiest
+ * station has more than fit, every station draws as many as fit and the busy ones end with an "and N more" line, which
+ * takes less than a row (or, with room for no more than one row, the row itself). At least one row. Without a `room` (the page scrolls) every title is drawn.
+ */
+export function lanePlan(counts: readonly number[], room: number | undefined): LanePlan {
+  const most = Math.max(1, ...counts);
+  const rowsFor = (space: number) => Math.max(1, Math.floor((space + (ROW_PX - TOKEN_PX)) / ROW_PX));
+  if (room === undefined || most <= rowsFor(room)) return { rows: most, more: false, slot: false, height: most * ROW_PX - (ROW_PX - TOKEN_PX) };
+  if (room - MORE_PX < TOKEN_PX) return { rows: 1, more: true, slot: true, height: TOKEN_PX };
+  const rows = rowsFor(room - MORE_PX);
+  return { rows, more: true, slot: false, height: rows * ROW_PX - (ROW_PX - TOKEN_PX) + MORE_PX };
 }
 
 /** The journey keeps its stations side by side when each has room, and stacks them when it does not (a phone, a narrow window). */
 export function journeyMode(width: number, stations: number, remPx: number): "columns" | "stacked" {
   if (!(width > 0)) return "columns";
   return width >= stations * MIN_STATION_REM * remPx ? "columns" : "stacked";
-}
-
-/**
- * How a station draws its cards: as full cards while they fit its height, as compact poster tiles when there are more
- * than fit, so every title stays on screen. Stacked stations flow down the page, which scrolls, so they are always full.
- */
-export function stationDensity(count: number, height: number, cardHeight: number, gap: number, mode: "columns" | "stacked"): "full" | "compact" {
-  if (mode === "stacked" || !(height > 0)) return "full";
-  return count <= rowsThatFit(height, cardHeight, gap) ? "full" : "compact";
-}
-
-/** What a station with nothing in it is given, in rem: its dot, its name and "none", so the rail stays readable. */
-export const EMPTY_STATION_REM = 9.5;
-/** The narrowest a full card and a compact row draw in, in rem, so a station knows how many columns its width allows. */
-export const FULL_CARD_MIN_REM = 14;
-export const COMPACT_ROW_MIN_REM = 10.5;
-/** The height of one compact row with its gap, in rem. */
-export const COMPACT_ROW_REM = 2.5;
-
-/**
- * The width of each station, in px, out of `total`: stations with nothing shrink to a narrow column, and the busy ones share
- * the rest by how many cards they hold (never narrower than a station may be). With nothing anywhere they are equal.
- */
-export function stationWidths(total: number, counts: readonly number[], remPx: number): number[] {
-  const n = counts.length;
-  if (!(total > 0) || n === 0) return counts.map(() => 0);
-  const busy = counts.filter((count) => count > 0).length;
-  const empty = EMPTY_STATION_REM * remPx;
-  const min = MIN_STATION_REM * remPx;
-  if (busy === 0 || busy === n || total - (n - busy) * empty < busy * min) return counts.map(() => total / n);
-  const pool = total - (n - busy) * empty;
-  const weight = counts.reduce((sum, count) => sum + Math.max(0, count), 0);
-  const extra = pool - busy * min;
-  return counts.map((count) => (count > 0 ? min + (extra * count) / weight : empty));
-}
-
-export interface StationLayout {
-  density: "full" | "compact";
-  /** Columns of cards the station's width allows and its cards need. */
-  columns: number;
-}
-
-/**
- * How a station draws its cards in `width` x `height`: full cards, in as many columns as fit, while they all fit; otherwise
- * compact rows in as many columns as fit before it scrolls. Stacked stations are one column of full cards.
- */
-export function stationLayout(count: number, width: number, height: number, cardHeight: number, remPx: number, mode: "columns" | "stacked"): StationLayout {
-  if (mode === "stacked" || !(height > 0) || !(width > 0)) return { density: "full", columns: 1 };
-  const gap = CARD_GAP_REM * remPx;
-  const across = (min: number) => Math.max(1, Math.floor((width + gap) / (min * remPx + gap)));
-  const fullRows = rowsThatFit(height, cardHeight, gap);
-  const fullColumns = across(FULL_CARD_MIN_REM);
-  if (count <= fullRows * fullColumns) return { density: "full", columns: Math.max(1, Math.min(fullColumns, Math.ceil(count / fullRows))) };
-  const compactRows = rowsThatFit(height, COMPACT_ROW_REM * remPx, 0);
-  return { density: "compact", columns: Math.max(1, Math.min(across(COMPACT_ROW_MIN_REM), Math.ceil(count / compactRows))) };
-}
-
-/**
- * The journey draws every station with ONE card form (full cards, or compact rows) so the board never mixes sizes: full
- * cards when every station's cards fit as full cards in its columns and height, otherwise compact rows everywhere. Widths
- * and columns are still each station's own. `widths` are the cards' widths per station, in px.
- */
-export function boardLayouts(counts: readonly number[], widths: readonly number[], height: number, cardHeight: number, remPx: number, mode: "columns" | "stacked"): StationLayout[] {
-  const layouts = counts.map((count, index) => stationLayout(count, widths[index] ?? 0, height, cardHeight, remPx, mode));
-  if (layouts.every((layout) => layout.density === "full")) return layouts;
-  const gap = CARD_GAP_REM * remPx;
-  const compactRows = rowsThatFit(height, COMPACT_ROW_REM * remPx, 0);
-  return counts.map((count, index) => {
-    const across = Math.max(1, Math.floor(((widths[index] ?? 0) + gap) / (COMPACT_ROW_MIN_REM * remPx + gap)));
-    return { density: "compact", columns: Math.max(1, Math.min(across, Math.ceil(count / compactRows))) };
-  });
 }
 
 /** The main area must be at least this wide (in rem) for the right column to sit beside the journey. */

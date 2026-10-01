@@ -1,0 +1,93 @@
+/*
+ * The Live journey, ported from the approved mockup (artifacts/live-mockup/index.html) rule for rule: five equal
+ * stations, dashed dividers the full height of the lanes, a rail whose dashes flow, and token cards that sit in their
+ * station's column and glide when their stage changes. Every class is prefixed lj- so nothing else is touched. The
+ * mockup's colour variables are mapped to the app's own tokens just below.
+ */
+.lj {
+  --lj-card-2: hsl(var(--surface-2));
+  --lj-card-3: hsl(var(--surface-3));
+  --lj-fill-end: hsl(var(--surface-1));
+  --lj-line: hsl(var(--hairline));
+  --lj-divider: hsl(var(--muted-foreground) / 0.28);
+  --lj-muted: hsl(var(--muted-foreground));
+  --lj-primary: hsl(var(--primary));
+  --lj-warning: hsl(var(--warning));
+  --lj-s-requested: hsl(var(--stage-search));
+  --lj-s-grabbed: hsl(var(--journey-grab));
+  --lj-s-downloading: hsl(var(--info));
+  --lj-s-processing: hsl(var(--journey-process));
+  --lj-s-importing: hsl(var(--journey-import));
+  position: relative;
+}
+
+.lj-stations { position: relative; display: grid; grid-template-columns: repeat(var(--lj-n), 1fr); padding: 0 12px; }
+.lj-station { padding: 6px 8px 12px; display: flex; align-items: center; gap: 8px; position: relative; z-index: 1; min-width: 0; color: inherit; text-decoration: none; }
+.lj-station-link { display: flex; align-items: center; gap: 8px; min-width: 0; background: hsl(var(--card)); padding-right: 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+.lj-station-link:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.lj-dot { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--lj-card-2); border: 2px solid var(--lj-st); color: var(--lj-st); transition: box-shadow 0.3s; }
+.lj-dot svg { width: 14px; height: 14px; }
+.lj-active .lj-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--lj-st) 15%, transparent), 0 0 18px color-mix(in srgb, var(--lj-st) 45%, transparent); }
+.lj-nm { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lj-ct { font-size: 12px; color: var(--lj-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lj-text { min-width: 0; line-height: 1.25; }
+.lj-empty { opacity: 0.5; }
+
+.lj-rail { position: absolute; left: 50px; right: 60px; top: 21px; height: 2px; background: var(--lj-line); pointer-events: none; }
+.lj-rail i { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, hsl(var(--primary) / 0.9) 0 10px, transparent 10px 26px); background-size: 26px 2px; opacity: 0.55; }
+.lj-run .lj-rail i { animation: lj-flow 1.2s linear infinite; }
+
+.lj-lanes { position: relative; margin: 0 12px; overflow: hidden; }
+.lj-lane-bg { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--lj-divider); pointer-events: none; }
+.lj-calm { position: absolute; left: 0; right: 0; top: 0; height: 86px; display: flex; align-items: center; padding: 0 8px; font-size: 13px; color: var(--lj-muted); }
+
+.lj-token {
+  position: absolute; width: calc(100% / var(--lj-n) - 12px); height: 86px; padding: 8px;
+  display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px;
+  background: linear-gradient(180deg, var(--lj-card-2), var(--lj-fill-end));
+  border: 1px solid var(--lj-line); border-left: 3px solid var(--lj-st); border-radius: 11px;
+  color: inherit; text-decoration: none;
+  transition: left 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s, border-color 0.6s, filter 0.2s;
+}
+.lj-token:hover { filter: brightness(1.1); }
+.lj-token:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.lj-token.lj-fresh { animation: lj-pop 0.6s ease; }
+.lj-token.lj-arrive { animation: lj-pop 0.6s ease, lj-glow 1.4s ease-out; }
+.lj-hidden { visibility: hidden; }
+.lj-poster { display: block; width: 46px; height: 69px; border-radius: 6px; overflow: hidden; background: var(--lj-card-3); }
+.lj-poster img { width: 46px; height: 69px; object-fit: cover; display: block; }
+.lj-ph { width: 46px; height: 69px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--lj-muted); background: var(--lj-card-3); }
+.lj-ph svg { width: 14px; height: 14px; color: var(--lj-st); }
+.lj-body { min-width: 0; display: block; }
+.lj-t { font-weight: 600; font-size: 13px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: hsl(var(--foreground)); }
+.lj-s { font-size: 11.5px; color: var(--lj-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.lj-s-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lj-s b { color: var(--lj-st); font-weight: 600; }
+.lj-s-warn { color: var(--lj-warning); }
+.lj-s-bad { color: hsl(var(--destructive)); }
+.lj-s-ok { color: hsl(var(--success)); }
+.lj-when { flex: none; font-variant-numeric: tabular-nums; }
+.lj-tag { flex: none; border-radius: 999px; padding: 0 6px; font-size: 10px; font-weight: 600; line-height: 1.5; }
+.lj-pb { height: 4px; background: var(--lj-card-3); border-radius: 9px; overflow: hidden; margin-top: 6px; }
+.lj-pb i { display: block; height: 100%; background: var(--lj-st); border-radius: 9px; transition: width 1s linear; position: relative; overflow: hidden; }
+.lj-pb.lj-moving i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.35), transparent); animation: lj-shimmer 1.4s linear infinite; }
+.lj-pulse { display: inline-block; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--lj-st); animation: lj-blink 1.2s ease-in-out infinite; }
+.lj-more { position: absolute; font-size: 12px; line-height: 18px; color: var(--lj-primary); text-decoration: none; }
+.lj-more:hover { text-decoration: underline; }
+.lj-more:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; border-radius: 4px; }
+
+/* A phone: the stations stack and the same cards flow one under another. */
+.lj-stack { padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+.lj-stack .lj-stations { display: block; padding: 0; }
+.lj-stack .lj-token { position: relative; width: auto; margin-bottom: 8px; }
+
+@keyframes lj-flow { to { background-position: 26px 0; } }
+@keyframes lj-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes lj-blink { 50% { opacity: 0.35; } }
+@keyframes lj-pop { from { opacity: 0; } }
+@keyframes lj-glow { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--lj-st) 55%, transparent); } 40% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--lj-st) 18%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lj-token { transition: none; }
+  .lj-run .lj-rail i, .lj-pulse, .lj-pb.lj-moving i::after, .lj-token.lj-fresh, .lj-token.lj-arrive { animation: none; }
+}

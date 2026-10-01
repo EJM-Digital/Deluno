@@ -106,19 +106,19 @@ describe("Live applies each pushed change with no fetch after it", () => {
     seed();
     renderTab();
     const board = screen.getByRole("region", { name: /^the journey/i });
-    const titles = () => within(board).getByRole("list", { name: "Processing titles" });
+    const titles = () => board.querySelector<HTMLElement>('[data-glide-stage="processor"]')!;
     expect(await within(board).findByText("Metropolis (1927)")).toBeInTheDocument();
-    expect(within(titles()).getByRole("link", { name: /Metropolis \(1927\): Cleaner is working on it/ })).toBeInTheDocument();
+    expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Cleaner is working on it");
     const before = asked.paths.length;
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "failed", processorName: "Cleaner", message: "The processor timed out.", at: at() });
-    expect(await within(titles()).findByRole("link", { name: /Metropolis \(1927\): Processor failed/ })).toBeInTheDocument();
+    await waitFor(() => expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Processor failed"));
     // A problem is for the bell: nothing on Live asks to be settled.
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
     expect(within(board).queryByRole("button")).toBeNull();
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "working", processorName: "Cleaner", message: null, at: at() });
-    expect(await within(titles()).findByRole("link", { name: /Metropolis \(1927\): Cleaner is working on it/ })).toBeInTheDocument();
+    await waitFor(() => expect(titles().getAttribute("aria-label")).toContain("Metropolis (1927): Cleaner is working on it"));
     expect(asked.paths.length).toBe(before);
   });
 

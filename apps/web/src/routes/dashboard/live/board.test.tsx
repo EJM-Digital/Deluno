@@ -10,7 +10,7 @@ import { SourcesMap } from "./sources-map";
 import { clientNodes, connectionNodes, flowOf, indexerNodes, layoutMap } from "./map-model";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
-import { EMPTY_STATION_REM, journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity, stationLayout, stationWidths } from "./layout";
+import { journeyMode, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
 import { departedFromImporting, sameTitle } from "./motion";
 import { arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
@@ -46,13 +46,15 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("the layout rules", () => {
-  it("counts the whole card rows a height holds, and always at least one", () => {
-    expect(rowsThatFit(300, 88, 6)).toBe(3);
-    expect(rowsThatFit(276, 88, 6)).toBe(3);
-    expect(rowsThatFit(275, 88, 6)).toBe(2);
-    expect(rowsThatFit(900, 88, 6)).toBe(9);
-    expect(rowsThatFit(20, 88, 6)).toBe(1);
-    expect(rowsThatFit(0, 88, 6)).toBe(1);
+  it("draws every title when nothing is measured, and as many rows as fit when it is", () => {
+    expect(lanePlan([2, 5, 0], undefined)).toEqual({ rows: 5, more: false, slot: false, height: 462 });
+    expect(lanePlan([2, 3, 0], 274)).toEqual({ rows: 3, more: false, slot: false, height: 274 });
+  });
+
+  it("ends a station that has more than fit with an and-more line that takes less than a row", () => {
+    expect(lanePlan([1, 7], 274)).toMatchObject({ rows: 2, more: true, slot: false });
+    expect(lanePlan([1, 7], 100)).toMatchObject({ rows: 1, more: true, slot: true, height: 86 });
+    expect(lanePlan([], 100)).toMatchObject({ rows: 1, more: false });
   });
 
   it("keeps the stations side by side while each has room, and stacks them when it does not", () => {
@@ -63,44 +65,6 @@ describe("the layout rules", () => {
     expect(journeyMode(4 * MIN_STATION_REM * 16, 4, 16)).toBe("columns");
     // Nothing measured yet: the columns.
     expect(journeyMode(0, 5, 16)).toBe("columns");
-  });
-
-  it("draws full cards while they fit, compact tiles when they do not, and full cards when stacked (the page scrolls)", () => {
-    expect(stationDensity(3, 300, 88, 6, "columns")).toBe("full");
-    expect(stationDensity(4, 300, 88, 6, "columns")).toBe("compact");
-    expect(stationDensity(40, 300, 88, 6, "stacked")).toBe("full");
-    expect(stationDensity(40, 0, 88, 6, "columns")).toBe("full");
-  });
-
-  it("shows more rows of cards on a taller screen", () => {
-    expect(rowsThatFit(1080 * 0.3, 88, 6)).toBeLessThan(rowsThatFit(1440 * 0.3, 88, 6));
-  });
-
-  it("gives stations width by need: empty ones narrow, busy ones share the rest by their cards", () => {
-    const widths = stationWidths(1400, [0, 0, 13, 4, 4], 16);
-    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(1400);
-    expect(widths[0]).toBe(EMPTY_STATION_REM * 16);
-    expect(widths[1]).toBe(EMPTY_STATION_REM * 16);
-    expect(widths[2]).toBeGreaterThan(widths[3]);
-    expect(widths[3]).toBeCloseTo(widths[4]);
-    for (const width of widths.slice(2)) expect(width).toBeGreaterThanOrEqual(MIN_STATION_REM * 16);
-    // Nothing anywhere, or everywhere: equal shares. Too narrow to shrink anything: equal shares.
-    expect(stationWidths(1000, [0, 0, 0, 0], 16)).toEqual([250, 250, 250, 250]);
-    expect(stationWidths(1000, [2, 2, 2, 2], 16)).toEqual([250, 250, 250, 250]);
-    expect(stationWidths(300, [0, 5, 5], 16).every((width) => width === 100)).toBe(true);
-  });
-
-  it("a busy station shows its cards in as many columns as its width allows before it scrolls", () => {
-    // Plenty of height for 4 full cards: 13 cards in a wide station are compact rows in several columns.
-    const wide = stationLayout(13, 700, 420, 88, 16, "columns");
-    expect(wide.density).toBe("compact");
-    expect(wide.columns).toBeGreaterThan(1);
-    // A narrow station keeps one column.
-    expect(stationLayout(13, 220, 420, 88, 16, "columns").columns).toBe(1);
-    // Cards that fit as full cards across a wide station stay full, side by side only as needed.
-    expect(stationLayout(4, 700, 420, 88, 16, "columns")).toEqual({ density: "full", columns: 1 });
-    expect(stationLayout(8, 700, 420, 88, 16, "columns")).toMatchObject({ density: "full", columns: 2 });
-    expect(stationLayout(40, 700, 420, 88, 16, "stacked")).toEqual({ density: "full", columns: 1 });
   });
 
   it("sizes posters to the shelf: 2:3, one row on a short shelf, more rows on a tall one, never absurdly small or large", () => {
@@ -355,17 +319,17 @@ describe("the journey", () => {
 
   it("puts each title in its station as a card, a stuck one amber, and says why each is moving", () => {
     render5(cards);
-    const downloading = screen.getByRole("list", { name: "Downloading titles" });
-    expect(within(downloading).getByRole("link", { name: "Stuck One (2001): Stuck at 43% · not moving" })).toBeInTheDocument();
-    expect(within(downloading).getByText("done about 2:14 pm")).toBeInTheDocument();
-    expect(within(downloading).getByText("You asked")).toBeInTheDocument();
+    const downloading = screen.getByRole("link", { name: "Stuck One (2001): Stuck at 43% · not moving" });
+    expect(downloading).toHaveAttribute("data-glide-stage", "downloading");
+    expect(screen.getByText("done about 2:14 pm")).toBeInTheDocument();
+    expect(screen.getByText("You asked")).toBeInTheDocument();
     // A card that came from Seerr says so; a request card says it in its line and not twice.
-    const requested = screen.getByRole("list", { name: "Requested titles" });
-    expect(within(requested).getByRole("link", { name: "Shogun: Asked for in Seerr · looking" })).toBeInTheDocument();
+    const requested = document.querySelector<HTMLElement>('[data-glide-stage="requested"]')!;
+    expect(requested).toHaveAccessibleName("Shogun: Asked for in Seerr · looking");
     expect(within(requested).queryByText("Seerr")).toBeNull();
     // A card with no recorded reason has no tag rather than a guess.
-    expect(within(screen.getByRole("list", { name: "Processing titles" })).queryByText(/You asked|Seerr|From a list|Upgrade hunt|Missing episode/)).toBeNull();
-    expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".live-blink")).not.toBeNull();
+    expect(within(document.querySelector<HTMLElement>('[data-glide-stage="processor"]')!).queryByText(/You asked|Seerr|From a list|Upgrade hunt|Missing episode/)).toBeNull();
+    expect(screen.getByRole("link", { name: /Stuck One/ }).querySelector(".lj-pulse")).not.toBeNull();
   });
 
   it("tags a download that came from Seerr, a list, an upgrade hunt or a missing episode", () => {
@@ -384,27 +348,24 @@ describe("the journey", () => {
     expect(screen.getByText(/Nothing moving right now · last arrival Moon \(2009\)/)).toBeInTheDocument();
   });
 
-  it("never says and N more: when the cards do not fit the station they become compact tiles, every title still there", () => {
+  it("shows as many cards as fit a station and ends it with an and-N-more link to Transfers that names every title", () => {
     const rect = HTMLElement.prototype.getBoundingClientRect;
     const observer = globalThis.ResizeObserver;
     globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} } as never;
     HTMLElement.prototype.getBoundingClientRect = function sized() {
-      const name = typeof this.className === "string" ? this.className : "";
       const make = (width: number, height: number) => ({ width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-      if (name.includes("w-px")) return make(1, 88);
-      if (name.includes("inset-0")) return make(1100, 300);
-      if (name.includes("relative flex min-h-0 flex-1 flex-col")) return make(1200, 400);
-      return make(0, 0);
+      return typeof this.className === "string" && this.className.includes("lj ") ? make(1200, 400) : make(0, 0);
     };
     try {
       const many = Array.from({ length: 12 }, (_, n) => card({ key: `m${n}`, title: `Film ${n} (2001)` }));
-      render5(many);
-      const station = screen.getByRole("list", { name: "Downloading titles" }).parentElement!;
-      expect(station).toHaveAttribute("data-cards", "compact");
-      expect(screen.getAllByRole("link", { name: /^Film [0-9]+ \(2001\)/ })).toHaveLength(12);
-      expect(document.body.textContent).not.toMatch(/and [0-9]+ more/);
-      // Few enough to fit stay full cards.
-      expect(screen.getByRole("list", { name: "Downloading titles" }).querySelector("[data-compact]")).not.toBeNull();
+      const grouped = byStage(many);
+      withRouter(<Journey budget={400} grouped={grouped} counts={laneCounts(grouped, undefined)} context={context} hasProcessor usual={{}} by={undefined} lastArrival={null} />);
+      const more = screen.getByRole("link", { name: /^and [0-9]+ more/ });
+      expect(more).toHaveAttribute("href", "/queue");
+      expect(more.getAttribute("title")).toContain("Film 11 (2001)");
+      // Every card is one size and the ones that do not fit are kept out of sight, not removed.
+      expect(document.querySelectorAll(".lj-token").length).toBe(12);
+      expect(document.querySelectorAll(".lj-hidden").length).toBeGreaterThan(0);
     } finally {
       HTMLElement.prototype.getBoundingClientRect = rect;
       globalThis.ResizeObserver = observer;
@@ -418,7 +379,7 @@ describe("the journey", () => {
     HTMLElement.prototype.getBoundingClientRect = function sized() {
       const name = typeof this.className === "string" ? this.className : "";
       const make = (width: number, height: number) => ({ width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-      if (name.includes("relative flex min-h-0 flex-1 flex-col")) return make(360, 600);
+      if (name.includes("lj ")) return make(360, 600);
       return make(0, 0);
     };
     try {
@@ -427,7 +388,6 @@ describe("the journey", () => {
       const stacked = Array.from(document.querySelectorAll('[data-station]'));
       expect(stacked.map((element) => element.getAttribute("data-station"))).toEqual(["requested", "downloading", "processor"]);
       expect(within(stacked[1] as HTMLElement).getByRole("group", { name: "Downloading" })).toBeInTheDocument();
-      expect(stacked.every((element) => element.getAttribute("data-cards") === "full")).toBe(true);
     } finally {
       HTMLElement.prototype.getBoundingClientRect = rect;
       globalThis.ResizeObserver = observer;
@@ -436,18 +396,18 @@ describe("the journey", () => {
 
   it("only shimmers a download bar while bytes are really moving", () => {
     const { container, unmount } = render5([card({ key: "a" })]);
-    expect(container.querySelector(".live-shimmer")).not.toBeNull();
+    expect(container.querySelector(".lj-moving")).not.toBeNull();
     unmount();
     const idle = render5([card({ key: "a", speedMbps: 0 })]);
-    expect(idle.container.querySelector(".live-shimmer")).toBeNull();
+    expect(idle.container.querySelector(".lj-moving")).toBeNull();
   });
 
   it("glows a card that has just changed station, and does not when motion is reduced", () => {
     const grouped = byStage([card({ key: "a" })]);
     const draw = () => withRouter(<Journey grouped={grouped} counts={laneCounts(grouped, undefined)} context={{ ...context, arrivals: new Set(["a"]) }} hasProcessor usual={{}} by={undefined} lastArrival={null} />);
-    expect(draw().container.querySelector(".live-card-arrive")).not.toBeNull();
+    expect(draw().container.querySelector(".lj-arrive")).not.toBeNull();
     setReducedMotion(true);
-    expect(draw().container.querySelector(".live-card-arrive")).toBeNull();
+    expect(draw().container.querySelector(".lj-arrive")).toBeNull();
   });
 });
 
