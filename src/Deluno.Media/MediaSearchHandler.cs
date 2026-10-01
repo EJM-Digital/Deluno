@@ -198,7 +198,8 @@ public static class MediaSearchHandler
                 cancellationToken: cancellationToken,
                 replacementAuthorized: wantedItem.HasFile,
                 replacementExpectedPath: wantedItem.FilePath,
-                clientExternalId: grabResult.ExternalId);
+                clientExternalId: grabResult.ExternalId,
+                startedBy: DownloadStartedBy.Manual);
 
             // "Search now" takes a release like any other grab, so its title is
             // on its way too (#555).

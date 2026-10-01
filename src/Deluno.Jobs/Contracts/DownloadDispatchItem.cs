@@ -69,4 +69,16 @@ public sealed record DownloadDispatchItem(
 
     // The indexer's id (#1077). IndexerName is what it was called when the
     // grab was made; the id is what grabs and success rates are filed under.
-    string? IndexerId = null);
+    string? IndexerId = null,
+
+    // Why Deluno started this download (#1098): manual, seerr, list, missing or
+    // upgrade (see DownloadStartedBy), recorded when it was sent. Null on a row
+    // from before it was kept, or where nothing says why; there is then no tag.
+    string? StartedBy = null,
+
+    // The list provider name when StartedBy is "list" (Trakt, MDBList ...).
+    string? StartedByDetail = null)
+{
+    /// <summary>The plain words for <see cref="StartedBy"/>, from the one shared helper; null when there is no reason.</summary>
+    public string? StartedByLabel => DownloadStartedBy.Label(StartedBy, StartedByDetail, MediaType);
+}

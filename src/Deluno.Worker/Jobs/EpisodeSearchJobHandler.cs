@@ -254,7 +254,9 @@ public sealed class EpisodeSearchJobHandler(
                 failure: grabResult.Failure,
                 replacementAuthorized: !string.IsNullOrWhiteSpace(currentFilePath),
                 replacementExpectedPath: currentFilePath,
-                clientExternalId: grabResult.ExternalId);
+                clientExternalId: grabResult.ExternalId,
+                startedBy: DownloadStartedBy.ForSearch("automatic", false, !string.IsNullOrWhiteSpace(currentFilePath)),
+                titleEntityId: payload.SeriesId);
         }
 
         await seriesCatalogRepository.RecordSearchAttemptAsync(

@@ -267,7 +267,8 @@ public static class MediaGrabHandler
             replacementAuthorized: wantedItem.HasFile,
             forceReplacementAuthorized: wantedItem.HasFile && forceOverride,
             replacementExpectedPath: wantedItem.FilePath,
-            clientExternalId: grabResult.ExternalId);
+            clientExternalId: grabResult.ExternalId,
+            startedBy: DownloadStartedBy.Manual);
 
         var now = timeProvider.GetUtcNow();
 

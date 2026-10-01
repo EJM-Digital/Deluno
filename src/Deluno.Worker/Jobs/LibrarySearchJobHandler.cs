@@ -397,7 +397,8 @@ public abstract class LibrarySearchJobHandler(
                     failure: grabResult.Failure,
                     replacementAuthorized: candidate.HasFile,
                     replacementExpectedPath: candidate.FilePath,
-                    clientExternalId: grabResult.ExternalId);
+                    clientExternalId: grabResult.ExternalId,
+                    startedBy: DownloadStartedBy.ForSearch(payload.TriggeredBy, IsTargeted(payload), candidate.HasFile));
                 if (bestCandidate?.SizeBytes is > 0)
                 {
                     queuedReleaseBytes += bestCandidate.SizeBytes.Value;
@@ -1054,7 +1055,8 @@ public abstract class LibrarySearchJobHandler(
                     failure: grabResult.Failure,
                     replacementAuthorized: candidate.HasFile,
                     replacementExpectedPath: candidate.FilePath,
-                    clientExternalId: grabResult.ExternalId);
+                    clientExternalId: grabResult.ExternalId,
+                    startedBy: DownloadStartedBy.ForSearch(payload.TriggeredBy, IsTargeted(payload), candidate.HasFile));
                 if (bestCandidate?.SizeBytes is > 0)
                 {
                     seriesQueuedReleaseBytes += bestCandidate.SizeBytes.Value;

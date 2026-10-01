@@ -2916,7 +2916,9 @@ public sealed class SqliteJobStore(
         bool forceReplacementAuthorized = false,
         string? replacementExpectedPath = null,
         IReadOnlyList<DispatchReplacementTarget>? replacementTargets = null,
-        string? clientExternalId = null)
+        string? clientExternalId = null,
+        string? startedBy = null,
+        string? titleEntityId = null)
     {
         var now = timeProvider.GetUtcNow();
         var dispatchId = Guid.CreateVersion7().ToString("N");
@@ -2930,6 +2932,10 @@ public sealed class SqliteJobStore(
 
         // Filed under the indexer's id (#1077), asked while its name still is its name.
         var indexerId = await IndexerIdentity.ResolveIdAsync(databaseConnectionFactory, indexerName, cancellationToken);
+
+        // Why it was started (#1098), from facts already held.
+        var (startedByReason, startedByDetail) = await DispatchStartedByResolver.ResolveAsync(
+            databaseConnectionFactory, startedBy, mediaType, entityType, entityId, titleEntityId, cancellationToken);
 
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -2951,7 +2957,7 @@ public sealed class SqliteJobStore(
                     decision_matched_custom_formats_json, decision_reasons_json, decision_risk_flags_json,
                     decision_override_used, decision_override_reason, decision_language,
                     replacement_authorized, force_replacement_authorized, replacement_expected_path,
-                    replacement_targets_json, torrent_hash_or_item_id, created_utc
+                    replacement_targets_json, torrent_hash_or_item_id, created_utc, started_by, started_by_detail
                 )
                 VALUES (
                     @id, @libraryId, @mediaType, @entityType, @entityId, @releaseName,
@@ -2962,7 +2968,7 @@ public sealed class SqliteJobStore(
                     @decisionMatchedCustomFormatsJson, @decisionReasonsJson, @decisionRiskFlagsJson,
                     @decisionOverrideUsed, @decisionOverrideReason, @decisionLanguage,
                     @replacementAuthorized, @forceReplacementAuthorized, @replacementExpectedPath,
-                    @replacementTargetsJson, @clientExternalId, @createdUtc
+                    @replacementTargetsJson, @clientExternalId, @createdUtc, @startedBy, @startedByDetail
                 );
                 """;
 
@@ -3018,6 +3024,8 @@ public sealed class SqliteJobStore(
                     : null);
             AddParameter(command, "@clientExternalId", string.IsNullOrWhiteSpace(clientExternalId) ? null : clientExternalId.Trim());
             AddParameter(command, "@createdUtc", now.ToString("O"));
+            AddParameter(command, "@startedBy", startedByReason);
+            AddParameter(command, "@startedByDetail", startedByDetail);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
