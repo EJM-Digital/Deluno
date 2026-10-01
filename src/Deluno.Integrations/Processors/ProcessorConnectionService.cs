@@ -12,7 +12,9 @@ namespace Deluno.Integrations.Processors;
 /// external processor permission to import: Deluno still requires its guarded
 /// completion callback before changing the library.
 /// </summary>
-public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFactory) : IProcessorConnectionService
+public sealed class ProcessorConnectionService(
+    IHttpClientFactory httpClientFactory,
+    IProcessorHandoffTitleResolver? titleResolver = null) : IProcessorConnectionService
 {
     public async Task<ProcessorConnectionTestResult> TestAsync(
         ProcessorConnectionItem connection,
@@ -170,6 +172,61 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
            && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
            && a.Port == b.Port;
 
+    /// <summary>
+    /// The hand-off body: the original keys in their original order, then, only when Deluno
+    /// knows them from what it has stored, the title's name, year, ids, season, episode and
+    /// poster (#1104). A value Deluno does not know is left out, never guessed.
+    /// </summary>
+    private async Task<Dictionary<string, object?>> BuildPayloadAsync(ProcessorHandoffItem handoff, CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["eventType"] = "deluno.processor-handoff",
+            ["handoffId"] = handoff.Id,
+            ["libraryId"] = handoff.LibraryId,
+            ["mediaType"] = handoff.MediaType,
+            ["sourcePath"] = handoff.SourcePath,
+            ["releaseName"] = handoff.ReleaseName,
+            ["queueItemId"] = handoff.QueueItemId,
+            ["callbackPath"] = "/api/integrations/processors/events"
+        };
+
+        ProcessorHandoffTitle? title = null;
+        if (titleResolver is not null)
+        {
+            try
+            {
+                title = await titleResolver.ResolveAsync(handoff, cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The title is a convenience for the processor; a lookup that fails must never stop the hand-off.
+            }
+        }
+
+        if (title is not null)
+        {
+            void Add(string key, object? value)
+            {
+                if (value is not null)
+                {
+                    payload[key] = value;
+                }
+            }
+
+            Add("title", title.Title);
+            Add("year", title.Year);
+            Add("tmdbId", title.TmdbId);
+            Add("tvdbId", title.TvdbId);
+            Add("imdbId", title.ImdbId);
+            Add("season", title.Season);
+            Add("episode", title.Episode);
+            Add("posterUrl", title.PosterUrl);
+        }
+
+        return payload;
+    }
+
     public async Task<ProcessorSubmissionResult> SubmitAsync(
         ProcessorConnectionItem connection,
         ProcessorHandoffItem handoff,
@@ -179,17 +236,7 @@ public sealed class ProcessorConnectionService(IHttpClientFactory httpClientFact
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, connection.SubmissionUrl)
             {
-                Content = SizedJson.Create(new
-                {
-                    eventType = "deluno.processor-handoff",
-                    handoffId = handoff.Id,
-                    libraryId = handoff.LibraryId,
-                    mediaType = handoff.MediaType,
-                    sourcePath = handoff.SourcePath,
-                    releaseName = handoff.ReleaseName,
-                    queueItemId = handoff.QueueItemId,
-                    callbackPath = "/api/integrations/processors/events"
-                })
+                Content = SizedJson.Create(await BuildPayloadAsync(handoff, cancellationToken))
             };
             // The key is the hand-off *as of this revision*, not the hand-off.
             //
