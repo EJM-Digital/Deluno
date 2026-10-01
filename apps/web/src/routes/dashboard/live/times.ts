@@ -101,10 +101,23 @@ export interface NextItem {
 
 const episodeCode = (item: SeriesUpcomingEpisodeItem) => `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`;
 
-/** The next scheduled jobs and the episodes airing soon, in one list, soonest first (a job running now first of all). */
+/**
+ * The scheduled tasks that are something Deluno does for your media: reading the lists you follow and watching the
+ * indexers for new releases (the searches of each library are separate rows). Everything else is housekeeping (health
+ * checks, backups, cleaning, metadata, reconciling downloads) and is on System's scheduled tasks, never on Live (the owner,
+ * 1 Oct 2026: no overlap between Live and System).
+ */
+export const MEDIA_TASKS: readonly string[] = ["intake.automation", "rss.sync"];
+
+/** True for a row Next may list: a library's search, or one of the media tasks. */
+export function isMediaJob(row: { key: string }): boolean {
+  return row.key.startsWith("search:") || (row.key.startsWith("task:") && MEDIA_TASKS.includes(row.key.slice("task:".length)));
+}
+
+/** What Deluno will do for your media: the next searches, list checks and episodes airing, in one list, soonest first (a search running now first of all). */
 export function buildNext(summary: DashboardSummary | undefined, upcoming: readonly SeriesUpcomingEpisodeItem[], now: number, limit = 6): NextItem[] {
   const items: NextItem[] = [];
-  for (const row of buildCountdownRows(summary)) {
+  for (const row of buildCountdownRows(summary).filter(isMediaJob)) {
     const at = Date.parse(row.next);
     if (!row.running && !Number.isFinite(at)) continue;
     const last = Date.parse(row.last ?? "");

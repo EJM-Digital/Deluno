@@ -4,7 +4,7 @@
  * and which cards have just arrived or changed lane.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
@@ -188,14 +188,20 @@ export function useElementHeight<T extends HTMLElement>(): [RefObject<T | null>,
   return [ref, height];
 }
 
-/** The width and height of an element, kept up to date as it changes (0 until it has been laid out). */
+/**
+ * The width and height of an element, kept up to date as it changes (0 until it has been laid out). It is read before the
+ * first paint (the layout built from it is settled when the page first shows, so nothing shifts after load) and again when
+ * the fonts have loaded, whose metrics can move the text that sizes the space.
+ */
 export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, { width: number; height: number }] {
   const ref = useRef<T | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
+    let live = true;
     const read = () => {
+      if (!live) return;
       const box = element.getBoundingClientRect();
       const next = { width: Math.round(box.width), height: Math.round(box.height) };
       setSize((current) => (current.width === next.width && current.height === next.height ? current : next));
@@ -203,7 +209,11 @@ export function useElementSize<T extends HTMLElement>(): [RefObject<T | null>, {
     read();
     const observer = new ResizeObserver(read);
     observer.observe(element);
-    return () => observer.disconnect();
+    void document.fonts?.ready.then(read);
+    return () => {
+      live = false;
+      observer.disconnect();
+    };
   }, []);
   return [ref, size];
 }

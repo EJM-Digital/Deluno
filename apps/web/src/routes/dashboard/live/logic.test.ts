@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
-import { buildJourney, IMPORTING_NOW, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { buildJourney, IMPORTING_NOW, LANDED_MS, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
 import { buildOperations } from "./band";
 import { plainReason } from "./plain";
 import { faceOf, NO_TITLES, wantedTitles } from "./titles";
@@ -205,9 +205,14 @@ describe("stuck downloads", () => {
     expect(laneCounts(grouped, undefined).downloading).toBe(3);
   });
 
-  it("drops a download from the journey once it is imported, even while the client keeps seeding it", () => {
-    const cards = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importCompletedUtc: iso(-1_000) } as never] });
+  it("drops a download from the journey once its import has landed, even while the client keeps seeding it", () => {
+    const cards = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importCompletedUtc: iso(-(LANDED_MS + 1_000)) } as never] });
     expect(cards.filter((card) => card.stage !== "imported")).toEqual([]);
+  });
+
+  it("holds a title whose import has just finished at Importing, full and green, for a moment before it leaves", () => {
+    const [card] = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importCompletedUtc: iso(-1_000) } as never] }).filter((item) => item.stage !== "imported");
+    expect(card).toMatchObject({ stage: "importing", landed: true, progress: 100, state: { tone: "ok", label: "Imported" } });
   });
 
   it("never calls a finished download stuck: one the client reports stalled at 100% is downloaded", () => {

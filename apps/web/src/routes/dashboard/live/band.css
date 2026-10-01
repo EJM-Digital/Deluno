@@ -35,7 +35,7 @@
 .lb-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--lb-muted); font-weight: 600; }
 a.lb-label:hover { color: hsl(var(--foreground)); }
 .lb-aside { font-size: 12px; color: hsl(var(--muted-foreground) / .72); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lb-aside a { color: hsl(var(--primary)); }
+.lb-aside a { color: inherit; }
 .lb-aside a:hover { text-decoration: underline; }
 .lb-tile .lb-fig {
   display: flex;
@@ -51,7 +51,8 @@ a.lb-label:hover { color: hsl(var(--foreground)); }
   color: hsl(var(--foreground));
 }
 .lb-tile .lb-fig small { font-size: 14px; font-weight: 500; color: var(--lb-muted); letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.lb-tile .lb-fig .lb-side { margin-left: auto; font-size: 15px; font-weight: 600; flex: none; letter-spacing: 0; color: hsl(var(--success)); }
+/* The upload sits right after the download's unit, as the mockup shows it (its .side is display: contents there, so the margin never applied). */
+.lb-tile .lb-fig .lb-side { font-size: 15px; font-weight: 600; flex: none; color: hsl(var(--success)); }
 .lb-body { min-width: 0; min-height: 0; position: relative; }
 
 /* Speed */

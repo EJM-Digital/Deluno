@@ -7,17 +7,21 @@
  */
 
 /** The narrowest a station may be, in rem, before the journey stacks its stations one under another. */
-export const MIN_STATION_REM = 10;
+export const MIN_STATION_REM = 8;
 
-/** One row of the journey's lanes, as the mockup: a card is 86px tall and a row is 94px (8px between). */
+/** One row of the journey's lanes at the mockup's full size: a card is 86px tall and a row is 94px (8px between). */
 export const TOKEN_PX = 86;
 export const ROW_PX = 94;
+/** The gap between one row of cards and the next, in px. */
+export const ROW_GAP_PX = 8;
 
-/** The line "and N more" takes under the last card: a gap and one line of text, in px. */
+/** The line "and N more" takes under the last row: a gap and one line of text, in px (always kept, as the mockup does). */
 export const MORE_PX = 22;
 
 /** The smallest a journey card gets (its row step is that plus the 8px gap): below this the band gives way before the cards do. */
 export const MIN_TOKEN_PX = 60;
+/** The tallest a row step grows to on a tall window: a 122px card (the mockup's 130px step). */
+export const MAX_STEP_PX = 130;
 /** Under this card height the title is one line instead of two. */
 export const TWO_LINE_TITLE_PX = 76;
 /** The rows of cards the journey always shows (the owner, 1 Oct 2026: "cut the journey height to 3"). */
@@ -35,46 +39,15 @@ export interface JourneySize {
 }
 
 /**
- * The size of a journey card so that exactly three rows fit `room` px of lanes (less the "and N more" line when the busiest
- * station has more than three titles): the full 86px card when there is room, smaller when there is not, never under 60px.
+ * The mockup's rule, exactly (fitRows' sibling in layout()): the step is the lanes' height, less the 22px kept for "and N
+ * more", plus the 8px gap, over three rows, between 68 and 130px; the card is the step less the gap; the poster is 2:3 and
+ * 17px shorter than the card (so its width is (card - 17) / 1.5). Without a measured height (a page that scrolls) it is
+ * the full 94px step.
  */
-export function journeySize(counts: readonly number[], room: number | undefined): JourneySize {
-  const most = Math.max(0, ...counts);
-  const gap = ROW_PX - TOKEN_PX;
-  let step = ROW_PX;
-  if (room !== undefined) {
-    const reserve = most > JOURNEY_ROWS ? MORE_PX : 0;
-    step = clamp(Math.floor((room - reserve + gap) / JOURNEY_ROWS), MIN_TOKEN_PX + gap, ROW_PX);
-  }
-  const card = step - gap;
+export function journeySize(room: number | undefined): JourneySize {
+  const step = room === undefined ? ROW_PX : clamp(Math.floor((room - MORE_PX + ROW_GAP_PX) / JOURNEY_ROWS), MIN_TOKEN_PX + ROW_GAP_PX, MAX_STEP_PX);
+  const card = step - ROW_GAP_PX;
   return { card, step, poster: card - 17, oneLine: card < TWO_LINE_TITLE_PX };
-}
-
-export interface LanePlan {
-  /** Rows of cards the lanes draw. */
-  rows: number;
-  /** Some station has more titles than the rows, so each such station ends with "and N more". */
-  more: boolean;
-  /** So little room that the "and N more" line takes the last row itself, as in the mockup, instead of a line under the cards. */
-  slot: boolean;
-  /** The height of the lanes, in px. */
-  height: number;
-}
-
-/**
- * How the lanes use `room` px for stations holding `counts` titles. All the cards that fit are drawn; when the busiest
- * station has more than fit, every station draws as many as fit and the busy ones end with an "and N more" line, which
- * takes less than a row (or, with room for no more than one row, the row itself). At least one row. Without a `room` (the page scrolls) every title is drawn.
- */
-export function lanePlan(counts: readonly number[], room: number | undefined, size: { card: number; step: number } = { card: TOKEN_PX, step: ROW_PX }): LanePlan {
-  const most = Math.max(1, ...counts);
-  const { card, step } = size;
-  const gap = step - card;
-  const rowsFor = (space: number) => Math.max(1, Math.floor((space + gap) / step));
-  if (room === undefined || most <= rowsFor(room)) return { rows: most, more: false, slot: false, height: most * step - gap };
-  if (room - MORE_PX < card) return { rows: 1, more: true, slot: true, height: card };
-  const rows = rowsFor(room - MORE_PX);
-  return { rows, more: true, slot: false, height: rows * step - gap + MORE_PX };
 }
 
 /** The journey keeps its stations side by side when each has room, and stacks them when it does not (a phone, a narrow window). */
@@ -84,7 +57,7 @@ export function journeyMode(width: number, stations: number, remPx: number): "co
 }
 
 /** The main area must be at least this wide (in rem) for the right column to sit beside the journey. */
-export const SIDE_BY_SIDE_REM = 71.875;
+export const SIDE_BY_SIDE_REM = 66;
 /** Below this main-area width (in rem) the top band stacks its three cards. */
 export const BAND_ACROSS_REM = 56.25;
 export interface PageLayout {
@@ -103,7 +76,7 @@ export function pageLayout(width: number, remPx: number): PageLayout {
 /**
  * The one shared grid of the Live tab beside the right column (the mockup's `main`): the top band, the journey and the
  * bottom row are rows, Sources spans the band and the journey, Activity sits beside the bottom row, so the tops and
- * bottoms line up across both columns. Row heights are fluid within bounds, shares of the window's height (the page is fit to the window here).
+ * bottoms line up across both columns. Row heights are fluid within bounds, shares of the height the grid has (see `gridRows`).
  */
 export const GRID_COLUMNS = "minmax(0, 1fr) clamp(340px, 28%, 600px)";
 export const GRID_AREAS = '"now src" "board src" "low act"';
@@ -112,38 +85,56 @@ export const LOW_COLUMNS = "minmax(0, 1fr) clamp(260px, 36%, 420px)";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+/** The journey's row at a comfortable size (three rows of 86px cards and the "and N more" line): the mockup's 398px. */
+export const JOURNEY_PX = 398;
 /**
- * The row heights, as shares of the window's height (`basis`), clamped as the mockup does. When the grid itself (`available`,
- * less what is above it, such as setup banners) is too short for both rows and a journey, they give way together so the
- * journey keeps at least 250px of it. Unmeasured (0) is a roomy window.
+ * What sits around the journey's lanes: its header (44px), the ribbon (50px) and the space under the lanes (10px) and the card's
+ * border (2px), as measured. The mockup's own minimum counts 96, which leaves its lanes 10px short of three rows and their line.
  */
-/** The journey is three rows of cards tall, at whatever card size fits (see `journeySize`). */
-/** What sits above and below the cards (header, stations, padding: 116px, measured at the largest text size), three rows of cards, and the "and N more" line. */
-export const JOURNEY_CHROME_PX = 116;
-export const JOURNEY_PX = JOURNEY_CHROME_PX + (JOURNEY_ROWS - 1) * ROW_PX + TOKEN_PX + MORE_PX;
-const JOURNEY_MIN_PX = JOURNEY_CHROME_PX + (JOURNEY_ROWS - 1) * (MIN_TOKEN_PX + ROW_PX - TOKEN_PX) + MIN_TOKEN_PX + MORE_PX;
-const BAND_MIN_PX = 130;
-const LOW_MIN_PX = 170;
+export const JOURNEY_CHROME_PX = 106;
+/** The least the journey is given: its chrome, two rows of the smallest cards, one more, and the "and N more" line. */
+const JOURNEY_MIN_PX = JOURNEY_CHROME_PX + 2 * (MIN_TOKEN_PX + ROW_GAP_PX) + MIN_TOKEN_PX + MORE_PX;
+const BAND_MIN_PX = 150;
+const BAND_MAX_PX = 200;
+/** Spare height goes to the band, up to this tall. */
+const BAND_GROWN_MAX_PX = 240;
+const LOW_MIN_PX = 180;
+/** The bottom row is given room up to this before the spare goes to taller journey cards. */
+const LOW_ROOMY_PX = 260;
 const GRID_GAPS_PX = 28;
 
 /**
- * The rows of the shared grid: the band (20% of the window, 150 to 200px), the journey at three rows of cards, and the
- * bottom row (Arrived today, Turned down, Activity) with the rest. On a short page the band gives way first (to 130px),
- * then the journey's cards shrink (its three rows stay; see `journeySize`), so the bottom row keeps at least 170px.
+ * The rows of the shared grid, the mockup's `fitRows` exactly. `available` is the height the grid has (the mockup's
+ * `innerHeight`, its page being the grid); the 20% of it the band takes, the band's limits, the journey's 398px and the
+ * bottom row's 180px minimum are the mockup's, and so is the order they give way in: the band first (never under 150px),
+ * then the journey (never under what three rows of the smallest cards need). Spare height then goes to the band up to
+ * 240px while the bottom row keeps 260px, and the bottom row takes at most a third of the grid (at least 260px): the rest
+ * grows the journey's cards up to the 130px step. Without a measured height it is a roomy page (`basis` is ignored when
+ * the grid has been measured, so Live and System, which share this grid, always agree).
  */
 export function gridRows(basis: number, available = 0): { band: number; journey: number; low: number; template: string } {
-  const h = basis > 0 ? basis : 1000;
-  let band = clamp(h * 0.2, 150, 200);
+  const height = available > 0 ? available : basis > 0 ? basis : 1000;
+  const avail = height - GRID_GAPS_PX;
+  let band = clamp(Math.round(height * 0.2), BAND_MIN_PX, BAND_MAX_PX);
   let journey = JOURNEY_PX;
-  if (available > 0) {
-    const room = available - GRID_GAPS_PX;
-    if (band + journey + LOW_MIN_PX > room) band = Math.max(BAND_MIN_PX, room - journey - LOW_MIN_PX);
-    if (band + journey + LOW_MIN_PX > room) journey = Math.max(JOURNEY_MIN_PX, room - band - LOW_MIN_PX);
+  if (band + journey + LOW_MIN_PX > avail) band = Math.max(BAND_MIN_PX, avail - journey - LOW_MIN_PX);
+  if (band + journey + LOW_MIN_PX > avail) journey = Math.max(JOURNEY_MIN_PX, avail - band - LOW_MIN_PX);
+  let low = avail - band - journey;
+  if (low > LOW_ROOMY_PX) {
+    const toBand = Math.min(low - LOW_ROOMY_PX, BAND_GROWN_MAX_PX - band);
+    band += toBand;
+    low -= toBand;
+  }
+  const lowCap = Math.max(LOW_ROOMY_PX, Math.round(avail * 0.33));
+  if (low > lowCap) {
+    const grow = Math.min(low - lowCap, JOURNEY_ROWS * (MAX_STEP_PX - ROW_PX));
+    journey += grow;
+    low -= grow;
   }
   band = Math.round(band);
   journey = Math.round(journey);
-  const low = available > 0 ? Math.max(0, Math.round(available - GRID_GAPS_PX - band - journey)) : 270;
-  return { band, journey, low, template: `${band}px ${journey}px minmax(0, 1fr)` };
+  low = Math.max(LOW_MIN_PX, Math.round(low));
+  return { band, journey, low, template: `${band}px ${journey}px ${low}px` };
 }
 
 /** Under the side-by-side threshold the page scrolls, and the journey may be at most most of a window tall. */

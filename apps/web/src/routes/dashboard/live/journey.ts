@@ -66,6 +66,22 @@ export interface JourneyCard {
   startedBy?: StartedBy;
   /** A line for the route slot when the card has no indexer, client or processor yet: "Asked by Sam". */
   routeNote?: string;
+  /** How much the client has downloaded so far, in bytes (a download). */
+  downloadedBytes?: number;
+  /** Peers (a torrent) or connections (Usenet) the client reports for it; absent when it says none. */
+  peers?: number;
+  /** The way the client fetches it: "usenet" or "torrent", when it says. */
+  protocol?: "usenet" | "torrent";
+  /** When the file was handed to the processor, for how long it has been there. */
+  handedOverUtc?: string | null;
+  /** What the processor last said it is doing with it, when it can be asked (#511). */
+  processorStep?: string | null;
+  /** The processor's own place in its line for this file, when it says. */
+  processorQueuePosition?: number | null;
+  /** Where the import is putting it. */
+  destination?: "Movies" | "TV Shows";
+  /** The import has just finished: the card is held for a moment at 100%, green, before it leaves for the library. */
+  landed?: boolean;
   /** Where to act on it when its title is not known. */
   to: string;
 }
@@ -189,6 +205,17 @@ export function finishAt(item: Pick<DownloadQueueItem, "etaSeconds" | "sizeBytes
   return (Number.isFinite(readAtMs) && readAtMs > 0 ? readAtMs : now) + eta * 1000;
 }
 
+/** How long a card whose import has just finished stays on the board as "Imported", before it flies to the library. */
+export const LANDED_MS = 4000;
+
+/** Which library a title is going into, from what is known: the title's kind first, then the way the download was filed. */
+export function destinationOf(entity: JourneyCard["entity"], mediaType: string | null | undefined): JourneyCard["destination"] {
+  if (entity) return entity.kind === "movie" ? "Movies" : "TV Shows";
+  const said = (mediaType ?? "").toLowerCase();
+  if (!said) return undefined;
+  return /tv|series|show|episode/.test(said) ? "TV Shows" : "Movies";
+}
+
 /** What a card in Importing says while its import is actually running (a finished download waiting its turn says "Downloaded"). */
 export const IMPORTING_NOW = "Importing now";
 
@@ -224,9 +251,11 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     const fresher = reading && reading.at > (Number.isFinite(storedAt) ? storedAt : 0) && DOWNLOADING.includes(reading.status) ? reading : undefined;
     const item = fresher ? { ...raw, progress: fresher.progress, speedMbps: fresher.speedMbps, status: fresher.status } : raw;
     const dispatch = dispatchByClientItem.get(`${item.clientId}:${item.id}`.toLowerCase()) ?? dispatchByRelease.get(releaseKey(item.releaseName));
-    // Imported means in the library: it leaves the journey the moment the import lands (and flies to Arrived today),
-    // even while the client keeps seeding it.
-    if (dispatch?.importCompletedUtc) continue;
+    // Imported means in the library: it leaves the journey once the import has landed (and flies to Arrived today), even
+    // while the client keeps seeding it. For a moment after the import finishes the card stays, full and green.
+    const importedAt = Date.parse(dispatch?.importCompletedUtc ?? "");
+    const landed = Number.isFinite(importedAt) && now - importedAt >= 0 && now - importedAt < LANDED_MS;
+    if (dispatch?.importCompletedUtc && !landed) continue;
     const handoff = handoffByQueue.get(item.id);
     let stage: Stage | null = null;
     let state: JourneyCard["state"] = { tone: "info", label: "Working" };
@@ -258,8 +287,14 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       stage = "importing";
       state = item.status === "importFailed" ? { tone: "bad", label: "Import failed" } : item.status === "importQueued" ? { tone: "info", label: "Import queued" } : { tone: "info", label: "Ready to import" };
     }
+    if (landed) {
+      stage = "importing";
+      state = { tone: "ok", label: "Imported" };
+      stuck = false;
+      reason = null;
+    }
     if (!stage) continue;
-    if (stage === "importing" && state.tone !== "bad" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
+    if (stage === "importing" && !landed && state.tone !== "bad" && importingNow.has(releaseKey(item.releaseName))) state = { tone: "info", label: IMPORTING_NOW };
     seenReleases.add(releaseKey(item.releaseName));
     const entity = entityOf(dispatch);
     if (stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) && !reason) reason = handoff.failureMessage;
@@ -282,7 +317,15 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       indexer: dispatch?.indexerName || (item.indexerName && item.indexerName !== item.clientName ? item.indexerName : null),
       client: short(item.clientName),
       processor: short(handoff?.processorName),
-      progress: Number.isFinite(item.progress) ? Math.min(100, Math.max(0, item.progress)) : 0,
+      progress: landed ? 100 : Number.isFinite(item.progress) ? Math.min(100, Math.max(0, item.progress)) : 0,
+      downloadedBytes: item.downloadedBytes > 0 ? item.downloadedBytes : undefined,
+      peers: item.peers > 0 ? item.peers : undefined,
+      protocol: protocolOf(item.protocol),
+      handedOverUtc: handoff?.createdUtc ?? null,
+      processorStep: handoff?.processor?.message?.trim() || null,
+      processorQueuePosition: handoff?.processor?.queuePosition ?? null,
+      destination: destinationOf(entity, dispatch?.mediaType ?? item.mediaType),
+      landed: landed || undefined,
       speedMbps: item.speedMbps,
       etaSeconds: item.etaSeconds ?? undefined,
       finishAtMs: moving ? finishAt(raw, storedAt, fresher, now) : undefined,
@@ -320,6 +363,10 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       indexer: dispatch?.indexerName ?? null,
       client: short(dispatch?.downloadClientName),
       processor: short(handoff.processorName),
+      handedOverUtc: handoff.createdUtc,
+      processorStep: handoff.processor?.message?.trim() || null,
+      processorQueuePosition: handoff.processor?.queuePosition ?? null,
+      destination: destinationOf(entity, handoff.mediaType),
       at: handoff.updatedUtc,
       to: "/queue"
     });
@@ -342,6 +389,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
       client: short(item.client ?? dispatch?.downloadClientName),
+      destination: destinationOf(entity, dispatch?.mediaType),
       to: item.to
     });
   }
@@ -367,6 +415,13 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
   }
 
   return cards;
+}
+
+function protocolOf(word: string | null | undefined): JourneyCard["protocol"] {
+  const said = (word ?? "").toLowerCase();
+  if (said.includes("usenet") || said.includes("nzb")) return "usenet";
+  if (said.includes("torrent")) return "torrent";
+  return undefined;
 }
 
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {

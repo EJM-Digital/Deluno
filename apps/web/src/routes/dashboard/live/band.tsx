@@ -1,10 +1,12 @@
 /**
  * The top band of Live (#1098): three cards of one template, Speed, Working on now
  * and Next. Speed is in `speed-chart.tsx`. Working on now says what Deluno is doing
- * this second: the count, and the two newest operations with a bar where it knows
- * how far along they are. Next is the one list of what comes next, scheduled jobs
- * and episodes about to air together, with a countdown to the first and a clock
- * time for the ones beyond the hour.
+ * this second: the count, and as many of the newest operations as the card's height
+ * holds (whole rows only, "N more in Activity" for the rest), each with a bar where
+ * it knows how far along it is. Next is what Deluno will do for your media, searches,
+ * list checks and episodes about to air together (never housekeeping, which is on
+ * System), with a countdown to the first and, under it, only the "then" lines that
+ * fit, each with a countdown or a clock time.
  *
  * Every word is real: what is running comes from the events that start and end it,
  * from the journey cards and from the summary; what is next from the schedule and
@@ -24,6 +26,7 @@ import { countdown, formatCountdown } from "./countdown";
 import { useNow } from "./hooks";
 import { IMPORTING_NOW, type JourneyCard } from "./journey";
 import { SpeedCell } from "./speed-chart";
+import { useFittingRows } from "./fit-rows";
 import { buildNext, whenText, type NextItem } from "./times";
 import { faceOf, type TitleLookup } from "./titles";
 
@@ -70,12 +73,17 @@ export function buildOperations(work: readonly WorkItem[], cards: readonly Journ
   return ops;
 }
 
-function WorkingNow({ summary, operations }: { summary: DashboardSummary | undefined; operations: Operation[] }) {
+/** The most operations a card lists before saying how many more there are; how many show is up to its height. */
+const MOST_OPERATIONS = 4;
+
+function WorkingNow({ summary, operations, across }: { summary: DashboardSummary | undefined; operations: Operation[]; across: boolean }) {
   const cycle = summary?.automation?.lastSearchCycle;
-  const shown = operations.slice(0, 2);
-  const more = operations.length - shown.length;
+  const [bodyRef, fits] = useFittingRows(across);
+  const shown = operations.slice(0, MOST_OPERATIONS);
+  const more = operations.length - Math.min(fits, shown.length);
   return (
     <BandCard
+      bodyRef={bodyRef}
       label="Working on now"
       aside={more > 0 ? <Link to="/activity" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
       figure={
@@ -91,7 +99,7 @@ function WorkingNow({ summary, operations }: { summary: DashboardSummary | undef
             const { icon: Icon, colour } = OP_ICON[op.kind];
             return (
               <li key={op.key}>
-                <Link to={op.to} className="lb-op focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ "--c": colour } as CSSProperties}>
+                <Link to={op.to} data-fit="" className="lb-op focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ "--c": colour } as CSSProperties}>
                   <span aria-hidden className="lb-ico"><Icon /></span>
                   <span className="lb-txt">{op.lead}{op.name ? <> <b>{op.name}</b></> : null}</span>
                   <span className="lb-right">{op.right}</span>
@@ -121,13 +129,15 @@ export function nextFigure(item: NextItem, now: number): { text: string; kind: "
   return { text: whenText(item.at, now), kind: "clock" };
 }
 
-function NextCard({ items, now }: { items: NextItem[]; now: number }) {
+function NextCard({ items, now, across }: { items: NextItem[]; now: number; across: boolean }) {
+  const [bodyRef] = useFittingRows(across);
   const first = items[0];
   const rest = items.slice(1);
   const figure = first ? nextFigure(first, now) : null;
   const fraction = first && !first.running && first.last !== null ? countdown(new Date(first.at).toISOString(), new Date(first.last).toISOString(), now)?.fraction ?? null : null;
   return (
     <BandCard
+      bodyRef={bodyRef}
       label="Next"
       aside="on its own"
       figure={
@@ -146,7 +156,7 @@ function NextCard({ items, now }: { items: NextItem[]; now: number }) {
           <span aria-hidden className="lb-next-bar"><i style={{ width: `${Math.round((figure?.kind === "running" || figure?.kind === "due" ? 1 : fraction ?? 0) * 100)}%` }} /></span>
           <ul className="lb-then">
             {rest.slice(0, 3).map((item) => (
-              <li key={item.key}>
+              <li key={item.key} data-fit="">
                 <Link to={item.to} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">then {item.label}</Link>
                 <span>{whenText(item.at, now)}</span>
               </li>
@@ -173,8 +183,8 @@ export function Band({ summary, samples, operations, upcoming, across = true }: 
   return (
     <div className={cn("lb-now shrink-0", !across && "lb-stacked")}>
       <SpeedCell samples={samples} summary={summary} />
-      <WorkingNow summary={summary} operations={operations} />
-      <NextCard items={items} now={now} />
+      <WorkingNow summary={summary} operations={operations} across={across} />
+      <NextCard items={items} now={now} across={across} />
     </div>
   );
 }

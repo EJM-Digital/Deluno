@@ -37,7 +37,7 @@ import { arrivalItems, recentArrivalItems, requestCards, withSeerr } from "./liv
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { SourcesCard } from "./live/sources-card";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
-import { useFlyToShelf } from "./live/motion";
+import { useFlyToShelf, useLandingHold } from "./live/motion";
 import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
@@ -97,7 +97,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, now]
   );
   // Seerr requests are the first station of the journey: one that already has a card further along is that card.
-  const cards = useMemo(() => withSeerr([...built, ...requestCards(extras?.requests, built)], extras?.requests), [built, extras?.requests]);
+  // A title whose import has just finished stays a moment, full and green, before it leaves for the shelf.
+  const cards = useLandingHold(useMemo(() => withSeerr([...built, ...requestCards(extras?.requests, built)], extras?.requests), [built, extras?.requests]));
   const grouped = useMemo(() => byStage(cards), [cards]);
   const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
   // With nothing in today, the shelf shows the latest of the last seven days instead of an empty box.
@@ -145,7 +146,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const [gridRef, grid] = useElementSize<HTMLDivElement>();
   // The mockup's row heights are shares of the window's height (the page is fit to the window beside the right column), re-read whenever the grid is resized.
   const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
-  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height);
+  const rows = gridRows(grid.height, grid.height);
   // Activity's rows go to one line when its row is short.
   const compactActivity = side && rows.low < 12.5 * rem;
   useFlyToShelf(root, cards, items);
