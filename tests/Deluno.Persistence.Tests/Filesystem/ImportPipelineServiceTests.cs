@@ -1067,6 +1067,17 @@ public sealed class ImportPipelineServiceTests
 
         Assert.Contains("upgrade", outbound.DispatchedCategories);
         Assert.Contains("file.deleted", outbound.DispatchedCategories);
+
+        // The Live screen (#1096) shows upgrades won: the import event names the quality it landed at, the quality it replaced and its size.
+        await using var connection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs, CancellationToken.None);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT details_json FROM activity_events WHERE category = 'filesystem.import.completed' ORDER BY created_utc DESC, rowid DESC LIMIT 1;";
+        var details = Assert.IsType<string>(await command.ExecuteScalarAsync());
+        using var document = JsonDocument.Parse(details);
+        Assert.True(document.RootElement.GetProperty("Upgraded").GetBoolean(), details);
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("PreviousQuality").GetString()), details);
+        Assert.False(string.IsNullOrWhiteSpace(document.RootElement.GetProperty("NewQuality").GetString()), details);
+        Assert.Equal(8192, document.RootElement.GetProperty("FileSizeBytes").GetInt64());
     }
 
     /// <summary>
