@@ -94,10 +94,13 @@ export function barFraction(count: number, reasons: ReadonlyArray<{ count: numbe
 }
 
 /**
- * How many reason bars the card holds whole (the mockup's rule): its height less 24px of padding, over one bar and its 8px gap,
- * never fewer than three, and all of them when they all fit. Unmeasured shows every reason.
+ * How many reason bars the card holds whole: all of them when they all fit in its height (less its 14px of padding, each
+ * bar with its 8px gap), otherwise as many as fit above the "and N more" line (24px), never fewer than one. Never more
+ * than fit, so the last bar and the line under it are always inside the card. Unmeasured shows every reason.
  */
 export function reasonsFit(boxHeight: number, rowHeight: number, total: number): number {
   if (!(boxHeight > 0) || !(rowHeight > 0)) return total;
-  return Math.min(total, Math.max(3, Math.floor((boxHeight - 24) / (rowHeight + 8))));
+  const step = rowHeight + 8;
+  if (Math.floor((boxHeight - 14 + 8) / step) >= total) return total;
+  return Math.min(total, Math.max(1, Math.floor((boxHeight - 14 - 24 + 8) / step)));
 }
