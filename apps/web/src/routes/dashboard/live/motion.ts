@@ -156,7 +156,7 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
       for (const entry of [...pending.current]) {
         const match = [...waiting.current.values()].find(({ item }) => sameTitle(entry.card, item));
         if (!match) continue;
-        const target = Array.from(host.ownerDocument.querySelectorAll<HTMLElement>("[data-arrival-poster]")).find((element) => element.dataset.arrivalPoster === match.item.key);
+        const target = Array.from(host.ownerDocument.querySelectorAll<HTMLElement>("[data-arrival-poster]")).find((element) => element.dataset.arrivalPoster === match.item.key || (element.dataset.arrivalMembers ?? "").split("|").includes(match.item.key));
         if (!target) continue;
         flyPoster(entry.rect, target, entry.src);
         pending.current = pending.current.filter((candidate) => candidate !== entry);
