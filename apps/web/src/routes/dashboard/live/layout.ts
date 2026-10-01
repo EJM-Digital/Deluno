@@ -150,11 +150,9 @@ export function cardsBudget(budget: number | undefined, chrome: number): number 
 }
 
 /**
- * Your library (the mockup's `layout()`): TV Shows above Movies, each row's posters sized from the row's own height, 2:3, the
- * same size in both rows and whole posters only. A card too short for stacked rows to give posters of at least 80px puts the
- * two rows side by side instead, so each gets the card's full height.
+ * Your library (#1103): one shelf row, posters exactly 2:3 and sized from the row's own height, whole posters only. The row
+ * takes everything the card has below its chips and counts, so one row gets the whole height.
  */
-export const LIBRARY_MIN_POSTER_PX = 80;
 /** The caption (the title and when) under a poster, and the space between posters, in px. */
 export const POSTER_CAPTION_PX = 34;
 export const POSTER_GAP_PX = 12;
@@ -162,28 +160,19 @@ export const POSTER_GAP_PX = 12;
 const POSTERS_PAD_Y = 12;
 const POSTERS_PAD_X = 10;
 
-/** True when stacked rows would make posters under 80px tall, so the two rows go side by side. Unmeasured is stacked. */
-export function libraryBySide(libsHeight: number): boolean {
-  if (!(libsHeight > 0)) return false;
-  const stackedRow = (libsHeight - 12) / 2 - 10;
-  return stackedRow - (stackedRow >= 130 ? POSTER_CAPTION_PX : 0) < LIBRARY_MIN_POSTER_PX;
-}
-
 export interface LibraryPosters {
-  /** The row is so short that its counts sit on one line. */
-  short: boolean;
   /** A caption (title and when) goes under each poster. */
   captions: boolean;
   /** The width of a poster; its height is exactly one and a half times this (2:3). */
   width: number;
 }
 
-/** The poster size both rows share, from the shorter of the two rows' own heights. */
-export function libraryPosters(boxHeights: readonly number[]): LibraryPosters {
-  const rowH = Math.min(...boxHeights) - POSTERS_PAD_Y;
+/** The poster size, from the shelf row's own measured height. */
+export function libraryPosters(boxHeight: number): LibraryPosters {
+  const rowH = boxHeight - POSTERS_PAD_Y;
   const captions = rowH >= 130;
   const art = Math.max(36, Math.min(255, rowH - (captions ? POSTER_CAPTION_PX : 0)));
-  return { short: rowH < 110, captions, width: Math.floor(art / 1.5) };
+  return { captions, width: Math.floor(art / 1.5) };
 }
 
 /** Whole posters across a row of `boxWidth` px, at least one; never a part of one. */

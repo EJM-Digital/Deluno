@@ -50,7 +50,7 @@ export async function serveLiveBusy(page: Page) {
 
   const summary = {
     asOfUtc: at(0), buildMilliseconds: 5, unavailableSections: [],
-    library: { asOfUtc: at(0), movies: count, shows: { ...count, total: 42, missing: 3, upgradable: 2, qualityMet: 31 }, totalBytes: 2e12, libraries: [], mix: { movieQuality: [], movieCodec: [], episodeQuality: [], showCodec: [] }, collections: { followed: 0, monitored: 0, members: 0, inLibrary: 0, syncFailing: 0, lastSyncedUtc: null } },
+    library: { asOfUtc: at(0), movies: count, shows: { ...count, total: 42, missing: 3, upgradable: 2, qualityMet: 31 }, totalBytes: 2e12, libraries: [], libraryCounts: [{ libraryId: "hd", libraryName: "Movies HD", mediaType: "movies", met: 31, upgradable: 4, downloading: 1, missing: 2, arrivedToday: 6 }, { libraryId: "kids", libraryName: "Kids", mediaType: "movies", met: 12, upgradable: 1, downloading: 0, missing: 0, arrivedToday: 2 }, { libraryId: "tvl", libraryName: "TV", mediaType: "tv", met: 31, upgradable: 2, downloading: 0, missing: 3, arrivedToday: 2 }], mix: { movieQuality: [], movieCodec: [], episodeQuality: [], showCodec: [] }, collections: { followed: 0, monitored: 0, members: 0, inLibrary: 0, syncFailing: 0, lastSyncedUtc: null } },
     downloads: { asOfUtc: at(0), hasReading: true, readingUtc: at(-20_000), active: 3, queued: 2, stalled: 7, processing: 1, importReady: 2, waitingForProcessor: 1, downloadMbps: 14.2, uploadMbps: 1.3, clients, sharingHolds: 0, sharingExtraBytes: 0, leftovers: { scanned: true, count: 0, bytes: 0, scannedUtc: at(-60_000) }, failedDownloads: 0 },
     pipeline: { asOfUtc: at(0), today: { grabbed: 9, detected: 8, imported: 6, failed: 1 }, totals: { grabbed: 400, detected: 390, imported: 380, failedGrabs: 4, failedImports: 6, activeDispatches: 7 }, averageGrabToDetectionSeconds: 40, averageDetectionToImportSeconds: 600 },
     imports: { asOfUtc: at(0), recoveryOpen: 0, recoveryByKind: {}, failedImportJobs: 0, failedProcessorHandoffs: 1 },
@@ -171,7 +171,7 @@ export async function serveLiveBusy(page: Page) {
 
   // Today's arrivals (two of them upgrades), what was refused, requests and what retention will give back.
   const importAt = (minutes: number) => at(-minutes * 60_000);
-  const arrival = (entityType: string, entityId: string, release: string, quality: string, minutes: number, extra: Record<string, unknown> = {}) => ({ entityType, entityId, release, quality, previousQuality: null, upgraded: false, sizeBytes: 4e9, importedUtc: importAt(minutes), ...extra });
+  const arrival = (entityType: string, entityId: string, release: string, quality: string, minutes: number, extra: Record<string, unknown> = {}) => ({ entityType, entityId, release, quality, previousQuality: null, upgraded: false, sizeBytes: 4e9, importedUtc: importAt(minutes), ...(entityType === "series" ? { libraryId: "tvl", libraryName: "TV" } : Number(entityId.slice(1)) % 3 === 0 ? { libraryId: "kids", libraryName: "Kids" } : { libraryId: "hd", libraryName: "Movies HD" }), ...extra });
   const arrivals = [
     arrival("movie", "m20", "Coherence.2013.1080p", "WEB 1080p", 4), arrival("movie", "m21", "Primer.2004.1080p", "Bluray 1080p", 19), arrival("series", "s2", "Lioness.S02E04.1080p.WEB", "WEB 1080p", 26, { sizeBytes: 1.6e9 }),
     arrival("movie", "m22", "Moon.2009.1080p.BluRay", "Bluray 1080p", 41, { previousQuality: "WEB 720p", upgraded: true, sizeBytes: 9e9 }), arrival("movie", "m23", "Her.2013.2160p.WEB", "WEB 2160p", 63, { previousQuality: "WEB 1080p", upgraded: true, sizeBytes: 15e9 }),

@@ -129,7 +129,7 @@ describe("Live", () => {
   it("says something true on a new install, with no button and no blank panel", () => {
     const { container } = renderTab(emptySummary);
     expect(screen.getByText("Nothing moving right now")).toBeInTheDocument();
-    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(2);
+    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(1);
     expect(within(screen.getByRole("region", { name: "Turned down today" })).getByText("0 releases")).toBeInTheDocument();
     // An empty library says so and offers the next step, in a slim row under the band.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();

@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fullSummary } from "../downloads-fixtures";
@@ -10,7 +11,7 @@ import { SourcesCard } from "./sources-card";
 import { clientBar, connectionPills, scoreRows, scoreSummary, speedBar } from "./scoreboard";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
-import { journeyMode, journeySize, libraryBySide, libraryPosters, MIN_STATION_REM, postersAcross } from "./layout";
+import { journeyMode, journeySize, libraryPosters, MIN_STATION_REM, postersAcross } from "./layout";
 import { departedCards, sameTitle } from "./motion";
 import { arrivedDetail, arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
@@ -57,6 +58,7 @@ const card = (extra: Partial<JourneyCard>): JourneyCard => ({ key: "k", stage: "
 
 beforeEach(() => {
   status.value = "connected";
+  try { localStorage.removeItem("deluno.live.shelfLibrary"); } catch { /* ignore */ }
   setReducedMotion(false);
 });
 afterEach(() => vi.useRealTimers());
@@ -92,22 +94,12 @@ describe("the layout rules", () => {
     expect(journeyMode(0, 5, 16)).toBe("columns");
   });
 
-  it("puts the library's two rows side by side only when stacked posters would be under 80px tall", () => {
-    expect(libraryBySide(0)).toBe(false);
-    // Stacked, each row is (height - 12) / 2 - 10 tall; a row from 130px takes a 34px caption off first.
-    expect(libraryBySide(300)).toBe(false);
-    expect(libraryBySide(190)).toBe(true);
-    expect(libraryBySide(202)).toBe(false);
-    expect(libraryBySide(260)).toBe(false);
-  });
-
-  it("sizes the posters from the shorter row, exactly 2:3, the same in both rows, and draws whole posters only", () => {
-    const tall = libraryPosters([180, 190]);
+  it("sizes the posters from the one row's height, exactly 2:3, and draws whole posters only", () => {
     // 168px of row less a 34px caption = 134px of art, 89px wide (floor of 134 / 1.5).
-    expect(tall).toEqual({ short: false, captions: true, width: 89 });
-    expect(libraryPosters([100, 100])).toEqual({ short: true, captions: false, width: 58 });
-    expect(libraryPosters([10, 10]).width).toBe(24);
-    expect(libraryPosters([2000, 2000]).width).toBe(170);
+    expect(libraryPosters(180)).toEqual({ captions: true, width: 89 });
+    expect(libraryPosters(112)).toEqual({ captions: false, width: 66 });
+    expect(libraryPosters(10).width).toBe(24);
+    expect(libraryPosters(2000).width).toBe(170);
     // 89px posters with a 12px gap in a 410px box (400px inside its padding): 4 whole ones, never a part one.
     expect(postersAcross(410, 89)).toBe(4);
     expect(postersAcross(400, 89)).toBe(3);
@@ -517,42 +509,131 @@ describe("arrived today", () => {
     expect(arrivedDetail(1, 0, 0)).toBe("1 title");
   });
 
-  it("shows TV Shows above Movies, each film as a poster with the Movies page's bar and the upgrade as an arrow; the newest has the ring", () => {
-    const show = (key: string, extra: object = {}) => item(key, { entity: { kind: "series", id: key }, fallbackTitle: `Show ${key}`, to: `/tv/${key}`, ...extra });
-    withRouter(<Shelf items={[item("1", { qualityMet: true }), item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p", qualityMet: false }), show("9", { qualityMet: true })]} titles={NO_TITLES} newest={new Set(["1"])} heading="3 arrived today" />);
-    const regions = screen.getAllByRole("region").filter((region) => ["TV Shows", "Movies"].includes(region.getAttribute("aria-label") ?? ""));
-    expect(regions.map((region) => region.getAttribute("aria-label"))).toEqual(["TV Shows", "Movies"]);
-    expect(within(regions[0]).getByRole("link", { name: /^Show 9/ })).toHaveAttribute("href", "/tv/9");
-    expect(within(regions[1]).getByRole("link", { name: /^Film 1/ })).toHaveAttribute("href", "/movies/1");
+  const show = (key: string, extra: object = {}) => item(key, { entity: { kind: "series", id: key }, fallbackTitle: `Show ${key}`, to: `/tv/${key}`, ...extra });
+  const counts = (met: number, arrivedToday = 0, extra: object = {}) => ({ libraryId: "x", libraryName: "X", mediaType: "movies", met, upgradable: 4, downloading: 1, missing: 2, arrivedToday, ...extra });
+  const section = {
+    movies: { qualityMet: 18, upgradable: 4, downloading: 1, missing: 2 },
+    shows: { qualityMet: 41, upgradable: 5, downloading: 0, missing: 3 },
+    libraryCounts: [
+      counts(10, 1, { libraryId: "hd", libraryName: "Movies HD" }),
+      counts(8, 1, { libraryId: "kids", libraryName: "Kids" }),
+      counts(41, 1, { libraryId: "tvl", libraryName: "TV", mediaType: "tv" })
+    ]
+  } as never;
+  const arrivals = () => [
+    item("1", { qualityMet: true, libraryId: "hd", libraryName: "Movies HD" }),
+    item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p", qualityMet: false, libraryId: "kids", libraryName: "Kids" }),
+    show("9", { qualityMet: true, libraryId: "tvl", libraryName: "TV" })
+  ];
+  const shelf = (extra: object = {}) => withRouter(<Shelf items={arrivals()} titles={NO_TITLES} newest={new Set(["1"])} heading="3 arrived today" library={section} {...extra} />);
+
+  it("shows every arrival on one shelf, each poster with the Movies page's bar and the upgrade as an arrow; the newest has the ring", () => {
+    shelf();
+    expect(screen.queryByRole("region", { name: "TV Shows" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Movies" })).toBeNull();
+    expect(document.querySelectorAll(".lsh-posters")).toHaveLength(1);
+    const film1 = screen.getByRole("link", { name: /^Film 1/ });
+    expect(film1).toHaveAttribute("href", "/movies/1");
+    expect(screen.getByRole("link", { name: /^Show 9/ })).toHaveAttribute("href", "/tv/9");
     // Quality met is the gold bar, upgradable the green one, with the quality on it; an upgrade carries an arrow that says what it replaced.
-    const film1 = within(regions[1]).getByRole("link", { name: /^Film 1/ });
     expect(film1.querySelector(".lsh-mark")).toHaveClass("met");
     expect(film1.querySelector(".lsh-mark")).toHaveTextContent("WEB 1080p");
-    const film2 = within(regions[1]).getByRole("link", { name: /^Film 2/ });
+    const film2 = screen.getByRole("link", { name: /^Film 2/ });
     expect(film2.querySelector(".lsh-mark")).toHaveClass("upg");
     expect(film2.querySelector(".lsh-mark")).toHaveTextContent("Bluray 1080p");
     expect(film2.querySelector(".lsh-up")).toHaveAttribute("title", "Upgraded from WEB 720p");
     expect(film2).toHaveAttribute("title", expect.stringContaining("WEB 720p → Bluray 1080p"));
     expect(film1.querySelector(".lsh-up")).toBeNull();
     expect(film1.closest("li")).toHaveAttribute("data-new");
-    expect(within(regions[0]).getByText("+1 today")).toBeInTheDocument();
-    expect(within(regions[1]).getByText("+2 today")).toBeInTheDocument();
   });
 
-  it("counts each row's library in the Movies page's words: met, upgradable, downloading, missing", () => {
-    const counts = (met: number) => ({ qualityMet: met, upgradable: 4, downloading: 1, missing: 2 });
-    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" library={{ movies: counts(18), shows: counts(41) } as never} />);
-    const tv = screen.getByRole("region", { name: "TV Shows" });
+  it("has chips for All and each library in order, and All is pressed to begin with", () => {
+    shelf();
+    const chips = within(screen.getByRole("group", { name: "Libraries" })).getAllByRole("button");
+    expect(chips.map((chip) => chip.textContent)).toEqual(["All", "Movies HD", "Kids", "TV"]);
+    expect(chips.map((chip) => chip.getAttribute("data-library"))).toEqual(["all", "hd", "kids", "tvl"]);
+    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
+    expect(chips.every((chip) => chip.classList.contains("lsh-chip"))).toBe(true);
+  });
+
+  it("tags each poster with its library and the tag opens that library's page filtered to it", () => {
+    shelf();
+    const tags = Array.from(document.querySelectorAll<HTMLAnchorElement>(".lsh-tag"));
+    expect(tags.map((tag) => [tag.textContent, tag.getAttribute("href")])).toEqual(expect.arrayContaining([
+      ["Movies HD", "/movies?library=hd"],
+      ["Kids", "/movies?library=kids"],
+      ["TV", "/tv?library=tvl"]
+    ]));
+    // The tag is beside the poster's own link, not inside it, so the poster still opens the title.
+    expect(screen.getByRole("link", { name: /^Film 1/ }).querySelector(".lsh-tag")).toBeNull();
+  });
+
+  it("has no tag on an arrival whose library is not known", () => {
+    withRouter(<Shelf items={[item("1")]} titles={NO_TITLES} newest={new Set()} heading="1 arrived today" library={section} />);
+    expect(document.querySelector(".lsh-tag")).toBeNull();
+  });
+
+  it("for All counts one line per kind of title, led by its label, with how many arrived today", () => {
+    shelf();
+    const lines = Array.from(document.querySelectorAll<HTMLElement>(".lsh-line"));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent("TV Shows");
+    expect(within(lines[0]).getByTitle("Quality met")).toHaveTextContent("41 met");
+    expect(within(lines[0]).getByTitle("Upgradable")).toHaveTextContent("5 upgradable");
+    expect(within(lines[0]).getByText("+1 today")).toBeInTheDocument();
+    expect(lines[1]).toHaveTextContent("Movies");
+    expect(within(lines[1]).getByTitle("Quality met")).toHaveTextContent("18 met");
+    expect(within(lines[1]).getByTitle("Downloading")).toHaveTextContent("1 downloading");
+    expect(within(lines[1]).getByTitle("Missing")).toHaveTextContent("2 missing");
+    expect(within(lines[1]).getByText("+2 today")).toBeInTheDocument();
+  });
+
+  it("a chip filters the shelf to its library, and the counts follow it", async () => {
+    const user = userEvent.setup();
+    shelf();
+    await user.click(screen.getByRole("button", { name: "Kids" }));
+    expect(screen.getByRole("button", { name: "Kids" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("link", { name: /^Film 2/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Film 1/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Show 9/ })).toBeNull();
+    const lines = Array.from(document.querySelectorAll<HTMLElement>(".lsh-line"));
+    expect(lines).toHaveLength(1);
+    expect(within(lines[0]).getByTitle("Quality met")).toHaveTextContent("8 met");
+    expect(within(lines[0]).getByText("+1 today")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "All" }));
+    expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
+    expect(document.querySelectorAll(".lsh-line")).toHaveLength(2);
+  });
+
+  it("remembers the chip in this browser, and a library that is gone is All again", async () => {
+    const user = userEvent.setup();
+    const first = shelf();
+    await user.click(screen.getByRole("button", { name: "TV" }));
+    expect(localStorage.getItem("deluno.live.shelfLibrary")).toBe("tvl");
+    first.unmount();
+    shelf();
+    expect(screen.getByRole("button", { name: "TV" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("link", { name: /^Film 1/ })).toBeNull();
+    cleanup();
+    localStorage.setItem("deluno.live.shelfLibrary", "removed");
+    shelf();
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
+  });
+
+  it("counts a library in the Movies page's words: met, upgradable, downloading, missing", () => {
+    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" library={section} />);
+    const tv = document.querySelectorAll<HTMLElement>(".lsh-line")[0];
     expect(within(tv).getByTitle("Quality met")).toHaveTextContent("41 met");
-    expect(within(tv).getByTitle("Upgradable")).toHaveTextContent("4 upgradable");
-    expect(within(tv).getByTitle("Downloading")).toHaveTextContent("1 downloading");
-    expect(within(tv).getByTitle("Missing")).toHaveTextContent("2 missing");
-    expect(within(screen.getByRole("region", { name: "Movies" })).getByTitle("Quality met")).toHaveTextContent("18 met");
+    expect(within(tv).getByTitle("Upgradable")).toHaveTextContent("5 upgradable");
+    expect(within(tv).getByTitle("Downloading")).toHaveTextContent("0 downloading");
+    expect(within(tv).getByTitle("Missing")).toHaveTextContent("3 missing");
   });
 
   it("says something true when nothing has arrived", () => {
     withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" />);
-    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(2);
+    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(1);
   });
 });
 

@@ -27,8 +27,11 @@ export interface ArrivalGroup {
   /** "S01E04" for one episode, "12 episodes" for several, empty for a film. */
   episodes: string | null;
   sizeBytes: number;
-  /** Which row of Your library it sits in. */
+  /** Which kind of title it is: a show (TV) or a film (Movies). */
   library: ArrivalLibrary;
+  /** The library it landed in, for its tag and the shelf's chips (#1103); null when not known. */
+  libraryId: string | null;
+  libraryName: string | null;
   /** The Movies page's state for what arrived: true quality met (gold), false can still be upgraded (green), null not known. A group is met only when every member is. */
   met: boolean | null;
 }
@@ -74,7 +77,7 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
     // A title that is no longer in the library is not on the shelf.
     if (isGone(item.entity, titles)) continue;
     const series = seriesOf(item, titles);
-    const key = series ? `show:${series}:${dayOf(item.at)}` : `one:${item.key}`;
+    const key = series ? `show:${series}:${dayOf(item.at)}:${item.libraryId ?? ""}` : `one:${item.key}`;
     const bucket = buckets.get(key);
     if (bucket) bucket.push(item);
     else {
@@ -107,6 +110,8 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
       upgrades,
       episodes: !isShow ? null : members.length === 1 ? episodeCode(first, titles) : `${members.length} episodes`,
       sizeBytes: members.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
+      libraryId: first.libraryId ?? null,
+      libraryName: first.libraryName ?? null,
       library: isShow || first.entity?.kind === "series" || first.entity?.kind === "episode" ? "tv" : "movies",
       met: groupMet(members)
     };

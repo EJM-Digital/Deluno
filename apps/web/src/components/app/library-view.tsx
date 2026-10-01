@@ -30,6 +30,7 @@ import {
   type SavedFilterPreset,
   type ViewMode,
 } from "./library-control-rail";
+import { useLibraryAddress } from "../../hooks/use-library-address";
 import { useLibraryFilters } from "../../hooks/use-library-filters";
 import { useLatestRequest } from "../../hooks/use-latest-request";
 import { useBulkEdit } from "../../hooks/use-bulk-edit";
@@ -143,12 +144,12 @@ export function LibraryView({
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
-    query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
+    query, setQuery, libraryId, pickLibrary, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     sortDirection, setSortDirection, cardSize, listColumnOrder, setListColumnOrder, resetListColumnOrder, displayOptions,
     savedPresets, setSavedPresets, newPresetName, setNewPresetName, isSavingPreset,
     setIsSavingPreset, changeSize, updateDisplayOptions, activeFilterCount,
     monitoring, setMonitoring, controlSet, conditions, setConditions, clearConditions
-  } = useLibraryFilters(variant, searchParams.get("filter"), defaultView);
+  } = useLibraryFilters(variant, searchParams.get("filter"), defaultView, searchParams.get("library"));
 
   const buildCatalogueParams = useCallback((pageToken?: string, pageSize = FIRST_PAGE_SIZE) => {
     const params = new URLSearchParams({ pageSize: String(pageSize), sort: sortField, direction: sortDirection });
@@ -177,6 +178,7 @@ export function LibraryView({
 
   const [libraryItems, setLibraryItems] = useState<MediaItem[]>(() => seeded?.items ?? []);
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
+  const [librariesLoaded, setLibrariesLoaded] = useState(false);
   const [totalCount, setTotalCount] = useState(() => seeded?.totalCount ?? 0);
   const [facets, setFacets] = useState<CatalogueFacets | null>(() => seeded?.facets ?? null);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
@@ -195,6 +197,7 @@ export function LibraryView({
   const compatibleLibraries = libraries
     .filter((library) => library.mediaType === (variant === "movies" ? "movies" : "tv"))
     .sort((left, right) => left.name.localeCompare(right.name));
+  const changeLibrary = useLibraryAddress(libraryId, pickLibrary, librariesLoaded ? compatibleLibraries.map((library) => library.id) : null);
   const [createLibraryId, setCreateLibraryId] = useState<string | null>(null);
   const addIntoLibraryId = compatibleLibraries.some((library) => library.id === createLibraryId) ? createLibraryId : compatibleLibraries[0]?.id ?? null;
 
@@ -202,7 +205,7 @@ export function LibraryView({
     let cancelled = false;
     void fetchJson<LibraryItem[]>("/api/libraries")
       .then((items) => {
-        if (!cancelled) setLibraries(items);
+        if (!cancelled) { setLibraries(items); setLibrariesLoaded(true); }
       })
       .catch(() => {
         if (!cancelled) setLibraries([]);
@@ -635,7 +638,7 @@ export function LibraryView({
   }
 
   function applyPreset(preset: SavedFilterPreset) {
-    setLibraryId(preset.libraryId);
+    changeLibrary(preset.libraryId);
     setQuickFilter(preset.quickFilter);
     setMonitoring(preset.monitoring);
     setSortField(preset.sortField);
@@ -1137,7 +1140,7 @@ export function LibraryView({
             listColumnOrder, setListColumnOrder, resetListColumnOrder,
             displayOptions, setDisplayOptions: updateDisplayOptions,
             controlSet, conditions, setConditions, clearConditions, savedPresets,
-            libraryId, setLibraryId, libraries: compatibleLibraries,
+            libraryId, setLibraryId: changeLibrary, libraries: compatibleLibraries,
 
             newPresetName, setNewPresetName, isSavingPreset, saveCurrentPreset,
             applyPreset, deletePreset, updatePresetAutomation, activeFilterCount
@@ -1207,7 +1210,7 @@ export function LibraryView({
           onOpenCreate={openCreate}
           onClearFilters={() => {
             setQuickFilter("all");
-            setLibraryId(null);
+            changeLibrary(null);
             setMonitoring("any");
             clearConditions();
             setQuery("");

@@ -70,6 +70,9 @@ export interface ArrivalItem {
   at: string;
   /** True when it landed at the quality the library asked for, false when it can still be upgraded, null when not known. */
   qualityMet?: boolean | null;
+  /** The library it landed in, for the poster's tag and the shelf's chips; null when not known (#1103). */
+  libraryId?: string | null;
+  libraryName?: string | null;
   /** Who asked for it in Seerr, when it came from a request. */
   requestedBy: string | null;
   to: string;
@@ -88,6 +91,8 @@ function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyM
     sizeBytes: arrival.sizeBytes,
     at: arrival.importedUtc,
     qualityMet: arrival.qualityMet ?? null,
+    libraryId: arrival.libraryId ?? null,
+    libraryName: arrival.libraryName ?? null,
     requestedBy: (arrival.entityId ? asked.get(arrival.entityId) : null) ?? null,
     to: cardLink(entity)
   };
@@ -108,5 +113,5 @@ export function arrivalItems(extras: DashboardLiveExtras | null | undefined, car
   }
   return cards
     .filter((card) => card.stage === "imported")
-    .map((card) => ({ key: card.key, entity: card.entity, fallbackTitle: card.title, release: card.release ?? null, quality: card.quality ?? null, previousQuality: null, upgraded: false, sizeBytes: card.sizeBytes ?? null, at: card.at ?? "", requestedBy: null, to: card.to }));
+    .map((card) => ({ key: card.key, entity: card.entity, fallbackTitle: card.title, release: card.release ?? null, quality: card.quality ?? null, previousQuality: null, upgraded: false, sizeBytes: card.sizeBytes ?? null, at: card.at ?? "", libraryId: null, libraryName: null, requestedBy: null, to: card.to }));
 }
