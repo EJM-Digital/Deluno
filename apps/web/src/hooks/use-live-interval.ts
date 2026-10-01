@@ -17,11 +17,12 @@ import { scheduleOnce, subscribeTick } from "../lib/live-ticker";
  * the catch-up #641 set out to remove. A dedicated worker isn't subject to
  * that throttling.
  */
-export function useLiveInterval(callback: () => void, intervalMs: number) {
+export function useLiveInterval(callback: () => void, intervalMs: number | false) {
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
 
-  useEffect(() => subscribeTick(intervalMs, () => callbackRef.current()), [intervalMs]);
+  // `false` is no timer at all (see usePollInterval).
+  useEffect(() => (intervalMs === false ? undefined : subscribeTick(intervalMs, () => callbackRef.current())), [intervalMs]);
 }
 
 /**

@@ -170,11 +170,10 @@ export function DashboardPage() {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   useFitToScreen(root);
 
-  // The server says when the summary changed, at most every two seconds; a few
-  // events close together fold into one refetch. Setup reads a few lists that
-  // change on their own events, so those events refresh the setup lists too.
-  const nudge = useCoalescedRevalidate(() => { void refreshSummary(); }, 500);
-  useSignalREvent("DashboardSummaryChanged", RealtimeGroups.Dashboard, nudge);
+  // The server pushes the changed summary sections themselves (#1097), and the
+  // page writes them into the cache: nothing is fetched after a change.
+  // Setup reads a few lists that change on their own events, so those events
+  // refresh the setup lists.
   const refreshSetup = useCoalescedRevalidate(() => { void queryClient.invalidateQueries({ queryKey: ["src"] }); }, 1_000);
   useSignalREvent("SettingsChanged", RealtimeGroups.Dashboard, refreshSetup);
   useSignalREvent("QualityProfileChanged", RealtimeGroups.Dashboard, refreshSetup);

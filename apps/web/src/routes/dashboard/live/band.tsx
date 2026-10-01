@@ -12,6 +12,7 @@
  */
 import { Activity, Download, FolderInput, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useRealtimeConnected } from "../../../lib/realtime-state";
 import type { DownloadClientItem, DownloadThroughputSample, IndexerItem } from "../../../lib/api";
 import type { DashboardLiveExtras, DashboardSummary } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
@@ -41,13 +42,15 @@ function Label({ children, to, name }: { children: string; to?: string; name?: s
 function DoingNow({ summary, work, updatedAt }: { summary: DashboardSummary | undefined; work: WorkItem[]; updatedAt: number }) {
   const cycle = summary?.automation?.lastSearchCycle;
   const shown = work.slice(0, 3);
+  // Connected, the pulse says Live and every change arrives as it happens; "updated N s ago" is for when it is not.
+  const connected = useRealtimeConnected();
   return (
     <section aria-label="Doing now" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
       <div className="flex items-baseline justify-between gap-2">
         <Label>Right now</Label>
         <span className="flex items-center gap-2 whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">
           <span className="font-medium"><HeartbeatValue /></span>
-          <span><UpdatedAgo updatedAt={updatedAt} /></span>
+          {connected ? null : <span><UpdatedAgo updatedAt={updatedAt} /></span>}
         </span>
       </div>
       {shown.length > 0 ? (

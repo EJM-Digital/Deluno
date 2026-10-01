@@ -160,6 +160,8 @@ export interface JourneyInput {
   /** The import cases and failed import jobs that need a person: cards in the Needs you lane unless a card for the same download is already there. */
   cases?: RecoveryCaseRow[];
   importJobs?: JobQueueItem[];
+  /** Searches that have said how far they are (or that they finished), so a search card follows the event and not the next summary. */
+  searches?: ReadonlyMap<string, { libraryName: string; state: string; checked: number; planned: number }>;
 }
 
 function sameLocalDay(a: number, b: number): boolean {
@@ -178,7 +180,7 @@ function stuckReason(item: DownloadQueueItem): string | null {
 }
 
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [], cases = [], importJobs = [] }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [], cases = [], importJobs = [], searches }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   const dispatchByClientItem = new Map<string, DownloadDispatchItem>();
@@ -380,17 +382,28 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
 
   // Searches that are running now. The last one that finished is not a card: it is a line in the quiet column, because nothing is searching.
   const automation = summary?.automation;
-  for (const library of automation?.libraries ?? []) {
-    if (library.status !== "running") continue;
+  const shown = new Set<string>();
+  const searchCard = (libraryId: string, name: string) => {
+    const progress = searches?.get(libraryId);
+    shown.add(libraryId);
     cards.push({
-      key: `search:${library.libraryId}`,
+      key: `search:${libraryId}`,
       stage: "searching",
-      title: library.name,
-      state: { tone: "info", label: "Searching now" },
+      title: name,
+      state: { tone: "info", label: progress && progress.planned > 0 ? `${progress.checked.toLocaleString("en-AU")} of ${progress.planned.toLocaleString("en-AU")} checked` : "Searching now" },
       at: null,
       to: "/search-cycles"
     });
+  };
+  for (const library of automation?.libraries ?? []) {
+    const progress = searches?.get(library.libraryId);
+    if (progress?.state === "finished") continue;
+    if (library.status === "running" || progress?.state === "running") searchCard(library.libraryId, library.name);
   }
+  for (const [libraryId, progress] of searches ?? []) {
+    if (progress.state === "running" && !shown.has(libraryId)) searchCard(libraryId, progress.libraryName);
+  }
+
   return oneCardPerTitle(cards);
 }
 
