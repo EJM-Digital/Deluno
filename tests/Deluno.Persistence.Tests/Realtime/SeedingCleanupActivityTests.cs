@@ -34,6 +34,19 @@ public sealed class SeedingCleanupActivityTests : IDisposable
             SeedingCleanupActivity.Message("Sintel (2010)", "qBittorrent"));
 
     [Fact]
+    public void The_client_is_called_by_its_own_short_name_never_with_the_machine_it_runs_on()
+        => Assert.Equal(
+            "Removed Big Buck Bunny (2008) from Deluge once it had shared enough · your copy stays in the library",
+            SeedingCleanupActivity.Message("Big Buck Bunny (2008)", "Deluge on MEDIA-SERVER"));
+
+    [Theory]
+    [InlineData("Big Buck Bunny", 2008, "Big Buck Bunny (2008)")]
+    [InlineData("Big Buck Bunny (2008)", 2008, "Big Buck Bunny (2008)")]
+    [InlineData("Lioness", null, "Lioness")]
+    public void The_library_title_carries_its_year_once(string title, int? year, string expected)
+        => Assert.Equal(expected, SeedingCleanupActivity.LibraryTitle(title, year));
+
+    [Fact]
     public async Task The_row_is_stored_under_the_category_the_live_screen_counts_and_is_pushed()
     {
         var row = await _jobs.RecordActivityOnChangeAsync(

@@ -6,7 +6,7 @@
  * it is switched off. The speed follows the readings the clients push; nothing
  * here asks a client while the screen waits.
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { DownloadClientItem } from "../../../lib/api";
 import type { DashboardClientRow } from "../../../lib/api/types/operations";
 import type { Tone } from "../../../lib/status-tones";
@@ -71,6 +71,14 @@ export function clientMeta(light: ClientLight): string {
   return seeding ?? "idle";
 }
 
+/** The same line with the speed's number in bold, as in the mockup: "6.8 MB/s · 8 seeding". */
+export function clientMetaNode(light: ClientLight): ReactNode {
+  if (!light.moving) return clientMeta(light);
+  const [value, unit] = formatSpeed(light.speedMbps).split(" ");
+  const seeding = light.seeding > 0 ? ` · ${light.seeding.toLocaleString("en-AU")} seeding` : "";
+  return <><b className="font-semibold text-foreground">{value}</b> {unit}{seeding}</>;
+}
+
 /** The download clients as tiles, one each: speed while moving with a bar against the fastest the day has seen, and how many it is seeding. */
 export function ClientTiles({ rows, all, speeds, scaleMbps, seeding }: { rows: DashboardClientRow[]; all: DownloadClientItem[]; speeds: ReadonlyMap<string, number>; scaleMbps: number; seeding: ReadonlyMap<string, number> }) {
   const lights = useMemo(() => clientLights(rows, all, speeds, seeding), [rows, all, speeds, seeding]);
@@ -85,7 +93,7 @@ export function ClientTiles({ rows, all, speeds, scaleMbps, seeding }: { rows: D
           tone={light.tone}
           state={light.tone === "idle" ? "off" : null}
           pulse={light.moving}
-          meta={clientMeta(light)}
+          meta={clientMetaNode(light)}
           bar={light.moving ? Math.max(4, (light.speedMbps / scale) * 100) : 0}
           label={`${light.name}: ${light.words}${light.seeding > 0 ? `, seeding ${light.seeding}` : ""}`}
         />

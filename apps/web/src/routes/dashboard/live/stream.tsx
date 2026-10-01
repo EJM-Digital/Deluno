@@ -11,13 +11,16 @@ import { motionAllowed } from "../../../lib/page-motion";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import type { LiveActivityRow } from "../live-events";
-import { FitList, Plain } from "../parts";
+import { Plain } from "../parts";
 import { LiveCard as Panel } from "./live-card";
 import { groupActivity, type ActivityGroup } from "./group";
 import { activityKind, isRoutine, KIND_STYLE } from "./kinds";
 import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
 
 export { sentenceOf } from "./group";
+
+/** More rows than any screen shows; the fade hides the rest. */
+const MAX_ROWS = 14;
 
 function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEntityId">, titles: TitleLookup): string {
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
@@ -29,19 +32,19 @@ function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEn
   return "/activity";
 }
 
-function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean): ReactElement {
+function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean, newest: boolean): ReactElement {
   const item = group.first;
   const kind = KIND_STYLE[activityKind(item.category, item.severity)];
   const many = group.rows.length;
   return (
-    <li key={item.id} className={cn("border-b border-hairline last:border-b-0", group.fresh && motionAllowed() && "live-stream-new")}>
+    <li key={item.id} className={cn("shrink-0 rounded-[10px]", newest && "bg-info/[0.09]", group.fresh && motionAllowed() && "live-stream-new")}>
       <Link
         to={entityLink(item, titles)}
         title={many > 1 ? group.detail.join("\n") : undefined}
-        className={cn("flex h-full items-center gap-2.5 px-[var(--card-pad-x)] transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", dense ? "py-1" : "py-2")}
+        className={cn("flex h-full items-center gap-2.5 rounded-[10px] px-2 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", dense ? "py-1" : "py-[9px]")}
       >
-        <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-lg", dense ? "h-6 w-6" : "mt-0.5 h-7 w-7", kind.tile, kind.text)}>
-          <kind.icon className={dense ? "h-3.5 w-3.5" : "h-4 w-4"} />
+        <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-lg", dense ? "h-6 w-6" : "h-8 w-8 rounded-[9px]", kind.tile, kind.text)}>
+          <kind.icon className={dense ? "h-3.5 w-3.5" : "h-[18px] w-[18px]"} />
         </span>
         {dense ? (
           <>
@@ -51,7 +54,7 @@ function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean): R
         ) : (
           <span className="min-w-0 flex-1">
             <span title={group.sentence} className="line-clamp-2 text-[length:var(--type-body-sm)] leading-snug text-foreground">{group.sentence}</span>
-            <span className="block text-[length:var(--type-caption)] text-muted-foreground">
+            <span className="mt-0.5 block text-[length:var(--type-caption)] text-muted-foreground">
               <span className={kind.text}>{eventLabel(item)}</span>
               {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-[length:var(--type-micro)] font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; {ago(item.createdUtc)}
             </span>
@@ -79,9 +82,11 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
-        <FitList moreTo="/activity" rows={shown.map((group) => renderRow(group, titles, dense))} />
+        // The newest on top, and the stream fades at the bottom instead of cutting a row: the rest is one click away.
+        <ul data-testid="live-stream" className="flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-0.5 [mask-image:linear-gradient(#000_calc(100%-3.5rem),transparent)]">
+          {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
+        </ul>
       )}
-      
     </Panel>
   );
 }

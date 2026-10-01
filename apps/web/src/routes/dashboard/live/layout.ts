@@ -109,7 +109,7 @@ export function posterLayout(width: number, height: number, remPx: number, gap =
 /** The narrowest a tile may be in the right column, in rem. */
 export const MIN_TILE_REM = 7;
 
-const TILE_GAP_REM = 0.375;
+const TILE_GAP_REM = 0.4375;
 const TILE_PAD_X_REM = 1.125;
 
 /** Tiles go three across, as in the mockup, however wide the column is. */
@@ -124,16 +124,16 @@ export function tileColumns(width: number, remPx: number): number {
 
 /** The room a tile card takes, in rem: its header, its padding and its rows of tiles. A card with no tiles is one short line. */
 export function tileCardRem(count: number, cols: number, compact: boolean): number {
-  const header = 3.2;
+  const header = 3.1;
   if (count === 0) return header + 2.6;
   const rows = Math.ceil(count / Math.max(1, cols));
-  const tile = compact ? 1.45 : 3.1;
+  const tile = compact ? 1.45 : 2.85;
   const gap = compact ? 0.25 : TILE_GAP_REM;
-  return header + (compact ? 0.5 : 1.25) + rows * tile + (rows - 1) * gap;
+  return header + (compact ? 0.5 : 1) + rows * tile + (rows - 1) * gap;
 }
 
-/** The least room Activity is given, in rem: its header and about three rows. */
-export const ACTIVITY_MIN_REM = 16.5;
+/** The least room Activity is given, in rem: its header and about two rows (the mockup's, with the stream fading at the bottom). */
+export const ACTIVITY_MIN_REM = 10.5;
 
 /**
  * The three tile cards draw full tiles (name and a line of detail) while they and Activity's least room fit the column's height,
