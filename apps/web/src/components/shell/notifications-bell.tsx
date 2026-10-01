@@ -24,7 +24,7 @@
  *
  * Contract: GET /api/activity?pageSize=…, realtime `ActivityEventAdded`.
  */
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
@@ -32,7 +32,8 @@ import { cn } from "../../lib/utils";
 import { fetchPageItems, type ActivityEventItem } from "../../lib/api";
 import { attentionTotal, type AttentionSnapshot } from "../../lib/use-attention";
 import { useAction } from "../../routes/dashboard/downloads-kit";
-import { AlsoWorthALook, needsYouRows, setupProblemRows } from "../../routes/dashboard/needs-you";
+import { AlsoWorthALook, bellRowElement } from "../../routes/dashboard/needs-you";
+import { bellRows, type BellRow } from "../../lib/bell-rows";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
 import { useDisplayPreferences } from "../../lib/display-preferences";
 import { activityLinkForEvent } from "../../lib/activity-history";
@@ -82,7 +83,16 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
   const headingId = useId();
   const action = useAction();
   const total = attentionTotal(attention);
-  const problemRows = [...needsYouRows(attention.needs, action), ...setupProblemRows(attention.needs)];
+  // Two sections: what needs you about your media, and what needs you about Deluno itself (#1098).
+  const rows = useMemo(() => bellRows(attention.needs), [attention.needs]);
+  const drawSection = (label: string, list: BellRow[]) =>
+    list.length === 0 ? null : (
+      <section aria-label={label} key={label}>
+        <p className="px-4 pb-0.5 pt-2 text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{label}</p>
+        <ul>{list.map((row) => bellRowElement(row, action))}</ul>
+      </section>
+    );
+  const nothingNeedsYou = rows.media.length === 0 && rows.deluno.length === 0;
   const { leftovers, suggestions } = attention.needs.alsoWorthALook;
 
   const [open, setOpen] = useState(false);
@@ -252,18 +262,19 @@ export function NotificationsBell({ attention }: { attention: AttentionSnapshot 
               Needs you
               {total > 0 ? <span className="tabular-nums text-warning">{total}</span> : null}
             </p>
-            {problemRows.length === 0 ? (
+            {nothingNeedsYou ? (
               <p className="px-4 pb-3 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing needs you right now.</p>
             ) : (
               // A link in a row goes to the screen that clears it, so the panel closes behind it.
-              <ul
-                className="max-h-[320px] overflow-y-auto"
+              <div
+                className="max-h-[360px] overflow-y-auto"
                 onClick={(event) => {
                   if ((event.target as HTMLElement).closest("a")) close(false);
                 }}
               >
-                {problemRows}
-              </ul>
+                {drawSection("Your media", rows.media)}
+                {drawSection("Deluno", rows.deluno)}
+              </div>
             )}
             {leftovers + suggestions > 0 ? (
               <div

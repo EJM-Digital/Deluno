@@ -33,6 +33,7 @@ import {
   type IndexerItem,
   type JobQueueItem,
   type MovieImportRecoverySummary,
+  type NoReleaseRow,
   type OrphanedDownloadItem,
   type ProcessorConnectionItem,
   type ProcessorHandoffItem,
@@ -63,7 +64,13 @@ export const attentionSources = defineSources({
   },
   // The two the sidebar also reads, so the counts never depend on which tab was opened first.
   orphans: sharedSources.orphans,
-  healthSummary: sharedSources.healthSummary
+  healthSummary: sharedSources.healthSummary,
+  // Wanted titles whose newest search found nothing Deluno would take (#1098); the bell lists them.
+  noRelease: {
+    key: ["src", "attention-no-release"],
+    label: "Titles with no acceptable release",
+    fetch: () => fetchJson<NoReleaseRow[]>("/api/attention/no-release")
+  }
 });
 
 export interface AttentionLists {
@@ -77,6 +84,7 @@ export interface AttentionLists {
   processors?: ProcessorConnectionItem[];
   orphans?: OrphanedDownloadItem[];
   healthSummary?: HealthCheckSummary | null;
+  noRelease?: NoReleaseRow[];
 }
 
 export interface SetupNeed {
@@ -126,6 +134,10 @@ export interface DashboardAttention {
     failedImportJobs: JobQueueItem[];
     handoffs: ProcessorHandoffItem[];
   };
+  /** Wanted titles whose newest search found nothing acceptable (#1098). */
+  noRelease: NoReleaseRow[];
+  /** A newer Deluno is ready to install (#1098). */
+  updateReady: boolean;
   /** Jobs that gave up, not counting failed imports (those are on Downloads). */
   jobsGaveUp: number;
   failingLanes: number;
@@ -341,6 +353,17 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     action: "Open Dashboard",
     count: handoffCount
   });
+  const noRelease = lists.noRelease ?? [];
+  add({
+    id: "no-release",
+    tab: "live",
+    tone: "warn",
+    title: `${plural(noRelease.length, "title has", "titles have")} no acceptable release`,
+    text: "Every search found nothing Deluno would take. Search again or dismiss it.",
+    to: "/search-cycles/missing",
+    action: "Open Wanted",
+    count: noRelease.length
+  });
   add({
     id: "processors",
     tab: "system",
@@ -406,6 +429,19 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     count: failingLanes
   });
 
+  // A newer Deluno is ready: look at it. Not a failure, but it is Deluno asking for you.
+  const updateReady = system?.updateAvailable === true;
+  add({
+    id: "update",
+    tab: "system",
+    tone: "warn",
+    title: "A new version of Deluno is ready",
+    text: "Nothing is installed until you say so.",
+    to: "/system/updates",
+    action: "Open Updates",
+    count: updateReady ? 1 : 0
+  });
+
   const counts: Record<DashboardTab, number> = { live: 0, system: 0 };
   for (const item of items) counts[item.tab] += item.count;
 
@@ -421,6 +457,8 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     healthListed,
     downloads: { stalled, queueAttention: na.queueAttention, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,
-    failingLanes
+    failingLanes,
+    noRelease,
+    updateReady
   };
 }

@@ -101,21 +101,16 @@ describe("DashboardPage tabs", () => {
     expect(await screen.findByRole("tab", { name: /^Live/ })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("badges System with the real problems on it and never badges Live: problems are in the bell, counted once", async () => {
+  it("carries no number on either tab, however many things need you: the bell holds the count (#1098)", async () => {
     open("/");
     await screen.findByRole("tab", { name: /^Live/ });
-    // The lists read through fetchJson answer empty here; the job and download-record lists are not mocked, so the summary's counts stand in for them.
+    // The lists read through fetchJson answer empty here, so the summary's counts stand in for them; plenty needs a person.
     const none = [] as never;
     const attention = computeAttention(fullSummary(), { telemetry: none, movieRecovery: none, seriesRecovery: none, handoffs: none, indexers: none, processors: none });
-    expect(attention.total).toBe(attention.counts.live + attention.counts.system);
-    const label = (tab: string) => within(screen.getByRole("tab", { name: new RegExp(`^${tab}`) })).queryByLabelText(/need a look|needs a look/)?.getAttribute("aria-label") ?? null;
-    const words = (n: number) => (n === 1 ? "1 thing needs a look" : `${n} things need a look`);
-    // The stored lists arrive after the summary; the badge settles on them.
-    await waitFor(() => expect(label("System")).toBe(attention.counts.system === 0 ? null : words(attention.counts.system)));
     expect(attention.counts.system).toBeGreaterThan(0);
     expect(attention.counts.live).toBeGreaterThan(0);
-    // Live carries no badge, and no Needs you strip: those problems are in the bell.
-    expect(label("Live")).toBeNull();
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^System/ }).textContent).toBe("System"));
+    expect(screen.getByRole("tab", { name: /^Live/ }).textContent).toBe("Live");
     expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
   });
 

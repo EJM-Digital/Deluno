@@ -127,7 +127,8 @@ export function ActionButton({
   onClick,
   variant = "outline",
   uniform = false,
-  card = false
+  card = false,
+  hint
 }: {
   label: string;
   /** Names the button for assistive tech: "Retry Sintel (2010)", never just "Retry". */
@@ -140,6 +141,8 @@ export function ActionButton({
   uniform?: boolean;
   /** The smaller box every card on the Live board shares (CARD_BUTTON). */
   card?: boolean;
+  /** The hover note: what the button does, and what it will not touch. */
+  hint?: string;
 }) {
   const working = state.busy === busyKey;
   return (
@@ -148,6 +151,7 @@ export function ActionButton({
       variant={variant}
       size="sm"
       aria-label={name}
+      title={hint}
       disabled={state.busy !== null}
       onClick={onClick}
       className={card ? cn(CARD_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : uniform ? cn(UNIFORM_BUTTON, variant === "ghost" && "text-muted-foreground hover:text-foreground") : undefined}

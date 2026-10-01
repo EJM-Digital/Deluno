@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLiveInterval } from "../hooks/use-live-interval";
+import { useCoalescedRevalidate, useLiveInterval } from "../hooks/use-live-interval";
 import { usePollInterval } from "./realtime-state";
 import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
@@ -163,6 +163,8 @@ export function useAttention(pollMs = 45000) {
         // The Dashboard's own summary (memoised, stored numbers only) and the lists its count also reads.
         readFresh(summarySource, force).catch(() => undefined),
         readFresh(attentionSources.processors, force).catch(() => undefined),
+        // Wanted titles no search could satisfy (#1098).
+        readFresh(attentionSources.noRelease, force).catch(() => undefined),
         ...Object.values(setupSources).map((source) => readFresh(source as RouteSource<unknown>, force).catch(() => undefined))
       ]);
 
@@ -207,6 +209,9 @@ export function useAttention(pollMs = 45000) {
   // #909: a health check starting or clearing lights (or clears) the bell's
   // dot immediately, rather than waiting for the next poll.
   useSignalREvent("HealthChanged", RealtimeGroups.Dashboard, () => void load(true));
+  // #1098: a real test of a connection finished. A connection that stopped (or started) answering changes what needs a person; a burst of quiet results is folded into one read.
+  const reloadAfterCheck = useCoalescedRevalidate(() => void load(true), 1_500);
+  useSignalREvent("ConnectionChecked", RealtimeGroups.Dashboard, () => reloadAfterCheck());
 
   const refresh = useCallback(() => load(true), [load]);
   return { ...snapshot, refresh };
