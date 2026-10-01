@@ -299,6 +299,13 @@ public static class ProcessorHandoffStatuses
     public static readonly IReadOnlyList<string> AcceptingLateOutput =
         [Waiting, Submitted, Accepted, Started, TimedOut, Stalled, Lost];
 
+    /// <summary>
+    /// Endings where the hand-off went wrong: the processor failed or refused it,
+    /// went quiet, stopped reporting, or never received it (#1099). Not
+    /// <see cref="Cancelled"/>, which a person or Deluno can ask for.
+    /// </summary>
+    public static readonly IReadOnlyList<string> WentWrong = [Failed, Rejected, TimedOut, Stalled, Lost];
+
     /// <summary>Where a person can choose to import the original instead.</summary>
     public static bool CanReleaseOriginal(string? status)
         => status is Failed or TimedOut or Stalled or Lost or Cancelled;
