@@ -1297,6 +1297,23 @@ html .text-\[64px\] {
   animation: live-beat 2.4s ease-out infinite;
 }
 
+/* A poster that arrives in today's wall turns over into place, once. */
+@keyframes live-flip {
+  from { opacity: 0; transform: perspective(240px) rotateY(-100deg) scale(0.9); }
+  to   { opacity: 1; transform: perspective(240px) rotateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-flip {
+    transform-origin: left center;
+    animation: live-flip 800ms var(--ease-emphasis) both;
+  }
+}
+
+/* A drive gauge, a ring and a client's speed bar move to their new value rather than jumping. */
+.live-gauge {
+  transition: width 900ms var(--ease-emphasis), background-color 300ms;
+}
+
 /* Bars and rings move to their new value rather than jumping. */
 .live-bar {
   transition: height 700ms var(--ease-emphasis), background-color 300ms;

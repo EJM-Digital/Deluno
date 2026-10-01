@@ -14,10 +14,16 @@ export async function serveLiveBusy(page: Page) {
   const at = (ms: number) => new Date(now + ms).toISOString();
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   const host = " on WIN-7K3";
-  const count = { total: 184, monitored: 180, unmonitored: 4, missing: 12, upgradable: 9, qualityMet: 150, upcoming: 3, downloading: 4, airing: 0, fileBytes: 1e12 };
+  const count = { total: 184, monitored: 180, unmonitored: 4, missing: 12, upgradable: 9, qualityMet: 130, upcoming: 3, downloading: 4, airing: 0, fileBytes: 1e12 };
   const clients = [
     { id: "c1", name: `Deluge${host}`, protocol: "torrent", reachable: true, paused: false, version: "2.1", warnings: 0, freeSpaceBytes: 2e12, healthStatus: "healthy", active: 3, queued: 2 },
-    { id: "c2", name: `SABnzbd${host}`, protocol: "usenet", reachable: true, paused: false, version: "4.3", warnings: 0, freeSpaceBytes: 2e12, healthStatus: "healthy", active: 0, queued: 0 }
+    { id: "c2", name: `SABnzbd${host}`, protocol: "usenet", reachable: true, paused: false, version: "4.3", warnings: 0, freeSpaceBytes: 2e12, healthStatus: "healthy", active: 0, queued: 0 },
+    { id: "c3", name: `qBittorrent${host}`, protocol: "torrent", reachable: false, paused: null, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "unreachable", active: 0, queued: 0 }
+  ];
+  // Every client with its switch (the summary lists only the enabled ones): one more that is switched off.
+  const clientList = [
+    ...clients.map((client, n) => ({ id: client.id, name: client.name, protocol: client.protocol, isEnabled: true, priority: n, healthStatus: client.healthStatus })),
+    { id: "c4", name: `Transmission${host}`, protocol: "torrent", isEnabled: false, priority: 3, healthStatus: "unknown" }
   ];
 
   // The library: what each id is. "m99" was deleted, so it is never answered.
@@ -27,10 +33,11 @@ export async function serveLiveBusy(page: Page) {
     m8: { title: "Big Buck Bunny", year: 2008 }, m9: { title: "Tears of Steel", year: 2012 },
     m30: { title: "The Wild Robot", year: 2024 }, m31: { title: "Sita Sings the Blues", year: 2008 }, m32: { title: "The Kid", year: 1921 },
     m20: { title: "Coherence", year: 2013 }, m21: { title: "Primer", year: 2004 }, m22: { title: "Moon", year: 2009 },
-    m23: { title: "Her", year: 2013 }, m24: { title: "Ex Machina", year: 2014 }, m25: { title: "Arrival", year: 2016 }
+    m23: { title: "Her", year: 2013 }, m24: { title: "Ex Machina", year: 2014 }, m25: { title: "Arrival", year: 2016 },
+    m26: { title: "Past Lives", year: 2023 }, m27: { title: "Aftersun", year: 2022 }, m28: { title: "Anatomy of a Fall", year: 2023 }, m29: { title: "Perfect Days", year: 2023 }
   };
   const showTitles: Record<string, { title: string; year: number }> = {
-    s1: { title: "Say Yes to the Dress", year: 2007 }, s2: { title: "Lioness", year: 2023 }, s3: { title: "Severance", year: 2022 }, s4: { title: "The Bear", year: 2022 }
+    s1: { title: "Say Yes to the Dress", year: 2007 }, s2: { title: "Lioness", year: 2023 }, s3: { title: "Severance", year: 2022 }, s4: { title: "The Bear", year: 2022 }, s5: { title: "Shogun", year: 2024 }
   };
   const episodes: Record<string, { seriesId: string; season: number; episode: number }> = {
     e1: { seriesId: "s1", season: 4, episode: 2 }, e2: { seriesId: "s2", season: 2, episode: 5 }, e3: { seriesId: "s3", season: 2, episode: 3 }
@@ -43,7 +50,7 @@ export async function serveLiveBusy(page: Page) {
 
   const summary = {
     asOfUtc: at(0), buildMilliseconds: 5, unavailableSections: [],
-    library: { asOfUtc: at(0), movies: count, shows: { ...count, total: 42, missing: 3, upgradable: 2 }, totalBytes: 2e12, libraries: [], mix: { movieQuality: [], movieCodec: [], episodeQuality: [], showCodec: [] }, collections: { followed: 0, monitored: 0, members: 0, inLibrary: 0, syncFailing: 0, lastSyncedUtc: null } },
+    library: { asOfUtc: at(0), movies: count, shows: { ...count, total: 42, missing: 3, upgradable: 2, qualityMet: 31 }, totalBytes: 2e12, libraries: [], mix: { movieQuality: [], movieCodec: [], episodeQuality: [], showCodec: [] }, collections: { followed: 0, monitored: 0, members: 0, inLibrary: 0, syncFailing: 0, lastSyncedUtc: null } },
     downloads: { asOfUtc: at(0), hasReading: true, readingUtc: at(-20_000), active: 3, queued: 2, stalled: 7, processing: 1, importReady: 2, waitingForProcessor: 1, downloadMbps: 14.2, uploadMbps: 1.3, clients, sharingHolds: 0, sharingExtraBytes: 0, leftovers: { scanned: true, count: 0, bytes: 0, scannedUtc: at(-60_000) }, failedDownloads: 0 },
     pipeline: { asOfUtc: at(0), today: { grabbed: 9, detected: 8, imported: 6, failed: 1 }, totals: { grabbed: 400, detected: 390, imported: 380, failedGrabs: 4, failedImports: 6, activeDispatches: 7 }, averageGrabToDetectionSeconds: 40, averageDetectionToImportSeconds: 600 },
     imports: { asOfUtc: at(0), recoveryOpen: 0, recoveryByKind: {}, failedImportJobs: 0, failedProcessorHandoffs: 1 },
@@ -64,10 +71,19 @@ export async function serveLiveBusy(page: Page) {
     },
     indexers: { asOfUtc: at(0), total: 4, healthy: 3, failing: 1, rateLimited: 0, disabled: 0, queriesToday: 212, failedQueriesToday: 9, grabsToday: 9, topFailing: [] },
     processors: { asOfUtc: at(0), total: 1, healthy: 1, failing: 0, handoffsToday: 6, waiting: 1 },
-    retention: null, subtitles: null, requests: null,
+    retention: { asOfUtc: at(0), leavingSoon: 3, nextLeaving: [], readyToRemove: 1, removedLast7Days: 2, removedBytesLast7Days: 3e10 },
+    subtitles: null,
+    requests: { asOfUtc: at(0), seerrServers: 1, seerrHealthy: 1, seerrFailing: 0, acquisitionsLast7Days: { added: 3 }, importLists: 0, importListsByLastSync: {}, listTitlesAddedLast7Days: 0 },
     blocklist: { asOfUtc: at(0), count: 4 },
     health: { asOfUtc: at(0), problems: 0, unknown: 0, suggestions: 0, lastRunUtc: at(-3 * 60_000), topProblems: [] },
-    storage: { asOfUtc: at(0), readingUtc: at(-60_000), volumes: [] },
+    storage: {
+      asOfUtc: at(0), readingUtc: at(-60_000),
+      volumes: [
+        { id: "v1", label: "Films (D:)", roles: ["library"], paths: ["D:/Films"], available: true, totalBytes: 8e12, freeBytes: 1.4e12 },
+        { id: "v2", label: "Shows (E:)", roles: ["library"], paths: ["E:/Shows"], available: true, totalBytes: 12e12, freeBytes: 6.5e12 },
+        { id: "v3", label: "Downloads (F:)", roles: ["downloads"], paths: ["F:/Downloads"], available: true, totalBytes: 2e12, freeBytes: 0.3e12 }
+      ]
+    },
     system: { asOfUtc: at(0), version: "1.0.0-rc.23", updateAvailable: false, latestVersion: null, uptimeSeconds: 7200, machine: null, jobs: { running: 1, queued: 0, failed: 0 }, lanes: [], lastBackupUtc: null, nextBackupUtc: null, backupsEnabled: false, internetOutage: false, outageSinceUtc: null, notificationsUnread: 0 },
     activity: { asOfUtc: at(0), windowHours: 24, searchesRun: 30, downloadsStarted: 9, importsCompleted: 6, cleanupRemovals: 2, retentionRemovals: 1, recent: [] }
   };
@@ -150,7 +166,41 @@ export async function serveLiveBusy(page: Page) {
   // The day's real count by the hour: far more than the 200 a page of events holds, most of it routine.
   const byHour = Array.from({ length: 11 }, (_, n) => [...categories.map((category, k) => ({ hour: n + 1, category, count: 3 + ((n * 7 + k * 5) % 9) })), { hour: n + 1, category: "job.completed", count: 40 }]).flat();
 
+  // Today's arrivals (two of them upgrades), what was refused, requests and what retention will give back.
+  const importAt = (minutes: number) => at(-minutes * 60_000);
+  const arrival = (entityType: string, entityId: string, release: string, quality: string, minutes: number, extra: Record<string, unknown> = {}) => ({ entityType, entityId, release, quality, previousQuality: null, upgraded: false, sizeBytes: 4e9, importedUtc: importAt(minutes), ...extra });
+  const arrivals = [
+    arrival("movie", "m20", "Coherence.2013.1080p", "WEB 1080p", 4), arrival("movie", "m21", "Primer.2004.1080p", "Bluray 1080p", 19), arrival("series", "s2", "Lioness.S02E04.1080p.WEB", "WEB 1080p", 26, { sizeBytes: 1.6e9 }),
+    arrival("movie", "m22", "Moon.2009.1080p.BluRay", "Bluray 1080p", 41, { previousQuality: "WEB 720p", upgraded: true, sizeBytes: 9e9 }), arrival("movie", "m23", "Her.2013.2160p.WEB", "WEB 2160p", 63, { previousQuality: "WEB 1080p", upgraded: true, sizeBytes: 15e9 }),
+    arrival("movie", "m24", "Ex.Machina.2014.1080p", "WEB 1080p", 95), arrival("movie", "m25", "Arrival.2016.1080p", "WEB 1080p", 130), arrival("series", "s1", "Say.Yes.to.the.Dress.2007.S04E03.1080p", "WEB 1080p", 150, { sizeBytes: 1.2e9 }),
+    arrival("movie", "m26", "Past.Lives.2023.1080p", "WEB 1080p", 170), arrival("movie", "m27", "Aftersun.2022.1080p", "Bluray 1080p", 190)
+  ];
+  const liveExtras = {
+    asOfUtc: at(0), sinceUtc: at(-8 * 3_600_000), arrivals, importsToday: 14, importedBytesToday: 64e9, upgrades: arrivals.filter((item) => item.upgraded),
+    protected: { refusedToday: 5, unsafeToday: 2, latest: [{ release: "Totally.Real.Film.2024.1080p.WEB", reasonCode: "noVideoStream", reason: "It has no video in it.", blockedUtc: importAt(33) }] },
+    requests: [
+      { mediaType: "movie", entityId: "m4", title: "Barbie", status: "added", requestedBy: "Sam", createdUtc: importAt(240), updatedUtc: importAt(240) },
+      { mediaType: "movie", entityId: "m28", title: "Anatomy of a Fall", status: "added", requestedBy: "Alex", createdUtc: importAt(120), updatedUtc: importAt(120) },
+      { mediaType: "series", entityId: "s5", title: "Shogun", status: "added", requestedBy: "Sam", createdUtc: importAt(75), updatedUtc: importAt(75) },
+      { mediaType: "movie", entityId: "m29", title: "Perfect Days", status: "search-failed", requestedBy: "Alex", createdUtc: importAt(300), updatedUtc: importAt(300) },
+      { mediaType: "movie", entityId: "m26", title: "Past Lives", status: "available", requestedBy: "Sam", createdUtc: importAt(500), updatedUtc: importAt(170) }
+    ],
+    retentionReclaimBytes: 38e9
+  };
+  const airs = (hours: number) => at(hours * 3_600_000);
+  const upcoming = [
+    { seriesId: "s2", title: "Lioness", startYear: 2023, posterUrl: poster("Lioness", 9), episodeId: "u1", seasonNumber: 2, episodeNumber: 6, episodeTitle: "The Long Way", airDateUtc: airs(1.4) },
+    { seriesId: "s3", title: "Severance", startYear: 2022, posterUrl: poster("Severance", 10), episodeId: "u2", seasonNumber: 2, episodeNumber: 4, episodeTitle: "Woe's Hollow", airDateUtc: airs(5.2) },
+    { seriesId: "s4", title: "The Bear", startYear: 2022, posterUrl: poster("The Bear", 11), episodeId: "u3", seasonNumber: 3, episodeNumber: 8, episodeTitle: "Ice Chips", airDateUtc: airs(27) },
+    { seriesId: "s5", title: "Shogun", startYear: 2024, posterUrl: poster("Shogun", 12), episodeId: "u4", seasonNumber: 1, episodeNumber: 9, episodeTitle: "Crimson Sky", airDateUtc: airs(51) },
+    { seriesId: "s1", title: "Say Yes to the Dress", startYear: 2007, posterUrl: poster("Say Yes", 13), episodeId: "u5", seasonNumber: 4, episodeNumber: 4, episodeTitle: null, airDateUtc: airs(75) },
+    { seriesId: "s2", title: "Lioness", startYear: 2023, posterUrl: poster("Lioness", 9), episodeId: "u6", seasonNumber: 2, episodeNumber: 7, episodeTitle: "Standoff", airDateUtc: airs(122) }
+  ];
+
   await page.route(/\/api\/dashboard\/summary/, (route) => route.fulfill(json(summary)));
+  await page.route(/\/api\/dashboard\/live-extras/, (route) => route.fulfill(json(liveExtras)));
+  await page.route(/\/api\/series\/upcoming/, (route) => route.fulfill(json(upcoming)));
+  await page.route(/\/api\/download-clients(\?|$)/, (route) => route.fulfill(json(clientList)));
   await page.route(/\/api\/download-clients\/telemetry/, (route) =>
     route.fulfill(json({ summary: { activeCount: 3, queuedCount: 2, stalledCount: 7, importReadyCount: 2, waitingForProcessorCount: 1 }, clients: [{ clientId: "c1", clientName: `Deluge${host}`, queue }], capturedUtc: at(-30_000) }))
   );
@@ -173,5 +223,5 @@ export async function serveLiveBusy(page: Page) {
     for (const episode of Object.values(episodeRows)) showIds.add(episode.seriesId);
     return route.fulfill(json({ series: Object.fromEntries([...showIds].filter((id) => showTitles[id]).map((id) => [id, { ...showTitles[id], posterUrl: poster(showTitles[id].title, numberOf(id) + 7) }])), episodes: episodeRows }));
   });
-  return { summary, queue, dispatches, handoffs, indexers, scoreboard, samples, events, movieTitles, showTitles, episodes, poster, numberOf, at, json, host, clients, byHour };
+  return { liveExtras, upcoming, clientList, summary, queue, dispatches, handoffs, indexers, scoreboard, samples, events, movieTitles, showTitles, episodes, poster, numberOf, at, json, host, clients, byHour };
 }

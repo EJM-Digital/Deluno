@@ -140,7 +140,7 @@ export function JourneyCardView({ card, titles, arrivals, action, route, ...rest
   const lane = LANES[card.stage];
   const face = faceOf(card, titles);
   const stuck = card.stage === "needs";
-  const routeText = route ?? routeOf(card);
+  const routeText = route ?? (routeOf(card) || card.routeNote || "");
   const problems = card.alsoProblems?.length ?? 0;
   const all = problems > 1 ? card.alsoProblems!.join("\n") : (card.reasonFull ?? card.reason ?? undefined);
   return (

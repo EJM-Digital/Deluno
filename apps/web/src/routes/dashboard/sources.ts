@@ -13,6 +13,7 @@ import {
   type ActivityEventItem,
   type DownloadDispatchItem,
   type DownloadThroughputWindow,
+  type DashboardLiveExtras,
   type DashboardSummary,
   type PolicySetItem,
   type QualityProfileItem,
@@ -62,6 +63,18 @@ export async function fetchActivityToday(): Promise<ActivityToday> {
   return { fetchedAt, counts: null, rows, capped: rows.length >= ACTIVITY_PAGE_SIZE };
 }
 
+/** The Live extras for the person's own day; null from an older server that has none. */
+export async function fetchLiveExtras(): Promise<DashboardLiveExtras | null> {
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  try {
+    const extras = await fetchJson<DashboardLiveExtras>(`/api/dashboard/live-extras?sinceUtc=${encodeURIComponent(midnight.toISOString())}`);
+    return Array.isArray(extras?.arrivals) ? extras : null;
+  } catch {
+    return null;
+  }
+}
+
 export const SUMMARY_KEY = ["dashboard", "summary"] as const;
 
 export const summaryQuery = {
@@ -101,7 +114,7 @@ export const setupSources = defineSources({
 
 /** What only the Now tab reads beyond the summary and the download queue. */
 export const liveSources = defineSources({
-  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Coming up", () => fetchJson("/api/series/upcoming?take=12&hours=72"), []),
+  upcoming: source<SeriesUpcomingEpisodeItem[]>("dashboard-upcoming", "Airing soon", () => fetchJson("/api/series/upcoming?take=20&hours=168"), []),
   // The journey of each title (#1096): the sent downloads, the processor hand-offs and the indexers, all stored lists the other screens already keep.
   dispatches: { ...sharedSources.dispatches, fallback: [] },
   // Every card is matched to the title it was grabbed for. The shared list holds only the newest 60, and a download that has been stuck for days is older than that (or archived), so the board reads a longer list that includes the archived ones.
@@ -115,6 +128,10 @@ export const liveSources = defineSources({
   scoreboard: { ...source<IndexerScoreboardToday | null>("dashboard-indexers-today", "Indexers today", () => fetchJson("/api/indexers/scoreboard?days=1"), null), refetchInterval: 60_000 },
   // The newest Activity, for the Latest stream: read from the stored list, refreshed behind realtime as a safety net. The summary carries only eight rows, most of them routine.
   latestActivity: { ...source<ActivityEventItem[]>("dashboard-latest-activity", "Latest activity", () => fetchPageItems<ActivityEventItem>("/api/activity?pageSize=80"), []), refetchInterval: 120_000 },
+  // Download clients with their on/off switch (the summary lists only the enabled ones): a switched-off client is a grey light.
+  clients: { ...sharedSources.downloadClients, fallback: [] },
+  // Today's arrivals and upgrades, what was refused, requests in flight and what retention will give back: stored rows, cached on the server for five seconds.
+  liveExtras: { ...source<DashboardLiveExtras | null>("dashboard-live-extras", "Today on Live", fetchLiveExtras, null), refetchInterval: 30_000 },
   activityToday: { ...source<ActivityToday | null>("dashboard-activity-today", "Today's activity", fetchActivityToday, null), refetchInterval: 120_000 }
 });
 

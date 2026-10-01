@@ -107,7 +107,7 @@ describe("Live", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("shows the journey board with Search again, Coming up and the activity in plain words", async () => {
+  it("shows the journey board with Search again, Airing soon and the activity in plain words", async () => {
     seedBusy();
     const summary = { ...fullSummary, activity: { ...fullSummary.activity!, recent: [{ ...fullSummary.activity!.recent[0], relatedEntityType: "movie", relatedEntityId: "m9" }] } };
     renderTab(summary);
@@ -117,7 +117,7 @@ describe("Live", () => {
     expect(within(downloads).getAllByText("61%").length).toBeGreaterThan(0);
     expect(await within(downloads).findByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
 
-    const coming = screen.getByRole("region", { name: /^coming up/i });
+    const coming = screen.getByRole("region", { name: /^airing soon/i });
     expect(await within(coming).findByRole("link", { name: /Lioness/ })).toHaveAttribute("href", "/tv/s1");
 
     const activity = screen.getByRole("region", { name: /^activity/i });
@@ -146,7 +146,7 @@ describe("Live", () => {
     // An empty library says so and offers the next step, in a slim row under the band.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");
-    expect(screen.getByText(/Nothing airs in the next 72 hours/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing you follow airs in the next 7 days/)).toBeInTheDocument();
     expect(screen.getByText(/Nothing has happened yet/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });

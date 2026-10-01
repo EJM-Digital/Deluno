@@ -56,7 +56,7 @@ function renderRow(group: ActivityGroup, titles: TitleLookup): ReactElement {
   );
 }
 
-export function ActivityStream({ rows, titles, today }: { rows: LiveActivityRow[]; titles: TitleLookup; today?: { rows: RhythmRow[]; counts?: HourCountRow[] | null; countedAt?: number; capped?: boolean } }) {
+export function ActivityStream({ rows, titles, today, compact = false }: { /** The column is too short for the hourly chart as well as the list: the list gets the room. */ compact?: boolean; rows: LiveActivityRow[]; titles: TitleLookup; today?: { rows: RhythmRow[]; counts?: HourCountRow[] | null; countedAt?: number; capped?: boolean } }) {
   // What Deluno did for a title, not its routine housekeeping: that is one quiet count.
   const { shown, routine } = useMemo(() => {
     const mattering: LiveActivityRow[] = [];
@@ -69,8 +69,8 @@ export function ActivityStream({ rows, titles, today }: { rows: LiveActivityRow[
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
   return (
-    <Panel title="Activity" count="what Deluno did, as it does it" to="/activity" toLabel="All activity">
-      <RhythmChart rows={today?.rows ?? rows} counts={today?.counts} countedAt={today?.countedAt} capped={today?.capped} />
+    <Panel title="Activity" count="as it happens" to="/activity" toLabel="All activity">
+      {compact ? null : <RhythmChart rows={today?.rows ?? rows} counts={today?.counts} countedAt={today?.countedAt} capped={today?.capped} />}
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (

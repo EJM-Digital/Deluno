@@ -25,31 +25,28 @@
  * Nothing here reaches a client, indexer or disk while the screen waits.
  */
 import type { JSX } from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { OnboardingBanner } from "../../components/shell/onboarding-banner";
 import { SetupProgressLadder } from "../../components/shell/setup-progress-ladder";
 import { Button } from "../../components/ui/button";
-import type { DashboardSummary, DownloadDispatchItem, SeriesUpcomingEpisodeItem } from "../../lib/api";
-import { useRouteSources } from "../../lib/route-cache";
+import { cn } from "../../lib/utils";
+import type { DashboardSummary, DownloadDispatchItem } from "../../lib/api";
+import { queryClient, useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
 import { useAction } from "./downloads-kit";
-import { until } from "./format";
-import { FitList, Line, Panel } from "./parts";
 import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
+import { AiringSoon } from "./live/airing";
 import { RightNow } from "./live/band";
 import { Flow } from "./live/flow";
-import { useArrivals, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
-import { byStage, buildJourney, laneCounts } from "./live/journey";
+import { arrivalItems, requestCards } from "./live/extras";
+import { useArrivals, useElementHeight, useFreshKeys, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
+import { byStage, buildJourney, laneCounts, oneCardPerTitle } from "./live/journey";
 import { entityFromRelated, type Entity } from "./live/titles";
 import { ActivityStream } from "./live/stream";
 import { liveSources, useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
-
-function episodeCode(item: SeriesUpcomingEpisodeItem): string {
-  return `S${String(item.seasonNumber).padStart(2, "0")}E${String(item.episodeNumber).padStart(2, "0")}`;
-}
 
 const NO_ROWS: never[] = [];
 
@@ -68,6 +65,18 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const showSetup = setup.ready && !setup.status.isComplete;
 
   const queue = useMemo(() => (data.telemetry?.clients ?? []).flatMap((client) => client.queue), [data.telemetry]);
+  // What each client is downloading at: the pushed reading when it is newer than the stored one, else the stored one.
+  const clientSpeeds = useMemo(() => {
+    const speeds = new Map<string, number>();
+    const captured = Date.parse(data.telemetry?.capturedUtc ?? "");
+    for (const item of queue) {
+      if (item.status !== "downloading") continue;
+      const reading = liveProgress.get(item.id);
+      const speed = reading && reading.status === "downloading" && reading.at > (Number.isFinite(captured) ? captured : 0) ? reading.speedMbps : item.speedMbps;
+      speeds.set(item.clientId, (speeds.get(item.clientId) ?? 0) + (Number.isFinite(speed) ? speed : 0));
+    }
+    return speeds;
+  }, [queue, liveProgress, data.telemetry?.capturedUtc]);
   // The newest sent downloads and the longer list with the archived ones, as one list.
   const dispatches = useMemo(() => {
     const seen = new Set<string>();
@@ -79,23 +88,39 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     }
     return all;
   }, [data.dispatches, data.boardDispatches]);
-  const cards = useMemo(
+  const extras = data.liveExtras ?? undefined;
+  const built = useMemo(
     () => buildJourney({ queue, handoffs: data.handoffs ?? NO_ROWS, dispatches, live: liveProgress, summary, now: Date.now(), queueCapturedUtc: data.telemetry?.capturedUtc, work, cases: attention.downloads.recoveryCases, importJobs: attention.downloads.failedImportJobs }),
     // `now` moves the clock-dependent parts (today, recent) along once a minute.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [queue, data.handoffs, dispatches, liveProgress, summary, data.telemetry?.capturedUtc, work, attention.downloads.recoveryCases, attention.downloads.failedImportJobs, now]
   );
+  // Seerr requests are the first stage of the journey: one that already has a card further along is that card.
+  const cards = useMemo(() => oneCardPerTitle([...built, ...requestCards(extras?.requests, built)]), [built, extras?.requests]);
   const grouped = useMemo(() => byStage(cards), [cards]);
-  const counts = useMemo(() => laneCounts(grouped, summary, attention.counts.live), [grouped, summary, attention.counts.live]);
+  const items = useMemo(() => arrivalItems(extras, cards), [extras, cards]);
+  const counts = useMemo(() => {
+    const base = laneCounts(grouped, summary, attention.counts.live);
+    return { ...base, imported: Math.max(base.imported, extras?.importsToday ?? 0) };
+  }, [grouped, summary, attention.counts.live, extras?.importsToday]);
   // Titles are asked for in one request: the cards' and the activity's.
   const extraEntities = useMemo<Array<Entity | undefined>>(
     () => [
-            ...latest.slice(0, 40).map((row) => entityFromRelated(row.relatedEntityType, row.relatedEntityId))
+      ...latest.slice(0, 40).map((row) => entityFromRelated(row.relatedEntityType, row.relatedEntityId)),
+      ...items.slice(0, 40).map((item) => item.entity),
+      ...(extras?.requests ?? NO_ROWS).map((request) => entityFromRelated(request.mediaType.toLowerCase().startsWith("movie") ? "movie" : "series", request.entityId))
     ],
-    [latest]
+    [latest, items, extras?.requests]
   );
   const titles = useTitles(cards, extraEntities);
+  // An import, a refused release or a request that has just happened changes what the wall and counters say: read them again now rather than at the next timer.
+  const newest = latest[0];
+  useEffect(() => {
+    if (newest?.fresh && /import|block|refus|seerr|request|upgrade/i.test(newest.category)) void queryClient.invalidateQueries({ queryKey: liveSources.liveExtras.key });
+  }, [newest?.id, newest?.fresh, newest?.category]);
+  const [sideRef, sideHeight] = useElementHeight<HTMLDivElement>();
   const arrivals = useArrivals(cards);
+  const freshArrivals = useFreshKeys(useMemo(() => items.map((item) => item.key), [items]));
   const today = data.activityToday;
   const rhythmRows = useMemo(() => [...latest, ...(today?.rows ?? NO_ROWS)], [latest, today]);
   const activityToday = useMemo(() => ({ rows: rhythmRows, counts: today?.counts, countedAt: today?.fetchedAt, capped: today?.capped }), [rhythmRows, today]);
@@ -117,7 +142,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <RightNow summary={summary} samples={data.throughput?.samples ?? []} indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} work={work} updatedAt={updatedAt} now={now} />
+      <RightNow summary={summary} samples={data.throughput?.samples ?? []} indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} work={work} updatedAt={updatedAt} now={now} clients={data.clients ?? NO_ROWS} clientSpeeds={clientSpeeds} extras={extras ?? null} />
 
       {emptyLibrary ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
@@ -128,36 +153,18 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         </div>
       ) : null}
 
-      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,2.7fr)_minmax(0,1fr)]">
+      <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3.4fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col [&>section]:min-h-0 [&>section]:flex-1">
-          <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} />
+          <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} hasRequests={(summary?.requests?.seerrServers ?? 0) > 0} arrivalItems={items} freshArrivals={freshArrivals} />
         </div>
 
-        <div className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
-          <div className="flex min-h-0 flex-[4] flex-col [&>section]:min-h-0 [&>section]:flex-1">
+        <div ref={sideRef} className="flex min-h-0 flex-col gap-[var(--grid-gap)]">
+          <div className="flex min-h-0 flex-[2.3] flex-col [&>section]:min-h-0 [&>section]:flex-1">
             <ActivityStream rows={latest} titles={titles} today={activityToday} />
           </div>
-          <div className="flex min-h-0 max-h-[24%] flex-initial flex-col [&>section]:min-h-0">
-            <Panel title="Coming up" count="next 72 hours" to="/calendar" toLabel="Schedule">
-              {upcoming.length === 0 ? (
-                <p className="px-[var(--card-pad-x)] py-2 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing airs in the next 72 hours.</p>
-              ) : (
-                <FitList
-                  wrap={(shown) => <div>{shown}</div>}
-                  moreTo="/calendar"
-                  rows={upcoming.map((item) => (
-                    <Line
-                      key={item.episodeId}
-                      to={`/tv/${item.seriesId}`}
-                      label={item.title}
-                      hint={`${episodeCode(item)}${item.episodeTitle ? ` · ${item.episodeTitle}` : ""}`}
-                      value={until(item.airDateUtc)}
-                    />
-                  ))}
-                />
-              )}
-            </Panel>
-          </div>
+          {sideHeight > 0 && sideHeight < 480 ? null : <div className={cn("flex min-h-0 flex-col [&>section]:min-h-0", sideHeight > 0 && sideHeight < 620 ? "shrink-0" : "flex-[1.5] [&>section]:flex-1")}>
+            <AiringSoon upcoming={upcoming} summary={summary} compact={sideHeight > 0 && sideHeight < 620} />
+          </div>}
         </div>
       </div>
     </div>

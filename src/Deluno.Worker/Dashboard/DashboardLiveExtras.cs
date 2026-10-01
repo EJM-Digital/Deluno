@@ -215,10 +215,10 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
     }
 }
 
-/// <summary>The Live extras, remembered for a few seconds per day so a burst of screens costs one read.</summary>
+/// <summary>The Live extras, remembered for five seconds per day so a burst of screens costs one read.</summary>
 public sealed class DashboardLiveService(DashboardLiveStore store, TimeProvider timeProvider)
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(5);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<DateTimeOffset, AsyncValueCache<DashboardLiveExtras>> _byDay = new();
 
     public Task<DashboardLiveExtras> GetAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)

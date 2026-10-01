@@ -297,7 +297,7 @@ test.describe("Dashboard tabs", () => {
       // Every lane has its own cards, and the countdown reads by the second.
       await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
       await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
-      await expect(page.getByRole("group", { name: "In the library" }).getByText("Coherence (2013)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "In the library" }).getByRole("link", { name: /^Coherence \(2013\): in the library/ })).toBeVisible();
       // Cards carry the library's title, never the raw release name; stopped downloads are Stuck, not Downloading; a
       // deleted title keeps its release's own name; the speed is read once; what the board shows is one line in Needs you.
       const stuck = page.getByRole("group", { name: "Needs you" });

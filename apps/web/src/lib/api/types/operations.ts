@@ -681,6 +681,49 @@ export interface BundledComponentConnectAllResponse {
  * section carries its own `asOfUtc`, because a cached reading (storage, the
  * download queue) is older than the response around it.
  */
+/** One import that landed today (GET /api/dashboard/live-extras): the quality it came in at and, for an upgrade, the one it replaced. */
+export interface LiveArrivalItem {
+  entityType: string;
+  entityId: string | null;
+  release: string | null;
+  quality: string | null;
+  previousQuality: string | null;
+  upgraded: boolean;
+  sizeBytes: number | null;
+  importedUtc: string;
+}
+
+export interface LiveProtectionItem {
+  release: string;
+  reasonCode: string;
+  reason: string;
+  blockedUtc: string;
+}
+
+export interface LiveRequestItem {
+  mediaType: string;
+  entityId: string;
+  title: string;
+  /** added (asked for, searching), available (in the library), search-failed or available-failed. */
+  status: string;
+  requestedBy: string | null;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+/** What the Live screen shows beyond the summary: today's arrivals and upgrades, what was refused, requests in flight, what retention will give back. */
+export interface DashboardLiveExtras {
+  asOfUtc: string;
+  sinceUtc: string;
+  arrivals: LiveArrivalItem[];
+  importsToday: number;
+  importedBytesToday: number;
+  upgrades: LiveArrivalItem[];
+  protected: { refusedToday: number; unsafeToday: number; latest: LiveProtectionItem[] };
+  requests: LiveRequestItem[];
+  retentionReclaimBytes: number;
+}
+
 export interface DashboardSummary {
   asOfUtc: string;
   buildMilliseconds: number;
