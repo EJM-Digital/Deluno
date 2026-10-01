@@ -49,7 +49,45 @@ public sealed class SqliteBlockedReleaseRepository(
         Add(command, "@state", release.State);
         Add(command, "@origin", release.Origin);
 
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var inserted = await command.ExecuteNonQueryAsync(cancellationToken);
+
+        // Deluno's own decision to refuse a release is one line of the Activity history, written here where every
+        // such block passes (#1100); a person's own block is written by the endpoint that took the click, and the
+        // import pipeline writes its own sentence.
+        if (inserted > 0
+            && !release.WritesOwnActivity
+            && string.Equals(release.State, BlockedReleaseStates.Refused, StringComparison.Ordinal)
+            && !string.Equals(release.Origin, BlockedReleaseOrigins.Manual, StringComparison.Ordinal))
+        {
+            using var history = connection.CreateCommand();
+            history.CommandText =
+                """
+                INSERT INTO activity_events (
+                    id, category, message, details_json, related_job_id, related_entity_type, related_entity_id, created_utc,
+                    title, file_path, source_name, reason_group
+                )
+                VALUES (
+                    @id, 'release.blocked', @message, @details, NULL, @entityType, @entityId, @createdUtc,
+                    @title, NULL, @indexer, NULL
+                );
+                """;
+            Add(history, "@id", Guid.CreateVersion7().ToString("N"));
+            Add(history, "@message", $"Deluno blocked {release.ReleaseName}: {release.Reason}");
+            Add(history, "@details", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                release = release.ReleaseName,
+                reason = release.Reason,
+                indexerName = release.IndexerName,
+                clientName = release.DownloadClientName,
+                title = release.Title
+            }));
+            Add(history, "@entityType", release.EntityId is not null ? release.MediaType : "blocked_release");
+            Add(history, "@entityId", release.EntityId ?? release.Id);
+            Add(history, "@createdUtc", blockedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            Add(history, "@title", (object?)release.Title ?? DBNull.Value);
+            Add(history, "@indexer", release.IndexerName);
+            await history.ExecuteNonQueryAsync(cancellationToken);
+        }
 
         return (await ListAsync(cancellationToken))
             .First(item => string.Equals(item.ReleaseKey, release.ReleaseKey, StringComparison.Ordinal));

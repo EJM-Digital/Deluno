@@ -61,6 +61,7 @@ GET /api/
 GET /api/activity
 GET /api/activity/by-hour
 GET /api/activity/display-settings
+GET /api/activity/filters
 GET /api/api-keys/
 GET /api/api-keys/scope-templates
 GET /api/auth/bootstrap-status

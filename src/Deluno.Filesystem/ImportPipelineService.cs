@@ -2533,7 +2533,7 @@ public sealed partial class ImportPipelineService(
                     dispatch.DownloadClientId,
                     dispatch.DownloadClientName,
                     DateTimeOffset.MinValue,
-                    proposing ? BlockedReleaseStates.Proposed : BlockedReleaseStates.Refused),
+                    proposing ? BlockedReleaseStates.Proposed : BlockedReleaseStates.Refused) { WritesOwnActivity = true },
                 cancellationToken);
 
             // #954: a release refused outright (never one only proposed --
