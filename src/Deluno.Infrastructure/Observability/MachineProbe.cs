@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Deluno.Contracts;
+using Deluno.Infrastructure.SystemReadings;
 
 namespace Deluno.Infrastructure.Observability;
 
@@ -158,21 +159,13 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
             return GC.GetGCMemoryInfo().TotalAvailableMemoryBytes is > 0 and var available ? available : null;
         }
 
-        try
-        {
-            var status = new MemoryStatusEx { dwLength = (uint)Marshal.SizeOf<MemoryStatusEx>() };
-            return GlobalMemoryStatusEx(ref status) ? (long)status.ullTotalPhys : null;
-        }
-        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
-        {
-            return null;
-        }
+        return WindowsNative.TryReadMemory()?.Total;
     }
 
     /// <summary>
     /// Whole-volume load, straight from the volume. Opening it needs no
     /// elevation and no counter service, but a locked, missing or network
-    /// volume will simply refuse — hence null rather than a throw.
+    /// volume will simply refuse, hence null rather than a throw.
     /// </summary>
     private static DiskCounters? ReadDiskCounters(string? volumePath)
     {
@@ -181,7 +174,6 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
             return null;
         }
 
-        SafeFileHandleLite? handle = null;
         try
         {
             var root = Path.GetPathRoot(Path.GetFullPath(volumePath));
@@ -190,41 +182,13 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
                 return null;
             }
 
-            var device = @"\\.\" + root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            handle = SafeFileHandleLite.Open(device);
-            if (handle is null)
-            {
-                return null;
-            }
-
-            var size = Marshal.SizeOf<DiskPerformance>();
-            var buffer = Marshal.AllocHGlobal(size);
-            try
-            {
-                if (!DeviceIoControl(handle.Value, IoctlDiskPerformance, IntPtr.Zero, 0, buffer, (uint)size, out _, IntPtr.Zero))
-                {
-                    return null;
-                }
-
-                var performance = Marshal.PtrToStructure<DiskPerformance>(buffer);
-                return new DiskCounters(
-                    performance.BytesRead,
-                    performance.BytesWritten,
-                    performance.IdleTime,
-                    performance.QueryTime);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
+            return WindowsNative.TryReadVolumeCounters(root) is { } counters
+                ? new DiskCounters(counters.BytesRead, counters.BytesWritten, counters.IdleTime, counters.QueryTime)
+                : null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or DllNotFoundException or EntryPointNotFoundException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             return null;
-        }
-        finally
-        {
-            handle?.Dispose();
         }
     }
 
@@ -233,11 +197,6 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
     private sealed record DiskCounters(long BytesRead, long BytesWritten, long IdleTime, long QueryTime);
 
     // ── Windows interop ───────────────────────────────────────────────────
-
-    private const uint IoctlDiskPerformance = 0x00070020;
-    private const uint GenericRead = 0x80000000;
-    private const uint FileShareReadWrite = 0x00000003;
-    private const uint OpenExisting = 3;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct IoCounters
@@ -250,105 +209,9 @@ public sealed class MachineProbe(TimeProvider timeProvider) : IMachineProbe
         public ulong OtherTransferCount;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MemoryStatusEx
-    {
-        public uint dwLength;
-        public uint dwMemoryLoad;
-        public ulong ullTotalPhys;
-        public ulong ullAvailPhys;
-        public ulong ullTotalPageFile;
-        public ulong ullAvailPageFile;
-        public ulong ullTotalVirtual;
-        public ulong ullAvailVirtual;
-        public ulong ullAvailExtendedVirtual;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DiskPerformance
-    {
-        public long BytesRead;
-        public long BytesWritten;
-        public long ReadTime;
-        public long WriteTime;
-        public long IdleTime;
-        public uint ReadCount;
-        public uint WriteCount;
-        public uint QueueDepth;
-        public uint SplitCount;
-        public long QueryTime;
-        public uint StorageDeviceNumber;
-
-        // WCHAR[8], marshalled as raw units rather than ByValTStr. ByValTStr
-        // without an explicit CharSet marshals as ANSI, which makes the struct
-        // eight bytes short — and DeviceIoControl answers a too-small output
-        // buffer with ERROR_INVALID_PARAMETER, which reads exactly like an
-        // unsupported call. That cost an afternoon; do not "tidy" it back.
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
-        public ushort[] StorageManagerName;
-    }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetProcessIoCounters(IntPtr processHandle, out IoCounters counters);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
-
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern IntPtr CreateFileW(
-        string fileName,
-        uint desiredAccess,
-        uint shareMode,
-        IntPtr securityAttributes,
-        uint creationDisposition,
-        uint flagsAndAttributes,
-        IntPtr templateFile);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool DeviceIoControl(
-        IntPtr device,
-        uint controlCode,
-        IntPtr inBuffer,
-        uint inBufferSize,
-        IntPtr outBuffer,
-        uint outBufferSize,
-        out uint bytesReturned,
-        IntPtr overlapped);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
-
-    /// <summary>A volume handle that always gets closed, without pulling in Win32 SafeHandles.</summary>
-    private sealed class SafeFileHandleLite(IntPtr value) : IDisposable
-    {
-        public IntPtr Value { get; } = value;
-
-        /// <summary>
-        /// Opened with no access rights at all, which is the difference between
-        /// this working and not: GENERIC_READ on a raw volume needs
-        /// administrator, while an IOCTL that only reads counters does not need
-        /// to read the volume. Falling back to GENERIC_READ covers the case
-        /// where Deluno *is* elevated and something rejects the zero-access
-        /// handle.
-        /// </summary>
-        public static SafeFileHandleLite? Open(string device)
-        {
-            foreach (var access in new[] { 0u, GenericRead })
-            {
-                var handle = CreateFileW(device, access, FileShareReadWrite, IntPtr.Zero, OpenExisting, 0, IntPtr.Zero);
-                if (handle != IntPtr.Zero && handle != new IntPtr(-1))
-                {
-                    return new SafeFileHandleLite(handle);
-                }
-            }
-
-            return null;
-        }
-
-        public void Dispose() => CloseHandle(Value);
-    }
 }

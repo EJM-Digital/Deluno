@@ -36,6 +36,18 @@ internal sealed class RecordingRealtimeEventPublisher : NullRealtimeEventPublish
     }
 
     private readonly ConcurrentQueue<(string Type, string Id)> published = new();
+
+    private readonly ConcurrentQueue<(string Name, object Payload)> dashboardEvents = new();
+
+    /// <summary>Every pushed event on the dashboard subject (the System overview, #1098), in order.</summary>
+    public IReadOnlyList<(string Name, object Payload)> DashboardEvents => dashboardEvents.ToArray();
+
+    public Task PublishDashboardEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+    {
+        dashboardEvents.Enqueue((eventName, payload));
+        return Task.CompletedTask;
+    }
+
     private readonly ConcurrentQueue<(string DispatchId, string ReleaseName, string MediaType)> dispatchImportsStarted = new();
     private readonly ConcurrentQueue<(string Category, string Severity)> activityEvents = new();
 

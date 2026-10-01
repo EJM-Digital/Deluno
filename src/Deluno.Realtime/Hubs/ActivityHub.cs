@@ -72,9 +72,16 @@ public sealed class ActivityHub(IRealtimeResumeSource resumeSource, RealtimeWatc
     /// </summary>
     public Task Ping() => Task.CompletedTask;
 
+    public override Task OnConnectedAsync()
+    {
+        watchers?.Connected();
+        return base.OnConnectedAsync();
+    }
+
     /// <summary>A dropped connection stops watching everything it had joined.</summary>
     public override Task OnDisconnectedAsync(Exception? exception)
     {
+        watchers?.Disconnected();
         foreach (var subject in GetSubjects())
         {
             watchers?.Left(subject);

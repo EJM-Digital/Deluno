@@ -63,10 +63,11 @@ export interface SystemOverviewDrive {
   freeBytes: number;
   delunoBytes: number;
   fullInDays: number | null;
-  readBytesPerSec: number;
-  writeBytesPerSec: number;
-  iops: number;
-  busyPercent: number;
+  /** The four readings below are null when the system gives none for this drive (a network share). */
+  readBytesPerSec: number | null;
+  writeBytesPerSec: number | null;
+  iops: number | null;
+  busyPercent: number | null;
   health: "good" | "warning" | "failing" | "unknown";
   healthNote: string | null;
 }

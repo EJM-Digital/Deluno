@@ -12,6 +12,20 @@ public sealed class RealtimeWatcherTracker : IRealtimeWatchers
 {
     private readonly ConcurrentDictionary<string, int> _counts = new(StringComparer.Ordinal);
 
+    private int _connections;
+
+    public int ConnectionCount => Volatile.Read(ref _connections);
+
+    public void Connected() => Interlocked.Increment(ref _connections);
+
+    public void Disconnected()
+    {
+        if (Interlocked.Decrement(ref _connections) < 0)
+        {
+            Interlocked.Exchange(ref _connections, 0);
+        }
+    }
+
     public int Count(string subject) => _counts.TryGetValue(subject, out var count) ? count : 0;
 
     public void Joined(string subject) => _counts.AddOrUpdate(subject, 1, (_, count) => count + 1);
