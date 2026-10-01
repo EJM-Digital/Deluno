@@ -14,6 +14,7 @@ import { cn } from "../../../lib/utils";
 import { formatSize } from "../downloads-kit";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
+import "./shelf.css";
 import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize, useRemPx } from "./hooks";
@@ -56,9 +57,9 @@ function Poster({ group, isNew }: { group: ArrivalGroup; isNew: boolean }) {
   const sub = episodes ? `${episodes} · ${when}` : when;
   const tip = [title, episodes, tag, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : "an upgrade") : null, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   return (
-    <li className="flex shrink-0 flex-col" style={{ width: "var(--poster-w)", height: "calc(var(--poster-w) * 1.5 + var(--poster-caption))" }}>
-      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library, ${when}`} className="group flex min-h-0 flex-1 flex-col rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className={cn("relative block min-h-0 flex-1 overflow-hidden rounded-[10px] bg-surface-3 shadow-[0_8px_24px_hsl(0_0%_0%/0.35)] transition-shadow duration-500", isNew && "shadow-[0_0_0_2px_hsl(var(--success)),0_0_26px_hsl(var(--success)/0.45)]")}>
+    <li className="lsh-poster" data-new={isNew ? "" : undefined} style={{ width: "var(--poster-w)", height: "calc(var(--poster-w) * 1.5 + var(--poster-caption))" }}>
+      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library, ${when}`}>
+        <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className="lsh-art">
           <ArtworkImage
             src={poster}
             alt=""
@@ -71,10 +72,9 @@ function Poster({ group, isNew }: { group: ArrivalGroup; isNew: boolean }) {
               </span>
             }
           />
-          {tag ? <span aria-hidden className={cn("absolute inset-x-1.5 bottom-1.5 truncate rounded-md bg-black/75 px-1.5 py-0.5 text-[length:var(--type-micro)] font-semibold text-white backdrop-blur-sm", upgrades > 0 && "text-success")}>{tag}</span> : null}
+          {tag ? <span aria-hidden className={upgrades > 0 ? "lsh-tag up" : "lsh-tag"}>{tag}</span> : null}
         </span>
-        <span className="mt-1.5 block truncate text-[length:var(--type-caption)] font-semibold leading-tight text-foreground">{title}</span>
-        <span className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{sub}</span>
+        <span className="lsh-cap">{title}<small>{sub}</small></span>
       </Link>
     </li>
   );
@@ -89,15 +89,15 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
   const layout = posterLayout(box.width, box.height, rem, groups.length);
   const shown = box.width > 0 ? groups.slice(0, layout.capacity) : groups;
   return (
-    <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="min-h-[12rem]">
+    <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="lsh min-h-[12rem]">
       {/* The measured box is always drawn (never swapped in later), so it is observed from the first render and the posters follow every size change. */}
       <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] py-1.5">
         <div ref={boxRef} className="min-h-0 flex-1 overflow-hidden [container-type:size]">
           {items.length === 0 ? (
-            <p className="py-1.5 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing has arrived yet today.</p>
+            <p className="lsh-empty">Nothing has arrived yet today.</p>
           ) : (
             <ul
-              className="flex flex-wrap content-start gap-3.5"
+              className="lsh-posters"
               style={{ ["--poster-rows" as string]: layout.rows, ["--poster-gap" as string]: "0.875rem", ["--poster-caption" as string]: "2.25rem", ["--poster-cap" as string]: box.width > 0 ? `${layout.width}px` : undefined, ["--poster-w" as string]: POSTER_WIDTH_CSS }}
             >
               {shown.map((group) => <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} />)}
