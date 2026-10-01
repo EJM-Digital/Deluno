@@ -7,6 +7,7 @@ using Deluno.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -43,7 +44,7 @@ public static class SystemLogAndDatabasesEndpointRouteBuilderExtensions
         api.MapGet("/system/log", (
                 string? level,
                 int? take,
-                DelunoLogBuffer buffer,
+                [FromServices] DelunoLogBuffer buffer,
                 IOptions<StoragePathOptions> storage,
                 IOptions<DelunoFileLogOptions> logOptions) =>
             {
