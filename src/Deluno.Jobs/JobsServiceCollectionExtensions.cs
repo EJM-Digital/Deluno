@@ -39,6 +39,8 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IMachineTelemetryRepository>(provider =>
             provider.GetRequiredService<SqliteMachineTelemetryRepository>());
 
+        services.AddSingleton<ISystemOverviewStore, SqliteSystemOverviewStore>();
+
         services.AddSingleton<IJobLaneSignal, JobLaneSignal>();
         services.TryAddSingleton<IActivityDisplaySettingsStore, FileActivityDisplaySettingsStore>();
 

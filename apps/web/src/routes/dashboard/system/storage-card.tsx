@@ -24,7 +24,7 @@ export interface DriveView {
 
 export function drivesOf(overview: SystemOverviewDrive[] | undefined, summary: DashboardSummary | undefined): DriveView[] {
   if (overview && overview.length > 0) {
-    return overview.map((drive) => ({ key: `${drive.name}:${drive.path}`, name: drive.name, path: drive.path, total: drive.totalBytes, free: drive.freeBytes, mine: drive.delunoBytes, fullInDays: drive.fullInDays, io: { read: drive.readBytesPerSec, write: drive.writeBytesPerSec, iops: drive.iops, busy: drive.busyPercent }, health: drive.health, healthNote: drive.healthNote }));
+    return overview.map((drive) => ({ key: `${drive.name}:${drive.path}`, name: drive.name, path: drive.path, total: drive.totalBytes, free: drive.freeBytes, mine: drive.delunoBytes, fullInDays: drive.fullInDays, io: drive.readBytesPerSec === null || drive.writeBytesPerSec === null || drive.iops === null || drive.busyPercent === null ? null : { read: drive.readBytesPerSec, write: drive.writeBytesPerSec, iops: drive.iops, busy: drive.busyPercent }, health: drive.health, healthNote: drive.healthNote }));
   }
   return (summary?.storage?.volumes ?? [])
     .filter((volume) => volume.totalBytes && volume.freeBytes !== null)

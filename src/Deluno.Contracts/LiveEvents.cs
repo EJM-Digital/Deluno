@@ -69,6 +69,9 @@ public sealed record DashboardSectionBuild(
 public interface IRealtimeWatchers
 {
     int Count(string subject);
+
+    /// <summary>How many browsers are connected for live updates, whatever they have joined. Zero for a source that cannot tell.</summary>
+    int ConnectionCount => 0;
 }
 
 /// <summary>Payload of <c>JourneyStageChanged</c>: one dispatch moved to a new stage on its journey.</summary>

@@ -99,6 +99,20 @@ public static class WorkerServiceCollectionExtensions
         services.AddSingleton<Deluno.Worker.Dashboard.IDashboardSummaryService>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
         services.AddSingleton<Deluno.Contracts.IDashboardSectionSource>(provider => provider.GetRequiredService<Deluno.Worker.Dashboard.DashboardSummaryService>());
 
+        // The System overview (#1098): real readings of the machine, the network and Deluno itself,
+        // taken every two seconds only while a screen shows them (see SystemOverviewSampler).
+        services.AddSingleton<Deluno.Infrastructure.SystemReadings.IHostReadingSource>(_ => Deluno.Infrastructure.SystemReadings.HostReadingSources.ForThisMachine());
+        services.AddSingleton<Deluno.Infrastructure.SystemReadings.HostMetricsReader>();
+        services.AddSingleton<Deluno.Infrastructure.SystemReadings.ProcessUsageReader>(provider =>
+            new Deluno.Infrastructure.SystemReadings.ProcessUsageReader(provider.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<Deluno.Infrastructure.SystemReadings.OverviewHistory>();
+        services.AddHttpClient<Deluno.Infrastructure.SystemReadings.INetworkProbe, Deluno.Infrastructure.SystemReadings.NetworkProbe>(client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<Deluno.Infrastructure.SystemReadings.NetworkChecker>();
+        services.AddSingleton<Deluno.Worker.SystemReadings.ISystemOverviewFacts, Deluno.Worker.SystemReadings.SystemOverviewFacts>();
+        services.AddSingleton<Deluno.Worker.SystemReadings.SystemOverviewService>();
+        services.AddHostedService<Deluno.Worker.SystemReadings.SystemOverviewSampler>();
+        services.AddHostedService<Deluno.Worker.SystemReadings.SystemOverviewRecorder>();
+
         // #909: every check registers itself here, once, so the runner and the
         // "run right after it changes" scheduler always see the same list.
         services.AddScoped<IHealthCheck, DownloadClientHealthCheck>();
