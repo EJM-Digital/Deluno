@@ -11,11 +11,11 @@ export type StartedBy = "you" | "seerr" | "list" | "upgrade" | "missing";
 
 /** The words on each tag. */
 export const STARTED_LABEL: Record<StartedBy, string> = {
-  you: "You asked",
-  seerr: "Seerr",
-  list: "From a list",
-  upgrade: "Upgrade hunt",
-  missing: "Missing episode"
+  you: "You asked for it",
+  seerr: "Asked for in Seerr",
+  list: "On one of your lists",
+  upgrade: "Looking for an upgrade",
+  missing: "A missing episode"
 };
 
 /** The colour of each tag: the app's own tokens, so dark and light both read. */

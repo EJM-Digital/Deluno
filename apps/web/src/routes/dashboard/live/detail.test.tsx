@@ -60,7 +60,7 @@ describe("a card's detail lines are the mockup's, from real readings", () => {
   });
 
   it("says why Deluno is fetching it as a last line, except for a request that already says so", () => {
-    expect(detailLines(card({ stage: "grabbed", release: "x", startedBy: "upgrade" }), 4, NOW).map(text)).toEqual(["x", "Upgrade hunt"]);
+    expect(detailLines(card({ stage: "grabbed", release: "x", startedBy: "upgrade" }), 4, NOW).map(text)).toEqual(["x", "Looking for an upgrade"]);
     expect(detailLines(card({ stage: "requested", startedBy: "seerr", routeNote: "Asked by Sam" }), 4, NOW).map(text)).toEqual(["Asked by Sam", "4 indexers to ask"]);
   });
 
