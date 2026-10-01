@@ -18,10 +18,10 @@ export interface LaneStyle {
 
 export const LANES: Record<Stage, LaneStyle> = {
   requested: { label: "Requested", icon: Inbox, accent: "--stage-search", text: "text-[hsl(var(--stage-search))]", to: "/indexers/media-servers" },
-  grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--stage-grab", text: "text-[hsl(var(--stage-grab))]", to: "/queue" },
+  grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--journey-grab", text: "text-[hsl(var(--journey-grab))]", to: "/queue" },
   downloading: { label: "Downloading", icon: Download, accent: "--info", text: "text-info", to: "/queue" },
-  processor: { label: "Processing", icon: ShieldCheck, accent: "--stage-process", text: "text-[hsl(var(--stage-process))]", to: "/queue" },
-  importing: { label: "Importing", icon: FolderInput, accent: "--stage-import", text: "text-[hsl(var(--stage-import))]", to: "/queue" },
+  processor: { label: "Processing", icon: ShieldCheck, accent: "--journey-process", text: "text-[hsl(var(--journey-process))]", to: "/queue" },
+  importing: { label: "Importing", icon: FolderInput, accent: "--journey-import", text: "text-[hsl(var(--journey-import))]", to: "/queue" },
   imported: { label: "In the library", icon: Library, accent: "--success", text: "text-success", to: "/activity" }
 };
 
