@@ -4,11 +4,9 @@ import type { LiveActivityRow } from "../live-events";
 import type { TitleLookup } from "./titles";
 
 const row = (id: string, message: string, extra: Partial<LiveActivityRow> = {}): LiveActivityRow => ({ id, category: "episode.search.executed", message, createdUtc: "2026-10-01T00:00:00Z", relatedEntityType: "episode", relatedEntityId: id, fresh: false, ...extra });
-const titles: TitleLookup = {
-  movies: new Map(),
-  series: new Map([["s2", { title: "Lioness" }], ["s3", { title: "Severance" }]]),
-  episodes: new Map(["3", "4", "5", "6", "8"].map((n) => [`e${n}`, { seriesId: "s2", season: 2, episode: Number(n) }] as const).concat([["e90", { seriesId: "s3", season: 1, episode: 1 }]]))
-};
+const episodes = new Map<string, { seriesId: string; season: number; episode: number }>(["3", "4", "5", "6", "8"].map((n) => [`e${n}`, { seriesId: "s2", season: 2, episode: Number(n) }]));
+episodes.set("e90", { seriesId: "s3", season: 1, episode: 1 });
+const titles: TitleLookup = { movies: new Map(), series: new Map([["s2", { title: "Lioness" }], ["s3", { title: "Severance" }]]), episodes };
 const ago = () => "1 min ago";
 
 describe("grouping what Deluno did", () => {

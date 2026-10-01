@@ -27,7 +27,7 @@ public static class DashboardSummaryEndpoints
 
         // What the Live screen shows beyond the summary (#1096): today's arrivals
         // and upgrades, what was refused, Seerr requests in flight and what
-        // retention will give back. Stored rows only, remembered for 20 seconds.
+        // retention will give back. Stored rows only, remembered for five seconds.
         endpoints.MapGet("/api/dashboard/live-extras", async (
             string? sinceUtc,
             DashboardLiveService live,

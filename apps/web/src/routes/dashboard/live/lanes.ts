@@ -21,7 +21,14 @@ export const LANES: Record<Stage, LaneStyle> = {
   requested: { label: "Requested", icon: Inbox, accent: "--primary", bar: "bg-primary", text: "text-primary", to: "/indexers/media-servers" },
   searching: { label: "Searching", icon: Search, accent: "--stage-search", bar: "bg-[hsl(var(--stage-search))]", text: "text-[hsl(var(--stage-search))]", to: "/search-cycles" },
   grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--stage-grab", bar: "bg-[hsl(var(--stage-grab))]", text: "text-[hsl(var(--stage-grab))]", to: "/queue" },
-  downloading: { label: "Downloading", icon: Download, accent: "--info", bar: "bg-info", text: "text-info", to: "/queue" },
+  downloading: {
+    label: "Downloading",
+    icon: Download,
+    accent: "--info",
+    bar: "bg-info",
+    text: "text-info",
+    to: "/queue"
+  },
   needs: { label: "Needs you", icon: AlertOctagon, accent: "--destructive", bar: "bg-destructive", text: "text-destructive", to: "/queue" },
   processor: { label: "With the processor", icon: ShieldCheck, accent: "--stage-process", bar: "bg-[hsl(var(--stage-process))]", text: "text-[hsl(var(--stage-process))]", to: "/queue" },
   importing: { label: "Importing", icon: FolderInput, accent: "--stage-import", bar: "bg-[hsl(var(--stage-import))]", text: "text-[hsl(var(--stage-import))]", to: "/queue" },

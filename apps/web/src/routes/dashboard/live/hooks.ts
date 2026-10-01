@@ -4,7 +4,7 @@
  * and which cards have just arrived or changed lane.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { DashboardSummary } from "../../../lib/api";
 import { useLiveInterval } from "../../../hooks/use-live-interval";
 import { movedCards, type JourneyCard, type Stage } from "./journey";
@@ -109,4 +109,46 @@ export function useArrivals(cards: JourneyCard[]): ReadonlySet<string> {
   }, []);
 
   return fresh;
+}
+
+/**
+ * Keys that have appeared in a list since it was first drawn, for a moment each, so what arrives can be shown arriving.
+ * Nothing is marked the first time the list is drawn: only a real change is.
+ */
+export function useFreshKeys(keys: readonly string[]): ReadonlySet<string> {
+  const previous = useRef<ReadonlySet<string> | null>(null);
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signature = keys.join("|");
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = new Set(keys);
+    if (before === null) return;
+    const arrived = new Set(keys.filter((key) => !before.has(key)));
+    if (arrived.size === 0) return;
+    setFresh(arrived);
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setFresh(new Set()), 1600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  useEffect(() => () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+  }, []);
+  return fresh;
+}
+
+/** The height of an element, kept up to date as it changes (0 until it has been laid out). */
+export function useElementHeight<T extends HTMLElement>(): [RefObject<T | null>, number] {
+  const ref = useRef<T | null>(null);
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const read = () => setHeight(Math.round(element.getBoundingClientRect().height));
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, height];
 }

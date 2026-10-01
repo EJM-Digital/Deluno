@@ -12,17 +12,19 @@
  */
 import { Activity, Download, FolderInput, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { DownloadThroughputSample, IndexerItem } from "../../../lib/api";
-import type { DashboardSummary } from "../../../lib/api/types/operations";
+import type { DownloadClientItem, DownloadThroughputSample, IndexerItem } from "../../../lib/api";
+import type { DashboardLiveExtras, DashboardSummary } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import type { WorkItem, WorkKind } from "../live-events";
+import { ClientLights } from "./clients";
 import { buildCountdownRows, ProgressRing } from "./countdowns";
 import { countdown } from "./countdown";
 import { HeartbeatValue, UpdatedAgo } from "./heartbeat";
 import { useNow } from "./hooks";
 import { IndexerLights, type IndexerScoreboardToday } from "./indexers";
 import { SpeedCell } from "./speed-chart";
+import { DriveGauges, ProtectedYou, QualityRing } from "./standing";
 
 const WORK_ICON: Record<WorkKind, LucideIcon> = { search: Search, grab: Download, import: FolderInput, processor: ShieldCheck, jobs: Activity };
 
@@ -126,7 +128,10 @@ export function RightNow({
   scoreboard,
   work,
   updatedAt,
-  now
+  now,
+  clients = [],
+  clientSpeeds,
+  extras
 }: {
   summary: DashboardSummary | undefined;
   samples: DownloadThroughputSample[];
@@ -135,13 +140,32 @@ export function RightNow({
   work: WorkItem[];
   updatedAt: number;
   now: number;
+  /** Every download client, with its on/off switch: a switched-off one is a grey light. */
+  clients?: DownloadClientItem[];
+  /** What each client is downloading at now, from the readings it pushes. */
+  clientSpeeds?: ReadonlyMap<string, number>;
+  /** Today's arrivals, refusals and reclaimable space; null from an older server. */
+  extras?: DashboardLiveExtras | null;
 }) {
+  const peak = samples.reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
   return (
-    <div className="grid shrink-0 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07] sm:grid-cols-2 lg:grid-cols-[1.25fr_1.1fr_1fr_1.25fr] lg:divide-x lg:divide-hairline">
-      <SpeedCell samples={samples} summary={summary} />
-      <DoingNow summary={summary} work={work} updatedAt={updatedAt} />
-      <NextUp summary={summary} />
-      <IndexerLights indexers={indexers} scoreboard={scoreboard} summary={summary} now={now} />
+    <div className="shrink-0 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-[1.25fr_1.1fr_1fr_1.5fr] lg:divide-x lg:divide-hairline">
+        <SpeedCell samples={samples} summary={summary} />
+        <DoingNow summary={summary} work={work} updatedAt={updatedAt} />
+        <NextUp summary={summary} />
+        <div className="flex min-w-0 flex-col">
+          <IndexerLights indexers={indexers} scoreboard={scoreboard} summary={summary} now={now} />
+          <ClientLights rows={summary?.downloads?.clients ?? []} all={clients} speeds={clientSpeeds ?? NO_SPEEDS} scaleMbps={peak} />
+        </div>
+      </div>
+      <div className="grid border-t border-hairline sm:grid-cols-2 lg:grid-cols-[1.25fr_1.1fr_2.5fr] lg:divide-x lg:divide-hairline">
+        <QualityRing summary={summary} />
+        <ProtectedYou extras={extras} blocklistCount={summary?.blocklist?.count} />
+        <DriveGauges summary={summary} extras={extras} />
+      </div>
     </div>
   );
 }
+
+const NO_SPEEDS: ReadonlyMap<string, number> = new Map();

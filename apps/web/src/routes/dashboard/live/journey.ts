@@ -65,6 +65,8 @@ export interface JourneyCard {
   canSearchAgain?: boolean;
   /** The processor hand-off, when it failed and a person has to Retry or Give up. */
   failedHandoffId?: string;
+  /** A line for the route slot when the card has no indexer, client or processor yet: "Asked by Sam". */
+  routeNote?: string;
   /** Other problems with the same title, folded into this card so a title is one card: each in plain words. The primary action settles this card's own problem first. */
   alsoProblems?: string[];
   /** Where to act on it when its title is not known. */
@@ -392,6 +394,12 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
   return oneCardPerTitle(cards);
 }
 
+/** Which title a problem card is about: its library title, else its release (a download in a client is its own, whatever it is called). */
+function titleKey(card: JourneyCard): string {
+  if (card.entity) return `${card.entity.kind}:${card.entity.id}`;
+  return card.release && !card.queueRef ? `release:${releaseKey(card.release)}` : card.key;
+}
+
 /** How urgent a problem card is to settle, lowest first: a refused hand-off, a failed import, a stopped download, an import case to review. */
 export function needsRank(card: JourneyCard): number {
   return card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 3 : 2;
@@ -410,7 +418,7 @@ export function oneCardPerTitle(cards: JourneyCard[]): JourneyCard[] {
       out.push(card);
       continue;
     }
-    const key = card.entity ? `${card.entity.kind}:${card.entity.id}` : card.release ? `release:${releaseKey(card.release)}` : card.key;
+    const key = titleKey(card);
     const known = groups.get(key);
     if (known) known.push(card);
     else {
@@ -420,13 +428,14 @@ export function oneCardPerTitle(cards: JourneyCard[]): JourneyCard[] {
   }
   return out.map((card) => {
     if (card.stage !== "needs") return card;
-    const key = card.entity ? `${card.entity.kind}:${card.entity.id}` : card.release ? `release:${releaseKey(card.release)}` : card.key;
+    const key = titleKey(card);
     const group = groups.get(key);
     if (!group || group.length < 2) return card;
     const ordered = [...group].sort((a, b) => needsRank(a) - needsRank(b));
     const [primary, ...rest] = ordered;
-    const said = (item: JourneyCard) => item.reason ?? item.state.label;
-    return { ...primary, alsoProblems: [said(primary), ...rest.map(said)] };
+    // Folding is safe to repeat: a card that already stands for several problems brings all of them.
+    const said = (item: JourneyCard) => item.alsoProblems ?? [item.reason ?? item.state.label];
+    return { ...primary, alsoProblems: [...said(primary), ...rest.flatMap(said)] };
   });
 }
 
