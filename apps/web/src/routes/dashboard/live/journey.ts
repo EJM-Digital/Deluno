@@ -377,14 +377,15 @@ function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
   return { tone: "info", label: "Being cleaned" };
 }
 
-/** Problems first in a stage, so a card that is stuck is never the one a person has to look for. */
+/** Moving first in a stage: Live is what is happening now, and a stuck card follows the ones that are moving. */
 const toneRank: Record<Tone, number> = { bad: 0, warn: 1, info: 2, ok: 3, idle: 4 };
 
 export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   const grouped = Object.fromEntries(STAGES.map((stage) => [stage, [] as JourneyCard[]])) as Record<Stage, JourneyCard[]>;
   for (const card of cards) grouped[card.stage].push(card);
   grouped.imported.sort((a, b) => Date.parse(b.at ?? "") - Date.parse(a.at ?? ""));
-  grouped.downloading.sort((a, b) => Number(b.stuck ?? false) - Number(a.stuck ?? false) || (b.progress ?? 0) - (a.progress ?? 0));
+  // Live is what is happening now: downloads that are moving come first, stuck ones after them (the bell holds the problems).
+  grouped.downloading.sort((a, b) => Number(a.stuck ?? false) - Number(b.stuck ?? false) || (b.progress ?? 0) - (a.progress ?? 0));
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
 }

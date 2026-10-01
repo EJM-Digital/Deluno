@@ -307,8 +307,11 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("link", { name: /^Sintel \(2010\): Cleaner is working on it/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Shogun: Asked for in Seerr · looking/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Coherence \(2013\): in the library/ })).toBeVisible();
-      // A stopped download is not a problem card: it stays on the journey, stuck, while another copy is found.
-      await expect(page.getByRole("link", { name: /^The Kid \(1921\): Stuck at 34% · not moving/ })).toBeVisible();
+      // A stopped download is not a problem card: it stays on the journey, after the downloads that are moving, so
+      // on a busy board it is one of the "and N more" (named in that link's list) or a card of its own.
+      const kid = page.getByRole("link", { name: /^The Kid \(1921\): Stuck at 34% · not moving/ });
+      if ((await kid.count()) === 0) await expect(page.locator("a.lj-more[title*='The Kid (1921)']")).toHaveCount(1);
+      else await expect(kid).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
       // A station with more titles than its rows hold ends with "and N more" to Transfers, as the mockup does.

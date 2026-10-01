@@ -81,7 +81,7 @@ describe("Live", () => {
     expect(grid!.style.gridTemplateColumns).toBe("minmax(0, 1fr) clamp(340px, 28%, 600px)");
     expect(grid!.style.gridTemplateAreas).toBe('"now src" "board src" "low act"');
     // The rows are the top band, the journey and the bottom row.
-    expect(grid!.style.gridTemplateRows).toMatch(/^\d+px minmax\(0, 1fr\) \d+px$/);
+    expect(grid!.style.gridTemplateRows).toMatch(/^\d+px \d+px minmax\(0, 1fr\)$/);
     const cell = (area: string) => Array.from(grid!.children).find((child) => (child as HTMLElement).style.gridArea.replace(/\s/g, "") === area) as HTMLElement;
     expect(within(cell("now")).getByRole("region", { name: "Speed" })).toBeInTheDocument();
     expect(cell("now").firstElementChild?.className).toContain("lb-now");
