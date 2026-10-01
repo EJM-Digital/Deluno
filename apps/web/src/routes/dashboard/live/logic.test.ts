@@ -205,6 +205,11 @@ describe("stuck downloads", () => {
     expect(laneCounts(grouped, undefined).downloading).toBe(3);
   });
 
+  it("drops a download from the journey once it is imported, even while the client keeps seeding it", () => {
+    const cards = buildJourney({ ...base, queue: [queue({ status: "completed", progress: 100, downloadedBytes: 2e9 })], dispatches: [{ ...(dispatch as object), importCompletedUtc: iso(-1_000) } as never] });
+    expect(cards.filter((card) => card.stage !== "imported")).toEqual([]);
+  });
+
   it("never calls a finished download stuck: one the client reports stalled at 100% is downloaded", () => {
     const [card] = buildJourney({ ...base, queue: [queue({ status: "stalled", progress: 100, downloadedBytes: 2e9 })], dispatches: [dispatch] });
     expect(card).toMatchObject({ stage: "importing", stuck: false, state: { tone: "idle", label: "Downloaded" } });

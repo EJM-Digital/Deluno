@@ -24,9 +24,13 @@ export function sameTitle(card: Pick<JourneyCard, "entity" | "release">, item: P
 }
 
 /** Cards that left the Importing station and are not on the board any more: the titles that just arrived in the library. */
-export function departedFromImporting(before: ReadonlyMap<string, JourneyCard["stage"]>, cards: readonly JourneyCard[]): string[] {
+/**
+ * Cards that have left the board since the last render, from any station: an import can finish between two readings,
+ * so a card may never be seen at Importing. Only one whose title then turns up in Arrived today flies there.
+ */
+export function departedCards(before: ReadonlyMap<string, JourneyCard["stage"]>, cards: readonly JourneyCard[]): string[] {
   const now = new Set(cards.map((card) => card.key));
-  return [...before].filter(([key, stage]) => stage === "importing" && !now.has(key)).map(([key]) => key);
+  return [...before.keys()].filter((key) => !now.has(key));
 }
 
 /** Flies a copy of a poster from one place to another. The target stays hidden until it lands. */
@@ -94,7 +98,7 @@ export function useFlyToShelf(root: RefObject<HTMLElement | null>, cards: readon
     }
     // Rects of cards that are gone are kept from the render before, so the one that just left can still be found.
     const before = previous.current;
-    const departed = before ? departedFromImporting(before.stages, cards) : [];
+    const departed = before ? departedCards(before.stages, cards) : [];
     const now = Date.now();
     for (const key of departed) {
       const card = before?.cards.get(key);
