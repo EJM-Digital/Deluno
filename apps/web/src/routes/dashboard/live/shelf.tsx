@@ -7,6 +7,7 @@
  * a green ring for a few seconds; one that has just been imported flies in from the
  * journey (see `useFlyToShelf`) and simply appears with reduced motion.
  */
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
 import { cn } from "../../../lib/utils";
@@ -17,7 +18,7 @@ import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize, useRemPx } from "./hooks";
 import { posterLayout } from "./layout";
-import { nameOf } from "./arrivals";
+import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
 
@@ -49,14 +50,15 @@ export function arrivedHeading(titles: number, upgraded: number, bytes: number):
   return parts.join(" · ");
 }
 
-function Poster({ item, titles, isNew }: { item: ArrivalItem; titles: TitleLookup; isNew: boolean }) {
-  const { title, poster, to } = nameOf(item, titles);
-  const tag = item.upgraded && item.previousQuality && item.quality ? `${item.previousQuality} → ${item.quality}` : item.quality;
-  const tip = [title, tag, item.sizeBytes ? formatSize(item.sizeBytes) : null, item.upgraded ? "an upgrade" : null, item.requestedBy ? `requested by ${item.requestedBy}` : null, arrivedWhen(item.at)].filter(Boolean).join(" · ");
+function Poster({ group, isNew }: { group: ArrivalGroup; isNew: boolean }) {
+  const { title, poster, to, tag, upgrades, episodes } = group;
+  const when = arrivedWhen(group.at);
+  const sub = episodes ? `${episodes} · ${when}` : when;
+  const tip = [title, episodes, tag, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : "an upgrade") : null, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
   return (
     <li className="flex shrink-0 flex-col" style={{ width: "var(--poster-w)", height: "calc(var(--poster-w) * 1.5 + var(--poster-caption))" }}>
-      <Link to={to} title={tip} aria-label={`${title}: in the library, ${arrivedWhen(item.at)}`} className="group flex min-h-0 flex-1 flex-col rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span data-arrival-poster={item.key} className={cn("relative block min-h-0 flex-1 overflow-hidden rounded-[10px] bg-surface-3 shadow-[0_8px_24px_hsl(0_0%_0%/0.35)] transition-shadow duration-500", isNew && "shadow-[0_0_0_2px_hsl(var(--success)),0_0_26px_hsl(var(--success)/0.45)]")}>
+      <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library, ${when}`} className="group flex min-h-0 flex-1 flex-col rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className={cn("relative block min-h-0 flex-1 overflow-hidden rounded-[10px] bg-surface-3 shadow-[0_8px_24px_hsl(0_0%_0%/0.35)] transition-shadow duration-500", isNew && "shadow-[0_0_0_2px_hsl(var(--success)),0_0_26px_hsl(var(--success)/0.45)]")}>
           <ArtworkImage
             src={poster}
             alt=""
@@ -69,10 +71,10 @@ function Poster({ item, titles, isNew }: { item: ArrivalItem; titles: TitleLooku
               </span>
             }
           />
-          {tag ? <span aria-hidden className={cn("absolute inset-x-1.5 bottom-1.5 truncate rounded-md bg-black/75 px-1.5 py-0.5 text-[length:var(--type-micro)] font-semibold text-white backdrop-blur-sm", item.upgraded && "text-success")}>{tag}</span> : null}
+          {tag ? <span aria-hidden className={cn("absolute inset-x-1.5 bottom-1.5 truncate rounded-md bg-black/75 px-1.5 py-0.5 text-[length:var(--type-micro)] font-semibold text-white backdrop-blur-sm", upgrades > 0 && "text-success")}>{tag}</span> : null}
         </span>
         <span className="mt-1.5 block truncate text-[length:var(--type-caption)] font-semibold leading-tight text-foreground">{title}</span>
-        <span className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{arrivedWhen(item.at)}</span>
+        <span className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{sub}</span>
       </Link>
     </li>
   );
@@ -84,7 +86,8 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
   // The box is measured inside its padding, so the posters across are worked out from the real space, not an assumed padding.
   const layout = posterLayout(box.width, box.height, rem);
   // Until the shelf has been measured every arrival is drawn.
-  const shown = box.width > 0 ? items.slice(0, layout.capacity) : items;
+  const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
+  const shown = box.width > 0 ? groups.slice(0, layout.capacity) : groups;
   return (
     <Panel title="Arrived today" count={heading} to="/movies" toLabel="Your library" className="min-h-[12rem]">
       {/* The measured box is always drawn (never swapped in later), so it is observed from the first render and the posters follow every size change. */}
@@ -97,7 +100,7 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
               className="flex flex-wrap content-start gap-3.5"
               style={{ ["--poster-rows" as string]: layout.rows, ["--poster-gap" as string]: "0.875rem", ["--poster-caption" as string]: "2.25rem", ["--poster-w" as string]: POSTER_WIDTH_CSS }}
             >
-              {shown.map((item) => <Poster key={item.key} item={item} titles={titles} isNew={newest.has(item.key)} />)}
+              {shown.map((group) => <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} />)}
             </ul>
           )}
         </div>
