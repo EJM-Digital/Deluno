@@ -1,7 +1,6 @@
 /* Your library (#1098): the mockup's shelf (artifacts/live-mockup/approved-final.html), rule for rule, mapped to the app's tokens. Every class is prefixed lsh-. */
 .lsh > header h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--success)); margin-right: 8px; vertical-align: middle; box-shadow: 0 0 10px hsl(var(--success)); }
 .lsh { padding-bottom: 8px; }
-.lsh-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: hsl(var(--muted-foreground)); font-weight: 600; }
 
 /* One shelf (#1103): the library chips, then the counts line(s), then the posters, which take the rest of the card's height. */
 .lsh-chips { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 0 18px 8px; margin: 0; overflow-x: auto; overflow-y: hidden; flex: none; scrollbar-width: thin; }
@@ -9,14 +8,6 @@
 .lsh-chip:hover { color: hsl(var(--foreground)); background: hsl(var(--foreground) / .05); }
 .lsh-chip[aria-pressed="true"] { background: hsl(var(--primary) / .16); border-color: hsl(var(--primary) / .45); color: hsl(var(--primary)); font-weight: 600; }
 .lsh-chip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-.lsh-lines { display: grid; gap: 3px; padding: 0 18px 6px; flex: none; }
-.lsh-line { display: flex; align-items: baseline; flex-wrap: nowrap; gap: 12px; white-space: nowrap; overflow: hidden; min-width: 0; }
-.lsh-line > .lsh-label { min-width: 5rem; }
-.lsh-ct { display: flex; gap: 12px; font-size: 11px; color: hsl(var(--muted-foreground)); }
-.lsh-ct > span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.lsh-ct i { width: 10px; height: 3px; border-radius: 2px; }
-.lsh-ct b { color: hsl(var(--foreground)); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lsh-today { font-size: 11px; color: hsl(var(--success)); font-variant-numeric: tabular-nums; }
 
 .lsh-posters { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 12px; flex: 1 1 0; min-height: 0; overflow: hidden; padding: 7px 5px 5px; margin: 0 14px; box-sizing: border-box; list-style: none; }
 .lsh-poster { position: relative; flex: none; width: var(--aw, 80px); display: flex; flex-direction: column; animation: lsh-arrive .8s cubic-bezier(.2, .8, .2, 1); }

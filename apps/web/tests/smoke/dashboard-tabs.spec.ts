@@ -368,8 +368,8 @@ test.describe("Dashboard tabs", () => {
       const chips = shelf.getByRole("group", { name: "Libraries" }).getByRole("button");
       await expect(chips).toHaveText(["All", "Movies HD", "Kids", "TV"]);
       await expect(shelf.locator(".lsh-posters")).toHaveCount(1);
-      // One line of counts per kind of title for All; the tag opens that library's page filtered to it.
-      await expect(shelf.locator(".lsh-line")).toHaveCount(2);
+      // No legend: the colours on the posters are the Movies page's own. The tag opens that library's page filtered to it.
+      await expect(shelf.locator(".lsh-line, .lsh-ct")).toHaveCount(0);
       const tags = shelf.locator(".lsh-tag");
       expect(await tags.count()).toBeGreaterThan(0);
       expect(await tags.first().getAttribute("href")).toMatch(/^\/(movies|tv)\?library=/);
@@ -389,11 +389,9 @@ test.describe("Dashboard tabs", () => {
         expect(Math.abs(poster.artH - poster.artW * 1.5), `${size.width}: a poster is not 2:3`).toBeLessThan(1.5);
       }
       await page.screenshot({ path: `test-results/e2e-rig/live-shelf-${size.width}.png` });
-      // A chip filters the shelf and its counts follow it.
+      // A chip filters the shelf to its library.
       await chips.filter({ hasText: "Kids" }).click();
       await expect(chips.filter({ hasText: "Kids" })).toHaveAttribute("aria-pressed", "true");
-      await expect(shelf.locator(".lsh-line")).toHaveCount(1);
-      await expect(shelf.locator(".lsh-line")).toContainText("12 met");
       for (const text of await shelf.locator(".lsh-tag").allTextContents()) expect(text).toBe("Kids");
     }
   });
