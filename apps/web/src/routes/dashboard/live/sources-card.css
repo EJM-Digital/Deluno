@@ -84,3 +84,10 @@
 .ls-pill.busy i { animation: ls-blink 1s ease-in-out infinite; background: var(--ls-processing); }
 @keyframes ls-blink { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .ls-row .ls-d, .ls-pill i { animation: none !important; } .ls-row, .ls-pill, .ls-stack i { transition: none; } }
+
+/* A narrow card gives the indexer's name the room: tighter number columns and gaps. */
+@container (max-width: 430px) {
+  .ls-head, .ls-row { grid-template-columns: 10px minmax(0, 1fr) 2rem 3rem 3.9rem 3rem; gap: 6px; }
+  .ls-row { padding-left: 6px; padding-right: 6px; }
+  .ls-head { padding-left: 6px; padding-right: 6px; }
+}
