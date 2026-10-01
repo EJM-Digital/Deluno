@@ -5,6 +5,7 @@
  * releases are the stored ones with every pushed one on top, so the card is already
  * right when the next count is read.
  */
+import { useLayoutEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import { LiveCard as Panel } from "./live-card";
@@ -15,7 +16,18 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
   // Held to the window on a wide screen, the card shows the whole rows its height holds; on a phone the page scrolls and it shows them all.
-  const fit = turnedDownFit(useIsWide() ? box.height : 0, rem, view.reasons.length, view.latest.length);
+  const estimate = turnedDownFit(useIsWide() ? box.height : 0, rem, view.reasons.length, view.latest.length);
+  // The estimate can be a few pixels out (fonts, wrapping): after drawing, a card whose rows still run past its height
+  // drops a whole row, from the newest list first and then the last reason, so nothing is ever drawn half cut.
+  const [trim, setTrim] = useState(0);
+  useLayoutEffect(() => setTrim(0), [box.height, view.latest.length, view.reasons.length]);
+  const fromLatest = Math.min(trim, estimate.latest);
+  const fit = { latest: estimate.latest - fromLatest, reasons: Math.max(1, estimate.reasons - (trim - fromLatest)) };
+  useLayoutEffect(() => {
+    const holder = boxRef.current;
+    if (!holder || !(box.height > 0) || fit.latest + fit.reasons <= 1) return;
+    if (holder.scrollHeight > holder.clientHeight + 1) setTrim((value) => value + 1);
+  });
   const count = view.total === 1 ? "1 release" : `${view.total.toLocaleString("en-AU")} releases`;
   return (
     <Panel title="Turned down today" count={count} className="min-h-0" bodyClassName="min-h-0">

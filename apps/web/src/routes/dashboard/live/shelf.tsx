@@ -61,7 +61,8 @@ function Poster({ item, titles, isNew, width, height }: { item: ArrivalItem; tit
 export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]; titles: TitleLookup; /** Keys that have just arrived: the newest has the ring. */ newest: ReadonlySet<string>; heading: string }) {
   const [boxRef, box] = useElementSize<HTMLDivElement>();
   const rem = useRemPx();
-  const layout = posterLayout(Math.max(0, box.width - 2 * 1.125 * rem), Math.max(0, box.height - 2 * 0.375 * rem), rem);
+  // The box is measured inside its padding, so the posters across are worked out from the real space, not an assumed padding.
+  const layout = posterLayout(box.width, box.height, rem);
   // Until the shelf has been measured every arrival is drawn.
   const shown = box.width > 0 ? items.slice(0, layout.capacity) : items;
   return (
@@ -69,10 +70,12 @@ export function Shelf({ items, titles, newest, heading }: { items: ArrivalItem[]
       {items.length === 0 ? (
         <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-body-sm)] text-muted-foreground">Nothing has arrived yet today.</p>
       ) : (
-        <div ref={boxRef} className="min-h-0 flex-1 overflow-hidden px-[var(--card-pad-x)] py-1.5">
-          <ul className="flex flex-wrap content-start gap-3.5">
-            {shown.map((item) => <Poster key={item.key} item={item} titles={titles} isNew={newest.has(item.key)} width={layout.width} height={layout.itemHeight} />)}
-          </ul>
+        <div className="flex min-h-0 flex-1 flex-col px-[var(--card-pad-x)] py-1.5">
+          <div ref={boxRef} className="min-h-0 flex-1 overflow-hidden">
+            <ul className="flex flex-wrap content-start gap-3.5">
+              {shown.map((item) => <Poster key={item.key} item={item} titles={titles} isNew={newest.has(item.key)} width={layout.width} height={layout.itemHeight} />)}
+            </ul>
+          </div>
         </div>
       )}
     </Panel>
