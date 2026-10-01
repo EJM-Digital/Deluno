@@ -18,7 +18,7 @@ import "./shelf.css";
 import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize, useRemPx } from "./hooks";
-import { posterLayout } from "./layout";
+import { MAX_POSTER_REM, posterLayout } from "./layout";
 import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
@@ -41,7 +41,10 @@ export function arrivedWhen(at: string, now = Date.now()): string {
  * be taller than its row whatever the timing of a measurement: the row is a share of the box, the poster the row less its
  * caption, 2:3. JavaScript only decides how many rows and how many posters to draw.
  */
-export const POSTER_WIDTH_CSS = "min(var(--poster-cap, 16rem), 16rem, max(2.5rem, calc((((100cqh - (var(--poster-rows) - 1) * var(--poster-gap)) / var(--poster-rows)) - var(--poster-caption)) * 2 / 3)))";
+export const POSTER_WIDTH_CSS = "min(var(--poster-cap, 7.5rem), 7.5rem, max(2.5rem, calc((((100cqh - (var(--poster-rows) - 1) * var(--poster-gap)) / var(--poster-rows)) - var(--poster-caption)) * 2 / 3)))";
+
+/** The height of the row under the journey: the shelf is its header and one row of posters, as in the mockup, and the page gives all the rest to the journey. */
+export const SHELF_ROW_HEIGHT_CSS = `min(calc(var(--list-header-height) + ${MAX_POSTER_REM * 1.5 + 2.25 + 1.4}rem), 42%)`;
 
 /** "12 titles · 4 upgraded · 54 GB added": what today has brought in. */
 export function arrivedHeading(titles: number, upgraded: number, bytes: number): string {

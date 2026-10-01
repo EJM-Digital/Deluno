@@ -24,6 +24,9 @@ describe("journey budget", () => {
   it("is its share of the space under the band when held to the window", () => {
     expect(journeyBudget(true, 1000, 900)).toBe(512);
     expect(journeyBudget(true, 0, 900)).toBeUndefined();
+    // With a content-sized row under it, the journey gets everything that row leaves.
+    expect(journeyBudget(true, 1000, 900, 300)).toBe(700);
+    expect(journeyBudget(true, 400, 900, 500)).toBe(0);
   });
   it("is most of the window when the page scrolls", () => {
     expect(journeyBudget(false, 0, 1000)).toBe(700);

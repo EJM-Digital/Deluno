@@ -71,8 +71,9 @@ export function pageLayout(width: number, remPx: number): PageLayout {
  * The tallest the journey may be: its share of the space under the top band when the page is held to the window, or
  * most of a window's height when the page scrolls. It is a ceiling, not a size: the journey is as tall as its cards need.
  */
-export function journeyBudget(sideBySide: boolean, restHeight: number, windowHeight: number): number | undefined {
-  if (sideBySide) return restHeight > 0 ? Math.floor(restHeight * JOURNEY_SHARE) : undefined;
+export function journeyBudget(sideBySide: boolean, restHeight: number, windowHeight: number, belowHeight = 0): number | undefined {
+  // Beside the right column, whatever the content-sized row under the journey (Arrived today, Turned down) does not use is the journey's.
+  if (sideBySide) return restHeight > 0 ? (belowHeight > 0 ? Math.max(0, Math.floor(restHeight - belowHeight)) : Math.floor(restHeight * JOURNEY_SHARE)) : undefined;
   return windowHeight > 0 ? Math.floor(windowHeight * 0.7) : undefined;
 }
 
@@ -95,8 +96,8 @@ export interface PosterLayout {
   capacity: number;
 }
 
-/** The largest a poster's picture may be, in rem (a lone poster on a big shelf is tall, not absurd). */
-export const MAX_POSTER_REM = 16;
+/** The largest a poster's picture may be, in rem (the mockup's poster: more across rather than bigger). */
+export const MAX_POSTER_REM = 7.5;
 
 /**
  * Posters keep their 2:3 shape and fill the shelf. Given how many there are (`count`), it picks the fewest rows that show
