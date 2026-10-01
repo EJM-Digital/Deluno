@@ -296,6 +296,7 @@ public sealed class SeasonSearchExecutor(
                 NumberingScheme: seriesItem.NumberingScheme,
                 PreferencePlan: preferencePlan,
                 RuntimeMinutes: seriesItem.RuntimeMinutes,
+                EntityId: seriesItem.Id,
                 ImdbId: seriesItem.ImdbId,
                 Genres: seriesItem.Genres,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem.MetadataJson),

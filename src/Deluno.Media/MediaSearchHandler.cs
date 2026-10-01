@@ -140,6 +140,7 @@ public static class MediaSearchHandler
                 PreferencePlan: preferencePlan,
                 CurrentPreferenceEvaluation: currentPreferenceEvaluation,
                 RuntimeMinutes: item.RuntimeMinutes,
+                EntityId: item.Id,
                 ImdbId: wantedItem.ImdbId,
                 OtherTitles: CatalogueMetadata.ReadAlternateTitles(item.MetadataJson)).WithProfile(profileRules),
             cancellationToken);

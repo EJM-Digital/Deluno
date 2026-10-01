@@ -13,7 +13,8 @@ public sealed class SqliteProcessorRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
     TimeProvider timeProvider,
     ISecretProtector secretProtector,
-    IRealtimeEventPublisher? realtimeEventPublisher = null)
+    IRealtimeEventPublisher? realtimeEventPublisher = null,
+    IConnectionUseReporter? connectionUses = null)
     : IProcessorRepository
 {
     public async Task<IReadOnlyList<ProcessorConnectionItem>> ListProcessorConnectionsAsync(CancellationToken cancellationToken)
@@ -745,6 +746,17 @@ public sealed class SqliteProcessorRepository(
     /// <summary>Tells the Live board the moment a hand-off to the processor moves on (#1097).</summary>
     private async Task AnnounceHandoffAsync(ProcessorHandoffItem handoff, string state, string? message, CancellationToken cancellationToken)
     {
+        // The processor's tile on Live: what it has done today and how many titles it has right now (#1098).
+        // Reported on every hand-off change, so a title finishing clears its glow as surely as a new one lights it.
+        if (connectionUses is not null && !string.IsNullOrWhiteSpace(handoff.ProcessorConnectionId))
+        {
+            await connectionUses.ReportAsync(
+                ConnectionKinds.Processor,
+                handoff.ProcessorConnectionId,
+                string.IsNullOrWhiteSpace(handoff.ProcessorName) ? "Processor" : handoff.ProcessorName,
+                cancellationToken);
+        }
+
         if (realtimeEventPublisher is null)
         {
             return;

@@ -17,4 +17,6 @@ public sealed record ReleaseDecision(
     string? ReleaseGroup,
     double? EstimatedBitrateMbps,
     PreferenceEvaluation? PreferenceEvaluation = null,
-    PreferenceComparison? PreferenceComparison = null);
+    PreferenceComparison? PreferenceComparison = null,
+    // The first gate that refused the release, in the engine's own words; null when nothing hard refused it (#1098).
+    string? RejectionGate = null);

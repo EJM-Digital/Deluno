@@ -272,7 +272,13 @@ public sealed record DownloadTelemetrySummary(
     /// a site's sharing rule can be met (#288), which makes "am I actually
     /// seeding?" a question it has to be able to answer (#289).
     /// </summary>
-    double TotalUploadSpeedMbps = 0);
+    double TotalUploadSpeedMbps = 0,
+    /// <summary>
+    /// Finished torrents the client is still sharing (#1098): protocols with a sharing phase, fully
+    /// downloaded and not paused. Items Deluno did not send are not in a queue, so are not counted.
+    /// Always zero for Usenet.
+    /// </summary>
+    int SeedingCount = 0);
 
 public sealed record DownloadQueueItem(
     string Id,

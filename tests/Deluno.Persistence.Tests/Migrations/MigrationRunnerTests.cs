@@ -215,7 +215,7 @@ public sealed class MigrationRunnerTests
         Assert.Equal("notification_webhook_failure_details", await ReadScalarAsync<string>(platformConnection, "SELECT name FROM schema_migrations WHERE version = 46;"));
 
         await using var jobsConnection = await storage.Factory.OpenConnectionAsync(DelunoDatabaseNames.Jobs);
-        Assert.Equal(41, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
+        Assert.Equal(42, await ReadScalarAsync<int>(jobsConnection, "SELECT COUNT(*) FROM schema_migrations;"));
         Assert.Equal("initial_schema", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 1;"));
         Assert.Equal("job_integrity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 2;"));
         Assert.Equal("download_outcome_tracking", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 3;"));
@@ -259,6 +259,8 @@ public sealed class MigrationRunnerTests
         Assert.Equal("dispatch_client_item_index_and_grab_reservations", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 38;"));
         Assert.Equal("screen_query_indexes", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 39;"));
         Assert.Equal("trim_oversized_grab_notes", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 40;"));
+        Assert.Equal("collapse_repeated_activity", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 41;"));
+        Assert.Equal("turned_down_releases", await ReadScalarAsync<string>(jobsConnection, "SELECT name FROM schema_migrations WHERE version = 42;"));
     }
 
     /// <summary>

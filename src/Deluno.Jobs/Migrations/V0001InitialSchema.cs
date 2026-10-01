@@ -46,7 +46,8 @@ public static class JobsDatabaseMigrations
         new V0038DispatchClientItemIndexAndGrabReservations(),
         new V0039ScreenQueryIndexes(),
         new V0040TrimOversizedGrabNotes(),
-        new V0041CollapseRepeatedActivity()
+        new V0041CollapseRepeatedActivity(),
+        new V0042TurnedDownReleases()
     ];
 
     private sealed class V0001InitialSchema : SqliteSqlMigration

@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Jobs.Contracts;
 using Deluno.Jobs.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,9 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<IDownloadDispatchesRepository>(provider =>
             provider.GetRequiredService<SqliteDownloadDispatchesRepository>());
         services.AddSingleton<IBlockedReleaseRepository, SqliteBlockedReleaseRepository>();
+        services.AddSingleton<ITurnedDownReleaseRecorder, SqliteTurnedDownReleaseRecorder>();
+        services.AddSingleton<ConnectionDayStore>();
+        services.AddSingleton<IConnectionUseReporter, ConnectionUseReporter>();
         services.AddSingleton<IImportFailureRuleRepository, SqliteImportFailureRuleRepository>();
         services.AddSingleton<SqliteImportResolutionsRepository>();
         services.AddSingleton<IImportResolutionsRepository>(provider =>

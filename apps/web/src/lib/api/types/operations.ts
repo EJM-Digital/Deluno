@@ -711,6 +711,35 @@ export interface LiveRequestItem {
   updatedUtc: string;
 }
 
+/** The plain groups a turned-down release falls in (#1098). The server sends each label with it. */
+export type TurnedDownGroup = "language" | "notBetter" | "tooBig" | "fewSeeders" | "fake" | "other";
+
+/** Releases Deluno looked at since the day began and did not take: the total, one entry per group (every group, zeros included, in this order) and the newest twenty. */
+export interface LiveTurnedDown {
+  total: number;
+  reasons: Array<{ group: TurnedDownGroup; label: string; count: number }>;
+  latest: Array<{
+    release: string;
+    group: TurnedDownGroup;
+    label: string;
+    title?: string | null;
+    entityType?: "movie" | "series" | null;
+    entityId?: string | null;
+    atUtc: string;
+  }>;
+}
+
+/** What else Deluno is connected to, one entry each; names are the person's own. `countToday`: processor = titles handed over, mediaServer = refreshes sent, requests = requests received, subtitles = subtitles fetched, lists = lists watched (not "today"). `busy` is a processor's titles right now. */
+export interface LiveConnection {
+  kind: "processor" | "mediaServer" | "requests" | "subtitles" | "lists";
+  id: string;
+  name: string;
+  enabled: boolean;
+  healthy: boolean;
+  countToday: number;
+  busy: number;
+}
+
 /** What the Live screen shows beyond the summary: today's arrivals and upgrades, what was refused, requests in flight, what retention will give back. */
 export interface DashboardLiveExtras {
   asOfUtc: string;
@@ -722,6 +751,12 @@ export interface DashboardLiveExtras {
   protected: { refusedToday: number; unsafeToday: number; latest: LiveProtectionItem[] };
   requests: LiveRequestItem[];
   retentionReclaimBytes: number;
+  /** Looked at and not taken today (#1098). */
+  turnedDown?: LiveTurnedDown | null;
+  /** Finished torrents removed from a client today after they had shared enough; the library copy stays (#1098). */
+  cleanedUpToday?: number;
+  /** Processors, media servers, Seerr, subtitle providers and import lists (#1098). */
+  connections?: LiveConnection[] | null;
 }
 
 export interface DashboardSummary {

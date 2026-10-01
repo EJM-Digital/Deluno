@@ -1,7 +1,9 @@
 using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
+using Deluno.Contracts;
 using Deluno.Infrastructure.Storage;
+using Deluno.Jobs.Data;
 
 namespace Deluno.Worker.Dashboard;
 
@@ -24,6 +26,32 @@ public sealed record LiveProtected(int RefusedToday, int UnsafeToday, IReadOnlyL
 /// <summary>A Seerr request Deluno turned into an add and search, and where it has got to.</summary>
 public sealed record LiveRequest(string MediaType, string EntityId, string Title, string Status, string? RequestedBy, DateTimeOffset CreatedUtc, DateTimeOffset UpdatedUtc);
 
+/// <summary>A release a search looked at and did not take today (#1098), newest first on the Live screen's Turned down list.</summary>
+public sealed record LiveTurnedDownRelease(
+    string Release,
+    string Group,
+    string Label,
+    string? Title,
+    string? EntityType,
+    string? EntityId,
+    DateTimeOffset AtUtc);
+
+/// <summary>How many of today's turned-down releases fell in one plain group.</summary>
+public sealed record LiveTurnedDownReason(string Group, string Label, int Count);
+
+/// <summary>Releases Deluno looked at and did not take since the day began: the total, a bar per group (every group, zeros included) and the newest twenty.</summary>
+public sealed record LiveTurnedDown(int Total, IReadOnlyList<LiveTurnedDownReason> Reasons, IReadOnlyList<LiveTurnedDownRelease> Latest);
+
+/// <summary>One connection on the Live screen (#1098): a processor, media server, Seerr server, subtitle provider or list provider, and what it did today.</summary>
+public sealed record LiveConnection(
+    string Kind,
+    string Id,
+    string Name,
+    bool Enabled,
+    bool Healthy,
+    int CountToday,
+    int Busy);
+
 /// <summary>What the Live screen shows beyond the Dashboard summary (#1096): today's arrivals and upgrades, what was refused, requests in flight, and what retention will give back.</summary>
 public sealed record DashboardLiveExtras(
     DateTimeOffset AsOfUtc,
@@ -34,7 +62,10 @@ public sealed record DashboardLiveExtras(
     IReadOnlyList<LiveArrival> Upgrades,
     LiveProtected Protected,
     IReadOnlyList<LiveRequest> Requests,
-    long RetentionReclaimBytes);
+    long RetentionReclaimBytes,
+    LiveTurnedDown? TurnedDown = null,
+    int CleanedUpToday = 0,
+    IReadOnlyList<LiveConnection>? Connections = null);
 
 /// <summary>
 /// The stored rows behind <see cref="DashboardLiveExtras"/>. Each is one small
@@ -55,6 +86,9 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         var protectedYou = await ReadProtectedAsync(sinceUtc, cancellationToken);
         var requests = await ReadRequestsAsync(now.AddDays(-7), cancellationToken);
         var reclaim = await ReadReclaimBytesAsync(cancellationToken);
+        var turnedDown = await ReadTurnedDownAsync(sinceUtc, cancellationToken);
+        var cleanedUp = await ReadCleanedUpAsync(sinceUtc, cancellationToken);
+        var connections = await ReadConnectionsAsync(sinceUtc, cancellationToken);
         return new DashboardLiveExtras(
             now,
             sinceUtc,
@@ -64,7 +98,10 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             imports.Where(row => row.Upgraded).Take(12).ToArray(),
             protectedYou,
             requests,
-            reclaim);
+            reclaim,
+            turnedDown,
+            cleanedUp,
+            connections);
     }
 
     private async Task<List<LiveArrival>> ReadImportsAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
@@ -205,6 +242,133 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null or DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
+
+    /// <summary>Releases looked at and not taken since the day began, from the record each search leaves (#1098): one grouped count and the newest twenty.</summary>
+    private async Task<LiveTurnedDown> ReadTurnedDownAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var latest = new List<LiveTurnedDownRelease>();
+        await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT reason_group, COUNT(*) FROM turned_down_releases WHERE searched_utc >= @since GROUP BY reason_group;";
+            Add(command, "@since", Iso(sinceUtc));
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                counts[reader.GetString(0)] = reader.GetInt32(1);
+            }
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT release_name, reason_group, title, entity_type, entity_id, searched_utc
+                FROM turned_down_releases
+                WHERE searched_utc >= @since
+                ORDER BY searched_utc DESC, rowid DESC
+                LIMIT 20;
+                """;
+            Add(command, "@since", Iso(sinceUtc));
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var group = reader.GetString(1);
+                latest.Add(new LiveTurnedDownRelease(
+                    reader.GetString(0),
+                    group,
+                    TurnedDownGroups.Label(group),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                    DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)));
+            }
+        }
+
+        var reasons = TurnedDownGroups.All
+            .Select(group => new LiveTurnedDownReason(group, TurnedDownGroups.Label(group), counts.GetValueOrDefault(group)))
+            .ToArray();
+        return new LiveTurnedDown(reasons.Sum(reason => reason.Count), reasons, latest);
+    }
+
+    /// <summary>Finished downloads removed from a client today after they had shared enough (retention); the library copy stays.</summary>
+    private async Task<int> ReadCleanedUpAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM activity_events WHERE category = '" + SeedingCleanupActivity.Category + "' AND created_utc >= @since;";
+        Add(command, "@since", Iso(sinceUtc));
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is null or DBNull ? 0 : Convert.ToInt32(value, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Everything else Deluno is connected to, one entry each (#1098): processors, media servers, Seerr, subtitle providers
+    /// and each family of import lists, with what it did today. The names are the ones the person gave.
+    /// </summary>
+    private async Task<IReadOnlyList<LiveConnection>> ReadConnectionsAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        var days = await new ConnectionDayStore(databases).ReadAsync(sinceUtc, cancellationToken);
+        ConnectionDay Day(string kind, string id) => days.TryGetValue(ConnectionDayStore.Key(kind, id), out var day) ? day : new ConnectionDay(0, 0);
+
+        var connections = new List<LiveConnection>();
+        await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken);
+
+        async Task ReadAsync(string kind, string sql)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var id = reader.GetString(0);
+                var day = Day(kind, id);
+                connections.Add(new LiveConnection(
+                    kind,
+                    id,
+                    reader.GetString(1),
+                    reader.GetInt32(2) != 0,
+                    IsHealthy(reader.IsDBNull(3) ? null : reader.GetString(3)),
+                    day.Count,
+                    day.Busy));
+            }
+        }
+
+        await ReadAsync(ConnectionKinds.Processor, "SELECT id, name, is_enabled, health_status FROM processor_connections ORDER BY name COLLATE NOCASE;");
+        await ReadAsync(ConnectionKinds.MediaServer, "SELECT id, name, is_enabled, health_status FROM media_servers ORDER BY name COLLATE NOCASE;");
+        await ReadAsync(ConnectionKinds.Requests, "SELECT id, name, is_enabled, health_status FROM seerr_servers ORDER BY name COLLATE NOCASE;");
+        await ReadAsync(ConnectionKinds.Subtitles, "SELECT id, name, is_enabled, health_status FROM subtitle_providers ORDER BY name COLLATE NOCASE;");
+
+        // Lists are one tile per provider family ("Trakt", "TMDb"...) with how many lists are being watched.
+        var families = new Dictionary<string, (string Name, bool Enabled, bool Healthy)>(StringComparer.OrdinalIgnoreCase);
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT provider, is_enabled, last_sync_status FROM intake_sources;";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var provider = reader.GetString(0);
+                var key = ListProviderFamilies.KeyFor(provider);
+                var enabled = reader.GetInt32(1) != 0;
+                var status = reader.IsDBNull(2) ? null : reader.GetString(2);
+                var failed = enabled && status is "error" or "failed";
+                var known = families.TryGetValue(key, out var existing) ? existing : (Name: ListProviderFamilies.NameFor(provider), Enabled: false, Healthy: true);
+                families[key] = (known.Name, known.Enabled || enabled, known.Healthy && !failed);
+            }
+        }
+
+        foreach (var (key, family) in families.OrderBy(pair => pair.Value.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            connections.Add(new LiveConnection(ConnectionKinds.Lists, key, family.Name, family.Enabled, family.Healthy, Day(ConnectionKinds.Lists, key).Count, 0));
+        }
+
+        return connections;
+    }
+
+    /// <summary>Last contact worked, or it has never failed: anything that is not a recorded failure.</summary>
+    private static bool IsHealthy(string? status)
+        => status is null || status.ToLowerInvariant() is "healthy" or "untested" or "unknown";
 
     private static void Add(DbCommand command, string name, object value)
     {

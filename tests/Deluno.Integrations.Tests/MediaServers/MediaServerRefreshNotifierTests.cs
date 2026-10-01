@@ -296,6 +296,37 @@ public sealed class MediaServerRefreshNotifierTests
 
     private sealed record RefreshCall(string MediaType, IReadOnlyList<MediaServerPathChange> Changes);
 
+    /// <summary>#1098: the Live screen lights a media server's tile when it answers a refresh.</summary>
+    [Fact]
+    public async Task A_refresh_the_server_answered_is_reported_as_a_use_of_that_server_and_a_failed_one_is_not()
+    {
+        var up = Server("up", MediaServerKinds.Jellyfin);
+        var down = Server("down", MediaServerKinds.Plex);
+        var registry = new MultiRegistry(new()
+        {
+            [MediaServerKinds.Plex] = new FakeClient(MediaServerKinds.Plex, fail: true),
+            [MediaServerKinds.Jellyfin] = new FakeClient(MediaServerKinds.Jellyfin)
+        });
+        var uses = new RecordingUses();
+        var notifier = new MediaServerRefreshNotifier(new FakeRepository([down, up], []), registry, TimeProvider.System, connectionUses: uses);
+
+        await notifier.NotifyAsync("movies", [new MediaServerPathChange("/media/Movies/Sintel.mkv", MediaServerChangeKind.Created)], CancellationToken.None);
+
+        var reported = Assert.Single(uses.Reported);
+        Assert.Equal((ConnectionKinds.MediaServer, "up", "Server up"), reported);
+    }
+
+    private sealed class RecordingUses : IConnectionUseReporter
+    {
+        public List<(string Kind, string Id, string Name)> Reported { get; } = [];
+
+        public Task ReportAsync(string kind, string id, string name, CancellationToken cancellationToken)
+        {
+            Reported.Add((kind, id, name));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FakeClient(string kind, bool fail = false) : IMediaServerClient
     {
         public string Kind => kind;

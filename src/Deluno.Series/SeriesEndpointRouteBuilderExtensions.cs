@@ -1946,6 +1946,7 @@ public static class SeriesEndpointRouteBuilderExtensions
                         CurrentPreferenceEvaluation: baseline.PreferenceEvaluation,
                         PreferencePlan: preferencePlan,
                         RuntimeMinutes: seriesItem.RuntimeMinutes,
+                        EntityId: seriesItem.Id,
                         ImdbId: seriesItem.ImdbId,
                         Genres: seriesItem.Genres,
                         OtherTitles: CatalogueMetadata.ReadAlternateTitles(seriesItem.MetadataJson),

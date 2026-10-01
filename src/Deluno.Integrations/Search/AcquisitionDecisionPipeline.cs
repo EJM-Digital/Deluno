@@ -65,19 +65,28 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
     private readonly IIntelligentRoutingService? intelligentRoutingService;
     private readonly IConnectionsRepository? connectionsRepository;
     private readonly IBlockedReleaseRepository? blockedReleases;
+    private readonly ITurnedDownReleaseRecorder? turnedDownRecorder;
+    private readonly IRealtimeEventPublisher? realtimeEventPublisher;
+    private readonly TimeProvider timeProvider;
 
     public AcquisitionDecisionPipeline(
         IMediaSearchPlanner mediaSearchPlanner,
         IReleaseRankingModelService? rankingModelService = null,
         IIntelligentRoutingService? intelligentRoutingService = null,
         IConnectionsRepository? connectionsRepository = null,
-        IBlockedReleaseRepository? blockedReleases = null)
+        IBlockedReleaseRepository? blockedReleases = null,
+        ITurnedDownReleaseRecorder? turnedDownRecorder = null,
+        IRealtimeEventPublisher? realtimeEventPublisher = null,
+        TimeProvider? timeProvider = null)
     {
         this.mediaSearchPlanner = mediaSearchPlanner;
         this.rankingModelService = rankingModelService ?? DisabledRankingModelService;
         this.intelligentRoutingService = intelligentRoutingService;
         this.connectionsRepository = connectionsRepository;
         this.blockedReleases = blockedReleases;
+        this.turnedDownRecorder = turnedDownRecorder;
+        this.realtimeEventPublisher = realtimeEventPublisher;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<AcquisitionDecisionPlan> PlanAsync(
@@ -144,7 +153,13 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                 request.Genres,
                 request.OtherTitles);
 
+        var beforeBlocklist = searchPlan;
         searchPlan = await SkipBlockedReleasesAsync(searchPlan, cancellationToken);
+        if (!request.PreviewOnly)
+        {
+            await NoteTurnedDownAsync(request, beforeBlocklist, searchPlan, cancellationToken);
+        }
+
         searchPlan = LeaveEpisodesToTheirOwnSearch(searchPlan, request);
         searchPlan = LeavePacksThatWouldRestoreRemovedEpisodes(searchPlan, request);
 
@@ -179,6 +194,93 @@ public sealed class AcquisitionDecisionPipeline : IAcquisitionDecisionPipeline
                     DispatchCategory(request.MediaType, selectedClient, readyConnections.DownloadClientDetails),
                     selectedClient),
             Alternatives: BuildDecisionAlternatives(searchPlan));
+    }
+
+    /// <summary>
+    /// The releases this search looked at and did not take, as the groups the Live screen shows (#1098): each
+    /// once, by the first thing that turned it down. Written and pushed once per search; a search that took
+    /// everything it saw writes nothing. Never lets a failure here undo or fail the search itself.
+    /// </summary>
+    private async Task NoteTurnedDownAsync(
+        AcquisitionDecisionRequest request,
+        MediaSearchPlan beforeBlocklist,
+        MediaSearchPlan afterBlocklist,
+        CancellationToken cancellationToken)
+    {
+        if (turnedDownRecorder is null || beforeBlocklist.Candidates.Count == 0)
+        {
+            return;
+        }
+
+        var turnedDown = TurnedDownFrom(beforeBlocklist, afterBlocklist);
+        if (turnedDown.Count == 0)
+        {
+            return;
+        }
+
+        var entityType = string.Equals(request.MediaType, "tv", StringComparison.OrdinalIgnoreCase) ? "series" : "movie";
+        try
+        {
+            await turnedDownRecorder.RecordAsync(request.Title, entityType, request.EntityId, turnedDown, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // The search is already done; a missed count is not worth failing it.
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var items = turnedDown
+            .Where(release => seen.Add(release.Release))
+            .Select(release => new TurnedDownItemEvent(release.Release, release.Group, TurnedDownGroups.Label(release.Group)))
+            .ToArray();
+        await realtimeEventPublisher.PublishSafelyAsync(publisher => publisher.PublishReleasesTurnedDownAsync(
+            new ReleasesTurnedDownEvent(
+                request.Title,
+                entityType,
+                request.EntityId,
+                timeProvider.GetUtcNow().UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                items),
+            cancellationToken));
+    }
+
+    /// <summary>The turned-down releases of one search: those a person had blocked, then those the rules refused or found no better.</summary>
+    public static IReadOnlyList<TurnedDownRelease> TurnedDownFrom(MediaSearchPlan beforeBlocklist, MediaSearchPlan afterBlocklist)
+    {
+        var turnedDown = new List<TurnedDownRelease>();
+        var kept = new HashSet<MediaSearchCandidate>(afterBlocklist.Candidates, ReferenceEqualityComparer.Instance);
+        foreach (var candidate in beforeBlocklist.Candidates)
+        {
+            if (!kept.Contains(candidate))
+            {
+                turnedDown.Add(new TurnedDownRelease(
+                    candidate.ReleaseName,
+                    TurnedDownReasons.GroupFor(TurnedDownReasons.BlocklistedReason),
+                    TurnedDownReasons.BlocklistedReason,
+                    candidate.IndexerName));
+            }
+        }
+
+        foreach (var candidate in afterBlocklist.Candidates)
+        {
+            if (!TurnedDownReasons.IsTurnedDown(candidate.DecisionStatus))
+            {
+                continue;
+            }
+
+            var raw = TurnedDownReasons.FirstRejectingReason(candidate.RejectionGate, candidate.DecisionReasons, candidate.RiskFlags);
+            turnedDown.Add(new TurnedDownRelease(
+                candidate.ReleaseName,
+                TurnedDownReasons.GroupFor(raw, candidate.DecisionStatus),
+                raw,
+                candidate.IndexerName));
+        }
+
+        return turnedDown;
     }
 
     public async Task<LibraryDownloadClientLinkItem?> ChooseDownloadClientAsync(
@@ -936,7 +1038,9 @@ public sealed record AcquisitionDecisionRequest(
     /// disk). A season pack for one of them is never picked, because it would download those episodes again (#1072);
     /// the new episodes are fetched one by one instead.
     /// </summary>
-    IReadOnlyCollection<int>? SeasonsWithRemovedEpisodes = null);
+    IReadOnlyCollection<int>? SeasonsWithRemovedEpisodes = null,
+    /// <summary>The movie or show this search is for, so the releases it turns down can be shown against it (#1098).</summary>
+    string? EntityId = null);
 
 public sealed record AcquisitionDecisionPlan(
     MediaSearchPlan SearchPlan,

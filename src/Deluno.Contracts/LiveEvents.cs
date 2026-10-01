@@ -18,6 +18,8 @@ public static class LiveEventNames
     public const string IndexerQueryRecorded = "IndexerQueryRecorded";
     public const string ClientStateChanged = "ClientStateChanged";
     public const string DriveSpaceChanged = "DriveSpaceChanged";
+    public const string ReleasesTurnedDown = "ReleasesTurnedDown";
+    public const string ConnectionUsed = "ConnectionUsed";
 }
 
 public static class LiveRealtimeSubject
@@ -161,6 +163,42 @@ public sealed record DownloadSpeedSampleEvent(
     int Active,
     string At);
 
+/// <summary>One release a search turned down: its name, the plain group it falls in and that group's label (#1098).</summary>
+public sealed record TurnedDownItemEvent(string Release, string Group, string Label);
+
+/// <summary>Payload of <c>ReleasesTurnedDown</c>: one search looked at releases and did not take these. Sent once per search with any.</summary>
+public sealed record ReleasesTurnedDownEvent(
+    string? Title,
+    string? EntityType,
+    string? EntityId,
+    string AtUtc,
+    IReadOnlyList<TurnedDownItemEvent> Items);
+
+/// <summary>
+/// What kinds of connection <c>ConnectionUsed</c> and the Live connections list speak of.
+/// </summary>
+public static class ConnectionKinds
+{
+    public const string Processor = "processor";
+    public const string MediaServer = "mediaServer";
+    public const string Requests = "requests";
+    public const string Subtitles = "subtitles";
+    public const string Lists = "lists";
+}
+
+/// <summary>
+/// Payload of <c>ConnectionUsed</c>: Deluno just used a connection (handed a title to a processor, sent a media
+/// server refresh, received a Seerr request, fetched a subtitle or checked a list). CountToday is what the
+/// connection has done since the person's midnight, counting this; Busy is the titles a processor has right now.
+/// </summary>
+public sealed record ConnectionUsedEvent(
+    string Kind,
+    string Id,
+    string Name,
+    int CountToday,
+    int Busy,
+    string AtUtc);
+
 public static class LiveEventPublisherExtensions
 {
     /// <summary>
@@ -210,6 +248,12 @@ public static class LiveEventPublisherExtensions
 
     public static Task PublishDriveSpaceChangedAsync(this IRealtimeEventPublisher publisher, DriveSpaceChangedEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.DriveSpaceChanged, payload, cancellationToken);
+
+    public static Task PublishReleasesTurnedDownAsync(this IRealtimeEventPublisher publisher, ReleasesTurnedDownEvent payload, CancellationToken cancellationToken)
+        => publisher.PublishLiveEventAsync(LiveEventNames.ReleasesTurnedDown, payload, cancellationToken);
+
+    public static Task PublishConnectionUsedAsync(this IRealtimeEventPublisher publisher, ConnectionUsedEvent payload, CancellationToken cancellationToken)
+        => publisher.PublishLiveEventAsync(LiveEventNames.ConnectionUsed, payload, cancellationToken);
 
     public static Task PublishDownloadSpeedSampleAsync(this IRealtimeEventPublisher publisher, DownloadSpeedSampleEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.DownloadSpeedSample, payload, cancellationToken);
