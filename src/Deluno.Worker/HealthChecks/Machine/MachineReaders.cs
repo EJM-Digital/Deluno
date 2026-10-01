@@ -220,7 +220,13 @@ public sealed class MachineRebootReader : IMachineRebootReader
                 return WindowsRebootPending();
             }
 
-            return File.Exists("/var/run/reboot-required") || File.Exists("/run/reboot-required") ? true : OperatingSystem.IsLinux() ? false : null;
+            // Inside a container the flag file is the image's, not the host's: it cannot say, so it says nothing.
+            if (!OperatingSystem.IsLinux() || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return File.Exists("/var/run/reboot-required") || File.Exists("/run/reboot-required");
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
