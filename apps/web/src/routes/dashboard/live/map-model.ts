@@ -1,14 +1,13 @@
 /**
  * The Sources map (#1098): what is drawn, and where. The nodes (one per indexer, download client and connection) come from
- * the same readings the old tiles used, so their words did not change; the layout puts Deluno in the middle, the indexers on
- * an arc across the top, the download clients on the lower left and the connections on the lower right. Nothing here draws
- * or animates; it is plain functions, tested on their own.
+ * the same readings the old tiles used, so their words did not change; the layout puts Deluno in the middle, the indexers in a
+ * list on the left and the download clients and connections in lists on the right. Nothing here draws or animates; it is
+ * plain functions, tested on their own.
  */
 import type { IndexerItem } from "../../../lib/api";
 import type { LiveConnection } from "../../../lib/api/types/operations";
 import type { Tone } from "../../../lib/status-tones";
 import { indexerNeedsButton } from "../attention";
-import { formatSpeed } from "../downloads-kit";
 import { clientMeta, type ClientLight } from "./clients";
 import { connectionKey, connectionWords, tileName, type LiveConnectionKind } from "./connections";
 import { indexerMeta, type IndexerToday } from "./indexers";
@@ -23,8 +22,8 @@ export interface MapNode {
   key: string;
   group: MapGroup;
   name: string;
-  /** The one small number: queries today, speed or seeding, or today's count. */
-  number: string;
+  /** The small muted words under the name: "46 of 100 today · 320 ms", "6.8 MB/s · 8 seeding", "Processor · working on 1". */
+  sub: string;
   tone: NodeTone;
   off: boolean;
   /** A client moving data now, and how fast (MB/s). */
@@ -45,8 +44,6 @@ const MANAGE: Record<LiveConnectionKind, string> = {
   lists: "/settings/lists"
 };
 
-const fmt = (n: number) => n.toLocaleString("en-AU");
-
 function nodeTone(tone: Tone): NodeTone {
   return tone === "bad" ? "bad" : tone === "warn" ? "warn" : tone === "idle" ? "idle" : "ok";
 }
@@ -63,7 +60,7 @@ export function indexerNodes(indexers: readonly IndexerItem[], today: ReadonlyMa
         key: `indexer:${indexer.id}`,
         group: "indexers" as const,
         name: indexer.name,
-        number: indexer.isEnabled ? fmt(row?.totalQueries ?? 0) : "off",
+        sub: meta.text,
         tone: nodeTone(meta.tone),
         off: !indexer.isEnabled,
         speedMbps: 0,
@@ -77,12 +74,11 @@ export function indexerNodes(indexers: readonly IndexerItem[], today: ReadonlyMa
 export function clientNodes(lights: readonly ClientLight[]): MapNode[] {
   return lights.map((light) => {
     const off = light.tone === "idle";
-    const number = off ? "off" : light.moving ? formatSpeed(light.speedMbps) : light.seeding > 0 ? `${fmt(light.seeding)} seeding` : "idle";
     return {
       key: `client:${light.id}`,
       group: "clients" as const,
       name: light.name,
-      number,
+      sub: clientMeta(light),
       // A client moving data is answering, so it is green; the line and its particles say it is moving.
       tone: nodeTone(light.tone === "info" ? "ok" : light.tone),
       off,
@@ -98,12 +94,11 @@ export function connectionNodes(connections: readonly LiveConnection[]): MapNode
   return connections.map((connection) => {
     const off = !connection.enabled;
     const words = connectionWords(connection);
-    const count = connection.kind === "processor" && connection.busy > 0 ? connection.busy : connection.countToday;
     return {
       key: connectionKey(connection),
       group: "connections" as const,
       name: tileName(connection),
-      number: off ? "off" : fmt(count),
+      sub: words,
       tone: off ? "idle" : connection.healthy ? "ok" : "bad",
       off,
       speedMbps: 0,
@@ -119,39 +114,59 @@ export function connectionNodes(connections: readonly LiveConnection[]): MapNode
 
 export interface Point { x: number; y: number }
 
-/** A line from Deluno to a node: a quadratic curve. */
+/** A line from Deluno to a node's dot: a quadratic curve. */
 export interface Curve { from: Point; control: Point; to: Point }
 
+export type MapSide = "left" | "right" | "stack";
+
 export interface PlacedNode extends MapNode {
+  /** Which list the row is in. */
+  side: MapSide;
+  /** The row, in its list's own coordinates (the list scrolls when there are too many rows to fit). */
+  top: number;
+  height: number;
+  /** Rows too short for two lines of words put the name and the small words on one line. */
+  compact: boolean;
+  /** Where the row's status dot is on the card, with the list's scroll taken into account, and the line from Deluno to it. */
   x: number;
   y: number;
-  r: number;
   curve: Curve;
-  /**
-   * The label runs along the line out from Deluno, so crowded nodes never share a line of text: the (truncated) name and the
-   * number, set at `x, y` and turned by `rotate` degrees. `anchor` is where the text starts (right half) or ends (left half).
-   */
-  text: { x: number; y: number; rotate: number; anchor: "start" | "end"; name: string; number: string; numberFirst: boolean };
 }
 
-export interface GroupLabel { group: MapGroup; x: number; y: number; anchor: "start" | "end"; }
+export interface MapColumn {
+  side: MapSide;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** The height of everything in the list; more than `height` means it scrolls. */
+  innerHeight: number;
+  /** The height of each heading: two lines of counts when the list is narrow. */
+  headH: number;
+  narrow: boolean;
+  heads: { group: MapGroup; top: number }[];
+}
 
 export interface MapLayout {
   width: number;
   height: number;
+  /** "fan" is the lists either side of Deluno; "stack" is one list with no hub, for a phone. */
+  mode: "fan" | "stack";
   hub: Point & { r: number };
+  columns: MapColumn[];
   nodes: PlacedNode[];
-  groups: GroupLabel[];
 }
 
-/** The arc each group takes, in degrees clockwise from the right (y points down): across the top, the lower left and the lower right. */
-const ARC: Record<MapGroup, [number, number]> = {
-  indexers: [-186, 6],
-  clients: [160, 104],
-  connections: [26, 74]
-};
-
-const RAD = Math.PI / 180;
+const PAD = 12;
+const GROUP_GAP = 12;
+const ROW_GAP = 4;
+const MIN_PITCH = 20;
+const MAX_PITCH = 46;
+/** A row this tall holds two lines of words; shorter ones put the name and the small words on one line. */
+const TWO_LINES = 28;
+const STACK_BELOW = 300;
+/** Under this a list is narrow: its heading gets two lines for its counts and its rows drop the small words. */
+export const NARROW_COLUMN = 190;
 
 /** A point on the quadratic curve at `t`. */
 export function pointOn(curve: Curve, t: number): Point {
@@ -162,93 +177,73 @@ export function pointOn(curve: Curve, t: number): Point {
   };
 }
 
-export function curveBetween(from: Point, to: Point, bend: number): Curve {
-  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  // Bend each line to one side of the straight path, a little more the longer it is, so the fan reads as curves.
-  return { from, control: { x: mid.x - dy * bend, y: mid.y + dx * bend }, to };
+/** A smooth line from Deluno to a dot: it arrives level, like the strands of a fan. */
+export function curveBetween(from: Point, to: Point): Curve {
+  return { from, control: { x: from.x + (to.x - from.x) * 0.6, y: to.y }, to };
 }
 
-const CHAR_W = 6.1;
-const NUMBER_CHAR_W = 5.4;
-/** The bands at the top and bottom of the card that hold the group labels; no node's label runs into them. */
-const BAND = 44;
-
-function clip(name: string, chars: number): string {
-  if (name.length <= chars) return name;
-  return `${name.slice(0, Math.max(1, chars - 1)).trimEnd()}…`;
-}
-
-/** How far a ray from (x, y) in direction (dx, dy) goes before it leaves the rectangle. */
-function rayRoom(x: number, y: number, dx: number, dy: number, W: number, H: number): number {
-  const tx = dx > 0.001 ? (W - 4 - x) / dx : dx < -0.001 ? (x - 4) / -dx : Infinity;
-  const ty = dy > 0.001 ? (H - BAND - y) / dy : dy < -0.001 ? (y - BAND) / -dy : Infinity;
-  return Math.max(0, Math.min(tx, ty));
-}
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 /**
- * Puts the nodes of every group on its arc around Deluno. Circles are 18 to 26 px across (radius 9 to 13), smaller when an arc
- * is crowded. Each node's label runs outward along its line, so crowded arcs stay readable; the group labels sit in the bands
- * at the top and bottom.
+ * Lays the map out: the indexers in a list on the left, the download clients and the connections in lists on the right, Deluno
+ * between them. Rows share the card's height (a row is 20 to 46 px, and a list with more rows than fit scrolls inside its
+ * column); the middle column narrows on a narrow card; on a phone (or under 300 px) the lists stack and there is no hub. `scroll` is how
+ * far each list has scrolled, so a line follows its row (a row scrolled out of sight ends its line at the list's edge).
  */
-export function layoutMap(width: number, height: number, nodes: readonly MapNode[]): MapLayout {
+export function layoutMap(width: number, height: number, nodes: readonly MapNode[], scroll: { left?: number; right?: number; stack?: number } = {}, phone = false): MapLayout {
   const W = Math.max(1, width);
   const H = Math.max(1, height);
-  const cx = W / 2;
-  const cy = H / 2;
-  const hubR = Math.max(17, Math.min(28, Math.min(W, H) * 0.07));
-  const marginY = BAND + Math.min(92, H * 0.19);
-  const rx = Math.max(hubR + 34, W / 2 - Math.min(104, W * 0.25));
-  const ry = Math.max(hubR + 26, Math.min(H / 2 - marginY, rx * 1.5));
+  const colH = Math.max(1, H - PAD * 2);
+  const stack = W < STACK_BELOW || phone;
+  const members = (group: MapGroup) => nodes.filter((node) => node.group === group);
   const placed: PlacedNode[] = [];
-  const meanR = (rx + ry) / 2;
-  const chordOf = (group: MapGroup) => {
-    const n = nodes.filter((node) => node.group === group).length;
-    const [from, to] = ARC[group];
-    return n > 1 ? (Math.abs(to - from) * RAD * meanR) / (n - 1) : Infinity;
+  const columns: MapColumn[] = [];
+  const hubW = stack ? 0 : clamp(W * 0.16, 56, 120);
+  const colW = stack ? W - PAD * 2 : Math.max(60, (W - PAD * 2 - hubW) / 2);
+  const hub = { x: W / 2, y: H / 2, r: clamp(Math.min(hubW / 2 - 8, H * 0.07), 15, 28) };
+  const narrow = colW < NARROW_COLUMN;
+  const headH = narrow ? 46 : 36;
+
+  const sizeOf = (groups: readonly MapGroup[], fixedPitch: number | null) => {
+    const count = groups.reduce((sum, group) => sum + members(group).length, 0);
+    const heads = groups.length * headH + (groups.length - 1) * GROUP_GAP;
+    const pitch = fixedPitch ?? clamp((colH - heads) / Math.max(1, count), MIN_PITCH, MAX_PITCH);
+    return { pitch, inner: heads + count * pitch };
   };
-  // One circle size for every node, set by the most crowded arc.
-  const r = Math.max(9, Math.min(13, Math.min(chordOf("indexers"), chordOf("clients"), chordOf("connections"), 40) * 0.36));
-  for (const group of ["indexers", "clients", "connections"] as const) {
-    const members = nodes.filter((node) => node.group === group);
-    const [from, to] = ARC[group];
-    const n = members.length;
-    members.forEach((node, index) => {
-      const angle = (n === 1 ? (from + to) / 2 : from + ((to - from) * index) / (n - 1)) * RAD;
-      const dirX = Math.cos(angle);
-      const dirY = Math.sin(angle);
-      const x = cx + dirX * rx;
-      const y = cy + dirY * ry;
-      // The label runs out along the line from Deluno, as far as the card allows.
-      const left = dirX < -0.001;
-      const labelX = x + dirX * (r + 5);
-      const labelY = y + dirY * (r + 5);
-      const room = rayRoom(labelX, labelY, dirX, dirY, W, H) - 2;
-      const numberWidth = (node.number.length + 1) * NUMBER_CHAR_W;
-      const chars = Math.max(4, Math.floor((room - numberWidth) / CHAR_W));
-      const curve = curveBetween({ x: cx, y: cy }, { x, y }, 0.14);
-      placed.push({
-        ...node,
-        x,
-        y,
-        r,
-        curve,
-        text: { x: labelX, y: labelY, rotate: (angle / RAD + (left ? 180 : 0)), anchor: left ? "end" : "start", name: clip(node.name, chars), number: node.number, numberFirst: left }
+  const leftGroups: MapGroup[] = ["indexers"];
+  const rightGroups: MapGroup[] = ["clients", "connections"];
+  const sizes = stack ? [sizeOf(["indexers", "clients", "connections"], 40)] : [sizeOf(leftGroups, null), sizeOf(rightGroups, null)];
+  // A block that is shorter than the card sits in the middle of it, so Deluno is level with the middle of the lists.
+  const offset = Math.max(0, Math.floor((colH - Math.max(...sizes.map((size) => size.inner))) / 2));
+
+  const build = (side: MapSide, left: number, groups: readonly MapGroup[], size: { pitch: number; inner: number }) => {
+    const { pitch } = size;
+    const top0 = PAD + offset;
+    const scrolled = scroll[side] ?? 0;
+    const placedHeads: MapColumn["heads"] = [];
+    let cursor = 0;
+    for (const group of groups) {
+      placedHeads.push({ group, top: cursor });
+      cursor += headH;
+      members(group).forEach((node, index) => {
+        const top = cursor + index * pitch;
+        const rowH = pitch - ROW_GAP;
+        const dotX = side === "left" ? left + colW - 12 : left + 12;
+        const dotY = clamp(top0 + top + rowH / 2 - scrolled, PAD, PAD + colH);
+        placed.push({ ...node, side, top, height: rowH, compact: rowH < TWO_LINES, x: dotX, y: dotY, curve: curveBetween({ x: hub.x, y: hub.y }, { x: dotX, y: dotY }) });
       });
-    });
-  }
-  return {
-    width: W,
-    height: H,
-    hub: { x: cx, y: cy, r: hubR },
-    nodes: placed,
-    groups: [
-      { group: "indexers", x: 14, y: 20, anchor: "start" },
-      { group: "clients", x: 14, y: H - 24, anchor: "start" },
-      { group: "connections", x: W - 14, y: H - 24, anchor: "end" }
-    ]
+      cursor += members(group).length * pitch + GROUP_GAP;
+    }
+    const innerHeight = Math.max(0, cursor - GROUP_GAP);
+    columns.push({ side, left, top: top0, width: colW, height: offset > 0 ? innerHeight : colH, innerHeight, headH, narrow, heads: placedHeads });
   };
+
+  if (stack) build("stack", PAD, ["indexers", "clients", "connections"], sizes[0]);
+  else {
+    build("left", PAD, leftGroups, sizes[0]);
+    build("right", W - PAD - colW, rightGroups, sizes[1]);
+  }
+  return { width: W, height: H, mode: stack ? "stack" : "fan", hub, columns, nodes: placed };
 }
 
 /** How the particles of a moving client run: how many a second and how long each takes, scaled to its MB/s (about 0.5 to 40). */

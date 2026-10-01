@@ -574,32 +574,64 @@ describe("the Sources map", () => {
     expect(order.indexOf("Old")).toBeGreaterThan(order.indexOf("Zeta"));
   });
 
-  it("says each group's counts by its arc, and the small number of each node", () => {
+  it("heads each list with its name and counts, and says each row's small words", () => {
     draw();
+    expect(screen.getByText("Indexers")).toBeInTheDocument();
+    expect(screen.getByText("Download clients")).toBeInTheDocument();
+    expect(screen.getByText("Connections")).toBeInTheDocument();
     expect(screen.getByText("2 answering · 1 off · 51 today")).toBeInTheDocument();
     expect(screen.getByText("1 moving · 8 seeding")).toBeInTheDocument();
     expect(screen.getByText("6 connected · 1 off")).toBeInTheDocument();
-    expect(screen.getByText("46")).toBeInTheDocument();
-    expect(screen.getByText("6.2 MB/s")).toBeInTheDocument();
+    expect(screen.getByText("46 of 100 today · 320 ms")).toBeInTheDocument();
+    expect(screen.getByText("6.2 MB/s · 8 seeding")).toBeInTheDocument();
+    expect(screen.getByText("Processor · working on 1")).toBeInTheDocument();
+    expect(screen.getByText("switched off")).toBeInTheDocument();
   });
 
-  it("lays every node on its own arc inside the card, circles 18 to 26 px, at any card size", () => {
+  it("lists indexers on the left and clients and connections on the right of Deluno, rows inside the card, at any card size", () => {
     const nodes = [...indexerNodes(list, new Map(), NOW.getTime(), () => "now"), ...clientNodes([]), ...connectionNodes(all)];
-    for (const [w, h] of [[320, 360], [537, 400], [640, 560], [900, 700]]) {
+    for (const [w, h] of [[480, 360], [537, 400], [640, 560], [900, 700], [1100, 900]]) {
       const layout = layoutMap(w, h, nodes);
+      expect(layout.mode).toBe("fan");
       expect(layout.nodes).toHaveLength(nodes.length);
       for (const node of layout.nodes) {
-        expect(node.x).toBeGreaterThan(0);
-        expect(node.x).toBeLessThan(w);
+        expect(node.height).toBeGreaterThanOrEqual(18);
         expect(node.y).toBeGreaterThan(0);
         expect(node.y).toBeLessThan(h);
-        expect(node.r).toBeGreaterThanOrEqual(9);
-        expect(node.r).toBeLessThanOrEqual(13);
+        if (node.group === "indexers") {
+          expect(node.x).toBeLessThan(layout.hub.x);
+          expect(node.side).toBe("left");
+        } else {
+          expect(node.x).toBeGreaterThan(layout.hub.x);
+          expect(node.side).toBe("right");
+        }
+        // A line runs from Deluno to the row's dot.
+        expect(node.curve.from).toEqual({ x: layout.hub.x, y: layout.hub.y });
+        expect(node.curve.to).toEqual({ x: node.x, y: node.y });
       }
-      // Clients are on the left and connections on the right of Deluno.
-      for (const node of layout.nodes.filter((item) => item.group === "clients")) expect(node.x).toBeLessThan(layout.hub.x);
-      for (const node of layout.nodes.filter((item) => item.group === "connections")) expect(node.x).toBeGreaterThan(layout.hub.x);
+      // The columns do not touch the middle.
+      const [left, right] = layout.columns;
+      expect(left.left + left.width).toBeLessThan(layout.hub.x - layout.hub.r);
+      expect(right.left).toBeGreaterThan(layout.hub.x + layout.hub.r);
     }
+  });
+
+  it("shrinks rows to fit, scrolls a list that still has too many, and stacks the lists on a phone with no hub", () => {
+    const many = Array.from({ length: 40 }, (_, index) => indexerNodes([indexer(`I${index}`)], new Map(), NOW.getTime(), () => "now")[0]);
+    const fitted = layoutMap(600, 500, many.slice(0, 8));
+    const crowded = layoutMap(600, 500, many);
+    expect(crowded.nodes[0].height).toBeLessThan(fitted.nodes[0].height);
+    expect(crowded.nodes[0].compact).toBe(true);
+    expect(crowded.columns[0].innerHeight).toBeGreaterThan(crowded.columns[0].height);
+    // A row scrolled out of sight ends its line at the list's edge, never off the card.
+    const scrolled = layoutMap(600, 500, many, { left: 400 });
+    expect(scrolled.nodes[0].y).toBeGreaterThanOrEqual(0);
+    expect(layoutMap(360, 600, many.slice(0, 5)).mode).toBe("fan");
+    const phone = layoutMap(360, 600, many.slice(0, 5), {}, true);
+    expect(phone.mode).toBe("stack");
+    expect(layoutMap(280, 600, many.slice(0, 5)).mode).toBe("stack");
+    expect(phone.columns).toHaveLength(1);
+    expect(phone.columns[0].width).toBeLessThanOrEqual(360);
   });
 
   it("streams particles in from a client that is downloading, and draws none when motion is reduced", async () => {
