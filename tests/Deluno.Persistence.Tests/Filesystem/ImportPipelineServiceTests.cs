@@ -2792,7 +2792,8 @@ public sealed class ImportPipelineServiceTests
             dispatches,
             null,
             NullLogger<ImportPipelineService>.Instance,
-            realtime);
+            realtime,
+            freeSpaceBytesProbe: _ => 7_000_000_000L);
 
         var result = await service.ExecuteAsync(
             new ImportExecuteRequest(
@@ -2826,6 +2827,11 @@ public sealed class ImportPipelineServiceTests
             [(dispatchId, "Interstellar.2014.WEB.1080p", "movies")],
             realtime.DispatchImportsStarted);
         Assert.True((await platform.GetAsync(CancellationToken.None)).WorkflowVerified);
+
+        // #1097: the drive the file landed on says how much room is left, as soon as the import is done.
+        var drive = Assert.Single(realtime.LiveEventsOf<DriveSpaceChangedEvent>(LiveEventNames.DriveSpaceChanged));
+        Assert.Equal(7_000_000_000L, drive.FreeBytes);
+        Assert.StartsWith(movieRootPath, drive.Path, StringComparison.OrdinalIgnoreCase);
 
         var resolutions = await importResolutions.GetDispatchResolutionsAsync(dispatchId, CancellationToken.None);
         Assert.Single(resolutions);
