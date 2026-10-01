@@ -156,7 +156,7 @@ export function cardsBudget(budget: number | undefined, chrome: number): number 
  * takes everything the card has below its chips and counts, so one row gets the whole height.
  */
 /** The caption (the title and when) under a poster, and the space between posters, in px. */
-export const POSTER_CAPTION_PX = 34;
+export const POSTER_CAPTION_PX = 35;
 export const POSTER_GAP_PX = 12;
 /** The padding round the posters' box (7 above, 5 below and either side), which the posters do not use. */
 const POSTERS_PAD_Y = 12;
