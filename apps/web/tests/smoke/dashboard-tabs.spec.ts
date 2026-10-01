@@ -234,12 +234,16 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^Upload peak/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^indexers/i }).getByText("NZBgeek")).toBeVisible();
       await expect(page.getByRole("region", { name: /^indexers/i }).getByText("Nyaa.si")).toHaveCount(0);
+      // The indexers say what happened today, not a latency from days ago.
+      await expect(page.getByRole("region", { name: /^indexers/i }).getByText(/96 queries/)).toBeVisible();
+      // Latest and Today show what Deluno did for the titles, name each colour, and leave the housekeeping out.
+      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/Grabbed Dune Part Two/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/Task (started|finished|queued)/)).toHaveCount(0);
+      await expect(page.getByRole("region", { name: /^latest/i }).getByText(/routine background events?, left out/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^today/i }).getByText("searches", { exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^today/i }).getByText("routine", { exact: true })).toBeVisible();
       expect(perTitle).toEqual([]);
       await expect(page.getByRole("region", { name: /^needs you/i })).toBeVisible();
-      // Every lane has its own cards, and the countdown reads by the second.
-      await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
-      await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
-      await expect(page.getByRole("group", { name: "In the library" }).getByText("Coherence (2013)")).toBeVisible();
       await expect(page.getByRole("link", { name: /^Search Movies: in/ })).toBeVisible();
       // A set-up install has no guided-setup banners above the board. The checks below run with them (a fresh
       // install), then the photograph is taken without them, as it looks once set up.
@@ -247,6 +251,22 @@ test.describe("Dashboard tabs", () => {
       await expectNoPanelCutsAnything(page, `live busy with setup banners ${size.width}x${size.height}`);
       await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
       await expectFitsOneScreen(page, `live busy ${size.width}x${size.height}`);
+      // Every lane has its own cards, and the countdown reads by the second.
+      await expect(page.getByRole("group", { name: "Downloading" }).getByText("Oppenheimer (2023)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "With the processor" }).getByText("Sintel (2010)")).toBeVisible();
+      await expect(page.getByRole("group", { name: "In the library" }).getByText("Coherence (2013)")).toBeVisible();
+      // Cards carry the library's title, never the raw release name; stopped downloads are Stuck, not Downloading; a
+      // deleted title keeps its release's own name; the speed is read once; what the board shows is one line in Needs you.
+      const stuck = page.getByRole("group", { name: "Stuck" });
+      await expect(stuck.getByText("The Wild Robot (2024)")).toBeVisible();
+      await expect(stuck.getByText("Say Yes to the Dress S04E02")).toBeVisible();
+      await expect(stuck.getByRole("button", { name: /^Search again for/ }).first()).toBeVisible();
+      await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "Downloading" }).getByText("Stuck")).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "With the processor" }).getByRole("button", { name: /^Retry Metropolis/ })).toBeVisible();
+      await expect(page.getByRole("region", { name: /^needs you/i }).getByText("7 stuck downloads")).toBeVisible();
+      await expect(page.getByRole("region", { name: /^needs you/i }).getByRole("button", { name: /^Retry Metropolis/ })).toHaveCount(0);
+      await expect(page.getByText("Speed now")).toHaveCount(0);
       await page.waitForTimeout(1600);
       await page.screenshot({ path: `C:/Projects/Deluno/artifacts/e2e-rig/live-busy-${size.width}.png` });
       await expectNoPanelCutsAnything(page, `live busy ${size.width}x${size.height}`);

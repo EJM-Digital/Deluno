@@ -92,7 +92,7 @@ describe("Live", () => {
 
     // What the board already shows, with its own buttons, is one line here and is not listed twice:
     // the stalled download is a card in Stuck, the failed hand-off a card with the processor.
-    expect(within(needs).getByText("1 download is stuck or needs a look")).toBeInTheDocument();
+    expect(within(needs).getByText("1 stuck download")).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Show the stuck downloads on the board" })).toBeInTheDocument();
     const board = screen.getByRole("region", { name: /^every title/i });
     expect(await within(board).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();

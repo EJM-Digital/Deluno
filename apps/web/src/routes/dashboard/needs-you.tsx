@@ -99,19 +99,22 @@ export function needsYouRows(attention: DashboardAttention, action: Action, onBo
   // What the journey board already shows, with its own buttons, is not listed a second time: one line says so and points at it.
   const coveredDownloads = onBoard ? queueAttention.filter((entry) => onBoard.queueKeys.has(`${entry.clientId}:${entry.id}`)).length : 0;
   const collapseDownloads = queueAttention.length > 0 && coveredDownloads === queueAttention.length;
-  let downloadsLine = false;
+  let lineShown = false;
+  // "Stuck" when every one has stopped; "need a look" when some only have a warning from their client.
+  const allStalled = queueAttention.every((entry) => entry.status === "stalled");
+  const lineTitle = allStalled ? `${queueAttention.length.toLocaleString("en-AU")} stuck ${queueAttention.length === 1 ? "download" : "downloads"}` : plural(queueAttention.length, "download needs a look", "downloads need a look");
   return attention.items
     .filter((item) => item.tab === "live")
     .flatMap((item) => {
       if (collapseDownloads && (item.id === "stalled" || item.id === "queue-warnings")) {
-        if (downloadsLine) return [];
-        downloadsLine = true;
+        if (lineShown) return [];
+        lineShown = true;
         return [
           <li key="downloads-on-board" className={row}>
             <StatusLed tone="warn" pulse />
             <div className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] leading-tight sm:basis-0">
-              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{queueAttention.length === 1 ? "1 download is stuck or needs a look" : `${queueAttention.length.toLocaleString("en-AU")} downloads are stuck or need a look`}</span>
-              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">They are on the board, each with its button.</span>
+              <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{lineTitle}</span>
+              <span className="block truncate text-[length:var(--type-caption)] text-muted-foreground">On the board, each with its button.</span>
             </div>
             <RowActions primary={<Button type="button" variant="outline" size="sm" aria-label="Show the stuck downloads on the board" onClick={() => flashLane("stuck")}>Show them</Button>} />
           </li>

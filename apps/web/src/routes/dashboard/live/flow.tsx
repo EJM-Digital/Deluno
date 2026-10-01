@@ -12,7 +12,7 @@
  * them. Lanes keep to whole cards with "and N more" (FitList), so nothing is cut
  * in half. The download bar only shimmers while bytes are really moving.
  */
-import { AlertOctagon, ArrowRight, Download, FolderInput, HardDriveDownload, Library, Search, ShieldCheck, type LucideIcon } from "lucide-react";
+import { AlertOctagon, Download, FolderInput, HardDriveDownload, Library, Search, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
@@ -81,7 +81,7 @@ function CardButtons({ card, action }: { card: JourneyCard; action: ActionState 
   const handoffId = card.failedHandoffId;
   if (!searchAgain && !handoffId) return null;
   return (
-    <div className="flex gap-1.5 px-2 pb-2">
+    <div className="relative flex gap-1.5 px-1.5 pb-1.5">
       {searchAgain ? (
         <ActionButton
           label="Search again"
@@ -120,9 +120,10 @@ function renderCard(card: JourneyCard, { titles, arrivals, action }: CardContext
   const downloading = card.stage === "downloading";
   const stuck = card.stage === "stuck";
   const moving = downloading && (card.speedMbps ?? 0) > 0;
-  const meta = [card.quality, card.sizeBytes ? formatSize(card.sizeBytes) : null].filter(Boolean).join(" · ");
+  const meta = stuck ? "" : [card.quality, card.sizeBytes ? formatSize(card.sizeBytes) : null].filter(Boolean).join(" · ");
   const route = routeOf(card);
   const eta = downloading && formatEta(card.etaSeconds) !== "–" ? formatEta(card.etaSeconds) : null;
+  const showReason = card.reason && (stuck || card.state.tone === "bad");
   return (
     <li
       key={card.key}
@@ -134,45 +135,55 @@ function renderCard(card: JourneyCard, { titles, arrivals, action }: CardContext
       style={{ ["--card-glow" as string]: `var(${lane.accent})`, borderLeftColor: `hsl(var(${lane.accent}))` }}
     >
       {face.poster ? (
-        <span aria-hidden className="pointer-events-none absolute inset-0 scale-150 bg-cover bg-center opacity-[0.14] blur-xl" style={{ backgroundImage: `url(${JSON.stringify(face.poster)})` }} />
+        <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
+          <span className="absolute inset-0 bg-cover bg-center opacity-[0.16] blur-md" style={{ backgroundImage: `url(${JSON.stringify(face.poster)})` }} />
+        </span>
       ) : null}
       <Link
         to={face.to}
         aria-label={`${face.title}: ${card.state.label}`}
-        className="relative flex gap-2 rounded-xl p-2 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="relative block rounded-xl p-1.5 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        {card.stage !== "searching" ? (
-          <ArtworkImage
-            src={face.poster}
-            alt=""
-            loading="lazy"
-            className="h-[3.75rem] w-10 shrink-0 rounded-md bg-surface-3 object-cover shadow-sm"
-            fallback={<span aria-hidden className={cn("flex h-[3.75rem] w-10 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-4 w-4" /></span>}
-          />
-        ) : (
-          <span aria-hidden className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-4 w-4" /></span>
-        )}
-        <span className="min-w-0 flex-1">
-          <span title={card.release && face.linked ? card.release : face.title} className="line-clamp-2 break-words text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
-          <span className={cn("mt-0.5 flex flex-wrap items-start gap-x-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
-            <span className="flex min-w-0 max-w-full items-start gap-1.5">
-              <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
-              <span className="line-clamp-2 min-w-0 break-words">{card.state.label}</span>
-            </span>
-            {eta ? <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{eta}</span> : null}
+        <span className="flex gap-2">
+          {card.stage !== "searching" ? (
+            <ArtworkImage
+              src={face.poster}
+              alt=""
+              loading="lazy"
+              className="h-[3rem] w-8 shrink-0 rounded-md bg-surface-3 object-cover shadow-sm"
+              fallback={<span aria-hidden className={cn("flex h-[3rem] w-8 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-4 w-4" /></span>}
+            />
+          ) : (
+            <span aria-hidden className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3", lane.text)}><lane.icon className="h-4 w-4" /></span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span title={card.release && face.linked ? card.release : face.title} className="line-clamp-3 break-words text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
+            {showReason ? (
+              <span title={card.reason ?? undefined} className="mt-0.5 line-clamp-3 break-words text-[length:var(--type-caption)] leading-tight text-destructive">{card.reason}</span>
+            ) : null}
+            {!stuck ? (
+              <span className={cn("mt-0.5 flex flex-wrap items-start gap-x-1.5 text-[length:var(--type-caption)] leading-tight", TONE_TEXT[card.state.tone])}>
+                <span className="flex min-w-0 max-w-full items-start gap-1.5">
+                  <span className="mt-[3px] flex shrink-0"><StatusLed tone={card.state.tone} size={6} pulse={card.state.tone === "bad"} /></span>
+                  <span className="line-clamp-2 min-w-0 break-words">{card.state.label}</span>
+                </span>
+              </span>
+            ) : null}
           </span>
-          {card.reason && (stuck || card.state.tone === "bad") ? <span title={card.reason} className="line-clamp-2 break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">{card.reason}</span> : null}
-          {downloading ? (
-            <span className="mt-1 block">
-              <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-surface-3">
-                <span className={cn("live-fill block h-full rounded-full bg-info", moving && "live-shimmer")} style={{ width: `${Math.round(card.progress ?? 0)}%` }} />
-              </span>
-              <span className="mt-0.5 block text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
-                <CountUp value={Math.round(card.progress ?? 0)} format={(value) => `${Math.round(value)}%`} /> &middot; <CountUp value={card.speedMbps ?? 0} format={formatSpeed} />
-              </span>
+        </span>
+        {downloading ? (
+          <span className="mt-1.5 block">
+            <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-surface-3">
+              <span className={cn("live-fill block h-full rounded-full bg-info", moving && "live-shimmer")} style={{ width: `${Math.round(card.progress ?? 0)}%` }} />
             </span>
-          ) : null}
-          {meta ? <span className="mt-0.5 block break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">{meta}</span> : null}
+            <span className="mt-0.5 flex items-baseline justify-between gap-2 text-[length:var(--type-caption)] leading-tight tabular-nums text-muted-foreground">
+              <span><CountUp value={Math.round(card.progress ?? 0)} format={(value) => `${Math.round(value)}%`} /> &middot; <CountUp value={card.speedMbps ?? 0} format={formatSpeed} /></span>
+              {eta ? <span className="shrink-0">{eta}</span> : null}
+            </span>
+          </span>
+        ) : null}
+        <span className="mt-1 block">
+          {meta ? <span className="block break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">{meta}</span> : null}
           {route ? <span title={route} className="block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground">{route}</span> : null}
           {face.linked && card.release ? <span title={card.release} className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground/70">{card.release}</span> : null}
           {!downloading && card.at && (card.stage === "imported" || card.stage === "searching") ? <span className="block text-[length:var(--type-caption)] leading-tight text-muted-foreground">{ago(card.at)}</span> : null}
@@ -208,7 +219,7 @@ export function Flow({
       toLabel="Transfers"
     >
       <div className="grid min-h-0 flex-1 grid-cols-2 lg:flex">
-        {STAGES.map((stage, index) => {
+        {STAGES.map((stage) => {
           const lane = LANES[stage];
           const cards = grouped[stage];
           const count = counts[stage];
@@ -230,15 +241,14 @@ export function Flow({
                 <span className={cn("text-[length:var(--type-body-sm)] font-semibold tabular-nums", count > 0 ? lane.text : "text-muted-foreground")}>
                   <CountUp value={count} format={(value) => Math.round(value).toLocaleString("en-AU")} />
                 </span>
-                {index < STAGES.length - 1 && !empty ? <ArrowRight aria-hidden className="hidden h-3 w-3 shrink-0 text-muted-foreground/60 lg:block" /> : null}
-              </Link>
+                              </Link>
               {empty ? (
                 <p title={note.full} className="px-2.5 pb-2 text-[length:var(--type-caption)] leading-snug text-muted-foreground">{note.line}</p>
               ) : (
                 <FitList
                   moreTo={lane.to}
                   extra={Math.max(0, count - cards.length)}
-                  wrap={(shown) => <ul className="space-y-1.5 px-2 pb-1">{shown}</ul>}
+                  wrap={(shown) => <ul className="space-y-1.5 px-1.5">{shown}</ul>}
                   rows={cards.map((card) => renderCard(card, context))}
                 />
               )}
