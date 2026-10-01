@@ -1,9 +1,10 @@
 /*
- * Sources (#1098): the approved mockup's tiles card (artifacts/live-mockup/approved-v2.html), rule for rule. Indexers, download
- * clients and connections are three groups divided by hairlines; every tile is the same height in every group (--ls-tile-h,
- * set from the card's own height); a tile flashes when Deluno talks to it. Every class is prefixed ls-.
+ * Sources (#1098): the approved mockup's option D, the Scoreboard (artifacts/live-mockup/approved-final.html), rule for rule.
+ * Indexers today is a table that scrolls with sticky headings; the download clients are one stacked bar; the connections
+ * are pills. Every class is prefixed ls-.
  */
 .ls {
+  --ls-card: hsl(var(--card));
   --ls-card-2: hsl(var(--surface-2));
   --ls-card-3: hsl(var(--surface-3));
   --ls-line: hsl(var(--hairline));
@@ -20,39 +21,66 @@
 }
 .ls > header { min-height: 0; border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
 .ls > header h2 { font-size: 16px; }
-.ls-body { position: relative; min-height: 0; flex: 1 1 0; padding: 0 18px 14px; display: flex; flex-direction: column; justify-content: space-evenly; gap: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ls-line) transparent; }
-.ls-sg { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; flex: none; }
-.ls-sg + .ls-sg { border-top: 1px solid var(--ls-line); padding-top: 10px; }
-.ls-sg-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 2px 0 6px; white-space: nowrap; }
+.ls-body { position: relative; min-height: 0; flex: 1 1 0; padding: 0 18px 14px; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
+.ls-sa { min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.ls-sa:first-child { grid-template-rows: auto minmax(0, 1fr); }
+.ls-sa + .ls-sa { border-top: 1px solid var(--ls-line); padding-top: 8px; margin-top: 8px; }
+.ls-sa-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 4px 0 6px; white-space: nowrap; }
 .ls-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ls-muted); font-weight: 600; }
 .ls-num { font-size: 11.5px; color: var(--ls-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.ls-grid { display: grid; grid-template-columns: repeat(var(--ls-cols, 3), minmax(0, 1fr)); gap: 7px; padding: 0; grid-auto-rows: var(--ls-tile-h, 44px); align-content: start; min-height: 0; }
 
-.ls-ix, .ls-cl { line-height: 1.2; position: relative; padding: 6px 10px; border-radius: 10px; background: var(--ls-card-2); border: 1px solid var(--ls-line); transition: border-color .3s, box-shadow .3s, background .3s; min-width: 0; display: flex; flex-direction: column; justify-content: center; min-height: 0; overflow: hidden; color: inherit; text-decoration: none; }
-a.ls-ix:hover, a.ls-cl:hover { border-color: hsl(var(--muted-foreground) / 0.45); }
-a.ls-ix:focus-visible, a.ls-cl:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.ls-n { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--ls-fg); }
-.ls-n > :not(.ls-d) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.ls-d { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--ls-success); }
-.ls-m { font-size: 11px; color: var(--ls-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ls-ix.slow .ls-d, .ls-cl.slow .ls-d { background: var(--ls-warning); }
-.ls-ix.down .ls-d, .ls-cl.down .ls-d { background: var(--ls-danger); }
-.ls-ix.off, .ls-cl.off { opacity: .45; }
-.ls-ix.off .ls-d, .ls-cl.off .ls-d { background: var(--ls-faint); }
-.ls-ix.asked { border-color: hsl(207 96% 62% / .8); box-shadow: 0 0 0 3px hsl(207 96% 62% / .15); }
-.ls-ix.asked .ls-d { animation: ls-blink .6s ease-in-out infinite; background: var(--ls-info); }
-.ls-ix.answered, .ls-cl.answered { border-color: hsl(145 78% 52% / .7); background: hsl(145 40% 14% / .5); }
-.ls-ix.busy { border-color: hsl(var(--stage-process) / .8); box-shadow: 0 0 0 3px hsl(var(--stage-process) / .15); }
-.ls-ix.busy .ls-d { animation: ls-blink .8s ease-in-out infinite; background: var(--ls-processing); }
-.ls-ix.failed, .ls-cl.failed { border-color: hsl(0 84% 62% / .8); background: hsl(0 50% 16% / .5); }
-.ls-cl .ls-v { font-size: 11px; margin-top: 2px; color: var(--ls-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ls-cl .ls-v b { color: var(--ls-fg); font-weight: 600; }
-.ls-sb { height: 3px; border-radius: 9px; background: var(--ls-card-3); margin-top: 4px; overflow: hidden; flex: none; }
-.ls-sb i { display: block; height: 100%; background: var(--ls-info); transition: width 1s linear; }
-.ls-cl.moving .ls-d { animation: ls-blink 1s ease-in-out infinite; }
-.ls.tight .ls-m, .ls.tight .ls-v, .ls.tight .ls-sb { display: none; }
-.ls.snug .ls-sb { display: none; }
-.ls.snug .ls-ix, .ls.snug .ls-cl { padding-top: 4px; padding-bottom: 4px; }
-.ls.tight .ls-ix, .ls.tight .ls-cl { padding-top: 2px; padding-bottom: 2px; }
+/* Indexers today: one scroll for the whole table, the headings stuck to its top. */
+.ls-scroll { overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--ls-line) transparent; }
+.ls-head, .ls-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) 2.6rem 3.4rem 4.6rem 3.4rem; gap: 8px; align-items: center; }
+.ls-head { position: sticky; top: 0; z-index: 2; background: var(--ls-card); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ls-faint); font-weight: 600; padding: 0 8px 4px; }
+.ls-head span:nth-child(n+3) { text-align: right; }
+.ls-rows { display: grid; gap: 3px; align-content: start; }
+.ls-row { font-size: 12px; padding: 5px 8px; border-radius: 8px; border: 1px solid transparent; transition: background .3s, border-color .3s, box-shadow .3s; color: inherit; text-decoration: none; }
+.ls-row:nth-child(odd) { background: hsl(var(--surface-2) / .6); }
+.ls-row:hover { border-color: hsl(var(--muted-foreground) / 0.3); }
+.ls-row:focus-visible, .ls-pill:focus-visible, .ls-legend a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.ls-row .ls-d { width: 8px; height: 8px; border-radius: 50%; background: var(--ls-success); }
+.ls-row.slow .ls-d { background: var(--ls-warning); }
+.ls-row.down .ls-d { background: var(--ls-danger); }
+.ls-row.off .ls-d { background: var(--ls-faint); }
+.ls-row.off { opacity: .55; }
+.ls-row.down, .ls-row.down:nth-child(odd) { background: hsl(0 50% 16% / .45); }
+.ls-row.down .ls-nm { color: hsl(0 84% 72%); }
+.ls-nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--ls-fg); }
+.ls-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ls-fg); }
+.ls-n.zero { color: var(--ls-faint); }
+.ls-ms { display: grid; grid-template-columns: 1fr; gap: 2px; text-align: right; font-size: 11px; color: var(--ls-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ls-ms i { display: block; height: 3px; border-radius: 9px; background: var(--ls-card-3); overflow: hidden; }
+.ls-ms i b { display: block; height: 100%; background: hsl(145 60% 45%); border-radius: 9px; }
+.ls-row.slow .ls-ms i b { background: var(--ls-warning); }
+.ls-st { justify-self: end; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 6px; color: var(--ls-success); background: hsl(145 50% 16% / .5); }
+.ls-st.slow { color: var(--ls-warning); background: hsl(28 60% 18% / .5); }
+.ls-st.down { color: var(--ls-danger); background: hsl(0 50% 18% / .5); }
+.ls-st.off { color: var(--ls-faint); background: var(--ls-card-3); }
+.ls-row.asked { border-color: hsl(207 96% 62% / .8); box-shadow: 0 0 0 2px hsl(207 96% 62% / .15); }
+.ls-row.asked .ls-d { background: var(--ls-info); animation: ls-blink .6s ease-in-out infinite; }
+.ls-row.answered { border-color: hsl(145 78% 52% / .7); }
+.ls-row.failed { border-color: hsl(0 84% 62% / .8); }
+
+/* Download clients: one stacked speed bar, each client's name on its segment, a line for each under it. */
+.ls-stack { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: var(--ls-card-3); }
+.ls-stack i { display: grid; place-items: center; height: 100%; transition: width 1s linear; overflow: hidden; border-right: 1px solid var(--ls-card); font-style: normal; }
+.ls-stack i span { font-size: 10.5px; font-weight: 600; color: #fff; white-space: nowrap; text-shadow: 0 1px 2px hsl(0 0% 0% / .4); }
+.ls-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 11.5px; color: var(--ls-muted); }
+.ls-legend a { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; color: inherit; text-decoration: none; border-radius: 4px; }
+.ls-legend a:hover { color: var(--ls-fg); }
+.ls-legend b { color: var(--ls-fg); font-weight: 600; }
+.ls-legend em { width: 8px; height: 8px; border-radius: 2px; font-style: normal; flex: none; }
+
+/* Connections today: pills with today's counts that glow when used. */
+.ls-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.ls-pill { font-size: 11.5px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--ls-line); background: var(--ls-card-2); display: inline-flex; gap: 6px; align-items: center; transition: box-shadow .3s, border-color .3s; color: var(--ls-fg); text-decoration: none; font-style: normal; }
+.ls-pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--ls-success); font-style: normal; flex: none; }
+.ls-pill b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ls-pill.down i { background: var(--ls-danger); }
+.ls-pill.off { opacity: .55; }
+.ls-pill.off i { background: var(--ls-faint); }
+.ls-pill.lit { border-color: hsl(160 70% 50% / .8); box-shadow: 0 0 0 3px hsl(160 70% 50% / .15); }
+.ls-pill.busy i { animation: ls-blink 1s ease-in-out infinite; background: var(--ls-processing); }
 @keyframes ls-blink { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .ls-ix .ls-d, .ls-cl .ls-d { animation: none !important; } .ls-ix, .ls-cl, .ls-sb i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ls-row .ls-d, .ls-pill i { animation: none !important; } .ls-row, .ls-pill, .ls-stack i { transition: none; } }

@@ -61,14 +61,13 @@ beforeEach(() => {
 });
 
 describe("Live", () => {
-  it("has the library counts and the scheduled tasks on System, not here, and no Needs you: problems are in the bell", () => {
+  it("has no Needs you and no airing list here: problems are in the bell, the scheduled tasks are on System", () => {
     renderTab(fullSummary);
-    expect(screen.queryByText("Upgradable")).toBeNull();
     expect(screen.queryByRole("region", { name: /needs you/i })).toBeNull();
     expect(screen.queryByRole("region", { name: /airing soon/i })).toBeNull();
     expect(screen.queryByText(/Protected you/)).toBeNull();
     // The top band is three cards of one template, then the journey, the shelf and what was turned down, and the right column.
-    for (const name of ["Speed", "Working on now", "Next", "The journey", "Arrived today", "Turned down today", "Sources", "Activity"]) {
+    for (const name of ["Speed", "Working on now", "Next", "The journey", "Your library", "Turned down today", "Sources", "Activity"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
@@ -86,10 +85,11 @@ describe("Live", () => {
     expect(within(cell("now")).getByRole("region", { name: "Speed" })).toBeInTheDocument();
     expect(cell("now").firstElementChild?.className).toContain("lb-now");
     expect(within(cell("board")).getByRole("region", { name: "The journey" })).toBeInTheDocument();
-    expect(within(cell("low")).getByRole("region", { name: "Arrived today" })).toBeInTheDocument();
-    expect(within(cell("low")).getByRole("region", { name: "Turned down today" })).toBeInTheDocument();
+    // The bottom row is Your library beside Activity; Turned down today is the right column's last row.
+    expect(within(cell("low")).getByRole("region", { name: "Your library" })).toBeInTheDocument();
+    expect(within(cell("low")).getByRole("region", { name: "Activity" })).toBeInTheDocument();
     expect(within(cell("src")).getByRole("region", { name: "Sources" })).toBeInTheDocument();
-    expect(within(cell("act")).getByRole("region", { name: "Activity" })).toBeInTheDocument();
+    expect(within(cell("act")).getByRole("region", { name: "Turned down today" })).toBeInTheDocument();
   });
 
   it("shows the journey with a stuck download amber, a Seerr title tagged, the time left, and no button to settle anything", async () => {
@@ -121,7 +121,7 @@ describe("Live", () => {
   it("says each thing once: the indexers and clients are one card, the next jobs and airing episodes are one list", async () => {
     seedBusy();
     renderTab(fullSummary);
-    expect(await screen.findByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
+    expect(await screen.findByRole("link", { name: /^Nyaa\.si: Down/ })).toHaveAttribute("href", "/?tab=system");
     const next = screen.getByRole("region", { name: "Next" });
     await waitFor(() => expect(next.textContent).toContain("Lioness S03E02 airs"));
   });
@@ -129,8 +129,8 @@ describe("Live", () => {
   it("says something true on a new install, with no button and no blank panel", () => {
     const { container } = renderTab(emptySummary);
     expect(screen.getByText("Nothing moving right now")).toBeInTheDocument();
-    expect(screen.getByText("Nothing has arrived yet today.")).toBeInTheDocument();
-    expect(screen.getByText("Nothing has been turned down yet today.")).toBeInTheDocument();
+    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(2);
+    expect(within(screen.getByRole("region", { name: "Turned down today" })).getByText("0 releases")).toBeInTheDocument();
     // An empty library says so and offers the next step, in a slim row under the band.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");

@@ -5,20 +5,19 @@ import { fullSummary } from "../downloads-fixtures";
 import { Band, buildOperations, nextFigure } from "./band";
 import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
 import { statusOf, type CardContext } from "./card";
-import { indexerMeta, indexersSummary } from "./indexers";
 import { fitRows } from "./fit-rows";
 import { SourcesCard } from "./sources-card";
-import { tileHeight, tileLayout } from "./source-tiles";
+import { clientBar, connectionPills, scoreRows, scoreSummary, speedBar } from "./scoreboard";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
-import { journeyMode, journeySize, MIN_STATION_REM, posterLayout } from "./layout";
+import { journeyMode, journeySize, libraryBySide, libraryPosters, MIN_STATION_REM, postersAcross } from "./layout";
 import { departedCards, sameTitle } from "./motion";
-import { arrivedHeading, Shelf } from "./shelf";
+import { arrivedDetail, arrivedHeading, Shelf } from "./shelf";
 import { SpeedCell } from "./speed-chart";
 import { allInBy, buildNext, clockTime, doneAbout, isMediaJob, journeyHeading, usualTimes, whenText } from "./times";
 import { NO_TITLES } from "./titles";
 import { Journey, stationsFor } from "./track";
-import { barFraction, mergeTurnedDown, REASON_ORDER, turnedDownFit } from "./turned-down";
+import { barFraction, mergeTurnedDown, REASON_ORDER, reasonsFit } from "./turned-down";
 import { TurnedDownCard } from "./turned-down-card";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
@@ -93,25 +92,28 @@ describe("the layout rules", () => {
     expect(journeyMode(0, 5, 16)).toBe("columns");
   });
 
-  it("sizes posters as the mockup does: one row, 2:3, from the shelf's height, between 64px and 130px, more across rather than bigger", () => {
-    const short = posterLayout(900, 150);
-    const tall = posterLayout(900, 400);
-    for (const layout of [short, tall]) {
-      expect(layout.rows).toBe(1);
-      expect(layout.height).toBe(Math.round(layout.width * 1.5));
-      expect(layout.width).toBeGreaterThanOrEqual(40);
-      expect(layout.width).toBeLessThanOrEqual(130);
-      expect(layout.capacity).toBe(layout.perRow);
-    }
-    // The height less the 36px caption gives the poster: (150 - 36) * 2/3 = 76.
-    expect(short.width).toBe(76);
-    expect(tall.width).toBe(130);
-    expect(posterLayout(10, 20).width).toBe(40);
-    // A wider shelf holds more across, not bigger posters.
-    expect(posterLayout(1800, 400).perRow).toBeGreaterThan(posterLayout(900, 400).perRow);
-    expect(posterLayout(1800, 400).width).toBe(130);
-    expect(posterLayout(0, 0).perRow).toBe(1);
+  it("puts the library's two rows side by side only when stacked posters would be under 80px tall", () => {
+    expect(libraryBySide(0)).toBe(false);
+    // Stacked, each row is (height - 12) / 2 - 10 tall; a row from 130px takes a 34px caption off first.
+    expect(libraryBySide(300)).toBe(false);
+    expect(libraryBySide(190)).toBe(true);
+    expect(libraryBySide(202)).toBe(false);
+    expect(libraryBySide(260)).toBe(false);
   });
+
+  it("sizes the posters from the shorter row, exactly 2:3, the same in both rows, and draws whole posters only", () => {
+    const tall = libraryPosters([180, 190]);
+    // 168px of row less a 34px caption = 134px of art, 89px wide (floor of 134 / 1.5).
+    expect(tall).toEqual({ short: false, captions: true, width: 89 });
+    expect(libraryPosters([100, 100])).toEqual({ short: true, captions: false, width: 58 });
+    expect(libraryPosters([10, 10]).width).toBe(24);
+    expect(libraryPosters([2000, 2000]).width).toBe(170);
+    // 89px posters with a 12px gap in a 410px box (400px inside its padding): 4 whole ones, never a part one.
+    expect(postersAcross(410, 89)).toBe(4);
+    expect(postersAcross(400, 89)).toBe(3);
+    expect(postersAcross(30, 89)).toBe(1);
+  });
+
 });
 
 describe("what comes next", () => {
@@ -510,22 +512,47 @@ describe("arrived today", () => {
   const item = (key: string, extra: object = {}) => ({ key, entity: { kind: "movie", id: key }, fallbackTitle: `Film ${key} (2001)`, release: null, quality: "WEB 1080p", previousQuality: null, upgraded: false, sizeBytes: null, at: new Date().toISOString(), requestedBy: null, to: `/movies/${key}`, ...extra }) as never;
 
   it("says the titles, the upgrades and the space added", () => {
-    expect(arrivedHeading(12, 4, 54 * 1024 ** 3)).toBe("12 titles · 4 upgraded · 54 GB added");
-    expect(arrivedHeading(1, 0, 0)).toBe("1 title");
+    expect(arrivedHeading(12)).toBe("12 arrived today");
+    expect(arrivedDetail(12, 4, 54 * 1024 ** 3)).toBe("12 titles · 4 upgraded · 54 GB added");
+    expect(arrivedDetail(1, 0, 0)).toBe("1 title");
   });
 
-  it("shows each arrival as a poster with its quality, and an upgrade as the quality it replaced; the newest has the ring", () => {
-    withRouter(<Shelf items={[item("1"), item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p" })]} titles={NO_TITLES} newest={new Set(["1"])} heading="2 titles" />);
-    expect(screen.getByText("WEB 720p → Bluray 1080p")).toBeInTheDocument();
-    const first = screen.getByRole("link", { name: /^Film 1 \(2001\): in the library/ });
-    expect(first.closest("li")).toHaveAttribute("data-new");
-    expect(screen.getByRole("link", { name: /^Film 2 \(2001\)/ }).querySelector("[data-arrival-poster='2']")?.className).not.toContain("shadow-[0_0_0_2px");
-    expect(screen.getByRole("link", { name: /^Film 1/ })).toHaveAttribute("href", "/movies/1");
+  it("shows TV Shows above Movies, each film as a poster with the Movies page's bar and the upgrade as an arrow; the newest has the ring", () => {
+    const show = (key: string, extra: object = {}) => item(key, { entity: { kind: "series", id: key }, fallbackTitle: `Show ${key}`, to: `/tv/${key}`, ...extra });
+    withRouter(<Shelf items={[item("1", { qualityMet: true }), item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p", qualityMet: false }), show("9", { qualityMet: true })]} titles={NO_TITLES} newest={new Set(["1"])} heading="3 arrived today" />);
+    const regions = screen.getAllByRole("region").filter((region) => ["TV Shows", "Movies"].includes(region.getAttribute("aria-label") ?? ""));
+    expect(regions.map((region) => region.getAttribute("aria-label"))).toEqual(["TV Shows", "Movies"]);
+    expect(within(regions[0]).getByRole("link", { name: /^Show 9/ })).toHaveAttribute("href", "/tv/9");
+    expect(within(regions[1]).getByRole("link", { name: /^Film 1/ })).toHaveAttribute("href", "/movies/1");
+    // Quality met is the gold bar, upgradable the green one, with the quality on it; an upgrade carries an arrow that says what it replaced.
+    const film1 = within(regions[1]).getByRole("link", { name: /^Film 1/ });
+    expect(film1.querySelector(".lsh-mark")).toHaveClass("met");
+    expect(film1.querySelector(".lsh-mark")).toHaveTextContent("WEB 1080p");
+    const film2 = within(regions[1]).getByRole("link", { name: /^Film 2/ });
+    expect(film2.querySelector(".lsh-mark")).toHaveClass("upg");
+    expect(film2.querySelector(".lsh-mark")).toHaveTextContent("Bluray 1080p");
+    expect(film2.querySelector(".lsh-up")).toHaveAttribute("title", "Upgraded from WEB 720p");
+    expect(film2).toHaveAttribute("title", expect.stringContaining("WEB 720p → Bluray 1080p"));
+    expect(film1.querySelector(".lsh-up")).toBeNull();
+    expect(film1.closest("li")).toHaveAttribute("data-new");
+    expect(within(regions[0]).getByText("+1 today")).toBeInTheDocument();
+    expect(within(regions[1]).getByText("+2 today")).toBeInTheDocument();
+  });
+
+  it("counts each row's library in the Movies page's words: met, upgradable, downloading, missing", () => {
+    const counts = (met: number) => ({ qualityMet: met, upgradable: 4, downloading: 1, missing: 2 });
+    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" library={{ movies: counts(18), shows: counts(41) } as never} />);
+    const tv = screen.getByRole("region", { name: "TV Shows" });
+    expect(within(tv).getByTitle("Quality met")).toHaveTextContent("41 met");
+    expect(within(tv).getByTitle("Upgradable")).toHaveTextContent("4 upgradable");
+    expect(within(tv).getByTitle("Downloading")).toHaveTextContent("1 downloading");
+    expect(within(tv).getByTitle("Missing")).toHaveTextContent("2 missing");
+    expect(within(screen.getByRole("region", { name: "Movies" })).getByTitle("Quality met")).toHaveTextContent("18 met");
   });
 
   it("says something true when nothing has arrived", () => {
-    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 titles" />);
-    expect(screen.getByText("Nothing has arrived yet today.")).toBeInTheDocument();
+    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" />);
+    expect(screen.getAllByText("Nothing has arrived yet today.")).toHaveLength(2);
   });
 });
 
@@ -536,7 +563,7 @@ describe("turned down today", () => {
     latest: [{ release: "Dune.2024.iTA.1080p", group: "language", label: "Not in a language you want", title: "Dune", entityType: "movie", entityId: "m1", atUtc: inMs(-60_000) }]
   } as never;
 
-  it("groups the reasons in their order, one bar each against the biggest, and the newest releases under them", () => {
+  it("groups the reasons in their order, biggest first, one bar each against the biggest, and each bar a link to Activity", () => {
     const view = mergeTurnedDown(base, [], inMs(0));
     expect(view.reasons.map((reason) => reason.group)).toEqual(["language", "notBetter", "tooBig", "fewSeeders", "fake", "notQuality", "tooSmall", "rules", "tooOld", "blocklisted", "other"]);
     expect([...view.reasons].map((reason) => reason.group).sort()).toEqual([...REASON_ORDER].sort());
@@ -548,28 +575,32 @@ describe("turned down today", () => {
     for (const words of ["Not in a language you want", "No better than what you have", "Bigger than your size limit", "Too few people sharing it", "Fake or mislabelled", "Other reasons"]) expect(within(card).getAllByText(words).length).toBeGreaterThan(0);
     expect((card.querySelector('[data-reason="language"] span[aria-hidden] i') as HTMLElement).style.width).toBe("100%");
     expect((card.querySelector('[data-reason="notBetter"] span[aria-hidden] i') as HTMLElement).style.width).toBe("79%");
-    expect(within(card).getByRole("link", { name: /Dune.2024.iTA.1080p/ })).toHaveAttribute("href", "/movies/m1");
+    // Reason bars only: no list of releases, and a reason with nothing in it is a quiet empty track.
+    expect(card.querySelector('[data-testid="live-turned-down-latest"]')).toBeNull();
+    expect(card.querySelector('[data-reason="other"]')).toHaveClass("zero");
+    expect(card.querySelector('[data-reason="language"]')).not.toHaveClass("zero");
+    // Every bar goes to Activity filtered to that reason today; the card's own link to today's turned-down releases.
+    expect(card.querySelector('[data-reason="language"]')).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=language");
+    expect(card.querySelector('[data-reason="notBetter"]')).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=notBetter");
+    expect(within(card).getByRole("link", { name: "In Activity: Turned down today" })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
   });
 
   it("opens Activity on today's turned-down releases, and a reason's bar opens just that reason (#1100)", () => {
     withRouter(<TurnedDownCard view={mergeTurnedDown(base, [], inMs(0))} lit={new Set()} />);
     const card = screen.getByRole("region", { name: "Turned down today" });
 
-    expect(within(card).getByRole("link", { name: /See them all/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
+    expect(within(card).getByRole("link", { name: /In Activity/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today");
     expect(within(card).getByRole("link", { name: /Not in a language you want: 14/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=language");
     expect(within(card).getByRole("link", { name: /Bigger than your size limit: 9/ })).toHaveAttribute("href", "/activity?type=turned-down&since=today&reason=tooBig");
   });
 
-  it("draws only the whole rows the height holds: fewer bars on a short card, the newest releases only where there is room", () => {
-    expect(turnedDownFit(0, 16, 6, 20)).toEqual({ reasons: 6, latest: 20 });
-    expect(turnedDownFit(140, 16, 6, 20)).toEqual({ reasons: 2, latest: 0 });
-    expect(turnedDownFit(300, 16, 6, 0)).toEqual({ reasons: 6, latest: 0 });
-    expect(turnedDownFit(300, 16, 6, 20)).toEqual({ reasons: 5, latest: 2 });
-    const tall = turnedDownFit(520, 16, 6, 20);
-    expect(tall.reasons).toBe(5);
-    expect(tall.latest).toBeGreaterThan(2);
-    expect(turnedDownFit(520, 16, 6, 1).latest).toBe(1);
-    expect(turnedDownFit(20, 16, 6, 20).reasons).toBe(1);
+  it("holds whole bars only: as many as the height holds (never under three), then how many more", () => {
+    expect(reasonsFit(0, 30, 11)).toBe(11);
+    expect(reasonsFit(300, 0, 11)).toBe(11);
+    // 300px less 24 of padding over a 30px bar and an 8px gap is 7 whole bars.
+    expect(reasonsFit(300, 30, 11)).toBe(7);
+    expect(reasonsFit(60, 30, 11)).toBe(3);
+    expect(reasonsFit(900, 30, 11)).toBe(11);
   });
 
   it("adds a release pushed since the counts, once, and ignores one the counts already hold", () => {
@@ -598,7 +629,7 @@ describe("turned down today", () => {
     expect(view.latest[0]).toMatchObject({ release: "Moon.CAM" });
   });
 
-  it("flashes the bar of a decision just made, and says something true when nothing has been turned down", () => {
+  it("flashes the bar of a decision just made, and shows every reason as an empty track when nothing has been turned down", () => {
     const view = mergeTurnedDown(base, [], inMs(0));
     const { container } = withRouter(<TurnedDownCard view={view} lit={new Set(["fake"])} />);
     expect(container.querySelector('[data-reason="fake"]')).toHaveAttribute("data-hit");
@@ -606,14 +637,16 @@ describe("turned down today", () => {
     const empty = mergeTurnedDown(null, [], null);
     expect(empty.total).toBe(0);
     expect(empty.reasons).toHaveLength(REASON_ORDER.length);
-    withRouter(<TurnedDownCard view={empty} lit={new Set()} />);
-    expect(screen.getByText("Nothing has been turned down yet today.")).toBeInTheDocument();
+    const quiet = withRouter(<TurnedDownCard view={empty} lit={new Set()} />);
+    expect(within(quiet.container).getByText("0 releases")).toBeInTheDocument();
+    expect(quiet.container.querySelectorAll(".zero")).toHaveLength(REASON_ORDER.length);
   });
+
 });
 
 describe("the Sources card", () => {
   const indexer = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, isEnabled: true, priority: 0, healthStatus: "healthy", lastHealthLatencyMs: 320, rateLimitedUntilUtc: null, ...extra }) as never;
-  const board = { indexers: [{ id: "NZBgeek", name: "NZBgeek", totalQueries: 46, failedQueries: 0, successfulGrabs: 1, lastQueryUtc: null }, { id: "Nyaa", name: "Nyaa", totalQueries: 5, failedQueries: 5, successfulGrabs: 0, lastQueryUtc: null }] };
+  const board = { indexers: [{ id: "NZBgeek", name: "NZBgeek", totalQueries: 46, failedQueries: 0, successfulGrabs: 1, candidatesReturned: 812, averageResponseMilliseconds: 412.4, lastQueryUtc: null }, { id: "Nyaa", name: "Nyaa", totalQueries: 5, failedQueries: 5, successfulGrabs: 0, candidatesReturned: 0, averageResponseMilliseconds: 0, lastQueryUtc: null }] };
   const list = [indexer("Zeta"), indexer("NZBgeek", { queryLimit: 100, limitsUnit: "day", queryLimitStatus: { allowed: true, limit: 100, count: 46, resetsAtUtc: null, unit: "day" } }), indexer("Nyaa", { healthStatus: "unreachable" }), indexer("Old", { isEnabled: false })];
   const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, protocol: "torrent", reachable: true, paused: false, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0, ...extra }) as never;
   const connection = (kind: string, name: string, countToday: number, extra: object = {}) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0, ...extra }) as never;
@@ -635,47 +668,64 @@ describe("the Sources card", () => {
     );
   }
 
-  it("draws every indexer, client and connection as a link with its own name, and where a click goes", () => {
+  it("draws the scoreboard: every indexer a row with its grabs, results, response and status, ranked by what it delivered", () => {
     draw();
-    expect(screen.getByRole("link", { name: /^NZBgeek: 46 of 100 today · 320 ms/ })).toHaveAttribute("href", "/indexers/indexers");
-    expect(screen.getByRole("link", { name: /^Nyaa: not answering · 5 today/ })).toHaveAttribute("href", "/?tab=system");
-    expect(screen.getByRole("link", { name: /^Old: switched off/ })).toHaveAttribute("data-off");
-    expect(screen.getByRole("link", { name: "qBittorrent: moving 6.2 MB/s, seeding 8" })).toHaveAttribute("href", "/indexers/download-clients");
-    expect(screen.getByRole("link", { name: "SABnzbd: not answering" })).toHaveAttribute("href", "/?tab=system");
-    expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("href", "/indexers/companion-tools");
-    expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
+    const rows = screen.getAllByRole("link").filter((link) => link.hasAttribute("data-indexer"));
+    expect(rows.map((link) => link.getAttribute("data-indexer"))).toEqual(["NZBgeek", "Nyaa", "Zeta", "Old"]);
+    const nzbgeek = rows[0];
+    expect(nzbgeek).toHaveAttribute("href", "/indexers/indexers");
+    expect(nzbgeek).toHaveAccessibleName("NZBgeek: Good, 1 grab, 812 results");
+    expect(within(nzbgeek).getByText("Good")).toHaveAttribute("title", "Answered 100% of today's searches");
+    expect(within(nzbgeek).getByText("412 ms")).toBeInTheDocument();
+    expect(nzbgeek).toHaveAttribute("title", "NZBgeek: 1 grab won, 812 results, 412 ms average response, answered 100% today");
+    // A failing indexer is Down, goes to System, and shows no response time.
+    expect(rows[1]).toHaveAttribute("href", "/?tab=system");
+    expect(within(rows[1]).getByText("Down")).toHaveAttribute("title", "Answered 0% of today's searches");
+    expect(rows[1]).toHaveClass("down");
+    // Never asked today: its last health check's time, and a quiet word on hover.
+    expect(within(rows[2]).getByText("320 ms")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Good")).toHaveAttribute("title", "Not asked yet today");
+    // A switched-off one is last, grey, with the word Off.
+    expect(rows[3]).toHaveClass("off");
+    expect(within(rows[3]).getByText("Off")).toBeInTheDocument();
     const names = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")).filter(Boolean);
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("colours each by its status, with a switched-off one grey and last in its group", () => {
+  it("explains Grabs and Results on hover, and heads the table, the clients and the connections", () => {
     draw();
-    expect(screen.getByRole("link", { name: /^NZBgeek/ })).toHaveAttribute("data-tone", "ok");
-    expect(screen.getByRole("link", { name: /^Nyaa/ })).toHaveClass("down");
-    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveClass("down");
-    expect(screen.getByRole("link", { name: /^Old:/ })).toHaveClass("off");
-    expect(screen.getByRole("link", { name: /^qBittorrent/ })).toHaveClass("moving");
-    expect(screen.getByRole("link", { name: /^Weir/ })).toHaveClass("busy");
-    const order = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(":")[0]);
-    expect(order.indexOf("Old")).toBeGreaterThan(order.indexOf("Zeta"));
-  });
-
-  it("heads each group with its name and counts, and says each tile's small words", () => {
-    draw();
-    expect(screen.getByText("Indexers")).toBeInTheDocument();
+    expect(screen.getByText("Grabs")).toHaveAttribute("title", "Releases Deluno took from this indexer today");
+    expect(screen.getByText("Results")).toHaveAttribute("title", "Matching releases this indexer returned across today's searches");
+    expect(screen.getByText("Indexers today")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 answering · 51 searches today")).toBeInTheDocument();
     expect(screen.getByText("Download clients")).toBeInTheDocument();
-    expect(screen.getByText("Connections")).toBeInTheDocument();
-    expect(screen.getByText("2 of 3 answering · 1 off · 51 today")).toBeInTheDocument();
-    expect(screen.getByText("1 moving · 8 seeding")).toBeInTheDocument();
+    expect(screen.getByText("6.2 MB/s across 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Connections today")).toBeInTheDocument();
     expect(screen.getByText("6 connected · all answering · 1 off")).toBeInTheDocument();
-    expect(screen.getByText("46 of 100 today · 320 ms")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^qBittorrent/ })).toHaveTextContent("6.2 MB/s · 8 seeding");
-    expect(screen.getByText("6.2").tagName).toBe("B");
-    expect(screen.getByText("Processor · working on 1")).toBeInTheDocument();
-    expect(screen.getByText("switched off")).toBeInTheDocument();
   });
 
-  it("flashes a tile when Deluno asks an indexer, and again when it answers", async () => {
+  it("stacks the clients into one bar with the name on a wide segment, and a legend line for each", () => {
+    draw();
+    const stack = screen.getByRole("img", { name: /^Download speed by client/ });
+    // qBittorrent holds all the speed, so its segment is full width and carries its name; SABnzbd has none and is not drawn wide.
+    expect(within(stack).getByText("qBittorrent")).toBeInTheDocument();
+    expect((stack.querySelector("i") as HTMLElement).style.width).toBe("100%");
+    expect(screen.getByRole("link", { name: "qBittorrent: 6.2 MB/s · 8 seeding" })).toHaveAttribute("href", "/indexers/download-clients");
+    expect(screen.getByRole("link", { name: "SABnzbd: not answering" })).toBeInTheDocument();
+  });
+
+  it("shows each connection as a pill with today's count, and glows it when it is used or handed work", async () => {
+    draw();
+    const trakt = screen.getByRole("link", { name: "Trakt: Lists · watching 2, 2 today" });
+    expect(trakt).toHaveAttribute("href", "/settings/lists");
+    expect(trakt).toHaveTextContent("Trakt 2");
+    expect(screen.getByRole("link", { name: "Weir: Processor · working on 1, 6 today" })).toHaveClass("busy");
+    expect(screen.getByRole("link", { name: /^Old Plex/ })).toHaveClass("off");
+    await act(async () => { emitLive("ConnectionUsed", { kind: "lists", id: "Trakt", name: "Trakt", countToday: 3, busy: 0, atUtc: inMs(0) }); });
+    expect(trakt).toHaveClass("lit");
+  });
+
+  it("lights a row blue when Deluno asks an indexer, then green or red on the answer", async () => {
     draw();
     const nzbgeek = screen.getByRole("link", { name: /^NZBgeek/ });
     await act(async () => { emitLive("IndexerQueryRecorded", { indexerId: "NZBgeek", phase: "asked" }); });
@@ -685,17 +735,6 @@ describe("the Sources card", () => {
     expect(nzbgeek).not.toHaveClass("asked");
     await act(async () => { emitLive("IndexerQueryRecorded", { indexerId: "Zeta", phase: "answered", resultCount: null, elapsedMs: 0, failed: true, failure: "timeout" }); });
     await waitFor(() => expect(screen.getByRole("link", { name: /^Zeta/ })).toHaveClass("failed"));
-  });
-
-  it("sizes every tile from the card, one height for all three groups, down to one line when short", () => {
-    const counts = [12, 3, 6] as const;
-    expect(tileLayout(520, 900, counts)).toEqual({ columns: 3, tile: 54 });
-    expect(tileLayout(520, 520, counts).tile).toBeLessThan(54);
-    expect(tileLayout(520, 0, counts).tile).toBe(44);
-    // A narrow card puts two across, and three only when two would not fit even as one-line tiles.
-    expect(tileLayout(380, 700, counts).columns).toBe(2);
-    expect(tileLayout(352, 383, counts)).toEqual({ columns: 3, tile: 32 });
-    expect(tileHeight(100, 3, counts)).toBe(30);
   });
 
   it("says what a connection did today in plain words", () => {
@@ -709,14 +748,37 @@ describe("the Sources card", () => {
     expect(connectionWords(connection("lists", "Trakt", 2, { healthy: false }))).toBe("Lists · not answering");
   });
 
-  it("counts answering, switched off and the queries today", () => {
+  it("ranks and words the scoreboard from the readings", () => {
     const today = new Map(board.indexers.map((item) => [item.id, item]));
-    expect(indexersSummary(list, today as never)).toBe("2 of 3 answering · 1 off · 51 today");
-    expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
-    expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
-    // An hourly limit is not a count of today, so only the day's queries are said.
-    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 today · 320 ms");
-    expect(indexersSummary([], new Map(), 576)).toBe("0 of 0 answering · 576 today");
+    const rows = scoreRows(list, today as never, NOW.getTime());
+    expect(rows.map((item) => [item.name, item.standing])).toEqual([["NZBgeek", "good"], ["Nyaa", "down"], ["Zeta", "good"], ["Old", "off"]]);
+    expect(scoreSummary(list, today as never)).toBe("2 of 3 answering · 51 searches today");
+    expect(scoreSummary([], new Map(), 576)).toBe("0 of 0 answering · 576 searches today");
+    // Slow is a rate limit being waited out, or an answer over two seconds.
+    expect(scoreRows([indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() })], new Map(), NOW.getTime())[0].standing).toBe("slow");
+    expect(scoreRows([indexer("x", { lastHealthLatencyMs: 2500 })], new Map(), NOW.getTime())[0].standing).toBe("slow");
+    // The quicker the answer, the fuller the bar: 4% at the slowest.
+    expect(speedBar(300)).toBe(90);
+    expect(speedBar(5000)).toBe(4);
+    expect(speedBar(null)).toBe(0);
+  });
+
+  it("gives each client its own colour that is never a status colour, sized by its share of the speed", () => {
+    const light = (id: string, speedMbps: number, extra: object = {}) => ({ id, name: id, tone: speedMbps > 0 ? "info" : "ok", moving: speedMbps > 0, words: "", speedMbps, seeding: 0, ...extra }) as never;
+    const bar = clientBar([light("B", 3), light("A", 9), light("C", 0)]);
+    expect(bar.segments.map((segment) => segment.name)).toEqual(["A", "B", "C"]);
+    expect(bar.segments.map((segment) => segment.share)).toEqual([0.75, 0.25, 0]);
+    expect(bar.segments.map((segment) => segment.named)).toEqual([true, true, false]);
+    expect(new Set(bar.segments.map((segment) => segment.colour)).size).toBe(3);
+    expect(bar.segments.map((segment) => segment.colour).join(" ")).not.toMatch(/145|28 |0 84/);
+    expect(bar.summary).toBe("12.0 MB/s across 2 of 3");
+    expect(clientBar([]).summary).toBe("none set up");
+  });
+
+  it("makes a pill of each connection in role order, with its count", () => {
+    expect(connectionPills(all).map((pill) => [pill.name, pill.count])).toEqual([["FileFlows", 0], ["Weir", 6], ["Plex", 5], ["Seerr", 3], ["OpenSubtitles", 12], ["Trakt", 2], ["Old Plex", 0]]);
+    expect(connectionPills(all).find((pill) => pill.name === "Weir")?.working).toBe(true);
+    expect(connectionPills(all).find((pill) => pill.name === "Old Plex")?.off).toBe(true);
   });
 
   it("orders connections by role with the switched-off ones last, and counts them", () => {

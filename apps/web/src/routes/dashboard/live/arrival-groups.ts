@@ -18,12 +18,22 @@ export interface ArrivalGroup {
   at: string;
   /** The quality tag: one quality, "mixed" when they differ, an arrow for a single upgrade. */
   tag: string | null;
+  /** The quality for the poster's bar: the one quality, "mixed" when they differ, the new one for a single upgrade. */
+  quality: string | null;
+  /** The quality a single upgrade replaced. */
+  previousQuality: string | null;
   /** How many in the group were upgrades. */
   upgrades: number;
   /** "S01E04" for one episode, "12 episodes" for several, empty for a film. */
   episodes: string | null;
   sizeBytes: number;
+  /** Which row of Your library it sits in. */
+  library: ArrivalLibrary;
+  /** The Movies page's state for what arrived: true quality met (gold), false can still be upgraded (green), null not known. A group is met only when every member is. */
+  met: boolean | null;
 }
+
+export type ArrivalLibrary = "tv" | "movies";
 
 const dayOf = (at: string) => {
   const date = new Date(at);
@@ -48,6 +58,13 @@ function episodeCode(item: ArrivalItem, titles: TitleLookup): string | null {
     if (info) return code(info.season, info.episode);
   }
   return item.release ? episodeFromRelease(item.release) : null;
+}
+
+/** Quality met only when every arrival in the group met it; upgradable when any can still be upgraded; unknown when none says. */
+export function groupMet(members: readonly ArrivalItem[]): boolean | null {
+  if (members.some((item) => item.qualityMet === false)) return false;
+  if (members.length > 0 && members.every((item) => item.qualityMet === true)) return true;
+  return null;
 }
 
 export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): ArrivalGroup[] {
@@ -85,9 +102,13 @@ export function groupArrivals(items: ArrivalItem[], titles: TitleLookup): Arriva
       to: named.to,
       at: first.at,
       tag,
+      quality: members.length === 1 ? first.quality : qualities.size > 1 ? "mixed" : (qualities.values().next().value ?? null),
+      previousQuality: members.length === 1 ? first.previousQuality : null,
       upgrades,
       episodes: !isShow ? null : members.length === 1 ? episodeCode(first, titles) : `${members.length} episodes`,
-      sizeBytes: members.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0)
+      sizeBytes: members.reduce((sum, item) => sum + (item.sizeBytes ?? 0), 0),
+      library: isShow || first.entity?.kind === "series" || first.entity?.kind === "episode" ? "tv" : "movies",
+      met: groupMet(members)
     };
   });
   return groups.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));

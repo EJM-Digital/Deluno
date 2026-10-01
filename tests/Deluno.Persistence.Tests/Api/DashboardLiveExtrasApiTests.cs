@@ -47,8 +47,8 @@ public sealed class DashboardLiveExtrasApiTests
         await ExecuteAsync(databases, DelunoDatabaseNames.Jobs,
             $$"""
             INSERT INTO activity_events (id, category, message, details_json, related_entity_type, related_entity_id, created_utc)
-            VALUES ('a1', 'filesystem.import.completed', 'Imported Sintel', '{"ReleaseNameEvidence":"Sintel.2010.1080p","NewQuality":"Bluray 1080p","PreviousQuality":"WEB 720p","Upgraded":true,"FileSizeBytes":4000}', 'movie', 'm1', '{{now}}'),
-                   ('a2', 'filesystem.import.completed', 'Imported Moon', '{"ReleaseNameEvidence":"Moon.2009.720p","NewQuality":"WEB 720p","Upgraded":false,"FileSizeBytes":1000}', 'movie', 'm2', '{{now}}'),
+            VALUES ('a1', 'filesystem.import.completed', 'Imported Sintel', '{"ReleaseNameEvidence":"Sintel.2010.1080p","NewQuality":"Bluray 1080p","PreviousQuality":"WEB 720p","Upgraded":true,"QualityMet":false,"FileSizeBytes":4000}', 'movie', 'm1', '{{now}}'),
+                   ('a2', 'filesystem.import.completed', 'Imported Moon', '{"ReleaseNameEvidence":"Moon.2009.720p","NewQuality":"WEB 720p","Upgraded":false,"QualityMet":true,"FileSizeBytes":1000}', 'movie', 'm2', '{{now}}'),
                    ('a3', 'filesystem.import.completed', 'Imported Old', NULL, 'movie', 'm3', '{{yesterday}}');
             INSERT INTO blocked_releases (id, release_key, release_name, indexer_name, media_type, reason_code, reason, blocked_utc)
             VALUES ('b1', 'k1', 'Fake.Film.2020', 'Idx', 'movies', 'noVideoStream', 'No video in it', '{{now}}'),
@@ -73,6 +73,11 @@ public sealed class DashboardLiveExtrasApiTests
         Assert.Equal(1, upgrades.GetArrayLength());
         Assert.Equal("WEB 720p", upgrades[0].GetProperty("previousQuality").GetString());
         Assert.Equal("Bluray 1080p", upgrades[0].GetProperty("quality").GetString());
+        // The poster bar: an upgrade that can still be improved is not "quality met"; a film that reached its cutoff is; an old event that never said is unknown.
+        Assert.False(upgrades[0].GetProperty("qualityMet").GetBoolean());
+        var arrivals = live.GetProperty("arrivals");
+        var moon = arrivals.EnumerateArray().First(item => item.GetProperty("entityId").GetString() == "m2");
+        Assert.True(moon.GetProperty("qualityMet").GetBoolean());
         var protectedYou = live.GetProperty("protected");
         Assert.Equal(2, protectedYou.GetProperty("refusedToday").GetInt32());
         Assert.Equal(1, protectedYou.GetProperty("unsafeToday").GetInt32());

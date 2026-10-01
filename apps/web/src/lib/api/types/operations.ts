@@ -715,6 +715,8 @@ export interface LiveArrivalItem {
   upgraded: boolean;
   sizeBytes: number | null;
   importedUtc: string;
+  /** True when it landed at the quality the library asked for, false when it can still be upgraded; absent for an import recorded before this was kept. */
+  qualityMet?: boolean | null;
 }
 
 export interface LiveProtectionItem {

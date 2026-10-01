@@ -93,19 +93,11 @@ export function barFraction(count: number, reasons: ReadonlyArray<{ count: numbe
   return biggest <= 0 ? 0 : Math.min(1, count / biggest);
 }
 
-/** The bars drawn above the newest turned-down releases. */
-export const MOST_BARS = 5;
-
-/** The rows the card can draw whole in the height it has, so a short card shows fewer bars (the biggest reasons come first) and no row is ever cut off. The last row of the newest list may run under the fade at the card's foot, as in the mockup. Everything is shown until the card has been measured. */
-export function turnedDownFit(height: number, remPx: number, reasons: number, latest: number): { reasons: number; latest: number } {
-  if (!(height > 0)) return { reasons, latest };
-  const padding = 1.6 * remPx;
-  const reasonRow = 2.5 * remPx;
-  const latestRow = 3.1 * remPx;
-  // As in the mockup: the five biggest reasons are the bars, and the newest turned-down releases get the rest of the card.
-  const wanted = latest > 0 ? Math.min(reasons, MOST_BARS) : reasons;
-  const reasonsShown = Math.max(1, Math.min(wanted, Math.floor((height - padding) / reasonRow)));
-  if (reasonsShown < wanted) return { reasons: reasonsShown, latest: 0 };
-  const rest = height - padding - reasonsShown * reasonRow - 0.5 * remPx;
-  return { reasons: reasonsShown, latest: Math.max(0, Math.min(latest, Math.ceil(rest / latestRow))) };
+/**
+ * How many reason bars the card holds whole (the mockup's rule): its height less 24px of padding, over one bar and its 8px gap,
+ * never fewer than three, and all of them when they all fit. Unmeasured shows every reason.
+ */
+export function reasonsFit(boxHeight: number, rowHeight: number, total: number): number {
+  if (!(boxHeight > 0) || !(rowHeight > 0)) return total;
+  return Math.min(total, Math.max(3, Math.floor((boxHeight - 24) / (rowHeight + 8))));
 }

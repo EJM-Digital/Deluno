@@ -152,7 +152,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     await waitFor(() => expect(within(band).queryByText("Reading your library files (TV)")).toBeNull());
   });
 
-  it("moves a bar and its count the moment a search turns releases down, lights it, and adds the releases to the newest list", async () => {
+  it("moves a bar and its count the moment a search turns releases down, and lights it", async () => {
     seed();
     lists["/api/dashboard/live-extras"] = liveExtras();
     renderTab();
@@ -165,9 +165,11 @@ describe("Live applies each pushed change with no fetch after it", () => {
     expect(await within(card).findByText("45 releases")).toBeInTheDocument();
     expect(within(language()).getByText("15")).toBeInTheDocument();
     expect(language()).toHaveAttribute("data-hit");
-    expect(within(card).getByText("Dune.2021.iTA.1080p")).toBeInTheDocument();
     // An older release the stored counts already hold is not counted twice.
+    const fake = () => card.querySelector<HTMLElement>('[data-reason="fake"]')!;
+    const before = fake().textContent;
     send("ReleasesTurnedDown", { atUtc: "2000-01-01T00:00:00Z", items: [{ release: "Old.1999", group: "fake", label: "Fake or mislabelled" }] });
+    expect(fake().textContent).toBe(before);
     expect(within(card).queryByText("Old.1999")).toBeNull();
   });
 
@@ -176,14 +178,13 @@ describe("Live applies each pushed change with no fetch after it", () => {
     lists["/api/dashboard/live-extras"] = liveExtras();
     renderTab();
     const group = await screen.findByRole("region", { name: "Sources" });
-    expect(await within(group).findByRole("link", { name: "Plex: Media server · 5 sent today" })).toBeInTheDocument();
+    expect(await within(group).findByRole("link", { name: "Plex: Media server · 5 sent today, 5 today" })).toBeInTheDocument();
 
     send("ConnectionUsed", { kind: "mediaServer", id: "ms1", name: "Plex", countToday: 6, busy: 0, atUtc: new Date(Date.now() + 5_000).toISOString() });
-    const tile = await within(group).findByRole("link", { name: "Plex: Media server · 6 sent today" });
-    expect(tile).toHaveAttribute("data-tone", "ok");
-    await waitFor(() => expect(tile).toHaveClass("answered"));
+    const tile = await within(group).findByRole("link", { name: "Plex: Media server · 6 sent today, 6 today" });
+    await waitFor(() => expect(tile).toHaveClass("lit"));
     // A processor with a title glows while it has it.
     send("ConnectionUsed", { kind: "processor", id: "p1", name: "Weir", countToday: 7, busy: 1, atUtc: new Date(Date.now() + 6_000).toISOString() });
-    expect(await within(group).findByRole("link", { name: "Weir: Processor · working on 1" })).toBeInTheDocument();
+    expect(await within(group).findByRole("link", { name: "Weir: Processor · working on 1, 7 today" })).toBeInTheDocument();
   });
 });

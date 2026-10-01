@@ -68,6 +68,8 @@ export interface ArrivalItem {
   upgraded: boolean;
   sizeBytes: number | null;
   at: string;
+  /** True when it landed at the quality the library asked for, false when it can still be upgraded, null when not known. */
+  qualityMet?: boolean | null;
   /** Who asked for it in Seerr, when it came from a request. */
   requestedBy: string | null;
   to: string;
@@ -85,6 +87,7 @@ function toArrivalItem(arrival: LiveArrivalItem, index: number, asked: ReadonlyM
     upgraded: arrival.upgraded,
     sizeBytes: arrival.sizeBytes,
     at: arrival.importedUtc,
+    qualityMet: arrival.qualityMet ?? null,
     requestedBy: (arrival.entityId ? asked.get(arrival.entityId) : null) ?? null,
     to: cardLink(entity)
   };

@@ -20,8 +20,8 @@ import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
 
 export { sentenceOf } from "./group";
 
-/** More rows than any screen shows; the fade hides the rest. */
-const MAX_ROWS = 14;
+/** The most entries the stream keeps (the mockup's 20); the box scrolls inside. */
+const MAX_ROWS = 20;
 
 function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEntityId">, titles: TitleLookup): string {
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
@@ -88,7 +88,7 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
-        // The newest on top, and the stream fades at the bottom instead of cutting a row: the rest is one click away.
+        // The newest on top; the older ones are reached by scrolling inside the box, and the rest is one click away.
         <ul data-testid="live-stream" className="lact-stream">
           {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
         </ul>

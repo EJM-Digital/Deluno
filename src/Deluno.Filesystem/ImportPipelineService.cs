@@ -3043,7 +3043,9 @@ public sealed partial class ImportPipelineService(
         string? NewQuality = null,
         string? PreviousQuality = null,
         long? FileSizeBytes = null,
-        bool Upgraded = false);
+        bool Upgraded = false,
+        // Whether the file landed at the quality the library asked for (the poster bar on Live: gold when met, green when it can still be upgraded).
+        bool? QualityMet = null);
 
     /// <summary>
     /// Names the release the copy actually came from. Without it the feed says
@@ -3315,7 +3317,8 @@ public sealed partial class ImportPipelineService(
             NewQuality: catalog.NewQuality,
             PreviousQuality: catalog.PreviousQuality,
             FileSizeBytes: catalog.FileSizeBytes,
-            Upgraded: catalog.ReplacedFilePaths.Count > 0 && !string.IsNullOrWhiteSpace(catalog.PreviousQuality));
+            Upgraded: catalog.ReplacedFilePaths.Count > 0 && !string.IsNullOrWhiteSpace(catalog.PreviousQuality),
+            QualityMet: catalog.QualityMet);
     }
 
     private sealed class CatalogImportResult
@@ -3350,6 +3353,9 @@ public sealed partial class ImportPipelineService(
         public string? PreviousQuality { get; init; }
 
         public long? FileSizeBytes { get; init; }
+
+        /// <summary>True when the quality the file landed at meets the library's cutoff, false when it can still be upgraded.</summary>
+        public bool? QualityMet { get; init; }
     }
 
     private async Task<CatalogImportResult> MarkCatalogImportedAsync(
@@ -3629,7 +3635,8 @@ public sealed partial class ImportPipelineService(
                     : [],
                 NewQuality = quality,
                 PreviousQuality = replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).Select(path => mediaDecisionService.DetectQuality(path)).FirstOrDefault(),
-                FileSizeBytes = fileSizeBytes
+                FileSizeBytes = fileSizeBytes,
+                QualityMet = decision.QualityCutoffMet
             };
         }
 
@@ -3752,7 +3759,8 @@ public sealed partial class ImportPipelineService(
             PreviousQuality = !string.IsNullOrWhiteSpace(replacedMovieFilePath) && !IsSamePath(replacedMovieFilePath, preview.DestinationPath)
                 ? mediaDecisionService.DetectQuality(replacedMovieFilePath)
                 : null,
-            FileSizeBytes = fileSizeBytes
+            FileSizeBytes = fileSizeBytes,
+            QualityMet = decision.QualityCutoffMet
         };
     }
 

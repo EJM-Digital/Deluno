@@ -5,9 +5,10 @@
  * Along the top, three cards of one template: Speed with its live trace, Working on
  * now, and Next (scheduled jobs and episodes about to air). Under them the journey:
  * every title on its way as a card in its station, gliding on as it moves. Under the
- * journey, side by side, Arrived today (posters) and Turned down today (a bar per
- * plain reason). Down the right, at full height: the indexers, the download clients,
- * everything else Deluno is connected to, and the activity stream.
+ * journey, side by side, Your library (TV Shows above Movies, with the posters of today's
+ * arrivals) and the activity stream. Down the right: Sources (the indexers scoreboard, the
+ * download clients' speed bar and the connections) beside the band and the journey, and
+ * Turned down today (a bar per plain reason) beside the bottom row.
  *
  * The page is fluid. Nothing is a fixed pixel size: the journey shows the rows its
  * measured height holds and falls back to compact tiles when there are more, the
@@ -38,7 +39,7 @@ import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles 
 import { SourcesCard } from "./live/sources-card";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf, useLandingHold } from "./live/motion";
-import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
+import { arrivedDetail, arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
 import { entityFromRelated, type Entity } from "./live/titles";
@@ -189,9 +190,19 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
         <div className="flex min-h-0 min-w-0 flex-col" style={side ? { gridArea: "board" } : undefined}>
           <Journey fill={side} budget={side ? undefined : stackedJourneyBudget(windowHeight)} grouped={grouped} counts={counts} context={context} hasProcessor={hasProcessor} usual={usual} by={by} lastArrival={lastArrival} />
         </div>
-        <div className="grid min-h-0 min-w-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1fr)_clamp(17rem,30%,28rem)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
-          <Shelf items={shelfItems} titles={titles} newest={newestArrivals} heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)} />
-          <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
+        <div className="grid min-h-0 min-w-0 gap-[var(--grid-gap)] md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" style={side ? { gridArea: "low", gridTemplateColumns: LOW_COLUMNS } : undefined}>
+          <Shelf
+            items={shelfItems}
+            titles={titles}
+            newest={newestArrivals}
+            library={summary?.library}
+            latest={showingLatest}
+            heading={showingLatest ? LATEST_ARRIVALS_HEADING : arrivedHeading(Math.max(items.length, extras?.importsToday ?? 0))}
+            detail={showingLatest ? undefined : arrivedDetail(Math.max(items.length, extras?.importsToday ?? 0), upgraded, extras?.importedBytesToday ?? 0)}
+          />
+          <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")}>
+            <ActivityStream rows={latest} titles={titles} dense={compactActivity} />
+          </div>
         </div>
         <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "src" } : undefined}>
           <SourcesCard
@@ -207,7 +218,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           />
         </div>
         <div className={cn("flex min-h-0 min-w-0 flex-col", !side && "h-[26rem]")} style={side ? { gridArea: "act" } : undefined}>
-          <ActivityStream rows={latest} titles={titles} dense={compactActivity} />
+          <TurnedDownCard view={turnedDown.view} lit={turnedDown.lit} />
         </div>
       </div>
     </div>
