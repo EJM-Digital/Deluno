@@ -272,3 +272,5 @@
 .sy-db .sy-bar i { display: block; height: 100%; background: var(--sy-mine); }
 .sy-db .sy-r { text-align: right; color: var(--sy-muted); }
 .sy-btn:disabled { opacity: .6; cursor: default; }
+.sy-tk-row .sy-nm span.sy-why { display: block; font-weight: 500; font-size: 11px; color: var(--sy-danger-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sy-bk-h .sy-muted.sy-bad { color: var(--sy-danger-text); }

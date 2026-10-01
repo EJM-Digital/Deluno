@@ -115,6 +115,13 @@ public interface IRealtimeEventPublisher
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// A pushed event that carries its own data, on the "dashboard" subject (the System screen, #1098).
+    /// The default does nothing, so a test double that does not care needs no change.
+    /// </summary>
+    Task PublishDashboardEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
+    /// <summary>
     /// A pushed Live event (#1097) that carries its own data, on the "live" subject.
     /// The default does nothing, so a test double that does not care needs no change.
     /// </summary>

@@ -34,6 +34,7 @@ public static class JobsEndpointRouteBuilderExtensions
                     lastStartedUtc = state?.LastStartedUtc,
                     lastCompletedUtc = state?.LastCompletedUtc,
                     lastResult = state?.LastResult ?? "not-run",
+                    lastError = string.Equals(state?.LastResult, "failed", StringComparison.OrdinalIgnoreCase) ? state?.LastError : null,
                     lastDurationMs = state?.LastDurationMs,
                     nextRunUtc = state?.NextRunUtc
                 };

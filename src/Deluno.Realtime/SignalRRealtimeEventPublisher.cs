@@ -520,6 +520,12 @@ public sealed class SignalRRealtimeEventPublisher(
         }
     }
 
+    public Task PublishDashboardEventAsync(string eventName, object payload, CancellationToken cancellationToken)
+    {
+        Enqueue(eventName, RealtimeGroups.Dashboard, payload);
+        return Task.CompletedTask;
+    }
+
     public Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
     {
         Enqueue(eventName, LiveRealtimeSubject.Name, payload);

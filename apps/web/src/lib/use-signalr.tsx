@@ -95,6 +95,7 @@ import type {
   SearchCycleProgressEvent
 } from "./api/types/live-events";
 import type { ConnectionCheckedEvent, SystemOverviewChangedEvent } from "./api/types/system-overview";
+import type { SystemLogEntry } from "./api/types/system-log";
 
 export { useRealtimeConnected } from "./realtime-state";
 export type * from "./api/types/live-events";
@@ -253,6 +254,7 @@ type EventMap = {
   ConnectionUsed: ConnectionUsedEvent;
   DownloadSpeedSample: DownloadSpeedSampleEvent;
   SystemOverviewChanged: SystemOverviewChangedEvent;
+  SystemLogEntry: SystemLogEntry;
   ConnectionChecked: ConnectionCheckedEvent;
 };
 
@@ -636,6 +638,7 @@ const LIVE_EVENT_SUBJECTS = {
   ConnectionUsed: RealtimeGroups.Live,
   DownloadSpeedSample: RealtimeGroups.Live,
   SystemOverviewChanged: RealtimeGroups.Dashboard,
+  SystemLogEntry: RealtimeGroups.Dashboard,
   ConnectionChecked: RealtimeGroups.Dashboard
 } as const satisfies Partial<Record<SignalREventName, string>>;
 

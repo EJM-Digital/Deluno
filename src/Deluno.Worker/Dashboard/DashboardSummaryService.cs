@@ -426,7 +426,10 @@ public sealed class DashboardSummaryService : IDashboardSummaryService, IDashboa
                 task.Name,
                 state?.LastResult ?? "not-run",
                 state?.LastCompletedUtc,
-                state?.NextRunUtc);
+                state?.NextRunUtc,
+                string.Equals(state?.LastResult, "failed", StringComparison.OrdinalIgnoreCase)
+                    ? state?.LastError ?? "It did not finish. The Log has the details."
+                    : null);
         }).ToArray();
 
         return new DashboardAutomationSection(

@@ -2,15 +2,14 @@
  * The bottom row of System (#1098): Scheduled tasks (the last result with a tick or cross, and a Next countdown, in
  * aligned columns), the Log (what Deluno recorded, newest first, with its level) and Backups and databases.
  *
- * The log is the Activity record: Deluno has no line-by-line log feed to read, so this shows Activity events with their
- * level (the Errors and Warnings filters pick those out); "Full log" opens Activity, where the log files can be downloaded.
+ * The log is Deluno's own log for today (GET /api/system/log: every warning and error plus the notable information lines,
+ * kept current by the pushed SystemLogEntry event); "Full log" opens System, where the log files can be downloaded.
  */
 import { useMemo, useState, type JSX } from "react";
 import { Link } from "react-router-dom";
 import type { BackupItem, BackupSettingsSnapshot, DashboardScheduledTask } from "../../../lib/api";
-import type { SystemOverviewInstance } from "../../../lib/api/types/system-overview";
+import type { SystemDatabasesResponse, SystemLogEntry, SystemLogResponse } from "../../../lib/api/types/system-log";
 import { send, useAction } from "../downloads-kit";
-import { useLiveActivity, type LiveActivityRow } from "../live-events";
 import { useNow } from "../live/hooks";
 import { countdown, plainCount, sizeText, span, timeOfDayText, whenText } from "./logic";
 
@@ -22,6 +21,8 @@ export interface TaskView {
   state: "ok" | "fail" | "run" | "never";
   lastAt: number | null;
   nextAt: number | null;
+  /** Why the last run failed, in everyday words; only for a failed task. */
+  why: string | null;
 }
 
 function viewOfTask(task: DashboardScheduledTask): TaskView {
@@ -33,7 +34,8 @@ function viewOfTask(task: DashboardScheduledTask): TaskView {
     name: task.name,
     state: result === "failed" ? "fail" : result === "running" ? "run" : result === "not-run" || !Number.isFinite(last) ? "never" : "ok",
     lastAt: Number.isFinite(last) ? last : null,
-    nextAt: Number.isFinite(next) ? next : null
+    nextAt: Number.isFinite(next) ? next : null,
+    why: result === "failed" ? (task.lastError?.trim() || "It did not finish. The Log has the details.") : null
   };
 }
 
@@ -60,7 +62,7 @@ export function TasksCard({ tasks }: { tasks: readonly DashboardScheduledTask[] 
         {rows.map((row) => (
           <div key={row.key} className={`sy-tk-row${row.state === "run" ? " sy-run" : row.state === "fail" ? " sy-fail" : ""}`}>
             <span className="sy-d" />
-            <span className="sy-nm" title={row.name}>{row.name}</span>
+            <span className="sy-nm" title={row.why ? `${row.name}: ${row.why}` : row.name}>{row.name}{row.why ? <span className="sy-why">{row.why}</span> : null}</span>
             <span className="sy-r">
               {row.state === "run" ? <b style={{ color: "var(--sy-info)" }}>running</b>
                 : row.state === "never" ? "—"
@@ -76,46 +78,35 @@ export function TasksCard({ tasks }: { tasks: readonly DashboardScheduledTask[] 
 
 /* -------------------------------------------------------------------- log */
 
-type Level = "all" | "error" | "warn";
-type ActivityInput = Parameters<typeof useLiveActivity>[0];
+type Level = "all" | "error" | "warning";
 
-function levelOf(row: LiveActivityRow): "error" | "warn" | "info" {
-  const severity = (row.severity ?? "").toLowerCase();
-  return severity === "error" ? "error" : severity === "warning" ? "warn" : "info";
-}
+const NO_ENTRIES: readonly SystemLogEntry[] = [];
 
-export function LogCard({ activity }: { activity: ActivityInput }): JSX.Element {
-  const rows = useLiveActivity(activity);
+export function LogCard({ log }: { log: SystemLogResponse | null }): JSX.Element {
   const [level, setLevel] = useState<Level>("all");
-  const shown = rows.filter((row) => level === "all" || levelOf(row) === level);
-  const midnight = new Date().setHours(0, 0, 0, 0);
-  const today = rows.filter((row) => Date.parse(row.createdUtc) >= midnight);
-  const errors = today.filter((row) => levelOf(row) === "error").length;
-  const warnings = today.filter((row) => levelOf(row) === "warn").length;
+  const rows = log?.entries ?? NO_ENTRIES;
+  const shown = rows.filter((row) => level === "all" || row.level === level);
   return (
     <section className="sy-card sy-logs" aria-label="Log">
       <div className="sy-card-h">
         <h2>Log</h2>
-        <span className="sy-muted sy-num">{rows.length > 0 ? `${errors} errors · ${warnings} warnings today` : ""}</span>
+        <span className="sy-muted sy-num">{log ? `${log.errorsToday} errors · ${log.warningsToday} warnings today` : ""}</span>
         <span className="sy-lv" role="group" aria-label="Show">
-          {([["all", "All"], ["error", "Errors"], ["warn", "Warnings"]] as const).map(([key, label]) => (
+          {([["all", "All"], ["error", "Errors"], ["warning", "Warnings"]] as const).map(([key, label]) => (
             <button key={key} type="button" className={level === key ? "sy-on" : undefined} aria-pressed={level === key} onClick={() => setLevel(key)}>{label}</button>
           ))}
         </span>
-        <Link className="sy-link" to="/activity" aria-label="Open the full log in Activity">Full log →</Link>
+        <Link className="sy-link" to="/system" aria-label="Open the full log files">Full log →</Link>
       </div>
       <ul className="sy-log sy-scroll">
-        {shown.map((row) => {
-          const lvl = levelOf(row);
-          return (
-            <li key={row.id} className={row.fresh ? "sy-new" : undefined}>
-              <span className="sy-tm">{new Date(row.createdUtc).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
-              <span className={`sy-lvl sy-${lvl}`}>{lvl === "warn" ? "warning" : lvl}</span>
-              <span className="sy-msg" title={row.label ?? row.message}>{row.message}</span>
-            </li>
-          );
-        })}
-        {shown.length === 0 ? <li className="sy-muted" style={{ display: "block" }}>{level === "all" ? "Nothing has been logged yet." : "Nothing at this level."}</li> : null}
+        {shown.map((row) => (
+          <li key={row.id}>
+            <span className="sy-tm">{new Date(row.timeUtc).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
+            <span className={`sy-lvl sy-${row.level === "warning" ? "warn" : row.level}`}>{row.level}</span>
+            <span className="sy-msg" title={row.source ? `${row.source}: ${row.message}` : row.message}>{row.message}</span>
+          </li>
+        ))}
+        {shown.length === 0 ? <li className="sy-muted" style={{ display: "block" }}>{!log ? "The log has not been read yet." : level === "all" ? "Nothing notable has been logged today." : "Nothing at this level."}</li> : null}
       </ul>
     </section>
   );
@@ -123,7 +114,20 @@ export function LogCard({ activity }: { activity: ActivityInput }): JSX.Element 
 
 /* ---------------------------------------------------- backups and databases */
 
-export function BackupsCard({ backups, settings, instance }: { backups: readonly BackupItem[]; settings: BackupSettingsSnapshot | undefined; instance: SystemOverviewInstance | null }): JSX.Element {
+/** "integrity checked 4h ago · compacted 3d ago": only what has happened is said. */
+export function maintenanceLine(databases: SystemDatabasesResponse, now: number): string {
+  const parts: string[] = [];
+  if (databases.integrityCheckedUtc) {
+    const ago = now - Date.parse(databases.integrityCheckedUtc);
+    parts.push(`${databases.integrityOk === false ? "integrity problem found" : "integrity checked"} ${ago < 60_000 ? "just now" : `${span(ago)} ago`}`);
+  } else {
+    parts.push("integrity not checked yet");
+  }
+  if (databases.compactedUtc) parts.push(`compacted ${span(now - Date.parse(databases.compactedUtc))} ago`);
+  return parts.join(" · ");
+}
+
+export function BackupsCard({ backups, settings, databases }: { backups: readonly BackupItem[]; settings: BackupSettingsSnapshot | undefined; databases: SystemDatabasesResponse | null }): JSX.Element {
   const action = useAction();
   const now = useNow(60_000);
   const latest = useMemo(() => [...backups].sort((a, b) => Date.parse(b.createdUtc) - Date.parse(a.createdUtc)).slice(0, 3), [backups]);
@@ -152,9 +156,12 @@ export function BackupsCard({ backups, settings, instance }: { backups: readonly
           <Link className="sy-btn" to="/system/backups" title="Opens Backups, where a backup is checked before it replaces anything.">Restore…</Link>
           <span className="sy-muted sy-num">{next}</span>
         </div>
-        {instance ? (
+        {databases && databases.databases.length > 0 ? (
           <div className="sy-dbs">
-            <div className="sy-bk-h"><span className="sy-label">Databases · {sizeText(instance.dataBytes)}</span><span className="sy-muted">{plainCount(instance.databaseCount)} {instance.databaseCount === 1 ? "database" : "databases"}</span></div>
+            <div className="sy-bk-h"><span className="sy-label">Databases · {sizeText(databases.totalBytes)}</span><span className={databases.integrityOk === false ? "sy-muted sy-bad" : "sy-muted"} title={databases.integrityNote ?? undefined}>{maintenanceLine(databases, now)}</span></div>
+            {databases.databases.map((database) => (
+              <div key={database.key} className="sy-db"><span>{database.name}</span><span className="sy-bar"><i style={{ width: `${Math.max(2, (database.sizeBytes / Math.max(1, ...databases.databases.map((item) => item.sizeBytes))) * 100)}%` }} /></span><span className="sy-r sy-num">{sizeText(database.sizeBytes)}</span></div>
+            ))}
           </div>
         ) : null}
       </div>
