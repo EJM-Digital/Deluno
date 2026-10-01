@@ -5,7 +5,8 @@
  * watching 2"). A tile lights up when Deluno uses it, and a processor glows while
  * it has a title.
  */
-import type { LiveConnection, LiveConnectionKind } from "../../../lib/api/types/operations";
+import type { LiveConnection } from "../../../lib/api/types/operations";
+import type { LiveConnectionKind } from "./connections";
 import type { Tone } from "../../../lib/status-tones";
 import { connectionKey, connectionWords, connectionsSummary } from "./connections";
 import { Tile, TileGroup, type TileState } from "./tile";

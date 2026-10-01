@@ -113,7 +113,7 @@ export function Journey({
     <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-[14rem]">
       <div ref={bodyRef} className="relative flex min-h-0 flex-1 flex-col">
         {onTheirWay === 0 ? <p className="shrink-0 px-[var(--card-pad-x)] pt-2 text-[length:var(--type-body-sm)] text-muted-foreground">{calmLine(lastArrival)}</p> : null}
-        <div className={cn("relative min-h-0 flex-1", stacked ? "flex flex-col gap-1 px-2 pb-2 pt-1" : "grid px-3")} style={stacked ? undefined : { gridTemplateColumns: `repeat(${stations.length}, minmax(0, 1fr))`, gridTemplateRows: "auto minmax(0, 1fr)" }}>
+        <div className={cn("relative min-h-0 flex-1", stacked ? "flex flex-col gap-1 overflow-y-auto px-2 pb-2 pt-1" : "grid px-3")} style={stacked ? undefined : { gridTemplateColumns: `repeat(${stations.length}, minmax(0, 1fr))`, gridTemplateRows: "auto minmax(0, 1fr)" }}>
           {stacked ? null : <div aria-hidden className="pointer-events-none absolute inset-x-12 top-[1.3125rem] h-0.5 rounded-full bg-hairline"><span className={cn("live-rail absolute inset-0 opacity-60", rail && "live-rail-run")} /></div>}
           {stacked
             ? stations.map((stage) => {

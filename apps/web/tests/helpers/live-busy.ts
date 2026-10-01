@@ -236,7 +236,7 @@ export async function serveLiveBusy(page: Page) {
   await page.route(/\/api\/series\/upcoming/, (route) => route.fulfill(json(upcoming)));
   await page.route(/\/api\/download-clients(\?|$)/, (route) => route.fulfill(json(clientList)));
   await page.route(/\/api\/download-clients\/telemetry/, (route) =>
-    route.fulfill(json({ summary: { activeCount: 3, queuedCount: 2, stalledCount: 7, importReadyCount: 2, waitingForProcessorCount: 1 }, clients: [{ clientId: "c1", clientName: `Deluge${host}`, queue, seedingCount: 14 }, { clientId: "c2", clientName: `SABnzbd${host}`, queue: [], seedingCount: 0 }], capturedUtc: at(-30_000) }))
+    route.fulfill(json({ summary: { activeCount: 3, queuedCount: 2, stalledCount: 7, importReadyCount: 2, waitingForProcessorCount: 1 }, clients: [{ clientId: "c1", clientName: `Deluge${host}`, queue, summary: { seedingCount: 14 } }, { clientId: "c2", clientName: `SABnzbd${host}`, queue: [], summary: { seedingCount: 0 } }], capturedUtc: at(-30_000) }))
   );
   await page.route(/\/api\/download-dispatches/, (route) => route.fulfill(json({ items: dispatches, hasMore: false, nextPageToken: null })));
   await page.route(/\/api\/integrations\/processors\/handoffs/, (route) => route.fulfill(json(handoffs)));

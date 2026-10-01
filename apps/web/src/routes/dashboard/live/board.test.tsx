@@ -16,7 +16,7 @@ import { SpeedCell } from "./speed-chart";
 import { allInBy, buildNext, clockTime, doneAbout, journeyHeading, usualTimes, whenText } from "./times";
 import { NO_TITLES } from "./titles";
 import { Journey, stationsFor } from "./track";
-import { barFraction, mergeTurnedDown, REASON_ORDER } from "./turned-down";
+import { barFraction, mergeTurnedDown, REASON_ORDER, turnedDownFit } from "./turned-down";
 import { TurnedDownCard } from "./turned-down-card";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
@@ -471,6 +471,17 @@ describe("turned down today", () => {
     expect(within(card).getByRole("link", { name: /Dune.2024.iTA.1080p/ })).toHaveAttribute("href", "/movies/m1");
   });
 
+  it("draws only the whole rows the height holds: fewer bars on a short card, the newest releases only where there is room", () => {
+    expect(turnedDownFit(0, 16, 6, 20)).toEqual({ reasons: 6, latest: 20 });
+    expect(turnedDownFit(140, 16, 6, 20)).toEqual({ reasons: 2, latest: 0 });
+    expect(turnedDownFit(300, 16, 6, 20)).toEqual({ reasons: 6, latest: 0 });
+    const tall = turnedDownFit(520, 16, 6, 20);
+    expect(tall.reasons).toBe(6);
+    expect(tall.latest).toBeGreaterThan(2);
+    expect(turnedDownFit(520, 16, 6, 1).latest).toBe(1);
+    expect(turnedDownFit(20, 16, 6, 20).reasons).toBe(1);
+  });
+
   it("adds a release pushed since the counts, once, and ignores one the counts already hold", () => {
     const pushed = [
       { atUtc: inMs(5_000), title: "Moon", entityType: "movie", entityId: "m2", items: [{ release: "Moon.FRENCH", group: "language", label: "Not in a language you want" }] },
@@ -516,7 +527,8 @@ describe("the indexer tiles", () => {
     expect(indexersSummary(list, today as never)).toBe("2 answering · 1 switched off · 51 queries today");
     expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
     expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
-    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 of 20 this hour · 320 ms");
+    // An hourly limit is not a count of today, so only the day's queries are said.
+    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 today · 320 ms");
   });
 });
 

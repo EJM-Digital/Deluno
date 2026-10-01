@@ -174,7 +174,7 @@ export function Band({ summary, samples, operations, upcoming }: {
   const now = useNow(1000);
   const items = buildNext(summary, upcoming, now);
   return (
-    <div className="grid shrink-0 gap-[var(--grid-gap)] md:grid-cols-3">
+    <div className="grid shrink-0 gap-[var(--grid-gap)] grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
       <SpeedCell samples={samples} summary={summary} />
       <WorkingNow summary={summary} operations={operations} />
       <NextCard items={items} now={now} />

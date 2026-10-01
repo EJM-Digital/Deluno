@@ -77,7 +77,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
     }
     return speeds;
   }, [queue, liveProgress, data.telemetry?.capturedUtc]);
-  const seeding = useMemo(() => new Map((data.telemetry?.clients ?? []).map((client) => [client.clientId, client.seedingCount ?? 0])), [data.telemetry]);
+  const seeding = useMemo(() => new Map((data.telemetry?.clients ?? []).map((client) => [client.clientId, client.summary?.seedingCount ?? 0])), [data.telemetry]);
   // The newest sent downloads and the longer list with the archived ones, as one list.
   const dispatches = useMemo(() => {
     const seen = new Set<string>();
