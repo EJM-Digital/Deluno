@@ -75,7 +75,7 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
   return (
-    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine ${routine === 1 ? "event" : "events"} left out` : "as it happens"} to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
+    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens"} to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
