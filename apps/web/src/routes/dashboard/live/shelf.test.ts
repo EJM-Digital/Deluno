@@ -25,10 +25,10 @@ describe("the shelf's latest arrivals (#1098)", () => {
 
   it("sizes a poster from the box it sits in, so it can never be taller than its row", () => {
     expect(POSTER_WIDTH_CSS).toContain("100cqh");
-    expect(POSTER_WIDTH_CSS).toContain("var(--poster-rows)");
     expect(POSTER_WIDTH_CSS).toContain("var(--poster-caption)");
-    // And never wider than the mockup's poster: 7.5 rem.
-    expect(POSTER_WIDTH_CSS).toContain("min(var(--poster-cap, 7.5rem), 7.5rem,");
+    // One row, at most the mockup's 130px and at least 64px.
+    expect(POSTER_WIDTH_CSS).toContain("min(130px, max(40px,");
+    expect(POSTER_WIDTH_CSS).not.toContain("--poster-rows");
     expect(POSTER_WIDTH_CSS).not.toContain("16rem");
   });
 });

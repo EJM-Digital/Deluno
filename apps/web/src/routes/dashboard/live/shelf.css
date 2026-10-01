@@ -2,7 +2,7 @@
 .lsh > header { border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
 .lsh > header h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--success)); margin-right: 8px; vertical-align: middle; box-shadow: 0 0 10px hsl(var(--success)); }
 .lsh { padding-bottom: 8px; }
-.lsh-posters { display: flex; flex-wrap: wrap; align-content: flex-start; gap: var(--poster-gap, 0.875rem); overflow: hidden; min-height: 0; padding: 0; margin: 0; list-style: none; }
+.lsh-posters { display: flex; flex-wrap: nowrap; align-content: flex-start; gap: var(--poster-gap, 16px); overflow: hidden; min-height: 0; padding: 0; margin: 0; list-style: none; }
 .lsh-poster { flex: 0 0 auto; display: flex; flex-direction: column; animation: lsh-arrive .8s cubic-bezier(.2, .8, .2, 1); }
 .lsh-poster > a { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; border-radius: 10px; }
 .lsh-art { position: relative; flex: 1 1 0; min-height: 0; display: block; border-radius: 10px; overflow: hidden; background: hsl(var(--surface-3)); box-shadow: 0 8px 24px hsl(0 0% 0% / .35); transition: box-shadow .5s; }

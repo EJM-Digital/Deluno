@@ -74,17 +74,22 @@ describe("Live", () => {
     expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
   });
 
-  it("puts the right column beside the main column on a wide screen and under it below, with the band first", () => {
+  it("lays the tab out on one shared grid, so the rows line up across both columns, with the band first", () => {
     const { container } = renderTab(fullSummary);
-    const columns = container.querySelector<HTMLElement>("[data-page-layout] > div.grid");
-    expect(columns).not.toBeNull();
-    const [main, side] = Array.from(columns!.children);
-    expect(within(main as HTMLElement).getByRole("region", { name: "Speed" })).toBeInTheDocument();
-    expect(within(main as HTMLElement).getByRole("region", { name: "The journey" })).toBeInTheDocument();
-    expect(within(side as HTMLElement).getByRole("region", { name: "Sources" })).toBeInTheDocument();
-    expect(within(side as HTMLElement).getByRole("region", { name: "Activity" })).toBeInTheDocument();
-    // The band is the first thing in the main column, three cards that stack on a phone.
-    expect(main.firstElementChild?.className).toContain("lb-now");
+    const grid = container.querySelector<HTMLElement>("[data-live-grid='shared']");
+    expect(grid).not.toBeNull();
+    expect(grid!.style.gridTemplateColumns).toBe("minmax(0, 1fr) clamp(340px, 28%, 600px)");
+    expect(grid!.style.gridTemplateAreas).toBe('"now src" "board src" "low act"');
+    // The rows are the top band, the journey and the bottom row.
+    expect(grid!.style.gridTemplateRows).toMatch(/^\d+px minmax\(0, 1fr\) \d+px$/);
+    const cell = (area: string) => Array.from(grid!.children).find((child) => (child as HTMLElement).style.gridArea.replace(/\s/g, "") === area) as HTMLElement;
+    expect(within(cell("now")).getByRole("region", { name: "Speed" })).toBeInTheDocument();
+    expect(cell("now").firstElementChild?.className).toContain("lb-now");
+    expect(within(cell("board")).getByRole("region", { name: "The journey" })).toBeInTheDocument();
+    expect(within(cell("low")).getByRole("region", { name: "Arrived today" })).toBeInTheDocument();
+    expect(within(cell("low")).getByRole("region", { name: "Turned down today" })).toBeInTheDocument();
+    expect(within(cell("src")).getByRole("region", { name: "Sources" })).toBeInTheDocument();
+    expect(within(cell("act")).getByRole("region", { name: "Activity" })).toBeInTheDocument();
   });
 
   it("shows the journey with a stuck download amber, a Seerr title tagged, the time left, and no button to settle anything", async () => {
