@@ -34,6 +34,7 @@ public sealed record UpdatePlatformSettingsRequest(
     int? DownloadHealthStrikeThreshold = null,
     bool? CleanupBlockReleaseAfterThreshold = null,
     bool? CleanupQueueReplacementAfterThreshold = null,
+    bool? CheckConnectionsRegularly = null,
     bool? CleanupRemoveClientEntryAfterThreshold = null,
     bool? CleanupPurgePayloadAfterThreshold = null,
     string? SharingMode = null,

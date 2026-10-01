@@ -270,12 +270,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             [FromServices] IConnectionsRepository repository,
-            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
-            [FromServices] IIndexerQueryStatsRepository statsRepository,
-            [FromServices] IOutboundNotificationService notificationService,
-            [FromServices] INotificationService notificationPreferences,
-            [FromServices] IIndexerProxyHttpClientFactory proxyHttpClientFactory,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -292,55 +286,7 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var previousHealthStatus = item.HealthStatus;
-            var started = Stopwatch.GetTimestamp();
-            using var proxiedClient = await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken);
-            var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, httpContext.RequestServices.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
-            await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
-            await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
-            var result = await repository.UpdateIndexerHealthAsync(
-                id,
-                health.HealthStatus,
-                health.Message,
-                health.FailureCategory,
-                ElapsedMilliseconds(started),
-                cancellationToken,
-                health.Failure);
-            RecordIntegrationHealthMetric("indexer", health.HealthStatus);
-            if (result is not null)
-            {
-                await realtimeEventPublisher.PublishHealthChangedAsync(
-                    item.Name,
-                    health.HealthStatus == "healthy" ? "healthy" : "degraded",
-                    health.Message,
-                    cancellationToken);
-                await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", id, cancellationToken);
-
-                if (health.HealthStatus != "healthy")
-                {
-                    if ((await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
-                    {
-                        await notificationService.DispatchAsync(
-                            "health.degraded",
-                            $"Indexer degraded: {item.Name}",
-                            health.Message,
-                            null,
-                            cancellationToken);
-                    }
-                }
-                else
-                {
-                    await DispatchHealthRestoredIfRecoveredAsync(
-                        notificationService,
-                        notificationPreferences,
-                        $"Indexer {item.Name}",
-                        previousHealthStatus,
-                        health.HealthStatus,
-                        health.Message,
-                        cancellationToken);
-                }
-            }
-
+            var result = await RunStoredIndexerTestAsync(item, httpContext.RequestServices, automatic: false, cancellationToken);
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
@@ -714,10 +660,6 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             [FromServices] IConnectionsRepository repository,
-            [FromServices] IRealtimeEventPublisher realtimeEventPublisher,
-            [FromServices] IIntegrationResiliencePolicy resiliencePolicy,
-            [FromServices] IOutboundNotificationService notificationService,
-            [FromServices] INotificationService notificationPreferences,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -734,52 +676,31 @@ public static class ConnectionsEndpointRouteBuilderExtensions
                 return Results.NotFound();
             }
 
-            var previousHealthStatus = item.HealthStatus;
-            var started = Stopwatch.GetTimestamp();
-            var health = await TestDownloadClientWithResilienceAsync(item, resiliencePolicy, cancellationToken);
-            var result = await repository.UpdateDownloadClientHealthAsync(
-                id,
-                health.HealthStatus,
-                health.Message,
-                health.FailureCategory,
-                ElapsedMilliseconds(started),
-                cancellationToken,
-                health.Failure);
-            RecordIntegrationHealthMetric("download-client", health.HealthStatus);
-            if (result is not null)
-            {
-                await realtimeEventPublisher.PublishHealthChangedAsync(
-                    item.Name,
-                    health.HealthStatus == "healthy" ? "healthy" : "degraded",
-                    health.Message,
-                    cancellationToken);
-                await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", id, cancellationToken);
+            var result = await RunStoredDownloadClientTestAsync(item, httpContext.RequestServices, automatic: false, cancellationToken);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
 
-                if (health.HealthStatus != "healthy")
-                {
-                    if ((await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
-                    {
-                        await notificationService.DispatchAsync(
-                            "health.degraded",
-                            $"Download client degraded: {item.Name}",
-                            health.Message,
-                            null,
-                            cancellationToken);
-                    }
-                }
-                else
-                {
-                    await DispatchHealthRestoredIfRecoveredAsync(
-                        notificationService,
-                        notificationPreferences,
-                        $"Download client {item.Name}",
-                        previousHealthStatus,
-                        health.HealthStatus,
-                        health.Message,
-                        cancellationToken);
-                }
-            }
+        // #1098: every connection's latest real check (the System screen's Checked column), and Test all,
+        // which tests a few at a time and pushes each result as ConnectionChecked as it finishes.
+        connections.MapGet("checks", async (
+            [FromServices] IConnectionCheckRecorder recorder,
+            CancellationToken cancellationToken) => Results.Ok(await recorder.ListAsync(cancellationToken)));
 
+        connections.MapPost("test-all", async (
+            [FromServices] IConnectionHealthTester tester,
+            CancellationToken cancellationToken) =>
+        {
+            var results = await tester.TestAllAsync(cancellationToken);
+            return Results.Ok(new { tested = results.Count, results });
+        });
+
+        connections.MapPost("{kind}/{id}/test", async (
+            string kind,
+            string id,
+            [FromServices] IConnectionHealthTester tester,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await tester.TestAsync(kind, id, cancellationToken);
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
@@ -1088,6 +1009,167 @@ public static class ConnectionsEndpointRouteBuilderExtensions
 
     private static string NormalizeDownloadProtocol(string? value)
         => DownloadClientProtocolCatalog.NormalizeOrThrow(value);
+
+    /// <summary>
+    /// The one real test of a stored indexer: the Test button, Test all and the regular check all run this,
+    /// so the stored health, the pushed ConnectionChecked event and the notifications agree (#1098).
+    /// <paramref name="automatic"/> keeps a background check quiet: it tells a person only when the answer changed.
+    /// </summary>
+    public static async Task<IndexerTestResult?> RunStoredIndexerTestAsync(
+        IndexerItem item,
+        IServiceProvider services,
+        bool automatic,
+        CancellationToken cancellationToken)
+    {
+        var repository = services.GetRequiredService<IConnectionsRepository>();
+        var realtimeEventPublisher = services.GetRequiredService<IRealtimeEventPublisher>();
+        var resiliencePolicy = services.GetRequiredService<IIntegrationResiliencePolicy>();
+        var statsRepository = services.GetRequiredService<IIndexerQueryStatsRepository>();
+        var notificationService = services.GetRequiredService<IOutboundNotificationService>();
+        var notificationPreferences = services.GetRequiredService<INotificationService>();
+        var proxyHttpClientFactory = services.GetRequiredService<IIndexerProxyHttpClientFactory>();
+
+        var previousHealthStatus = item.HealthStatus;
+        var started = Stopwatch.GetTimestamp();
+        using var proxiedClient = await CreateIndexerTestHttpClientAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+        var health = await TestIndexerWithResilienceAsync(item, resiliencePolicy, services.GetService<ITrackerIndexerTester>(), proxiedClient, cancellationToken);
+        await RecordAuthTelemetryAsync(statsRepository, item, health, ElapsedMilliseconds(started), cancellationToken);
+        item = await NameFromItsAggregatorAsync(item, repository, proxyHttpClientFactory, cancellationToken);
+        var elapsed = ElapsedMilliseconds(started);
+        var result = await repository.UpdateIndexerHealthAsync(
+            item.Id,
+            health.HealthStatus,
+            health.Message,
+            health.FailureCategory,
+            elapsed,
+            cancellationToken,
+            health.Failure);
+        RecordIntegrationHealthMetric("indexer", health.HealthStatus);
+        if (result is null)
+        {
+            return null;
+        }
+
+        await realtimeEventPublisher.PublishHealthChangedAsync(
+            item.Name,
+            health.HealthStatus == "healthy" ? "healthy" : "degraded",
+            health.Message,
+            cancellationToken);
+        await realtimeEventPublisher.PublishEntityChangedAsync("Indexer", item.Id, cancellationToken);
+        await RecordCheckAsync(services, ConnectionKinds.Indexer, item.Id, item.Name, health, elapsed, cancellationToken);
+
+        var changed = !string.Equals(previousHealthStatus, health.HealthStatus, StringComparison.OrdinalIgnoreCase);
+        if (health.HealthStatus != "healthy")
+        {
+            if ((!automatic || changed)
+                && (await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
+            {
+                await notificationService.DispatchAsync(
+                    "health.degraded",
+                    $"Indexer degraded: {item.Name}",
+                    health.Message,
+                    null,
+                    cancellationToken);
+            }
+        }
+        else
+        {
+            await DispatchHealthRestoredIfRecoveredAsync(
+                notificationService,
+                notificationPreferences,
+                $"Indexer {item.Name}",
+                previousHealthStatus,
+                health.HealthStatus,
+                health.Message,
+                cancellationToken);
+        }
+
+        return result;
+    }
+
+    /// <summary>The one real test of a stored download client; see <see cref="RunStoredIndexerTestAsync"/>.</summary>
+    public static async Task<IndexerTestResult?> RunStoredDownloadClientTestAsync(
+        DownloadClientItem item,
+        IServiceProvider services,
+        bool automatic,
+        CancellationToken cancellationToken)
+    {
+        var repository = services.GetRequiredService<IConnectionsRepository>();
+        var realtimeEventPublisher = services.GetRequiredService<IRealtimeEventPublisher>();
+        var resiliencePolicy = services.GetRequiredService<IIntegrationResiliencePolicy>();
+        var notificationService = services.GetRequiredService<IOutboundNotificationService>();
+        var notificationPreferences = services.GetRequiredService<INotificationService>();
+
+        var previousHealthStatus = item.HealthStatus;
+        var started = Stopwatch.GetTimestamp();
+        var health = await TestDownloadClientWithResilienceAsync(item, resiliencePolicy, cancellationToken);
+        var elapsed = ElapsedMilliseconds(started);
+        var result = await repository.UpdateDownloadClientHealthAsync(
+            item.Id,
+            health.HealthStatus,
+            health.Message,
+            health.FailureCategory,
+            elapsed,
+            cancellationToken,
+            health.Failure);
+        RecordIntegrationHealthMetric("download-client", health.HealthStatus);
+        if (result is null)
+        {
+            return null;
+        }
+
+        await realtimeEventPublisher.PublishHealthChangedAsync(
+            item.Name,
+            health.HealthStatus == "healthy" ? "healthy" : "degraded",
+            health.Message,
+            cancellationToken);
+        await realtimeEventPublisher.PublishEntityChangedAsync("DownloadClient", item.Id, cancellationToken);
+        await RecordCheckAsync(services, ConnectionKinds.DownloadClient, item.Id, item.Name, health, elapsed, cancellationToken);
+
+        var changed = !string.Equals(previousHealthStatus, health.HealthStatus, StringComparison.OrdinalIgnoreCase);
+        if (health.HealthStatus != "healthy")
+        {
+            if ((!automatic || changed)
+                && (await notificationPreferences.GetPreferencesAsync(cancellationToken)).ProviderHealthChangedEnabled)
+            {
+                await notificationService.DispatchAsync(
+                    "health.degraded",
+                    $"Download client degraded: {item.Name}",
+                    health.Message,
+                    null,
+                    cancellationToken);
+            }
+        }
+        else
+        {
+            await DispatchHealthRestoredIfRecoveredAsync(
+                notificationService,
+                notificationPreferences,
+                $"Download client {item.Name}",
+                previousHealthStatus,
+                health.HealthStatus,
+                health.Message,
+                cancellationToken);
+        }
+
+        return result;
+    }
+
+    private static async Task RecordCheckAsync(
+        IServiceProvider services,
+        string kind,
+        string id,
+        string name,
+        IntegrationHealthCheckResult health,
+        int elapsedMs,
+        CancellationToken cancellationToken)
+    {
+        var recorder = services.GetService<IConnectionCheckRecorder>();
+        if (recorder is not null)
+        {
+            await recorder.RecordAsync(kind, id, name, health.HealthStatus == "healthy", elapsedMs, health.Message, cancellationToken);
+        }
+    }
 
     /// <summary>
     /// The client an indexer's own Test (t=search) and caps (t=caps)

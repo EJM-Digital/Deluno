@@ -17,6 +17,7 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<ITurnedDownReleaseRecorder, SqliteTurnedDownReleaseRecorder>();
         services.AddSingleton<ConnectionDayStore>();
         services.AddSingleton<IConnectionUseReporter, ConnectionUseReporter>();
+        services.AddSingleton<IConnectionCheckRecorder, ConnectionCheckRecorder>();
         services.AddSingleton<IImportFailureRuleRepository, SqliteImportFailureRuleRepository>();
         services.AddSingleton<SqliteImportResolutionsRepository>();
         services.AddSingleton<IImportResolutionsRepository>(provider =>

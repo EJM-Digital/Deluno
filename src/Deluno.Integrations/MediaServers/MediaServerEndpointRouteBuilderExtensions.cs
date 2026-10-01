@@ -1,3 +1,4 @@
+using Deluno.Contracts;
 using Deluno.Connections.Contracts;
 using Deluno.Connections.Data;
 using Deluno.Notifications;
@@ -92,6 +93,7 @@ public static class MediaServerEndpointRouteBuilderExtensions
             [FromServices] IMediaServerClientRegistry registry,
             [FromServices] IOutboundNotificationService notificationService,
             [FromServices] INotificationService notificationPreferences,
+            [FromServices] IConnectionCheckRecorder? checks,
             CancellationToken cancellationToken) =>
         {
             var stored = await repository.GetAsync(id, cancellationToken);
@@ -110,6 +112,10 @@ public static class MediaServerEndpointRouteBuilderExtensions
             var previousHealthStatus = stored.HealthStatus;
             var result = await client.TestAsync(candidate, cancellationToken);
             await repository.RecordHealthAsync(id, result, cancellationToken);
+            if (checks is not null)
+            {
+                await checks.RecordAsync(ConnectionKinds.MediaServer, stored.Id, stored.Name, result.Ok, result.LatencyMs, result.Message, cancellationToken);
+            }
             await DispatchHealthChangeAsync(
                 notificationService,
                 notificationPreferences,

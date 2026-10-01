@@ -20,6 +20,7 @@ public static class LiveEventNames
     public const string DriveSpaceChanged = "DriveSpaceChanged";
     public const string ReleasesTurnedDown = "ReleasesTurnedDown";
     public const string ConnectionUsed = "ConnectionUsed";
+    public const string ConnectionChecked = "ConnectionChecked";
 }
 
 public static class LiveRealtimeSubject
@@ -187,6 +188,9 @@ public static class ConnectionKinds
     public const string Requests = "requests";
     public const string Subtitles = "subtitles";
     public const string Lists = "lists";
+    public const string Indexer = "indexer";
+    public const string DownloadClient = "downloadClient";
+    public const string Metadata = "metadata";
 }
 
 /// <summary>
@@ -260,4 +264,10 @@ public static class LiveEventPublisherExtensions
 
     public static Task PublishDownloadSpeedSampleAsync(this IRealtimeEventPublisher publisher, DownloadSpeedSampleEvent payload, CancellationToken cancellationToken)
         => publisher.PublishLiveEventAsync(LiveEventNames.DownloadSpeedSample, payload, cancellationToken);
+
+    public static async Task PublishConnectionCheckedAsync(this IRealtimeEventPublisher publisher, ConnectionCheckedEvent payload, CancellationToken cancellationToken)
+    {
+        await publisher.PublishLiveEventAsync(LiveEventNames.ConnectionChecked, payload, cancellationToken);
+        await publisher.PublishDashboardEventAsync(LiveEventNames.ConnectionChecked, payload, cancellationToken);
+    }
 }

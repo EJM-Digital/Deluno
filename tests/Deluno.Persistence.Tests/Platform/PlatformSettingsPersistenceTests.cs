@@ -93,6 +93,31 @@ public sealed class PlatformSettingsPersistenceTests
     }
 
     [Fact]
+    public async Task Check_connections_regularly_is_on_for_a_fresh_or_upgraded_install_and_stays_off_once_turned_off()
+    {
+        using var storage = TestStorage.Create();
+        var timeProvider = new FixedTimeProvider(DateTimeOffset.Parse("2026-10-01T01:02:03Z"));
+        await new PlatformSchemaInitializer(
+            storage.Factory,
+            new SqliteDatabaseMigrator(storage.Factory, timeProvider),
+            NullLogger<PlatformSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
+        var repository = new SqlitePlatformSettingsRepository(storage.Factory, timeProvider, TestSecretProtection.Create(storage));
+
+        // Nothing stored: reads on (it only reads, so existing installs get it too).
+        Assert.True((await repository.GetAsync(CancellationToken.None)).CheckConnectionsRegularly);
+
+        var current = await repository.GetAsync(CancellationToken.None);
+        var merged = PlatformSettingsPatchMerger.Apply(current, new PatchPlatformSettingsRequest(CheckConnectionsRegularly: false));
+        await repository.SaveAsync(merged, CancellationToken.None);
+        Assert.False((await repository.GetAsync(CancellationToken.None)).CheckConnectionsRegularly);
+
+        // An unrelated patch leaves it off.
+        var again = PlatformSettingsPatchMerger.Apply(await repository.GetAsync(CancellationToken.None), new PatchPlatformSettingsRequest(UiTheme: "dark"));
+        await repository.SaveAsync(again, CancellationToken.None);
+        Assert.False((await repository.GetAsync(CancellationToken.None)).CheckConnectionsRegularly);
+    }
+
+    [Fact]
     public async Task SetPermissionsOnImport_and_its_chmod_and_group_persist_and_default_off()
     {
         using var storage = TestStorage.Create();

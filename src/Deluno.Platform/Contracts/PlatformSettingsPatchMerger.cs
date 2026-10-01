@@ -40,6 +40,7 @@ public static class PlatformSettingsPatchMerger
             DownloadHealthStrikeThreshold: patch.DownloadHealthStrikeThreshold ?? current.DownloadHealthStrikeThreshold,
             CleanupBlockReleaseAfterThreshold: patch.CleanupBlockReleaseAfterThreshold ?? current.CleanupBlockReleaseAfterThreshold,
             CleanupQueueReplacementAfterThreshold: patch.CleanupQueueReplacementAfterThreshold ?? current.CleanupQueueReplacementAfterThreshold,
+            CheckConnectionsRegularly: patch.CheckConnectionsRegularly ?? current.CheckConnectionsRegularly,
             CleanupRemoveClientEntryAfterThreshold: patch.CleanupRemoveClientEntryAfterThreshold ?? current.CleanupRemoveClientEntryAfterThreshold,
             CleanupPurgePayloadAfterThreshold: patch.CleanupPurgePayloadAfterThreshold ?? current.CleanupPurgePayloadAfterThreshold,
             SharingMode: patch.SharingMode ?? current.SharingMode,

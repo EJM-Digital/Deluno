@@ -86,6 +86,7 @@ public static class SystemTasks
     public const string ProcessorOutcomes = "processor.outcomes";
     public const string RssSync = "rss.sync";
     public const string HealthChecks = "health.checks";
+    public const string ConnectionsCheck = "connections.check";
     public const string SceneMappingRefresh = "scene.mapping.refresh";
     public const string EpisodeGroupRefresh = "episode.group.refresh";
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
@@ -190,6 +191,12 @@ public static class SystemTasks
         new(HealthChecks, "Check system health",
             "Looks at download clients, indexers, libraries, the processor and other connections for problems, and shows anything wrong on Health, the Dashboard, the bell and a notification.",
             TimeSpan.FromMinutes(15)),
+        // One minute is how often Deluno looks, not how often it tests: a connection is tested for real only
+        // when nothing has used or checked it for fifteen minutes (#1098). It only reads, so it is on for every
+        // install; the setting Check connections regularly turns it off.
+        new(ConnectionsCheck, "Test connections",
+            "Tests any indexer, download client, processor, media server, Seerr, metadata service or list that nothing has used for 15 minutes, so Checked on System is always true.",
+            TimeSpan.FromMinutes(1)),
         // Twelve hours: a scene mapping does not change mid-day, and every
         // anime title is asked for on its own request, so this is paced for
         // TheXEM's courtesy rather than for freshness (#863).

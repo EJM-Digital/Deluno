@@ -146,6 +146,8 @@ public static class WorkerServiceCollectionExtensions
         services.AddHttpClient(Deluno.Worker.HealthChecks.HealthCheckHttpClients.Proxy, client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<HealthCheckRunner>();
         services.AddHostedService<HealthCheckHostedService>();
+        services.AddScoped<Deluno.Contracts.IConnectionHealthTester, Deluno.Worker.Connections.ConnectionHealthTester>();
+        services.AddHostedService<Deluno.Worker.Connections.RegularConnectionCheckService>();
         services.AddScoped<IHealthCheck, BackgroundServiceHealthCheck>();
         services.AddDelunoBackgroundServiceSafety();
         return services;
