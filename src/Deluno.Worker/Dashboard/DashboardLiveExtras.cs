@@ -17,7 +17,9 @@ public sealed record LiveArrival(
     bool Upgraded,
     long? SizeBytes,
     DateTimeOffset ImportedUtc,
-    bool? QualityMet = null);
+    bool? QualityMet = null,
+    string? LibraryId = null,
+    string? LibraryName = null);
 
 /// <summary>A release Deluno refused or a file it blocked, newest first on the Live screen's Protected-you counter.</summary>
 public sealed record LiveProtection(string Release, string ReasonCode, string Reason, DateTimeOffset BlockedUtc);
@@ -84,9 +86,9 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
 
     public async Task<DashboardLiveExtras> GetAsync(DateTimeOffset now, DateTimeOffset sinceUtc, CancellationToken cancellationToken)
     {
-        var imports = await ReadImportsAsync(sinceUtc, 500, cancellationToken);
+        var imports = await WithLibrariesAsync(await ReadImportsAsync(sinceUtc, 500, cancellationToken), cancellationToken);
         // The shelf shows the latest arrivals when nothing has come in today: the newest thirty of the last seven days.
-        var recent = await ReadImportsAsync(now.AddDays(-7), 30, cancellationToken);
+        var recent = await WithLibrariesAsync(await ReadImportsAsync(now.AddDays(-7), 30, cancellationToken), cancellationToken);
         var protectedYou = await ReadProtectedAsync(sinceUtc, cancellationToken);
         var requests = await ReadRequestsAsync(now.AddDays(-7), cancellationToken);
         var reclaim = await ReadReclaimBytesAsync(cancellationToken);
@@ -131,6 +133,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
             long? size = null;
             var upgraded = false;
             bool? qualityMet = null;
+            string? libraryId = null;
             var details = reader.IsDBNull(2) ? null : reader.GetString(2);
             if (!string.IsNullOrWhiteSpace(details))
             {
@@ -141,6 +144,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                     release = Text(root, "ReleaseNameEvidence");
                     quality = Text(root, "NewQuality");
                     previous = Text(root, "PreviousQuality");
+                    libraryId = Text(root, "LibraryId");
                     upgraded = root.TryGetProperty("Upgraded", out var flag) && flag.ValueKind == JsonValueKind.True;
                     if (root.TryGetProperty("QualityMet", out var met) && met.ValueKind is JsonValueKind.True or JsonValueKind.False)
                     {
@@ -167,7 +171,88 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
                 upgraded,
                 size,
                 DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal),
-                qualityMet));
+                qualityMet,
+                libraryId));
+        }
+
+        return rows;
+    }
+
+    /// <summary>How many imports landed since <paramref name="sinceUtc"/> in each library (by library id), for the dashboard summary's per-library counts (#1103).</summary>
+    public async Task<IReadOnlyDictionary<string, int>> CountArrivedByLibraryAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
+    {
+        var rows = await WithLibrariesAsync(await ReadImportsAsync(sinceUtc, 5000, cancellationToken), cancellationToken);
+        return rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.LibraryId))
+            .GroupBy(row => row.LibraryId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Says which library each import landed in (#1103). Newer imports record it; for older ones the title's own wanted-state
+    /// row names the library it is held in. A library that has since been removed is left untagged.
+    /// </summary>
+    private async Task<List<LiveArrival>> WithLibrariesAsync(List<LiveArrival> rows, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return rows;
+        }
+
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        await using (var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Platform, cancellationToken))
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT id, name FROM libraries;";
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                names[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+
+        var lookups = rows
+            .Where(row => string.IsNullOrWhiteSpace(row.LibraryId) && !string.IsNullOrWhiteSpace(row.EntityId))
+            .Select(row => (row.EntityType, EntityId: row.EntityId!))
+            .Distinct()
+            .ToArray();
+        var found = new Dictionary<(string, string), string>();
+        if (lookups.Length > 0)
+        {
+            await using var movies = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Movies, cancellationToken);
+            await using var series = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Series, cancellationToken);
+            foreach (var (type, id) in lookups)
+            {
+                var (connection, sql) = type.ToLowerInvariant() switch
+                {
+                    "series" => (series, "SELECT library_id FROM series_wanted_state WHERE series_id = @id ORDER BY has_file DESC, library_id LIMIT 1;"),
+                    "episode" => (series, "SELECT library_id FROM episode_wanted_state WHERE episode_id = @id ORDER BY library_id LIMIT 1;"),
+                    _ => (movies, "SELECT library_id FROM movie_wanted_state WHERE movie_id = @id ORDER BY has_file DESC, library_id LIMIT 1;")
+                };
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                Add(command, "@id", id);
+                if (await command.ExecuteScalarAsync(cancellationToken) is string library)
+                {
+                    found[(type, id)] = library;
+                }
+            }
+        }
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var row = rows[index];
+            var libraryId = string.IsNullOrWhiteSpace(row.LibraryId)
+                ? (row.EntityId is not null && found.TryGetValue((row.EntityType, row.EntityId), out var held) ? held : null)
+                : row.LibraryId;
+            if (libraryId is not null && names.TryGetValue(libraryId, out var name))
+            {
+                rows[index] = row with { LibraryId = libraryId, LibraryName = name };
+            }
+            else if (libraryId is not null)
+            {
+                rows[index] = row with { LibraryId = null };
+            }
         }
 
         return rows;
