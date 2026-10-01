@@ -19,8 +19,6 @@
   container-type: inline-size;
   line-height: 1.2;
 }
-.ls > header { min-height: 0; border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
-.ls > header h2 { font-size: 16px; }
 .ls-body { position: relative; min-height: 0; flex: 1 1 0; padding: 0 18px 14px; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; overflow: hidden; }
 .ls-sa { min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .ls-sa:first-child { grid-template-rows: auto minmax(0, 1fr); }

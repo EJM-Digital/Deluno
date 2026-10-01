@@ -1,5 +1,4 @@
 /* Activity (#1098): the mockup's stream, ported literally. */
-.lact > header { border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
 .lact-stream { list-style: none; margin: 0; padding: 0 10px 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: hsl(var(--hairline)) transparent; min-height: 0; flex: 1 1 0; display: flex; flex-direction: column; }
 .lact-ev { flex: 0 0 auto; border-radius: 10px; animation: lact-in .6s ease; }
 .lact-ev[data-glow] { background: hsl(var(--primary) / .14); }

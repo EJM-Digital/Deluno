@@ -118,7 +118,7 @@ export function SourcesCard({ indexers, scoreboard, summary, now, clientRows, cl
   };
 
   return (
-    <Panel title="Sources" to="/indexers/indexers" toLabel="Manage" bare className="ls h-full min-h-0 flex-1">
+    <Panel title="Sources" to="/indexers/indexers" toLabel="Manage" className="ls h-full min-h-0 flex-1">
       <div className="ls-body">
         <section className="ls-sa" aria-label="Indexers today">
           <div className="ls-sa-h">

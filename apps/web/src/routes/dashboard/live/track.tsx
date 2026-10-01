@@ -142,7 +142,7 @@ export function Journey({
 
   return (
     <div ref={boxRef} className={cn("flex min-h-0 min-w-0 flex-col", fill && "h-full")} style={fill || budget === undefined ? undefined : { maxHeight: budget }}>
-      <Panel title="Pipeline" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1 [&>header]:min-h-[calc(44px*var(--ui-scale,1))] [&>header>h2]:text-[length:calc(16px*var(--ui-scale,1))] [&>header>h2]:font-bold [&>header>span]:text-[length:calc(14px*var(--ui-scale,1))]">
+      <Panel title="Pipeline" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
         <div ref={bodyRef} className={cn("lj relative flex min-h-0 flex-1 flex-col", stacked && "lj-stack overflow-y-auto")} style={{ ["--lj-n" as string]: n, ["--lj-card-h" as string]: `${size.card}px`, ["--lj-step" as string]: `${size.step}px`, ["--lj-poster-h" as string]: `${size.poster}px`, ["--lj-title-lines" as string]: size.oneLine ? 1 : 2 } satisfies CSSProperties}>
           {stacked ? (
             <>

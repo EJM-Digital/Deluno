@@ -1,41 +1,37 @@
 /**
  * The card every part of Live sits in (#1098): a title, a quiet line of what it
  * holds that gives way (truncates) before anything else when the card is narrow, a
- * link to where it is managed, and a body that takes the rest of the height. It looks
- * like the app's list cards, but its header never wraps onto a second line.
+ * link to where it is managed, and a body that takes the rest of the height. It is the
+ * approved mockup's card (14px corners, its header below), and its header never wraps.
  */
-import { ArrowRight } from "lucide-react";
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Button } from "../../../components/ui/button";
 import { cn } from "../../../lib/utils";
 
-export function LiveCard({ title, count, to, toLabel, iconOnly = false, bare = false, className, bodyClassName, children }: {
+export function LiveCard({ title, count, to, toLabel, iconOnly = false, className, bodyClassName, children }: {
   title: string;
   count?: ReactNode;
   to?: string;
   toLabel?: string;
   /** The link is an arrow alone (its name is still said), so a long count line keeps the room. */
   iconOnly?: boolean;
-  /** No rule under the header, as in the tile cards of the right column. */
-  bare?: boolean;
   className?: string;
   bodyClassName?: string;
   children: ReactNode;
 }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
-      <header className={cn("flex min-h-[var(--list-header-height)] shrink-0 items-center gap-3 px-[var(--card-pad-x)]", !bare && "border-b border-hairline")}>
-        <h2 id={id} className="shrink-0 text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{title}</h2>
-        <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] text-muted-foreground">{count}</span>
+    <section aria-labelledby={id} className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[14px] border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
+      {/* The mockup's card header, rule for rule: 14/18/10 padding, baseline-aligned, a 16px bold title, the count at 14px,
+          the link 13px at the right with its arrow. No rule under it. */}
+      <header className="flex shrink-0 items-baseline gap-[10px] whitespace-nowrap px-[18px] pb-[10px] pt-[14px]">
+        <h2 id={id} className="m-0 shrink-0 text-[16px] font-bold text-foreground">{title}</h2>
+        <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[14px] text-muted-foreground">{count}</span>
         {to ? (
-          <Button asChild variant="ghost" size="sm" className="-mr-2 shrink-0 text-primary">
-            <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`}>
-              {iconOnly ? null : toLabel ?? "Open"}
-              <ArrowRight aria-hidden className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`} className="ml-auto shrink-0 rounded-sm text-[13px] font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--ring))]">
+            {iconOnly ? null : `${toLabel ?? "Open"} `}
+            <span aria-hidden>→</span>
+          </Link>
         ) : null}
       </header>
       <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden", bodyClassName)}>{children}</div>
