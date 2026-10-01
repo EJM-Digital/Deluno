@@ -13,6 +13,7 @@
 import { getDispatchStatusLabel as formatDispatchStatus } from "../lib/job-status-constants";
 import { ArtworkImage } from "../components/ui/artwork-image";
 import { eventLabel } from "../lib/activity-format";
+import { activityLinkForTitle } from "../lib/activity-history";
 import type { Tone } from "../lib/status-tones";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useLoaderData, useNavigate, useRevalidator } from "react-router-dom";
@@ -1895,7 +1896,15 @@ export function ShowDetailPage() {
             )}
           </ListCard>
 
-          <ListCard title="Activity" count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}>
+          <ListCard
+            title="Activity"
+            count={activity.length ? `Latest ${Math.min(activity.length, 10)} of ${activity.length}` : undefined}
+            actions={
+              <Button asChild variant="ghost" size="sm" className="text-primary">
+                <Link to={activityLinkForTitle(series.title, "series", series.id)}>Everything about this show</Link>
+              </Button>
+            }
+          >
             {activity.length === 0 ? (
               <ListEmpty title="Nothing has happened yet" description="Every event Deluno records against this show shows up here." />
             ) : (

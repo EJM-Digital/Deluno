@@ -132,7 +132,7 @@ test.describe("authenticated app smoke", () => {
       await page.goto(path);
       await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
       if (path === "/activity") {
-        await page.getByRole("radio", { name: "Events" }).click();
+        await page.getByRole("radio", { name: "History" }).click();
       }
       // Let the feed and the live list settle before reading the page. Not
       // networkidle: the live connection and the pollers keep the network busy
@@ -144,6 +144,18 @@ test.describe("authenticated app smoke", () => {
       expect(text).not.toMatch(rawSourceCode);
     });
   }
+
+  // #1100: a filtered Activity view is a link (Live's Turned down card opens this one), read against the real host.
+  test("opens the Activity history from a filtered link and keeps the filters in the address", async ({ page }) => {
+    await page.goto("/activity?type=turned-down&since=today&reason=language");
+    await expect(page.getByRole("combobox", { name: "Filter by event type" })).toContainText("Turned down", { timeout: 15_000 });
+    await expect(page.getByRole("combobox", { name: "Filter by reason" })).toContainText("Not in a language you want");
+    await expect(page.getByRole("combobox", { name: "Filter by date" })).toContainText("Today");
+    await expect(page.getByText("Nothing matches these filters")).toBeVisible();
+    await page.getByRole("button", { name: "Clear filters" }).first().click();
+    await expect(page).not.toHaveURL(/type=turned-down/);
+    await expect(page.getByText("Unexpected Application Error")).toHaveCount(0);
+  });
 
   for (const path of ["/activity", "/system"]) {
     test(`names what started each job in words on ${path}`, async ({ page }) => {

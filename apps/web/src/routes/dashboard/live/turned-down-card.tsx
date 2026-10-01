@@ -11,6 +11,7 @@ import { cn } from "../../../lib/utils";
 import { LiveCard as Panel } from "./live-card";
 import "./turned-down.css";
 import { useElementSize, useIsWide, useRemPx } from "./hooks";
+import { activityLink } from "../../../lib/activity-history";
 import { REASON_COLOUR, REASON_LABEL, barFraction, turnedDownFit, type TurnedDownView } from "./turned-down";
 
 export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: ReadonlySet<string> }) {
@@ -33,16 +34,18 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
   const quiet = view.total === 0 && fit.latest === 0;
   const count = view.total === 1 ? "1 release" : `${view.total.toLocaleString("en-AU")} releases`;
   return (
-    <Panel title="Turned down today" count={count} className="ltd min-h-0" bodyClassName="min-h-0">
+    <Panel title="Turned down today" count={count} to={activityLink({ type: "turned-down", since: "today" })} toLabel="See them all" className="ltd min-h-0" bodyClassName="min-h-0">
       <div ref={boxRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <ul aria-label="Reasons" className={cn("ltd-bars", quiet && "quiet")}>
           {view.reasons.slice(0, fit.reasons).map((reason) => {
             const hit = lit.has(reason.group);
             return (
               <li key={reason.group} className="ltd-br" data-reason={reason.group} data-hit={hit ? "" : undefined} style={{ ["--c" as string]: REASON_COLOUR[reason.group] }}>
-                <span>{reason.label || REASON_LABEL[reason.group]}</span>
-                <span className="ltd-num">{reason.count.toLocaleString("en-AU")}</span>
-                <span aria-hidden className="ltd-tr"><i style={{ width: `${Math.round(barFraction(reason.count, view.reasons) * 100)}%` }} /></span>
+                <Link to={activityLink({ type: "turned-down", since: "today", reason: reason.group })} aria-label={`${reason.label || REASON_LABEL[reason.group]}: ${reason.count.toLocaleString("en-AU")}. See them in Activity`}>
+                  <span>{reason.label || REASON_LABEL[reason.group]}</span>
+                  <span className="ltd-num">{reason.count.toLocaleString("en-AU")}</span>
+                  <span aria-hidden className="ltd-tr"><i style={{ width: `${Math.round(barFraction(reason.count, view.reasons) * 100)}%` }} /></span>
+                </Link>
               </li>
             );
           })}
