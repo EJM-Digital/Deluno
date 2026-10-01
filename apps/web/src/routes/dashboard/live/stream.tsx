@@ -13,6 +13,7 @@ import { ago } from "../format";
 import type { LiveActivityRow } from "../live-events";
 import { Plain } from "../parts";
 import { LiveCard as Panel } from "./live-card";
+import "./stream.css";
 import { groupActivity, type ActivityGroup } from "./group";
 import { activityKind, isRoutine, KIND_STYLE } from "./kinds";
 import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
@@ -32,31 +33,36 @@ function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEn
   return "/activity";
 }
 
+/** The sentence with the title in bold, where the sentence says it. */
+export function boldTitle(sentence: string, name: string | null | undefined): ReactElement | string {
+  const at = name ? sentence.indexOf(name) : -1;
+  if (!name || at < 0) return sentence;
+  return <>{sentence.slice(0, at)}<b>{name}</b>{sentence.slice(at + name.length)}</>;
+}
+
 function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean, newest: boolean): ReactElement {
   const item = group.first;
   const kind = KIND_STYLE[activityKind(item.category, item.severity)];
   const many = group.rows.length;
+  const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
+  const name = named && group.sentence.includes(named.title) ? named.title : named?.name ?? null;
   return (
-    <li key={item.id} className={cn("shrink-0 rounded-[10px]", newest && "bg-info/[0.09]", group.fresh && motionAllowed() && "live-stream-new")}>
-      <Link
-        to={entityLink(item, titles)}
-        title={many > 1 ? group.detail.join("\n") : undefined}
-        className={cn("flex h-full items-center gap-2.5 rounded-[10px] px-2 transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", dense ? "py-1" : "py-[9px]")}
-      >
-        <span aria-hidden className={cn("flex shrink-0 items-center justify-center rounded-lg", dense ? "h-6 w-6" : "h-8 w-8 rounded-[9px]", kind.tile, kind.text)}>
-          <kind.icon className={dense ? "h-3.5 w-3.5" : "h-[18px] w-[18px]"} />
+    <li key={item.id} className={cn("lact-ev", dense && "lact-dense", group.fresh && motionAllowed() && "live-stream-new")} data-glow={newest ? "" : undefined}>
+      <Link to={entityLink(item, titles)} title={many > 1 ? group.detail.join("\n") : undefined}>
+        <span aria-hidden className={cn("lact-ic", kind.tile, kind.text)}>
+          <kind.icon />
         </span>
         {dense ? (
           <>
-            <span title={`${group.sentence} (${eventLabel(item)})`} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-foreground">{group.sentence}</span>
-            <span className="shrink-0 text-[length:var(--type-caption)] tabular-nums text-muted-foreground">{many > 1 ? `${many.toLocaleString("en-AU")} times · ` : null}{ago(item.createdUtc)}</span>
+            <span title={`${group.sentence} (${eventLabel(item)})`} className="lact-w">{boldTitle(group.sentence, name)}</span>
+            <span className="when">{many > 1 ? `${many.toLocaleString("en-AU")} times · ` : null}{ago(item.createdUtc)}</span>
           </>
         ) : (
-          <span className="min-w-0 flex-1">
-            <span title={group.sentence} className="line-clamp-2 text-[length:var(--type-body-sm)] leading-snug text-foreground">{group.sentence}</span>
-            <span className="mt-0.5 block text-[length:var(--type-caption)] text-muted-foreground">
+          <span className="min-w-0">
+            <span title={group.sentence} className="lact-w line-clamp-2 block">{boldTitle(group.sentence, name)}</span>
+            <span className="lact-k block">
               <span className={kind.text}>{eventLabel(item)}</span>
-              {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-[length:var(--type-micro)] font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; {ago(item.createdUtc)}
+              {many > 1 ? <span className={cn("ml-1.5 rounded-full px-1.5 py-px text-[length:var(--type-micro)] font-semibold tabular-nums", kind.tile, kind.text)}>{many.toLocaleString("en-AU")} times</span> : null} &middot; <span className="when">{ago(item.createdUtc)}</span>
             </span>
           </span>
         )}
@@ -78,12 +84,12 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
   return (
-    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens"} to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
+    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens"} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
         // The newest on top, and the stream fades at the bottom instead of cutting a row: the rest is one click away.
-        <ul data-testid="live-stream" className="flex min-h-0 flex-1 flex-col overflow-hidden px-2.5 pb-2.5 pt-0.5 [mask-image:linear-gradient(#000_calc(100%-3.5rem),transparent)]">
+        <ul data-testid="live-stream" className="lact-stream">
           {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
         </ul>
       )}

@@ -439,7 +439,7 @@ describe("arrived today", () => {
     withRouter(<Shelf items={[item("1"), item("2", { upgraded: true, previousQuality: "WEB 720p", quality: "Bluray 1080p" })]} titles={NO_TITLES} newest={new Set(["1"])} heading="2 titles" />);
     expect(screen.getByText("WEB 720p → Bluray 1080p")).toBeInTheDocument();
     const first = screen.getByRole("link", { name: /^Film 1 \(2001\): in the library/ });
-    expect(first.querySelector("[data-arrival-poster='1']")?.className).toContain("shadow-[0_0_0_2px");
+    expect(first.closest("li")).toHaveAttribute("data-new");
     expect(screen.getByRole("link", { name: /^Film 2 \(2001\)/ }).querySelector("[data-arrival-poster='2']")?.className).not.toContain("shadow-[0_0_0_2px");
     expect(screen.getByRole("link", { name: /^Film 1/ })).toHaveAttribute("href", "/movies/1");
   });
@@ -467,17 +467,18 @@ describe("turned down today", () => {
     const card = screen.getByRole("region", { name: "Turned down today" });
     expect(within(card).getByText("43 releases")).toBeInTheDocument();
     for (const words of ["Not in a language you want", "No better than what you have", "Bigger than your size limit", "Too few people sharing it", "Fake or mislabelled", "Other reasons"]) expect(within(card).getAllByText(words).length).toBeGreaterThan(0);
-    expect((card.querySelector('[data-reason="language"] span[aria-hidden] span') as HTMLElement).style.width).toBe("100%");
-    expect((card.querySelector('[data-reason="notBetter"] span[aria-hidden] span') as HTMLElement).style.width).toBe("79%");
+    expect((card.querySelector('[data-reason="language"] span[aria-hidden] i') as HTMLElement).style.width).toBe("100%");
+    expect((card.querySelector('[data-reason="notBetter"] span[aria-hidden] i') as HTMLElement).style.width).toBe("79%");
     expect(within(card).getByRole("link", { name: /Dune.2024.iTA.1080p/ })).toHaveAttribute("href", "/movies/m1");
   });
 
   it("draws only the whole rows the height holds: fewer bars on a short card, the newest releases only where there is room", () => {
     expect(turnedDownFit(0, 16, 6, 20)).toEqual({ reasons: 6, latest: 20 });
     expect(turnedDownFit(140, 16, 6, 20)).toEqual({ reasons: 2, latest: 0 });
-    expect(turnedDownFit(300, 16, 6, 20)).toEqual({ reasons: 6, latest: 0 });
+    expect(turnedDownFit(300, 16, 6, 0)).toEqual({ reasons: 6, latest: 0 });
+    expect(turnedDownFit(300, 16, 6, 20)).toEqual({ reasons: 5, latest: 2 });
     const tall = turnedDownFit(520, 16, 6, 20);
-    expect(tall.reasons).toBe(6);
+    expect(tall.reasons).toBe(5);
     expect(tall.latest).toBeGreaterThan(2);
     expect(turnedDownFit(520, 16, 6, 1).latest).toBe(1);
     expect(turnedDownFit(20, 16, 6, 20).reasons).toBe(1);

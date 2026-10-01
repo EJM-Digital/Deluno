@@ -1,0 +1,20 @@
+/* Activity (#1098): the mockup's stream, ported literally. */
+.lact > header { border-bottom: 0; padding: 14px 18px 10px; align-items: baseline; }
+.lact-stream { list-style: none; margin: 0; padding: 0 10px 10px; overflow: hidden; min-height: 0; flex: 1 1 0; display: flex; flex-direction: column; -webkit-mask-image: linear-gradient(#000 calc(100% - 56px), transparent); mask-image: linear-gradient(#000 calc(100% - 56px), transparent); }
+.lact-ev { flex: 0 0 auto; border-radius: 10px; animation: lact-in .6s ease; }
+.lact-ev[data-glow] { background: hsl(var(--primary) / .14); }
+.lact-ev > a { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 9px 8px; border-radius: 10px; }
+.lact-ev > a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.lact-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; }
+.lact-ic svg { width: 16px; height: 16px; }
+.lact-w { font-size: 13px; line-height: 1.35; color: hsl(var(--foreground)); }
+.lact-w b { font-weight: 600; }
+.lact-k { font-size: 11.5px; margin-top: 2px; }
+.lact-k .when { color: hsl(var(--muted-foreground)); }
+.lact-dense > a { grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; padding: 4px 8px; }
+.lact-dense .lact-ic { width: 24px; height: 24px; border-radius: 7px; }
+.lact-dense .lact-ic svg { width: 14px; height: 14px; }
+.lact-dense .lact-w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lact-dense .when { font-size: 11.5px; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+@keyframes lact-in { from { opacity: 0; transform: translateY(-10px); background: hsl(var(--primary) / .35); } }
+@media (prefers-reduced-motion: reduce) { .lact-ev { animation: none; } }
