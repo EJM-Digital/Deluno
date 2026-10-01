@@ -56,7 +56,12 @@
  *   DispatchDetected        { dispatchId, releaseName, torrentHash, downloadedBytes, timestamp }
  *   DispatchImportStarted   { dispatchId, releaseName, mediaType, timestamp }
  *   DispatchImportCompleted { dispatchId, releaseName, succeeded, importedPath, failureReason, timestamp }
- *   DashboardSummaryChanged { asOfUtc } (at most every 2 s; refetch /api/dashboard/summary)
+ *   DashboardSummaryUpdated { asOfUtc, sections, unavailable } (#1097: the changed summary sections themselves, within ~100 ms;
+ *                           applied straight into the React Query cache, no fetch afterwards)
+ *   DashboardSummaryChanged { asOfUtc } (no longer sent; kept so old subscribers still compile)
+ *   Live events on the "live" subject (#1097), each carrying its own data -- see api/types/live-events.ts and
+ *   docs/deluno-ui-api-contract.md: JourneyStageChanged, ProcessorHandoffChanged, RecoveryCaseChanged, JobChanged,
+ *   SearchCycleProgress, IndexerQueryRecorded, ClientStateChanged, DriveSpaceChanged, DownloadSpeedSample
  *   *Changed                { id } (identity-only state-change family)
  */
 
@@ -72,6 +77,24 @@ import {
 } from "react";
 import * as signalR from "@microsoft/signalr";
 import { subscribeTick } from "./live-ticker";
+import { queryClient } from "./route-cache";
+import { applyDashboardSummaryUpdate } from "./realtime-cache";
+import { setRealtimeConnected } from "./realtime-state";
+import type {
+  ClientStateChangedEvent,
+  DashboardSummaryUpdatedEvent,
+  DownloadSpeedSampleEvent,
+  DriveSpaceChangedEvent,
+  IndexerQueryRecordedEvent,
+  JobChangedEvent,
+  JourneyStageChangedEvent,
+  ProcessorHandoffChangedEvent,
+  RecoveryCaseChangedEvent,
+  SearchCycleProgressEvent
+} from "./api/types/live-events";
+
+export { useRealtimeConnected } from "./realtime-state";
+export type * from "./api/types/live-events";
 
 /* ── Typed event map ─────────────────────────────────────────────── */
 export interface DownloadProgressEvent {
@@ -137,7 +160,7 @@ export interface ImportStateChangedEvent {
 }
 
 /** Identity only: refetch the affected entity instead of trusting event data. */
-/** The Dashboard summary changed (#1082): refetch GET /api/dashboard/summary. Sent at most every two seconds. */
+/** @deprecated No longer sent (#1097): the server pushes `DashboardSummaryUpdated` with the changed sections instead. */
 export interface DashboardSummaryChangedEvent {
   asOfUtc: string;
 }
@@ -214,6 +237,16 @@ type EventMap = {
   EpisodeChanged: EntityChangedEvent;
   IndexerProxyChanged: EntityChangedEvent;
   DashboardSummaryChanged: DashboardSummaryChangedEvent;
+  DashboardSummaryUpdated: DashboardSummaryUpdatedEvent;
+  JourneyStageChanged: JourneyStageChangedEvent;
+  ProcessorHandoffChanged: ProcessorHandoffChangedEvent;
+  RecoveryCaseChanged: RecoveryCaseChangedEvent;
+  JobChanged: JobChangedEvent;
+  SearchCycleProgress: SearchCycleProgressEvent;
+  IndexerQueryRecorded: IndexerQueryRecordedEvent;
+  ClientStateChanged: ClientStateChangedEvent;
+  DriveSpaceChanged: DriveSpaceChangedEvent;
+  DownloadSpeedSample: DownloadSpeedSampleEvent;
 };
 
 export type SignalREventName = keyof EventMap;
@@ -226,6 +259,8 @@ export const RealtimeGroups = {
   Dashboard: "dashboard",
   Queue: "queue",
   Activity: "activity",
+  /** Joined only while Live or Transfers is open: tells the server someone is watching, so it reads the download clients every second (#1097). */
+  Live: "live",
   Library: (libraryId: string) => `library:${libraryId}`
 } as const;
 
@@ -287,6 +322,12 @@ export function SignalRProvider({
   const handlersRef = useRef(new Map<string, Set<AnyHandler>>());
   const resyncHandlersRef = useRef(new Set<() => void>());
   const subjectCountsRef = useRef(new Map<string, number>());
+
+  // The route cache and every screen ask this one flag whether their safety-net timers may run (#1097).
+  useEffect(() => {
+    setRealtimeConnected(status === "connected");
+  }, [status]);
+  useEffect(() => () => setRealtimeConnected(false), []);
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   /** Highest seq applied so far. Reset to 0 whenever the server tells us to resync. */
   const lastSeqRef = useRef(0);
@@ -343,6 +384,11 @@ export function SignalRProvider({
    */
   const deliver = useCallback((envelope: RealtimeEnvelope) => {
     if (DEBUG) console.debug(`[WS] ${envelope.name}`, envelope.data);
+    // Pushed summary sections go straight into the cache, before any subscriber runs, so a screen
+    // reading the summary query is already current and never fetches after a nudge (#1097).
+    if (envelope.name === "DashboardSummaryUpdated") {
+      applyDashboardSummaryUpdate(queryClient, envelope.data as DashboardSummaryUpdatedEvent);
+    }
     const handlers = handlersRef.current.get(envelope.name);
     if (handlers) {
       for (const h of handlers) h(envelope.data);
@@ -549,3 +595,64 @@ export function useSignalRResync(handler: () => void) {
     return ctx.subscribeResync(stable);
   }, [ctx]);
 }
+
+/* ── Live (#1097) ────────────────────────────────────────────────── */
+
+/**
+ * The subject each event travels on. A screen that listens for one of these
+ * through `useLiveEvent` joins that subject plus the "live" one, so the server
+ * knows someone is watching.
+ */
+const LIVE_EVENT_SUBJECTS = {
+  DashboardSummaryUpdated: RealtimeGroups.Dashboard,
+  HealthChanged: RealtimeGroups.Dashboard,
+  DownloadProgress: RealtimeGroups.Queue,
+  QueueItemAdded: RealtimeGroups.Queue,
+  QueueItemRemoved: RealtimeGroups.Queue,
+  QueueItemStatusChanged: RealtimeGroups.Queue,
+  ImportStateChanged: RealtimeGroups.Queue,
+  DispatchGrabAttempt: RealtimeGroups.Queue,
+  DispatchGrabCompleted: RealtimeGroups.Queue,
+  DispatchDetected: RealtimeGroups.Queue,
+  DispatchImportStarted: RealtimeGroups.Queue,
+  DispatchImportCompleted: RealtimeGroups.Queue,
+  ActivityEventAdded: RealtimeGroups.Activity,
+  JourneyStageChanged: RealtimeGroups.Live,
+  ProcessorHandoffChanged: RealtimeGroups.Live,
+  RecoveryCaseChanged: RealtimeGroups.Live,
+  JobChanged: RealtimeGroups.Live,
+  SearchCycleProgress: RealtimeGroups.Live,
+  IndexerQueryRecorded: RealtimeGroups.Live,
+  ClientStateChanged: RealtimeGroups.Live,
+  DriveSpaceChanged: RealtimeGroups.Live,
+  DownloadSpeedSample: RealtimeGroups.Live
+} as const satisfies Partial<Record<SignalREventName, string>>;
+
+export type LiveEventName = keyof typeof LIVE_EVENT_SUBJECTS;
+
+/**
+ * Subscribes to a pushed event on the subject the server sends it on, and
+ * tells the server this screen is watching Live (#1097): while at least one
+ * screen is, and something is downloading, the download clients are read every
+ * second and each reading is pushed. The handler is stable across re-renders.
+ *
+ * @example
+ * useLiveEvent("JobChanged", (job) => setJobs((all) => upsert(all, job)));
+ */
+export function useLiveEvent<T extends LiveEventName>(
+  event: T,
+  handler: (payload: SignalREventPayload<T>) => void
+) {
+  useSignalREvent(event, [LIVE_EVENT_SUBJECTS[event], RealtimeGroups.Live], handler);
+}
+
+/**
+ * Marks this screen as watching Live or Transfers for as long as it is mounted,
+ * without listening for anything in particular (#1097). Use on a screen that
+ * shows download progress through `useSignalREvent` but is not a `useLiveEvent` consumer.
+ */
+export function useLiveWatching() {
+  useSignalREvent("DownloadSpeedSample", RealtimeGroups.Live, noop);
+}
+
+function noop() {}
