@@ -97,7 +97,7 @@ describe("Live", () => {
     expect(await within(journey).findByText("Photographer (2026)")).toBeInTheDocument();
     expect(within(journey).getByRole("link", { name: /^Photographer \(2026\): 61% · 1.8 MB\/s · Deluge/ })).toBeInTheDocument();
     // The download that has stopped stays on the journey, amber, and says what Deluno is doing about it.
-    const stuck = await within(journey).findByRole("link", { name: "The Kid (1921): Stuck at 34% · finding another copy" });
+    const stuck = await within(journey).findByRole("link", { name: "The Kid (1921): Stuck at 34% · not moving" });
     expect(stuck.closest("li")).toHaveAttribute("data-journey-card");
     expect(within(journey).queryByRole("button")).toBeNull();
     // Hand-offs, import cases and failed jobs are the bell's, not cards here.

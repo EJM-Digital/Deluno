@@ -7,7 +7,7 @@
  * Nothing here reaches a client while the screen waits.
  *
  * A download that has stopped moving is not a problem card: it stays where it
- * is, amber, saying it is stuck and that Deluno is finding another copy, and
+ * is, amber, saying it is stuck and not moving (a finished download is never stuck), and
  * moves back to Grabbed when another copy is grabbed. Problems a person has to
  * settle are in the bell. Which title a card is comes from the sent download it
  * matches (the film, show or episode it was grabbed for); the release name is
@@ -58,7 +58,7 @@ export interface JourneyCard {
   at?: string | null;
   /** The download in its client, when it is one. */
   queueRef?: { clientId: string; itemId: string };
-  /** The download has stopped moving: amber, "finding another copy", until another copy is grabbed. */
+  /** The download has stopped moving: amber, "not moving", with the reason in its tooltip. */
   stuck?: boolean;
   /** When the download should be done, from the client's own time-left reading (ms since 1970). Absent when it gives none. */
   finishAtMs?: number;
@@ -220,8 +220,13 @@ export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapt
     let reason: string | null = null;
     let stuck = false;
 
-    const beforeTheProcessor = item.status === "queued" || DOWNLOADING.includes(item.status);
-    if (beforeTheProcessor && queueItemNeedsAttention(item)) {
+    // A finished download that has nobody to share with is reported "stalled" by some clients: it is downloaded, not stuck.
+    const downloaded = (item.progress ?? 0) >= 99.95 && DOWNLOADING.includes(item.status);
+    const beforeTheProcessor = !downloaded && (item.status === "queued" || DOWNLOADING.includes(item.status));
+    if (downloaded && !(handoff && isWithProcessor(handoff.status))) {
+      stage = "importing";
+      state = { tone: "idle", label: "Downloaded" };
+    } else if (beforeTheProcessor && queueItemNeedsAttention(item)) {
       // Stopped moving: it stays where it is, amber, while Deluno finds another copy.
       stage = item.status === "queued" ? "grabbed" : "downloading";
       state = { tone: "warn", label: "Stuck" };

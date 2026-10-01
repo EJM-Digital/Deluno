@@ -297,7 +297,7 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("link", { name: /^Shogun: Asked for in Seerr · looking/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^Coherence \(2013\): in the library/ })).toBeVisible();
       // A stopped download is not a problem card: it stays on the journey, stuck, while another copy is found.
-      await expect(page.getByRole("link", { name: /^The Kid \(1921\): Stuck at 34% · finding another copy/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^The Kid \(1921\): Stuck at 34% · not moving/ })).toBeVisible();
       await expect(page.getByRole("link", { name: /^www Torrenting/ })).toHaveCount(0);
       await expect(page.getByRole("group", { name: "Needs you" })).toHaveCount(0);
       // Every title is on screen: nothing on the journey says "and N more".
