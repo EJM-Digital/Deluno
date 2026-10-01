@@ -37,7 +37,7 @@ import { arrivalItems, recentArrivalItems, requestCards, withSeerr } from "./liv
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
 import { SourcesCard } from "./live/sources-map";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
-import { useFlyToShelf, useGlide } from "./live/motion";
+import { useFlyToShelf } from "./live/motion";
 import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
 import { ActivityStream } from "./live/stream";
 import { allInBy, usualTimes } from "./live/times";
@@ -146,7 +146,6 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   // The right column (beside the page or under it): the Sources map and Activity share its height; Activity's rows go to one line when it is short.
   const [sideRef, sideBox] = useElementSize<HTMLDivElement>();
   const compactActivity = side && sideBox.height > 0 && sideBox.height < 50 * rem;
-  useGlide(root);
   useFlyToShelf(root, cards, items);
 
   function dismissOnboarding() {

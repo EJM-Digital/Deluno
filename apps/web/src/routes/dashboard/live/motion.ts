@@ -1,12 +1,7 @@
 /**
- * The two movements on Live that are not a number changing (#1098), both driven
- * by a real change and nothing else:
- *
- *  - a card glides to its new place when its stage changes or the cards around it
- *    come and go (`useGlide`): its old position is remembered, the new one is
- *    measured, and it slides the difference;
- *  - a title that finishes importing shrinks and flies from its card into the
- *    Arrived today shelf, where its poster appears (`useFlyToShelf`).
+ * The one movement on Live that is not a number changing (#1098), driven by a real change and nothing else: a title that
+ * finishes importing shrinks and flies from its card into the Arrived today shelf, where its poster appears
+ * (`useFlyToShelf`). (A card changing station glides by a CSS transition: see journey.css.)
  *
  * With reduced motion, or a page nobody is looking at, nothing moves: the card is
  * simply in its new place and the poster simply appears.
@@ -16,7 +11,6 @@ import { motionAllowed } from "../../../lib/page-motion";
 import type { ArrivalItem } from "./extras";
 import { releaseKey, type JourneyCard } from "./journey";
 
-const GLIDE_MS = 700;
 const FLIGHT_MS = 950;
 /** A card that left Importing waits this long for its poster to turn up on the shelf (the stored counts are read a moment after the import). */
 const PENDING_MS = 12_000;
@@ -33,45 +27,6 @@ export function sameTitle(card: Pick<JourneyCard, "entity" | "release">, item: P
 export function departedFromImporting(before: ReadonlyMap<string, JourneyCard["stage"]>, cards: readonly JourneyCard[]): string[] {
   const now = new Set(cards.map((card) => card.key));
   return [...before].filter(([key, stage]) => stage === "importing" && !now.has(key)).map(([key]) => key);
-}
-
-/**
- * Where an element sits in the page by layout alone. A transform (a card half-way through gliding) does not change it, so a
- * glide that is still running is never measured as a move and never restarts itself.
- */
-export function layoutPosition(element: HTMLElement): { x: number; y: number } {
-  let x = 0;
-  let y = 0;
-  let node: HTMLElement | null = element;
-  while (node) {
-    x += node.offsetLeft;
-    y += node.offsetTop;
-    node = node.offsetParent as HTMLElement | null;
-  }
-  return { x, y };
-}
-
-/** Cards slide from where they were to where they are. Every element carrying `data-glide` inside the container is followed. */
-export function useGlide(container: RefObject<HTMLElement | null>): void {
-  const known = useRef(new Map<string, { x: number; y: number }>());
-  useLayoutEffect(() => {
-    const root = container.current;
-    if (!root) return;
-    const next = new Map<string, { x: number; y: number }>();
-    const animate = motionAllowed();
-    for (const element of Array.from(root.querySelectorAll<HTMLElement>("[data-glide]"))) {
-      const key = element.dataset.glide ?? "";
-      const position = layoutPosition(element);
-      next.set(key, position);
-      const before = known.current.get(key);
-      if (!before || !animate || typeof element.animate !== "function") continue;
-      const dx = before.x - position.x;
-      const dy = before.y - position.y;
-      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
-      element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0, 0)" }], { duration: GLIDE_MS, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
-    }
-    known.current = next;
-  });
 }
 
 /** Flies a copy of a poster from one place to another. The target stays hidden until it lands. */
