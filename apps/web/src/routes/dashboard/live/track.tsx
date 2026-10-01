@@ -18,7 +18,7 @@ import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import { Count, JourneyToken, type CardContext } from "./card";
-import { cardsBudget, journeyMode, lanePlan, ROW_PX } from "./layout";
+import { cardsBudget, journeyMode, journeySize, lanePlan } from "./layout";
 import { useElementSize, useRemPx } from "./hooks";
 import type { JourneyCard, Stage } from "./journey";
 import { LANES } from "./lanes";
@@ -101,7 +101,10 @@ export function Journey({
     if (next !== chrome) setChrome(next);
   });
   const room = stacked ? undefined : cardsBudget(fill ? (box.height > 0 ? box.height : undefined) : budget, chrome + LANES_BOTTOM_PX);
-  const plan = lanePlan(stations.map((stage) => grouped[stage].length), room);
+  const lengths = stations.map((stage) => grouped[stage].length);
+  const size = journeySize(lengths, room);
+  const plan = lanePlan(lengths, room, size);
+  const ROW_PX = size.step;
   const { rows } = plan;
   /** The cards a station draws: all that fit, less the last row when the "and N more" line takes it. */
   const shownIn = (count: number) => (plan.slot && count > rows ? rows - 1 : rows);
@@ -121,7 +124,7 @@ export function Journey({
   return (
     <div ref={boxRef} className={cn("flex min-h-0 min-w-0 flex-col", fill && "h-full")} style={fill || budget === undefined ? undefined : { maxHeight: budget }}>
       <Panel title="The journey" count={journeyHeading(onTheirWay, by)} to="/queue" toLabel="Transfers" className="min-h-0 flex-1">
-        <div ref={bodyRef} className={cn("lj relative min-h-0 flex-1", stacked && "lj-stack overflow-y-auto", !stacked && onTheirWay > 0 && "lj-run")} style={{ ["--lj-n" as string]: n } satisfies CSSProperties}>
+        <div ref={bodyRef} className={cn("lj relative min-h-0 flex-1", stacked && "lj-stack overflow-y-auto", !stacked && onTheirWay > 0 && "lj-run")} style={{ ["--lj-n" as string]: n, ["--lj-card-h" as string]: `${size.card}px`, ["--lj-step" as string]: `${size.step}px`, ["--lj-poster-h" as string]: `${size.poster}px`, ["--lj-title-lines" as string]: size.oneLine ? 1 : 2 } satisfies CSSProperties}>
           {stacked ? (
             <>
               {onTheirWay === 0 ? <p className="lj-calm" style={{ position: "static" }}>{calmLine(lastArrival)}</p> : null}
