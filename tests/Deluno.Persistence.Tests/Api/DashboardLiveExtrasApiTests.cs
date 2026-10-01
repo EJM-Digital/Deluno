@@ -199,6 +199,68 @@ public sealed class DashboardLiveExtrasApiTests
     }
 
     [Fact]
+    public async Task The_same_release_met_in_five_searches_counts_once_and_the_hour_repeat_is_not_stored()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var recorder = app.Services.GetRequiredService<Deluno.Jobs.Data.ITurnedDownReleaseRecorder>();
+        var fresh = new List<int>();
+        for (var run = 0; run < 5; run++)
+        {
+            var isNew = await recorder.RecordAsync("Sintel", "movie", "m1",
+                [new Deluno.Jobs.Data.TurnedDownRelease("Same.Release.1080p", "tooBig", "size", "Idx")], CancellationToken.None);
+            fresh.Add(isNew.Count);
+        }
+
+        Assert.Equal([1, 0, 0, 0, 0], fresh);
+        var turnedDown = (await GetAsync(app)).GetProperty("turnedDown");
+        Assert.Equal(1, turnedDown.GetProperty("total").GetInt32());
+        Assert.Equal(1, turnedDown.GetProperty("latest").GetArrayLength());
+        await using var connection = await databases.OpenConnectionAsync(DelunoDatabaseNames.Jobs, CancellationToken.None);
+        using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM turned_down_releases;";
+        Assert.Equal(1L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+    }
+
+    [Fact]
+    public async Task A_release_counts_under_its_latest_reason_today_and_is_listed_once()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var databases = app.Services.GetRequiredService<IDelunoDatabaseConnectionFactory>();
+        var recorder = app.Services.GetRequiredService<Deluno.Jobs.Data.ITurnedDownReleaseRecorder>();
+        // Turned down for size two hours ago, then for fake this search.
+        await ExecuteAsync(databases, DelunoDatabaseNames.Jobs,
+            $"INSERT INTO turned_down_releases (id, searched_utc, release_name, reason_group, raw_reason, indexer_name) VALUES ('a', '{DateTimeOffset.UtcNow.AddMinutes(-90):O}', 'Moving.Release', 'tooBig', 'size', 'Idx');");
+        var isNew = await recorder.RecordAsync("Sintel", "movie", "m1",
+            [new Deluno.Jobs.Data.TurnedDownRelease("moving.release", "fake", "CAM", "Idx")], CancellationToken.None);
+
+        Assert.Empty(isNew);
+        var turnedDown = (await GetAsync(app)).GetProperty("turnedDown");
+        var counts = turnedDown.GetProperty("reasons").EnumerateArray()
+            .ToDictionary(reason => reason.GetProperty("group").GetString()!, reason => reason.GetProperty("count").GetInt32());
+        Assert.Equal(1, turnedDown.GetProperty("total").GetInt32());
+        Assert.Equal(1, counts["fake"]);
+        Assert.Equal(0, counts["tooBig"]);
+        Assert.Equal(1, turnedDown.GetProperty("latest").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task The_pushed_turned_down_event_flags_only_releases_new_today()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var recorder = app.Services.GetRequiredService<Deluno.Jobs.Data.ITurnedDownReleaseRecorder>();
+        await recorder.RecordAsync("Sintel", "movie", "m1", [new Deluno.Jobs.Data.TurnedDownRelease("Seen.Before", "tooBig", "size", "Idx")], CancellationToken.None);
+
+        var isNew = await recorder.RecordAsync("Sintel", "movie", "m1",
+            [new Deluno.Jobs.Data.TurnedDownRelease("Seen.Before", "tooBig", "size", "Idx"), new Deluno.Jobs.Data.TurnedDownRelease("Brand.New", "fake", "CAM", "Idx")], CancellationToken.None);
+        var events = new[] { "Seen.Before", "Brand.New" }
+            .Select(name => new Deluno.Contracts.TurnedDownItemEvent(name, "other", "x", isNew.Contains(name))).ToArray();
+
+        Assert.False(events[0].NewToday);
+        Assert.True(events[1].NewToday);
+    }
+
+    [Fact]
     public async Task Only_twenty_turned_down_releases_are_listed_though_all_are_counted()
     {
         await using var app = await ApplicationTestHost.StartAsync();

@@ -537,6 +537,20 @@ describe("turned down today", () => {
     expect(view.latest[0]).toMatchObject({ release: "Moon.FRENCH", title: "Moon" });
   });
 
+  it("adds only releases new today from a pushed search, so a repeat search never counts a release twice", () => {
+    const pushed = [
+      { atUtc: inMs(5_000), title: "Moon", entityType: "movie", entityId: "m2", items: [
+        { release: "Moon.FRENCH", group: "language", label: "Not in a language you want", newToday: false },
+        { release: "Moon.CAM", group: "fake", label: "Fake or mislabelled", newToday: true }
+      ] }
+    ] as never;
+    const view = mergeTurnedDown(base, pushed, inMs(0));
+    expect(view.total).toBe(44);
+    expect(view.reasons.find((reason) => reason.group === "language")?.count).toBe(14);
+    expect(view.reasons.find((reason) => reason.group === "fake")?.count).toBe(5);
+    expect(view.latest[0]).toMatchObject({ release: "Moon.CAM" });
+  });
+
   it("flashes the bar of a decision just made, and says something true when nothing has been turned down", () => {
     const view = mergeTurnedDown(base, [], inMs(0));
     const { container } = withRouter(<TurnedDownCard view={view} lit={new Set(["fake"])} />);

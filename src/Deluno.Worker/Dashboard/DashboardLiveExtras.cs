@@ -248,6 +248,10 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         return value is null or DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
 
+    /// <summary>Each distinct release (by name) counts once a day, as its newest row today: a search that meets it again only adds a row, never a release.</summary>
+    private const string LatestRowToday =
+        "t.searched_utc >= @since AND t.rowid = (SELECT u.rowid FROM turned_down_releases u WHERE u.release_name = t.release_name COLLATE NOCASE AND u.searched_utc >= @since ORDER BY u.searched_utc DESC, u.rowid DESC LIMIT 1)";
+
     /// <summary>Releases looked at and not taken since the day began, from the record each search leaves (#1098): one grouped count and the newest twenty.</summary>
     private async Task<LiveTurnedDown> ReadTurnedDownAsync(DateTimeOffset sinceUtc, CancellationToken cancellationToken)
     {
@@ -256,7 +260,7 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT reason_group, raw_reason, COUNT(*) FROM turned_down_releases WHERE searched_utc >= @since GROUP BY reason_group, raw_reason;";
+            command.CommandText = $"SELECT reason_group, raw_reason, COUNT(*) FROM turned_down_releases t WHERE {LatestRowToday} GROUP BY reason_group, raw_reason;";
             Add(command, "@since", Iso(sinceUtc));
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -270,10 +274,10 @@ public sealed class DashboardLiveStore(IDelunoDatabaseConnectionFactory database
         using (var command = connection.CreateCommand())
         {
             command.CommandText =
-                """
+                $"""
                 SELECT release_name, reason_group, title, entity_type, entity_id, searched_utc, raw_reason
-                FROM turned_down_releases
-                WHERE searched_utc >= @since
+                FROM turned_down_releases t
+                WHERE {LatestRowToday}
                 ORDER BY searched_utc DESC, rowid DESC
                 LIMIT 20;
                 """;

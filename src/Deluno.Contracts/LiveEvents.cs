@@ -164,7 +164,7 @@ public sealed record DownloadSpeedSampleEvent(
     string At);
 
 /// <summary>One release a search turned down: its name, the plain group it falls in and that group's label (#1098).</summary>
-public sealed record TurnedDownItemEvent(string Release, string Group, string Label);
+public sealed record TurnedDownItemEvent(string Release, string Group, string Label, bool NewToday = true);
 
 /// <summary>Payload of <c>ReleasesTurnedDown</c>: one search looked at releases and did not take these. Sent once per search with any.</summary>
 public sealed record ReleasesTurnedDownEvent(
