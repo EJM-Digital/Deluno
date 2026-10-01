@@ -32,8 +32,6 @@ export const KIND_STYLE: Record<ActivityKind, KindStyle> = {
   other: { label: "Routine background work", icon: Activity, fill: "bg-muted-foreground/60", text: "text-muted-foreground", tile: "bg-surface-3" }
 };
 
-/** The order kinds are stacked and listed in. */
-export const KIND_ORDER: ActivityKind[] = ["search", "grab", "import", "process", "cleanup", "retention", "subtitle", "lists", "failed", "other"];
 
 /** Worked out from the event's category (and severity, for a problem). */
 export function activityKind(category: string, severity?: string | null): ActivityKind {

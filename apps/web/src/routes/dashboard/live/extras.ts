@@ -24,22 +24,35 @@ function isOnTheBoard(request: LiveRequestItem, cards: JourneyCard[]): boolean {
 }
 
 /**
- * A request Deluno has turned into a title and is searching for is the first stage of its journey. Once a card for the
- * same title is further along it is that card, not a second one. A request whose search failed is a problem to settle.
+ * A request Deluno has turned into a title and is searching for is the first station of its journey. Once a card for the
+ * same title is further along it is that card, not a second one. A request whose search failed is a problem for the bell,
+ * not a card.
  */
 export function requestCards(requests: LiveRequestItem[] | undefined, cards: JourneyCard[]): JourneyCard[] {
   const out: JourneyCard[] = [];
   for (const request of requests ?? []) {
-    const status = request.status.toLowerCase();
+    if (request.status.toLowerCase() !== "added" || isOnTheBoard(request, cards)) continue;
     const entity = entityOfRequest(request);
-    const asked = request.requestedBy ? `Asked by ${request.requestedBy}` : "Asked for in Seerr";
-    if (status === "added" && !isOnTheBoard(request, cards)) {
-      out.push({ key: `request:${request.entityId}`, stage: "requested", title: request.title, entity, state: { tone: "info", label: "Requested · searching" }, routeNote: asked, at: request.createdUtc, to: cardLink(entity) });
-    } else if (status === "search-failed") {
-      out.push({ key: `request:${request.entityId}`, stage: "needs", title: request.title, entity, state: { tone: "bad", label: "Search failed" }, reason: "Deluno could not search for what was requested.", routeNote: asked, at: request.updatedUtc, to: cardLink(entity) });
-    }
+    out.push({
+      key: `request:${request.entityId}`,
+      stage: "requested",
+      title: request.title,
+      entity,
+      state: { tone: "info", label: "Requested · searching" },
+      startedBy: "seerr",
+      routeNote: request.requestedBy ? `Asked by ${request.requestedBy}` : "Asked for in Seerr",
+      at: request.createdUtc,
+      to: cardLink(entity)
+    });
   }
   return out;
+}
+
+/** A card for a title that was asked for in Seerr says so, wherever it is on its way. */
+export function withSeerr(cards: JourneyCard[], requests: LiveRequestItem[] | undefined): JourneyCard[] {
+  if (!requests || requests.length === 0) return cards;
+  const asked = new Set(requests.map((request) => entityOfRequest(request).id));
+  return cards.map((card) => (card.entity && asked.has(card.entity.id) && card.startedBy !== "seerr" ? { ...card, startedBy: "seerr" } : card));
 }
 
 /** One title that landed in the library today. */

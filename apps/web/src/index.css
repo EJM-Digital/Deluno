@@ -1370,6 +1370,30 @@ html .text-\[64px\] {
   }
 }
 
+/* The journey's rail: the dashes run along it while titles are on their way, and hold still when none are or motion is reduced. */
+@keyframes live-rail-run {
+  to { background-position: 26px 0; }
+}
+.live-rail {
+  background-image: repeating-linear-gradient(90deg, hsl(var(--primary) / 0.85) 0 10px, transparent 10px 26px);
+  background-size: 26px 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-rail-run {
+    animation: live-rail-run 1.2s linear infinite;
+  }
+}
+
+/* A pulse dot: a title being looked for, a processor working. */
+@keyframes live-blink {
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-blink {
+    animation: live-blink 1.2s ease-in-out infinite;
+  }
+}
+
 /* ── MICRO-INTERACTIONS ── */
 @keyframes lift {
   from { transform: translateY(0);   box-shadow: var(--shadow-card); }

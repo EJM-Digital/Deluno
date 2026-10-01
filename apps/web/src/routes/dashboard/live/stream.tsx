@@ -11,9 +11,8 @@ import { motionAllowed } from "../../../lib/page-motion";
 import { cn } from "../../../lib/utils";
 import { ago } from "../format";
 import type { LiveActivityRow } from "../live-events";
-import { FitList, Panel, Plain } from "../parts";
-import { RhythmChart } from "./rhythm";
-import type { HourCountRow, RhythmRow } from "./series";
+import { FitList, Plain } from "../parts";
+import { LiveCard as Panel } from "./live-card";
 import { groupActivity, type ActivityGroup } from "./group";
 import { activityKind, isRoutine, KIND_STYLE } from "./kinds";
 import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
@@ -56,7 +55,7 @@ function renderRow(group: ActivityGroup, titles: TitleLookup): ReactElement {
   );
 }
 
-export function ActivityStream({ rows, titles, today, compact = false }: { /** The column is too short for the hourly chart as well as the list: the list gets the room. */ compact?: boolean; rows: LiveActivityRow[]; titles: TitleLookup; today?: { rows: RhythmRow[]; counts?: HourCountRow[] | null; countedAt?: number; capped?: boolean } }) {
+export function ActivityStream({ rows, titles }: { rows: LiveActivityRow[]; titles: TitleLookup }) {
   // What Deluno did for a title, not its routine housekeeping: that is one quiet count.
   const { shown, routine } = useMemo(() => {
     const mattering: LiveActivityRow[] = [];
@@ -69,8 +68,7 @@ export function ActivityStream({ rows, titles, today, compact = false }: { /** T
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
   return (
-    <Panel title="Activity" count="as it happens" to="/activity" toLabel="All activity">
-      {compact ? null : <RhythmChart rows={today?.rows ?? rows} counts={today?.counts} countedAt={today?.countedAt} capped={today?.capped} />}
+    <Panel title="Activity" count="as it happens" to="/activity" toLabel="All activity" className="min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (

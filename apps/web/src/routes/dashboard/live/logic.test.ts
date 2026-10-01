@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { countdown, formatCountdown, updatedAgo } from "./countdown";
-import { buildJourney, byStage, episodeFromRelease, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
+import { buildJourney, byStage, episodeFromRelease, finishAt, laneCounts, movedCards, routeOf, shortNamer, titleFromRelease, type Stage } from "./journey";
 import { plainReason } from "./plain";
 import { faceOf, NO_TITLES, wantedTitles } from "./titles";
 import { activityKind, isRoutine } from "./kinds";
-import { addBuckets, bucketByHour, bucketsFromCounts, linePath, shapeSpeedSeries } from "./series";
-import { heartbeatState } from "./status";
+import { linePath, shapeSpeedSeries } from "./series";
+import { startedByFromWord, startedByOfDispatch } from "./provenance";
 import { fullSummary } from "../downloads-fixtures";
 
 const NOW = Date.parse("2026-10-01T10:00:00Z");
@@ -38,15 +38,6 @@ describe("countdown maths", () => {
     expect(updatedAgo(NOW - 47_000, NOW)).toBe("updated 47 s ago");
     expect(updatedAgo(NOW - 5 * 60_000, NOW)).toBe("updated 5 min ago");
     expect(updatedAgo(NOW + 5_000, NOW)).toBe("updated just now");
-  });
-});
-
-describe("the heartbeat", () => {
-  it("only beats while connected and says so in words when it is not", () => {
-    expect(heartbeatState("connected")).toMatchObject({ label: "Live", beating: true, tone: "ok" });
-    expect(heartbeatState("reconnecting")).toMatchObject({ label: "Reconnecting", beating: false, tone: "warn" });
-    expect(heartbeatState("disconnected")).toMatchObject({ label: "Offline", beating: false, tone: "bad" });
-    expect(heartbeatState("connecting").beating).toBe(false);
   });
 });
 
@@ -86,43 +77,7 @@ describe("the speed chart's data", () => {
   });
 });
 
-describe("activity per hour today", () => {
-  it("counts each event once, in its own hour, by kind, and leaves out other days", () => {
-    const at = (hour: number) => new Date(new Date(NOW).setHours(hour, 5, 0, 0)).toISOString();
-    const yesterday = new Date(NOW - 86_400_000 * 2).toISOString();
-    const buckets = bucketByHour(
-      [
-        { id: "1", category: "wanted.search.completed", createdUtc: at(3) },
-        { id: "1", category: "wanted.search.completed", createdUtc: at(3) },
-        { id: "2", category: "movies.release.grabbed", createdUtc: at(3) },
-        { id: "3", category: "filesystem.import.completed", createdUtc: at(9) },
-        { id: "4", category: "job.failed", severity: "error", createdUtc: at(9) },
-        { id: "5", category: "filesystem.import.completed", createdUtc: yesterday }
-      ],
-      NOW
-    );
-    expect(buckets).toHaveLength(24);
-    expect(buckets[3].counts).toEqual({ search: 1, grab: 1 });
-    expect(buckets[9].counts).toEqual({ import: 1, failed: 1 });
-    expect(buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(4);
-  });
-
-  it("builds the day's bars from the server's real counts, and adds events that arrived since", () => {
-    const base = bucketsFromCounts([
-      { hour: 2, category: "wanted.search.completed", count: 120 },
-      { hour: 2, category: "movies.release.grabbed", count: 30 },
-      { hour: 9, category: "filesystem.import.completed", count: 7 },
-      { hour: 30, category: "wanted.search.completed", count: 5 },
-      { hour: 4, category: "wanted.search.completed", count: 0 }
-    ]);
-    expect(base[2].counts).toEqual({ search: 120, grab: 30 });
-    expect(base.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(157);
-    const at = new Date(new Date(NOW).setHours(9, 30, 0, 0)).toISOString();
-    const more = addBuckets(base, bucketByHour([{ id: "x", category: "filesystem.import.completed", createdUtc: at }], NOW));
-    expect(more[9].counts).toEqual({ import: 8 });
-    expect(more[9].total).toBe(8);
-  });
-
+describe("what activity is", () => {
   it("names the kind from the category, the way the server counts them", () => {
     expect(activityKind("movies.search.completed")).toBe("search");
     expect(activityKind("series.release.force-grabbed")).toBe("grab");
@@ -172,8 +127,9 @@ describe("the journey of a title", () => {
     const handoff = (overrides: Record<string, unknown>) => ({ id: "h", libraryId: "l", mediaType: "movie", clientId: "c1", queueItemId: "q", releaseName: "Metropolis.1927", sourcePath: "", processorName: "Cleaner", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: iso(-3_600_000), updatedUtc: iso(-60_000), ...overrides }) as never;
     const working = byStage(buildJourney({ ...base, handoffs: [handoff({})] })).processor;
     expect(working[0]).toMatchObject({ processor: "Cleaner", state: { label: "Being cleaned", tone: "info" }, title: "Metropolis (1927)" });
-    const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).needs;
+    const failed = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "failed", failureMessage: "timed out" })] })).processor;
     expect(failed[0].state).toEqual({ tone: "bad", label: "Processor failed" });
+    expect(failed[0].reason).toBe("The processor took too long and Deluno stopped waiting.");
     const returned = byStage(buildJourney({ ...base, handoffs: [handoff({ status: "completed" })] }));
     expect(returned.importing[0].state.label).toBe("Back from the processor");
   });
@@ -183,7 +139,6 @@ describe("the journey of a title", () => {
     const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch("1", 3), dispatch("2", 1)], now: NOW }));
     expect(grouped.imported.map((card) => card.title)).toEqual(["Film (2002)", "Film (2001)"]);
     expect(grouped.imported[0]).toMatchObject({ to: "/movies/m-2", quality: "Bluray 1080p", state: { tone: "ok" } });
-    expect(grouped.searching).toHaveLength(0);
   });
 
   it("says each lane's count from the larger of the lists and the summary", () => {
@@ -191,7 +146,6 @@ describe("the journey of a title", () => {
     const counts = laneCounts(grouped, fullSummary);
     expect(counts.grabbed).toBe(1);
     expect(counts.downloading).toBe(fullSummary.downloads!.active);
-    expect(counts.needs).toBe(fullSummary.downloads!.stalled);
     expect(counts.imported).toBe(4);
   });
 
@@ -228,36 +182,26 @@ describe("stuck downloads", () => {
   const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
   const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge on WIN-7K3", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p", torrentHashOrItemId: "q" } as never;
 
-  it("puts a stalled download, or one its client has a problem with, in Needs you and not in Downloading", () => {
+  it("keeps a stopped download where it is, amber and stuck, not as a problem card", () => {
     const cards = buildJourney({
       ...base,
       queue: [
-        queue({ id: "a", status: "stalled", releaseName: "A.2001" }),
-        queue({ id: "b", errorMessage: "missing or invalid torrent data", releaseName: "B.2002" }),
-        queue({ id: "c", status: "downloading", progress: 40, speedMbps: 3, releaseName: "C.2003" })
+        queue({ id: "a", status: "stalled", releaseName: "A.2001", progress: 43 }),
+        queue({ id: "b", errorMessage: "missing or invalid torrent data", releaseName: "B.2002", progress: 20 }),
+        queue({ id: "c", status: "downloading", progress: 40, speedMbps: 3, releaseName: "C.2003" }),
+        queue({ id: "d", status: "queued", errorMessage: "Not found", releaseName: "D.2004" })
       ]
     });
     const grouped = byStage(cards);
-    expect(grouped.needs.map((card) => card.key)).toEqual(["c1:a", "c1:b"]);
-    expect(grouped.needs[0]).toMatchObject({ state: { tone: "bad", label: "Stuck" }, canSearchAgain: true, reason: "It stopped moving in the download client." });
-    // The clients own words become a plain sentence, and stay as the tooltip.
-    expect(grouped.needs[1]).toMatchObject({ reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
-    expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:c"]);
-    const counts = laneCounts(grouped, undefined);
-    expect(counts.needs).toBe(2);
-    expect(counts.downloading).toBe(1);
-  });
-
-  it("makes one card of every problem with the same title, led by the most urgent, and counts the folded problems once", () => {
-    const grab = (id: string, release: string, torrent: string) => ({ ...(dispatch as object), id, entityType: "episode", entityId: "e9", releaseName: release, torrentHashOrItemId: torrent }) as never;
-    const caseFor = (id: string, release: string, dispatchId: string) => ({ id, mediaType: "series", title: release, failureKind: "importFailed", summary: "Import failed: release refused", recommendedAction: "review", detailsJson: JSON.stringify({ DispatchId: dispatchId }), detectedUtc: iso(-3_600_000) }) as never;
-    // Two sent downloads for one episode, each with its own import case that needs a person.
-    const cards = buildJourney({ ...base, dispatches: [grab("d9", "Show.S01E02.720p", "t9"), grab("d10", "Show.S01E02.1080p", "t10")], cases: [caseFor("r1", "Show.S01E02.720p", "d9"), caseFor("r2", "Show.S01E02.1080p", "d10")] });
-    const needs = byStage(cards).needs;
-    expect(needs).toHaveLength(1);
-    expect(needs[0].alsoProblems).toHaveLength(2);
-    // The summary counts problems, so the lane says one title for the two problems.
-    expect(laneCounts(byStage(cards), undefined, 2).needs).toBe(1);
+    // The stuck ones lead their station and carry the client's own words only as a tooltip.
+    expect(grouped.downloading.map((card) => card.key)).toEqual(["c1:a", "c1:b", "c1:c"]);
+    expect(grouped.downloading[0]).toMatchObject({ stuck: true, state: { tone: "warn", label: "Stuck" }, reason: "It stopped moving in the download client." });
+    expect(grouped.downloading[1]).toMatchObject({ stuck: true, reason: "Torrent data missing or broken.", reasonFull: "missing or invalid torrent data" });
+    expect(grouped.downloading[2].stuck).toBe(false);
+    // A stuck download that was never started stays in Grabbed; another copy grabbed later is simply a new card there.
+    expect(grouped.grabbed.map((card) => card.key)).toEqual(["c1:d"]);
+    expect(grouped.grabbed[0].stuck).toBe(true);
+    expect(laneCounts(grouped, undefined).downloading).toBe(3);
   });
 
   it("finds the library title from the sent download, and keeps the release as the quiet line", () => {
@@ -290,34 +234,60 @@ describe("stuck downloads", () => {
     expect(shortNamer(["Deluge on WIN-A"])("Deluge on WIN-A")).toBe("Deluge");
   });
 
-  it("puts a failed hand-off's Retry and Give up on its card, with problems first in the lane", () => {
+  it("keeps a refused hand-off with the processor, first in its station", () => {
     const handoff = (id: string, status: string) => ({ id, queueItemId: "gone", releaseName: `Film.${id}.2000`, processorName: "Cleaner", status, libraryId: "l", mediaType: "movie", clientId: "c1", sourcePath: "", outputPath: null, importJobId: null, failureMessage: status === "failed" ? "timed out" : null, createdUtc: iso(-1), updatedUtc: iso(-60_000) }) as never;
     const grouped = byStage(buildJourney({ ...base, handoffs: [handoff("ok", "started"), handoff("bad", "failed")] }));
-    // A hand-off the processor refused is for a person to settle: it is in the first lane, and the healthy one stays with the processor.
-    expect(grouped.needs[0]).toMatchObject({ failedHandoffId: "bad", state: { tone: "bad" }, reason: "The processor took too long and Deluno stopped waiting.", reasonFull: "timed out" });
-    expect(grouped.processor).toHaveLength(1);
-    expect(grouped.processor[0].failedHandoffId).toBeUndefined();
+    expect(grouped.processor.map((card) => card.key)).toEqual(["handoff:bad", "handoff:ok"]);
+    expect(grouped.processor[0]).toMatchObject({ state: { tone: "bad" }, reason: "The processor took too long and Deluno stopped waiting.", reasonFull: "timed out" });
   });
 });
 
-describe("what needs a person", () => {
-  const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW };
-  const entry = (id: string, title: string, detailsJson: string | null = null) => ({ id, title, failureKind: "importFailed", summary: "Import failed: release refused; replacement blocked.", recommendedAction: "", detailsJson, detectedUtc: iso(-3_600_000), mediaType: "movie" as const });
+describe("when a download should be done", () => {
+  const item = { etaSeconds: 600, sizeBytes: 2 * 1024 * 1024 * 1024 };
+  it("counts the client's own time-left from the moment it was read", () => {
+    expect(finishAt(item, NOW - 60_000, undefined, NOW)).toBe(NOW - 60_000 + 600_000);
+  });
+  it("works it out again from a pushed reading that is newer: what is left over how fast it goes", () => {
+    // Half of 2 GiB left at 2 MiB/s is 512 seconds.
+    expect(finishAt(item, NOW - 60_000, { progress: 50, speedMbps: 2, at: NOW }, NOW)).toBe(NOW + 512_000);
+    // An older pushed reading is not trusted over the stored one.
+    expect(finishAt(item, NOW, { progress: 50, speedMbps: 2, at: NOW - 5_000 }, NOW)).toBe(NOW + 600_000);
+  });
+  it("has nothing to say when the client gives no reading", () => {
+    expect(finishAt({ ...item, etaSeconds: 0 }, NOW, undefined, NOW)).toBeUndefined();
+    expect(finishAt({ ...item, etaSeconds: Number.NaN }, NOW, undefined, NOW)).toBeUndefined();
+  });
+  it("is on a downloading card only while it is really moving", () => {
+    const row = (overrides: Record<string, unknown>) => ({ id: "q", clientId: "c1", clientName: "Deluge", protocol: "torrent", mediaType: "movie", title: "x", releaseName: "Sintel.2010.1080p", category: "", status: "downloading", progress: 40, speedMbps: 2, etaSeconds: 600, sizeBytes: 2e9, downloadedBytes: 8e8, peers: 3, indexerName: "NZBgeek", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null, ...overrides }) as never;
+    const base = { queue: [], handoffs: [], dispatches: [], live: new Map(), summary: fullSummary, now: NOW, queueCapturedUtc: iso(0) };
+    expect(buildJourney({ ...base, queue: [row({})] })[0].finishAtMs).toBe(NOW + 600_000);
+    expect(buildJourney({ ...base, queue: [row({ status: "stalled" })] })[0].finishAtMs).toBeUndefined();
+    expect(buildJourney({ ...base, queue: [row({ etaSeconds: 0 })] })[0].finishAtMs).toBeUndefined();
+  });
+});
 
-  it("makes a card of an import case, named from its sent download, and one of a failed import job", () => {
-    const dispatch = { id: "d1", libraryId: "l", mediaType: "movies", entityType: "movie", entityId: "m1", releaseName: "Sintel.2010.1080p", indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "Deluge", status: "done", notesJson: null, createdUtc: iso(-3_600_000), decisionQuality: "WEB 1080p" } as never;
-    const grouped = byStage(buildJourney({ ...base, dispatches: [dispatch], cases: [entry("r1", "Sintel.2010.1080p", JSON.stringify({ DispatchId: "d1" }))], importJobs: [{ id: "j1", lastError: "Disk was full", createdUtc: iso(-1000), completedUtc: null } as never] }));
-    expect(grouped.needs.map((card) => card.key).sort()).toEqual(["case:movie:r1", "job:j1"]);
-    const card = grouped.needs.find((item) => item.key === "case:movie:r1")!;
-    expect(card).toMatchObject({ entity: { kind: "movie", id: "m1" }, indexer: "NZBgeek", dispatchId: "d1", state: { tone: "warn", label: "Import needs a look" } });
-    expect(card.recovery?.id).toBe("r1");
-    expect(grouped.needs.find((item) => item.key === "job:j1")).toMatchObject({ importJobId: "j1", title: "An import did not finish", reason: "Disk was full" });
+describe("why a title is moving", () => {
+  it("reads the words the server and the grab path use", () => {
+    expect(startedByFromWord("manual")).toBe("you");
+    expect(startedByFromWord("movie-added")).toBe("you");
+    expect(startedByFromWord("Overseerr")).toBe("seerr");
+    expect(startedByFromWord("trakt")).toBe("list");
+    expect(startedByFromWord("upgrade")).toBe("upgrade");
+    expect(startedByFromWord("missing")).toBe("missing");
+    expect(startedByFromWord("schedule")).toBeUndefined();
+    expect(startedByFromWord(null)).toBeUndefined();
   });
 
-  it("does not make a second card for an import case whose download is already a card", () => {
-    const stuck = { id: "q", clientId: "c1", clientName: "Deluge", protocol: "torrent", mediaType: "movie", title: "x", releaseName: "The.Kid.1921.1080p", category: "", status: "stalled", progress: 100, speedMbps: 0, etaSeconds: 0, sizeBytes: 1, downloadedBytes: 1, peers: 0, indexerName: "Deluge", errorMessage: null, addedUtc: iso(-600_000), sourcePath: null, libraryId: null, healthFindings: null } as never;
-    const grouped = byStage(buildJourney({ ...base, queue: [stuck], cases: [entry("r1", "The.Kid.1921.1080p")] }));
-    expect(grouped.needs.map((card) => card.key)).toEqual(["c1:q"]);
+  it("tells it only from what was recorded, and shows no tag when nothing says", () => {
+    const dispatch = (overrides: Record<string, unknown>) => ({ indexerName: "NZBgeek", notesJson: null, ...overrides }) as never;
+    expect(startedByOfDispatch(dispatch({ startedBy: "upgrade" }))).toBe("upgrade");
+    expect(startedByOfDispatch(dispatch({ indexerName: "Manual selection" }))).toBe("you");
+    expect(startedByOfDispatch(dispatch({ notesJson: JSON.stringify({ chosenOnSearch: true }) }))).toBe("you");
+    expect(startedByOfDispatch(dispatch({ notesJson: JSON.stringify({ triggeredBy: "manual-season" }) }))).toBe("you");
+    // An automatic search records its plan, not a reason: no tag rather than a guess.
+    expect(startedByOfDispatch(dispatch({ notesJson: JSON.stringify({ searchPlan: { reason: "ok" } }) }))).toBeUndefined();
+    expect(startedByOfDispatch(dispatch({ notesJson: "not json" }))).toBeUndefined();
+    expect(startedByOfDispatch(undefined)).toBeUndefined();
   });
 });
 

@@ -433,6 +433,8 @@ export interface DownloadDispatchItem {
   decisionCustomFormatScore?: number | null;
   /** The release name read for language at grab time, by the backend's own parser (#796). */
   decisionLanguage?: string | null;
+  /** Why Deluno fetched it, when the server records it: you, seerr, list, upgrade or missing. Absent when it cannot be told. */
+  startedBy?: string | null;
 }
 
 export interface DispatchTimelineEvent {

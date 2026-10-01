@@ -191,8 +191,9 @@ export function DashboardPage() {
     }, { replace: false });
   }, [setSearchParams]);
 
-  // One count of what needs a person, shared by these badges, the Needs you list and the sidebar.
-  const badges: Record<DashboardTab, number> = useDashboardAttention(summary, setup.needs).counts;
+  // Problems are in the bell, counted once for every screen. The System tab says how many of them are about the system; Live shows what's happening, not what needs a person, so it carries no badge.
+  const attention = useDashboardAttention(summary, setup.needs);
+  const badges: Record<DashboardTab, number> = { live: 0, system: attention.counts.system };
 
   // Nothing to draw the first time until the summary arrives. After that the
   // last answer stays on screen while a newer one is fetched behind it.

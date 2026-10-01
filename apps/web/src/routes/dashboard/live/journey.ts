@@ -1,28 +1,29 @@
 /**
- * The journey of every title in flight (#1096): searched, grabbed, downloading,
- * stuck, with the processor, importing, in the library. Each stage is worked out
+ * The journey of every title in flight (#1098): requested, grabbed, downloading,
+ * with the processor, importing, and in the library. Each stage is worked out
  * from the stored lists the other screens already keep (the download queue, the
  * sent downloads, the processor hand-offs) and the summary; the pushed
  * download readings are laid over the queue so a bar follows the download.
  * Nothing here reaches a client while the screen waits.
  *
- * A download that has stopped moving, or that its client reports a problem
- * with, is not "downloading": it is in the Needs you lane with its reason, beside
- * the failed hand-offs, the imports that did not finish and the import cases.
- * Which title a card is comes from the sent download it matches (the film, show
- * or episode it was grabbed for); the release name is only its quiet second line.
+ * A download that has stopped moving is not a problem card: it stays where it
+ * is, amber, saying it is stuck and that Deluno is finding another copy, and
+ * moves back to Grabbed when another copy is grabbed. Problems a person has to
+ * settle are in the bell. Which title a card is comes from the sent download it
+ * matches (the film, show or episode it was grabbed for); the release name is
+ * only its quiet second line.
  */
-import type { DownloadDispatchItem, DownloadQueueItem, JobQueueItem, ProcessorHandoffItem } from "../../../lib/api";
+import type { DownloadDispatchItem, DownloadQueueItem, ProcessorHandoffItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
-import { dispatchIdIn, isProcessorFailure, isWithProcessor, queueItemNeedsAttention, type RecoveryCaseRow } from "../../../lib/needs-action";
+import { isProcessorFailure, isWithProcessor, queueItemNeedsAttention } from "../../../lib/needs-action";
 import type { Tone } from "../../../lib/status-tones";
 import type { LiveProgress, WorkItem } from "../live-events";
 import { plainReason } from "./plain";
+import { startedByOfDispatch, type StartedBy } from "./provenance";
 
-/** `needs` is the first lane: every problem a person has to settle (a download that has stopped, an import that did not finish, a hand-off the processor refused). */
-export type Stage = "needs" | "requested" | "searching" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
+export type Stage = "requested" | "grabbed" | "downloading" | "processor" | "importing" | "imported";
 
-export const STAGES: Stage[] = ["needs", "requested", "searching", "grabbed", "downloading", "processor", "importing", "imported"];
+export const STAGES: Stage[] = ["requested", "grabbed", "downloading", "processor", "importing", "imported"];
 
 /** What a card is about in the library: a film, a show (a season pack or a whole show) or one episode. */
 export type EntityKind = "movie" | "series" | "episode";
@@ -38,7 +39,7 @@ export interface JourneyCard {
   entity?: { kind: EntityKind; id: string };
   /** The plain words for where it is right now, with the tone that goes with it. */
   state: { tone: Tone; label: string };
-  /** Why it is stuck or has failed, in the words the client or processor gave. */
+  /** Why it is stuck or has failed, in the words the client or processor gave (a tooltip). */
   reason?: string | null;
   /** What the client or processor actually said, for the tooltip when `reason` is a plainer sentence. */
   reasonFull?: string | null;
@@ -55,20 +56,16 @@ export interface JourneyCard {
   etaSeconds?: number;
   /** When it reached this stage or finished, for "2 min ago". */
   at?: string | null;
-  /** The download in its client, when it is one (for its Search again button). */
+  /** The download in its client, when it is one. */
   queueRef?: { clientId: string; itemId: string };
-  /** An import case a person has to settle: Retry (or Search again) and Give up. */
-  recovery?: RecoveryCaseRow;
-  /** A failed import job: Retry and Give up. */
-  importJobId?: string;
-  /** Search again can act on it: the client says it stopped or failed. */
-  canSearchAgain?: boolean;
-  /** The processor hand-off, when it failed and a person has to Retry or Give up. */
-  failedHandoffId?: string;
+  /** The download has stopped moving: amber, "finding another copy", until another copy is grabbed. */
+  stuck?: boolean;
+  /** When the download should be done, from the client's own time-left reading (ms since 1970). Absent when it gives none. */
+  finishAtMs?: number;
+  /** Why Deluno is fetching it, when that can be told from what was recorded. */
+  startedBy?: StartedBy;
   /** A line for the route slot when the card has no indexer, client or processor yet: "Asked by Sam". */
   routeNote?: string;
-  /** Other problems with the same title, folded into this card so a title is one card: each in plain words. The primary action settles this card's own problem first. */
-  alsoProblems?: string[];
   /** Where to act on it when its title is not known. */
   to: string;
 }
@@ -157,11 +154,6 @@ export interface JourneyInput {
   queueCapturedUtc?: string;
   /** A grab on its way to a client or an import under way, from the events that start and end them. */
   work?: WorkItem[];
-  /** The import cases and failed import jobs that need a person: cards in the Needs you lane unless a card for the same download is already there. */
-  cases?: RecoveryCaseRow[];
-  importJobs?: JobQueueItem[];
-  /** Searches that have said how far they are (or that they finished), so a search card follows the event and not the next summary. */
-  searches?: ReadonlyMap<string, { libraryName: string; state: string; checked: number; planned: number }>;
 }
 
 function sameLocalDay(a: number, b: number): boolean {
@@ -170,7 +162,7 @@ function sameLocalDay(a: number, b: number): boolean {
   return first.getFullYear() === second.getFullYear() && first.getMonth() === second.getMonth() && first.getDate() === second.getDate();
 }
 
-/** Why a download that needs a look needs it, in the words the client gave. */
+/** Why a download that has stopped is stopped, in the words the client gave (for its tooltip). */
 function stuckReason(item: DownloadQueueItem): string | null {
   const message = item.errorMessage?.trim();
   if (message) return message;
@@ -179,8 +171,26 @@ function stuckReason(item: DownloadQueueItem): string | null {
   return item.status === "stalled" ? "It has stopped moving in the download client." : null;
 }
 
+/** One megabyte per second, in bytes: the unit the clients' speeds are read in. */
+const MB = 1024 * 1024;
+
+/**
+ * When a download should be done. The client's own time-left reading counts from the moment it was read; a pushed
+ * reading newer than that is worked out again from what is left and how fast it is going. Nothing when the client
+ * gives no reading (a download that is not moving has no finish time).
+ */
+export function finishAt(item: Pick<DownloadQueueItem, "etaSeconds" | "sizeBytes">, readAtMs: number, pushed: { progress: number; speedMbps: number; at: number } | undefined, now: number): number | undefined {
+  if (pushed && pushed.at > readAtMs && pushed.speedMbps > 0 && item.sizeBytes > 0) {
+    const left = item.sizeBytes * (1 - Math.min(100, Math.max(0, pushed.progress)) / 100);
+    return now + (left / (pushed.speedMbps * MB)) * 1000;
+  }
+  const eta = item.etaSeconds;
+  if (typeof eta !== "number" || !Number.isFinite(eta) || eta <= 0) return undefined;
+  return (Number.isFinite(readAtMs) && readAtMs > 0 ? readAtMs : now) + eta * 1000;
+}
+
 /** Every card on the Live board, grouped by the caller with `byStage`. */
-export function buildJourney({ queue, handoffs, dispatches, live, summary, now, queueCapturedUtc, work = [], cases = [], importJobs = [], searches }: JourneyInput): JourneyCard[] {
+export function buildJourney({ queue, handoffs, dispatches, live, now, queueCapturedUtc, work = [] }: JourneyInput): JourneyCard[] {
   const cards: JourneyCard[] = [];
   const dispatchByRelease = new Map<string, DownloadDispatchItem>();
   const dispatchByClientItem = new Map<string, DownloadDispatchItem>();
@@ -201,22 +211,22 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
 
   for (const raw of queue) {
     const reading = live.get(raw.id);
-    const item = reading && reading.at > (Number.isFinite(storedAt) ? storedAt : 0) && DOWNLOADING.includes(reading.status)
-      ? { ...raw, progress: reading.progress, speedMbps: reading.speedMbps, status: reading.status }
-      : raw;
+    const fresher = reading && reading.at > (Number.isFinite(storedAt) ? storedAt : 0) && DOWNLOADING.includes(reading.status) ? reading : undefined;
+    const item = fresher ? { ...raw, progress: fresher.progress, speedMbps: fresher.speedMbps, status: fresher.status } : raw;
     const dispatch = dispatchByClientItem.get(`${item.clientId}:${item.id}`.toLowerCase()) ?? dispatchByRelease.get(releaseKey(item.releaseName));
     const handoff = handoffByQueue.get(item.id);
     let stage: Stage | null = null;
     let state: JourneyCard["state"] = { tone: "info", label: "Working" };
     let reason: string | null = null;
-    let canSearchAgain = false;
+    let stuck = false;
 
     const beforeTheProcessor = item.status === "queued" || DOWNLOADING.includes(item.status);
     if (beforeTheProcessor && queueItemNeedsAttention(item)) {
-      stage = "needs";
-      state = { tone: "bad", label: "Stuck" };
+      // Stopped moving: it stays where it is, amber, while Deluno finds another copy.
+      stage = item.status === "queued" ? "grabbed" : "downloading";
+      state = { tone: "warn", label: "Stuck" };
       reason = stuckReason(item);
-      canSearchAgain = item.status === "stalled" || Boolean(item.errorMessage);
+      stuck = true;
     } else if (item.status === "queued") {
       stage = "grabbed";
       state = { tone: "info", label: "Waiting in the client" };
@@ -233,10 +243,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     if (!stage) continue;
     seenReleases.add(releaseKey(item.releaseName));
     const entity = entityOf(dispatch);
-    const failedHandoff = stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) ? handoff : undefined;
-    if (failedHandoff && !reason) reason = failedHandoff.failureMessage;
-    // A hand-off the processor refused is for a person to settle: it moves to the first lane.
-    if (failedHandoff) stage = "needs";
+    if (stage === "processor" && handoff && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage)) && !reason) reason = handoff.failureMessage;
+    const moving = stage === "downloading" && !stuck && item.status === "downloading";
     cards.push({
       key: `${item.clientId}:${item.id}`,
       queueRef: { clientId: item.clientId, itemId: item.id },
@@ -248,8 +256,8 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       reason: plainReason(reason)?.text ?? null,
       reasonFull: reason,
       dispatchId: dispatch?.id,
-      canSearchAgain,
-      failedHandoffId: failedHandoff?.id,
+      stuck,
+      startedBy: startedByOfDispatch(dispatch),
       quality: dispatch?.decisionQuality ?? null,
       sizeBytes: item.sizeBytes,
       indexer: dispatch?.indexerName || (item.indexerName && item.indexerName !== item.clientName ? item.indexerName : null),
@@ -257,9 +265,10 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       processor: short(handoff?.processorName),
       progress: Number.isFinite(item.progress) ? Math.min(100, Math.max(0, item.progress)) : 0,
       speedMbps: item.speedMbps,
-      etaSeconds: item.etaSeconds,
+      etaSeconds: item.etaSeconds ?? undefined,
+      finishAtMs: moving ? finishAt(raw, storedAt, fresher, now) : undefined,
       at: item.addedUtc,
-      to: stage === "processor" || stage === "importing" || stage === "needs" ? "/queue" : cardLink(entity)
+      to: stage === "processor" || stage === "importing" ? "/queue" : cardLink(entity)
     });
   }
 
@@ -277,7 +286,6 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     seenReleases.add(releaseKey(handoff.releaseName));
     const entity = entityOf(dispatch);
     const failed = stage === "processor" && (isProcessorFailure(handoff.status) || Boolean(handoff.failureMessage));
-    if (failed) stage = "needs";
     cards.push({
       key: `handoff:${handoff.id}`,
       stage,
@@ -288,7 +296,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       reason: failed ? plainReason(handoff.failureMessage)?.text ?? null : null,
       reasonFull: failed ? handoff.failureMessage : null,
       dispatchId: dispatch?.id,
-      failedHandoffId: failed ? handoff.id : undefined,
+      startedBy: startedByOfDispatch(dispatch),
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
       client: short(dispatch?.downloadClientName),
@@ -311,6 +319,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
       release: item.release,
       entity,
       state: item.kind === "grab" ? { tone: "info", label: item.client ? `Sending to ${short(item.client)}` : "Sending to the client" } : { tone: "info", label: "Importing now" },
+      startedBy: startedByOfDispatch(dispatch),
       quality: dispatch?.decisionQuality ?? null,
       indexer: dispatch?.indexerName ?? null,
       client: short(item.client ?? dispatch?.downloadClientName),
@@ -318,49 +327,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     });
   }
 
-  // Import cases and failed import jobs: a card each, unless the download they are about is already a card.
-  const cardReleases = new Set(cards.filter((card) => card.release).map((card) => releaseKey(card.release)));
-  const cardDispatches = new Set(cards.flatMap((card) => (card.dispatchId ? [card.dispatchId] : [])));
-  const dispatchById = new Map(dispatches.map((dispatch) => [dispatch.id, dispatch]));
-  for (const entry of cases) {
-    const dispatchId = dispatchIdIn(entry.detailsJson);
-    if ((dispatchId && cardDispatches.has(dispatchId)) || cardReleases.has(releaseKey(entry.title))) continue;
-    const dispatch = (dispatchId ? dispatchById.get(dispatchId) : undefined) ?? dispatchByRelease.get(releaseKey(entry.title));
-    const said = plainReason(entry.summary);
-    cards.push({
-      key: `case:${entry.mediaType}:${entry.id}`,
-      stage: "needs",
-      title: titleFromRelease(entry.title),
-      release: entry.title,
-      entity: entityOf(dispatch),
-      state: { tone: "warn", label: "Import needs a look" },
-      reason: said?.text ?? null,
-      reasonFull: said?.full ?? null,
-      dispatchId: dispatch?.id ?? dispatchId ?? undefined,
-      recovery: entry,
-      quality: dispatch?.decisionQuality ?? null,
-      indexer: dispatch?.indexerName ?? null,
-      client: short(dispatch?.downloadClientName),
-      at: entry.detectedUtc,
-      to: "/queue"
-    });
-  }
-  for (const job of importJobs) {
-    const said = plainReason(job.lastError ?? "It stopped without saying why.");
-    cards.push({
-      key: `job:${job.id}`,
-      stage: "needs",
-      title: "An import did not finish",
-      state: { tone: "bad", label: "Import failed" },
-      reason: said?.text ?? null,
-      reasonFull: said?.full ?? null,
-      importJobId: job.id,
-      at: job.completedUtc ?? job.createdUtc,
-      to: "/queue"
-    });
-  }
-
-  // What was imported today, newest first: the last stop.
+  // What was imported today, newest first: the last stop (the shelf draws today's real imports when the server has them).
   for (const dispatch of dispatches) {
     const done = Date.parse(dispatch.importCompletedUtc ?? "");
     if (!Number.isFinite(done) || !sameLocalDay(done, now)) continue;
@@ -380,76 +347,7 @@ export function buildJourney({ queue, handoffs, dispatches, live, summary, now, 
     });
   }
 
-  // Searches that are running now. The last one that finished is not a card: it is a line in the quiet column, because nothing is searching.
-  const automation = summary?.automation;
-  const shown = new Set<string>();
-  const searchCard = (libraryId: string, name: string) => {
-    const progress = searches?.get(libraryId);
-    shown.add(libraryId);
-    cards.push({
-      key: `search:${libraryId}`,
-      stage: "searching",
-      title: name,
-      state: { tone: "info", label: progress && progress.planned > 0 ? `${progress.checked.toLocaleString("en-AU")} of ${progress.planned.toLocaleString("en-AU")} checked` : "Searching now" },
-      at: null,
-      to: "/search-cycles"
-    });
-  };
-  for (const library of automation?.libraries ?? []) {
-    const progress = searches?.get(library.libraryId);
-    if (progress?.state === "finished") continue;
-    if (library.status === "running" || progress?.state === "running") searchCard(library.libraryId, library.name);
-  }
-  for (const [libraryId, progress] of searches ?? []) {
-    if (progress.state === "running" && !shown.has(libraryId)) searchCard(libraryId, progress.libraryName);
-  }
-
-  return oneCardPerTitle(cards);
-}
-
-/** Which title a problem card is about: its library title, else its release (a download in a client is its own, whatever it is called). */
-function titleKey(card: JourneyCard): string {
-  if (card.entity) return `${card.entity.kind}:${card.entity.id}`;
-  return card.release && !card.queueRef ? `release:${releaseKey(card.release)}` : card.key;
-}
-
-/** How urgent a problem card is to settle, lowest first: a refused hand-off, a failed import, a stopped download, an import case to review. */
-export function needsRank(card: JourneyCard): number {
-  return card.failedHandoffId ? 0 : card.importJobId ? 1 : card.recovery ? 3 : 2;
-}
-
-/**
- * One card per title. Several problems with the same film or episode (a download that stopped and an import case for it, a
- * refused hand-off and a stopped download) are one card in Needs you: the most urgent problem is the card's reason and
- * action, and the rest are counted and listed in its tooltip.
- */
-export function oneCardPerTitle(cards: JourneyCard[]): JourneyCard[] {
-  const groups = new Map<string, JourneyCard[]>();
-  const out: JourneyCard[] = [];
-  for (const card of cards) {
-    if (card.stage !== "needs") {
-      out.push(card);
-      continue;
-    }
-    const key = titleKey(card);
-    const known = groups.get(key);
-    if (known) known.push(card);
-    else {
-      groups.set(key, [card]);
-      out.push(card);
-    }
-  }
-  return out.map((card) => {
-    if (card.stage !== "needs") return card;
-    const key = titleKey(card);
-    const group = groups.get(key);
-    if (!group || group.length < 2) return card;
-    const ordered = [...group].sort((a, b) => needsRank(a) - needsRank(b));
-    const [primary, ...rest] = ordered;
-    // Folding is safe to repeat: a card that already stands for several problems brings all of them.
-    const said = (item: JourneyCard) => item.alsoProblems ?? [item.reason ?? item.state.label];
-    return { ...primary, alsoProblems: [...said(primary), ...rest.flatMap(said)] };
-  });
+  return cards;
 }
 
 function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
@@ -460,36 +358,29 @@ function handoffState(handoff: ProcessorHandoffItem): JourneyCard["state"] {
   return { tone: "info", label: "Being cleaned" };
 }
 
-/** Problems first in a lane, so a card that needs a person is never the one left under "and N more". */
+/** Problems first in a stage, so a card that is stuck is never the one a person has to look for. */
 const toneRank: Record<Tone, number> = { bad: 0, warn: 1, info: 2, ok: 3, idle: 4 };
 
 export function byStage(cards: JourneyCard[]): Record<Stage, JourneyCard[]> {
   const grouped = Object.fromEntries(STAGES.map((stage) => [stage, [] as JourneyCard[]])) as Record<Stage, JourneyCard[]>;
   for (const card of cards) grouped[card.stage].push(card);
   grouped.imported.sort((a, b) => Date.parse(b.at ?? "") - Date.parse(a.at ?? ""));
-  grouped.downloading.sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0));
-  // In the first lane a refused hand-off and a failed import come first (one click each), then the stopped downloads (Search again), then the import cases to review.
-  grouped.needs.sort((a, b) => needsRank(a) - needsRank(b) || toneRank[a.state.tone] - toneRank[b.state.tone]);
+  grouped.downloading.sort((a, b) => Number(b.stuck ?? false) - Number(a.stuck ?? false) || (b.progress ?? 0) - (a.progress ?? 0));
   for (const stage of ["processor", "importing"] as const) grouped[stage].sort((a, b) => toneRank[a.state.tone] - toneRank[b.state.tone]);
   return grouped;
 }
 
 /**
- * The header count for each lane. The summary counts the whole queue while the
- * lists the cards come from can be shorter, so a lane says the larger of the
- * two and the list says "and N more" for the difference. Stuck downloads are not
- * downloading: they have their own count.
+ * The count at each station. The summary counts the whole queue while the lists the cards come from can be shorter, so a
+ * station says the larger of the two. A stuck download is still on its station.
  */
-export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: DashboardSummary | undefined, needsYou?: number): Record<Stage, number> {
+export function laneCounts(grouped: Record<Stage, JourneyCard[]>, summary: DashboardSummary | undefined): Record<Stage, number> {
   const downloads = summary?.downloads;
   const pick = (cards: JourneyCard[], fromSummary: number | undefined) => Math.max(cards.length, fromSummary ?? 0);
   return {
     requested: grouped.requested.length,
-    searching: grouped.searching.length,
     grabbed: pick(grouped.grabbed, downloads?.queued),
     downloading: pick(grouped.downloading, downloads?.active),
-    // The summary counts problems; a title with two problems is one card, so what was folded away is taken off its count.
-    needs: pick(grouped.needs, (needsYou ?? downloads?.stalled ?? 0) - grouped.needs.reduce((sum, card) => sum + (card.alsoProblems ? card.alsoProblems.length - 1 : 0), 0)),
     processor: pick(grouped.processor, downloads ? downloads.processing + downloads.waitingForProcessor : undefined),
     importing: pick(grouped.importing, downloads?.importReady),
     imported: pick(grouped.imported, summary?.pipeline?.today.imported)

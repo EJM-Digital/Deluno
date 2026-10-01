@@ -114,8 +114,18 @@ export interface WorkItem {
   /** The release and client behind a grab or an import, so the board can show it as a card. */
   release?: string;
   client?: string;
+  /** How far along it is, 0 to 100, when that is known (a search: titles checked of titles planned). */
+  progress?: number;
+  /** The words for how far along: "4 of 20". */
+  detail?: string;
   /** The screen where it can be watched. */
   to: string;
+}
+
+/** How far a search is: titles checked of titles planned, once it has said. */
+function searchProgress(search: { checked: number; planned: number } | undefined): Pick<WorkItem, "progress" | "detail"> {
+  if (!search || search.planned <= 0) return {};
+  return { progress: Math.min(100, (search.checked / search.planned) * 100), detail: `${search.checked.toLocaleString("en-AU")} of ${search.planned.toLocaleString("en-AU")}` };
 }
 
 /** A grab or an import that never reported its end is not shown for ever. */
@@ -160,13 +170,14 @@ export function useWorkingNow(summary: DashboardSummary | undefined, pushed?: { 
       if (pushedSearch?.state === "finished") continue;
       if (library.status === "running" || pushedSearch?.state === "running") {
         searching.add(library.libraryId);
-        items.push({ key: `search:${library.libraryId}`, kind: "search", text: pushedSearch && pushedSearch.planned > 0 ? `Searching ${library.name}: ${pushedSearch.checked.toLocaleString("en-AU")} of ${pushedSearch.planned.toLocaleString("en-AU")} checked` : `Searching ${library.name} for what is missing or could be better`, to: "/search-cycles" });
+        items.push({ key: `search:${library.libraryId}`, kind: "search", text: `Searching ${library.name} for what is missing or could be better`, ...searchProgress(pushedSearch), to: "/search-cycles" });
       }
     }
     for (const [libraryId, search] of pushed?.searches ?? []) {
-      if (search.state === "running" && !searching.has(libraryId)) items.push({ key: `search:${libraryId}`, kind: "search", text: search.planned > 0 ? `Searching ${search.libraryName}: ${search.checked.toLocaleString("en-AU")} of ${search.planned.toLocaleString("en-AU")} checked` : `Searching ${search.libraryName}`, to: "/search-cycles" });
+      if (search.state === "running" && !searching.has(libraryId)) items.push({ key: `search:${libraryId}`, kind: "search", text: `Searching ${search.libraryName} for what is missing or could be better`, ...searchProgress(search), to: "/search-cycles" });
     }
-    for (const [key, entry] of started) {
+    // The newest first: what has just begun is what the card shows.
+    for (const [key, entry] of [...started].reverse()) {
       if (now - entry.at > WORK_EXPIRES_MS) continue;
       items.push({ key, kind: entry.kind, text: entry.text, release: entry.release, client: entry.client, to: "/queue" });
     }

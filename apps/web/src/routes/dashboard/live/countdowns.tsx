@@ -6,32 +6,7 @@
  * that is not scheduled has no row, and a search running shows as running.
  */
 import type { DashboardSummary } from "../../../lib/api/types/operations";
-import { cn } from "../../../lib/utils";
 import { ago } from "../format";
-
-const RING = 11;
-const CIRCUMFERENCE = 2 * Math.PI * RING;
-
-/** A ring that fills as the gap between two runs passes. Unknown start: the empty track. */
-export function ProgressRing({ fraction, due, running }: { fraction: number | null; due: boolean; running?: boolean }) {
-  const filled = running || due ? 1 : fraction ?? 0;
-  return (
-    <svg aria-hidden viewBox="0 0 28 28" className="h-7 w-7 shrink-0 -rotate-90">
-      <circle cx="14" cy="14" r={RING} fill="none" strokeWidth="3" className="stroke-surface-3" />
-      <circle
-        cx="14"
-        cy="14"
-        r={RING}
-        fill="none"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeDasharray={CIRCUMFERENCE}
-        strokeDashoffset={CIRCUMFERENCE * (1 - filled)}
-        className={cn("live-ring-arc", running ? "stroke-info" : due ? "stroke-success" : "stroke-primary")}
-      />
-    </svg>
-  );
-}
 
 export interface CountdownRow {
   key: string;
