@@ -26,6 +26,10 @@ describe("a scale in quarters (James: 25 / 50 / 75 / 100)", () => {
       [75, "2.5 MB/s", true]
     ]);
     expect(quarterTicks(100, "%", 8, 100).map((tick) => tick.label)).toEqual(["100%", "75%", "50%", "25%"]);
+    // Under 1 MB/s the whole scale is in KB/s, so no quarter is rounded away.
+    expect(quarterTicks(0.1, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["100 KB/s", "75 KB/s", "50 KB/s", "25 KB/s"]);
+    expect(quarterTicks(0.4, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["400 KB/s", "300 KB/s", "200 KB/s", "100 KB/s"]);
+    expect(quarterTicks(4, "MB/s", 8, 100).map((tick) => tick.label)).toEqual(["4 MB/s", "3 MB/s", "2 MB/s", "1 MB/s"]);
   });
 
   it("leaves the minor labels off a chart too short for four, keeping their lines", () => {

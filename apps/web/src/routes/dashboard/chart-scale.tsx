@@ -27,9 +27,11 @@ export function quarterMax(value: number): number {
  * down the chart's box. The 75% and 25% labels are minor: a chart too short to hold four labels shows only their lines.
  */
 export function quarterTicks(top: number, unit: "%" | "MB/s", topPct: number, bottomPct: number): ChartTick[] {
+  // A rate scale under 1 MB/s is said in KB/s, one unit for the whole scale: 25 / 50 / 75 / 100 KB/s, never 0.03 MB/s.
+  const small = unit === "MB/s" && top < 1;
   return [1, 0.75, 0.5, 0.25].map((share) => ({
     top: bottomPct - (bottomPct - topPct) * share,
-    label: scaleLabel(top * share, unit),
+    label: small ? `${Number((top * share * 1000).toPrecision(3))} KB/s` : scaleLabel(top * share, unit),
     side: "below" as const,
     minor: share === 0.75 || share === 0.25
   }));
