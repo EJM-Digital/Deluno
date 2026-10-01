@@ -80,6 +80,8 @@ export function pageLayout(width: number, remPx: number): PageLayout {
  */
 export const GRID_COLUMNS = "minmax(0, 1fr) clamp(340px, 28%, 600px)";
 export const GRID_AREAS = '"now src" "board src" "low act"';
+/** System's areas on the same columns and rows: Storage in the top-right slot, Connections beside Health, Backups beside the bottom row. */
+export const GRID_AREAS_SYSTEM = '"band store" "mid conn" "low upd"';
 /** The bottom row's own two columns: Arrived today and Turned down. */
 export const LOW_COLUMNS = "minmax(0, 1fr) clamp(260px, 36%, 420px)";
 

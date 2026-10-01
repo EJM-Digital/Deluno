@@ -94,6 +94,7 @@ import type {
   ReleasesTurnedDownEvent,
   SearchCycleProgressEvent
 } from "./api/types/live-events";
+import type { ConnectionCheckedEvent, SystemOverviewChangedEvent } from "./api/types/system-overview";
 
 export { useRealtimeConnected } from "./realtime-state";
 export type * from "./api/types/live-events";
@@ -251,6 +252,8 @@ type EventMap = {
   ReleasesTurnedDown: ReleasesTurnedDownEvent;
   ConnectionUsed: ConnectionUsedEvent;
   DownloadSpeedSample: DownloadSpeedSampleEvent;
+  SystemOverviewChanged: SystemOverviewChangedEvent;
+  ConnectionChecked: ConnectionCheckedEvent;
 };
 
 export type SignalREventName = keyof EventMap;
@@ -631,7 +634,9 @@ const LIVE_EVENT_SUBJECTS = {
   DriveSpaceChanged: RealtimeGroups.Live,
   ReleasesTurnedDown: RealtimeGroups.Live,
   ConnectionUsed: RealtimeGroups.Live,
-  DownloadSpeedSample: RealtimeGroups.Live
+  DownloadSpeedSample: RealtimeGroups.Live,
+  SystemOverviewChanged: RealtimeGroups.Dashboard,
+  ConnectionChecked: RealtimeGroups.Dashboard
 } as const satisfies Partial<Record<SignalREventName, string>>;
 
 export type LiveEventName = keyof typeof LIVE_EVENT_SUBJECTS;

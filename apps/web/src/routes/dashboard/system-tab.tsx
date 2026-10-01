@@ -1,51 +1,83 @@
 /**
- * Dashboard, System (#1087): how Deluno and the machine it runs on are doing.
+ * Dashboard, System (#1087, #1098): how Deluno and the machine it runs on are doing, as one grid with Live's (the same
+ * row heights and column widths, so no box moves when you switch tabs): along the top This instance, This computer and
+ * Network with Storage in the top-right slot; Health across the left with Connections beside it; and at the bottom
+ * Scheduled tasks, the Log and Backups and databases.
  *
- * Every health check with its state and the button that clears each problem;
- * the download clients, indexers and processor with theirs; this computer
- * (processor, memory, drive load, Deluno's own disk use, API response times);
- * storage per drive; automation per library; the scheduled tasks; updates and
- * backups. The System badge counts exactly the problems listed here.
- *
- * Each fact appears once: the strip says how Deluno is doing overall, and the
- * panels beneath say what is behind it.
+ * Each fact appears once: the ring on This instance says how many checks pass and links to Health, which holds the
+ * problems; Connections holds the answers of everything Deluno talks to; the library is on Live.
  */
-import { useMemo } from "react";
+import { useMemo, useState, type JSX } from "react";
 import { useRouteSources } from "../../lib/route-cache";
 import type { DashboardSummary } from "../../lib/api";
+import { cn } from "../../lib/utils";
 import { attentionSources } from "./attention";
-import { Connections } from "./connections-panel";
-import { useAction } from "./downloads-kit";
-import { Automation, Health, LibraryCounts, Machine, ScheduledTasks, Storage, SystemStrip, UpdatesAndBackups, systemPanelSources } from "./system-panels";
 import { useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
+import { GRID_AREAS_SYSTEM, GRID_COLUMNS, gridRows, pageLayout } from "./live/layout";
+import { useElementSize, useNow, useRemPx } from "./live/hooks";
+import { ComputerCard, InstanceCard, NetworkCard } from "./system/band";
+import { BackupsCard, LogCard, TasksCard } from "./system/bottom";
+import { ConnectionsCard, useConnectionTesting } from "./system/connections-card";
+import { buildConnections } from "./system/connections-model";
+import { systemSources, useSystemOverview } from "./system/data";
+import { HealthCard } from "./system/health-card";
+import { buildHealth } from "./system/problems";
+import { StorageCard, drivesOf } from "./system/storage-card";
+import { useResizing } from "./system/use-resizing";
+import "./system/system.css";
 
-export function SystemTab({ summary }: { summary: DashboardSummary | undefined }) {
-  const { data } = useRouteSources({ ...attentionSources, ...systemPanelSources });
+const NO_ROWS: never[] = [];
+
+export function SystemTab({ summary }: { summary: DashboardSummary | undefined }): JSX.Element {
+  const { data } = useRouteSources({ ...attentionSources, ...systemSources });
   const setup = useSetupState();
-  const action = useAction();
   const attention = useDashboardAttention(summary, setup.needs);
-  const processors = useMemo(() => (data.processors ?? []).filter((processor) => processor.isEnabled), [data.processors]);
+  const overview = useSystemOverview();
+  const now = useNow(15_000);
+  const testing = useConnectionTesting();
+  const [jump, setJump] = useState(0);
+
   const checks = data.healthChecks?.checks;
+  const health = useMemo(() => buildHealth({ summary, attention, checks }), [summary, attention, checks]);
+  const connections = useMemo(
+    () => buildConnections({ indexers: data.indexers ?? NO_ROWS, clients: data.clients ?? NO_ROWS, clientRows: summary?.downloads?.clients ?? NO_ROWS, connections: data.liveExtras?.connections, metadataMs: overview?.network?.metadataMs ?? null, results: testing.results, now }),
+    [data.indexers, data.clients, summary?.downloads?.clients, data.liveExtras?.connections, overview?.network?.metadataMs, testing.results, now]
+  );
+  const drives = useMemo(() => drivesOf(overview?.drives, summary), [overview?.drives, summary]);
+
+  const [pageRef, page] = useElementSize<HTMLDivElement>();
+  const rem = useRemPx();
+  const side = pageLayout(page.width, rem).sideBySide;
+  // The one shared grid, from the same rule as Live's (see live/layout.ts), re-read whenever the grid is resized.
+  const [gridRef, grid] = useElementSize<HTMLDivElement>();
+  const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
+  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height);
+  const resizing = useResizing();
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <SystemStrip summary={summary} problems={attention.counts.system} jobsGaveUp={attention.jobsGaveUp} checks={checks} monitoring={data.monitoring} />
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-3">
-        <div className="flex min-h-0 flex-col gap-3">
-          <Health summary={summary} attention={attention} checks={checks} action={action} className="flex-[3]" />
-          <Connections summary={summary} indexers={data.indexers} processors={processors} action={action} className="flex-[2]" />
+    <div ref={pageRef} className={cn("sy flex flex-col", side && "h-full min-h-0", resizing && "sy-resizing", side && rows.band < 180 && "sy-short")}>
+      <div
+        ref={gridRef}
+        data-live-grid={side ? "shared" : "stacked"}
+        className={cn("sy-grid", side ? "min-h-0 flex-1" : "sy-stacked")}
+        style={side ? { gridTemplateRows: rows.template, gridTemplateAreas: GRID_AREAS_SYSTEM, gridTemplateColumns: GRID_COLUMNS } : undefined}
+      >
+        <div className="sy-band">
+          <InstanceCard instance={overview?.instance ?? null} summary={summary} short={side && rows.band < 180} health={{ pass: health.pass, total: health.total, need: health.need, anyBad: health.tallies.some((tally) => tally.tone === "bad") }} onJump={() => setJump((n) => n + 1)} />
+          <ComputerCard overview={overview} />
+          <NetworkCard overview={overview} />
         </div>
-        <div className="flex min-h-0 flex-col gap-3">
-          <Machine summary={summary} window={data.machine} monitoring={data.monitoring} />
-          <Storage summary={summary} extras={data.liveExtras} />
-          <UpdatesAndBackups summary={summary} />
+        <StorageCard drives={drives} />
+        <div className="sy-mid">
+          <HealthCard model={health} hasChecks={Boolean(checks)} jump={jump} now={now} />
         </div>
-        <div className="flex min-h-0 flex-col gap-3">
-          <LibraryCounts summary={summary} />
-          <Automation summary={summary} />
-          <ScheduledTasks summary={summary} />
+        <ConnectionsCard rows={connections} testing={testing} now={now} />
+        <div className="sy-low">
+          <TasksCard tasks={summary?.automation?.tasks ?? NO_ROWS} />
+          <LogCard activity={data.latestActivity ?? NO_ROWS} />
         </div>
+        <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} instance={overview?.instance ?? null} />
       </div>
     </div>
   );

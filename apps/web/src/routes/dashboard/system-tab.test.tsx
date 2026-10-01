@@ -75,149 +75,94 @@ beforeEach(() => {
 });
 
 describe("System", () => {
-  it("lists every health check with its state, the problems first, each problem with its button", async () => {
+  it("lists the problems first with an area tag and two short buttons, and the rest under the area", async () => {
     seedBusy();
     renderTab(fullSummary);
-
-    const healthPanel = screen.getByRole("region", { name: /^health/i });
-    // The stored checks arrive after the summary.
-    await within(healthPanel).findByText(/Suggestion. Backups are off./, {}, { timeout: 5000 });
-    // Problems: a button that clears each one.
-    expect(await within(healthPanel).findByRole("button", { name: "Retry Restart after a crash isn’t set" })).toBeInTheDocument();
-    expect(within(healthPanel).getByRole("link", { name: "Fix A drive is nearly full" })).toHaveAttribute("href", "/system");
-    expect(within(healthPanel).getByRole("button", { name: "Snooze A drive is nearly full for a day" })).toBeInTheDocument();
-    // A connection that is down is one row: its button is in Connections, and it reads that way here.
-    expect(within(healthPanel).getByRole("link", { name: "Open Nyaa.si isn’t answering" })).toHaveAttribute("href", "/indexers/indexers");
-    expect(within(healthPanel).queryByRole("link", { name: "Fix Nyaa.si isn’t answering" })).toBeNull();
-    // What is snoozed, not checked yet, suggested and passing is listed too, in that order after the problems.
-    expect(within(healthPanel).getByRole("button", { name: "Unsnooze An old problem" })).toBeInTheDocument();
-    expect(within(healthPanel).getByText(/Not checked yet\. Not checked yet\./)).toBeInTheDocument();
-    expect(within(healthPanel).getByText(/Suggestion\. Backups are off\./)).toBeInTheDocument();
-    const names = within(healthPanel).getAllByRole("listitem").map((item) => item.textContent ?? "");
-    const at = (text: string) => names.findIndex((name) => name.includes(text));
-    expect(at("A drive is nearly full")).toBeLessThan(at("An old problem"));
-    expect(at("An old problem")).toBeLessThan(at("Library folders"));
-    expect(at("Library folders")).toBeLessThan(at("Turn on backups"));
-    expect(at("Turn on backups")).toBeLessThan(at("The database opens"));
-    // Jobs that gave up and a worker that keeps failing have theirs.
-    expect(within(healthPanel).getByRole("button", { name: "Retry the jobs that gave up" })).toBeInTheDocument();
-    expect(within(healthPanel).getByText(/isn’t running/)).toBeInTheDocument();
+    const health = screen.getByRole("region", { name: "Health" });
+    expect(await within(health).findByRole("button", { name: "Try again: Restart after a crash isn’t set" })).toBeInTheDocument();
+    expect(await within(health).findByRole("link", { name: "Fix it: A drive is nearly full" })).toHaveAttribute("href", "/system");
+    expect(within(health).getByRole("button", { name: "Snooze 1 day: A drive is nearly full" })).toHaveAttribute("title", expect.stringContaining("comes back"));
+    expect(within(health).getByRole("button", { name: "Retry them: 1 job gave up" })).toBeInTheDocument();
+    expect(within(health).getByRole("button", { name: "Unsnooze: An old problem" })).toBeInTheDocument();
+    // An area lists all of its checks, the passing ones too.
+    const user = userEvent.setup();
+    await user.click(within(health).getByRole("button", { name: /^Machine/ }));
+    expect(within(health).getByText("Library folders")).toBeInTheDocument();
   });
 
-  it("shows the connections with their own buttons in one panel", async () => {
-    seedBusy();
-    renderTab(fullSummary);
-
-    const connections = screen.getByRole("region", { name: /^connections/i });
-    expect(within(connections).getByRole("button", { name: "Test SABnzbd again" })).toBeInTheDocument();
-    expect(within(connections).getByRole("button", { name: "Resume NZBGet" })).toBeInTheDocument();
-    expect(within(connections).getByRole("button", { name: "Clear NZBGet’s warnings" })).toBeInTheDocument();
-    expect(await within(connections).findByRole("button", { name: "Test Nyaa.si again" })).toBeInTheDocument();
-    // The processor is named by its own configured name.
-    expect(await within(connections).findByRole("button", { name: "Test Cleaner again" })).toBeInTheDocument();
-    expect(within(connections).getByText("Cleaner")).toBeInTheDocument();
-    expect(screen.queryByText(/weir/i)).toBeNull();
-  });
-
-  it("shows the machine: processor, memory, how busy the drive is, Deluno's disk use, API speed, and each drive's size", async () => {
-    seedBusy();
-    renderTab(fullSummary);
-
-    const machine = screen.getByRole("region", { name: /^this computer/i });
-    expect(within(machine).getByText("CPU")).toBeInTheDocument();
-    expect(within(machine).getByText("Memory")).toBeInTheDocument();
-    expect(await within(machine).findByText("Drive busy")).toBeInTheDocument();
-    expect(within(machine).getByText("Deluno’s disk use")).toBeInTheDocument();
-    await waitFor(() => expect(machine.textContent).toContain("reading 1.4 MB/s, writing 488 KB/s"));
-    // The strip says how quickly the API answers, once, as a headline; the panel says how many requests that rests on.
-    expect(await screen.findByText("14 ms")).toBeInTheDocument();
-    expect(screen.getByText("61 ms for the slowest 5%")).toBeInTheDocument();
-    expect(within(machine).getByText("120, 2 failed")).toBeInTheDocument();
-
-    const storage = screen.getByRole("region", { name: /^storage/i });
-    expect(within(storage).getByText(/1.4 TB free of 1.8 TB/)).toBeInTheDocument();
-    expect(within(storage).getByText("can’t be read")).toBeInTheDocument();
-    expect(screen.getByText(/1.0.0-rc.24 is ready to install/)).toBeInTheDocument();
-    expect(screen.getByText("Failed last time")).toBeInTheDocument();
-  });
-
-  it("counts exactly what it lists: connections, health problems, jobs that gave up and workers", () => {
-    const attention = computeAttention(fullSummary, {
-      handoffs: [] as never,
-      indexers: [{ id: "i2", name: "Nyaa.si", isEnabled: true, healthStatus: "unreachable" }] as never,
-      processors: [{ id: "p1", name: "Cleaner", isEnabled: true, healthStatus: "unreachable" }] as never
-    });
-    const system = attention.items.filter((item) => item.tab === "system").reduce((sum, item) => sum + item.count, 0);
-    expect(attention.counts.system).toBe(system);
-    expect(attention.counts.system).toBeGreaterThanOrEqual(7);
-    expect(computeAttention(emptySummary).counts.system).toBe(0);
-  });
-
-  it("sends the same requests the System screen does", async () => {
+  it("jumps to Health from the number on This instance", async () => {
     seedBusy();
     renderTab(fullSummary);
     const user = userEvent.setup();
-
-    await user.click(await screen.findByRole("button", { name: "Retry Restart after a crash isn’t set" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/system/health/background-problems/startup%3Aservice-restart-on-failure/retry", expect.objectContaining({ method: "POST" })));
-    await user.click(screen.getByRole("button", { name: "Snooze A drive is nearly full for a day" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/system/health/storage%3Adisk/snooze", expect.objectContaining({ method: "POST", body: JSON.stringify({ hours: 24 }) })));
-    await user.click(screen.getByRole("button", { name: "Unsnooze An old problem" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/system/health/old%3Aone/unsnooze", expect.objectContaining({ method: "POST" })));
-    await user.click(screen.getByRole("button", { name: "Retry the jobs that gave up" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/retry-failed", expect.objectContaining({ method: "POST" })));
-    await user.click(screen.getByRole("button", { name: "Test SABnzbd again" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-clients/c2/test", expect.objectContaining({ method: "POST" })));
-    await user.click(screen.getByRole("button", { name: "Resume NZBGet" }));
-    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/download-clients/c3/resume", expect.objectContaining({ method: "POST" })));
+    await user.click(await screen.findByRole("link", { name: /need you →/ }));
+    await waitFor(() => expect(screen.getByRole("region", { name: "Health" }).className).toContain("sy-flash"));
   });
 
-  it("has unique button names, plain words, and leaves the download problems to Live", async () => {
+  it("shows every connection with its state, and tests one on request", async () => {
     seedBusy();
     renderTab(fullSummary);
-    await screen.findByRole("button", { name: "Test Nyaa.si again" });
+    const connections = screen.getByRole("region", { name: "Connections" });
+    expect(await within(connections).findByText("Nyaa.si")).toBeInTheDocument();
+    const user = userEvent.setup();
+    authedFetchMock.mockResolvedValue({ ok: true, json: async () => ({ healthStatus: "healthy", message: "ok" }) });
+    await user.click(within(connections).getByRole("button", { name: "Test althub.co.za" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/indexers/i1/test", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("draws the machine from the overview and leaves out what it could not read", async () => {
+    seedBusy();
+    lists["/api/system/overview"] = {
+      instance: { version: "1.0.0-rc.24", latest: true, channel: "stable", startedUtc: "2026-09-30T08:00:00Z", address: "http://192.168.1.51:5099", runsAs: "service", cpuPercent: 1, memoryBytes: 405e6, workersBusy: 0, oldestWaitingSeconds: null, answerMs: 4, answerSlowestMs: 15, jobsToday: 412, jobsFailedToday: 1, requestsToday: 8214, requestErrorsToday: 0, dataBytes: 387e6, databaseCount: 5, lastBackupUtc: null, lastBackupBytes: null, restartsThisWeek: 0, browsersLive: 2 },
+      machine: { os: "Windows 11", uptimeSeconds: 86400, rebootPending: null, cpuTemperatureC: null, cpuPercent: 2, cores: 8, memoryUsedBytes: 7.4e9, memoryTotalBytes: 31.3e9, diskReadBytesPerSec: 0, diskWriteBytesPerSec: 0, diskIops: 0 },
+      network: { adapter: "Ethernet", linkMbps: 1000, ip: "192.168.1.196", inBytesPerSec: 0, outBytesPerSec: 0, internet: true, dnsLookupMs: null, nasMs: 2, nasName: null, metadataMs: null, clockInSync: true },
+      drives: [], history: { cpu: [], memory: [], disk: [], netIn: [] }
+    };
+    renderTab(fullSummary);
+    expect(await screen.findByText("1.0.0-rc.24")).toBeInTheDocument();
+    expect(screen.getByText("192.168.1.51")).toBeInTheDocument();
+    expect(screen.getByText("port 5099")).toBeInTheDocument();
+    const machine = screen.getByRole("region", { name: "This computer" });
+    expect(within(machine).queryByText(/reboot/)).toBeNull();
+    expect(within(machine).queryByText(/°C/)).toBeNull();
+    const network = screen.getByRole("region", { name: "Network" });
+    expect(within(network).queryByText("DNS lookup")).toBeNull();
+    expect(within(network).getByText("Your NAS")).toBeInTheDocument();
+  });
+
+  it("works without the overview: the summary's own facts and no invented numbers", async () => {
+    seedBusy();
+    const { container } = renderTab(fullSummary);
+    expect(await screen.findByText("Version")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/undefined|NaN/);
+    expect(container.textContent).not.toContain("Browsers");
+  });
+
+  it("has unique button names, plain words and no Library card", async () => {
+    seedBusy();
+    renderTab(fullSummary);
+    await screen.findByRole("button", { name: "Test althub.co.za" });
     const names = screen.getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
     expect(new Set(names).size).toBe(names.length);
-    expect(screen.queryByRole("button", { name: /Give up on/ })).toBeNull();
-    expect(screen.queryByText(/leftover folder/)).toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|search-worker|importFailed/);
+    expect(screen.queryByRole("region", { name: /^library/i })).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|importFailed/);
   });
 
-  it("links every panel to where you act", async () => {
-    seedBusy();
-    renderTab(fullSummary);
-    await screen.findByRole("button", { name: "Test Nyaa.si again" });
-    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(expect.arrayContaining(["/system", "/system/updates", "/system/backups", "/search-cycles", "/settings/libraries", "/indexers/download-clients", "/indexers/indexers"]));
+  it("counts exactly what it lists", () => {
+    const attention = computeAttention(fullSummary, { handoffs: [] as never, indexers: [{ id: "i2", name: "Nyaa.si", isEnabled: true, healthStatus: "unreachable" }] as never });
+    expect(attention.counts.system).toBe(attention.items.filter((item) => item.tab === "system").reduce((sum, item) => sum + item.count, 0));
+    expect(computeAttention(emptySummary).counts.system).toBe(0);
   });
 
-  it("says something true on a new install and shows no problem buttons", async () => {
-    lists["/api/monitoring/machine"] = { hours: 6, samples: [] };
+  it("says something true on a new install", async () => {
     lists["/api/system/health"] = { checks: [], summary: { problemCount: 0, unsnoozedProblemCount: 0, unknownCount: 0, suggestionCount: 0, lastRunUtc: null } };
-    renderTab(emptySummary);
-
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    const { container } = renderTab(emptySummary);
     expect(await screen.findByText(/Nothing is wrong/)).toBeInTheDocument();
-    expect(screen.getByText(/No download client is set up/)).toBeInTheDocument();
-    expect(screen.getByText(/No indexer is set up/)).toBeInTheDocument();
-    expect(screen.getByText(/No processor is set up/)).toBeInTheDocument();
-    expect(screen.getByText(/No library is set up yet/)).toBeInTheDocument();
     expect(screen.getByText(/No scheduled tasks/)).toBeInTheDocument();
-    expect(screen.getByText(/taken a reading of this computer/)).toBeInTheDocument();
-    expect(screen.getByText(/No drive has been read yet/)).toBeInTheDocument();
-    expect(screen.getByText("no backup yet")).toBeInTheDocument();
-    expect(screen.getByText("no requests measured yet")).toBeInTheDocument();
-    // The library counts moved here from Live: nothing in the library yet says so, once for the films and once for the shows.
-    expect(screen.getAllByText("none yet").length).toBeGreaterThan(0);
-    expect(screen.getByRole("region", { name: /^library/i })).toBeInTheDocument();
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
-    expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN/);
+    expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
 
-  it("renders before the summary has arrived without inventing numbers", () => {
-    lists["/api/monitoring/machine"] = { hours: 6, samples: [] };
+  it("renders before the summary has arrived", () => {
     const { container } = renderTab(undefined);
-    expect(container.textContent).toContain("Starting");
     expect(container.textContent).not.toMatch(/undefined|NaN/);
   });
 });
