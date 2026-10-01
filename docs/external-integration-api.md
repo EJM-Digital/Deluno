@@ -503,6 +503,64 @@ In **Media Management → Processing Workflow → Processor connections**, conne
 }
 ```
 
+When Deluno knows which title the download is for, the hand-off also says so, so a processor does not have to guess from the release name. These fields are read from what Deluno has already stored (nothing is looked up at hand-off time) and are added after the keys above, which never change. A value Deluno does not know is left out of the payload, never sent empty or guessed, so a hand-off for a download that is not matched to a title carries none of them. A processor that ignores extra fields keeps working.
+
+| Field | Type | When present |
+| --- | --- | --- |
+| `title` | string | The film's title, or the show's title for an episode. |
+| `year` | integer | The film's release year, or the year the show started. |
+| `tmdbId` | integer | When the title is known to TMDb. |
+| `tvdbId` | integer | TV only, when the show has a TheTVDB id. |
+| `imdbId` | string | When the title has an IMDb id, for example `tt1856101`. |
+| `season` | integer | An episode hand-off only. |
+| `episode` | integer | An episode hand-off only. |
+| `posterUrl` | string | An absolute `https` address of the title's artwork that the processor can fetch on its own, with no Deluno sign-in. Left out when only a Deluno-local copy exists. |
+
+A film:
+
+```json
+{
+  "eventType": "deluno.processor-handoff",
+  "handoffId": "handoff-id",
+  "libraryId": "library-id",
+  "mediaType": "movies",
+  "sourcePath": "D:\\Downloads\\Blade.Runner.2049",
+  "releaseName": "Blade.Runner.2049",
+  "queueItemId": "download-client-queue-id",
+  "callbackPath": "/api/integrations/processors/events",
+  "title": "Blade Runner 2049",
+  "year": 2017,
+  "tmdbId": 335984,
+  "imdbId": "tt1856101",
+  "posterUrl": "https://image.example.test/poster.jpg"
+}
+```
+
+An episode:
+
+```json
+{
+  "eventType": "deluno.processor-handoff",
+  "handoffId": "handoff-id",
+  "libraryId": "library-id",
+  "mediaType": "tv",
+  "sourcePath": "D:\\Downloads\\Severance.S03E07",
+  "releaseName": "Severance.S03E07",
+  "queueItemId": "download-client-queue-id",
+  "callbackPath": "/api/integrations/processors/events",
+  "title": "Severance",
+  "year": 2022,
+  "tmdbId": 95396,
+  "tvdbId": 371980,
+  "imdbId": "tt11280740",
+  "season": 3,
+  "episode": 7,
+  "posterUrl": "https://image.example.test/show.jpg"
+}
+```
+
+A season pack names the show but no `season` or `episode`.
+
 The selected connection may use an `Authorization: Bearer …` token or a custom header. Deluno never includes that secret in activity, diagnostics, or API responses. A connection test uses a safe `HEAD` request; a processor that rejects `HEAD` is still shown as reachable, and its first actual hand-off validates the submission path.
 
 Any existing automation can use `sourcePath` as its input, preserve `handoffId`, and call Deluno back when it has produced its clean output. Treat `handoffId` as the idempotency key: if automation sees it again after a Deluno restart, it must not run the same file twice. Deluno will not import merely because the outbound POST succeeded. If no processor connection is configured, Deluno watches the processed-output folder itself instead.
