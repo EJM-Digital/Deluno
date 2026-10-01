@@ -120,6 +120,12 @@ public sealed class SqliteDatabaseMigrator(
             checkpoint.CommandTimeout = 0;
             checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
             await checkpoint.ExecuteNonQueryAsync(cancellationToken);
+
+            var dataRoot = Path.GetDirectoryName(databaseConnectionFactory.GetDatabasePath(databaseName));
+            if (!string.IsNullOrEmpty(dataRoot))
+            {
+                DatabaseMaintenanceLog.RecordCompaction(dataRoot, timeProvider.GetUtcNow());
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

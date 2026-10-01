@@ -30,6 +30,9 @@ public static class DelunoApiExtensions
         services.AddSingleton<IMigrationBackupService>(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddHostedService(sp => sp.GetRequiredService<DelunoBackupService>());
         services.AddSingleton<IDelunoReadinessService, DelunoReadinessService>();
+        services.AddSingleton<DatabaseIntegrityService>();
+        services.AddHostedService(sp => sp.GetRequiredService<DatabaseIntegrityService>());
+        services.AddHostedService<SystemLogPushService>();
         services.AddSingleton<IApiLatencyTracker, InMemoryApiLatencyTracker>();
         services.AddSingleton<IMonitoringService, MonitoringService>();
         services.AddSingleton<DashboardMetricsCache>();
@@ -99,6 +102,7 @@ public static class DelunoApiExtensions
         api.MapDelunoBundledComponentCredentialsEndpoints();
         api.MapDelunoSystemLogLevelEndpoints();
         api.MapDelunoSystemLogFilesEndpoints();
+        api.MapDelunoSystemLogAndDatabasesEndpoints();
         api.MapDelunoSystemInstallationInfoEndpoints();
 
         if (includeOperationalEndpoints)

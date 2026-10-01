@@ -20,7 +20,7 @@ import { ComputerCard, InstanceCard, NetworkCard } from "./system/band";
 import { BackupsCard, LogCard, TasksCard } from "./system/bottom";
 import { ConnectionsCard, useConnectionTesting } from "./system/connections-card";
 import { buildConnections } from "./system/connections-model";
-import { systemSources, useSystemOverview } from "./system/data";
+import { systemSources, useSystemDatabases, useSystemLog, useSystemOverview } from "./system/data";
 import { HealthCard } from "./system/health-card";
 import { buildHealth } from "./system/problems";
 import { StorageCard, drivesOf } from "./system/storage-card";
@@ -34,6 +34,8 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
   const setup = useSetupState();
   const attention = useDashboardAttention(summary, setup.needs);
   const overview = useSystemOverview();
+  const log = useSystemLog();
+  const databases = useSystemDatabases();
   const now = useNow(15_000);
   const testing = useConnectionTesting();
   const [jump, setJump] = useState(0);
@@ -75,9 +77,9 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
         <ConnectionsCard rows={connections} testing={testing} now={now} />
         <div className="sy-low">
           <TasksCard tasks={summary?.automation?.tasks ?? NO_ROWS} />
-          <LogCard activity={data.latestActivity ?? NO_ROWS} />
+          <LogCard log={log} />
         </div>
-        <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} instance={overview?.instance ?? null} />
+        <BackupsCard backups={data.backups ?? NO_ROWS} settings={data.backupSettings} databases={databases} />
       </div>
     </div>
   );

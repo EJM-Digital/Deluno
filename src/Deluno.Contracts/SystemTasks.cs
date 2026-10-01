@@ -38,7 +38,8 @@ public sealed record SystemTaskState(
     string? LastResult,
     long? LastDurationMs,
     DateTimeOffset? NextRunUtc,
-    long? IntervalSeconds = null);
+    long? IntervalSeconds = null,
+    string? LastError = null);
 
 /// <summary>
 /// Every scheduled pass, in one place, on a fixed interval.
@@ -89,6 +90,7 @@ public static class SystemTasks
     public const string EpisodeGroupRefresh = "episode.group.refresh";
     public const string DownloadLeftoverCleanup = "download.leftover.cleanup";
     public const string UnmatchedImportGiveUp = "unmatched.import.giveUp";
+    public const string DatabaseIntegrity = "database.integrity";
 
     /// <summary>
     /// Ordered as somebody reading the screen would want them: the things that
@@ -217,7 +219,10 @@ public static class SystemTasks
         // a case sitting a day past its limit before anyone notices.
         new(UnmatchedImportGiveUp, "Give up on old unmatched imports",
             "When you chose 'give up after N days', removes, deletes and blocklists a file Deluno still could not match once that many days have passed.",
-            TimeSpan.FromHours(1))
+            TimeSpan.FromHours(1)),
+        new(DatabaseIntegrity, "Check the databases",
+            "Asks each of Deluno's databases whether its file is sound, once a day, and notes the result on System.",
+            TimeSpan.FromDays(1))
     ];
 
     /// <summary>

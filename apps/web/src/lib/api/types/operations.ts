@@ -923,6 +923,8 @@ export interface DashboardScheduledTask {
   lastResult: string;
   lastCompletedUtc: string | null;
   nextRunUtc: string | null;
+  /** Why the last run failed, in everyday words; absent unless it failed. */
+  lastError?: string | null;
 }
 
 export interface DashboardAutomationSection {

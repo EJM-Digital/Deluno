@@ -156,7 +156,8 @@ public interface IJobQueueRepository
         string result,
         long durationMs,
         DateTimeOffset? nextRunUtc,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? failureReason = null);
 
     Task<IReadOnlyList<SystemTaskState>> ListSystemTaskStatesAsync(CancellationToken cancellationToken);
 

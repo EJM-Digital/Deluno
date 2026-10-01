@@ -336,7 +336,7 @@ public sealed class DelunoBackupService(
                         }
                         catch (Exception exception)
                         {
-                            await RecordScheduledPassOutcomeAsync(startedUtc, "failed", null, CancellationToken.None);
+                            await RecordScheduledPassOutcomeAsync(startedUtc, "failed", null, CancellationToken.None, PlainFailure.Describe(exception, "making the scheduled backup"));
                             logger.LogWarning(exception, "Scheduled backup creation failed.");
                         }
                     }
@@ -688,7 +688,8 @@ public sealed class DelunoBackupService(
         DateTimeOffset startedUtc,
         string result,
         DateTimeOffset? nextRunUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? failureReason = null)
     {
         if (jobQueueRepository is null)
         {
@@ -702,7 +703,8 @@ public sealed class DelunoBackupService(
             result,
             Math.Max(0, (long)(completedUtc - startedUtc).TotalMilliseconds),
             nextRunUtc,
-            cancellationToken);
+            cancellationToken,
+            failureReason);
     }
 
     public async Task<MigrationBackupReceipt> CreateVerifiedBackupAsync(

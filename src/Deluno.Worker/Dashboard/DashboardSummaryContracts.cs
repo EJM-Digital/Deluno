@@ -199,7 +199,8 @@ public sealed record DashboardScheduledTask(
     string Name,
     string LastResult,
     DateTimeOffset? LastCompletedUtc,
-    DateTimeOffset? NextRunUtc);
+    DateTimeOffset? NextRunUtc,
+    string? LastError = null);
 
 // --------------------------------------------------------------- indexers
 

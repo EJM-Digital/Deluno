@@ -1458,7 +1458,8 @@ public sealed class SqliteJobStore(
         string result,
         long durationMs,
         DateTimeOffset? nextRunUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? failureReason = null)
     {
         await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
             DelunoDatabaseNames.Jobs,
@@ -1471,7 +1472,8 @@ public sealed class SqliteJobStore(
             SET last_completed_utc = @completedUtc,
                 last_result = @result,
                 last_duration_ms = @durationMs,
-                next_run_utc = COALESCE(@nextRunUtc, next_run_utc)
+                next_run_utc = COALESCE(@nextRunUtc, next_run_utc),
+                last_error = @lastError
             WHERE schedule_key = @scheduleKey;
             """;
         AddParameter(command, "@scheduleKey", scheduleKey);
@@ -1479,6 +1481,7 @@ public sealed class SqliteJobStore(
         AddParameter(command, "@result", string.IsNullOrWhiteSpace(result) ? "completed" : result.Trim().ToLowerInvariant());
         AddParameter(command, "@durationMs", Math.Max(0, durationMs));
         AddParameter(command, "@nextRunUtc", nextRunUtc?.ToString("O"));
+        AddParameter(command, "@lastError", string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(failureReason) ? failureReason.Trim() : null);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -1493,7 +1496,7 @@ public sealed class SqliteJobStore(
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc, interval_seconds
+            SELECT schedule_key, last_run_utc, last_completed_utc, last_result, last_duration_ms, next_run_utc, interval_seconds, last_error
             FROM worker_schedule_state;
             """;
 
@@ -1507,7 +1510,8 @@ public sealed class SqliteJobStore(
                 LastResult: reader.IsDBNull(3) ? null : reader.GetString(3),
                 LastDurationMs: reader.IsDBNull(4) ? null : reader.GetInt64(4),
                 NextRunUtc: reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5)),
-                IntervalSeconds: reader.IsDBNull(6) ? null : reader.GetInt64(6)));
+                IntervalSeconds: reader.IsDBNull(6) ? null : reader.GetInt64(6),
+                LastError: reader.IsDBNull(7) ? null : reader.GetString(7)));
         }
 
         return states;

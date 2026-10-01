@@ -70,13 +70,16 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
     private long dropped;
 
     private readonly IRuntimeLogLevelStore? runtimeLogLevelStore;
+    private readonly DelunoLogBuffer? logBuffer;
 
     public DelunoFileLoggerProvider(
         IOptions<StoragePathOptions> storage,
         IOptions<DelunoFileLogOptions> options,
         TimeProvider timeProvider,
-        IRuntimeLogLevelStore? runtimeLogLevelStore = null)
+        IRuntimeLogLevelStore? runtimeLogLevelStore = null,
+        DelunoLogBuffer? logBuffer = null)
     {
+        this.logBuffer = logBuffer;
         this.options = options.Value;
         this.timeProvider = timeProvider;
         this.runtimeLogLevelStore = runtimeLogLevelStore;
@@ -124,7 +127,12 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
-        var line = Format(category, level, eventId, state, exception, formatter);
+        var line = Format(category, level, eventId, state, exception, formatter, out var message);
+        if (logBuffer is not null && DelunoLogBuffer.IsNotable(level, category))
+        {
+            logBuffer.Add(level, category, message);
+        }
+
         if (!queue.Writer.TryWrite(line))
         {
             Interlocked.Increment(ref dropped);
@@ -137,7 +145,8 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
         EventId eventId,
         TState state,
         Exception? exception,
-        Func<TState, Exception?, string> formatter)
+        Func<TState, Exception?, string> formatter,
+        out string redactedMessage)
     {
         using var buffer = new MemoryStream();
         using (var json = new Utf8JsonWriter(buffer))
@@ -169,6 +178,7 @@ public sealed class DelunoFileLoggerProvider : ILoggerProvider, ISupportExternal
             }
 
             json.WriteString("message", message);
+            redactedMessage = message;
 
             if (state is IEnumerable<KeyValuePair<string, object?>> properties)
             {

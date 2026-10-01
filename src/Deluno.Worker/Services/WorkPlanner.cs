@@ -2313,7 +2313,7 @@ public sealed class WorkPlanner(
         }
         catch (Exception exception)
         {
-            await RecordScheduledPassOutcomeAsync(scheduleKey, startedUtc, "failed", CancellationToken.None);
+            await RecordScheduledPassOutcomeAsync(scheduleKey, startedUtc, "failed", CancellationToken.None, PlainFailure.Describe(exception, SystemTasks.All.FirstOrDefault(task => task.Key == scheduleKey)?.Name.ToLowerInvariant()));
             logger.LogWarning(exception, failureMessage);
         }
     }
@@ -2322,7 +2322,8 @@ public sealed class WorkPlanner(
         string scheduleKey,
         DateTimeOffset startedUtc,
         string result,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? failureReason = null)
     {
         var completedUtc = timeProvider.GetUtcNow();
         var durationMs = Math.Max(0, (long)(completedUtc - startedUtc).TotalMilliseconds);
@@ -2334,7 +2335,8 @@ public sealed class WorkPlanner(
                 result,
                 durationMs,
                 startedUtc.Add(SystemTasks.IntervalFor(scheduleKey)),
-                cancellationToken);
+                cancellationToken,
+                failureReason);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

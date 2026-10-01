@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { fetchJson, type BackupItem, type BackupSettingsSnapshot, type HealthCheckListResponse } from "../../../lib/api";
 import type { SystemOverview } from "../../../lib/api/types/system-overview";
+import type { SystemDatabasesResponse, SystemLogEntry, SystemLogResponse } from "../../../lib/api/types/system-log";
 import { usePollInterval } from "../../../lib/realtime-state";
 import { defineSources, queryClient } from "../../../lib/route-cache";
 import { useLiveEvent } from "../../../lib/use-signalr";
@@ -45,5 +46,60 @@ export function useSystemOverview(): SystemOverview | null {
   useLiveEvent("SystemOverviewChanged", useCallback((event: SystemOverview) => {
     if (event && event.instance) queryClient.setQueryData(OVERVIEW_KEY, event);
   }, []));
+  return query.data ?? null;
+}
+
+export const LOG_KEY = ["system", "log"] as const;
+export const DATABASES_KEY = ["system", "databases"] as const;
+const LOG_KEPT = 200;
+
+/**
+ * Deluno's own log for today (GET /api/system/log, newest first), kept current by the pushed SystemLogEntry event.
+ * Null while it has not been read, or when the server does not have it (an older one).
+ */
+export function useSystemLog(): SystemLogResponse | null {
+  const query = useQuery({
+    queryKey: LOG_KEY,
+    queryFn: async (): Promise<SystemLogResponse | null> => {
+      try {
+        const log = await fetchJson<SystemLogResponse>(`/api/system/log?level=all&take=${LOG_KEPT}`);
+        return log && Array.isArray(log.entries) ? log : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5_000,
+    refetchInterval: usePollInterval(30_000)
+  });
+  useLiveEvent("SystemLogEntry", useCallback((entry: SystemLogEntry) => {
+    if (!entry || typeof entry.id !== "string") return;
+    queryClient.setQueryData<SystemLogResponse | null>(LOG_KEY, (current) => {
+      if (!current || current.entries.some((row) => row.id === entry.id)) return current ?? null;
+      return {
+        ...current,
+        entries: [entry, ...current.entries].slice(0, LOG_KEPT),
+        errorsToday: current.errorsToday + (entry.level === "error" ? 1 : 0),
+        warningsToday: current.warningsToday + (entry.level === "warning" ? 1 : 0)
+      };
+    });
+  }, []));
+  return query.data ?? null;
+}
+
+/** Each database's size and when it was last checked and compacted (GET /api/system/databases); null until read. */
+export function useSystemDatabases(): SystemDatabasesResponse | null {
+  const query = useQuery({
+    queryKey: DATABASES_KEY,
+    queryFn: async (): Promise<SystemDatabasesResponse | null> => {
+      try {
+        const body = await fetchJson<SystemDatabasesResponse>("/api/system/databases");
+        return body && Array.isArray(body.databases) ? body : null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 30_000,
+    refetchInterval: usePollInterval(120_000)
+  });
   return query.data ?? null;
 }
