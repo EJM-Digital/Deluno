@@ -8,10 +8,15 @@ public static class TurnedDownGroups
     public const string TooBig = "tooBig";
     public const string FewSeeders = "fewSeeders";
     public const string Fake = "fake";
+    public const string NotQuality = "notQuality";
+    public const string TooSmall = "tooSmall";
+    public const string Rules = "rules";
+    public const string TooOld = "tooOld";
+    public const string Blocklisted = "blocklisted";
     public const string Other = "other";
 
     /// <summary>Every group, in the order the Live screen lists them.</summary>
-    public static readonly IReadOnlyList<string> All = [Language, NotBetter, TooBig, FewSeeders, Fake, Other];
+    public static readonly IReadOnlyList<string> All = [Language, NotBetter, NotQuality, TooBig, TooSmall, FewSeeders, Fake, Rules, TooOld, Blocklisted, Other];
 
     public static string Label(string? group) => group switch
     {
@@ -20,13 +25,18 @@ public static class TurnedDownGroups
         TooBig => "Bigger than your size limit",
         FewSeeders => "Too few people sharing it",
         Fake => "Fake or mislabelled",
+        NotQuality => "Not a quality you want",
+        TooSmall => "Too small for its quality",
+        Rules => "Blocked by your release rules",
+        TooOld => "Older than your indexer keeps",
+        Blocklisted => "On your blocklist",
         _ => "Other reasons"
     };
 }
 
 /// <summary>
 /// The ONE place Deluno's raw decision reasons (the sentences the decision engine,
-/// the title match and the preference evaluator write) become the six plain groups
+/// the title match and the preference evaluator write) become the plain groups
 /// Live shows (#1098). A reason nobody has taught this helper is "other", never lost.
 /// </summary>
 public static class TurnedDownReasons
@@ -46,6 +56,11 @@ public static class TurnedDownReasons
     /// </summary>
     public static string GroupFor(string? reason, string? status = null)
     {
+        if (string.Equals(reason?.Trim(), BlocklistedReason, StringComparison.Ordinal))
+        {
+            return TurnedDownGroups.Blocklisted;
+        }
+
         if (string.Equals(status, "current-better", StringComparison.OrdinalIgnoreCase)
             || string.Equals(status, "equivalent", StringComparison.OrdinalIgnoreCase))
         {
@@ -91,7 +106,7 @@ public static class TurnedDownReasons
 
         // The most specific first: a name that is not the title asked for, or a file that is not what it says.
         if (Has("looks like a sample") || Has("blocked token") || Has("never-grab pattern")
-            || Has("This release is for something else") || Has("This release is from ") || Has("mislabelled") || Has("fake"))
+            || Has("This release is for something else") || Has("the search was for") || Has("This release is from ") || Has("mislabelled") || Has("fake"))
         {
             return TurnedDownGroups.Fake;
         }
@@ -106,6 +121,11 @@ public static class TurnedDownReasons
             return TurnedDownGroups.FewSeeders;
         }
 
+        if (Has("minimum configured for") || (Has("below the") && Has("minimum")))
+        {
+            return TurnedDownGroups.TooSmall;
+        }
+
         if (Has("size exceeds") || (Has("is above the") && Has("maximum configured")))
         {
             return TurnedDownGroups.TooBig;
@@ -115,9 +135,26 @@ public static class TurnedDownReasons
             || Has("Stopped upgrading") || Has("than the copy you have") || Has("installed file is better")
             || Has("ranks lower") || Has("No preference in this plan ranks") || Has("equivalent proven satisfaction")
             || Has("below the current file") || Has("does not improve") || Has("does not persistently improve")
-            || Has("already meets"))
+            || Has("already meets") || Has("lower than the current file"))
         {
             return TurnedDownGroups.NotBetter;
+        }
+
+        if (Has("not one of the qualities this profile allows") || Has("is below cutoff") || Has("is below its target"))
+        {
+            return TurnedDownGroups.NotQuality;
+        }
+
+        if (Has("retention window") || Has("retention limit"))
+        {
+            return TurnedDownGroups.TooOld;
+        }
+
+        if (Has("missing required term") || Has("contains excluded term") || Has("required word") || Has("ignored word")
+            || Has("required trait") || Has("forbidden trait") || Has("required-any group") || Has("hard safety gate")
+            || Has("searches only") || Has("TRaSH rates this copy"))
+        {
+            return TurnedDownGroups.Rules;
         }
 
         return null;

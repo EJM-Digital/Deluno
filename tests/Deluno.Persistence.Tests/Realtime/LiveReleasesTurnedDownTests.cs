@@ -124,7 +124,7 @@ public sealed class LiveReleasesTurnedDownTests : IDisposable
         Assert.Equal("series", pushed.EntityType);
         var item = Assert.Single(pushed.Items);
         Assert.Equal("Blocked.Sintel.2010", item.Release);
-        Assert.Equal("other", item.Group);
+        Assert.Equal("blocklisted", item.Group);
     }
 
     [Fact]

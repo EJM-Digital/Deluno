@@ -118,12 +118,36 @@ public sealed class DashboardLiveExtrasApiTests
         var turnedDown = live.GetProperty("turnedDown");
         Assert.Equal(0, turnedDown.GetProperty("total").GetInt32());
         Assert.Equal(
-            ["language", "notBetter", "tooBig", "fewSeeders", "fake", "other"],
+            ["language", "notBetter", "notQuality", "tooBig", "tooSmall", "fewSeeders", "fake", "rules", "tooOld", "blocklisted", "other"],
             turnedDown.GetProperty("reasons").EnumerateArray().Select(reason => reason.GetProperty("group").GetString()!).ToArray());
         Assert.All(turnedDown.GetProperty("reasons").EnumerateArray(), reason => Assert.Equal(0, reason.GetProperty("count").GetInt32()));
         Assert.Equal(0, turnedDown.GetProperty("latest").GetArrayLength());
         Assert.Equal(0, live.GetProperty("cleanedUpToday").GetInt32());
         Assert.Equal(0, live.GetProperty("connections").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_row_stored_as_other_is_regrouped_from_its_raw_reason_when_it_is_read()
+    {
+        await using var app = await ApplicationTestHost.StartAsync();
+        var recorder = app.Services.GetRequiredService<Deluno.Jobs.Data.ITurnedDownReleaseRecorder>();
+        await recorder.RecordAsync("Sintel", "movie", "m1",
+        [
+            new Deluno.Jobs.Data.TurnedDownRelease("Sintel.2010.2160p", "other", "Bluray 2160p is not one of the qualities this profile allows (Bluray 1080p).", "Idx"),
+            new Deluno.Jobs.Data.TurnedDownRelease("Sintel.2010.x265", "other", "Release name is missing required term 'REMUX'.", "Idx"),
+            new Deluno.Jobs.Data.TurnedDownRelease("Sintel.2010.Blocked", "other", "On your blocklist.", "Idx"),
+            new Deluno.Jobs.Data.TurnedDownRelease("Sintel.2010.Odd", "other", null, "Idx")
+        ], CancellationToken.None);
+
+        var turnedDown = (await GetAsync(app)).GetProperty("turnedDown");
+
+        var counts = turnedDown.GetProperty("reasons").EnumerateArray()
+            .ToDictionary(reason => reason.GetProperty("group").GetString()!, reason => reason.GetProperty("count").GetInt32());
+        Assert.Equal(1, counts["notQuality"]);
+        Assert.Equal(1, counts["rules"]);
+        Assert.Equal(1, counts["blocklisted"]);
+        Assert.Equal(1, counts["other"]);
+        Assert.Contains(turnedDown.GetProperty("latest").EnumerateArray(), item => item.GetProperty("release").GetString() == "Sintel.2010.2160p" && item.GetProperty("group").GetString() == "notQuality");
     }
 
     [Fact]

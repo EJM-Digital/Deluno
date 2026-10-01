@@ -714,7 +714,7 @@ export interface LiveRequestItem {
 }
 
 /** The plain groups a turned-down release falls in (#1098). The server sends each label with it. */
-export type TurnedDownGroup = "language" | "notBetter" | "tooBig" | "fewSeeders" | "fake" | "other";
+export type TurnedDownGroup = "language" | "notBetter" | "notQuality" | "tooBig" | "tooSmall" | "fewSeeders" | "fake" | "rules" | "tooOld" | "blocklisted" | "other";
 
 /** Releases Deluno looked at since the day began and did not take: the total, one entry per group (every group, zeros included, in this order) and the newest twenty. */
 export interface LiveTurnedDown {
