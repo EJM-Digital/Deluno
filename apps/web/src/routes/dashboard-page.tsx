@@ -71,9 +71,8 @@ export function dashboardLoader(args?: { request?: Request }) {
   return { cached: true as const };
 }
 
-function TabBar({ active, badges, onSelect, className }: {
+function TabBar({ active, onSelect, className }: {
   active: DashboardTab;
-  badges: Record<DashboardTab, number>;
   onSelect: (tab: DashboardTab) => void;
   className?: string;
 }) {
@@ -81,7 +80,6 @@ function TabBar({ active, badges, onSelect, className }: {
     <div role="tablist" aria-label="Dashboard sections" className={cn("flex items-center gap-1", className)}>
       {DASHBOARD_TABS.map((tab) => {
         const selected = tab === active;
-        const count = badges[tab];
         return (
           <Button
             key={tab}
@@ -99,14 +97,6 @@ function TabBar({ active, badges, onSelect, className }: {
             )}
           >
             {TAB_LABELS[tab]}
-            {count > 0 ? (
-              <span
-                aria-label={`${count} ${count === 1 ? "thing needs" : "things need"} a look`}
-                className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-warning/20 px-1.5 text-[length:var(--type-micro)] font-bold tabular-nums text-warning"
-              >
-                {count}
-              </span>
-            ) : null}
           </Button>
         );
       })}
@@ -191,9 +181,8 @@ export function DashboardPage() {
     }, { replace: false });
   }, [setSearchParams]);
 
-  // Problems are in the bell, counted once for every screen. The System tab says how many of them are about the system; Live shows what's happening, not what needs a person, so it carries no badge.
-  const attention = useDashboardAttention(summary, setup.needs);
-  const badges: Record<DashboardTab, number> = { live: 0, system: attention.counts.system };
+  // Problems are in the bell, counted once for every screen; neither tab carries a number (#1098). The Dashboard keeps its stored lists warm for the bell.
+  useDashboardAttention(summary, setup.needs);
 
   // Nothing to draw the first time until the summary arrives. After that the
   // last answer stays on screen while a newer one is fetched behind it.
@@ -208,13 +197,13 @@ export function DashboardPage() {
   }
   if (summary === undefined) return <RouteSkeleton />;
 
-  const bar = <TabBar active={tab} badges={badges} onSelect={select} />;
+  const bar = <TabBar active={tab} onSelect={select} />;
 
   return (
     <div ref={setRoot} className="flex flex-col gap-[var(--grid-gap)]">
       {slot ? (
         <>
-          {createPortal(<TabBar active={tab} badges={badges} onSelect={select} />, slot)}
+          {createPortal(<TabBar active={tab} onSelect={select} />, slot)}
           <div className="lg:hidden">{bar}</div>
         </>
       ) : (

@@ -348,18 +348,17 @@ test.describe("Dashboard tabs", () => {
     }
   });
 
-  test("only System carries a number, and the bell counts every problem on both", async ({ page }) => {
+  test("neither tab carries a number, and the bell counts every problem in two sections", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
     await serveBusyInstall(page);
     await page.goto("/");
     await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
-    // The lists the count reads arrive after the summary; wait until the badge settles.
-    await expect.poll(async () => badge(page, "System"), { timeout: 15_000 }).toBeGreaterThan(0);
-    const setup = await badge(page, "System");
-    // Live shows what is happening and carries no number; the bell holds the problems of both tabs.
+    // The lists the count reads arrive after the summary; the bell holds the problems of both tabs.
+    await expect.poll(() => bell(page), { timeout: 15_000 }).toBeGreaterThan(0);
+    // No number beside the Live or System tab, however many things need you (#1098).
+    expect(await badge(page, "System")).toBe(0);
     expect(await badge(page, "Live")).toBe(0);
-    await expect.poll(() => bell(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(setup);
     await expect(page.getByRole("region", { name: "Needs you" })).toHaveCount(0);
 
     // The left menu no longer carries a Needs a look card; the bell is the one place for problems.
@@ -367,20 +366,25 @@ test.describe("Dashboard tabs", () => {
     await page.getByRole("button", { name: /^Notifications/ }).click();
     const panel = page.getByRole("dialog");
     await expect(panel.getByRole("region", { name: "Needs you" })).toBeVisible();
+    // Two sections, and every row has at most two buttons, each saying what it does on hover.
+    await expect(panel.getByRole("region", { name: "Deluno" })).toBeVisible();
+    for (const row of await panel.getByRole("listitem").all()) {
+      const controls = row.locator("[data-row-actions] button, [data-row-actions] a");
+      expect(await controls.count()).toBeLessThanOrEqual(2);
+      for (const control of await controls.all()) expect(await control.getAttribute("title")).toBeTruthy();
+    }
     await expect(panel.getByRole("link", { name: "20 leftover folders" })).toBeVisible();
     await page.keyboard.press("Escape");
   });
 
-  test("a fresh install's badges add up to the bell, and none shows at zero", async ({ page }) => {
+  test("a fresh install shows no number on either tab and a bell that is quiet or counts what needs you", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");
     await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
     await page.waitForTimeout(1500);
-    const setup = await badge(page, "System");
-    // Live never carries a number; the bell counts every problem, so it is at least System's.
+    expect(await badge(page, "System")).toBe(0);
     expect(await badge(page, "Live")).toBe(0);
-    expect(await bell(page)).toBeGreaterThanOrEqual(setup);
-    if (setup === 0) await expect(page.getByRole("tab", { name: /^System/ }).getByLabel(/need a look|needs a look/)).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: /^System/ }).getByLabel(/need a look|needs a look/)).toHaveCount(0);
   });
 
   test.describe("with a library to look at", () => {

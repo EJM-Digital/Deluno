@@ -1112,3 +1112,26 @@ export interface DashboardActivitySection {
   retentionRemovals: number;
   recent: DashboardActivityItem[];
 }
+
+/** A wanted title whose newest search found nothing Deluno would take (#1098). `GET /api/attention/no-release`. */
+export interface NoReleaseRow {
+  mediaType: "movie" | "series" | string;
+  id: string;
+  title: string;
+  year: number | null;
+  libraryId: string;
+  lastSearchUtc: string;
+  missingSinceUtc: string | null;
+  reason: string | null;
+}
+
+/** The latest real test of one connection (#1098). `GET /api/connections/checks`, and the pushed `ConnectionChecked` event. */
+export interface ConnectionCheckItem {
+  kind: "indexer" | "downloadClient" | "processor" | "mediaServer" | "requests" | "metadata" | "lists" | string;
+  id: string;
+  name: string;
+  ok: boolean;
+  slow: boolean;
+  message: string;
+  checkedUtc: string;
+}

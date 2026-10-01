@@ -127,6 +127,7 @@ Live is fully live: the server sends each change itself the moment it is saved, 
 | `DownloadSpeedSample` | Every reading of the download clients while a screen watches | `{ downloadMbps, uploadMbps, active, at }` (MB/s; `active` is the count downloading) |
 | `ReleasesTurnedDown` | A search looked at releases and did not take some of them (once per search with any; a preview search sends nothing) | `{ title, entityType, entityId, atUtc, items: [{ release, group, label }] }`; `group` is `language`, `notBetter`, `tooBig`, `fewSeeders`, `fake` or `other`, and `label` is its plain wording. A release is once per search, by the first thing that turned it down |
 | `ConnectionUsed` | Deluno handed a title to a processor (and again as it finishes), a media server answered a refresh, a Seerr request was received, a subtitle was fetched, or an import list was checked | `{ kind, id, name, countToday, busy, atUtc }`; `kind` is `processor`, `mediaServer`, `requests`, `subtitles` or `lists`; `countToday` includes this use (for `lists` it is the lists that provider is watching); `busy` is a processor's titles right now |
+| `ConnectionChecked` | A real test of one connection finished (the regular check, Test all, or a per-connection Test button). Also sent on the `dashboard` subject | `{ kind, id, name, ok, slow, message, checkedUtc }`; `kind` is `indexer`, `downloadClient`, `processor`, `mediaServer`, `requests`, `metadata` or `lists`; `slow` is only ever true for a connection that answered |
 
 The existing `DownloadProgress`, `QueueItemAdded`, `QueueItemRemoved`, `QueueItemStatusChanged`, `ImportStateChanged`, `Dispatch*`, `ActivityEventAdded` and `HealthChanged` events keep their subjects and payloads.
 
@@ -737,3 +738,12 @@ Implemented endpoints:
 Contract note:
 
 - API keys are the supported external automation boundary; docs should prefer them over undocumented direct database access or UI scraping
+
+## Connection checks and the bell (#1098)
+
+- `GET /api/connections/checks` returns the latest real check of every connection: `[{ kind, id, name, ok, slow, message, checkedUtc }]`.
+- `POST /api/connections/test-all` tests every connection that is switched on, four at a time, pushing `ConnectionChecked` for each as it finishes; it answers `{ tested, results }`.
+- `POST /api/connections/{kind}/{id}/test` tests one by kind (`indexer`, `downloadClient`, `processor`, `mediaServer`, `requests`, `metadata`, `lists`). The existing per-connection test endpoints (`/api/indexers/{id}/test`, `/api/download-clients/{id}/test`, the media server, Seerr and processor ones, `/api/metadata/test`) push the same event.
+- The regular check (system task `connections.check`, setting `checkConnectionsRegularly`, on unless turned off) tests anything no real call or earlier check touched in 15 minutes. It only reads. A plain Activity line is written only when a result changes.
+- `GET /api/attention/no-release` lists wanted titles whose newest search found nothing acceptable; `POST /api/attention/no-release/{movie|series}/{id}/dismiss` hides one until it stops being that problem.
+- Health has a `machine` area: `machine:sleep`, `machine:drive:<name>`, `machine:reboot`, `machine:temperature`. The Keep awake button is `PATCH /api/settings { keepComputerAwake: true }`.

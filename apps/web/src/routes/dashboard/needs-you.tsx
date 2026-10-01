@@ -1,21 +1,19 @@
 /**
- * Needs you (#1087): the real problems whose fix is about downloads, imports
- * and titles, each with its button. Every row is one the Live badge counts, so
- * the number and the list are the same thing.
+ * The bell's rows (#1098): the same row shape for everything that needs you, whether it is about your media or
+ * about Deluno. Status dot, bold one-line title, muted one-line reason, then the row's (at most two) buttons in
+ * two fixed columns, so every row's first button lines up with every other row's first button.
  *
- * A problem a person has to settle shows the buttons that settle it here
- * (Retry, Give up, Search again). The System tab holds the connection,
- * storage and system problems with theirs.
+ * What the buttons are comes from `lib/alert-actions.ts`, which System's Health reads too: one definition, so
+ * the bell and Health cannot disagree about what a problem offers.
  *
- * One quiet line under the list reaches what is worth a look but is not a
- * problem and is never counted: leftover folders and health suggestions.
+ * One quiet line under the list reaches what is worth a look but is not a problem and is never counted:
+ * leftover folders and health suggestions.
  */
 import type { ReactElement } from "react";
 import { Link } from "react-router-dom";
-import { Button } from "../../components/ui/button";
 import { StatusLed } from "../../components/ui/status-led";
-import { dismissFailedJob } from "../../lib/failed-jobs";
-import { canTryAgain, isVanished, type RecoveryCaseRow } from "../../lib/needs-action";
+import type { AlertAction, AlertActions } from "../../lib/alert-actions";
+import type { BellRow } from "../../lib/bell-rows";
 import { ActionButton, plural, send, UNIFORM_BUTTON, useAction } from "./downloads-kit";
 import type { DashboardAttention } from "./attention";
 
@@ -24,17 +22,18 @@ export type Action = ReturnType<typeof useAction>;
 const linkButton = `inline-flex ${UNIFORM_BUTTON} items-center whitespace-nowrap rounded-[10px] border border-hairline text-[length:var(--button-font-size-sm)] font-medium text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`;
 
 /**
- * One Needs-you row, the same on the Dashboard and in the bell: status dot, bold
- * one-line title, muted one-line reason (both whole in the tooltip), then the two
- * fixed action columns. One padding and a hairline divider on every row; on a phone
- * the buttons drop under the text.
+ * One row, the same in the bell's Your media and Deluno sections: status dot, bold
+ * one-line title (a link when it has somewhere to go), muted one-line reason (both whole
+ * in the tooltip), then the two fixed action columns. One padding and a hairline divider
+ * on every row; on a phone the buttons drop under the text.
  */
-export function NeedsYouRow({ tone, title, text, actions }: { tone: "bad" | "warn"; title: string; text: string; actions: ReactElement }) {
+export function NeedsYouRow({ tone, title, text, actions, to }: { tone: "bad" | "warn"; title: string; text: string; actions: ReactElement; to?: string }) {
+  const titleClass = "block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground";
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 gap-y-1.5 border-b border-hairline px-[var(--card-pad-x)] py-2.5 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
       <StatusLed tone={tone} pulse />
       <div className="min-w-0 leading-tight">
-        <span title={title} className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{title}</span>
+        {to ? <Link to={to} title={title} className={`${titleClass} hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>{title}</Link> : <span title={title} className={titleClass}>{title}</span>}
         <span title={text} className="block truncate text-[length:var(--type-caption)] text-muted-foreground">{text}</span>
       </div>
       <div className="col-start-2 sm:col-start-auto">{actions}</div>
@@ -57,121 +56,43 @@ export function RowActions({ primary, secondary }: { primary: ReactElement; seco
   );
 }
 
-function recoveryLabel(item: RecoveryCaseRow): string {
-  return item.mediaType === "movie" ? "Movies" : "TV";
-}
-
-function RecoveryButtons({ item, action }: { item: RecoveryCaseRow; action: Action }) {
-  const collection = item.mediaType === "movie" ? "movies" : "series";
-  const base = `/api/${collection}/import-recovery/${encodeURIComponent(item.id)}`;
-  return (
-    <RowActions
-      primary={canTryAgain(item) ? (
-        <ActionButton
-          uniform
-          label={isVanished(item) ? "Search again" : "Retry"}
-          name={`${isVanished(item) ? "Search again for" : "Retry"} ${item.title}`}
-          busyKey={`recovery-retry:${item.id}`}
-          state={action}
-          onClick={() => void action.run(`recovery-retry:${item.id}`, async () => (await send(`${base}/retry`, "That could not be tried again."))?.message ?? `${item.title} is being tried again.`)}
-        />
-      ) : (
-        <Link to="/queue" aria-label={`Review ${item.title}`} className={linkButton}>Review</Link>
-      )}
-      secondary={<ActionButton
-        uniform
-        label="Give up"
-        name={`Give up on ${item.title}`}
-        busyKey={`recovery-dismiss:${item.id}`}
-        state={action}
-        variant="ghost"
-        onClick={() => void action.run(`recovery-dismiss:${item.id}`, async () => { await send(`${base}/dismiss`, "That case could not be dismissed."); return `${item.title} dismissed`; })}
-      />}
-    />
-  );
+/** Runs an alert button's request and says what happened in plain words; a link button is a link and never gets here. */
+export function runAlert(action: AlertAction, state: Action): void {
+  const request = action.request;
+  if (!request) return;
+  void state.run(action.id, async () => {
+    const result = await send(request.path, request.failure, { method: request.method, body: request.body });
+    return result?.message ?? request.done;
+  });
 }
 
 /**
- * The Needs you rows for the problems about downloads, imports and titles, each
- * with its button. The Dashboard's Live tab and the bell's panel both draw these
- * rows, so they are one list.
+ * The (at most two) buttons of one alert, as the bell and Health both draw them. Every button names what it
+ * does on hover, and its accessible name says which problem it is for ("Find another Sintel (2010)").
  */
-export function needsYouRows(attention: DashboardAttention, action: Action): ReactElement[] {
-  const { recoveryCases, failedImportJobs, handoffs } = attention.downloads;
-  return attention.items
-    .filter((item) => item.tab === "live")
-    .flatMap((item) => {
-      if (item.id === "recovery") {
-        return recoveryCases.map((entry) => (
-          <NeedsYouRow key={`recovery:${entry.mediaType}:${entry.id}`} tone="warn" title={entry.title} text={`${recoveryLabel(entry)}: ${entry.summary}`} actions={<RecoveryButtons item={entry} action={action} />} />
-        ));
-      }
-      if (item.id === "failed-imports") {
-        return failedImportJobs.map((job, index) => (
-          <NeedsYouRow key={`import:${job.id}`} tone="bad" title="An import didn’t finish" text={job.lastError ?? "It stopped without saying why."} actions={<RowActions
-              primary={<ActionButton
-          uniform
-              label="Retry"
-              name={`Retry failed import ${index + 1}`}
-              busyKey={`job-retry:${job.id}`}
-              state={action}
-              onClick={() => void action.run(`job-retry:${job.id}`, async () => { await send("/api/jobs/retry-failed", "The failed imports could not be tried again."); return "Failed imports requeued"; })}
-            />}
-              secondary={<ActionButton
+export function AlertButtons({ actions, subject, state }: { actions: AlertActions; subject: string; state: Action }) {
+  const draw = (action: AlertAction): ReactElement =>
+    action.to ? (
+      <Link key={action.id} to={action.to} aria-label={`${action.label}: ${subject}`} title={action.hint} className={linkButton}>{action.label}</Link>
+    ) : (
+      <ActionButton
+        key={action.id}
         uniform
-              label="Give up"
-              name={`Give up on failed import ${index + 1}`}
-              busyKey={`job-dismiss:${job.id}`}
-              state={action}
-              variant="ghost"
-              onClick={() => void action.run(`job-dismiss:${job.id}`, async () => { await dismissFailedJob(job.id); return "Import dismissed"; })}
-            />}
-            />} />
-        ));
-      }
-      if (item.id === "handoffs") {
-        return handoffs.map((handoff) => (
-          <NeedsYouRow key={`handoff:${handoff.id}`} tone="bad" title={handoff.releaseName} text={handoff.failureMessage ?? `${handoff.processorName ?? "The processor"} could not finish it.`} actions={<RowActions
-              primary={<ActionButton
-          uniform
-              label="Retry"
-              name={`Retry ${handoff.releaseName}`}
-              busyKey={`handoff-retry:${handoff.id}`}
-              state={action}
-              onClick={() => void action.run(`handoff-retry:${handoff.id}`, async () => (await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/retry`, "That could not be tried again."))?.message ?? "Sent to the processor again")}
-            />}
-              secondary={<ActionButton
-        uniform
-              label="Give up"
-              name={`Give up on ${handoff.releaseName}`}
-              busyKey={`handoff-dismiss:${handoff.id}`}
-              state={action}
-              variant="ghost"
-              onClick={() => void action.run(`handoff-dismiss:${handoff.id}`, async () => { await send(`/api/integrations/processors/handoffs/${encodeURIComponent(handoff.id)}/dismiss`, "That could not be dismissed."); return "Dismissed"; })}
-            />}
-            />} />
-        ));
-      }
-      // A stalled download or one with a warning: the download is in Downloads now, the button is in Transfers.
-      return [
-        <NeedsYouRow key={item.id} tone={item.tone === "bad" ? "bad" : "warn"} title={item.title} text={item.text} actions={<RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />} />
-      ];
-    });
+        label={action.label}
+        name={`${action.label} ${subject}`}
+        hint={action.hint}
+        busyKey={action.id}
+        state={state}
+        variant={action.quiet ? "ghost" : "outline"}
+        onClick={() => runAlert(action, state)}
+      />
+    );
+  return <RowActions primary={draw(actions[0])} secondary={actions[1] ? draw(actions[1]) : undefined} />;
 }
 
-/**
- * The connection, storage and system problems, one row each with a button that
- * goes to the place they are cleared (System, or the screen a health
- * problem names). Their own buttons (Test again, Resume, Snooze) sit in the
- * System panels; the bell lists them here so every problem is reachable
- * from every screen.
- */
-export function setupProblemRows(attention: DashboardAttention): ReactElement[] {
-  return attention.items
-    .filter((item) => item.tab === "system")
-    .map((item) => (
-      <NeedsYouRow key={item.id} tone={item.tone === "bad" ? "bad" : "warn"} title={item.title} text={item.text} actions={<RowActions primary={<Link to={item.to} aria-label={`${item.action}: ${item.title}`} className={linkButton}>{item.action}</Link>} />} />
-    ));
+/** One bell row, from the shared rows. */
+export function bellRowElement(row: BellRow, state: Action): ReactElement {
+  return <NeedsYouRow key={row.key} tone={row.tone} title={row.title} text={row.text} to={row.to} actions={<AlertButtons actions={row.actions} subject={row.subject ?? row.title} state={state} />} />;
 }
 
 /**

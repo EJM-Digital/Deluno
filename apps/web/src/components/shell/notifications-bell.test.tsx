@@ -19,7 +19,8 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useNavigate: () => navigate
 }));
 
-vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve(new Response("{}"))) }));
+const authedFetch = vi.hoisted(() => vi.fn((_path: string, _init?: RequestInit) => Promise.resolve(new Response("{}"))));
+vi.mock("../../lib/use-auth", () => ({ authedFetch }));
 
 const { NotificationsBell } = await import("./notifications-bell");
 
@@ -128,9 +129,12 @@ describe("notifications bell (#907)", () => {
     const needs = within(dialog).getByRole("region", { name: "Needs you" });
     expect(within(needs).getByRole("button", { name: "Retry failed import 1" })).toBeInTheDocument();
     expect(within(needs).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
-    // A setup problem is reachable from here too, by a button that goes to where it is cleared.
-    expect(within(needs).getAllByRole("link", { name: /System/ })[0]).toHaveAttribute("href", "/?tab=system");
+    // "Give up" is Dismiss now, and says on hover that nothing is deleted.
+    const dismiss = within(needs).getByRole("button", { name: "Dismiss Metropolis (1927)" });
+    expect(dismiss).toHaveAttribute("title", "Stop showing this. Nothing is deleted.");
+    expect(within(needs).queryByText("Give up")).toBeNull();
+    // A Deluno row links into System's Health, and its button goes to where it is cleared.
+    expect(within(needs).getAllByRole("link", { name: /System/ })[0]).toHaveAttribute("href", "/system");
     // The quiet line is there and is a link, not a count.
     expect(within(needs).getByRole("link", { name: "2 leftover folders" })).toHaveAttribute("href", "/queue");
 
@@ -309,5 +313,87 @@ describe("the bell shows what matters, not routine job noise (#916)", () => {
     expect(rows).toHaveLength(3);
     expect(screen.queryByText(/Started reading what your files/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Added a media read/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the bell is two sections, with the same buttons System's Health shows (#1098)", () => {
+  afterEach(() => {
+    fetchPageItems.mockReset();
+    navigate.mockReset();
+    authedFetch.mockClear();
+  });
+
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
+  function mixed(): AttentionSnapshot {
+    const summary = structuredClone(fullSummary);
+    summary.health = {
+      ...summary.health!,
+      problems: 1,
+      topProblems: [{ id: "machine:sleep", title: "Computer sleep", category: "machine", message: "This computer goes to sleep after 30 minutes on mains power.", sinceUtc: hoursAgo(1), link: "/system", snoozed: false }]
+    };
+    const needs = computeAttention(summary, {
+      telemetry: { clients: [{ queue: [{ id: "t1", clientId: "qb", clientName: "qBittorrent", title: "Sintel (2010)", releaseName: "Sintel.2010.1080p", status: "stalled", errorMessage: null, healthFindings: null, addedUtc: hoursAgo(2) }] }] } as never,
+      noRelease: [{ mediaType: "movie", id: "m1", title: "Obscure Film", year: 1971, libraryId: "lib", lastSearchUtc: hoursAgo(1), missingSinceUtc: hoursAgo(5), reason: null }]
+    });
+    return { ...attention, total: needs.total, needs };
+  }
+
+  async function open() {
+    fetchPageItems.mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<MemoryRouter><NotificationsBell attention={mixed()} /></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: /notifications/i }));
+    const dialog = await screen.findByRole("dialog");
+    return { user, dialog };
+  }
+
+  it("lists your media and Deluno apart, each row with at most two buttons that say what they do on hover", async () => {
+    const { dialog } = await open();
+
+    const media = within(dialog).getByRole("region", { name: "Your media" });
+    const deluno = within(dialog).getByRole("region", { name: "Deluno" });
+    expect(within(media).getByText("Sintel (2010)")).toBeInTheDocument();
+    expect(within(media).getByText("Obscure Film (1971)")).toBeInTheDocument();
+    expect(within(deluno).getByText("Computer sleep")).toBeInTheDocument();
+    // The stuck download is named, with its reason, and offers the stronger fix by name.
+    expect(within(media).getByText("Not moving in qBittorrent.")).toBeInTheDocument();
+    expect(within(media).getByRole("button", { name: "Find another Sintel (2010)" })).toHaveAttribute("title", expect.stringContaining("blocklists this release"));
+    expect(within(media).getByRole("button", { name: "Search now Obscure Film (1971)" })).toBeInTheDocument();
+    expect(within(media).getByRole("button", { name: "Dismiss Obscure Film (1971)" })).toHaveAttribute("title", expect.stringContaining("Nothing is deleted"));
+
+    for (const row of within(dialog).getAllByRole("listitem")) {
+      const actions = row.querySelector("[data-row-actions]") as HTMLElement;
+      expect(actions.querySelectorAll("button, a").length).toBeLessThanOrEqual(2);
+      for (const control of actions.querySelectorAll("button, a")) expect(control.getAttribute("title")).toBeTruthy();
+    }
+    // A Deluno row's title links to System's Health.
+    expect(within(deluno).getByRole("link", { name: "Computer sleep" })).toHaveAttribute("href", "/system");
+  });
+
+  it("Keep awake turns Deluno's keep-awake on without touching anything else", async () => {
+    const { user, dialog } = await open();
+
+    await user.click(within(dialog).getByRole("button", { name: "Keep awake Computer sleep" }));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    const [path, init] = authedFetch.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe("/api/settings");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ keepComputerAwake: true });
+  });
+
+  it("Find another removes that download and searches again, and Dismiss on a title hides it without changing it", async () => {
+    const { user, dialog } = await open();
+
+    await user.click(within(dialog).getByRole("button", { name: "Find another Sintel (2010)" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    expect(authedFetch.mock.calls[0][0]).toBe("/api/download-clients/qb/queue/t1/remove");
+    expect(JSON.parse(String((authedFetch.mock.calls[0][1] as RequestInit).body))).toEqual({ reason: "failed" });
+
+    authedFetch.mockClear();
+    await user.click(within(dialog).getByRole("button", { name: "Dismiss Obscure Film (1971)" }));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalled());
+    expect(authedFetch.mock.calls[0][0]).toBe("/api/attention/no-release/movie/m1/dismiss");
   });
 });
