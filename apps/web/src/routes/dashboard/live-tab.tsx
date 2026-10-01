@@ -31,15 +31,11 @@ import { queryClient, useRouteSources } from "../../lib/route-cache";
 import { authedFetch } from "../../lib/use-auth";
 import { attentionSources } from "./attention";
 import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
-import { ConnectionTiles } from "./live/connection-tiles";
 import { Band, buildOperations } from "./live/band";
 import { type CardContext } from "./live/card";
 import { arrivalItems, recentArrivalItems, requestCards, withSeerr } from "./live/extras";
 import { useArrivals, useElementSize, useFreshKeys, useNow, useRemPx, useTitles } from "./live/hooks";
-import { tileColumns, tileDensity } from "./live/layout";
-import { TileLayoutContext, type TileLayout } from "./live/tile";
-import { ClientTiles } from "./live/clients";
-import { IndexerTiles } from "./live/indexers";
+import { SourcesCard } from "./live/sources-map";
 import { byStage, buildJourney, laneCounts } from "./live/journey";
 import { useFlyToShelf, useGlide } from "./live/motion";
 import { arrivedHeading, LATEST_ARRIVALS_HEADING, Shelf } from "./live/shelf";
@@ -139,7 +135,6 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const first = items[0];
   const lastArrival = first ? { title: nameOf(first, titles).title, at: first.at } : null;
   const upgraded = Math.max(items.filter((item) => item.upgraded).length, extras?.upgrades?.length ?? 0);
-  const peak = (data.throughput?.samples ?? NO_ROWS).reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
 
   const root = useRef<HTMLDivElement>(null);
   const [pageRef, page] = useElementSize<HTMLDivElement>();
@@ -148,14 +143,9 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
   const layout = pageLayout(page.width, rem);
   const side = layout.sideBySide;
   const budget = journeyBudget(side, rest.height, typeof window === "undefined" ? 0 : window.innerHeight);
-  // The right column (beside the page or under it): tiles go three across, and turn compact (a light and a name) before anything is clipped, so Activity keeps its room.
+  // The right column (beside the page or under it): the Sources map and Activity share its height; Activity's rows go to one line when it is short.
   const [sideRef, sideBox] = useElementSize<HTMLDivElement>();
-  const clientCount = Math.max((data.clients ?? NO_ROWS).length, (summary?.downloads?.clients ?? NO_ROWS).length);
-  const tileLayout = useMemo<TileLayout>(() => {
-    const cols = side ? tileColumns(sideBox.width, rem) : 2;
-    const counts = [(data.indexers ?? NO_ROWS).length, clientCount, connections.connections ? Math.max(1, connections.connections.length) : 0].filter((count) => count > 0);
-    return { cols, compact: side && tileDensity(sideBox.height, counts, cols, rem) === "compact" };
-  }, [side, sideBox.width, sideBox.height, data.indexers, clientCount, connections.connections, rem]);
+  const compactActivity = side && sideBox.height > 0 && sideBox.height < 50 * rem;
   useGlide(root);
   useFlyToShelf(root, cards, items);
 
@@ -197,14 +187,22 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
           </div>
         </div>
 
-        <TileLayoutContext.Provider value={tileLayout}>
-        <div ref={sideRef} data-tiles={tileLayout.compact ? "compact" : "full"} className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] items-start")}>
-          <IndexerTiles indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} summary={summary} now={now} />
-          <ClientTiles rows={summary?.downloads?.clients ?? NO_ROWS} all={data.clients ?? NO_ROWS} speeds={clientSpeeds} scaleMbps={peak} seeding={seeding} />
-          {connections.connections ? <ConnectionTiles connections={connections.connections} lit={connections.lit} /> : null}
-          {side ? <ActivityStream rows={latest} titles={titles} dense={tileLayout.compact} /> : <div className="col-span-full flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
+        <div ref={sideRef} className={cn("min-w-0 gap-[var(--grid-gap)]", side ? "flex min-h-0 flex-col" : "flex flex-col")}>
+          <div className={cn("flex min-h-0 flex-col", side ? "flex-[5_1_0%]" : "h-[26rem]")}>
+            <SourcesCard
+              indexers={data.indexers ?? NO_ROWS}
+              scoreboard={data.scoreboard}
+              summary={summary}
+              now={now}
+              clientRows={summary?.downloads?.clients ?? NO_ROWS}
+              clients={data.clients ?? NO_ROWS}
+              speeds={clientSpeeds}
+              seeding={seeding}
+              connections={connections.connections}
+            />
+          </div>
+          {side ? <div className="flex min-h-0 flex-[3_1_0%] flex-col"><ActivityStream rows={latest} titles={titles} dense={compactActivity} /></div> : <div className="flex h-[26rem] flex-col"><ActivityStream rows={latest} titles={titles} /></div>}
         </div>
-        </TileLayoutContext.Provider>
       </div>
     </div>
   );

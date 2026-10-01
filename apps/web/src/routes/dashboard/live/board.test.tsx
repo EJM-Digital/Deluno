@@ -1,16 +1,14 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fullSummary } from "../downloads-fixtures";
 import { Band, buildOperations, nextFigure } from "./band";
-import { ClientTiles } from "./clients";
-import { ConnectionTiles } from "./connection-tiles";
 import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
 import { statusOf, type CardContext } from "./card";
-import { Tile, TileLayoutContext } from "./tile";
-import { IndexerTiles, indexerMeta, indexersSummary } from "./indexers";
+import { indexerMeta, indexersSummary } from "./indexers";
+import { SourcesMap } from "./sources-map";
+import { clientNodes, connectionNodes, flowOf, indexerNodes, layoutMap } from "./map-model";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
-import { MAX_TILE_COLUMNS, tileCardRem, tileColumns, tileDensity } from "./layout";
 import { tileName } from "./connections";
 import { EMPTY_STATION_REM, journeyMode, MIN_STATION_REM, posterLayout, rowsThatFit, stationDensity, stationLayout, stationWidths } from "./layout";
 import { departedFromImporting, sameTitle } from "./motion";
@@ -564,47 +562,104 @@ describe("turned down today", () => {
   });
 });
 
-describe("the indexer tiles", () => {
+describe("the Sources map", () => {
   const indexer = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, isEnabled: true, priority: 0, healthStatus: "healthy", lastHealthLatencyMs: 320, rateLimitedUntilUtc: null, ...extra }) as never;
   const board = { indexers: [{ id: "NZBgeek", name: "NZBgeek", totalQueries: 46, failedQueries: 0, successfulGrabs: 1, lastQueryUtc: null }, { id: "Nyaa", name: "Nyaa", totalQueries: 5, failedQueries: 5, successfulGrabs: 0, lastQueryUtc: null }] };
   const list = [indexer("Zeta"), indexer("NZBgeek", { queryLimit: 100, limitsUnit: "day", queryLimitStatus: { allowed: true, limit: 100, count: 46, resetsAtUtc: null, unit: "day" } }), indexer("Nyaa", { healthStatus: "unreachable" }), indexer("Old", { isEnabled: false })];
-
-  it("says what each did today, the limit where one is set, and a switched-off one is grey and last", () => {
-    withRouter(<IndexerTiles indexers={list} scoreboard={board} summary={undefined} now={NOW.getTime()} />);
-    const group = screen.getByRole("region", { name: "Indexers" });
-    const names = within(group).getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(":")[0]).filter((name) => name && !name.startsWith("Manage"));
-    expect(names).toEqual(["Nyaa", "NZBgeek", "Zeta", "Old"]);
-    expect(within(group).getByRole("link", { name: /^NZBgeek: 46 of 100 today · 320 ms/ })).toBeInTheDocument();
-    expect(within(group).getByRole("link", { name: /^Nyaa: not answering · 5 today/ })).toHaveAttribute("href", "/?tab=system");
-    expect(within(group).getByRole("link", { name: /^Old: switched off/ })).toHaveAttribute("data-state", "off");
-  });
-
-  it("counts answering, switched off and the queries today in the header", () => {
-    const today = new Map(board.indexers.map((row) => [row.id, row]));
-    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 off · 51 today");
-    expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
-    expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
-    // An hourly limit is not a count of today, so only the day's queries are said.
-    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 today · 320 ms");
-  });
-});
-
-describe("the download client tiles", () => {
-  it("shows a tile each with its speed and what it is seeding, and the header counts both", () => {
-    const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, protocol: "torrent", reachable: true, paused: false, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0, ...extra }) as never;
-    withRouter(<ClientTiles rows={[row("qBittorrent"), row("SABnzbd")]} all={[{ id: "qBittorrent", name: "qBittorrent", isEnabled: true }, { id: "SABnzbd", name: "SABnzbd", isEnabled: true }] as never} speeds={new Map([["qBittorrent", 6.2]])} scaleMbps={12} seeding={new Map([["qBittorrent", 8], ["SABnzbd", 0]])} />);
-    const group = screen.getByRole("region", { name: "Download clients" });
-    expect(within(group).getByText("1 moving · 8 seeding")).toBeInTheDocument();
-    expect(within(group).getByRole("link", { name: "qBittorrent: moving 6.2 MB/s, seeding 8" })).toBeInTheDocument();
-    expect(within(group).getByRole("link", { name: "SABnzbd: connected, idle" })).toBeInTheDocument();
-  });
-});
-
-describe("the connection tiles", () => {
+  const row = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, protocol: "torrent", reachable: true, paused: false, version: null, warnings: 0, freeSpaceBytes: null, healthStatus: "healthy", active: 0, queued: 0, ...extra }) as never;
   const connection = (kind: string, name: string, countToday: number, extra: object = {}) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0, ...extra }) as never;
   const all = [connection("lists", "Trakt", 2), connection("processor", "Weir", 6, { busy: 1 }), connection("subtitles", "OpenSubtitles", 12), connection("requests", "Seerr", 3), connection("mediaServer", "Plex", 5), connection("processor", "FileFlows", 0), connection("mediaServer", "Old Plex", 0, { enabled: false })];
 
-  it("says each one's role and what it did today", () => {
+  function draw(width = 480, height = 420) {
+    return withRouter(
+      <SourcesMap
+        indexers={list}
+        scoreboard={board}
+        summary={undefined}
+        now={NOW.getTime()}
+        clientRows={[row("qBittorrent"), row("SABnzbd", { reachable: false })]}
+        clients={[{ id: "qBittorrent", name: "qBittorrent", isEnabled: true }, { id: "SABnzbd", name: "SABnzbd", isEnabled: true }] as never}
+        speeds={new Map([["qBittorrent", 6.2]])}
+        seeding={new Map([["qBittorrent", 8], ["SABnzbd", 0]])}
+        connections={sortConnections(all)}
+        width={width}
+        height={height}
+      />
+    );
+  }
+
+  it("draws every indexer, client and connection as a link with its own name, and where a click goes", () => {
+    draw();
+    expect(screen.getByRole("link", { name: /^NZBgeek: 46 of 100 today · 320 ms/ })).toHaveAttribute("href", "/indexers/indexers");
+    expect(screen.getByRole("link", { name: /^Nyaa: not answering · 5 today/ })).toHaveAttribute("href", "/?tab=system");
+    expect(screen.getByRole("link", { name: /^Old: switched off/ })).toHaveAttribute("data-off");
+    expect(screen.getByRole("link", { name: "qBittorrent: moving 6.2 MB/s, seeding 8" })).toHaveAttribute("href", "/indexers/download-clients");
+    expect(screen.getByRole("link", { name: "SABnzbd: not answering" })).toHaveAttribute("href", "/?tab=system");
+    expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("href", "/indexers/companion-tools");
+    expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
+    const names = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("colours each by its status, with a switched-off one grey and last on its arc", () => {
+    draw();
+    expect(screen.getByRole("link", { name: /^NZBgeek/ })).toHaveAttribute("data-tone", "ok");
+    expect(screen.getByRole("link", { name: /^Nyaa/ })).toHaveAttribute("data-tone", "bad");
+    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveAttribute("data-tone", "bad");
+    expect(screen.getByRole("link", { name: /^Old:/ })).toHaveAttribute("data-tone", "idle");
+    const order = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(":")[0]);
+    expect(order.indexOf("Old")).toBeGreaterThan(order.indexOf("Zeta"));
+  });
+
+  it("says each group's counts by its arc, and the small number of each node", () => {
+    draw();
+    expect(screen.getByText("2 answering · 1 off · 51 today")).toBeInTheDocument();
+    expect(screen.getByText("1 moving · 8 seeding")).toBeInTheDocument();
+    expect(screen.getByText("6 connected · 1 off")).toBeInTheDocument();
+    expect(screen.getByText("46")).toBeInTheDocument();
+    expect(screen.getByText("6.2 MB/s")).toBeInTheDocument();
+  });
+
+  it("lays every node on its own arc inside the card, circles 18 to 26 px, at any card size", () => {
+    const nodes = [...indexerNodes(list, new Map(), NOW.getTime(), () => "now"), ...clientNodes([]), ...connectionNodes(all)];
+    for (const [w, h] of [[320, 360], [537, 400], [640, 560], [900, 700]]) {
+      const layout = layoutMap(w, h, nodes);
+      expect(layout.nodes).toHaveLength(nodes.length);
+      for (const node of layout.nodes) {
+        expect(node.x).toBeGreaterThan(0);
+        expect(node.x).toBeLessThan(w);
+        expect(node.y).toBeGreaterThan(0);
+        expect(node.y).toBeLessThan(h);
+        expect(node.r).toBeGreaterThanOrEqual(9);
+        expect(node.r).toBeLessThanOrEqual(13);
+      }
+      // Clients are on the left and connections on the right of Deluno.
+      for (const node of layout.nodes.filter((item) => item.group === "clients")) expect(node.x).toBeLessThan(layout.hub.x);
+      for (const node of layout.nodes.filter((item) => item.group === "connections")) expect(node.x).toBeGreaterThan(layout.hub.x);
+    }
+  });
+
+  it("streams particles in from a client that is downloading, and draws none when motion is reduced", async () => {
+    setReducedMotion(false);
+    const first = draw();
+    await waitFor(() => expect(first.container.querySelectorAll('[data-testid="map-dots"] circle').length).toBeGreaterThan(0));
+    first.unmount();
+    setReducedMotion(true);
+    const second = draw();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(second.container.querySelectorAll('[data-testid="map-dots"] circle').length).toBe(0);
+    // The colours still say what is happening.
+    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveAttribute("data-tone", "bad");
+    setReducedMotion(false);
+  });
+
+  it("scales a client's stream to its speed", () => {
+    expect(flowOf(0.5).perSecond).toBeLessThan(flowOf(20).perSecond);
+    expect(flowOf(0.5).travelMs).toBeGreaterThan(flowOf(20).travelMs);
+    expect(flowOf(400).perSecond).toBeLessThanOrEqual(10);
+  });
+
+  it("says what a connection did today in plain words", () => {
     expect(connectionWords(connection("processor", "Weir", 6, { busy: 1 }))).toBe("Processor · working on 1");
     expect(connectionWords(connection("processor", "FileFlows", 0))).toBe("Processor · idle");
     expect(connectionWords(connection("mediaServer", "Plex", 5))).toBe("Media server · 5 sent today");
@@ -615,7 +670,17 @@ describe("the connection tiles", () => {
     expect(connectionWords(connection("lists", "Trakt", 2, { healthy: false }))).toBe("Lists · not answering");
   });
 
-  it("orders them by role with the switched-off ones last, and counts them in the header", () => {
+  it("counts answering, switched off and the queries today", () => {
+    const today = new Map(board.indexers.map((item) => [item.id, item]));
+    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 off · 51 today");
+    expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
+    expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
+    // An hourly limit is not a count of today, so only the day's queries are said.
+    expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 today · 320 ms");
+    expect(indexersSummary([], new Map(), 576)).toBe("0 answering · 576 today");
+  });
+
+  it("orders connections by role with the switched-off ones last, and counts them", () => {
     expect(sortConnections(all).map((item) => item.name)).toEqual(["FileFlows", "Weir", "Plex", "Seerr", "OpenSubtitles", "Trakt", "Old Plex"]);
     expect(connectionsSummary(all)).toBe("6 connected · 1 off");
     expect(connectionsSummary([...all, connection("lists", "X", 0, { healthy: false })])).toContain("1 not answering");
@@ -630,68 +695,9 @@ describe("the connection tiles", () => {
     expect(merged.some((item) => item.name === "New")).toBe(true);
   });
 
-  it("lights the tile that was just used and glows a processor while it works", () => {
-    withRouter(<ConnectionTiles connections={sortConnections(all)} lit={new Set(["mediaServer:Plex"])} />);
-    expect(screen.getByRole("link", { name: "Plex: Media server · 5 sent today" })).toHaveAttribute("data-state", "lit");
-    expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("data-state", "busy");
-    expect(screen.getByRole("link", { name: "Old Plex: Media server · switched off" })).toHaveAttribute("data-state", "off");
-    expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
-  });
-});
-
-describe("the right column's layout (#1098)", () => {
-  const connection = (kind: string, name: string, countToday: number) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0 }) as never;
-  it("goes three across at most, and fewer in a narrow column", () => {
-    expect(tileColumns(448, 16)).toBe(3);
-    expect(tileColumns(352, 16)).toBe(2);
-    expect(tileColumns(900, 16)).toBe(MAX_TILE_COLUMNS);
-    expect(tileColumns(200, 16)).toBe(1);
-  });
-
-  it("draws full tiles while the cards and Activity's least room fit the height, and compact tiles before anything is clipped", () => {
-    const counts = [10, 5, 1];
-    const cols = 3;
-    expect(tileDensity(1300, counts, cols, 16)).toBe("full");
-    // A 1920x960 window (an 840px column) holding the rig's 14 indexers, 5 clients and a connection keeps two-line tiles.
-    expect(tileDensity(839, [14, 5, 1], cols, 16)).toBe("full");
-    expect(tileDensity(615, counts, cols, 16)).toBe("compact");
-    // Not measured yet: full.
-    expect(tileDensity(0, counts, cols, 16)).toBe("full");
-    // Compact tiles take less room than full ones.
-    expect(tileCardRem(10, cols, true)).toBeLessThan(tileCardRem(10, cols, false));
-  });
-
-  it("draws a compact tile as a light and a name only, with the detail in its name and tooltip", () => {
-    render(
-      <MemoryRouter>
-        <TileLayoutContext.Provider value={{ cols: 3, compact: true }}>
-          <ul>
-            <Tile to="/x" name="NZBgeek" tone="ok" meta="46 of 100 today" label="NZBgeek: 46 of 100 today" />
-          </ul>
-        </TileLayoutContext.Provider>
-      </MemoryRouter>
-    );
-    const link = screen.getByRole("link", { name: "NZBgeek: 46 of 100 today" });
-    expect(link).toHaveAttribute("title", "NZBgeek: 46 of 100 today");
-    expect(within(link).queryByText("46 of 100 today")).toBeNull();
-  });
-
-  it("shows the name the tile would be called, not 'Processor on HOST', and does not say the role twice", () => {
+  it("shows the name the connection would be called, not 'Processor on HOST'", () => {
     expect(tileName({ name: "Processor on MEDIA-SERVER" })).toBe("Processor");
     expect(tileName({ name: "Plex on NAS" })).toBe("Plex");
     expect(tileName({ name: "My cleaner" })).toBe("My cleaner");
-    render(
-      <MemoryRouter>
-        <ConnectionTiles connections={[connection("processor", "Processor on WIN-PC", 0)]} lit={new Set()} />
-      </MemoryRouter>
-    );
-    const tile = screen.getByRole("link", { name: /^Processor on WIN-PC: Processor · idle/ });
-    expect(within(tile).getByText("Processor")).toBeInTheDocument();
-    expect(within(tile).getByText("idle")).toBeInTheDocument();
-  });
-
-  it("keeps the headers short enough never to be cut", () => {
-    expect(indexersSummary([], new Map(), 576)).toBe("0 answering · 576 today");
-    expect(connectionsSummary([connection("processor", "Processor on WIN-PC", 0)])).toBe("1 connected");
   });
 });

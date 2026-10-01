@@ -1664,3 +1664,35 @@ html .text-\[64px\] {
   0%, 22%   { background-position: -160% 0; }
   82%, 100% { background-position: 260% 0; }
 }
+
+/* The Sources map (#1098): one circle per indexer, download client and connection around Deluno. Colour is the status; a ripple, a glow and the hub's pulse are real events. */
+.map-node { --tone: hsl(var(--success)); cursor: pointer; outline: none; }
+.map-node[data-tone="warn"] { --tone: hsl(var(--warning)); }
+.map-node[data-tone="bad"] { --tone: hsl(var(--destructive)); }
+.map-node[data-tone="idle"] { --tone: hsl(var(--muted-foreground) / 0.7); }
+.map-disc {
+  fill: color-mix(in srgb, var(--tone) 24%, hsl(var(--card)));
+  stroke: var(--tone);
+  stroke-width: 2;
+  transition: fill 0.6s ease, stroke 0.6s ease, stroke-width 0.2s ease;
+}
+.map-node[data-off] .map-disc { fill: transparent; stroke-width: 1.5; stroke-dasharray: 3 3; }
+.map-node:hover .map-disc, .map-node:focus-visible .map-disc { stroke-width: 3; }
+.map-glow { fill: var(--tone); opacity: 0.2; filter: blur(4px); transition: fill 0.6s ease; }
+.map-node[data-off] .map-glow { display: none; }
+.map-focus { fill: none; stroke: hsl(var(--ring)); stroke-width: 2; opacity: 0; }
+.map-node:focus-visible .map-focus { opacity: 1; }
+.map-name { font-size: 10.5px; font-weight: 600; fill: hsl(var(--foreground)); }
+.map-num { font-size: 9.5px; fill: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+.map-node[data-off] .map-name, .map-node[data-off] .map-num { opacity: 0.6; }
+.map-group { font-size: 12px; font-weight: 600; fill: hsl(var(--foreground)); }
+.map-count { font-size: 10.5px; fill: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+.map-line { fill: none; stroke-linecap: round; transition: stroke-opacity 0.6s ease, stroke-width 0.6s ease; }
+.map-ripple { fill: none; stroke: var(--ripple); stroke-width: 2; transform-box: fill-box; transform-origin: center; }
+.map-hub-ring { fill: none; stroke: hsl(var(--primary) / 0.7); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; opacity: 0; }
+@keyframes map-ripple { from { transform: scale(1); opacity: 0.85; } to { transform: scale(2.6); opacity: 0; } }
+@keyframes map-hub { from { transform: scale(1); opacity: 0.7; } to { transform: scale(1.9); opacity: 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .map-ripple { animation: map-ripple 1s ease-out forwards; }
+  .map-hub-ring[data-busy] { animation: map-hub 1.8s ease-out infinite; }
+}

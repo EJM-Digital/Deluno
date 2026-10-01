@@ -264,15 +264,25 @@ test.describe("Dashboard tabs", () => {
       await page.setViewportSize(size);
       await page.goto("/");
       await expect(page.getByRole("region", { name: /^the journey/i })).toBeVisible();
-      // The speed says its unit, and a failing indexer is a red tile that goes to System.
+      // The speed says its unit, and the indexers, clients and connections are one map: a failing indexer is a red node that goes to System.
       await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^MB\/s down/)).toBeVisible();
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByText("NZBgeek")).toBeVisible();
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
-      // The indexers say what happened today, and where a limit is set how much of it is used; a switched-off one is last.
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^NZBgeek: 46 of 100 today/ })).toBeVisible();
-      await expect(page.getByRole("region", { name: /^indexers/i }).getByRole("link", { name: /^OldIndexer: switched off/ })).toBeVisible();
-      await expect(page.getByRole("region", { name: /^download clients/i }).getByText("14 seeding", { exact: false }).first()).toBeVisible();
-      await expect(page.getByRole("region", { name: /^connections/i }).getByRole("link", { name: "Weir: Processor · working on 1" })).toBeVisible();
+      const sources = page.getByRole("region", { name: "Sources" });
+      await expect(sources.getByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
+      // The nodes say what happened today, and where a limit is set how much of it is used; a switched-off one is grey.
+      await expect(sources.getByRole("link", { name: /^NZBgeek: 46 of 100 today/ })).toBeVisible();
+      await expect(sources.getByRole("link", { name: /^OldIndexer: switched off/ })).toHaveAttribute("data-tone", "idle");
+      await expect(sources.getByText("14 seeding", { exact: false }).first()).toBeVisible();
+      await expect(sources.getByRole("link", { name: "Weir: Processor · working on 1" })).toBeVisible();
+      // The map fits its card and leaves Activity room for rows.
+      const fit = await page.evaluate(() => {
+        const box = (name: string) => [...document.querySelectorAll("section")].find((el) => el.querySelector("h2")?.textContent === name)?.getBoundingClientRect();
+        const map = box("Sources");
+        const activity = box("Activity");
+        const svg = document.querySelector("svg[aria-label='Sources map']")?.getBoundingClientRect();
+        return { mapBottom: map?.bottom ?? 0, activityTop: activity?.top ?? 0, activityHeight: activity?.height ?? 0, svgInside: !!map && !!svg && svg.left >= map.left - 1 && svg.right <= map.right + 1 && svg.bottom <= map.bottom + 1 };
+      });
+      expect(fit.svgInside, "the Sources map is inside its card").toBe(true);
+      expect(fit.activityTop, "Activity is below the map").toBeGreaterThanOrEqual(fit.mapBottom - 1);
       await expect(page.getByRole("region", { name: /^turned down today/i }).getByText("Not in a language you want").first()).toBeVisible();
       expect(perTitle).toEqual([]);
       // Needs you is not on Live; the next run is in the band.
