@@ -248,7 +248,10 @@ test.describe("Dashboard tabs", () => {
     // Live carries no problems of its own: nothing on it asks to be settled.
     await expect(page.getByRole("region", { name: "Needs you" })).toHaveCount(0);
     await page.goto("/?tab=system");
-    await expect(page.getByRole("link", { name: /^and [0-9]+ more/ }).first()).toBeVisible();
+    // System scrolls inside its lists (one screen, nothing cut): the rest of the tasks are one scroll away.
+    const list = page.getByRole("region", { name: "Scheduled tasks" }).locator(".sy-tk-list");
+    await expect(list).toBeVisible();
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   });
 
   test("a busy Live board keeps to one screen with whole cards, and is photographed at both sizes", async ({ page }) => {
