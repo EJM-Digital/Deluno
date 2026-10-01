@@ -171,7 +171,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     expect(within(card).queryByText("Old.1999")).toBeNull();
   });
 
-  it("moves a connection's count on the Sources map when Deluno uses it, and draws the pulse as a ripple", async () => {
+  it("moves a connection's count on the Sources card when Deluno uses it, and lights the tile", async () => {
     seed();
     lists["/api/dashboard/live-extras"] = liveExtras();
     renderTab();
@@ -181,7 +181,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     send("ConnectionUsed", { kind: "mediaServer", id: "ms1", name: "Plex", countToday: 6, busy: 0, atUtc: new Date(Date.now() + 5_000).toISOString() });
     const tile = await within(group).findByRole("link", { name: "Plex: Media server · 6 sent today" });
     expect(tile).toHaveAttribute("data-tone", "ok");
-    await waitFor(() => expect(tile.querySelector(".map-ripple")).not.toBeNull());
+    await waitFor(() => expect(tile).toHaveClass("answered"));
     // A processor with a title glows while it has it.
     send("ConnectionUsed", { kind: "processor", id: "p1", name: "Weir", countToday: 7, busy: 1, atUtc: new Date(Date.now() + 6_000).toISOString() });
     expect(await within(group).findByRole("link", { name: "Weir: Processor · working on 1" })).toBeInTheDocument();

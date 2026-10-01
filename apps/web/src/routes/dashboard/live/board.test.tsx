@@ -6,8 +6,8 @@ import { Band, buildOperations, nextFigure } from "./band";
 import { applyConnectionEvents, connectionsSummary, connectionWords, sortConnections } from "./connections";
 import { statusOf, type CardContext } from "./card";
 import { indexerMeta, indexersSummary } from "./indexers";
-import { SourcesMap } from "./sources-map";
-import { clientNodes, connectionNodes, flowOf, indexerNodes, layoutMap } from "./map-model";
+import { SourcesCard } from "./sources-card";
+import { tileHeight, tileLayout } from "./source-tiles";
 import { byStage, laneCounts, type JourneyCard, type Stage } from "./journey";
 import { tileName } from "./connections";
 import { journeyMode, lanePlan, MIN_STATION_REM, posterLayout } from "./layout";
@@ -21,10 +21,26 @@ import { barFraction, mergeTurnedDown, REASON_ORDER, turnedDownFit } from "./tur
 import { TurnedDownCard } from "./turned-down-card";
 
 const status = vi.hoisted(() => ({ value: "connected" }));
-vi.mock("../../../lib/use-signalr", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../../lib/use-signalr")>()),
-  useSignalRStatus: () => status.value
-}));
+const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
+const emitLive = (name: string, payload: unknown) => handlers.get(name)?.forEach((call) => call(payload));
+vi.mock("../../../lib/use-signalr", async (importOriginal) => {
+  const { useEffect, useRef } = await import("react");
+  return {
+    ...(await importOriginal<typeof import("../../../lib/use-signalr")>()),
+    useSignalRStatus: () => status.value,
+    useLiveEvent: (name: string, handler: (payload: unknown) => void) => {
+      const latest = useRef(handler);
+      useEffect(() => { latest.current = handler; });
+      useEffect(() => {
+        const call = (payload: unknown) => latest.current(payload);
+        const set = handlers.get(name) ?? new Set();
+        set.add(call);
+        handlers.set(name, set);
+        return () => { set.delete(call); };
+      }, [name]);
+    }
+  };
+});
 
 const NOW = new Date("2026-10-01T10:00:00");
 const inMs = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
@@ -525,7 +541,7 @@ describe("turned down today", () => {
   });
 });
 
-describe("the Sources map", () => {
+describe("the Sources card", () => {
   const indexer = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, isEnabled: true, priority: 0, healthStatus: "healthy", lastHealthLatencyMs: 320, rateLimitedUntilUtc: null, ...extra }) as never;
   const board = { indexers: [{ id: "NZBgeek", name: "NZBgeek", totalQueries: 46, failedQueries: 0, successfulGrabs: 1, lastQueryUtc: null }, { id: "Nyaa", name: "Nyaa", totalQueries: 5, failedQueries: 5, successfulGrabs: 0, lastQueryUtc: null }] };
   const list = [indexer("Zeta"), indexer("NZBgeek", { queryLimit: 100, limitsUnit: "day", queryLimitStatus: { allowed: true, limit: 100, count: 46, resetsAtUtc: null, unit: "day" } }), indexer("Nyaa", { healthStatus: "unreachable" }), indexer("Old", { isEnabled: false })];
@@ -533,9 +549,9 @@ describe("the Sources map", () => {
   const connection = (kind: string, name: string, countToday: number, extra: object = {}) => ({ kind, id: name, name, enabled: true, healthy: true, countToday, busy: 0, ...extra }) as never;
   const all = [connection("lists", "Trakt", 2), connection("processor", "Weir", 6, { busy: 1 }), connection("subtitles", "OpenSubtitles", 12), connection("requests", "Seerr", 3), connection("mediaServer", "Plex", 5), connection("processor", "FileFlows", 0), connection("mediaServer", "Old Plex", 0, { enabled: false })];
 
-  function draw(width = 480, height = 420) {
+  function draw() {
     return withRouter(
-      <SourcesMap
+      <SourcesCard
         indexers={list}
         scoreboard={board}
         summary={undefined}
@@ -545,8 +561,6 @@ describe("the Sources map", () => {
         speeds={new Map([["qBittorrent", 6.2]])}
         seeding={new Map([["qBittorrent", 8], ["SABnzbd", 0]])}
         connections={sortConnections(all)}
-        width={width}
-        height={height}
       />
     );
   }
@@ -560,98 +574,58 @@ describe("the Sources map", () => {
     expect(screen.getByRole("link", { name: "SABnzbd: not answering" })).toHaveAttribute("href", "/?tab=system");
     expect(screen.getByRole("link", { name: "Weir: Processor · working on 1" })).toHaveAttribute("href", "/indexers/companion-tools");
     expect(screen.getByRole("link", { name: "Trakt: Lists · watching 2" })).toHaveAttribute("href", "/settings/lists");
-    const names = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    const names = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")).filter(Boolean);
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("colours each by its status, with a switched-off one grey and last on its arc", () => {
+  it("colours each by its status, with a switched-off one grey and last in its group", () => {
     draw();
     expect(screen.getByRole("link", { name: /^NZBgeek/ })).toHaveAttribute("data-tone", "ok");
-    expect(screen.getByRole("link", { name: /^Nyaa/ })).toHaveAttribute("data-tone", "bad");
-    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveAttribute("data-tone", "bad");
-    expect(screen.getByRole("link", { name: /^Old:/ })).toHaveAttribute("data-tone", "idle");
+    expect(screen.getByRole("link", { name: /^Nyaa/ })).toHaveClass("down");
+    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveClass("down");
+    expect(screen.getByRole("link", { name: /^Old:/ })).toHaveClass("off");
+    expect(screen.getByRole("link", { name: /^qBittorrent/ })).toHaveClass("moving");
+    expect(screen.getByRole("link", { name: /^Weir/ })).toHaveClass("busy");
     const order = screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")?.split(":")[0]);
     expect(order.indexOf("Old")).toBeGreaterThan(order.indexOf("Zeta"));
   });
 
-  it("heads each list with its name and counts, and says each row's small words", () => {
+  it("heads each group with its name and counts, and says each tile's small words", () => {
     draw();
     expect(screen.getByText("Indexers")).toBeInTheDocument();
     expect(screen.getByText("Download clients")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
-    expect(screen.getByText("2 answering · 1 off · 51 today")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 answering · 1 off · 51 today")).toBeInTheDocument();
     expect(screen.getByText("1 moving · 8 seeding")).toBeInTheDocument();
-    expect(screen.getByText("6 connected · 1 off")).toBeInTheDocument();
+    expect(screen.getByText("6 connected · all answering · 1 off")).toBeInTheDocument();
     expect(screen.getByText("46 of 100 today · 320 ms")).toBeInTheDocument();
-    expect(screen.getByText("6.2 MB/s · 8 seeding")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^qBittorrent/ })).toHaveTextContent("6.2 MB/s · 8 seeding");
+    expect(screen.getByText("6.2").tagName).toBe("B");
     expect(screen.getByText("Processor · working on 1")).toBeInTheDocument();
     expect(screen.getByText("switched off")).toBeInTheDocument();
   });
 
-  it("lists indexers on the left and clients and connections on the right of Deluno, rows inside the card, at any card size", () => {
-    const nodes = [...indexerNodes(list, new Map(), NOW.getTime(), () => "now"), ...clientNodes([]), ...connectionNodes(all)];
-    for (const [w, h] of [[480, 360], [537, 400], [640, 560], [900, 700], [1100, 900]]) {
-      const layout = layoutMap(w, h, nodes);
-      expect(layout.mode).toBe("fan");
-      expect(layout.nodes).toHaveLength(nodes.length);
-      for (const node of layout.nodes) {
-        expect(node.height).toBeGreaterThanOrEqual(18);
-        expect(node.y).toBeGreaterThan(0);
-        expect(node.y).toBeLessThan(h);
-        if (node.group === "indexers") {
-          expect(node.x).toBeLessThan(layout.hub.x);
-          expect(node.side).toBe("left");
-        } else {
-          expect(node.x).toBeGreaterThan(layout.hub.x);
-          expect(node.side).toBe("right");
-        }
-        // A line runs from Deluno to the row's dot.
-        expect(node.curve.from).toEqual({ x: layout.hub.x, y: layout.hub.y });
-        expect(node.curve.to).toEqual({ x: node.x, y: node.y });
-      }
-      // The columns do not touch the middle.
-      const [left, right] = layout.columns;
-      expect(left.left + left.width).toBeLessThan(layout.hub.x - layout.hub.r);
-      expect(right.left).toBeGreaterThan(layout.hub.x + layout.hub.r);
-    }
+  it("flashes a tile when Deluno asks an indexer, and again when it answers", async () => {
+    draw();
+    const nzbgeek = screen.getByRole("link", { name: /^NZBgeek/ });
+    await act(async () => { emitLive("IndexerQueryRecorded", { indexerId: "NZBgeek", phase: "asked" }); });
+    expect(nzbgeek).toHaveClass("asked");
+    await act(async () => { emitLive("IndexerQueryRecorded", { indexerId: "NZBgeek", phase: "answered", resultCount: 3, elapsedMs: 300, failed: false, failure: null }); });
+    await waitFor(() => expect(nzbgeek).toHaveClass("answered"));
+    expect(nzbgeek).not.toHaveClass("asked");
+    await act(async () => { emitLive("IndexerQueryRecorded", { indexerId: "Zeta", phase: "answered", resultCount: null, elapsedMs: 0, failed: true, failure: "timeout" }); });
+    await waitFor(() => expect(screen.getByRole("link", { name: /^Zeta/ })).toHaveClass("failed"));
   });
 
-  it("shrinks rows to fit, scrolls a list that still has too many, and stacks the lists on a phone with no hub", () => {
-    const many = Array.from({ length: 40 }, (_, index) => indexerNodes([indexer(`I${index}`)], new Map(), NOW.getTime(), () => "now")[0]);
-    const fitted = layoutMap(600, 500, many.slice(0, 8));
-    const crowded = layoutMap(600, 500, many);
-    expect(crowded.nodes[0].height).toBeLessThan(fitted.nodes[0].height);
-    expect(crowded.nodes[0].compact).toBe(true);
-    expect(crowded.columns[0].innerHeight).toBeGreaterThan(crowded.columns[0].height);
-    // A row scrolled out of sight ends its line at the list's edge, never off the card.
-    const scrolled = layoutMap(600, 500, many, { left: 400 });
-    expect(scrolled.nodes[0].y).toBeGreaterThanOrEqual(0);
-    expect(layoutMap(360, 600, many.slice(0, 5)).mode).toBe("fan");
-    const phone = layoutMap(360, 600, many.slice(0, 5), {}, true);
-    expect(phone.mode).toBe("stack");
-    expect(layoutMap(280, 600, many.slice(0, 5)).mode).toBe("stack");
-    expect(phone.columns).toHaveLength(1);
-    expect(phone.columns[0].width).toBeLessThanOrEqual(360);
-  });
-
-  it("streams particles in from a client that is downloading, and draws none when motion is reduced", async () => {
-    setReducedMotion(false);
-    const first = draw();
-    await waitFor(() => expect(first.container.querySelectorAll('[data-testid="map-dots"] circle').length).toBeGreaterThan(0));
-    first.unmount();
-    setReducedMotion(true);
-    const second = draw();
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    expect(second.container.querySelectorAll('[data-testid="map-dots"] circle').length).toBe(0);
-    // The colours still say what is happening.
-    expect(screen.getByRole("link", { name: /^SABnzbd/ })).toHaveAttribute("data-tone", "bad");
-    setReducedMotion(false);
-  });
-
-  it("scales a client's stream to its speed", () => {
-    expect(flowOf(0.5).perSecond).toBeLessThan(flowOf(20).perSecond);
-    expect(flowOf(0.5).travelMs).toBeGreaterThan(flowOf(20).travelMs);
-    expect(flowOf(400).perSecond).toBeLessThanOrEqual(10);
+  it("sizes every tile from the card, one height for all three groups, down to one line when short", () => {
+    const counts = [12, 3, 6] as const;
+    expect(tileLayout(520, 900, counts)).toEqual({ columns: 3, tile: 54 });
+    expect(tileLayout(520, 520, counts).tile).toBeLessThan(54);
+    expect(tileLayout(520, 0, counts).tile).toBe(44);
+    // A narrow card puts two across, and three only when two would not fit even as one-line tiles.
+    expect(tileLayout(380, 700, counts).columns).toBe(2);
+    expect(tileLayout(352, 383, counts)).toEqual({ columns: 3, tile: 32 });
+    expect(tileHeight(100, 3, counts)).toBe(30);
   });
 
   it("says what a connection did today in plain words", () => {
@@ -667,17 +641,17 @@ describe("the Sources map", () => {
 
   it("counts answering, switched off and the queries today", () => {
     const today = new Map(board.indexers.map((item) => [item.id, item]));
-    expect(indexersSummary(list, today as never)).toBe("2 answering · 1 off · 51 today");
+    expect(indexersSummary(list, today as never)).toBe("2 of 3 answering · 1 off · 51 today");
     expect(indexerMeta(indexer("x", { rateLimitedUntilUtc: new Date(NOW.getTime() + 60_000).toISOString() }), undefined, NOW.getTime()).text).toMatch(/^asked too often, waiting/);
     expect(indexerMeta(indexer("x", { lastHealthLatencyMs: 2500 }), undefined, NOW.getTime()).tone).toBe("warn");
     // An hourly limit is not a count of today, so only the day's queries are said.
     expect(indexerMeta(indexer("x", { queryLimit: 20, limitsUnit: "hour" }), { totalQueries: 7 } as never, NOW.getTime()).text).toBe("7 today · 320 ms");
-    expect(indexersSummary([], new Map(), 576)).toBe("0 answering · 576 today");
+    expect(indexersSummary([], new Map(), 576)).toBe("0 of 0 answering · 576 today");
   });
 
   it("orders connections by role with the switched-off ones last, and counts them", () => {
     expect(sortConnections(all).map((item) => item.name)).toEqual(["FileFlows", "Weir", "Plex", "Seerr", "OpenSubtitles", "Trakt", "Old Plex"]);
-    expect(connectionsSummary(all)).toBe("6 connected · 1 off");
+    expect(connectionsSummary(all)).toBe("6 connected · all answering · 1 off");
     expect(connectionsSummary([...all, connection("lists", "X", 0, { healthy: false })])).toContain("1 not answering");
     expect(connectionsSummary([])).toBe("nothing connected yet");
   });

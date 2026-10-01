@@ -49,13 +49,13 @@ export function sortConnections(connections: readonly LiveConnection[]): LiveCon
   return [...connections].sort((a, b) => Number(b.enabled) - Number(a.enabled) || KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || a.name.localeCompare(b.name));
 }
 
-/** The header: "6 connected", with how many are not answering or switched off only when some are. */
+/** The header: "6 connected · all answering", with how many are not answering or switched off. */
 export function connectionsSummary(connections: readonly LiveConnection[]): string {
   const on = connections.filter((connection) => connection.enabled);
   if (connections.length === 0) return "nothing connected yet";
   const down = on.filter((connection) => !connection.healthy).length;
   const off = connections.length - on.length;
-  return [`${on.length.toLocaleString("en-AU")} connected`, down > 0 ? `${down.toLocaleString("en-AU")} not answering` : null, off > 0 ? `${off.toLocaleString("en-AU")} off` : null].filter(Boolean).join(" · ");
+  return [`${on.length.toLocaleString("en-AU")} connected`, down > 0 ? `${down.toLocaleString("en-AU")} not answering` : on.length > 0 ? "all answering" : null, off > 0 ? `${off.toLocaleString("en-AU")} off` : null].filter(Boolean).join(" · ");
 }
 
 export const connectionKey = (connection: Pick<LiveConnection, "kind" | "id">) => `${connection.kind}:${connection.id}`;

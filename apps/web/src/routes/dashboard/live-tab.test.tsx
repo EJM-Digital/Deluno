@@ -113,7 +113,7 @@ describe("Live", () => {
     expect(document.body.textContent ?? "").not.toMatch(/undefined|NaN|importFailed|notTransferring|filesystem\.import/);
   });
 
-  it("says each thing once: the indexers and clients are one map, the next jobs and airing episodes are one list", async () => {
+  it("says each thing once: the indexers and clients are one card, the next jobs and airing episodes are one list", async () => {
     seedBusy();
     renderTab(fullSummary);
     expect(await screen.findByRole("link", { name: /^Nyaa\.si: not answering/ })).toHaveAttribute("href", "/?tab=system");
