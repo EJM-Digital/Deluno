@@ -22,7 +22,8 @@ type FakeEnvelope = { seq: number; name: string; subject: string; at: string; da
 
 const mocks = vi.hoisted(() => ({
   realtimeHandler: null as ((envelope: FakeEnvelope) => void) | null,
-  connectionState: "Disconnected" as "Disconnected" | "Connected"
+  connectionState: "Disconnected" as "Disconnected" | "Connected",
+  invocations: [] as unknown[][]
 }));
 
 vi.mock("@microsoft/signalr", () => {
@@ -42,7 +43,8 @@ vi.mock("@microsoft/signalr", () => {
     async stop() {
       mocks.connectionState = "Disconnected";
     }
-    async invoke(method: string) {
+    async invoke(method: string, ...args: unknown[]) {
+      mocks.invocations.push([method, ...args]);
       if (method === "Resume") return { status: "CaughtUp", envelopes: [] };
       return undefined;
     }
@@ -62,7 +64,10 @@ vi.mock("@microsoft/signalr", () => {
   };
 });
 
-const { SignalRProvider, useSignalREvent, useSignalRResync, useIsTabVisible } = await import("./use-signalr");
+const { SignalRProvider, useSignalREvent, useSignalRResync, useIsTabVisible, useLiveEvent, useLiveWatching, useRealtimeConnected } = await import("./use-signalr");
+const { queryClient } = await import("./route-cache");
+const { DASHBOARD_SUMMARY_KEY } = await import("./realtime-cache");
+const { isRealtimeConnected } = await import("./realtime-state");
 
 /** A named hook so `renderHook(() => useEventHarness(...))` reads as a normal hook call to eslint's rules-of-hooks, same shape already used by `../hooks/library-view-memory.test.ts`. */
 function useEventHarness<T extends SignalREventName>(
@@ -127,6 +132,8 @@ function setVisibility(state: "visible" | "hidden") {
 beforeEach(() => {
   mocks.realtimeHandler = null;
   mocks.connectionState = "Disconnected";
+  mocks.invocations = [];
+  queryClient.clear();
   seq = 0;
   setVisibility("visible");
 });
@@ -225,5 +232,73 @@ describe("useIsTabVisible", () => {
 
     setVisibility("visible");
     expect(result.current).toBe(true);
+  });
+});
+
+describe("pushed Live events (#1097)", () => {
+  it("writes pushed summary sections straight into the cache before any subscriber runs", async () => {
+    queryClient.setQueryData(DASHBOARD_SUMMARY_KEY, {
+      asOfUtc: "2026-10-01T12:00:00.000Z",
+      buildMilliseconds: 1,
+      unavailableSections: [],
+      downloads: { asOfUtc: "2026-10-01T12:00:00.000Z", active: 1 },
+      pipeline: { asOfUtc: "2026-10-01T12:00:00.000Z", imported: 3 }
+    });
+    const seen: unknown[] = [];
+    await mount(() => useEventHarness("DashboardSummaryUpdated", "dashboard", () => {
+      seen.push((queryClient.getQueryData(DASHBOARD_SUMMARY_KEY) as { downloads: { active: number } }).downloads.active);
+    }));
+
+    send(nextEnvelope("DashboardSummaryUpdated", "dashboard", {
+      asOfUtc: "2026-10-01T12:00:02.000Z",
+      sections: { downloads: { asOfUtc: "2026-10-01T12:00:02.000Z", active: 5 } },
+      unavailable: []
+    }));
+
+    expect(seen).toEqual([5]);
+    const cached = queryClient.getQueryData(DASHBOARD_SUMMARY_KEY) as { pipeline: { imported: number }; downloads: { active: number } };
+    expect(cached.downloads.active).toBe(5);
+    expect(cached.pipeline.imported).toBe(3);
+  });
+
+  it("never applies the same sequence twice, so a replay does not double count", async () => {
+    queryClient.setQueryData(DASHBOARD_SUMMARY_KEY, {
+      asOfUtc: "2026-10-01T12:00:00.000Z",
+      buildMilliseconds: 1,
+      unavailableSections: [],
+      downloads: { asOfUtc: "2026-10-01T12:00:00.000Z", active: 1 }
+    });
+    const handler = vi.fn();
+    await mount(() => useLiveEvent("JobChanged", handler));
+
+    const job = nextEnvelope("JobChanged", "live", { jobId: "j1", kind: "movies.library.search", state: "started", title: "Checking Films", libraryId: null, message: null, at: "2026-10-01T12:00:01Z" });
+    send(job);
+    send(job);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ jobId: "j1", state: "started" }));
+  });
+
+  it("useLiveEvent joins its own subject and the live one, which is how the server knows someone is watching", async () => {
+    await mount(() => useLiveEvent("DownloadSpeedSample", () => {}));
+
+    const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
+    expect(joined).toContain("live");
+  });
+
+  it("useLiveWatching joins the live subject without listening for anything", async () => {
+    await mount(() => useLiveWatching());
+
+    const joined = mocks.invocations.filter(([method]) => method === "Subscribe").flatMap(([, subjects]) => subjects as string[]);
+    expect(joined).toContain("live");
+  });
+
+  it("says the connection is up once connected and down when it closes", async () => {
+    const view = await mount(() => useRealtimeConnected());
+    await waitFor(() => expect(view.result.current).toBe(true));
+    expect(isRealtimeConnected()).toBe(true);
+
+    view.unmount();
+    expect(isRealtimeConnected()).toBe(false);
   });
 });

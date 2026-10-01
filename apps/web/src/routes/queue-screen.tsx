@@ -84,7 +84,7 @@ import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
 import { ColumnPicker } from "../components/ui/column-picker";
 import { realtimeToast, toast } from "../components/shell/toaster";
-import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
+import { RealtimeGroups, useLiveWatching, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences, type DisplayPreferences } from "../lib/display-preferences";
 import { useColumnVisibility, type ColumnDefinition } from "../lib/use-column-visibility";
 
@@ -204,6 +204,8 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     revalidator.revalidate();
   };
 
+  // Transfers is open: the server reads the download clients every second while something downloads (#1097).
+  useLiveWatching();
   useSignalREvent("DispatchGrabCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchDetected", RealtimeGroups.Queue, scheduleDispatchRefresh);
   useSignalREvent("DispatchImportStarted", RealtimeGroups.Queue, scheduleDispatchRefresh);

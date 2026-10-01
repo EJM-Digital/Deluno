@@ -95,13 +95,49 @@ Implemented SignalR event names currently modeled in frontend/backend contracts:
 - `DownloadClientChanged`
 - `EpisodeChanged`
 - `IndexerProxyChanged`
-- `DashboardSummaryChanged` (`{ asOfUtc }`; at most every 2 seconds; refetch `GET /api/dashboard/summary`)
+- `DashboardSummaryUpdated` and the Live events below (#1097): pushed with their data, never a nudge.
+- `DashboardSummaryChanged` is no longer sent (it was a nudge with a 2 second gap); the type stays in the web for old subscribers.
 
 Current gap:
 
 - entity-change events carry only `{ id }`; consumers refetch state rather than applying a second serialized copy
 - import/recovery and wanted-state coverage is still incomplete and should not be assumed to be authoritative everywhere
 - monitoring export endpoints are intentionally unauthenticated only inside Deluno's authenticated API boundary (no public scrape endpoint)
+
+### Live: pushed changes (#1097)
+
+Live is fully live: the server sends each change itself the moment it is saved, and the page applies it with no fetch after it. Every push is a `RealtimeEvent` envelope `{ seq, name, subject, at, data }`. Sequence numbers are issued once per event, in order, and a reconnect asks for what it missed (`Resume`); the web drops any sequence it has already applied, so nothing is counted twice.
+
+**The "someone is watching" signal.** A screen that shows Live or Transfers joins the `live` subject (`RealtimeGroups.Live`, valid in `Subscribe`). The server counts the connections in each subject (`IRealtimeWatchers`; joining twice from one connection is one watcher; a dropped connection leaves everything it had joined). While at least one connection is in `live` AND something is downloading, the download clients are asked every 1 second (`DownloadProgressPublisher` and `DownloadTelemetryRefreshService`), each reading pushes `DownloadProgress` (when an item changed) and a `DownloadSpeedSample`. With nobody watching, or nothing downloading, the old intervals apply (2 s while active, 20 s idle), so there is no cost when nobody looks. Nothing for the Dashboard is built while no connection is in `dashboard` or `live`.
+
+**Summary sections, pushed.** `DashboardSummaryUpdated` on the `dashboard` subject: `{ asOfUtc, sections, unavailable }`. `sections` holds whole summary sections (named as in `GET /api/dashboard/summary`: `library`, `downloads`, `pipeline`, `imports`, `automation`, `indexers`, `processors`, `retention`, `subtitles`, `requests`, `blocklist`, `health`, `storage`, `system`, `activity`), each exactly the shape the REST summary returns, each with its own `asOfUtc`. `unavailable` names sections that could not be built this time; the page keeps what it had. A change marks the sections it can move; the changes of a burst are held for at most 100 ms and sent as one push of the union, so a change reaches the screen in about 100 ms plus the time to build the section. The web writes a pushed section into the cached summary (`["dashboard","summary"]`) only when it is at least as new as what is cached, so a replay never overwrites newer data.
+
+**Events on the `live` subject** (all payloads camelCase; timestamps ISO 8601; the server sends them only after the change is saved):
+
+| Event | Sent when | Payload |
+| --- | --- | --- |
+| `JourneyStageChanged` | A download moves on its journey: grab sent or refused, first seen in the client, finished in the client, import done or failed, never shown, archived, client-reported failure, retry asked | `{ dispatchId, releaseName, mediaType, entityType, entityId, libraryId, stage, detail, at }`. `stage` is the timeline word (`grab_succeeded`, `grab_failed`, `detection_succeeded`, `client_completed`, `import_succeeded`, `import_failed`, `never_detected`, `archived`, `webhook-completed`, `webhook-failed`, `client-reported-*`, `manual_retry_requested`); `detail` is the reason when there is one |
+| `ProcessorHandoffChanged` | A hand-off to the processor is created, changes status, or the processor reports a new state | `{ handoffId, queueItemId, libraryId, releaseName, state, processorName, message, at }`. `state` is the hand-off status (`waiting`, `submitted`, `accepted`, `started`, `completed`, `failed`, `rejected`, `timed-out`, `stalled`, `lost`, `cancelled`, `released`) or the processor's own state (`queued`, `scheduled`, `working`, `completed`, `passed-through`, `failed`) |
+| `RecoveryCaseChanged` | An import recovery case opens (a repeat of the same failure is not a new case) or closes (resolved, dismissed or settled) | `{ caseId, state: "opened" \| "closed", kind, title, entityType: "movie" \| "series", entityId, at }`; `kind` and `title` are null when closed |
+| `JobChanged` | A background job starts, finishes, fails and will be tried again, or fails for good | `{ jobId, kind, state: "started" \| "finished" \| "retrying" \| "failed", title, libraryId, message, at }`; `title` is the plain-words name of the kind of job |
+| `SearchCycleProgress` | A library search finishes each title, and when the cycle ends | `{ libraryId, libraryName, mediaType, state: "running" \| "finished", checked, planned, at }` |
+| `IndexerQueryRecorded` | An indexer is asked (`phase: "asked"`) and when it answers (`phase: "answered"`) | `{ indexerId, indexerName, phase, query, resultCount, elapsedMs, failed, failure, at }`; `resultCount` and `elapsedMs` are null while `asked`; `failure` is the plain reason when `failed` |
+| `ClientStateChanged` | A download client turns unreachable or reachable, or is paused or resumed (seen on the client reading) | `{ clientId, clientName, reachable, paused, message, at }` |
+| `DriveSpaceChanged` | A file was imported: the drive it landed on, with its free space | `{ path, freeBytes, totalBytes, at }` |
+| `DownloadSpeedSample` | Every reading of the download clients while a screen watches | `{ downloadMbps, uploadMbps, active, at }` (MB/s; `active` is the count downloading) |
+
+The existing `DownloadProgress`, `QueueItemAdded`, `QueueItemRemoved`, `QueueItemStatusChanged`, `ImportStateChanged`, `Dispatch*`, `ActivityEventAdded` and `HealthChanged` events keep their subjects and payloads.
+
+**Web: the hook API** (`apps/web/src/lib/use-signalr.tsx`, `realtime-state.ts`, `realtime-cache.ts`, payload types in `lib/api/types/live-events.ts`, exported from `lib/api/types` and re-exported by `use-signalr`):
+
+- `useLiveEvent(name, handler)`: subscribes to one pushed event on the subject the server sends it on, and also joins `live`, which is what makes the server read the clients every second. The handler is stable across renders; `name` is any key of the live event table above plus the existing queue, activity, health and summary events.
+- `useLiveWatching()`: joins `live` without listening for anything. Transfers (the queue screen) calls it; Live calls it through its own `useLiveEvent`s.
+- `useRealtimeConnected()`: true while the connection is up. `isRealtimeConnected()` is the same flag outside React; `setRealtimeConnected` is the provider's.
+- `usePollInterval(ms)`: `ms` while the connection is down, `false` (no timer) while it is up. Use it for any query that sets its own `refetchInterval`, and to show "updated N s ago" only while it returns a number.
+- `useRouteSources` applies the same rule for every source: a source's `refetchInterval` is a safety net that does not run while the connection is up and returns the moment it drops.
+- A pushed `DashboardSummaryUpdated` is written into the React Query cache under `["dashboard","summary"]` (`DASHBOARD_SUMMARY_KEY`) before any subscriber runs, so a screen that reads the summary query is already current: do not refetch after it.
+
+Measured: the coalescing window is 100 ms and a test asserts a pushed section is sent within 500 ms of the change on a fake clock; about 1 s for download progress while watched. CPU and network cost while watching is measured on the rig and recorded on #1097.
 
 ### The Dashboard summary
 
@@ -172,7 +208,7 @@ Shape (every field is camelCase; a trailing `?` below means "may be `null`"):
 
 Notes on the numbers: `library.mix` counts files on disk (a show's codec counts shows, its quality counts episodes); `subtitles.held` is files in libraries that ask for subtitles minus `wanted`, so it reads a little low where titles carry their own language override. Not in the summary because no stored number exists (they need a live call, which the summary never makes): Seerr's own pending requests and what a media server is playing right now. `library.*.total` counts every title; every other library count is over monitored titles, each title under exactly one rung, exactly as the shelf's chips count them. `fileBytes` and `libraries[].bytes` are the sum of the tracked file sizes Deluno already stores (no disk is read). `pipeline.today` is since local midnight on the machine running Deluno. `retention.removedLast7Days` and `...Bytes` add up every rule's confirmed and checked runs (previews removed nothing). `subtitles.wanted` is count-only and counts a title with its own language override as wanted, so it can read a little high for a library that uses overrides. `health.topProblems[].link` is the web path of the screen that clears that kind of problem (System for anything without a better home).
 
-Realtime: the hub sends one `DashboardSummaryChanged` event (`{ asOfUtc }`, no numbers) on the `dashboard` group, at most every 2 seconds, whenever a source the summary reads has changed (health, queue items, download progress, import state, search runs, activity, dispatch stages, and the automation, movie, series, episode, library, indexer, indexer proxy, download client, import list and settings change events). The first change after a quiet spell nudges at once; changes during the following two seconds fold into a single nudge. The web refetches this one endpoint instead of twenty-four.
+Realtime: the hub pushes the changed summary sections themselves (`DashboardSummaryUpdated`, within about 100 ms; see "Live: pushed changes" above) whenever a source the summary reads has changed (health, queue items, download progress, import state, search runs, activity, dispatch stages, and the automation, movie, series, episode, library, indexer, indexer proxy, download client, import list and settings change events). The web writes them into its cache and does not fetch after them; `GET /api/dashboard/summary` is the first load and the safety net while the connection is down.
 
 ## Movies
 
