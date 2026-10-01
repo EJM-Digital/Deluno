@@ -101,6 +101,8 @@ const BAND_MAX_PX = 200;
 /** Spare height goes to the band, up to this tall. */
 const BAND_GROWN_MAX_PX = 240;
 const LOW_MIN_PX = 180;
+/** The least the bottom row ever gets: once the band and the journey are at their smallest, it gives way down to this rather than the page scrolling or cutting it off (the same rule as Weir's, 2 Oct 2026). */
+const LOW_FLOOR_PX = 110;
 /** The bottom row is given room up to this before the spare goes to taller journey cards. */
 const LOW_ROOMY_PX = 260;
 const GRID_GAPS_PX = 24;
@@ -135,7 +137,7 @@ export function gridRows(basis: number, available = 0): { band: number; journey:
   }
   band = Math.round(band);
   journey = Math.round(journey);
-  low = Math.max(LOW_MIN_PX, Math.round(low));
+  low = Math.max(LOW_FLOOR_PX, Math.round(low));
   return { band, journey, low, template: `${band}px ${journey}px ${low}px` };
 }
 

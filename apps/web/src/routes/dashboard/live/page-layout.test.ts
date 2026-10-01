@@ -27,9 +27,9 @@ describe("the shared page grid", () => {
     expect(LOW_COLUMNS).toBe("minmax(0, 1.15fr) minmax(0, 1fr)");
   });
   it("is the mockup's fitRows exactly, at the three sizes it was approved at (the heights are the grid's)", () => {
-    // 1568x765 inside the app: the grid has 651px. The band and the journey keep their least, the bottom row its 180px.
+    // 1568x765 inside the app: the grid has 651px. The band and the journey keep their least and the bottom row gives way to the 153px left (never under 110px), so nothing is cut off.
     // (The mockup's journey least is 314px, 10px short of three rows and their line; the app counts the real chrome: 324px.)
-    expect(gridRows(651, 651)).toEqual({ band: 150, journey: 324, low: 180, template: "150px 324px 180px" });
+    expect(gridRows(651, 651)).toEqual({ band: 150, journey: 324, low: 153, template: "150px 324px 153px" });
     // A window with room for the band's 20% (156px), the journey's 398px and the bottom row's 202px (the gaps between cards are 12px).
     expect(gridRows(780, 780)).toEqual({ band: 156, journey: 398, low: 202, template: "156px 398px 202px" });
     // A tall window: spare height goes to the band (up to 240px), the bottom row takes a third at most, and the journey's cards grow.
@@ -38,7 +38,7 @@ describe("the shared page grid", () => {
   it("gives way band first (never under 150px), then the journey (never under what three rows of 60px cards need)", () => {
     expect(JOURNEY_PX).toBe(398);
     expect(gridRows(700, 700).band).toBeGreaterThanOrEqual(150);
-    expect(gridRows(300, 300)).toMatchObject({ band: 150, journey: 106 + 2 * 68 + 60 + 22, low: 180 });
+    expect(gridRows(300, 300)).toMatchObject({ band: 150, journey: 106 + 2 * 68 + 60 + 22, low: 110 });
     expect(gridRows(2000, 2000).journey).toBe(JOURNEY_PX + 3 * (130 - 94));
   });
   it("reads only the grid's own height, so Live and System, which share it, always agree", () => {
