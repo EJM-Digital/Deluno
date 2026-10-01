@@ -127,11 +127,4 @@ public interface IRealtimeEventPublisher
     /// </summary>
     Task PublishLiveEventAsync(string eventName, object payload, CancellationToken cancellationToken)
         => Task.CompletedTask;
-
-    /// <summary>
-    /// A pushed event that carries its own data on the "dashboard" subject (the one System joins), so a screen
-    /// that is not on Live still hears it. The default does nothing.
-    /// </summary>
-    Task PublishDashboardEventAsync(string eventName, object payload, CancellationToken cancellationToken)
-        => Task.CompletedTask;
 }
