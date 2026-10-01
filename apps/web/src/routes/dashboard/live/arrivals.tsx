@@ -21,7 +21,7 @@ import type { ArrivalItem } from "./extras";
 import { LANES } from "./lanes";
 import { namedTitle, type TitleLookup } from "./titles";
 
-function nameOf(item: ArrivalItem, titles: TitleLookup) {
+export function nameOf(item: ArrivalItem, titles: TitleLookup) {
   const named = namedTitle(item.entity, titles, item.release);
   return { title: named?.title ?? item.fallbackTitle, poster: named?.poster, to: named?.to ?? item.to };
 }
@@ -84,14 +84,14 @@ function Upgrades({ items, titles }: { items: ArrivalItem[]; titles: TitleLookup
 }
 
 /** The body of the "In the library" lane: the poster wall, then the upgrades. */
-export function ArrivalsBody({ items, titles, fresh, count }: { items: ArrivalItem[]; titles: TitleLookup; fresh: ReadonlySet<string>; count: number }) {
+export function ArrivalsBody({ items, titles, fresh, count, wide = false }: { items: ArrivalItem[]; titles: TitleLookup; fresh: ReadonlySet<string>; count: number; /** Nothing else is moving, so the wall has the whole board: posters keep their size and there are more of them across. */ wide?: boolean }) {
   return (
     <>
       <FitList
         moreTo={LANES.imported.to}
         extra={Math.max(0, count - items.length)}
         columns
-        wrap={(shown) => <ul className="grid grid-cols-[repeat(auto-fill,minmax(3.1rem,1fr))] items-start gap-1.5 px-2 pt-0.5">{shown}</ul>}
+        wrap={(shown) => <ul className={cn("grid items-start gap-1.5 px-2 pt-0.5", wide ? "grid-cols-[repeat(auto-fill,4.4rem)]" : "grid-cols-[repeat(auto-fill,minmax(3.1rem,1fr))]")}>{shown}</ul>}
         rows={items.map((item) => <Tile key={item.key} item={item} titles={titles} fresh={fresh.has(item.key)} />)}
       />
       <Upgrades items={items} titles={titles} />

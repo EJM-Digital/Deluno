@@ -13,7 +13,7 @@ import { LiveTab } from "./live-tab";
 const handlers = vi.hoisted(() => new Map<string, Set<(payload: unknown) => void>>());
 vi.mock("../../lib/use-signalr", async (importOriginal) => {
   const { useEffect, useRef } = await import("react");
-  const listen = (name: string, handler: (payload: unknown) => void) => {
+  const useListen = (name: string, handler: (payload: unknown) => void) => {
     const latest = useRef(handler);
     useEffect(() => { latest.current = handler; });
     useEffect(() => {
@@ -26,8 +26,8 @@ vi.mock("../../lib/use-signalr", async (importOriginal) => {
   };
   return {
     ...(await importOriginal<typeof import("../../lib/use-signalr")>()),
-    useSignalREvent: (name: string, _subjects: unknown, handler: (payload: unknown) => void) => listen(name, handler),
-    useLiveEvent: (name: string, handler: (payload: unknown) => void) => listen(name, handler)
+    useSignalREvent: (name: string, _subjects: unknown, handler: (payload: unknown) => void) => useListen(name, handler),
+    useLiveEvent: (name: string, handler: (payload: unknown) => void) => useListen(name, handler)
   };
 });
 vi.mock("../../lib/use-auth", () => ({ authedFetch: vi.fn(() => Promise.resolve({ ok: true, json: async () => ({}) })) }));
@@ -86,37 +86,38 @@ beforeEach(() => {
 });
 
 describe("Live applies each pushed change with no fetch after it", () => {
-  it("moves a card to Needs you the moment its hand-off fails, and back out when the processor takes it up again", async () => {
+  it("moves a title into the Needs you strip the moment its hand-off fails, and back onto the journey when the processor takes it up again", async () => {
     seed();
     renderTab();
     const board = screen.getByRole("region", { name: /^every title/i });
+    const strip = screen.getByRole("region", { name: "Needs you" });
     expect(await within(board).findByText("Metropolis (1927)")).toBeInTheDocument();
+    expect(within(strip).getByText("Nothing needs you.")).toBeInTheDocument();
     const before = asked.paths.length;
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "failed", processorName: "Cleaner", message: "The processor timed out.", at: at() });
-    const needs = await within(board).findByRole("group", { name: "Needs you" });
-    expect(await within(needs).findByRole("button", { name: /^Retry Metropolis/ })).toBeInTheDocument();
+    expect(await within(strip).findByText("1 hand-off refused")).toBeInTheDocument();
     expect(within(within(board).getByRole("group", { name: "With the processor" })).queryByText("Metropolis (1927)")).toBeNull();
 
     send("ProcessorHandoffChanged", { handoffId: "h1", queueItemId: "q1", libraryId: "l1", releaseName: "Metropolis.1927.1080p", state: "working", processorName: "Cleaner", message: null, at: at() });
-    await waitFor(() => expect(within(board).queryByRole("button", { name: /^Retry Metropolis/ })).toBeNull());
+    await waitFor(() => expect(within(strip).queryByText("1 hand-off refused")).toBeNull());
     expect(within(await within(board).findByRole("group", { name: "With the processor" })).getByText("Metropolis (1927)")).toBeInTheDocument();
     expect(asked.paths.length).toBe(before);
   });
 
-  it("adds an import case to Needs you as it opens and takes it away as it closes", async () => {
+  it("adds an import case to the Needs you strip as it opens and takes it away as it closes", async () => {
     seed();
     renderTab();
     const board = screen.getByRole("region", { name: /^every title/i });
+    const strip = screen.getByRole("region", { name: "Needs you" });
     await within(board).findByText("Metropolis (1927)");
     const before = asked.paths.length;
 
     send("RecoveryCaseChanged", { caseId: "r9", state: "opened", kind: "importFailed", title: "Primer.2004.1080p", entityType: "movie", entityId: null, at: at() });
-    const needs = await within(board).findByRole("group", { name: "Needs you" });
-    expect(within(needs).getByText("Primer (2004)")).toBeInTheDocument();
+    expect(await within(strip).findByText("1 import to review")).toBeInTheDocument();
 
     send("RecoveryCaseChanged", { caseId: "r9", state: "closed", kind: null, title: null, entityType: "movie", entityId: null, at: at() });
-    await waitFor(() => expect(within(board).queryByText("Primer (2004)")).toBeNull());
+    await waitFor(() => expect(within(strip).queryByText("1 import to review")).toBeNull());
     expect(asked.paths.length).toBe(before);
   });
 
@@ -130,7 +131,8 @@ describe("Live applies each pushed change with no fetch after it", () => {
 
     send("SearchCycleProgress", { libraryId: "l9", libraryName: "Movies", mediaType: "movies", state: "running", checked: 12, planned: 40, at: at() });
     expect(await within(band).findByText("Searching Movies: 12 of 40 checked")).toBeInTheDocument();
-    expect(within(within(board).getByRole("group", { name: "Searching" })).getByText("12 of 40 checked")).toBeInTheDocument();
+    // A library search is said in Right now, not as a title on the journey.
+    expect(within(board).queryByRole("group", { name: "Searching" })).toBeNull();
 
     send("SearchCycleProgress", { libraryId: "l9", libraryName: "Movies", mediaType: "movies", state: "finished", checked: 40, planned: 40, at: at() });
     await waitFor(() => expect(within(band).queryByText(/Searching Movies/)).toBeNull());

@@ -25,7 +25,7 @@ import { HeartbeatValue, UpdatedAgo } from "./heartbeat";
 import { useNow } from "./hooks";
 import { IndexerLights, type IndexerScoreboardToday } from "./indexers";
 import { SpeedCell } from "./speed-chart";
-import { DriveGauges, ProtectedYou, QualityRing } from "./standing";
+import { ProtectedYou } from "./standing";
 
 const WORK_ICON: Record<WorkKind, LucideIcon> = { search: Search, grab: Download, import: FolderInput, processor: ShieldCheck, jobs: Activity };
 
@@ -153,7 +153,7 @@ export function RightNow({
   const peak = samples.reduce((top, sample) => Math.max(top, sample.speedMbps ?? 0), summary?.downloads?.downloadMbps ?? 0);
   return (
     <div className="shrink-0 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]">
-      <div className="grid sm:grid-cols-2 lg:grid-cols-[1.25fr_1.1fr_1fr_1.5fr] lg:divide-x lg:divide-hairline">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-[1.2fr_1.05fr_0.95fr_1.5fr_1fr] lg:divide-x lg:divide-hairline">
         <SpeedCell samples={samples} summary={summary} />
         <DoingNow summary={summary} work={work} updatedAt={updatedAt} />
         <NextUp summary={summary} />
@@ -161,11 +161,7 @@ export function RightNow({
           <IndexerLights indexers={indexers} scoreboard={scoreboard} summary={summary} now={now} />
           <ClientLights rows={summary?.downloads?.clients ?? []} all={clients} speeds={clientSpeeds ?? NO_SPEEDS} scaleMbps={peak} />
         </div>
-      </div>
-      <div className="grid border-t border-hairline sm:grid-cols-2 lg:grid-cols-[1.25fr_1.1fr_2.5fr] lg:divide-x lg:divide-hairline">
-        <QualityRing summary={summary} />
         <ProtectedYou extras={extras} blocklistCount={summary?.blocklist?.count} />
-        <DriveGauges summary={summary} extras={extras} />
       </div>
     </div>
   );

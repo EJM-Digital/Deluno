@@ -1,14 +1,12 @@
 /**
- * The second row of the Right now band (#1096): three standing facts about
- * your library that move as Deluno works.
+ * Facts that stand beside what Deluno is doing (#1096).
  *
- * - The quality ring: how much of the library meets its quality goal, filling as
- *   upgrades land (from the library counts in the summary).
- * - Protected you: how many bad releases were refused today and how many of
- *   them were fake or unplayable files, with the latest named (from the
- *   blocklist, stored rows only).
- * - Drives: each library drive's space, with what today's imports have taken and
- *   what retention will give back.
+ * - Protected you today (the last cell of the Right now band on Live): how many
+ *   bad releases were refused today and how many of them were fake or unplayable
+ *   files, with the latest named. It is something Deluno is doing, so it is Live.
+ * - The quality ring and the drive facts (today's space used and what retention
+ *   will give back) are how things stand, so they are on System, inside its
+ *   Library and Storage panels.
  */
 import { ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -33,36 +31,26 @@ export function qualityShare(summary: DashboardSummary | undefined): { percent: 
 
 const RING = 2 * Math.PI * 17;
 
+/** The ring of how much of the library meets its quality goal, for System's Library panel (the upgradable count is its own line there). */
 export function QualityRing({ summary }: { summary: DashboardSummary | undefined }) {
   const share = qualityShare(summary);
+  if (!share) return null;
   return (
-    <section aria-label="Library quality" className="flex min-w-0 items-center gap-3 px-[var(--card-pad-x)] py-2">
-      {share ? (
-        <>
-          <span className="relative flex h-12 w-12 shrink-0 items-center justify-center" role="img" aria-label={`${share.percent} per cent of your library meets its quality goal`}>
-            <svg viewBox="0 0 40 40" className="h-12 w-12 -rotate-90">
-              <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" className="stroke-surface-3" />
-              <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" strokeLinecap="round" className="live-ring-arc stroke-success" strokeDasharray={RING} strokeDashoffset={RING * (1 - share.percent / 100)} />
-            </svg>
-            <span className="absolute text-[length:var(--type-caption)] font-semibold tabular-nums text-foreground">
-              <CountUp value={share.percent} format={(value) => `${Math.round(value)}%`} />
-            </span>
-          </span>
-          <span className="min-w-0">
-            <span className={LABEL}>Library quality</span>
-            <span className="block text-[length:var(--type-body-sm)] leading-tight text-foreground">meets its goal</span>
-            <Link to="/movies?filter=upgrades" className="block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {share.upgradable > 0 ? `${share.upgradable.toLocaleString("en-AU")} can still be upgraded` : "nothing left to upgrade"}
-            </Link>
-          </span>
-        </>
-      ) : (
-        <span className="min-w-0">
-          <span className={LABEL}>Library quality</span>
-          <span className="block text-[length:var(--type-body-sm)] leading-tight text-muted-foreground">No titles to measure yet.</span>
+    <div className="flex items-center gap-3 border-b border-hairline px-[var(--card-pad-x)] py-2">
+      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center" role="img" aria-label={`${share.percent} per cent of your library meets its quality goal`}>
+        <svg viewBox="0 0 40 40" className="h-11 w-11 -rotate-90">
+          <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" className="stroke-surface-3" />
+          <circle cx="20" cy="20" r="17" fill="none" strokeWidth="4" strokeLinecap="round" className="live-ring-arc stroke-success" strokeDasharray={RING} strokeDashoffset={RING * (1 - share.percent / 100)} />
+        </svg>
+        <span className="absolute text-[length:var(--type-caption)] font-semibold tabular-nums text-foreground">
+          <CountUp value={share.percent} format={(value) => `${Math.round(value)}%`} />
         </span>
-      )}
-    </section>
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="block text-[length:var(--type-body-sm)] font-medium text-foreground">Meets its quality goal</span>
+        <span className="block text-[length:var(--type-caption)] text-muted-foreground">{share.met.toLocaleString("en-AU")} of {share.total.toLocaleString("en-AU")} titles</span>
+      </span>
+    </div>
   );
 }
 
@@ -71,26 +59,26 @@ export function ProtectedYou({ extras, blocklistCount }: { extras: DashboardLive
   const latest = guard?.latest[0];
   const said = latest ? plainReason(latest.reason)?.text ?? latest.reason : null;
   return (
-    <section aria-label="Protected you" className="flex min-w-0 items-center gap-3 px-[var(--card-pad-x)] py-2">
-      <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
-        <ShieldCheck className="h-5 w-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <Link to="/search-cycles/blocklist" aria-label="Blocklist" className={cn(LABEL, "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>Protected you today</Link>
+    <section aria-label="Protected you" className="flex min-h-0 min-w-0 flex-col px-[var(--card-pad-x)] py-2.5">
+      <Link to="/search-cycles/blocklist" aria-label="Blocklist" className={cn(LABEL, "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>Protected you today</Link>
+      <span className="mt-1.5 flex items-start gap-2.5">
+        <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
+          <ShieldCheck className="h-5 w-5" />
+        </span>
         {guard ? (
-          <>
-            <span className="block text-[length:var(--type-body-sm)] leading-tight text-foreground">
-              <span className="font-semibold tabular-nums"><CountUp value={guard.refusedToday} format={(value) => Math.round(value).toLocaleString("en-AU")} /></span> {guard.refusedToday === 1 ? "bad release" : "bad releases"} refused
-              {guard.unsafeToday > 0 ? <>, <span className="font-semibold tabular-nums">{guard.unsafeToday.toLocaleString("en-AU")}</span> fake or unplayable {guard.unsafeToday === 1 ? "file" : "files"} blocked</> : null}
-            </span>
-            <span title={latest ? `${latest.release}: ${latest.reason}` : undefined} className="block truncate text-[length:var(--type-caption)] leading-tight text-muted-foreground">
-              {latest ? `Latest: ${latest.release}, ${said}, ${ago(latest.blockedUtc)}` : blocklistCount ? `Nothing bad today. ${blocklistCount.toLocaleString("en-AU")} on your blocklist.` : "Nothing bad has needed refusing today."}
-            </span>
-          </>
+          <span className="min-w-0 flex-1 text-[length:var(--type-body-sm)] leading-snug text-foreground">
+            <span className="font-semibold tabular-nums"><CountUp value={guard.refusedToday} format={(value) => Math.round(value).toLocaleString("en-AU")} /></span> {guard.refusedToday === 1 ? "bad release" : "bad releases"} refused
+            {guard.unsafeToday > 0 ? <>, <span className="font-semibold tabular-nums">{guard.unsafeToday.toLocaleString("en-AU")}</span> fake or unplayable {guard.unsafeToday === 1 ? "file" : "files"} blocked</> : null}
+          </span>
         ) : (
-          <span className="block text-[length:var(--type-body-sm)] leading-tight text-muted-foreground">{blocklistCount ? `${blocklistCount.toLocaleString("en-AU")} releases on your blocklist.` : "Nothing is on your blocklist."}</span>
+          <span className="min-w-0 flex-1 text-[length:var(--type-body-sm)] leading-snug text-muted-foreground">{blocklistCount ? `${blocklistCount.toLocaleString("en-AU")} releases on your blocklist.` : "Nothing is on your blocklist."}</span>
         )}
       </span>
+      {guard ? (
+        <span title={latest ? `${latest.release}: ${latest.reason}` : undefined} className="mt-1 line-clamp-2 break-words text-[length:var(--type-caption)] leading-tight text-muted-foreground">
+          {latest ? `Latest: ${latest.release}, ${said}, ${ago(latest.blockedUtc)}` : blocklistCount ? `Nothing bad today. ${blocklistCount.toLocaleString("en-AU")} on your blocklist.` : "Nothing bad has needed refusing today."}
+        </span>
+      ) : null}
     </section>
   );
 }
@@ -104,48 +92,10 @@ export function libraryDrives(summary: DashboardSummary | undefined): DashboardV
   return [...(library.length > 0 ? library : volumes)].sort((a, b) => (fraction(b) ?? -1) - (fraction(a) ?? -1));
 }
 
-const MAX_DRIVES = 4;
-
-export function DriveGauges({ summary, extras }: { summary: DashboardSummary | undefined; extras: DashboardLiveExtras | null | undefined }) {
-  const drives = libraryDrives(summary);
-  const shown = drives.slice(0, MAX_DRIVES);
-  const today = extras?.importedBytesToday ?? 0;
-  const reclaim = extras?.retentionReclaimBytes ?? 0;
-  return (
-    <section aria-label="Drive space" className="flex min-w-0 flex-col justify-center px-[var(--card-pad-x)] py-2">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <Link to="/system" aria-label="Storage" className={cn(LABEL, "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>Drive space</Link>
-        <span className="text-[length:var(--type-caption)] text-muted-foreground">
-          {extras ? <>today <span className="font-medium tabular-nums text-foreground">{today > 0 ? `+${formatSize(today)}` : "nothing new"}</span> imported</> : null}
-          {reclaim > 0 ? <>{extras ? " · " : ""}retention can free <span className="font-medium tabular-nums text-success">{formatSize(reclaim)}</span></> : null}
-        </span>
-      </div>
-      {shown.length === 0 ? (
-        <p className="mt-0.5 text-[length:var(--type-body-sm)] text-muted-foreground">No drive has been read yet.</p>
-      ) : (
-        <ul className="mt-1 grid gap-x-4 gap-y-1" style={{ gridTemplateColumns: `repeat(${Math.min(shown.length, 4)}, minmax(0, 1fr))` }}>
-          {shown.map((volume) => {
-            const used = fraction(volume);
-            const tone = used === null ? "bg-muted-foreground/40" : used >= 0.92 ? "bg-destructive" : used >= 0.8 ? "bg-warning" : "bg-primary";
-            const words = !volume.available ? "cannot be read" : used === null ? "size unknown" : `${formatSize(volume.freeBytes ?? 0)} free of ${formatSize(volume.totalBytes ?? 0)}`;
-            return (
-              <li key={volume.id}>
-                <Link to="/system" title={`${volume.label}: ${words}. ${volume.paths.join(", ")}`} aria-label={`${volume.label}: ${words}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span className="flex items-baseline justify-between gap-2 text-[length:var(--type-caption)] leading-tight">
-                    <span className="min-w-0 truncate font-medium text-foreground">{volume.label}</span>
-                    <span className="shrink-0 tabular-nums text-muted-foreground">{used === null ? "–" : <CountUp value={Math.round(used * 100)} format={(value) => `${Math.round(value)}% used`} />}</span>
-                  </span>
-                  <span aria-hidden className="mt-0.5 block h-1.5 overflow-hidden rounded-full bg-surface-3">
-                    <span className={cn("live-gauge block h-full rounded-full", tone)} style={{ width: `${Math.round((used ?? 0) * 100)}%` }} />
-                  </span>
-                  <span className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{words}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {drives.length > shown.length ? <Link to="/system" className="mt-0.5 text-[length:var(--type-caption)] font-medium text-primary hover:underline">and {(drives.length - shown.length).toLocaleString("en-AU")} more</Link> : null}
-    </section>
-  );
+/** What today has done to the space: what was imported, and what retention would give back. Empty when neither is known. */
+export function spaceToday(extras: DashboardLiveExtras | null | undefined): string {
+  const parts: string[] = [];
+  if (extras) parts.push(extras.importedBytesToday > 0 ? `Today's imports took ${formatSize(extras.importedBytesToday)}.` : "Nothing imported yet today.");
+  if (extras && extras.retentionReclaimBytes > 0) parts.push(`Retention can free ${formatSize(extras.retentionReclaimBytes)}.`);
+  return parts.join(" ");
 }

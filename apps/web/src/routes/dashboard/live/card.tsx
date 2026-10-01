@@ -1,16 +1,15 @@
 /**
- * The one card of the Live board (#1096). Every lane uses it, so every card is
- * the same size and has the same parts in the same places:
+ * The one token of the Live journey (#1096): a title that is moving, as a small
+ * poster with its state beside it. Every token is the same size and has the same
+ * parts in the same places:
  *
- *   poster slot (2:3, always there) | title        (one line)
- *                                   | what is true (two lines, always reserved)
- *                                   | route        (one line, always reserved)
- *                                   | actions      (two buttons side by side)
+ *   poster slot (2:3, always there) | title (one line)
+ *                                   | what is true (two lines reserved: a download shows its bar and speed)
+ *                                   | route (one line, always reserved)
  *
- * A card with no poster shows a plain tile with the lane's icon and the title's
- * initials. A card with one action keeps it in the first place and leaves the
- * second empty. A title with several problems is one card ("2 problems"), never
- * several. Because the box never changes, the rows of a lane line up exactly.
+ * A token with no poster shows a plain tile with the stage's icon and the title's
+ * initials. Problems are not tokens: they are in the Needs you strip. The buttons
+ * a problem has (`CardButtons`) are used by the drawer that lists them.
  */
 import type { LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
@@ -31,7 +30,7 @@ import { LANES, TONE_TEXT } from "./lanes";
 import { faceOf, type TitleLookup } from "./titles";
 
 /** Every card is this tall. */
-export const CARD_HEIGHT = "h-[calc(1.15rem+var(--type-body-sm)*1.25+var(--type-caption)*4.5+var(--type-micro)*1.25)]";
+export const TOKEN_HEIGHT = "h-[calc(0.8rem+var(--type-body-sm)*1.25+var(--type-caption)*2.5+var(--type-micro)*1.25)]";
 
 /** The two reserved lines of text, and the row of buttons: sized by the type scale, so they hold at every window size. */
 const SAID_HEIGHT = "h-[calc(var(--type-caption)*2.5)]";
@@ -59,7 +58,7 @@ export function PosterSlot({ src, title, icon: Icon, tone }: { src?: string | nu
     </span>
   );
   return (
-    <span aria-hidden className="block h-[4.125rem] w-[2.75rem] shrink-0 overflow-hidden rounded-md shadow-sm">
+    <span aria-hidden className="block h-[3.75rem] w-[2.5rem] shrink-0 overflow-hidden rounded-md shadow-sm">
       <ArtworkImage src={src} alt="" loading="lazy" className="h-full w-full bg-surface-3 object-cover" fallback={tile} />
     </span>
   );
@@ -136,42 +135,32 @@ function Said({ card }: { card: JourneyCard }): ReactNode {
   );
 }
 
-export function JourneyCardView({ card, titles, arrivals, action, route, ...rest }: CardContext & { card: JourneyCard; route?: string; /** Marks a row a FitList measures. */ "data-fit-row"?: string }): ReactElement {
+export function JourneyToken({ card, titles, arrivals, route, ...rest }: Omit<CardContext, "action"> & { card: JourneyCard; route?: string; /** Marks a row a FitList measures. */ "data-fit-row"?: string }): ReactElement {
   const lane = LANES[card.stage];
   const face = faceOf(card, titles);
-  const stuck = card.stage === "needs";
   const routeText = route ?? (routeOf(card) || card.routeNote || "");
-  const problems = card.alsoProblems?.length ?? 0;
-  const all = problems > 1 ? card.alsoProblems!.join("\n") : (card.reasonFull ?? card.reason ?? undefined);
   return (
     <li
       {...rest}
       data-journey-card=""
       className={cn(
-        "relative grid grid-cols-[2.75rem_minmax(0,1fr)] gap-2 overflow-hidden rounded-lg border border-l-[3px] border-hairline bg-surface-1/60 p-1.5",
-        CARD_HEIGHT,
-        stuck && "border-destructive/30 bg-destructive/[0.05]",
+        "relative grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 overflow-hidden rounded-lg border border-l-[3px] border-hairline bg-surface-1/60 p-1.5",
+        TOKEN_HEIGHT,
         arrivals.has(card.key) && motionAllowed() && "live-card-arrive"
       )}
       style={{ ["--card-glow" as string]: `var(${lane.accent})`, borderLeftColor: `hsl(var(${lane.accent}))` }}
     >
       <PosterSlot src={face.poster} title={face.title} icon={lane.icon} tone={lane.text} />
-      <div className="flex min-h-0 min-w-0 flex-col gap-0.5">
-        <Link
-          to={face.to}
-          aria-label={`${face.title}: ${card.state.label}`}
-          title={all}
-          className="flex min-h-0 flex-1 flex-col rounded-md transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        >
-          <span className="flex items-center gap-1.5">
-            <span title={card.release && face.linked ? card.release : face.title} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
-            {problems > 1 ? <span className="shrink-0 rounded-full bg-destructive/15 px-1.5 py-px text-[length:var(--type-micro)] font-semibold leading-tight text-destructive">{problems} problems</span> : null}
-          </span>
-          <span className={cn("block overflow-hidden", SAID_HEIGHT)}><Said card={card} /></span>
-          <span title={routeText || undefined} className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{routeText || "—"}</span>
-        </Link>
-        <CardButtons card={card} action={action} />
-      </div>
+      <Link
+        to={face.to}
+        aria-label={`${face.title}: ${card.state.label}`}
+        title={card.release && face.linked ? card.release : face.title}
+        className="flex min-h-0 min-w-0 flex-col rounded-md transition-colors hover:bg-primary/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <span className="block truncate text-[length:var(--type-body-sm)] font-semibold leading-tight text-foreground">{face.title}</span>
+        <span className={cn("block overflow-hidden", SAID_HEIGHT)}><Said card={card} /></span>
+        <span title={routeText || undefined} className="block truncate text-[length:var(--type-micro)] leading-tight text-muted-foreground">{routeText || "—"}</span>
+      </Link>
     </li>
   );
 }

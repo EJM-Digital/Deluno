@@ -66,7 +66,7 @@ describe("Live", () => {
   it("has the library counts and the scheduled tasks on System, not here: Live opens on what Deluno is doing", () => {
     renderTab(fullSummary);
     expect(screen.queryByText("Upgradable")).toBeNull();
-    expect(screen.queryByRole("region", { name: /^needs you/i })).toBeNull();
+    expect(screen.getByRole("region", { name: /^needs you/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Speed" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Doing now" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Next up" })).toBeInTheDocument();
@@ -75,21 +75,13 @@ describe("Live", () => {
     expect(screen.queryByRole("region", { name: /^(today|latest)/i })).toBeNull();
   });
 
-  it("lists every problem a person has to settle as a card in the first lane, each with its own button", async () => {
+  it("counts every problem a person has to settle once, in the Needs you strip, and settles each from its drawer", async () => {
     seedBusy();
     renderTab(fullSummary);
+    const user = userEvent.setup();
 
-    const board = screen.getByRole("region", { name: /^every title/i });
-    const needs = await within(board).findByRole("group", { name: "Needs you" });
-    expect(await within(needs).findByRole("button", { name: "Retry Say Yes to the Dress" })).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Give up on Say Yes to the Dress" })).toBeInTheDocument();
-    expect(await within(needs).findByRole("button", { name: "Retry the failed import" })).toBeInTheDocument();
-    expect(await within(needs).findByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
-    // The hand-off the processor refused is a problem to settle, so it is not in the processor's lane.
-    expect(within(board).queryByRole("group", { name: "With the processor" })?.textContent ?? "").not.toContain("Metropolis");
-
-    // The lane's number and the badge's number are the same thing.
+    const strip = screen.getByRole("region", { name: "Needs you" });
+    // The strip's number and the badge's number are the same thing.
     const now = computeAttention(fullSummary, {
       movieRecovery: lists["/api/movies/import-recovery"] as never,
       seriesRecovery: lists["/api/series/import-recovery"] as never,
@@ -97,14 +89,29 @@ describe("Live", () => {
       handoffs: lists["/api/integrations/processors/handoffs"] as never,
       telemetry: lists["/api/download-clients/telemetry"] as never
     }).counts.live;
-    await waitFor(() => expect(within(needs).getByRole("link", { name: `Needs you: ${now}` })).toBeInTheDocument());
+    await waitFor(() => expect(within(strip).getByText(String(now))).toBeInTheDocument());
+    // Grouped by kind: one chip each, one Review button each; nothing is a card on the journey.
+    expect(await within(strip).findByText("1 hand-off refused")).toBeInTheDocument();
+    expect(within(strip).getByText("1 stuck download")).toBeInTheDocument();
+    expect(within(strip).getByText("1 import failed")).toBeInTheDocument();
+    expect(within(strip).queryByRole("button", { name: /^(Retry|Give up|Search again)/ })).toBeNull();
+    expect(within(screen.getByRole("region", { name: /^every title/i })).queryByRole("button")).toBeNull();
+
+    // The hand-off the processor refused is a problem to settle, so it is not in the processor's stage.
+    const board = screen.getByRole("region", { name: /^every title/i });
+    expect(within(board).queryByRole("group", { name: "With the processor" })?.textContent ?? "").not.toContain("Metropolis");
+
+    // Each group opens its own items with their own buttons.
+    await user.click(within(strip).getByRole("button", { name: "Review 1 hand-off refused" }));
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
+    const names = within(drawer).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
+    expect(new Set(names).size).toBe(names.length);
 
     // The setup problems are on the other tab, not repeated here.
     expect(screen.queryByRole("button", { name: "Test Nyaa.si again" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Resume NZBGet" })).toBeNull();
-
-    const names = within(needs).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent);
-    expect(new Set(names).size).toBe(names.length);
   });
 
   it("shows the journey board with Search again, Airing soon and the activity in plain words", async () => {
@@ -115,7 +122,9 @@ describe("Live", () => {
     const downloads = screen.getByRole("region", { name: /^every title/i });
     expect(await within(downloads).findByText("Photographer (2026)")).toBeInTheDocument();
     expect(within(downloads).getAllByText("61%").length).toBeGreaterThan(0);
-    expect(await within(downloads).findByRole("button", { name: "Search again for The Kid (1921)" })).toBeInTheDocument();
+    // The stuck download is a problem: it is in the Needs you strip, not on the journey.
+    expect(within(downloads).queryByText("The Kid (1921)")).toBeNull();
+    expect(await within(screen.getByRole("region", { name: "Needs you" })).findByText("1 stuck download")).toBeInTheDocument();
 
     const coming = screen.getByRole("region", { name: /^airing soon/i });
     expect(await within(coming).findByRole("link", { name: /Lioness/ })).toHaveAttribute("href", "/tv/s1");
@@ -131,6 +140,8 @@ describe("Live", () => {
     renderTab(fullSummary);
     const user = userEvent.setup();
 
+    // Four groups do not all fit the strip: the rest are one button that opens everything.
+    await user.click(await screen.findByRole("button", { name: "Review all that needs you" }));
     await user.click(await screen.findByRole("button", { name: "Retry Say Yes to the Dress" }));
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/movies/import-recovery/r1/retry", expect.objectContaining({ method: "POST" })));
     await user.click(screen.getByRole("button", { name: "Give up on Say Yes to the Dress" }));
@@ -139,10 +150,9 @@ describe("Live", () => {
 
   it("says something true on a new install, with no button and no blank panel", () => {
     const { container } = renderTab(emptySummary);
-    const quiet = screen.getByRole("group", { name: "Quiet" });
-    for (const name of ["Needs you", "Downloading", "In the library"]) expect(within(quiet).getByText(name)).toBeInTheDocument();
-    expect(within(quiet).getByText("Nothing moving")).toBeInTheDocument();
-    expect(within(quiet).getByText("None today")).toBeInTheDocument();
+    expect(screen.getByText("Nothing needs you.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing moving right now")).toBeInTheDocument();
+    expect(screen.getByText("Nothing has arrived yet today.")).toBeInTheDocument();
     // An empty library says so and offers the next step, in a slim row under the band.
     expect(screen.getByText("Nothing in your library yet.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Add a movie" })).toHaveAttribute("href", "/movies?add=true");

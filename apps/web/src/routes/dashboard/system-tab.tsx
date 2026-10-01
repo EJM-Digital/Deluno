@@ -38,7 +38,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
         </div>
         <div className="flex min-h-0 flex-col gap-3">
           <Machine summary={summary} window={data.machine} monitoring={data.monitoring} />
-          <Storage summary={summary} />
+          <Storage summary={summary} extras={data.liveExtras} />
           <UpdatesAndBackups summary={summary} />
         </div>
         <div className="flex min-h-0 flex-col gap-3">

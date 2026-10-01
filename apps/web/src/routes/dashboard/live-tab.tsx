@@ -40,6 +40,7 @@ import { useLiveActivity, useLiveProgress, useWorkingNow } from "./live-events";
 import { AiringSoon } from "./live/airing";
 import { RightNow } from "./live/band";
 import { Flow } from "./live/flow";
+import { NeedsStrip } from "./live/needs-strip";
 import { arrivalItems, requestCards } from "./live/extras";
 import { useLiveBoardEvents } from "./live/use-live-board";
 import { useArrivals, useElementHeight, useFreshKeys, useNow, useSummaryUpdatedAt, useTitles } from "./live/hooks";
@@ -147,6 +148,8 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
 
       <RightNow summary={summary} samples={data.throughput?.samples ?? []} indexers={data.indexers ?? NO_ROWS} scoreboard={data.scoreboard} work={work} updatedAt={updatedAt} now={now} clients={data.clients ?? NO_ROWS} clientSpeeds={clientSpeeds} extras={extras ?? null} />
 
+      <NeedsStrip cards={grouped.needs} total={attention.counts.live} titles={titles} action={action} />
+
       {emptyLibrary ? (
         <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-card px-[var(--card-pad-x)] py-2 shadow-card dark:border-white/[0.07]">
           <p className="text-[length:var(--type-body-sm)] text-muted-foreground">Nothing in your library yet.</p>
@@ -158,7 +161,7 @@ export function LiveTab({ summary }: { summary: DashboardSummary | undefined }):
 
       <div className="grid gap-[var(--grid-gap)] lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,3.4fr)_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col [&>section]:min-h-0 [&>section]:flex-1">
-          <Flow grouped={grouped} counts={counts} summary={summary} titles={titles} arrivals={arrivals} action={action} hasRequests={(summary?.requests?.seerrServers ?? 0) > 0} arrivalItems={items} freshArrivals={freshArrivals} />
+          <Flow grouped={grouped} counts={counts} titles={titles} arrivals={arrivals} arrivalItems={items} freshArrivals={freshArrivals} />
         </div>
 
         <div ref={sideRef} className="flex min-h-0 flex-col gap-[var(--grid-gap)]">

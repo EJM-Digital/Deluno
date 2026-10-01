@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fullSummary } from "../downloads-fixtures";
 import { RightNow } from "./band";
 import { buildCountdownRows } from "./countdowns";
+import type { ArrivalItem } from "./extras";
 import { Flow } from "./flow";
 import { HeartbeatValue } from "./heartbeat";
 import { byStage, laneCounts, type JourneyCard } from "./journey";
@@ -212,85 +213,67 @@ describe("the indexer lights", () => {
   });
 });
 
-describe("the journey board", () => {
+describe("the journey track", () => {
   const card = (overrides: Partial<JourneyCard>): JourneyCard => ({ key: "c1:a", stage: "downloading", title: "Sintel 2010 1080p", release: "Sintel.2010.1080p.BluRay", state: { tone: "info", label: "Downloading" }, progress: 40, speedMbps: 2, etaSeconds: 600, sizeBytes: 2e9, quality: "Bluray 1080p", indexer: "NZBgeek", client: "Deluge", to: "/queue", ...overrides });
   const named: TitleLookup = {
     movies: new Map([["m1", { title: "Sintel", year: 2010, posterUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'/>" }]]),
     series: new Map([["s1", { title: "Say Yes to the Dress", year: 2007, posterUrl: null }]]),
     episodes: new Map([["e1", { seriesId: "s1", season: 4, episode: 2 }]])
   };
-  const board = (cards: JourneyCard[], arrivals: string[] = [], titles: TitleLookup = NO_TITLES) => {
+  const board = (cards: JourneyCard[], arrivals: string[] = [], titles: TitleLookup = NO_TITLES, arrivalItems: ArrivalItem[] = []) => {
     const grouped = byStage(cards);
     return (
       <MemoryRouter>
-        <Flow grouped={grouped} counts={laneCounts(grouped, undefined)} summary={undefined} titles={titles} arrivals={new Set(arrivals)} action={{ busy: null, run: async () => {} }} />
+        <Flow grouped={grouped} counts={laneCounts(grouped, undefined)} titles={titles} arrivals={new Set(arrivals)} arrivalItems={arrivalItems} />
       </MemoryRouter>
     );
   };
 
-  it("puts each title in its lane with its details, and every empty lane is named in full, with its state, in one Quiet column", () => {
+  it("puts each moving title in its stage as a token with its details, and draws no stage that has nothing in it", () => {
     render(board([card({}), card({ key: "c1:b", stage: "processor", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "info", label: "Being cleaned" } })]));
     const downloading = screen.getByRole("group", { name: "Downloading" });
     expect(within(downloading).getByText("Sintel 2010 1080p")).toBeInTheDocument();
     expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
-    expect(within(downloading).getByText("NZBgeek → Deluge")).toBeInTheDocument();
     expect(within(screen.getByRole("group", { name: "With the processor" })).getByText("NZBgeek → Deluge → Cleaner")).toBeInTheDocument();
-    // The empty stages are not lanes: one Quiet column names each of them in full.
     expect(screen.queryByRole("group", { name: "Importing" })).toBeNull();
-    const quiet = screen.getByRole("group", { name: "Quiet" });
-    for (const name of ["Needs you", "Searching", "Grabbed", "Importing", "In the library"]) expect(within(quiet).getByText(name)).toBeInTheDocument();
-    expect(within(quiet).getByRole("link", { name: /^Importing: 0. Nothing waiting to import/ })).toBeInTheDocument();
-    expect(within(quiet).queryByText("Downloading")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Quiet" })).toBeNull();
+    expect(screen.getByRole("group", { name: "In the library" })).toBeInTheDocument();
   });
 
-  it("names a card by its library title with the release as a quiet second line, and shows an episode as show plus SxxEyy", () => {
+  it("names a token by its library title with the release as its tooltip, and shows an episode as show plus SxxEyy", () => {
     render(board([
       card({ entity: { kind: "movie", id: "m1" } }),
       card({ key: "c1:b", title: "Say Yes 2007", release: "Say.Yes.to.the.Dress.2007.S04E02.720p", entity: { kind: "episode", id: "e1" }, progress: 10 }),
       card({ key: "c1:c", title: "Nobody 2020", release: "Nobody.2020.1080p", entity: { kind: "movie", id: "gone" } })
     ], [], named));
     const downloading = screen.getByRole("group", { name: "Downloading" });
+    expect(within(downloading).getByTitle("Sintel.2010.1080p.BluRay")).toHaveAttribute("href", "/movies/m1");
     expect(within(downloading).getByText("Sintel (2010)")).toBeInTheDocument();
-    // The release as the indexer named it is the tooltip of the title, not a second line.
-    expect(within(downloading).getByTitle("Sintel.2010.1080p.BluRay")).toHaveTextContent("Sintel (2010)");
     expect(within(downloading).getByText("Say Yes to the Dress S04E02")).toBeInTheDocument();
     // A title that no longer exists keeps the release's own name and gets no failing request.
     expect(within(downloading).getByText("Nobody 2020")).toBeInTheDocument();
-    expect(within(downloading).getByRole("link", { name: /^Sintel \(2010\)/ })).toHaveAttribute("href", "/movies/m1");
     expect(within(downloading).getByRole("link", { name: /^Say Yes to the Dress S04E02/ })).toHaveAttribute("href", "/tv/s1");
   });
 
-  it("puts a stopped download in Needs you with its reason and Search again, and keeps it out of Downloading", () => {
+  it("keeps problems off the track: a stopped download or a refused hand-off is not a token", () => {
     render(board([
-      card({ key: "c1:s", stage: "needs", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" }, progress: 100, speedMbps: 0 }),
+      card({ key: "c1:s", stage: "needs", state: { tone: "bad", label: "Stuck" }, reason: "missing or invalid torrent data", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" } }),
+      card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", failedHandoffId: "h1", state: { tone: "bad", label: "Processor failed" } }),
       card({})
     ]));
-    const stuck = screen.getByRole("group", { name: "Needs you" });
-    expect(within(stuck).getByText("missing or invalid torrent data")).toBeInTheDocument();
-    expect(within(stuck).getByRole("button", { name: /^Search again for/ })).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Downloading" })).queryByText("Stuck")).toBeNull();
+    expect(screen.queryByRole("group", { name: "Needs you" })).toBeNull();
+    expect(screen.queryByText("Metropolis (1927)")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Search again/ })).toBeNull();
+    expect(within(screen.getByRole("group", { name: "Downloading" })).getAllByRole("link")).toHaveLength(2);
   });
 
-  it("gives a failed processor hand-off its Retry and Give up on the card, in Needs you", () => {
-    render(board([card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", processor: "Cleaner", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" })]));
-    const lane = screen.getByRole("group", { name: "Needs you" });
-    expect(within(lane).getByRole("button", { name: "Retry Metropolis (1927)" })).toBeInTheDocument();
-    expect(within(lane).getByRole("button", { name: "Give up on Metropolis (1927)" })).toBeInTheDocument();
-  });
-
-  it("makes every action button on a card the same size and the same box, even the quiet Give up", () => {
-    render(board([
-      card({ key: "h:1", stage: "needs", title: "Metropolis (1927)", state: { tone: "bad", label: "Processor failed" }, reason: "The processor timed out.", failedHandoffId: "h1" }),
-      card({ key: "c1:s", stage: "needs", title: "The Kid (1921)", state: { tone: "bad", label: "Stuck" }, reason: "Nobody is sharing it.", canSearchAgain: true, queueRef: { clientId: "c1", itemId: "s" } }),
-      card({ key: "case:movie:r1", stage: "needs", title: "Sintel (2010)", state: { tone: "warn", label: "Import needs a look" }, recovery: { id: "r1", mediaType: "movie", title: "Sintel", failureKind: "unmatched", summary: "x", recommendedAction: "", detailsJson: null, detectedUtc: inMs(-1000) } })
-    ]));
-    const buttons = [...within(screen.getByRole("group", { name: "Needs you" })).getAllByRole("button"), screen.getByRole("link", { name: "Review Sintel (2010)" })];
-    expect(buttons.length).toBeGreaterThanOrEqual(5);
-    const sizeOf = (element: HTMLElement) => element.className.split(/s+/).filter((name) => /^(h|w)-/.test(name) && !/^h-3.5|^w-3.5/.test(name)).sort().join(" ");
-    expect(new Set(buttons.map(sizeOf)).size).toBe(1);
-    for (const button of buttons) expect(button.className).toContain("w-[5.25rem]");
-    // The quiet action is boxed like the others, only softer.
-    expect(screen.getByRole("button", { name: "Give up on Metropolis (1927)" }).className).toContain("border");
+  it("says one calm, true line when nothing is moving, with the last arrival, and gives the arrivals the room", () => {
+    const arrival: ArrivalItem = { key: "a1", entity: { kind: "movie", id: "m1" }, fallbackTitle: "Sintel (2010)", release: null, quality: "WEB 1080p", previousQuality: "WEB 720p", upgraded: true, sizeBytes: 5, at: new Date(Date.now() - 2 * 3_600_000).toISOString(), requestedBy: null, to: "/movies/m1" };
+    render(board([], [], named, [arrival]));
+    expect(screen.getByText("Nothing moving right now · last arrival Sintel (2010) 2 h ago")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Downloading" })).toBeNull();
+    // The upgrade is shown as before and after.
+    expect(screen.getByRole("link", { name: "Sintel (2010): upgraded from WEB 720p to WEB 1080p" })).toBeInTheDocument();
   });
 
   it("only shimmers a download bar while bytes are really moving", () => {
@@ -301,7 +284,7 @@ describe("the journey board", () => {
     expect(idle.container.querySelector(".live-shimmer")).toBeNull();
   });
 
-  it("glows a card that has just arrived, and does not when motion is reduced", () => {
+  it("glows a token that has just changed stage, and does not when motion is reduced", () => {
     const { container, unmount } = render(board([card({})], ["c1:a"]));
     expect(container.querySelector(".live-card-arrive")).not.toBeNull();
     unmount();

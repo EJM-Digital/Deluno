@@ -20,16 +20,20 @@ import { MetricChart, type MetricPoint } from "../../components/ui/metric-chart"
 import { StatusLed } from "../../components/ui/status-led";
 import { SummaryStrip, type SummaryCell } from "../../components/ui/summary-strip";
 import { fetchJson, type HealthCheckListResponse, type HealthCheckResultItem, type MachineTelemetryWindow, type MonitoringDashboardSnapshot } from "../../lib/api";
-import type { DashboardScheduledTask, DashboardSummary } from "../../lib/api/types/operations";
+import type { DashboardLiveExtras, DashboardScheduledTask, DashboardSummary } from "../../lib/api/types/operations";
 import { defineSources } from "../../lib/route-cache";
 import { cn } from "../../lib/utils";
 import type { DashboardAttention } from "./attention";
 import { ActionButton, FactRow, Panel, PanelLink, PanelNote, ago, formatSize, plainWords, plural, send, until, useAction } from "./downloads-kit";
 import { FitList, Line } from "./parts";
+import { QualityRing, spaceToday } from "./live/standing";
+import { fetchLiveExtras } from "./sources";
 
 const MACHINE_HOURS = 6;
 
 export const systemPanelSources = defineSources({
+  // What today did to the space (the size of today's imports, what retention will give back): the same stored read Live uses.
+  liveExtras: { key: ["src", "dashboard-live-extras"], label: "Today's space", fetch: fetchLiveExtras },
   machine: {
     key: ["src", "machine-6h"],
     label: "This computer",
@@ -349,6 +353,7 @@ export function LibraryCounts({ summary }: { summary: DashboardSummary | undefin
   return (
     <Panel title="Library" to="/movies" linkLabel="Movies" className="shrink-0">
       <div>
+        <QualityRing summary={summary} />
         <Line label="Movies" hint={movies && movies.total > 0 ? "in your library" : "none yet"} value={whole(movies?.total ?? 0)} to="/movies" />
         <Line label="TV shows" hint={shows && shows.total > 0 ? "in your library" : "none yet"} value={whole(shows?.total ?? 0)} to="/tv" />
         <Line label="Missing" hint="no acceptable release yet" value={whole(missing)} tone={missing > 0 ? "bad" : undefined} to="/search-cycles/missing" />
@@ -600,7 +605,7 @@ export function UpdatesAndBackups({ summary }: { summary: DashboardSummary | und
 
 const ROLE_WORDS: Record<string, string> = { data: "Deluno", library: "Library", downloads: "Downloads", processor: "Processor" };
 
-export function Storage({ summary }: { summary: DashboardSummary | undefined }) {
+export function Storage({ summary, extras }: { summary: DashboardSummary | undefined; extras?: DashboardLiveExtras | null }) {
   const storage = summary?.storage;
   const volumes = storage?.volumes ?? [];
   return (
@@ -609,7 +614,7 @@ export function Storage({ summary }: { summary: DashboardSummary | undefined }) 
       to="/settings/libraries"
       linkLabel="Libraries"
       className="flex-[9]"
-      footer={storage ? (storage.readingUtc ? `Drives read ${ago(storage.readingUtc)}, then about once a minute.` : "Drives haven’t been read yet. The first reading arrives within a minute.") : undefined}
+      footer={storage ? [storage.readingUtc ? `Drives read ${ago(storage.readingUtc)}, then about once a minute.` : "Drives haven’t been read yet. The first reading arrives within a minute.", spaceToday(extras)].filter(Boolean).join(" ") : undefined}
     >
       {volumes.length === 0 ? (
         <PanelNote>No drive has been read yet, so free space is unknown. Add a library or a download client and it shows here.</PanelNote>
