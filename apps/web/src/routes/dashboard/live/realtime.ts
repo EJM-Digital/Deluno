@@ -110,7 +110,10 @@ export function applyJourneyStage(client: Cache, event: JourneyStageChangedEvent
     patch<DashboardLiveExtras | null>(client, liveSources.liveExtras.key, (extras) => {
       if (!extras || !Array.isArray(extras.arrivals)) return undefined;
       const entityType = event.entityType ?? "movie";
-      const row = { entityType, entityId: event.entityId, release: event.releaseName, quality: null, previousQuality: null, upgraded: false, sizeBytes: null, importedUtc: event.at };
+      // The library comes with the event; its name from the library counts the summary already holds.
+      const libraryId = event.libraryId ?? null;
+      const libraryName = libraryId ? client.getQueryData<DashboardSummary>(DASHBOARD_SUMMARY_KEY)?.library?.libraryCounts?.find((library) => library.libraryId === libraryId)?.libraryName ?? null : null;
+      const row = { entityType, entityId: event.entityId, release: event.releaseName, quality: null, previousQuality: null, upgraded: false, sizeBytes: null, importedUtc: event.at, libraryId, libraryName };
       if (extras.arrivals.some((item) => item.importedUtc === event.at && item.entityId === event.entityId)) return undefined;
       return { ...extras, arrivals: [row, ...extras.arrivals], importsToday: extras.importsToday + 1 };
     });

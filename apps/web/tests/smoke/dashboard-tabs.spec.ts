@@ -353,6 +353,51 @@ test.describe("Dashboard tabs", () => {
     }
   });
 
+  test("Your library is one shelf with a chip per library, a tag on each poster, and counts that follow the chip", async ({ page }) => {
+    test.setTimeout(120_000);
+    await authenticateAndNavigate(page, "/");
+    await serveLiveBusy(page);
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.evaluate(() => localStorage.removeItem("deluno.live.shelfLibrary"));
+      await page.goto("/");
+      await page.addStyleTag({ content: '[role=tabpanel] div.shrink-0.flex-col:has(> section[aria-label="Guided setup"]) { display: none !important; }' });
+      const shelf = page.getByRole("region", { name: "Your library" });
+      await expect(shelf).toBeVisible();
+      await page.waitForTimeout(1200);
+      const chips = shelf.getByRole("group", { name: "Libraries" }).getByRole("button");
+      await expect(chips).toHaveText(["All", "Movies HD", "Kids", "TV"]);
+      await expect(shelf.locator(".lsh-posters")).toHaveCount(1);
+      // One line of counts per kind of title for All; the tag opens that library's page filtered to it.
+      await expect(shelf.locator(".lsh-line")).toHaveCount(2);
+      const tags = shelf.locator(".lsh-tag");
+      expect(await tags.count()).toBeGreaterThan(0);
+      expect(await tags.first().getAttribute("href")).toMatch(/^\/(movies|tv)\?library=/);
+      // Whole posters only, the whole height of the row, tags inside their poster.
+      const report = await shelf.evaluate((section) => {
+        const row = section.querySelector<HTMLElement>(".lsh-posters")!.getBoundingClientRect();
+        return Array.from(section.querySelectorAll<HTMLElement>(".lsh-poster")).map((poster) => {
+          const art = poster.querySelector<HTMLElement>(".lsh-art")!.getBoundingClientRect();
+          const tag = poster.querySelector<HTMLElement>(".lsh-tag")?.getBoundingClientRect();
+          return { artH: art.height, artW: art.width, inRow: art.right <= row.right + 1 && art.bottom <= row.bottom + 1, tagInside: tag ? tag.left >= art.left - 1 && tag.right <= art.right + 1 && tag.bottom <= art.bottom + 1 : true };
+        });
+      });
+      expect(report.length).toBeGreaterThan(0);
+      for (const poster of report) {
+        expect(poster.inRow, `${size.width}: a poster runs past the shelf`).toBe(true);
+        expect(poster.tagInside, `${size.width}: a tag is outside its poster`).toBe(true);
+        expect(Math.abs(poster.artH - poster.artW * 1.5), `${size.width}: a poster is not 2:3`).toBeLessThan(1.5);
+      }
+      await page.screenshot({ path: `test-results/e2e-rig/live-shelf-${size.width}.png` });
+      // A chip filters the shelf and its counts follow it.
+      await chips.filter({ hasText: "Kids" }).click();
+      await expect(chips.filter({ hasText: "Kids" })).toHaveAttribute("aria-pressed", "true");
+      await expect(shelf.locator(".lsh-line")).toHaveCount(1);
+      await expect(shelf.locator(".lsh-line")).toContainText("12 met");
+      for (const text of await shelf.locator(".lsh-tag").allTextContents()) expect(text).toBe("Kids");
+    }
+  });
+
   test("neither tab carries a number, and the bell counts every problem in two sections", async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await authenticateAndNavigate(page, "/");

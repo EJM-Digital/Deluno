@@ -32,6 +32,16 @@ describe("pushed Live events, applied to the lists the board reads", () => {
     expect(qc.getQueryData<Array<{ id: string }>>(sharedSources.dispatches.key)!.map((item) => item.id)).toEqual(["d2"]);
   });
 
+  it("gives a pushed arrival the library it landed in, named from the library counts the summary holds", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(liveSources.liveExtras.key, { arrivals: [], importsToday: 0 });
+    qc.setQueryData(DASHBOARD_SUMMARY_KEY, { library: { libraryCounts: [{ libraryId: "kids", libraryName: "Kids" }] } });
+    applyJourneyStage(qc, { dispatchId: "d1", releaseName: "Moon.2009", mediaType: "movies", entityType: "movie", entityId: "m1", libraryId: "kids", stage: "import_succeeded", detail: null, at });
+    expect(qc.getQueryData<{ arrivals: unknown[] }>(liveSources.liveExtras.key)!.arrivals[0]).toMatchObject({ libraryId: "kids", libraryName: "Kids" });
+    applyJourneyStage(qc, { dispatchId: "d2", releaseName: "Primer.2004", mediaType: "movies", entityType: "movie", entityId: "m2", libraryId: "other", stage: "import_succeeded", detail: null, at: "2026-10-01T10:05:00.000Z" });
+    expect(qc.getQueryData<{ arrivals: unknown[] }>(liveSources.liveExtras.key)!.arrivals[0]).toMatchObject({ libraryId: "other", libraryName: null });
+  });
+
   it("puts an import that has just landed on the arrivals wall at once", () => {
     const qc = new QueryClient();
     qc.setQueryData(liveSources.liveExtras.key, { arrivals: [], importsToday: 3 });

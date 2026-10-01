@@ -717,6 +717,9 @@ export interface LiveArrivalItem {
   importedUtc: string;
   /** True when it landed at the quality the library asked for, false when it can still be upgraded; absent for an import recorded before this was kept. */
   qualityMet?: boolean | null;
+  /** The library it landed in (#1103); absent when that library has since been removed. */
+  libraryId?: string | null;
+  libraryName?: string | null;
 }
 
 export interface LiveProtectionItem {
@@ -830,6 +833,18 @@ export interface DashboardLibraryBytes {
   bytes: number;
 }
 
+/** One library's own counts, as its page prints them, and what arrived in it today (#1103). */
+export interface DashboardLibraryCounts {
+  libraryId: string;
+  libraryName: string;
+  mediaType: string;
+  met: number;
+  upgradable: number;
+  downloading: number;
+  missing: number;
+  arrivedToday: number;
+}
+
 export interface DashboardLibrarySection {
   asOfUtc: string;
   movies: DashboardMediaCounts;
@@ -838,6 +853,8 @@ export interface DashboardLibrarySection {
   libraries: DashboardLibraryBytes[];
   mix: DashboardLibraryMix;
   collections: DashboardCollections;
+  /** Each library's own counts, in Settings › Libraries order (#1103). */
+  libraryCounts?: DashboardLibraryCounts[] | null;
 }
 
 export interface DashboardClientRow {

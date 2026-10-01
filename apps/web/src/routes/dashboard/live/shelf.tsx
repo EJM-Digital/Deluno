@@ -1,18 +1,19 @@
 /**
- * Your library (#1098, the approved mockup like for like): what landed today, in the library's own two rows. TV Shows sit
- * above Movies, each with its label, its counts in the Movies page's colours (quality met, upgradable, downloading,
- * missing) and "+N today"; beside them the posters of today's arrivals, newest first, each with the Movies page's bar across its top
- * (gold for quality met, green for upgradable, the quality on it) and a small arrow when it replaced a worse copy.
+ * Your library (#1098, #1103): what landed today on one shelf, newest first. Under the card's header a row of chips picks
+ * the library the shelf shows ("All" and then each library by name, in Settings › Libraries order); under the chips, the
+ * counts in the Movies page's colours (quality met, upgradable, downloading, missing) and "+N today": a line per kind of
+ * title for All, that library's one line for a chip. Each poster has the Movies page's bar across its top (gold for
+ * quality met, green for upgradable, the quality on it), a small arrow when it replaced a worse copy, and a tag with the
+ * name of the library it landed in, which opens that library's page filtered to it.
  *
- * Posters are sized from each row's own height, exactly 2:3, the same size in both rows, and only whole posters are drawn.
- * When stacked rows would make them under 80px tall the two rows go side by side instead (see `libraryBySide`). A title that
- * has just been imported flies in from the journey (see `useFlyToShelf`) and simply appears with reduced motion. With nothing
- * in today, the rows show the latest of the last seven days.
+ * Posters are sized from the row's own height, exactly 2:3, and only whole posters are drawn. A title that has just been
+ * imported flies in from the journey (see `useFlyToShelf`) when the chip shown includes its library, and simply appears
+ * with reduced motion. With nothing in today, the shelf shows the latest of the last seven days.
  */
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
-import type { DashboardLibrarySection, DashboardMediaCounts } from "../../../lib/api/types/operations";
+import type { DashboardLibrarySection } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
 import { formatSize } from "../downloads-kit";
 import { ago } from "../format";
@@ -21,7 +22,7 @@ import "./shelf.css";
 import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
-import { libraryBySide, libraryPosters, postersAcross, type LibraryPosters } from "./layout";
+import { libraryPosters, postersAcross } from "./layout";
 import { groupArrivals, type ArrivalGroup, type ArrivalLibrary } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
@@ -52,16 +53,45 @@ export function arrivedDetail(titles: number, upgraded: number, bytes: number): 
   return parts.join(" · ");
 }
 
-const ROWS: ReadonlyArray<{ key: ArrivalLibrary; label: string; counts: "shows" | "movies" }> = [
-  { key: "tv", label: "TV Shows", counts: "shows" },
-  { key: "movies", label: "Movies", counts: "movies" }
+/** The chosen chip is remembered per browser. */
+export const SHELF_LIBRARY_KEY = "deluno.live.shelfLibrary";
+
+function readChoice(): string {
+  try {
+    return localStorage.getItem(SHELF_LIBRARY_KEY) || "all";
+  } catch {
+    return "all";
+  }
+}
+
+function rememberChoice(value: string): void {
+  try {
+    if (value === "all") localStorage.removeItem(SHELF_LIBRARY_KEY);
+    else localStorage.setItem(SHELF_LIBRARY_KEY, value);
+  } catch {
+    /* the choice just is not kept */
+  }
+}
+
+interface CountsOf {
+  met: number;
+  upgradable: number;
+  downloading: number;
+  missing: number;
+}
+
+const KINDS: ReadonlyArray<{ key: ArrivalLibrary; label: string }> = [
+  { key: "tv", label: "TV Shows" },
+  { key: "movies", label: "Movies" }
 ];
 
+const kindOf = (mediaType: string): ArrivalLibrary => (mediaType.toLowerCase() === "tv" ? "tv" : "movies");
+
 /** The library's own counts, in the colours of the Movies page. */
-function Counts({ counts }: { counts: DashboardMediaCounts | undefined }) {
+function Counts({ counts }: { counts: CountsOf | undefined }) {
   if (!counts) return <span className="lsh-ct" />;
   const entries: Array<[string, string, number, string]> = [
-    ["Quality met", "met", counts.qualityMet, "hsl(var(--mark-quality-met))"],
+    ["Quality met", "met", counts.met, "hsl(var(--mark-quality-met))"],
     ["Upgradable", "upgradable", counts.upgradable, "hsl(var(--mark-upgrade))"],
     ["Downloading", "downloading", counts.downloading, "hsl(var(--mark-downloading))"],
     ["Missing", "missing", counts.missing, "hsl(var(--mark-missing))"]
@@ -75,14 +105,15 @@ function Counts({ counts }: { counts: DashboardMediaCounts | undefined }) {
   );
 }
 
-function Poster({ group, isNew, captions }: { group: ArrivalGroup; isNew: boolean; captions: boolean }) {
-  const { title, poster, to, tag, upgrades, episodes } = group;
+function Poster({ group, isNew, captions, tag }: { group: ArrivalGroup; isNew: boolean; captions: boolean; tag: { id: string; name: string } | null }) {
+  const { title, poster, to, upgrades, episodes } = group;
   const when = arrivedWhen(group.at);
   const sub = episodes ? `${episodes} · ${when}` : when;
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
-  const tip = [title, episodes, tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : "an upgrade") : null, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
+  const tip = [title, episodes, group.tag, state, group.sizeBytes ? formatSize(group.sizeBytes) : null, upgrades > 0 ? (group.items.length > 1 ? `${upgrades} upgraded` : "an upgrade") : null, group.items.length === 1 && group.items[0].requestedBy ? `requested by ${group.items[0].requestedBy}` : null, when].filter(Boolean).join(" · ");
+  const page = group.library === "tv" ? "/tv" : "/movies";
   return (
-    <li className="lsh-poster" data-new={isNew ? "" : undefined}>
+    <li className="lsh-poster" data-new={isNew ? "" : undefined} data-tagged={tag ? "" : undefined}>
       <Link to={to} title={tip} aria-label={`${title}${episodes ? ` ${episodes}` : ""}: in the library, ${when}`}>
         <span data-arrival-poster={group.key} data-arrival-members={group.items.map((item) => item.key).join("|")} className="lsh-art">
           {group.quality ? <span aria-hidden className={cn("lsh-mark", group.met === true && "met", group.met === false && "upg")}>{group.quality}</span> : null}
@@ -102,13 +133,18 @@ function Poster({ group, isNew, captions }: { group: ArrivalGroup; isNew: boolea
         </span>
         {captions ? <span className="lsh-cap">{title}<small>{sub}</small></span> : null}
       </Link>
+      {tag ? (
+        <Link
+          className="lsh-tag"
+          to={`${page}?library=${encodeURIComponent(tag.id)}`}
+          title={`Open ${tag.name}`}
+          onClick={(event: MouseEvent) => event.stopPropagation()}
+        >
+          {tag.name}
+        </Link>
+      ) : null}
     </li>
   );
-}
-
-interface Fit {
-  posters: LibraryPosters;
-  across: Record<ArrivalLibrary, number>;
 }
 
 export function Shelf({ items, titles, newest, heading, detail, latest = false, library }: {
@@ -122,45 +158,69 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   detail?: string;
   /** The items are the latest of the last seven days, not today's. */
   latest?: boolean;
-  /** The library's own counts, for each row. */
+  /** The library's own counts: for each kind of title, and for each library. */
   library?: DashboardLibrarySection | null;
 }) {
   const groups = useMemo(() => groupArrivals(items, titles), [items, titles]);
-  const [libsRef, libs] = useElementSize<HTMLDivElement>();
-  const boxes: Record<ArrivalLibrary, RefObject<HTMLUListElement | null>> = { tv: useRef<HTMLUListElement>(null), movies: useRef<HTMLUListElement>(null) };
-  const byside = libraryBySide(libs.height);
-  const [fit, setFit] = useState<Fit | null>(null);
-  // The poster size comes from the rows' own measured boxes (after the stacked or side-by-side choice is drawn), before paint, so nothing shifts.
-  useLayoutEffect(() => {
-    const tv = boxes.tv.current;
-    const movies = boxes.movies.current;
-    if (!tv || !movies || !(tv.clientHeight > 0) || !(movies.clientHeight > 0)) return;
-    const posters = libraryPosters([tv.clientHeight, movies.clientHeight]);
-    const next: Fit = { posters, across: { tv: postersAcross(tv.clientWidth, posters.width), movies: postersAcross(movies.clientWidth, posters.width) } };
-    setFit((current) => (current && current.posters.width === next.posters.width && current.posters.captions === next.posters.captions && current.posters.short === next.posters.short && current.across.tv === next.across.tv && current.across.movies === next.across.movies ? current : next));
-  }, [libs.width, libs.height, byside, boxes.tv, boxes.movies]);
-  const rowStyle = fit ? ({ ["--aw" as string]: `${fit.posters.width}px` } satisfies CSSProperties) : undefined;
+  const libraries = useMemo(() => library?.libraryCounts ?? [], [library?.libraryCounts]);
+  const [stored, setStored] = useState(readChoice);
+  // A library that is gone is All again.
+  const chosen = libraries.find((entry) => entry.libraryId === stored) ?? null;
+  const choose = (value: string) => {
+    setStored(value);
+    rememberChoice(value);
+  };
+  const names = useMemo(() => new Map(libraries.map((entry) => [entry.libraryId, entry.libraryName])), [libraries]);
+  const shown = chosen ? groups.filter((group) => group.libraryId === chosen.libraryId) : groups;
+
+  const [boxRef, box] = useElementSize<HTMLUListElement>();
+  // The poster size comes from the row's own measured box, so nothing shifts after paint.
+  const posters = box.height > 0 ? libraryPosters(box.height) : null;
+  const across = posters ? postersAcross(box.width, posters.width) : 0;
+  const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
+  const inRow = posters ? shown.slice(0, across) : shown;
+  const today = (count: number) => (latest ? "latest" : `+${count.toLocaleString("en-AU")} today`);
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
+
+  // All: a line for each kind of title the libraries hold. One chip: that library's own line.
+  const lines = chosen
+    ? [{ key: chosen.libraryId, label: null as string | null, counts: { met: chosen.met, upgradable: chosen.upgradable, downloading: chosen.downloading, missing: chosen.missing } as CountsOf | undefined, arrived: shown.length }]
+    : KINDS.filter((kind) => libraries.length === 0 || libraries.some((entry) => kindOf(entry.mediaType) === kind.key)).map((kind) => {
+        const counts = kind.key === "tv" ? library?.shows : library?.movies;
+        return {
+          key: kind.key,
+          label: kind.label as string | null,
+          counts: counts ? { met: counts.qualityMet, upgradable: counts.upgradable, downloading: counts.downloading, missing: counts.missing } as CountsOf : undefined,
+          arrived: groups.filter((group) => group.library === kind.key).length
+        };
+      });
+
   return (
     <Panel title="Your library" count={headingNode} to="/movies" toLabel="Library" className="lsh min-h-[11rem]">
-      <div ref={libsRef} className={cn("lsh-libs", byside && "byside", fit?.posters.short && "short")}>
-        {ROWS.map((row) => {
-          const inRow = groups.filter((group) => group.library === row.key);
-          const shown = fit ? inRow.slice(0, fit.across[row.key]) : inRow;
-          return (
-            <section key={row.key} className="lsh-lib" aria-label={row.label}>
-              <div className="lsh-lib-h">
-                <span className="lsh-label">{row.label}</span>
-                <Counts counts={library?.[row.counts]} />
-                <span className="lsh-today">{latest ? "latest" : `+${inRow.length.toLocaleString("en-AU")} today`}</span>
-              </div>
-              <ul ref={boxes[row.key]} className="lsh-posters" style={rowStyle}>
-                {shown.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : shown.map((group) => <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} captions={fit?.posters.captions ?? true} />)}
-              </ul>
-            </section>
-          );
-        })}
+      {libraries.length > 0 ? (
+        <div className="lsh-chips" role="group" aria-label="Libraries">
+          <button type="button" className="lsh-chip" aria-pressed={!chosen} data-library="all" onClick={() => choose("all")}>All</button>
+          {libraries.map((entry) => (
+            <button key={entry.libraryId} type="button" className="lsh-chip" aria-pressed={chosen?.libraryId === entry.libraryId} data-library={entry.libraryId} onClick={() => choose(entry.libraryId)}>{entry.libraryName}</button>
+          ))}
+        </div>
+      ) : null}
+      <div className="lsh-lines">
+        {lines.map((line) => (
+          <div key={line.key} className="lsh-line">
+            {line.label ? <span className="lsh-label">{line.label}</span> : null}
+            <Counts counts={line.counts} />
+            <span className="lsh-today">{today(line.arrived)}</span>
+          </div>
+        ))}
       </div>
+      <ul ref={boxRef} className="lsh-posters" style={rowStyle}>
+        {inRow.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : inRow.map((group) => {
+          const id = group.libraryId;
+          const name = id ? names.get(id) ?? group.libraryName : null;
+          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} captions={posters?.captions ?? true} tag={id && name ? { id, name } : null} />;
+        })}
+      </ul>
     </Panel>
   );
 }

@@ -28,6 +28,18 @@ import {
 const sizeStorageKey = (variant: MediaVariant) => `deluno-card-size-${variant}`;
 const displayStorageKey = (variant: MediaVariant) => `deluno-display-options-${variant}`;
 const viewStorageKey = (variant: MediaVariant) => `deluno-view-${variant}`;
+/** The last library picked on this page, per browser (#1103): `deluno.library.movies` and `deluno.library.tv`. */
+export const libraryMemoryKey = (variant: MediaVariant) => `deluno.library.${variant === "movies" ? "movies" : "tv"}`;
+
+/** The library a page opens on: the one in the address, else the last one picked on this page, else none (All libraries). */
+function initialLibraryId(variant: MediaVariant, urlLibrary: string | null): string | null {
+  if (urlLibrary) return urlLibrary;
+  try {
+    return localStorage.getItem(libraryMemoryKey(variant)) || null;
+  } catch {
+    return null;
+  }
+}
 
 function initialCardSize(variant: MediaVariant): CardSize {
   try {
@@ -86,9 +98,9 @@ const emptyControlSet = (variant: MediaVariant): LibraryControlSet => ({
   posterOptions: []
 });
 
-export function useLibraryFilters(variant: MediaVariant, urlFilter: string | null, defaultView: ViewMode = "grid") {
+export function useLibraryFilters(variant: MediaVariant, urlFilter: string | null, defaultView: ViewMode = "grid", urlLibrary: string | null = null) {
   const [query, setQuery] = useState("");
-  const [libraryId, setLibraryId] = useState<string | null>(null);
+  const [libraryId, setLibraryId] = useState<string | null>(() => initialLibraryId(variant, urlLibrary));
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   // The other axis. See `MonitoringFilter` — a state and an intent multiply,
   // so neither can be expressed as a value of the other.
@@ -107,7 +119,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
 
   useEffect(() => {
     setSavedPresets([]);
-    setLibraryId(null);
+    setLibraryId(initialLibraryId(variant, urlLibrary));
     setQuickFilter("all");
     setMonitoring("any");
     setSortField("title");
@@ -151,6 +163,20 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
     }
   }, [urlFilter]);
 
+  // A link to the page filtered to a library (`?library=<id>`) while the page is already open.
+  useEffect(() => {
+    if (urlLibrary) setLibraryId(urlLibrary);
+  }, [urlLibrary]);
+
+  /** The library picker's choice: shown now and remembered for next time on this page (All libraries forgets it). */
+  function pickLibrary(next: string | null) {
+    setLibraryId(next);
+    try {
+      if (next) localStorage.setItem(libraryMemoryKey(variant), next);
+      else localStorage.removeItem(libraryMemoryKey(variant));
+    } catch { /* ignore */ }
+  }
+
   function setView(next: ViewMode) {
     setViewState(next);
     try { localStorage.setItem(viewStorageKey(variant), next); } catch { /* ignore */ }
@@ -177,7 +203,7 @@ export function useLibraryFilters(variant: MediaVariant, urlFilter: string | nul
   }
 
   return {
-    query, setQuery, libraryId, setLibraryId, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
+    query, setQuery, libraryId, setLibraryId, pickLibrary, quickFilter, setQuickFilter, view, setView, sortField, setSortField,
     monitoring, setMonitoring,
     controlSet,
     conditions, setConditions,

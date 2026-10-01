@@ -35,6 +35,13 @@ describe("groupArrivals", () => {
     expect(groupArrivals([ep(1, { upgraded: true, previousQuality: "WEB 720p" })], titles)[0]).toMatchObject({ quality: "WEB 1080p", previousQuality: "WEB 720p" });
   });
 
+  it("carries the library each group landed in, and keeps a show's episodes in two libraries apart", () => {
+    expect(groupArrivals([{ ...film, libraryId: "hd", libraryName: "Movies HD" }], titles)[0]).toMatchObject({ libraryId: "hd", libraryName: "Movies HD" });
+    expect(groupArrivals([film], titles)[0]).toMatchObject({ libraryId: null, libraryName: null });
+    const split = groupArrivals([ep(1, { libraryId: "tv1", libraryName: "TV" }), ep(2, { libraryId: "anime", libraryName: "Anime" })], titles);
+    expect(split.map((group) => group.libraryName).sort()).toEqual(["Anime", "TV"]);
+  });
+
   it("keeps the same show on different days apart", () => {
     expect(groupArrivals([ep(1), ep(2, { at: "2026-09-28T03:00:00Z" })], titles)).toHaveLength(2);
   });
