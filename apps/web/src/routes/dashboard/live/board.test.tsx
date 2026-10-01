@@ -573,22 +573,13 @@ describe("arrived today", () => {
     expect(document.querySelector(".lsh-tag")).toBeNull();
   });
 
-  it("for All counts one line per kind of title, led by its label, with how many arrived today", () => {
+  it("has no legend: the colours on the posters are the Movies page's own (the owner, 1 Oct 2026)", () => {
     shelf();
-    const lines = Array.from(document.querySelectorAll<HTMLElement>(".lsh-line"));
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toHaveTextContent("TV Shows");
-    expect(within(lines[0]).getByTitle("Quality met")).toHaveTextContent("41 met");
-    expect(within(lines[0]).getByTitle("Upgradable")).toHaveTextContent("5 upgradable");
-    expect(within(lines[0]).getByText("+1 today")).toBeInTheDocument();
-    expect(lines[1]).toHaveTextContent("Movies");
-    expect(within(lines[1]).getByTitle("Quality met")).toHaveTextContent("18 met");
-    expect(within(lines[1]).getByTitle("Downloading")).toHaveTextContent("1 downloading");
-    expect(within(lines[1]).getByTitle("Missing")).toHaveTextContent("2 missing");
-    expect(within(lines[1]).getByText("+2 today")).toBeInTheDocument();
+    expect(document.querySelector(".lsh-ct, .lsh-line, .lsh-lines")).toBeNull();
+    expect(screen.queryByText(/\bupgradable\b|\bmissing\b/)).toBeNull();
   });
 
-  it("a chip filters the shelf to its library, and the counts follow it", async () => {
+  it("a chip filters the shelf to its library", async () => {
     const user = userEvent.setup();
     shelf();
     await user.click(screen.getByRole("button", { name: "Kids" }));
@@ -597,13 +588,8 @@ describe("arrived today", () => {
     expect(screen.getByRole("link", { name: /^Film 2/ })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Film 1/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Show 9/ })).toBeNull();
-    const lines = Array.from(document.querySelectorAll<HTMLElement>(".lsh-line"));
-    expect(lines).toHaveLength(1);
-    expect(within(lines[0]).getByTitle("Quality met")).toHaveTextContent("8 met");
-    expect(within(lines[0]).getByText("+1 today")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
-    expect(document.querySelectorAll(".lsh-line")).toHaveLength(2);
   });
 
   it("remembers the chip in this browser, and a library that is gone is All again", async () => {
@@ -620,15 +606,6 @@ describe("arrived today", () => {
     shelf();
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
-  });
-
-  it("counts a library in the Movies page's words: met, upgradable, downloading, missing", () => {
-    withRouter(<Shelf items={[]} titles={NO_TITLES} newest={new Set()} heading="0 arrived today" library={section} />);
-    const tv = document.querySelectorAll<HTMLElement>(".lsh-line")[0];
-    expect(within(tv).getByTitle("Quality met")).toHaveTextContent("41 met");
-    expect(within(tv).getByTitle("Upgradable")).toHaveTextContent("5 upgradable");
-    expect(within(tv).getByTitle("Downloading")).toHaveTextContent("0 downloading");
-    expect(within(tv).getByTitle("Missing")).toHaveTextContent("3 missing");
   });
 
   it("says something true when nothing has arrived", () => {

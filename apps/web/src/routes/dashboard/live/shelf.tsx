@@ -1,8 +1,7 @@
 /**
  * Your library (#1098, #1103): what landed today on one shelf, newest first. Under the card's header a row of chips picks
- * the library the shelf shows ("All" and then each library by name, in Settings › Libraries order); under the chips, the
- * counts in the Movies page's colours (quality met, upgradable, downloading, missing) and "+N today": a line per kind of
- * title for All, that library's one line for a chip. Each poster has the Movies page's bar across its top (gold for
+ * the library the shelf shows ("All" and then each library by name, in Settings › Libraries order). There is no legend:
+ * the colours on the posters are the Movies page's own (the owner, 1 Oct 2026). Each poster has the Movies page's bar across its top (gold for
  * quality met, green for upgradable, the quality on it), a small arrow when it replaced a worse copy, and a tag with the
  * name of the library it landed in, which opens that library's page filtered to it.
  *
@@ -23,7 +22,7 @@ import { initialsOf } from "./card";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
 import { libraryPosters, postersAcross } from "./layout";
-import { groupArrivals, type ArrivalGroup, type ArrivalLibrary } from "./arrival-groups";
+import { groupArrivals, type ArrivalGroup } from "./arrival-groups";
 import { LANES } from "./lanes";
 import type { TitleLookup } from "./titles";
 
@@ -71,38 +70,6 @@ function rememberChoice(value: string): void {
   } catch {
     /* the choice just is not kept */
   }
-}
-
-interface CountsOf {
-  met: number;
-  upgradable: number;
-  downloading: number;
-  missing: number;
-}
-
-const KINDS: ReadonlyArray<{ key: ArrivalLibrary; label: string }> = [
-  { key: "tv", label: "TV Shows" },
-  { key: "movies", label: "Movies" }
-];
-
-const kindOf = (mediaType: string): ArrivalLibrary => (mediaType.toLowerCase() === "tv" ? "tv" : "movies");
-
-/** The library's own counts, in the colours of the Movies page. */
-function Counts({ counts }: { counts: CountsOf | undefined }) {
-  if (!counts) return <span className="lsh-ct" />;
-  const entries: Array<[string, string, number, string]> = [
-    ["Quality met", "met", counts.met, "hsl(var(--mark-quality-met))"],
-    ["Upgradable", "upgradable", counts.upgradable, "hsl(var(--mark-upgrade))"],
-    ["Downloading", "downloading", counts.downloading, "hsl(var(--mark-downloading))"],
-    ["Missing", "missing", counts.missing, "hsl(var(--mark-missing))"]
-  ];
-  return (
-    <span className="lsh-ct">
-      {entries.map(([title, word, value, colour]) => (
-        <span key={word} title={title}><i style={{ background: colour }} /><b>{value.toLocaleString("en-AU")}</b><span className="lsh-w"> {word}</span></span>
-      ))}
-    </span>
-  );
 }
 
 function Poster({ group, isNew, captions, tag }: { group: ArrivalGroup; isNew: boolean; captions: boolean; tag: { id: string; name: string } | null }) {
@@ -179,21 +146,7 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const across = posters ? postersAcross(box.width, posters.width) : 0;
   const rowStyle = posters ? ({ ["--aw" as string]: `${posters.width}px` } satisfies CSSProperties) : undefined;
   const inRow = posters ? shown.slice(0, across) : shown;
-  const today = (count: number) => (latest ? "latest" : `+${count.toLocaleString("en-AU")} today`);
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
-
-  // All: a line for each kind of title the libraries hold. One chip: that library's own line.
-  const lines = chosen
-    ? [{ key: chosen.libraryId, label: null as string | null, counts: { met: chosen.met, upgradable: chosen.upgradable, downloading: chosen.downloading, missing: chosen.missing } as CountsOf | undefined, arrived: shown.length }]
-    : KINDS.filter((kind) => libraries.length === 0 || libraries.some((entry) => kindOf(entry.mediaType) === kind.key)).map((kind) => {
-        const counts = kind.key === "tv" ? library?.shows : library?.movies;
-        return {
-          key: kind.key,
-          label: kind.label as string | null,
-          counts: counts ? { met: counts.qualityMet, upgradable: counts.upgradable, downloading: counts.downloading, missing: counts.missing } as CountsOf : undefined,
-          arrived: groups.filter((group) => group.library === kind.key).length
-        };
-      });
 
   return (
     <Panel title="Your library" count={headingNode} to="/movies" toLabel="Library" className="lsh min-h-[11rem]">
@@ -205,15 +158,6 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
           ))}
         </div>
       ) : null}
-      <div className="lsh-lines">
-        {lines.map((line) => (
-          <div key={line.key} className="lsh-line">
-            {line.label ? <span className="lsh-label">{line.label}</span> : null}
-            <Counts counts={line.counts} />
-            <span className="lsh-today">{today(line.arrived)}</span>
-          </div>
-        ))}
-      </div>
       <ul ref={boxRef} className="lsh-posters" style={rowStyle}>
         {inRow.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : inRow.map((group) => {
           const id = group.libraryId;
