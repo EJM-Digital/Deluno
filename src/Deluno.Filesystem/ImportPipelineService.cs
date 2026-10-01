@@ -3038,7 +3038,12 @@ public sealed partial class ImportPipelineService(
         string MatchedRuleIds,
         string MatchedRuleNames,
         string WorkflowCleanup,
-        MediaProbeInfo? MediaProbe);
+        MediaProbeInfo? MediaProbe,
+        // The Live screen (#1096) shows what arrived and what was upgraded: the quality it landed at, the quality it replaced, its size.
+        string? NewQuality = null,
+        string? PreviousQuality = null,
+        long? FileSizeBytes = null,
+        bool Upgraded = false);
 
     /// <summary>
     /// Names the release the copy actually came from. Without it the feed says
@@ -3306,7 +3311,11 @@ public sealed partial class ImportPipelineService(
             MatchedRuleIds: string.Join(", ", matchedRuleIds),
             MatchedRuleNames: string.Join(", ", catalog.MatchedRuleNames),
             WorkflowCleanup: workflowCleanup,
-            MediaProbe: mediaProbe);
+            MediaProbe: mediaProbe,
+            NewQuality: catalog.NewQuality,
+            PreviousQuality: catalog.PreviousQuality,
+            FileSizeBytes: catalog.FileSizeBytes,
+            Upgraded: catalog.ReplacedFilePaths.Count > 0 && !string.IsNullOrWhiteSpace(catalog.PreviousQuality));
     }
 
     private sealed class CatalogImportResult
@@ -3334,6 +3343,13 @@ public sealed partial class ImportPipelineService(
         /// backup-then-recycle path instead (#656).
         /// </summary>
         public IReadOnlyList<string> ReplacedFilePaths { get; init; } = [];
+
+        /// <summary>The quality the new file landed at, the quality of the file it replaced (read from that file's name) and the new file's size, for the Live screen's arrivals and upgrades (#1096).</summary>
+        public string? NewQuality { get; init; }
+
+        public string? PreviousQuality { get; init; }
+
+        public long? FileSizeBytes { get; init; }
     }
 
     private async Task<CatalogImportResult> MarkCatalogImportedAsync(
@@ -3610,7 +3626,10 @@ public sealed partial class ImportPipelineService(
                 MatchedRuleNames = ResolveMatchedRuleNames(preferenceEvaluations, customFormats, preferencePlan),
                 ReplacedFilePaths = catalogUpdated
                     ? replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).ToArray()
-                    : []
+                    : [],
+                NewQuality = quality,
+                PreviousQuality = replacedEpisodeFilePaths.Where(path => !IsSamePath(path, preview.DestinationPath)).Select(path => mediaDecisionService.DetectQuality(path)).FirstOrDefault(),
+                FileSizeBytes = fileSizeBytes
             };
         }
 
@@ -3728,7 +3747,12 @@ public sealed partial class ImportPipelineService(
             ReplacedFilePaths = !string.IsNullOrWhiteSpace(replacedMovieFilePath)
                 && !IsSamePath(replacedMovieFilePath, preview.DestinationPath)
                     ? [replacedMovieFilePath]
-                    : []
+                    : [],
+            NewQuality = quality,
+            PreviousQuality = !string.IsNullOrWhiteSpace(replacedMovieFilePath) && !IsSamePath(replacedMovieFilePath, preview.DestinationPath)
+                ? mediaDecisionService.DetectQuality(replacedMovieFilePath)
+                : null,
+            FileSizeBytes = fileSizeBytes
         };
     }
 

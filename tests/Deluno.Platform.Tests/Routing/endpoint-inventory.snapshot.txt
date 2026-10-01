@@ -78,6 +78,7 @@ GET /api/connections/
 GET /api/custom-formats/
 GET /api/custom-formats/export
 GET /api/custom-formats/{id}/export
+GET /api/dashboard/live-extras
 GET /api/dashboard/metrics
 GET /api/dashboard/summary
 GET /api/decisions
