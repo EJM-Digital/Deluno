@@ -56,8 +56,8 @@ export function Tile({ to, name, tone, state, pulse = false, meta, bar, label }:
         title={label}
         data-state={state ?? undefined}
         className={cn(
-          "block min-w-0 rounded-[10px] border border-hairline bg-surface-2/60 px-2.5 transition-[border-color,box-shadow,background-color] duration-300 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          compact ? "py-[3px]" : "py-1.5",
+          "block min-w-0 rounded-[10px] border border-hairline bg-surface-2 px-2.5 transition-[border-color,box-shadow,background-color] duration-300 hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          compact ? "py-[3px]" : "py-[5px]",
           state ? STATE_CLASS[state] : null
         )}
       >
@@ -89,12 +89,12 @@ export function TileGroup({ title, count, to, toLabel = "Manage", empty, childre
   const { cols, compact } = useContext(TileLayoutContext);
   const none = Array.isArray(children) ? children.length === 0 : !children;
   return (
-    <Panel title={title} count={count} to={to} toLabel={toLabel} iconOnly className="shrink-0">
+    <Panel title={title} count={count} to={to} toLabel={toLabel} bare className="shrink-0">
       {none ? (
         <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-body-sm)] text-muted-foreground">{empty}</p>
       ) : (
         <ul
-          className={cn("grid px-[var(--card-pad-x)]", compact ? "gap-1 py-1" : "gap-1.5 py-2.5")}
+          className={cn("grid px-[var(--card-pad-x)]", compact ? "gap-1 pb-1.5 pt-0.5" : "gap-[7px] pb-3.5 pt-0.5")}
           style={{ gridTemplateColumns: cols ? `repeat(${cols}, minmax(0, 1fr))` : `repeat(auto-fill, minmax(${MIN_TILE_REM + 1}rem, 1fr))` }}
         >
           {children}

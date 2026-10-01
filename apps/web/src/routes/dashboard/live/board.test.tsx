@@ -598,6 +598,8 @@ describe("the right column's layout (#1098)", () => {
     const counts = [10, 5, 1];
     const cols = 3;
     expect(tileDensity(1300, counts, cols, 16)).toBe("full");
+    // A 1920x960 window (an 840px column) holding the rig's 14 indexers, 5 clients and a connection keeps two-line tiles.
+    expect(tileDensity(839, [14, 5, 1], cols, 16)).toBe("full");
     expect(tileDensity(615, counts, cols, 16)).toBe("compact");
     // Not measured yet: full.
     expect(tileDensity(0, counts, cols, 16)).toBe("full");

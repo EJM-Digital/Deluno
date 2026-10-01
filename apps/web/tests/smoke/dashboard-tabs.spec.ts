@@ -75,6 +75,8 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
         // A station whose cards run past its height scrolls inside itself: its cards are all there, one scroll away.
         const scroller = row.closest<HTMLElement>("[data-station]");
         if (scroller && getComputedStyle(scroller).overflowY === "auto") continue;
+        // Activity is a stream that fades out at the bottom (as in the mockup) instead of ending on a whole row: the rest is one click away.
+        if (row.closest("[data-testid='live-stream']")) continue;
         if (rect.top < box.top - 0.5 || rect.bottom > box.bottom + 0.5) {
           found.push(`${name}: a row (${(row.textContent ?? "").slice(0, 30)}) is partly outside its panel (${Math.round(rect.top)}-${Math.round(rect.bottom)} against ${Math.round(box.top)}-${Math.round(box.bottom)})`);
         }
@@ -83,6 +85,7 @@ async function expectNoPanelCutsAnything(page: Page, label: string) {
         const style = getComputedStyle(element);
         // Text clamped to a few lines, with all of it in its tooltip, is a design choice and not a cut-off row.
         if (style.webkitLineClamp && style.webkitLineClamp !== "none") continue;
+        if (element.getAttribute("data-testid") === "live-stream") continue;
         if ((style.overflowY === "hidden" || style.overflowY === "clip") && element.clientHeight > 2 && element.scrollHeight > element.clientHeight + 1) {
           found.push(`${name}: something is hidden inside it (${element.tagName.toLowerCase()} is ${element.scrollHeight}px tall in ${element.clientHeight}px)`);
         }

@@ -581,6 +581,40 @@ public sealed class WorkPlanner(
     /// sentence — rather than recomputing one for display — is what stops the
     /// explanation and the action from ever disagreeing.
     /// </summary>
+    /// <summary>
+    /// The library's own name for what a download was matched to ("Big Buck Bunny (2008)"; a show for an episode), or null
+    /// when it is matched to nothing, so the sentence falls back to the release name (#1098).
+    /// </summary>
+    private static async Task<string?> LibraryTitleOfAsync(
+        DispatchCatalogueLink dispatch,
+        IMovieCatalogRepository movieCatalogRepository,
+        ISeriesCatalogRepository seriesCatalogRepository,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.Equals(dispatch.EntityType, "movie", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(dispatch.EntityId))
+            {
+                var movie = await movieCatalogRepository.GetByIdAsync(dispatch.EntityId, cancellationToken);
+                return movie is null || string.IsNullOrWhiteSpace(movie.Title) ? null : SeedingCleanupActivity.LibraryTitle(movie.Title, movie.ReleaseYear);
+            }
+
+            var seriesId = await CatalogueImportNaming.SeriesIdOfAsync(dispatch, seriesCatalogRepository, cancellationToken);
+            if (seriesId is null)
+            {
+                return null;
+            }
+
+            var series = await seriesCatalogRepository.GetByIdAsync(seriesId, cancellationToken);
+            return series is null || string.IsNullOrWhiteSpace(series.Title) ? null : SeedingCleanupActivity.LibraryTitle(series.Title, series.StartYear);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The sentence is only wording: a title that cannot be read must never stop a clean-up from being written down.
+            return null;
+        }
+    }
+
     public async Task PlanSharingReclaimAsync(
         IDownloadClientTelemetryService downloadClientTelemetryService,
         IPlatformSettingsRepository platformSettingsRepository,
@@ -752,7 +786,7 @@ public sealed class WorkPlanner(
             {
                 await activityFeedRepository.RecordActivityOnChangeAsync(
                     SeedingCleanupActivity.Category,
-                    SeedingCleanupActivity.Message(item.Title, item.ClientName),
+                    SeedingCleanupActivity.Message(await LibraryTitleOfAsync(dispatch, movieCatalogRepository, seriesCatalogRepository, cancellationToken) ?? item.Title, item.ClientName),
                     System.Text.Json.JsonSerializer.Serialize(new { reason = outcome.Reason }),
                     null,
                     dispatch.EntityType,
