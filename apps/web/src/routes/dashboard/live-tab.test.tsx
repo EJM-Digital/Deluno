@@ -84,7 +84,7 @@ describe("Live", () => {
     expect(within(side as HTMLElement).getByRole("region", { name: "Indexers" })).toBeInTheDocument();
     expect(within(side as HTMLElement).getByRole("region", { name: "Activity" })).toBeInTheDocument();
     // The band is the first thing in the main column, three cards that stack on a phone.
-    expect(main.firstElementChild?.className).toContain("grid-cols-3");
+    expect(main.firstElementChild?.className).toContain("lb-now");
   });
 
   it("shows the journey with a stuck download amber, a Seerr title tagged, the time left, and no button to settle anything", async () => {

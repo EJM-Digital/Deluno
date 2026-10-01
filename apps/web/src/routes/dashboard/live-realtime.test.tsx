@@ -133,7 +133,7 @@ describe("Live applies each pushed change with no fetch after it", () => {
     send("SearchCycleProgress", { libraryId: "l9", libraryName: "Movies", mediaType: "movies", state: "running", checked: 12, planned: 40, at: at() });
     expect(await within(band).findByText(/Searching Movies/)).toBeInTheDocument();
     expect(within(band).getByText("12 of 40")).toBeInTheDocument();
-    expect(band.querySelector<HTMLElement>(".live-fill")?.style.width).toBe("30%");
+    expect(band.querySelector<HTMLElement>(".lb-bar i")?.style.width).toBe("30%");
     // A library search is said in Working on now, not as a title on the journey.
     expect(within(board).queryByText(/Searching Movies/)).toBeNull();
 

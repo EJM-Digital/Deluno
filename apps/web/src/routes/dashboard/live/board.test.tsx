@@ -215,7 +215,7 @@ describe("working on now", () => {
     expect(within(region).getByText("4")).toBeInTheDocument();
     expect(within(region).getByText("things running")).toBeInTheDocument();
     expect(within(region).getByText("12 of 40")).toBeInTheDocument();
-    expect(region.querySelector<HTMLElement>(".live-fill")?.style.width).toBe("30%");
+    expect(region.querySelector<HTMLElement>(".lb-bar i")?.style.width).toBe("30%");
     expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity");
     // Only two operations are drawn.
     expect(within(region).getAllByRole("listitem")).toHaveLength(2);
