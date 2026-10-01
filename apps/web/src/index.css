@@ -844,9 +844,11 @@ html,
   --type-micro: calc(11px * var(--font-scale));
   --type-caption: calc(12px * var(--font-scale));
   --type-body-sm: calc(14px * var(--font-scale));
+  /* Row text in lists and tables: Weir's 12.7px (#1106). Buttons, inputs and labels keep their own tokens. */
+  --list-row-text: calc(12.7px * var(--font-scale));
   --type-body: calc(15px * var(--font-scale));
   --type-body-lg: calc(16px * var(--font-scale));
-  --type-card-title: calc(16px * var(--font-scale));
+  --type-card-title: calc(15px * var(--font-scale));
   --type-title-sm: calc(20px * var(--font-scale));
   --type-title-md: calc(26px * var(--font-scale));
   --type-title-lg: clamp(calc(32px * var(--font-scale)), calc(2.2vw * var(--font-scale)), calc(42px * var(--font-scale)));
@@ -920,49 +922,27 @@ html,
   --settings-nav-size: calc(14px * var(--font-scale));
   --settings-nav-pad-y: calc(8px * var(--ui-scale));
   --settings-nav-pad-x: calc(12px * var(--ui-scale));
-  --section-eyebrow-size: calc(11px * var(--font-scale));
+  --section-eyebrow-size: calc(10.3px * var(--font-scale));
   --section-subtitle-size: calc(14px * var(--font-scale));
 }
 
-/* The mockup's own body type: 14px at the browser's normal line height, its 14px gap between cards, and its card
+/* The mockup's own body type: 14px at the browser's normal line height, its 12px gap between cards, and its card
    titles at the browser's bold. */
 .dash-mockup-size {
   font-size: 14px;
   line-height: normal;
-  --grid-gap: 14px;
+  --grid-gap: 12px;
 }
 .dash-mockup-size h2 {
   font-weight: 700;
 }
 
 /*
-  #908: the layout used to offer this same step up as a user-facing
-  Compact/Standard/Spacious/Expanded switch. The owner: the switch is not worth
-  having if the layout is built well for standard resolutions — so the same
-  two values now key off the CSS viewport width instead of a stored choice.
-  `--ui-scale`/`--font-scale` cascade into every token declared above, so
-  nothing here needs to be redeclared per breakpoint.
-
-  1920×1080 (100%) and 1920×1080-equivalent scaled viewports stay at the
-  base 1 shown above. 2560×1440 — and a 3840×2160 display running Windows'
-  150% scaling, which reports the same 2560×1440 CSS viewport — get the step
-  that used to be "Spacious". True 3840×2160 at 100% gets the step that used
-  to be "Expanded".
+  #908 removed the Standard/Compact/Spacious/Expanded switch. For a while the
+  same step came back as two viewport breakpoints (1.12 from 2560px wide, 1.22
+  from 3840px). There is no step any more: `--ui-scale` and `--font-scale` are
+  1 at every width, by the owner's decision on 2 Oct 2026 to match Weir (#1106).
 */
-@media (min-width: 2560px) {
-  html {
-    --ui-scale: 1.12;
-    --font-scale: 1.12;
-  }
-}
-
-@media (min-width: 3840px) {
-  html {
-    --ui-scale: 1.22;
-    --font-scale: 1.22;
-    --content-max-width: calc(2180px * var(--ui-scale));
-  }
-}
 
 /* The desktop sidebar is visible from Tailwind's `lg` breakpoint (1024px).
    Never collapse it to an icon rail while full desktop labels are still rendered. */

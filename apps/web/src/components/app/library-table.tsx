@@ -231,7 +231,7 @@ export function LibraryTable(
     <div ref={scrollRef} className="max-h-[calc(100dvh-260px)] min-w-0 flex-1 overflow-auto">
       <table
         ref={tableRef}
-        className="data-table min-w-[900px] text-[length:var(--type-body-sm)]"
+        className="data-table min-w-[900px] text-[length:var(--list-row-text)]"
         role="grid"
         aria-rowcount={items.length}
       >

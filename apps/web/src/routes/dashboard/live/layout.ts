@@ -103,7 +103,7 @@ const BAND_GROWN_MAX_PX = 240;
 const LOW_MIN_PX = 180;
 /** The bottom row is given room up to this before the spare goes to taller journey cards. */
 const LOW_ROOMY_PX = 260;
-const GRID_GAPS_PX = 28;
+const GRID_GAPS_PX = 24;
 
 /**
  * The rows of the shared grid, the mockup's `fitRows` exactly. `available` is the height the grid has (the mockup's

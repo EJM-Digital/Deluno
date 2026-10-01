@@ -207,7 +207,7 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
     <div
       role="cell"
       className={cn(
-        "min-w-0 text-[length:var(--type-body-sm)] leading-tight",
+        "min-w-0 text-[length:var(--list-row-text)] leading-tight",
         !mobile && "hidden md:block first:block",
         align === "end" && "text-right",
         numeric && "tabular-nums",
@@ -232,7 +232,7 @@ export function ListCell({ primary, secondary, mobile = false, align = "start", 
 export function ListNameCell({ name, sub, className }: { name: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
     <div role="cell" className={cn("min-w-0 leading-tight", className)}>
-      <span className="block truncate text-[length:var(--type-body-sm)] font-semibold text-foreground">{name}</span>
+      <span className="block truncate text-[length:var(--list-row-text)] font-semibold text-foreground">{name}</span>
       {sub !== undefined ? <span className="mt-0.5 block truncate text-[length:var(--type-caption)] text-muted-foreground">{sub}</span> : null}
     </div>
   );

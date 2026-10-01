@@ -32,7 +32,7 @@
 .sy-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--sy-muted); font-weight: 600; }
 .sy-card { background: var(--sy-card); border: 1px solid var(--sy-line); border-radius: 14px; min-width: 0; min-height: 0; overflow: hidden; }
 .sy-card-h { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px 10px; white-space: nowrap; min-width: 0; }
-.sy-card-h h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.2; }
+.sy-card-h h2 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.2; }
 .sy-card-h > .sy-muted { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: 13px; }
 .sy-link { margin-left: auto; color: var(--sy-primary); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 .sy-link:hover { text-decoration: underline; }
@@ -46,10 +46,10 @@
 .sy-resizing *, .sy-resizing *::before, .sy-resizing *::after { transition: none !important; animation: none !important; }
 
 /* ---------- the page: Live's grid, rows line up across both columns ---------- */
-.sy-grid { display: grid; min-height: 0; gap: var(--grid-gap, 14px); grid-template-columns: minmax(0, 1fr) clamp(340px, 28%, 600px); grid-template-areas: "band store" "mid conn" "low upd"; }
-.sy-band { grid-area: band; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; min-height: 0; }
+.sy-grid { display: grid; min-height: 0; gap: var(--grid-gap, 12px); grid-template-columns: minmax(0, 1fr) clamp(340px, 28%, 600px); grid-template-areas: "band store" "mid conn" "low upd"; }
+.sy-band { grid-area: band; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; min-height: 0; }
 .sy-mid { grid-area: mid; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; min-width: 0; }
-.sy-low { grid-area: low; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; min-height: 0; min-width: 0; }
+.sy-low { grid-area: low; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; min-height: 0; min-width: 0; }
 .sy-stacked { display: flex; flex-direction: column; }
 .sy-stacked .sy-band { grid-template-columns: minmax(0, 1fr); }
 .sy-stacked .sy-low { grid-template-columns: minmax(0, 1fr); }
