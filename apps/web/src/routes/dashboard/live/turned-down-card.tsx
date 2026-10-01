@@ -28,7 +28,7 @@ export function TurnedDownCard({ view, lit }: { view: TurnedDownView; lit: Reado
   const hidden = view.reasons.slice(fit);
   const count = view.total === 1 ? "1 release" : `${view.total.toLocaleString("en-AU")} releases`;
   return (
-    <Panel title="Turned down today" count={count} to={activityLink({ type: "turned-down", since: "today" })} toLabel="In Activity" className="ltd min-h-0" bodyClassName="min-h-0">
+    <Panel title="Turned down today" count={count} to={activityLink({ type: "turned-down", since: "today" })} toLabel="In Activity" className="ltd min-h-0 flex-1" bodyClassName="min-h-0">
       <div ref={boxRef} className="ltd-bars">
         {view.reasons.slice(0, fit).map((reason, index) => {
           const label = reason.label || REASON_LABEL[reason.group];
