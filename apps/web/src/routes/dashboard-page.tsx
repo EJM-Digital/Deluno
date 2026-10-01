@@ -209,7 +209,8 @@ export function DashboardPage() {
       ) : (
         bar
       )}
-      <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="min-h-0 flex-1 lg:relative">
+      {/* The tabs are drawn at the approved mockup's own sizes on every screen (see `.dash-mockup-size` in index.css). */}
+      <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="dash-mockup-size min-h-0 flex-1 lg:relative">
         <div className="lg:absolute lg:inset-0 lg:overflow-hidden">
           <TabBody tab={tab} summary={summary} />
         </div>
