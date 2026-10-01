@@ -105,10 +105,10 @@ export function indexerMeta(indexer: IndexerItem, today: IndexerToday | undefine
   const asked = today?.totalQueries ?? 0;
   const status = indexer.queryLimitStatus;
   const limit = status?.limit ?? indexer.queryLimit ?? null;
-  const unit = (status?.unit ?? indexer.limitsUnit ?? "day").toLowerCase() === "hour" ? "this hour" : "today";
-  // With a limit set the tile says how much of it is used; the count is the limiter's own when it has one.
+  // A daily limit says how much of it is used today; an hourly one is not a count of today, so the tile says only what was asked.
+  const daily = (status?.unit ?? indexer.limitsUnit ?? "day").toLowerCase() !== "hour";
   const used = status ? status.count : asked;
-  const queries = limit !== null && limit > 0 ? `${used.toLocaleString("en-AU")} of ${limit.toLocaleString("en-AU")} ${unit}` : `${asked.toLocaleString("en-AU")} today`;
+  const queries = daily && limit !== null && limit > 0 ? `${used.toLocaleString("en-AU")} of ${limit.toLocaleString("en-AU")} today` : `${asked.toLocaleString("en-AU")} today`;
   if (indexerNeedsButton(indexer)) return { text: `not answering · ${queries}`, tone: indexer.healthStatus === "unreachable" ? "bad" : "warn" };
   if (indexer.rateLimitedUntilUtc && Date.parse(indexer.rateLimitedUntilUtc) > now) return { text: `asked too often, waiting · ${queries}`, tone: "warn" };
   const latency = indexer.lastHealthLatencyMs ?? null;

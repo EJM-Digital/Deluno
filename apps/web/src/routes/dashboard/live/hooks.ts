@@ -178,3 +178,18 @@ export function useRemPx(): number {
   const [rem] = useState(() => (typeof window === "undefined" ? 16 : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
   return rem;
 }
+
+/** True while the window is at least the `lg` breakpoint wide, where the page is held to the window and its cards must fit the space they are given. Below it the page scrolls and every card shows everything. */
+export function useIsWide(): boolean {
+  const query = "(min-width: 1024px)";
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return undefined;
+    const list = window.matchMedia(query);
+    const read = () => setWide(list.matches);
+    read();
+    list.addEventListener?.("change", read);
+    return () => list.removeEventListener?.("change", read);
+  }, []);
+  return wide;
+}

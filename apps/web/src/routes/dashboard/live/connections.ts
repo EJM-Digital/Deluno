@@ -4,8 +4,10 @@
  * the new count when Deluno uses one, and the tile lights up. A pushed count is only
  * trusted over the stored one when it is newer than it.
  */
-import type { LiveConnection, LiveConnectionKind } from "../../../lib/api/types/operations";
+import type { LiveConnection } from "../../../lib/api/types/operations";
 import type { ConnectionUsedEvent } from "../../../lib/api/types/live-events";
+
+export type LiveConnectionKind = LiveConnection["kind"];
 
 export const ROLE_LABEL: Record<LiveConnectionKind, string> = {
   processor: "Processor",

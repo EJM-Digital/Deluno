@@ -62,7 +62,8 @@ export function posterLayout(width: number, height: number, remPx: number, gap =
   let pictureWidth = minPoster;
   for (; rows >= 1; rows -= 1) {
     const rowHeight = (height - (rows - 1) * gap) / rows;
-    pictureWidth = Math.min(maxPoster, Math.max(minPoster, Math.floor(((rowHeight - caption) * 2) / 3)));
+    // One row on a very short shelf may go below the usual smallest poster rather than be cut off.
+    pictureWidth = Math.min(maxPoster, Math.max(rows === 1 ? 2.5 * remPx : minPoster, Math.floor(((rowHeight - caption) * 2) / 3)));
     // The rows must really fit: the smallest poster can be taller than a share of a short shelf.
     if (rows === 1 || rows * (pictureWidth * 1.5 + caption) + (rows - 1) * gap <= height) break;
   }

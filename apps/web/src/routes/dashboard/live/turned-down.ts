@@ -5,7 +5,7 @@
  * is made. A pushed release is added to the stored counts only if it is newer than
  * the counts, so a refresh never counts it twice.
  */
-import type { LiveTurnedDown, LiveTurnedDownRelease, TurnedDownGroup } from "../../../lib/api/types/operations";
+import type { LiveTurnedDown, TurnedDownGroup } from "../../../lib/api/types/operations";
 import type { ReleasesTurnedDownEvent } from "../../../lib/api/types/live-events";
 
 /** The reasons, in the order the bars are drawn. */
@@ -30,6 +30,9 @@ export const REASON_COLOUR: Record<TurnedDownGroup, string> = {
   fake: "hsl(var(--warning))",
   other: "hsl(var(--stage-import))"
 };
+
+/** One release that was turned down, with its plain reason. */
+export type LiveTurnedDownRelease = LiveTurnedDown["latest"][number];
 
 /** The most releases the list of newest turned-down releases keeps. */
 export const LATEST_LIMIT = 20;
@@ -75,4 +78,16 @@ export function mergeTurnedDown(base: LiveTurnedDown | null | undefined, pushed:
 export function barFraction(count: number, reasons: ReadonlyArray<{ count: number }>): number {
   const biggest = Math.max(0, ...reasons.map((reason) => reason.count));
   return biggest <= 0 ? 0 : Math.min(1, count / biggest);
+}
+
+/** The rows the card can draw whole in the height it has, so a short card shows fewer bars (the biggest reasons come first) and no row is ever cut off. Everything is shown until the card has been measured. */
+export function turnedDownFit(height: number, remPx: number, reasons: number, latest: number): { reasons: number; latest: number } {
+  if (!(height > 0)) return { reasons, latest };
+  const padding = 1.6 * remPx;
+  const reasonRow = 2.5 * remPx;
+  const latestRow = 2.9 * remPx;
+  const reasonsShown = Math.max(1, Math.min(reasons, Math.floor((height - padding) / reasonRow)));
+  if (reasonsShown < reasons) return { reasons: reasonsShown, latest: 0 };
+  const rest = height - padding - reasonsShown * reasonRow - 0.5 * remPx;
+  return { reasons: reasonsShown, latest: Math.max(0, Math.min(latest, Math.floor(rest / latestRow))) };
 }
