@@ -44,6 +44,9 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
                         services.AddSingleton<TimeProvider>(timeProvider);
                         services.AddSingleton(_storage.Factory);
                         services.AddDelunoApi();
+                        // These tests call the endpoints; the background services AddDelunoApi hosts (backups, the daily
+                        // database check, the log push) need the full app and are not under test here.
+                        services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
                         // AddDelunoApi maps the Log Level endpoints (#866), which need this;
                         // production wiring adds it via AddDelunoInfrastructure, which this
                         // minimal test host does not call.
