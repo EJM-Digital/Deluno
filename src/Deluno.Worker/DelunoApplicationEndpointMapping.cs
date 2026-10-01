@@ -32,6 +32,7 @@ using Deluno.Security;
 using Deluno.Security.Hardening;
 using Deluno.Worker.ApiParity;
 using Deluno.Worker.Automation;
+using Deluno.Worker.Attention;
 using Deluno.Worker.Dashboard;
 using Deluno.Worker.SystemReadings;
 using Deluno.Series;
@@ -74,6 +75,8 @@ public static class DelunoApplicationEndpointMapping
 
         writeEndpoints.MapDelunoApi(includeOperationalEndpoints: false);
         readEndpoints.MapDelunoHealthCheckEndpoints();
+        readEndpoints.MapDelunoAttentionReadEndpoints();
+        writeEndpoints.MapDelunoAttentionWriteEndpoints();
         systemEndpoints.MapDelunoBackupEndpoints();
         // Mapped outside the authorization groups: the feed authenticates
         // itself, because a calendar client cannot send a header (#260).
