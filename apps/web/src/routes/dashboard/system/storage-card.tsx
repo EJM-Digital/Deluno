@@ -40,7 +40,7 @@ export function StorageCard({ drives }: { drives: DriveView[] }): JSX.Element {
   return (
     <section className="sy-card sy-store" aria-label="Storage">
       <div className="sy-card-h">
-        <span className="sy-label">Storage</span>
+        <h2>Storage</h2>
         <span className="sy-faint sy-num" style={{ fontSize: 12 }}>{drives.length > 0 ? `${freeText(free)} free` : ""}</span>
         <Link className="sy-link" to="/settings/libraries" aria-label="Open storage settings">Storage →</Link>
       </div>
