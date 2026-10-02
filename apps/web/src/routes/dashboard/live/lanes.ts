@@ -19,10 +19,10 @@ export interface LaneStyle {
 
 export const LANES: Record<Stage, LaneStyle> = {
   requested: { label: "Requested", icon: Inbox, accent: "--stage-search", text: "text-[hsl(var(--stage-search))]", to: "/indexers/media-servers" },
-  grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--journey-grab", text: "text-[hsl(var(--journey-grab))]", to: activityLinkForStatus("in-progress") },
-  downloading: { label: "Downloading", icon: Download, accent: "--info", text: "text-info", to: activityLinkForStatus("in-progress") },
-  processor: { label: "Processing", icon: ShieldCheck, accent: "--journey-process", text: "text-[hsl(var(--journey-process))]", to: activityLinkForStatus("in-progress") },
-  importing: { label: "Importing", icon: FolderInput, accent: "--journey-import", text: "text-[hsl(var(--journey-import))]", to: activityLinkForStatus("in-progress") },
+  grabbed: { label: "Grabbed", icon: HardDriveDownload, accent: "--journey-grab", text: "text-[hsl(var(--journey-grab))]", to: "/queue" },
+  downloading: { label: "Downloading", icon: Download, accent: "--info", text: "text-info", to: "/queue" },
+  processor: { label: "Processing", icon: ShieldCheck, accent: "--journey-process", text: "text-[hsl(var(--journey-process))]", to: "/queue" },
+  importing: { label: "Importing", icon: FolderInput, accent: "--journey-import", text: "text-[hsl(var(--journey-import))]", to: "/queue" },
   imported: { label: "In the library", icon: Library, accent: "--success", text: "text-success", to: activityLinkForStatus("done") }
 };
 
