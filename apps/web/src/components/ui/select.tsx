@@ -24,14 +24,29 @@ interface SelectProps extends Omit<React.ComponentProps<"select">, "children"> {
 }
 
 /**
+ * Width classes size the box the select and its chevron share, not the select alone. On the select alone a
+ * `w-auto` filter in a row of filters sat in a full-width box: each took a line of its own and its chevron sat at the
+ * far edge of that line, away from the control (the owner, 2 Oct 2026: the Indexers filters).
+ */
+const BOX_CLASS = /^(?:[a-z0-9-]+:)*!?(?:w-|min-w-|max-w-|flex-|shrink|grow|basis-|self-)/;
+
+function splitBoxClasses(className: string | undefined): [box: string, control: string] {
+  const box: string[] = [];
+  const control: string[] = [];
+  for (const token of (className ?? "").split(/\s+/).filter(Boolean)) (BOX_CLASS.test(token) ? box : control).push(token);
+  return [box.join(" "), control.join(" ")];
+}
+
+/**
  * Native `<select>` in Deluno's control chrome. Native on purpose: keyboard,
  * screen-reader and mobile behaviour come for free, and it lines up with Input.
  */
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, id, options, placeholder, chrome = true, children, ...props }, ref) => {
     const field = useFieldContext();
+    const [boxClassName, controlClasses] = splitBoxClasses(className);
     return (
-      <span className="group relative block w-full min-w-0">
+      <span className={cn("group relative block w-full min-w-0", boxClassName)}>
         <select
           ref={ref}
           id={id ?? field?.id}
@@ -43,7 +58,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
             // belongs to the control whether or not the box does.
             "cursor-pointer appearance-none pr-[calc(var(--field-pad-x)+1.5rem)]",
             chrome && "hover:border-foreground/20 hover:bg-surface-2 focus:bg-surface-2",
-            className
+            controlClasses
           )}
           {...props}
         >
