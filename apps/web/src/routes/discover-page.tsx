@@ -194,7 +194,8 @@ export function DiscoverPage() {
             description="The popular list could not be loaded just now. Deluno will try again when you open this page."
           />
         ) : (
-          <div className="grid grid-cols-2 gap-3 p-[var(--tile-pad)] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(var(--library-card-sm),1fr))] gap-[var(--library-grid-gap)] p-[var(--tile-pad)]">
+            {/* The Movies page's poster size (its small cards, its gap): as many across as fit, never a sixth of the page each. */}
             {data.popular.map((item) => (
               <DiscoverPosterCard
                 key={`${item.provider}:${item.providerId}`}
