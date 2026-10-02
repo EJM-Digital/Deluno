@@ -279,7 +279,7 @@ export function SettingsLibrariesPage() {
 
 
       <ListCard
-        title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "Empty"}
+        title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "0 libraries"}
         titleCase={false}
       >
         {libraries.length === 0 ? (

@@ -569,7 +569,7 @@ export function RetentionPage() {
         )}
       </ListCard>
 
-      <ListCard title={rules.length ? `${rules.filter((rule) => rule.isEnabled).length} of ${rules.length} on` : "Empty"} titleCase={false}>
+      <ListCard title={rules.length ? `${rules.filter((rule) => rule.isEnabled).length} of ${rules.length} on` : "0 rules"} titleCase={false}>
         {rules.length === 0 ? (
           <ListEmpty
             title="No retention rules"

@@ -496,7 +496,7 @@ export function SettingsProfilesPage() {
       />
 
 
-      <ListCard title={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"}` : "Empty"} titleCase={false} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}>
+      <ListCard title={qualityProfiles.length ? `${qualityProfiles.length} ${qualityProfiles.length === 1 ? "profile" : "profiles"}` : "0 profiles"} titleCase={false} actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}>
         {qualityProfiles.length === 0 ? (
           <ListEmpty
             title="No quality profiles yet"

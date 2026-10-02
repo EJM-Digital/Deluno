@@ -692,7 +692,7 @@ export function SettingsDownloadHealthPage() {
       <PageToolbar tabs={automationNavItems} actions={<PageToolbarAction onClick={() => openRule(null)}>New rule</PageToolbarAction>} />
 
       <ListCard
-        title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "Empty"}
+        title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "0 rules"}
         titleCase={false}
       >
         {rules.length === 0 ? (

@@ -362,7 +362,7 @@ export function MediaServersPage() {
         }
       />
 
-      <ListCard title={servers.length ? `${working} of ${servers.length} working` : "Empty"} titleCase={false}>
+      <ListCard title={servers.length ? `${working} of ${servers.length} working` : "0 servers"} titleCase={false}>
         {servers.length === 0 ? (
           <ListEmpty
             title="No media servers"

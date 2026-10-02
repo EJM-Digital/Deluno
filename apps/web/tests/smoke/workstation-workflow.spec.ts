@@ -493,7 +493,7 @@ test.describe("dashboard workflow", () => {
     }
 
     await openTab(page, "Library & Storage");
-    await expect(page.getByRole("heading", { name: /^d+ librar(y|ies)$|^Empty$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^\d+ librar(y|ies)$/ })).toBeVisible();
 
     await page.goto("/indexers");
     await expect(navigator.getByRole("link", { name: "Find & Download", exact: true })).toBeVisible();
@@ -558,7 +558,7 @@ test.describe("dashboard workflow", () => {
     await page.keyboard.press("Enter");
 
     await expect(page).toHaveURL(/\/indexers/);
-    await expect(page.getByRole("heading", { name: /of d+ healthy$|^Empty$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of \d+ healthy$|^0 indexers$/ })).toBeVisible();
   });
 
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
@@ -625,7 +625,7 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/policy-sets");
 
     // List → drawer: the page contains reusable library profiles.
-    await expect(page.getByRole("heading", { name: /^d+ profiles?|^Empty$/ }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^\d+ profiles?/ }).first()).toBeVisible();
     await page.getByRole("button", { name: "New library profile" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New library profile" });
     await expect(drawer).toBeVisible();
@@ -692,7 +692,7 @@ test.describe("dashboard workflow", () => {
     await expect(discoverMedia).toHaveAttribute("href", "/settings/lists");
     await discoverMedia.click();
 
-    await expect(page.getByRole("heading", { name: /^d+ lists?|^Empty$/ }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^\d+ lists?/ }).first()).toBeVisible();
     await page.getByRole("button", { name: "New list" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New import list" });
     await expect(drawer.getByText(/Paste a public list URL/)).toBeVisible();
@@ -930,7 +930,7 @@ test.describe("dashboard workflow", () => {
     await expectTabReachable(page, "Indexers");
     await expectTabReachable(page, "Download Clients");
     await expectTabReachable(page, "Library Routing");
-    await expect(page.getByRole("heading", { name: /of d+ healthy$|^Empty$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of \d+ healthy$|^0 indexers$/ })).toBeVisible();
 
     // The explainer belongs to the area, so it is here on the tab you land on
     // and still here three tabs along. It starts collapsed (#296).
@@ -938,7 +938,7 @@ test.describe("dashboard workflow", () => {
     await expect(explainer).toHaveAttribute("aria-expanded", "false");
 
     await openTab(page, "Library Routing");
-    await expect(page.getByRole("heading", { name: /^d+ librar(y|ies)$|^Empty$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^\d+ librar(y|ies)$/ })).toBeVisible();
     await expect(explainer).toBeVisible();
 
     await explainer.click();
@@ -964,7 +964,8 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/activity");
 
     // Activity is one list of what happened to each title (#1114): All is the opening view, and each status is one chip away.
-    await expect(page.getByRole("region", { name: "Activity" })).toBeVisible();
+    // The list's card is named by the chosen chip ("Everything" for All), so the page title is never said twice.
+    await expect(page.getByRole("region", { name: "Everything" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
     await page.getByRole("radio", { name: /^In progress/ }).click();
     await expect(page).toHaveURL(/status=in-progress/);

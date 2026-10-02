@@ -950,7 +950,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
 
       {section === "indexers" ? (
         <ListCard
-          title={indexers.length ? `${healthyIndexers} of ${enabledIndexers} healthy` : "Empty"}
+          title={indexers.length ? `${healthyIndexers} of ${enabledIndexers} healthy` : "0 indexers"}
           titleCase={false}
           actions={
             indexers.length > 0 ? (
@@ -1056,7 +1056,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onNeedsSignIn={(status, result) => openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false)}
           />
           <ListCard
-            title={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : "Empty"}
+            title={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : "0 clients"}
             titleCase={false}
             actions={clients.length > 0 ? <ConnectionSelectButton active={clientSelection.active} onClick={clientSelection.toggleActive} /> : undefined}
           >
@@ -1136,7 +1136,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       {section === "pathMappings" ? (
         <>
           <ListCard
-            title={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : "Empty"}
+            title={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : "0 mappings"}
             titleCase={false}
           >
             <p className="px-[var(--card-pad-x)] pb-3 text-[length:var(--type-caption)] text-muted-foreground">
@@ -1238,7 +1238,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           {/* The routing explainer that used to sit here said what the routing
               drawer already says beside the field itself, in more detail and in
               the place you actually need it. One subject, one home. */}
-          <ListCard title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "Empty"} titleCase={false}>
+          <ListCard title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "0 libraries"} titleCase={false}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
           ) : (
@@ -1272,7 +1272,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       ) : null}
 
       {section === "proxies" ? (
-        <ListCard title={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : "Empty"} titleCase={false}>
+        <ListCard title={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : "0 proxies"} titleCase={false}>
           {proxies.length === 0 ? (
             <ListEmpty
               title="No proxies yet"

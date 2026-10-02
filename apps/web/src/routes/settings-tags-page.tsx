@@ -177,7 +177,7 @@ export function SettingsTagsPage() {
         }
       />
 
-      <ListCard title={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : "Empty"} titleCase={false}>
+      <ListCard title={tags.length ? `${tags.length} ${tags.length === 1 ? "tag" : "tags"}` : "0 tags"} titleCase={false}>
         {tags.length === 0 ? (
           <ListEmpty
             title="No tags yet"
