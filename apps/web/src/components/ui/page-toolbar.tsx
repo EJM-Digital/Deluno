@@ -107,7 +107,7 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
                     data-status={isComplete ? "complete" : "pending"}
                     /*
                       The one tab style in Deluno (the owner, 2 Oct 2026), the same as the Dashboard's Live and System: plain
-                      14px text 18px apart, the chosen one in the accent colour with a 2px underline on the row's bottom
+                      14px text 18px apart, the chosen one in the accent colour with a 2px underline at the row's bottom
                       line. The weight never changes between tabs, so the row does not shift as you move along it.
                     */
                     className={cn(
@@ -121,7 +121,7 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
                     <span
                       aria-hidden
                       className={cn(
-                        "absolute inset-x-0 bottom-[-1px] h-[2px] rounded-full transition-colors",
+                        "absolute inset-x-0 bottom-0 h-[2px] rounded-full transition-colors",
                         isActive ? "bg-[var(--toolbar-accent)]" : "bg-transparent"
                       )}
                     />
