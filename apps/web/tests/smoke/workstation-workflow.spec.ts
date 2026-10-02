@@ -1,6 +1,6 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
-import { expectSectionChosen, expectTabReachable, openTab, sectionSwitch } from "../helpers/header-tabs";
+import { expectSectionChosen, expectTabReachable, openSection, openTab } from "../helpers/header-tabs";
 
 test.describe("dashboard workflow", () => {
   test("starts in the dashboard and opens direct add flows", async ({ page }) => {
@@ -965,7 +965,7 @@ test.describe("dashboard workflow", () => {
 
     // Activity opens on the History (#1100); the jobs and downloads are one choice away.
     await expectSectionChosen(page, "History");
-    await sectionSwitch(page, "Jobs & downloads").click();
+    await openSection(page, "Jobs & downloads");
     await expect(page).toHaveURL(/section=jobs/);
     await expect(page.getByRole("heading", { name: "Job Queue" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sent to Downloads" })).toBeVisible();

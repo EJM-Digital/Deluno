@@ -39,6 +39,8 @@ import {
 } from "../lib/api";
 import { formatDateTime, formatShortDate, formatTime, useDisplayPreferences } from "../lib/display-preferences";
 
+const MIGRATION_FORM_ID = "migration-preview-form";
+
 const SOURCE_OPTIONS = [
   { label: "Radarr", value: "radarr" },
   { label: "Sonarr", value: "sonarr" },
@@ -191,7 +193,7 @@ export function SettingsMigrationPage() {
   }
 
   return (
-    <form onSubmit={(event) => void handlePreview(event)} className="flex flex-col gap-[var(--page-gap)]" noValidate>
+    <form id={MIGRATION_FORM_ID} onSubmit={(event) => void handlePreview(event)} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar
         tabs={systemSettingsNavItems}
         actions={
@@ -199,7 +201,8 @@ export function SettingsMigrationPage() {
             <Button type="button" variant="outline" onClick={() => setPayloadJson(SAMPLE_PAYLOAD)}>
               Load example
             </Button>
-            <Button type="submit" disabled={busy !== null || !payloadJson.trim()}>
+            {/* Named by id: from `lg` up this button sits on the header's title line, outside the form. */}
+            <Button type="submit" form={MIGRATION_FORM_ID} disabled={busy !== null || !payloadJson.trim()}>
               {busy === "preview" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Preview import
             </Button>

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
-import { sectionSwitch } from "../helpers/header-tabs";
+import { openSection } from "../helpers/header-tabs";
 
 async function authHeaders(page: import("@playwright/test").Page) {
   const token = await page.evaluate(() => localStorage.getItem("deluno-auth-token"));
@@ -89,7 +89,7 @@ test("a title says which release it took, what that matched, and where it came f
     await expect(page.getByText("Came from", { exact: true })).toBeVisible();
     await expect(page.getByText("Example Indexer · qBittorrent", { exact: true })).toBeVisible();
 
-    await sectionSwitch(page, "History", true).click();
+    await openSection(page, "History", true);
     await expect(page.getByRole("heading", { name: "Sent to downloads" })).toBeVisible();
     await expect(page.getByText("Example Indexer").first()).toBeVisible();
   } finally {

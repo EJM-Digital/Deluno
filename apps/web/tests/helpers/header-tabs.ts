@@ -43,3 +43,18 @@ export async function expectSectionChosen(page: Page, name: string): Promise<voi
   const attribute = (await choice.getAttribute("aria-selected")) !== null ? "aria-selected" : "aria-checked";
   await expect(choice).toHaveAttribute(attribute, "true");
 }
+
+/** Chooses a local-state section wherever it is drawn: on the title line, in the row below `lg`, or under "More". */
+export async function openSection(page: Page, name: string, exact = false): Promise<void> {
+  const choice = sectionSwitch(page, name, exact);
+  if (await choice.count()) {
+    try {
+      await choice.first().click({ timeout: 2_000 });
+      return;
+    } catch {
+      // Folded into More, or folded while it was being clicked.
+    }
+  }
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("menuitem", { name, exact }).click();
+}
