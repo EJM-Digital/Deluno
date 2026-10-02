@@ -51,7 +51,9 @@ public sealed class DownloadClientTelemetryService(
     LegacyItemIdUpgradeMemory? legacyUpgradeMemory = null,
     // #1081: the last capture, so a screen never waits on a live call. Null in a
     // service built by hand, which then reads the clients itself.
-    IDownloadTelemetrySnapshotStore? snapshotStore = null)
+    IDownloadTelemetrySnapshotStore? snapshotStore = null,
+    // #1117: where the version a client reports is kept for the Connections screens.
+    IConnectionVersionStore? connectionVersions = null)
     : IDownloadClientTelemetryService
 {
     private readonly LegacyItemIdUpgradeMemory legacyUpgrades = legacyUpgradeMemory ?? new LegacyItemIdUpgradeMemory();
@@ -1205,9 +1207,16 @@ public sealed class DownloadClientTelemetryService(
     {
         try
         {
-            return downloadClientRegistry.TryGet(client.Protocol, out var implementation)
+            var snapshot = downloadClientRegistry.TryGet(client.Protocol, out var implementation)
                 ? await implementation.GetSnapshotAsync(client, capturedUtc, cancellationToken)
                 : null;
+            if (snapshot?.ClientVersion is { Length: > 0 } version && connectionVersions is not null)
+            {
+                await connectionVersions.RecordAsync(
+                    ConnectionKinds.DownloadClient, client.Id, Deluno.Connections.Versions.ConnectionProjects.ForDownloadClient(client.Protocol), version, cancellationToken);
+            }
+
+            return snapshot;
         }
         catch (Exception exception) when (exception is not HttpRequestException and not TaskCanceledException and not IOException)
         {

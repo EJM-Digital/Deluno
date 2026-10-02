@@ -851,6 +851,7 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             IOutboundNotificationService notificationService,
             INotificationService notificationPreferences,
             [FromServices] IConnectionCheckRecorder? checks,
+            [FromServices] IConnectionVersionStore? versions,
             CancellationToken cancellationToken) =>
         {
             var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
@@ -860,6 +861,8 @@ public static class ExternalIntegrationEndpointRouteBuilderExtensions
             var previousHealthStatus = connection.HealthStatus;
             var result = await processorConnections.TestAsync(connection, cancellationToken);
             await repository.RecordProcessorConnectionHealthAsync(connection.Id, result.Status, result.Message, cancellationToken);
+            await Deluno.Connections.Versions.ConnectionVersionRecording.RememberVersionAsync(
+                versions, ConnectionKinds.Processor, connection.Id, ProcessorProjects.ProjectFor(connection), result.IsReachable ? await processorConnections.ReadVersionAsync(connection, cancellationToken) : null, cancellationToken);
             if (checks is not null)
             {
                 await checks.RecordAsync(ConnectionKinds.Processor, connection.Id, connection.Name, result.IsReachable, result.LatencyMs, result.Message, cancellationToken);

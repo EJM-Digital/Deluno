@@ -98,4 +98,6 @@ public sealed record MediaServerTestResult(
     string? ServerId = null,
     int? LibraryCount = null,
     int? UserCount = null,
-    IntegrationFailure? Failure = null);
+    IntegrationFailure? Failure = null,
+    // The version the server reported (#1117), "1.43.4.10903" or "10.10.7"; null when it did not say.
+    string? Version = null);

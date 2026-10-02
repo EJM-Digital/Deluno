@@ -505,6 +505,7 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
     {
         // The two reads are independent, so they go together.
         var serverStateTask = GetServerStateAsync(http, cancellationToken);
+        var versionTask = GetVersionAsync(http, cancellationToken);
         var torrents = await http.GetFromJsonAsync<IReadOnlyList<QbitTorrentItem>>("api/v2/torrents/info", cancellationToken) ?? [];
 
         var trackerStatusByHash = await GetTrackerStatusesAsync(http, client.Id, torrents, capturedUtc, cancellationToken);
@@ -554,7 +555,20 @@ public sealed class QbittorrentDownloadClient(Func<HttpMessageHandler>? handlerF
             $"Connected to qBittorrent at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: await versionTask, alternateSpeedLimitEnabled: alternateSpeedLimitEnabled);
+    }
+
+    /// <summary>qBittorrent's own version (#1117), from <c>api/v2/app/version</c>. Null when it will not say.</summary>
+    private static async Task<string?> GetVersionAsync(HttpClient http, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Deluno.Connections.Versions.ConnectionVersionParsers.FromQbittorrent(await http.GetStringAsync("api/v2/app/version", cancellationToken));
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

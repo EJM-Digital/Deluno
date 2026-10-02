@@ -12,6 +12,8 @@ import type { ConnectionCheckItem } from "../../../lib/api/types/operations";
 import { authedFetch } from "../../../lib/use-auth";
 import { useLiveEvent } from "../../../lib/use-signalr";
 import { ago } from "../format";
+import { ConnectionVersionBeside } from "../../../components/app/connection-version";
+import { useConnectionVersions, versionKey, type ConnectionVersions } from "../../../lib/connection-versions";
 import { connectionsLine, connKey, groupConnections, resultOfEvent, resultOfTest, type ConnResult, type ConnRow } from "./connections-model";
 
 /** How many connections the legacy per-connection Test all runs at once (the server's own Test all does the same). */
@@ -25,6 +27,8 @@ export interface ConnectionTesting {
   test: (row: ConnRow) => Promise<void>;
   testAll: (rows: readonly ConnRow[]) => Promise<void>;
   allBusy: boolean;
+  /** What each connection reports as its version, and the newer one when it is out (#1117). */
+  versions?: ConnectionVersions;
 }
 
 /** The newest answer for each connection, who is being tested now, and who just passed. */
@@ -33,6 +37,7 @@ export function useConnectionTesting(): ConnectionTesting {
   const [checking, setChecking] = useState<ReadonlySet<string>>(() => new Set());
   const [passed, setPassed] = useState<ReadonlySet<string>>(() => new Set());
   const [allBusy, setAllBusy] = useState(false);
+  const { versions } = useConnectionVersions();
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
@@ -116,7 +121,7 @@ export function useConnectionTesting(): ConnectionTesting {
     }
   }, [test, note]);
 
-  return { results, checking, passed, test, testAll, allBusy };
+  return { results, checking, passed, test, testAll, allBusy, versions };
 }
 
 const stateWords = { ok: "", slow: " sy-slow", down: " sy-down", off: " sy-off" } as const;
@@ -146,7 +151,7 @@ export function ConnectionsCard({ rows, testing, now }: { rows: ConnRow[]; testi
               return (
                 <div key={row.key} className={`sy-ct-row${stateWords[row.state]}${busy ? " sy-checking" : ""}${testing.passed.has(row.key) ? " sy-passed" : ""}`} title={`${row.name}: ${row.sub}`}>
                   <span className="sy-d" />
-                  <span className="sy-nm"><b>{row.name}</b><span>{row.sub}</span></span>
+                  <span className="sy-nm"><b>{row.name}<ConnectionVersionBeside info={testing.versions?.get(versionKey(row.kind === "client" ? "downloadClient" : row.kind, row.id))} /></b><span>{row.sub}</span></span>
                   <span className="sy-r">{row.state === "off" ? "—" : busy ? "testing…" : row.checkedUtc ? ago(row.checkedUtc, now) : "not yet"}</span>
                   {row.state !== "off" && row.testPath ? (
                     <button type="button" className="sy-test" aria-label={`Test ${row.name}`} disabled={busy} onClick={() => void testing.test(row)}>{busy ? "…" : "Test"}</button>

@@ -19,6 +19,8 @@ import { Drawer, DrawerFooter, DrawerSection, type DrawerSaveState } from "../co
 import { Field, FieldRow } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { ConnectionVersionBeside } from "../components/app/connection-version";
+import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
@@ -725,6 +727,7 @@ type ProcessingDrawer = { kind: "closed" } | { kind: "library"; id: string } | {
 
 function ProcessingWorkflowPage() {
   const { libraries, processorConnections } = useLoaderData() as LoaderData;
+  const { versions } = useConnectionVersions();
   const location = useLocation();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -985,7 +988,7 @@ function ProcessingWorkflowPage() {
           <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Notifies", width: "minmax(0,1.4fr)" }, { label: "Health", width: LIST_TRACK.status, mobile: true }, { label: "Actions", width: "22rem", srOnly: true }]} chevron={false}>
             {processorConnections.map((connection) => (
               <ListRow key={connection.id}>
-                <ListNameCell name={connection.name} sub={processorSub(connection)} />
+                <ListNameCell name={<>{connection.name}<ConnectionVersionBeside info={versions.get(versionKey("processor", connection.id))} /></>} sub={processorSub(connection)} />
                 <ListCell primary={connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Generic processor notification"} />
                 <ListCell mono primary={connection.submissionUrl || "—"} />
                 <ListCell mobile>

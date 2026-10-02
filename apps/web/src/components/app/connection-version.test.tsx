@@ -1,0 +1,77 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchJson } from "../../lib/api";
+import { useConnectionVersions, versionKey, type ConnectionVersion } from "../../lib/connection-versions";
+import { ConnectionVersionBeside, ConnectionVersionText } from "./connection-version";
+
+vi.mock("../../lib/api", () => ({ fetchJson: vi.fn() }));
+
+const upToDate: ConnectionVersion = { kind: "downloadClient", id: "qb", version: "5.0.2", latestVersion: "5.0.2", updateAvailable: false, releaseUrl: null };
+const outOfDate: ConnectionVersion = {
+  kind: "downloadClient",
+  id: "qb",
+  version: "4.6.7",
+  latestVersion: "5.0.2",
+  updateAvailable: true,
+  releaseUrl: "https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.0.2"
+};
+
+describe("a connection's version in its row (#1117)", () => {
+  it("says just the version when it is current", () => {
+    const { container } = render(<ConnectionVersionText info={upToDate} />);
+    expect(container.textContent).toBe("5.0.2");
+  });
+
+  it("says the newer version beside it when one is out, linked to its release page", () => {
+    const { container } = render(<ConnectionVersionText info={outOfDate} />);
+    expect(container.textContent).toBe("4.6.7 · 5.0.2 available");
+    const link = screen.getByRole("link", { name: /5\.0\.2 available/ });
+    expect(link).toHaveAttribute("href", "https://github.com/qbittorrent/qBittorrent/releases/tag/release-5.0.2");
+    expect(link.className).toContain("text-info");
+  });
+
+  it("says the newer version without a link when no release page is known", () => {
+    const { container } = render(<ConnectionVersionText info={{ ...outOfDate, releaseUrl: null }} />);
+    expect(container.textContent).toBe("4.6.7 · 5.0.2 available");
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("never calls it out of date when the latest version is not known", () => {
+    const { container } = render(<ConnectionVersionText info={{ ...outOfDate, latestVersion: null, updateAvailable: true }} />);
+    expect(container.textContent).toBe("4.6.7");
+    expect(container.textContent).not.toContain("available");
+  });
+
+  it("shows nothing for a connection that reported no version", () => {
+    const { container } = render(<ConnectionVersionBeside info={undefined} />);
+    expect(container.textContent).toBe("");
+  });
+
+  it("falls back to a live reading until the stored version arrives", () => {
+    const { container } = render(<ConnectionVersionBeside info={undefined} fallback="4.3.2" />);
+    expect(container.textContent).toBe("4.3.2");
+  });
+});
+
+describe("reading every connection's version (#1117)", () => {
+  beforeEach(() => vi.mocked(fetchJson).mockReset());
+
+  function Probe() {
+    const { versions } = useConnectionVersions();
+    return <ConnectionVersionBeside info={versions.get(versionKey("downloadClient", "qb"))} />;
+  }
+
+  it("shows the version once the server has answered", async () => {
+    vi.mocked(fetchJson).mockResolvedValue([outOfDate]);
+    const { container } = render(<Probe />);
+    await waitFor(() => expect(container.textContent).toBe("4.6.7 · 5.0.2 available"));
+    expect(fetchJson).toHaveBeenCalledWith("/api/connections/versions");
+  });
+
+  it("shows nothing, and nothing is wrong, when the server answers with something else", async () => {
+    vi.mocked(fetchJson).mockResolvedValue({ title: "Not found" });
+    const { container } = render(<Probe />);
+    await waitFor(() => expect(fetchJson).toHaveBeenCalled());
+    expect(container.textContent).toBe("");
+  });
+});

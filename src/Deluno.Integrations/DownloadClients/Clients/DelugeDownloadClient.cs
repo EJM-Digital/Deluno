@@ -1,3 +1,4 @@
+using Deluno.Infrastructure.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -142,11 +143,39 @@ public sealed class DelugeDownloadClient(IHttpClientFactory httpClientFactory) :
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
         var freeSpaceBytes = await GetFreeSpaceBytesAsync(http, baseUri, cancellationToken);
+        var clientVersion = await GetVersionAsync(http, baseUri, cancellationToken);
         var (health, message) = DownloadClientHelpers.EvaluateDiskSpaceHealth(
             $"Connected to Deluge at {baseUri.Host}:{baseUri.Port}.",
             freeSpaceBytes,
             null);
-        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes);
+        return CreateSnapshot(client, queue, capturedUtc, health, message, freeSpaceBytes: freeSpaceBytes, clientVersion: clientVersion);
+    }
+
+    /// <summary>
+    /// Deluge's own version (#1117): the daemon's <c>daemon.info</c> call, which answers the bare version
+    /// string ("2.1.1"); an older daemon that only has <c>daemon.get_version</c> is asked that instead. Null
+    /// when neither answers.
+    /// </summary>
+    private static async Task<string?> GetVersionAsync(HttpClient http, Uri baseUri, CancellationToken cancellationToken)
+    {
+        foreach (var method in new[] { "daemon.info", "daemon.get_version" })
+        {
+            try
+            {
+                using var response = await http.PostSizedJsonAsync(new Uri(baseUri, "json"), new DelugeRequest(method, [], 9), cancellationToken);
+                if (response.IsSuccessStatusCode
+                    && Deluno.Connections.Versions.ConnectionVersionParsers.FromDeluge(await response.Content.ReadAsStringAsync(cancellationToken)) is { } version)
+                {
+                    return version;
+                }
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            {
+                // Try the other name, then say nothing.
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

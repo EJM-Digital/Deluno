@@ -18,6 +18,7 @@ public static class JobsServiceCollectionExtensions
         services.AddSingleton<ConnectionDayStore>();
         services.AddSingleton<IConnectionUseReporter, ConnectionUseReporter>();
         services.AddSingleton<IConnectionCheckRecorder, ConnectionCheckRecorder>();
+        services.AddSingleton<IConnectionVersionStore, ConnectionVersionStore>();
         services.AddSingleton<AttentionDismissalStore>();
         services.AddSingleton<IImportFailureRuleRepository, SqliteImportFailureRuleRepository>();
         services.AddSingleton<SqliteImportResolutionsRepository>();

@@ -67,7 +67,8 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
                 $"Connected to {serverName ?? DisplayName}, but the API key cannot list users, so Deluno could not tell what anyone has watched. Use an administrator's API key.",
                 info.LatencyMs,
                 serverName,
-                serverId);
+                serverId,
+                Version: Deluno.Connections.Versions.ConnectionVersionParsers.Clean(version));
         }
 
         return new MediaServerTestResult(
@@ -78,7 +79,8 @@ public abstract class EmbyFamilyMediaServerClient(IHttpClientFactory httpClientF
             serverName,
             serverId,
             libraryCount,
-            userCount);
+            userCount,
+            Version: Deluno.Connections.Versions.ConnectionVersionParsers.Clean(version));
     }
 
     public async Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(

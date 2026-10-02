@@ -70,6 +70,7 @@ GET /api/command/
 GET /api/command/{id}
 GET /api/companion-tools/
 GET /api/connections/checks
+GET /api/connections/versions
 GET /api/custom-formats/
 GET /api/custom-formats/export
 GET /api/custom-formats/{id}/export

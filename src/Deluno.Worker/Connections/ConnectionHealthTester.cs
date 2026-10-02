@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Deluno.Connections;
 using Deluno.Connections.Data;
+using Deluno.Connections.Versions;
 using Deluno.Contracts;
 using Deluno.Integrations.MediaServers;
 using Deluno.Integrations.Metadata;
@@ -25,7 +26,8 @@ public sealed class ConnectionHealthTester(
     ISeerrRepository seerrServers,
     IProcessorRepository processors,
     IIntakeRepository intake,
-    IConnectionCheckRecorder recorder) : IConnectionHealthTester
+    IConnectionCheckRecorder recorder,
+    IConnectionVersionStore? versions = null) : IConnectionHealthTester
 {
     /// <summary>One thing that can be tested: its identity and when it was last checked or used by a real call.</summary>
     private sealed record Target(string Kind, string Id, string Name, DateTimeOffset? LastTouchedUtc);
@@ -152,6 +154,14 @@ public sealed class ConnectionHealthTester(
                     }
 
                     var result = await ConnectionsEndpointRouteBuilderExtensions.RunStoredIndexerTestAsync(item, scoped, automatic, cancellationToken);
+                    // #1117: an indexer behind Prowlarr or Jackett also says which version of it is running.
+                    if (versions is not null && AggregatorVersions.ProjectOf(item.BaseUrl) is { } project && scoped.GetService<IHttpClientFactory>() is { } httpFactory)
+                    {
+                        await versions.RememberVersionAsync(
+                            ConnectionKinds.Indexer, item.Id, project,
+                            await AggregatorVersions.ReadAsync(item, httpFactory.CreateClient("indexers"), cancellationToken), cancellationToken);
+                    }
+
                     return result is null ? null : await LatestAsync(target, cancellationToken);
                 }
                 case ConnectionKinds.DownloadClient:
@@ -174,8 +184,10 @@ public sealed class ConnectionHealthTester(
                         return null;
                     }
 
-                    var result = await scoped.GetRequiredService<IProcessorConnectionService>().TestAsync(item, cancellationToken);
+                    var processorService = scoped.GetRequiredService<IProcessorConnectionService>();
+                    var result = await processorService.TestAsync(item, cancellationToken);
                     await processors.RecordProcessorConnectionHealthAsync(item.Id, result.Status, result.Message, cancellationToken);
+                    await versions.RememberVersionAsync(ConnectionKinds.Processor, item.Id, ProcessorProjects.ProjectFor(item), result.IsReachable ? await processorService.ReadVersionAsync(item, cancellationToken) : null, cancellationToken);
                     return await recorder.RecordAsync(target.Kind, item.Id, item.Name, result.IsReachable, result.LatencyMs, result.Message, cancellationToken);
                 }
                 case ConnectionKinds.MediaServer:
@@ -189,6 +201,7 @@ public sealed class ConnectionHealthTester(
 
                     var result = await client.TestAsync(item, cancellationToken);
                     await mediaServers.RecordHealthAsync(item.Id, result, cancellationToken);
+                    await versions.RememberVersionAsync(ConnectionKinds.MediaServer, item.Id, ConnectionProjects.ForMediaServer(item.Kind), result.Version, cancellationToken);
                     return await recorder.RecordAsync(target.Kind, item.Id, item.Name, result.Ok, result.LatencyMs, result.Message, cancellationToken);
                 }
                 case ConnectionKinds.Requests:
@@ -201,6 +214,7 @@ public sealed class ConnectionHealthTester(
 
                     var result = await scoped.GetRequiredService<ISeerrClient>().TestAsync(item, cancellationToken);
                     await seerrServers.RecordHealthAsync(item.Id, result, cancellationToken);
+                    await versions.RememberVersionAsync(ConnectionKinds.Requests, item.Id, ConnectionProjects.Seerr, result.Version, cancellationToken);
                     return await recorder.RecordAsync(target.Kind, item.Id, item.Name, result.Ok, result.LatencyMs, result.Message, cancellationToken);
                 }
                 case ConnectionKinds.Metadata:

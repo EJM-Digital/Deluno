@@ -17,6 +17,8 @@ import { Input } from "../ui/input";
 import { LIST_TRACK, ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable } from "../ui/list-card";
 import { Select } from "../ui/select";
 import { Switch, SwitchRow } from "../ui/switch";
+import { ConnectionVersionBeside } from "./connection-version";
+import { useConnectionVersions, versionKey } from "../../lib/connection-versions";
 
 /** Mirrors `Deluno.Connections.Contracts.SeerrConnection`. */
 export interface SeerrServer {
@@ -152,6 +154,7 @@ export function SeerrServersCard({
   qualityProfiles: QualityProfileItem[];
   onChanged: () => void;
 }) {
+  const { versions } = useConnectionVersions();
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [form, setForm] = useState<SeerrForm>(formFrom(null));
   const [initial, setInitial] = useState<SeerrForm>(formFrom(null));
@@ -340,7 +343,7 @@ export function SeerrServersCard({
               const waiting = cleanups.filter((cleanup) => cleanup.serverId === server.id);
               return (
                 <ListRow key={server.id} onClick={() => open(server)} selected={drawer.open && drawer.id === server.id}>
-                  <ListNameCell name={server.name} sub={server.version ? `Seerr ${server.version}` : "Seerr"} />
+                  <ListNameCell name={<>{server.name}<ConnectionVersionBeside info={versions.get(versionKey("requests", server.id))} fallback={server.version} /></>} sub="Seerr" />
                   <ListCell mono primary={server.baseUrl} />
                   <ListCell primary={server.serverName ?? <span className="text-muted-foreground">Not tested yet</span>} />
                   <ListCell
