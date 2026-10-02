@@ -100,7 +100,7 @@ function Poster({ group, isNew, caption, tag, small }: { group: ArrivalGroup; is
             alt=""
             loading="lazy"
             className="h-full w-full object-cover"
-            fallback={<PosterTile title={title} kind={group.library} />}
+            fallback={<PosterTile title={title} kind={group.library} hue={tag?.hue} />}
           />
         </span>
         {caption === "none" ? null : (

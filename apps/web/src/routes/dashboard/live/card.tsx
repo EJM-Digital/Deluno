@@ -48,9 +48,9 @@ export function tileHue(kind: string | undefined): number {
 }
 
 /** A title's poster as Weir draws it: 2:3, its initials on a tinted tile until there is a picture, and wherever there is none. */
-export function PosterTile({ title, kind }: { title: string; kind?: string }) {
+export function PosterTile({ title, kind, hue }: { title: string; kind?: string; /** The library's own colour when it is known (the shelf), as Weir colours by workflow. */ hue?: number }) {
   return (
-    <span aria-hidden className="lj-tile" style={{ ["--tile-hue" as string]: tileHue(kind) }}>
+    <span aria-hidden className="lj-tile" style={{ ["--tile-hue" as string]: hue ?? tileHue(kind) }}>
       <span>{initialsOf(title)}</span>
     </span>
   );
