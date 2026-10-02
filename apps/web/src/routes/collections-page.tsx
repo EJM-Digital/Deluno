@@ -182,7 +182,6 @@ export function CollectionsPage() {
   return (
     <div className="space-y-[var(--page-gap)]">
       <PageToolbar
-        left={<span className="text-sm font-semibold text-foreground">Movie collections</span>}
         actions={<PageToolbarAction onClick={() => setAddOpen((value) => !value)}>Follow collection</PageToolbarAction>}
       />
 
