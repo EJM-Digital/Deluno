@@ -45,6 +45,9 @@ interface PageToolbarProps {
   className?: string;
 }
 
+/** The least room the title line keeps for tabs when a page's buttons join it: the chosen tab, a gap and "More". */
+const HEADER_TABS_MIN_ROOM = 200;
+
 export interface PageToolbarActionProps extends Omit<ButtonProps, "children"> {
   children: React.ReactNode;
 }
@@ -98,6 +101,8 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
 
   const slot = useHeaderSlot();
   const actionSlot = useHeaderSlot("topbar-page-actions");
+  const rowActionsRef = React.useRef<HTMLDivElement>(null);
+  const [actionsFit, setActionsFit] = React.useState(true);
   const headerItems: HeaderTabItem[] = (tabs ?? []).map((tab) => {
     const isComplete = tab.status === "complete";
     const tabLabel = typeof tab.label === "string" ? titleCaseLabel(tab.label) : undefined;
@@ -119,7 +124,29 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
   const tabsInHeader = (hasTabs || hasSections) && slot !== null;
   // The page's buttons go on the title line too, right of the tabs and left of search (James, 2 Oct 2026), so a page
   // whose row held only tabs and buttons has no row at all from `lg` up.
-  const actionsInHeader = Boolean(actions) && actionSlot !== null;
+  // Only while they fit beside the title, the chosen tab and More: a title page's three buttons at 1280 squeezed its
+  // title and tabs to nothing. When they do not, they stay in this row, as below `lg`.
+  const actionsInHeader = Boolean(actions) && actionSlot !== null && actionsFit;
+  const wantsTabRoom = hasTabs || hasSections;
+  React.useLayoutEffect(() => {
+    if (!actions || !actionSlot || typeof ResizeObserver === "undefined") return undefined;
+    const main = document.getElementById("topbar-main");
+    const title = document.getElementById("topbar-title");
+    if (!main || !title) return undefined;
+    const check = () => {
+      const placed = actionSlot.childElementCount ? actionSlot : rowActionsRef.current;
+      const buttons = placed?.getBoundingClientRect().width ?? 0;
+      const gap = parseFloat(getComputedStyle(main).columnGap) || 0;
+      const need = title.getBoundingClientRect().width + (wantsTabRoom ? HEADER_TABS_MIN_ROOM : 0) + gap + buttons;
+      setActionsFit(need <= main.getBoundingClientRect().width);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(main);
+    observer.observe(actionSlot);
+    if (rowActionsRef.current) observer.observe(rowActionsRef.current);
+    return () => observer.disconnect();
+  }, [actions, actionSlot, actionsInHeader, wantsTabRoom]);
   const rowHasLeft = !tabsInHeader && (hasTabs || hasSections || Boolean(left));
   const rowEmpty = !rowHasLeft && (!actions || actionsInHeader);
   const sectionItems: HeaderTabItem[] = (hasSections ? sections!.options : []).map((option) => ({
@@ -200,7 +227,7 @@ export function PageToolbar({ tabs, left, sections, actions, className }: PageTo
         ) : (
           <span />
         )}
-        {actions && !actionsInHeader ? <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
+        {actions && !actionsInHeader ? <div ref={rowActionsRef} className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div> : null}
       </div>
       {area ? <HowThisWorks id={area.id} lead={area.explainer.lead} steps={area.explainer.steps} /> : null}
     </>

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { openTab } from "../helpers/header-tabs";
 
 test.describe("System settings save footers", () => {
   test("keeps backup schedule edits in the shared footer until saved or discarded", async ({ page }) => {
@@ -12,12 +13,12 @@ test.describe("System settings save footers", () => {
 
     await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save backup schedule" })).toBeVisible();
-    await page.locator('a[href="/system/updates"]').first().click();
+    await openTab(page, "Updates");
     const discardDialog = page.getByRole("dialog", { name: "Unsaved changes" });
     await expect(discardDialog).toBeVisible();
     await discardDialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page).toHaveURL(/\/system\/backups$/);
-    await page.locator('a[href="/system/updates"]').first().click();
+    await openTab(page, "Updates");
     await expect(discardDialog).toBeVisible();
     await discardDialog.getByRole("button", { name: "Discard and continue", exact: true }).click();
     await expect(page).toHaveURL(/\/system\/updates$/);
@@ -33,7 +34,7 @@ test.describe("System settings save footers", () => {
 
     await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save update preferences" })).toBeVisible();
-    await page.locator('a[href="/system/backups"]').first().click();
+    await openTab(page, "Backups");
     const discardDialog = page.getByRole("dialog", { name: "Unsaved changes" });
     await expect(discardDialog).toBeVisible();
     await discardDialog.getByRole("button", { name: "Discard and continue", exact: true }).click();
