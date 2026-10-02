@@ -293,7 +293,7 @@ test.describe("Dashboard tabs", () => {
       await expect(page.getByRole("region", { name: /^pipeline/i })).toBeVisible();
       // The speed says its unit. Sources is the Scoreboard: a table of today's indexers with a Good/Slow/Down/Off status,
       // one speed bar of the download clients, and the connections as pills with today's counts.
-      await expect(page.getByRole("region", { name: /^speed/i }).getByText(/^MB\/s down/)).toBeVisible();
+      await expect(page.getByRole("region", { name: /^speed/i }).getByText("MB/s", { exact: true })).toBeVisible();
       const sources = page.getByRole("region", { name: "Sources" });
       // An indexer that is not answering is Down and goes to System; a switched-off one is Off.
       await expect(sources.getByRole("link", { name: /^Nyaa\.si: Down,/ })).toHaveAttribute("href", "/?tab=system");

@@ -281,7 +281,9 @@ describe("speed", () => {
     summary.downloads!.readingUtc = new Date().toISOString();
     const { container } = withRouter(<SpeedCell samples={[{ capturedUtc: inMs(-3_600_000), speedMbps: 4, activeCount: 1, uploadMbps: 0 }]} summary={summary} />);
     expect(container.textContent).toContain("14 MB/s");
-    expect(container.textContent).toContain("down");
+    expect(container.textContent).toContain("↓ 14");
+    expect(container.textContent).toContain("↑ 1.3 MB/s");
+    expect(container.textContent).toContain("download");
     expect(container.textContent).toContain("1.3 MB/s");
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/Download peaked at 14 MB\/s/);
   });
