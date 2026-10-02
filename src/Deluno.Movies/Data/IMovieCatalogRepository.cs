@@ -353,15 +353,6 @@ public interface IMovieCatalogRepository : IMovieImportRecoveryRetentionReposito
         int? qualityDelta,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<CrossLibraryDuplicateItem>> FindCrossLibraryDuplicatesAsync(CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Two catalogue rows that are the same film — matched on IMDb id, or on
-    /// title and year where an id is absent, which is exactly the case that
-    /// produces them.
-    /// </summary>
-    Task<IReadOnlyList<DuplicateTitleGroup>> FindDuplicateTitlesAsync(CancellationToken cancellationToken);
-
     Task<int> ReassignLibraryAsync(IReadOnlyList<string> movieIds, string fromLibraryId, string toLibraryId, CancellationToken cancellationToken);
 
     /// <summary>

@@ -5,8 +5,6 @@ namespace Deluno.Quality.Data;
 public interface IQualityRepository
 {
     Task<IReadOnlyList<QualityProfileItem>> ListQualityProfilesAsync(CancellationToken cancellationToken);
-    Task ReorderQualityProfilesAsync(IReadOnlyList<string> ids, CancellationToken cancellationToken);
-
     Task<IReadOnlyList<CustomFormatItem>> ListCustomFormatsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<PolicySetItem>> ListPolicySetsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<MediaPlanVersionItem>> ListMediaPlanVersionsAsync(
@@ -24,11 +22,6 @@ public interface IQualityRepository
 
     Task<QualityProfileItem> CreateQualityProfileAsync(
         CreateQualityProfileRequest request,
-        CancellationToken cancellationToken);
-
-    Task<QualityProfileItem> CreateQualityProfileFromPresetAsync(
-        string presetId,
-        string? nameOverride,
         CancellationToken cancellationToken);
 
     Task<CustomFormatItem> CreateCustomFormatAsync(

@@ -1,12 +1,9 @@
- /hubs/activity
- /hubs/activity/negotiate
  /hubs/deluno
  /hubs/deluno/negotiate
 DELETE /api/api-keys/{id}
 DELETE /api/auto-tag-rules/{id}
 DELETE /api/backups/{id}
 DELETE /api/blocked-releases/{id}
-DELETE /api/connections/{id}
 DELETE /api/custom-formats/{id}
 DELETE /api/destination-rules/{id}
 DELETE /api/download-clients/{id}
@@ -25,7 +22,6 @@ DELETE /api/libraries/{id}
 DELETE /api/library-views/{id}
 DELETE /api/media-servers/{id}
 DELETE /api/media-servers/{id}/path-mappings/{mappingId}
-DELETE /api/metadata/cache
 DELETE /api/movie-collections/{id}
 DELETE /api/movies/import-recovery/{id}
 DELETE /api/movies/{id}
@@ -33,8 +29,6 @@ DELETE /api/movies/{id}/files
 DELETE /api/movies/{id}/libraries/{libraryId}
 DELETE /api/movies/{id}/subtitles/override
 DELETE /api/notification-webhooks/{id}
-DELETE /api/notifications/
-DELETE /api/notifications/{notificationId}
 DELETE /api/policy-sets/{id}
 DELETE /api/quality-profiles/{id}
 DELETE /api/queue/bulk
@@ -59,7 +53,6 @@ DELETE /api/tags/{id}
 DELETE /api/v1/download-dispatches/{dispatchId}
 GET /api/
 GET /api/activity
-GET /api/activity/by-hour
 GET /api/activity/display-settings
 GET /api/activity/filters
 GET /api/api-keys/
@@ -76,7 +69,6 @@ GET /api/calendar/feed.ics
 GET /api/command/
 GET /api/command/{id}
 GET /api/companion-tools/
-GET /api/connections/
 GET /api/connections/checks
 GET /api/custom-formats/
 GET /api/custom-formats/export
@@ -92,7 +84,6 @@ GET /api/diskspace
 GET /api/download-clients/
 GET /api/download-clients/orphans
 GET /api/download-clients/path-mappings
-GET /api/download-clients/sharing
 GET /api/download-clients/telemetry
 GET /api/download-clients/throughput
 GET /api/download-clients/{clientId}/queue/{queueItemId}/cleanup-preview
@@ -106,7 +97,6 @@ GET /api/download-health/rules
 GET /api/exclusions
 GET /api/failure-rules
 GET /api/filesystem/directories
-GET /api/filesystem/reconciliation
 GET /api/health/live
 GET /api/health/ready
 GET /api/history
@@ -116,7 +106,6 @@ GET /api/indexers/
 GET /api/indexers/scoreboard
 GET /api/intake-sources/
 GET /api/intake-sources/{id}/diagnostics
-GET /api/intake-sources/{id}/exclusions
 GET /api/intake-title-origins
 GET /api/integrations/external/activity
 GET /api/integrations/external/health
@@ -133,7 +122,6 @@ GET /api/intelligent-routing/snapshot
 GET /api/jobs
 GET /api/jobs/{id}
 GET /api/libraries/
-GET /api/libraries/export
 GET /api/libraries/{id}/import-existing
 GET /api/libraries/{id}/import-existing/issues
 GET /api/libraries/{id}/import-existing/preview
@@ -141,7 +129,6 @@ GET /api/libraries/{id}/routing
 GET /api/libraries/{libraryId}/folder-chain
 GET /api/library-automation
 GET /api/library-views/
-GET /api/manifest
 GET /api/media-plan-scenarios/
 GET /api/media-plan-scenarios/{id}/compile
 GET /api/media-servers/
@@ -164,7 +151,6 @@ GET /api/movie-collections/{id}
 GET /api/movie-collections/{id}/members
 GET /api/movies/calendar
 GET /api/movies/controls
-GET /api/movies/duplicates
 GET /api/movies/genres
 GET /api/movies/import-recovery
 GET /api/movies/lookup/imdb
@@ -179,7 +165,6 @@ GET /api/movies/{id}/copy
 GET /api/movies/{id}/files
 GET /api/movies/{id}/libraries/
 GET /api/movies/{id}/metadata/issue
-GET /api/movies/{id}/preference-evaluation
 GET /api/movies/{id}/removal-preview
 GET /api/movies/{id}/rename-preview
 GET /api/movies/{id}/subtitles
@@ -190,14 +175,10 @@ GET /api/movies/{id}/workflow-status
 GET /api/notification-preferences/
 GET /api/notification-webhooks/
 GET /api/notification-webhooks/deliveries
-GET /api/notifications/
-GET /api/notifications/unread-count
 GET /api/policy-sets/
-GET /api/policy-sets/{id}/diff
 GET /api/policy-sets/{id}/versions
 GET /api/policy-sets/{id}/versions/{version:int}
 GET /api/quality-model/
-GET /api/quality-profile-presets/
 GET /api/quality-profiles/
 GET /api/ranking-model/status
 GET /api/recycle-bin/
@@ -225,13 +206,11 @@ GET /api/seerr-servers/
 GET /api/seerr-servers/{id}/acquisitions
 GET /api/series/calendar
 GET /api/series/controls
-GET /api/series/episodes/wanted
 GET /api/series/episodes/{episodeId}/subtitles
 GET /api/series/episodes/{episodeId}/subtitles/history
 GET /api/series/episodes/{episodeId}/subtitles/{language}/candidates
 GET /api/series/genres
 GET /api/series/import-recovery
-GET /api/series/inventory
 GET /api/series/page
 GET /api/series/posters
 GET /api/series/search-history
@@ -244,13 +223,10 @@ GET /api/series/{id}/acquisition-blockers
 GET /api/series/{id}/inventory
 GET /api/series/{id}/libraries/
 GET /api/series/{id}/metadata/issue
-GET /api/series/{id}/monitored-missing
 GET /api/series/{id}/numbering
-GET /api/series/{id}/preference-evaluation
 GET /api/series/{id}/removal-preview
 GET /api/series/{id}/rename-preview
 GET /api/series/{id}/tags
-GET /api/series/{id}/workflow-status
 GET /api/settings/
 GET /api/setup/draft
 GET /api/setup/progress
@@ -282,10 +258,7 @@ GET /api/trackers/definitions/update-check
 GET /api/trakt/status
 GET /api/updates/preferences
 GET /api/updates/status
-GET /api/v1/dispatch-alerts/
-GET /api/v1/dispatch-metrics/
 GET /api/v1/download-dispatches/
-GET /api/v1/download-dispatches/unresolved
 GET /api/v1/download-dispatches/{dispatchId}
 GET /api/v1/guides/trash/inventory
 GET /api/v1/guides/trash/package
@@ -299,7 +272,6 @@ GET /api/v1/import-resolutions/
 GET /api/v1/release-preferences/plans
 GET /api/v1/release-preferences/plans/quality-profile/{profileId}
 GET /api/v1/release-preferences/plans/{planId}
-GET /api/v1/release-preferences/registry
 GET /api/wanted/cutoff
 GET /api/wanted/missing
 GET /health
@@ -323,14 +295,12 @@ POST /api/blocked-releases/{id}/cleanup
 POST /api/blocked-releases/{id}/refuse
 POST /api/command/
 POST /api/companion-tools/install
-POST /api/connections/
 POST /api/connections/test-all
 POST /api/connections/{kind}/{id}/test
 POST /api/custom-formats/
 POST /api/custom-formats/dry-run
 POST /api/custom-formats/import
 POST /api/destination-rules/
-POST /api/destination-rules/resolve
 POST /api/discover/add
 POST /api/download-clients/
 POST /api/download-clients/leftovers/cleanup
@@ -350,7 +320,6 @@ POST /api/download-clients/{id}/test
 POST /api/download-health/ignore-list
 POST /api/download-health/purge-strikes
 POST /api/filesystem/file-check
-POST /api/filesystem/import/execute
 POST /api/filesystem/import/execute-batch
 POST /api/filesystem/import/jobs
 POST /api/filesystem/import/preview
@@ -393,15 +362,12 @@ POST /api/jobs/retry-failed
 POST /api/jobs/{id}/dismiss
 POST /api/libraries/
 POST /api/libraries/{id}/import-existing
-POST /api/libraries/{id}/import-existing/cancel
 POST /api/libraries/{id}/import-existing/pause
 POST /api/libraries/{id}/import-existing/resume
 POST /api/libraries/{id}/import-existing/selected
 POST /api/libraries/{id}/search-now
 POST /api/libraries/{id}/skip-cycle
 POST /api/library-views/
-POST /api/media-plan-scenarios/{id}/apply
-POST /api/media-plan-scenarios/{id}/preview
 POST /api/media-servers/
 POST /api/media-servers/test
 POST /api/media-servers/{id}/path-mappings
@@ -421,25 +387,21 @@ POST /api/movies/bulk/reassign-library
 POST /api/movies/bulk/rename-apply
 POST /api/movies/bulk/rename-preview
 POST /api/movies/bulk/search
-POST /api/movies/bulk/subtitle-rescan
 POST /api/movies/bulk/tags
 POST /api/movies/import-recovery
 POST /api/movies/import-recovery/{id}/dismiss
 POST /api/movies/import-recovery/{id}/import-original
-POST /api/movies/import-recovery/{id}/resolve
 POST /api/movies/import-recovery/{id}/retry
 POST /api/movies/import-recovery/{id}/search-again
 POST /api/movies/import-recovery/{id}/stop-wanting
 POST /api/movies/metadata/jobs
 POST /api/movies/{id}/automation/defer
 POST /api/movies/{id}/automation/skip-once
-POST /api/movies/{id}/evaluate-candidate
 POST /api/movies/{id}/force-redownload
 POST /api/movies/{id}/grab
 POST /api/movies/{id}/libraries/
 POST /api/movies/{id}/libraries/{libraryId}/want-again
 POST /api/movies/{id}/metadata/issue/acknowledge
-POST /api/movies/{id}/metadata/jobs
 POST /api/movies/{id}/metadata/link
 POST /api/movies/{id}/metadata/link/preview
 POST /api/movies/{id}/metadata/refresh
@@ -452,21 +414,16 @@ POST /api/movies/{id}/subtitles/{language}/upload
 POST /api/notification-webhooks/
 POST /api/notification-webhooks/deliveries/{deliveryId}/replay
 POST /api/notification-webhooks/{id}/test
-POST /api/notifications/read-all
-POST /api/notifications/{notificationId}/read
 POST /api/policy-sets/
-POST /api/policy-sets/{id}/effective-preview
 POST /api/policy-sets/{id}/preview
 POST /api/policy-sets/{id}/rollback
 POST /api/quality-model/reset
-POST /api/quality-profile-presets/{presetId}/apply
 POST /api/quality-profiles/
 POST /api/ranking-model/rollback
 POST /api/ranking-model/train
 POST /api/recycle-bin/cleanup
 POST /api/recycle-bin/{id}/restore
 POST /api/release-profiles/
-POST /api/releases/explain
 POST /api/retention/keeps
 POST /api/retention/leaving-soon/postpone
 POST /api/retention/leaving-soon/remove
@@ -488,7 +445,6 @@ POST /api/series/bulk/reassign-library
 POST /api/series/bulk/rename-apply
 POST /api/series/bulk/rename-preview
 POST /api/series/bulk/search
-POST /api/series/bulk/subtitle-rescan
 POST /api/series/bulk/tags
 POST /api/series/episodes/{episodeId}/subtitles/{language}/blacklist
 POST /api/series/episodes/{episodeId}/subtitles/{language}/candidates/pick
@@ -498,7 +454,6 @@ POST /api/series/episodes/{episodeId}/subtitles/{language}/upload
 POST /api/series/import-recovery
 POST /api/series/import-recovery/{id}/dismiss
 POST /api/series/import-recovery/{id}/import-original
-POST /api/series/import-recovery/{id}/resolve
 POST /api/series/import-recovery/{id}/retry
 POST /api/series/import-recovery/{id}/search-again
 POST /api/series/import-recovery/{id}/stop-wanting
@@ -510,7 +465,6 @@ POST /api/series/{id}/force-redownload
 POST /api/series/{id}/grab
 POST /api/series/{id}/libraries/
 POST /api/series/{id}/metadata/issue/acknowledge
-POST /api/series/{id}/metadata/jobs
 POST /api/series/{id}/metadata/link
 POST /api/series/{id}/metadata/link/preview
 POST /api/series/{id}/metadata/refresh
@@ -539,9 +493,6 @@ POST /api/updates/apply-on-restart
 POST /api/updates/check
 POST /api/updates/download
 POST /api/updates/restart-now
-POST /api/v1/dispatch-alerts/{alertId}/acknowledge
-POST /api/v1/download-dispatches/poll
-POST /api/v1/download-dispatches/{dispatchId}/retry
 POST /api/v1/guides/trash/apply
 POST /api/v1/guides/trash/preview
 POST /api/v1/guides/trash/rule-migration/apply
@@ -569,7 +520,6 @@ PUT /api/integrations/processors/connections/{id}
 PUT /api/libraries/{id}
 PUT /api/libraries/{id}/automation
 PUT /api/libraries/{id}/media-plan
-PUT /api/libraries/{id}/quality-profile
 PUT /api/libraries/{id}/routing
 PUT /api/libraries/{id}/subtitles
 PUT /api/libraries/{id}/workflow
@@ -589,7 +539,6 @@ PUT /api/notification-preferences/
 PUT /api/notification-webhooks/{id}
 PUT /api/policy-sets/{id}
 PUT /api/quality-model/
-PUT /api/quality-profiles/order
 PUT /api/quality-profiles/{id}
 PUT /api/recycle-bin/settings
 PUT /api/release-profiles/mode

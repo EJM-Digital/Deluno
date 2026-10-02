@@ -237,8 +237,6 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
 
     Task<SeriesWantedSummary> GetWantedSummaryAsync(CancellationToken cancellationToken);
 
-    Task<SeriesInventorySummary> GetInventorySummaryAsync(CancellationToken cancellationToken);
-
     Task<SeriesInventoryDetail?> GetInventoryDetailAsync(string seriesId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SeriesUpcomingEpisodeItem>> ListUpcomingEpisodesAsync(
@@ -466,11 +464,6 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
     /// <summary>The season and episode number (and show) of up to 100 episodes, for labelling a download on the Dashboard (#1096).</summary>
     Task<IReadOnlyList<(string EpisodeId, string SeriesId, int SeasonNumber, int EpisodeNumber)>> ListEpisodeNumbersAsync(IReadOnlyList<string> episodeIds, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<SeriesEpisodeInventoryItem>> ListMonitoredMissingEpisodesAsync(
-        string seriesId,
-        string libraryId,
-        CancellationToken cancellationToken);
-
     /// <summary>Delete a series and all its related data</summary>
     Task<bool> DeleteAsync(string seriesId, CancellationToken cancellationToken);
 
@@ -620,11 +613,6 @@ public interface ISeriesCatalogRepository : ISeriesImportRecoveryRetentionReposi
         int take,
         bool includeUnmonitored,
         IReadOnlyList<string>? tagNames,
-        CancellationToken cancellationToken);
-
-    /// <summary>Episodes still wanted across every series.</summary>
-    Task<IReadOnlyList<WantedEpisodeItem>> ListWantedEpisodesAsync(
-        int take,
         CancellationToken cancellationToken);
 
     /// <summary>

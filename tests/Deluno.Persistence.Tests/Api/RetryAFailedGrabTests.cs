@@ -24,50 +24,6 @@ public sealed class RetryAFailedGrabTests
 {
     private const string Release = "Wanted.Film.2011.1080p.WEB-DL-DELUNO";
 
-    [Theory]
-    [InlineData("movies", "movies")]
-    [InlineData("movie", "movies")]
-    [InlineData("tv", "tv")]
-    public async Task Retry_searches_for_the_title_whose_grab_failed(string dispatchMediaType, string searchedMediaType)
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var library = await CreateLibraryAsync(app);
-        var dispatchId = await FailedGrabAsync(app, library.Id, dispatchMediaType, "title-wanted");
-
-        var response = await app.Client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
-
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        var search = Assert.Single(
-            await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
-            job => job.Source == "download_dispatch.retry");
-        Assert.Equal(LibrarySearchJobTypes.For(searchedMediaType), search.JobType);
-        using var payload = JsonDocument.Parse(search.PayloadJson!);
-        var root = payload.RootElement;
-        Assert.Equal("title-wanted", root.GetProperty("targetEntityId").GetString());
-        Assert.Equal(searchedMediaType, root.GetProperty("mediaType").GetString());
-        Assert.Equal(library.Name, root.GetProperty("libraryName").GetString());
-        Assert.Equal(library.RetryDelayHours, root.GetProperty("retryDelayHours").GetInt32());
-        Assert.DoesNotContain("nextRetryEligibleUtc", body);
-    }
-
-    [Fact]
-    public async Task Retry_leaves_no_retry_window_behind()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var library = await CreateLibraryAsync(app);
-        var dispatchId = await FailedGrabAsync(app, library.Id, "movies", "title-wanted", grabFailureCode: "access_denied");
-
-        var response = await app.Client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
-
-        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        var dispatch = await app.Services.GetRequiredService<IDownloadDispatchesRepository>()
-            .GetDispatchAsync(dispatchId, CancellationToken.None);
-        Assert.NotNull(dispatch);
-        Assert.Null(dispatch.NextRetryEligibleUtc);
-        Assert.NotEqual(IntegrationRetryState.RetryScheduled, dispatch.Failure?.RetryState);
-    }
-
     /// <summary>
     /// A row an older build's Retry stamped. The value is when somebody pressed
     /// the button, not when anything will happen, so it is not a retry time.
@@ -86,41 +42,6 @@ public sealed class RetryAFailedGrabTests
         Assert.Equal("grab", failure.GetProperty("operation").GetString());
         Assert.Equal(nameof(IntegrationRetryState.NotRetryable), failure.GetProperty("retryState").GetString());
         Assert.Equal(JsonValueKind.Null, failure.GetProperty("retryAfterUtc").ValueKind);
-    }
-
-    [Fact]
-    public async Task Retry_on_a_release_chosen_on_search_searches_for_nothing_and_says_why()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var library = await CreateLibraryAsync(app);
-        var dispatchId = await app.Services.GetRequiredService<IJobQueueRepository>().RecordDownloadDispatchAsync(
-            library.Id, "movies", "release", "0a1b2c3d4e5f", Release, "Fixture", "client-1", "qBittorrent", "failed", null,
-            cancellationToken: CancellationToken.None);
-
-        var response = await app.Client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("CHOSEN_ON_SEARCH", body);
-        Assert.Contains("choose one on Search again", body);
-        Assert.DoesNotContain(
-            await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
-            job => job.Source == "download_dispatch.retry");
-    }
-
-    [Fact]
-    public async Task Retry_says_so_when_the_library_is_gone()
-    {
-        await using var app = await ApplicationTestHost.StartAsync();
-        var dispatchId = await FailedGrabAsync(app, "library-gone", "movies", "title-wanted");
-
-        var response = await app.Client.PostAsync($"/api/v1/download-dispatches/{dispatchId}/retry", null);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("LIBRARY_NOT_FOUND", await response.Content.ReadAsStringAsync());
-        Assert.DoesNotContain(
-            await app.Services.GetRequiredService<IJobQueueRepository>().ListAsync(50, CancellationToken.None),
-            job => job.Source == "download_dispatch.retry");
     }
 
     private static async Task<LibraryItem> CreateLibraryAsync(ApplicationTestHost app)

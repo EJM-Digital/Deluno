@@ -56,11 +56,6 @@ public interface ILibrariesRepository : ILibrarySubtitlePreferences
         UpdateLibrarySubtitlesRequest request,
         CancellationToken cancellationToken);
 
-    Task<LibraryItem?> UpdateLibraryQualityProfileAsync(
-        string id,
-        UpdateLibraryQualityProfileRequest request,
-        CancellationToken cancellationToken);
-
     Task<LibraryItem?> UpdateLibraryMediaPlanAsync(
         string id,
         UpdateLibraryMediaPlanRequest request,

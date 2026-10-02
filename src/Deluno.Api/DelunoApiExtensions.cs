@@ -87,14 +87,6 @@ public static class DelunoApiExtensions
             .AllowAnonymous()
             .WithMetadata(new DelunoPublicEndpointAttribute());
 
-        api.MapGet("/manifest", (IOptions<StoragePathOptions> storage) => Results.Ok(new
-        {
-            app = "Deluno",
-            storageRoot = storage.Value.DataRoot,
-            modules = DelunoSystemManifest.Modules,
-            databases = DelunoStorageLayout.Databases
-        }))
-            .RequireAuthorization(DelunoAuthorizationPolicies.Read);
         api.MapDelunoMonitoringEndpoints();
         api.MapDelunoLanAccessEndpoints();
         api.MapDelunoConnectivityEndpoints();

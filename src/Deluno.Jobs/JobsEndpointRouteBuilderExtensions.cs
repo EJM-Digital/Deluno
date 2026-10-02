@@ -135,25 +135,6 @@ public static class JobsEndpointRouteBuilderExtensions
             reasons = TurnedDownGroups.All.Select(value => new { value, label = TurnedDownGroups.Label(value) })
         }));
 
-        // Today's Activity by the hour (#1096): real counts, not the newest page.
-        endpoints.MapGet("/api/activity/by-hour", async (
-            string? sinceUtc,
-            int? offsetMinutes,
-            IActivityFeedRepository repository,
-            TimeProvider timeProvider,
-            CancellationToken cancellationToken) =>
-        {
-            var now = timeProvider.GetUtcNow();
-            // The caller says when its day began; never more than 48 hours back.
-            var since = DateTimeOffset.TryParse(sinceUtc, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
-                ? parsed
-                : now.AddHours(-24);
-            if (since < now.AddHours(-48)) since = now.AddHours(-48);
-            var shift = Math.Clamp(offsetMinutes ?? 0, -14 * 60, 14 * 60);
-            var buckets = await repository.GetActivityCountsByHourAsync(since, shift, cancellationToken);
-            return Results.Ok(new { sinceUtc = since, total = buckets.Sum(bucket => bucket.Count), buckets });
-        });
-
         endpoints.MapGet("/api/activity/display-settings", (
             IActivityDisplaySettingsStore store) =>
         {

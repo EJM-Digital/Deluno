@@ -233,7 +233,6 @@ Implemented endpoints:
 - `POST /api/movies/{id}/metadata/link`
 - `PUT /api/movies/{id}/metadata/override`
 - `GET /api/movies/page` — the paged catalogue list; see below. `facets=false` leaves the quick-filter counts out and answers only `totalCount`; the counts are kept for ten seconds and dropped the moment the catalogue is written to
-- `POST /api/movies/{id}/metadata/jobs`
 - `POST /api/movies/metadata/jobs` — `{ forceAll?, take? }` → `{ enqueuedCount, remainingCount, staleCount, markedForRefreshCount, message }`
 - `POST /api/movies`
 - `POST /api/movies/bulk`
@@ -243,7 +242,6 @@ Implemented endpoints:
 - `POST /api/movies/bulk/search`
 - `POST /api/movies/bulk/reassign-library`
 - `POST /api/movies/bulk/rename-preview`
-- `GET /api/movies/duplicates`
 
 Current UI contract expectations:
 
@@ -262,7 +260,6 @@ Implemented endpoints:
 
 - `GET /api/series/import-recovery?limit=n&includeDetails=true` — as the movie twin
 - `GET /api/series/wanted`
-- `GET /api/series/inventory`
 - `GET /api/series/{id}/inventory`
 - `GET /api/series/search-history`
 - `POST /api/series/import-recovery`
@@ -278,7 +275,6 @@ Implemented endpoints:
 - `POST /api/series/{id}/metadata/link`
 - `PUT /api/series/{id}/metadata/override`
 - `GET /api/series/page` — the paged catalogue list; see below. `facets=false` behaves as on the movie twin
-- `POST /api/series/{id}/metadata/jobs`
 - `POST /api/series/metadata/jobs` — same shape as the movie twin
 - `POST /api/series/{id}/episodes/search` — each selected episode resolves its own installed path, size, current/target quality, and same-library immutable-plan evaluation before candidate comparison; replacement authority is bound to that exact path
 - `POST /api/series/{id}/grab`
@@ -312,7 +308,6 @@ Implemented endpoints:
 - `GET /api/metadata/status`
 - `GET /api/metadata/search`
 - `POST /api/metadata/test`
-- `DELETE /api/metadata/cache`
 - `GET /api/metadata/artwork/{cacheKey}`
 - `GET /api/metadata/broker/status`
 - `GET /api/metadata/broker/search`
@@ -348,7 +343,6 @@ Implemented endpoints:
 Implemented CRUD surfaces:
 
 - `GET|POST|PUT|DELETE /api/quality-profiles`
-- `PUT /api/quality-profiles/order`
 - `GET|PUT /api/quality-model`
 - `GET|POST|PUT|DELETE /api/tags`
 - `GET|POST|PUT|DELETE /api/auto-tag-rules` (#1024: rules are tags plus conditions; same-kind conditions are OR-ed, different kinds AND-ed, each negatable; `removeAutomatically` takes the tags back)
@@ -359,12 +353,9 @@ Implemented CRUD surfaces:
 - `GET|POST|PUT|DELETE /api/custom-formats`
 - `POST /api/custom-formats/dry-run`
 - `GET|POST|PUT|DELETE /api/destination-rules`
-- `POST /api/destination-rules/resolve`
 - `GET|POST|PUT|DELETE /api/policy-sets`
-- `POST /api/policy-sets/{id}/effective-preview`
 - `GET /api/media-plan-scenarios`
 - `GET /api/media-plan-scenarios/{id}/compile?mediaType=movies|tv`
-- `POST /api/media-plan-scenarios/{id}/apply`
 - `GET|POST|PUT|DELETE /api/library-views`
 - `POST /api/migration/preview`
 - `POST /api/migration/apply`
@@ -386,12 +377,6 @@ when possible, creates the policy set through the normal policy-set repository,
 and is idempotent for the generated scenario name/version. It does not create
 a second release-ranking engine.
 
-`POST /api/policy-sets/{id}/effective-preview` accepts optional field-level
-`libraryOverride` and `titleOverride` objects plus the global automation gate.
-It returns the resolved plan and one source record per field (`media-plan`,
-`library`, `title`, or `global-safety`). The global gate is non-overridable and
-can only pause a plan; this route is read-only and does not persist either
-override.
 
 Current UI contract expectations:
 
@@ -422,7 +407,6 @@ Current gaps:
 
 Implemented endpoints:
 
-- `POST /api/releases/explain`
 - `GET /api/ranking-model/status`
 - `POST /api/ranking-model/train`
 - `POST /api/ranking-model/rollback`
@@ -432,10 +416,6 @@ Implemented endpoints:
 
 Current UI contract expectations:
 
-- release explain responses include deterministic decision details plus ML model probability/boost explanation when enabled
-- raw totals in the explicit release-explain diagnostic response are labelled
-  legacy scoring provenance; they are not the typed release-preference decision
-  value and are not used by normal candidate lists or upgrade decisions
 - ranking model status exposes active model version, last training metadata, sample count, and evaluation metrics
 - training and rollback controls are operational endpoints for guarded model lifecycle actions
 - intelligent-routing snapshot exposes learned quality/release-group preferences and success-rate maps for indexers and download clients
@@ -453,7 +433,6 @@ Implemented endpoints:
 - `POST /api/libraries`
 - `DELETE /api/libraries/{id}`
 - `PUT /api/libraries/{id}/automation`
-- `PUT /api/libraries/{id}/quality-profile`
 - `PUT /api/libraries/{id}/workflow`
 - `POST /api/libraries/{id}/search-now`
 - `POST /api/libraries/{id}/skip-cycle`
@@ -463,7 +442,6 @@ Implemented endpoints:
 - `GET /api/libraries/{id}/import-existing` — the run in flight, or the most recent one
 - `POST /api/libraries/{id}/import-existing/pause`
 - `POST /api/libraries/{id}/import-existing/resume`
-- `POST /api/libraries/{id}/import-existing/cancel`
 - `GET /api/libraries/{id}/import-existing/issues?take=100` — what the run set aside for review
 - `GET /api/libraries/{id}/routing`
 - `PUT /api/libraries/{id}/routing`
@@ -515,7 +493,6 @@ Implemented endpoints:
 - `POST /api/filesystem/path-diagnostics` — checks whether the Deluno server can read and write the selected path
 - `POST /api/filesystem/import/preview` — returns the authoritative destination and media checks; a multi-file TV directory also returns `pack` with every source, canonical episode key, destination, and whole-pack block reason
 - `POST /api/filesystem/import/jobs` — queues only a currently executable preview; an ambiguous or colliding TV pack is rejected before a job exists
-- `POST /api/filesystem/import/execute` — stages every file in an executable TV pack, finalizes every unique destination, and records the episode manifest in one catalogue transaction
 
 Multi-file TV import is deliberately all-or-nothing. A directory must identify one
 season, every video must map to one or more episodes in the selected show's persisted

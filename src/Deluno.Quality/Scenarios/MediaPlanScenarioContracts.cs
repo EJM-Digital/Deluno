@@ -76,22 +76,6 @@ public sealed record MediaPlanScenarioCompilation(
     string Summary,
     IReadOnlyList<MediaPlanScenarioBehavior>? Behaviors = null);
 
-public sealed record ApplyMediaPlanScenarioRequest(
-    string? MediaType = null,
-    string? Name = null,
-    bool? IsEnabled = null,
-    string? BasePlanHash = null);
-
-/// <summary>
-/// The server-side result an owner reviews before applying a newer scenario to
-/// an existing Media Plan. The base hash is a concurrency precondition, not a
-/// hidden approval token: it proves the preview was based on the same immutable
-/// plan content that the owner is about to change.
-/// </summary>
-public sealed record MediaPlanScenarioUpdatePreview(
-    MediaPlanScenarioCompilation Scenario,
-    MediaPlanPreview Preview);
-
 /// <summary>
 /// Identifies the one generated plan for a scenario *and* media type. A
 /// scenario can deliberately have Movie and TV variants, so matching the

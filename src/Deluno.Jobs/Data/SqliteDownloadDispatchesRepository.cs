@@ -535,57 +535,6 @@ public sealed class SqliteDownloadDispatchesRepository(
         return (items, nextPageToken);
     }
 
-    public async Task<IReadOnlyList<DownloadDispatchItem>> FindUnresolvedDispatchesAsync(
-        int minAgeMinutes,
-        string? clientId,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        var cutoffTime = timeProvider.GetUtcNow().AddMinutes(-minAgeMinutes);
-
-        await using var connection = await databaseConnectionFactory.OpenConnectionAsync(
-            DelunoDatabaseNames.Jobs,
-            cancellationToken);
-
-        using var command = connection.CreateCommand();
-        command.CommandText =
-            $"""
-            SELECT
-                {DispatchColumns}
-            FROM download_dispatches
-            WHERE
-                grab_status = 'succeeded'
-                AND detected_utc IS NULL
-                AND grab_attempted_utc <= @cutoffTime
-                -- Imported, refused at import, or archived is finished whether
-                -- or not a client webhook ever stamped detected_utc. Without
-                -- this a hand-picked grab stayed 'downloading' for the whole
-                -- seven-day backstop after its import had failed (#507).
-                AND archived_utc IS NULL
-                AND COALESCE(import_status, '') NOT IN ('imported', 'failed')
-            """;
-
-        if (!string.IsNullOrEmpty(clientId))
-        {
-            command.CommandText += " AND download_client_id = @clientId";
-            AddParameter(command, "@clientId", clientId);
-        }
-
-        command.CommandText += " ORDER BY grab_attempted_utc DESC LIMIT @limit";
-
-        AddParameter(command, "@cutoffTime", cutoffTime.ToString("O"));
-        AddParameter(command, "@limit", limit);
-
-        var items = new List<DownloadDispatchItem>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(ReadDispatch(reader));
-        }
-
-        return items;
-    }
-
     public async Task<IReadOnlyList<DownloadInFlight>> ListDownloadsInFlightAsync(
         int limit,
         CancellationToken cancellationToken)

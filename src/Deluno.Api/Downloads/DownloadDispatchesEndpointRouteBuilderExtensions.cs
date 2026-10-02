@@ -25,21 +25,9 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
             .WithName("Get Download Dispatch")
             .WithDescription("Get a single dispatch with full timeline");
 
-        group.MapGet("/unresolved", GetUnresolvedDispatches)
-            .WithName("List Unresolved Dispatches")
-            .WithDescription("Find dispatches that were grabbed but not detected in client");
-
-        group.MapPost("/{dispatchId}/retry", RetryDispatch)
-            .WithName("Retry Dispatch")
-            .WithDescription("Manually retry a failed grab");
-
         group.MapDelete("/{dispatchId}", ArchiveDispatch)
             .WithName("Archive Dispatch")
             .WithDescription("Archive/delete a dispatch (soft delete)");
-
-        group.MapPost("/poll", PollDispatchOutcomes)
-            .WithName("Poll Dispatch Outcomes")
-            .WithDescription("Manually trigger dispatch lifecycle polling and timeout detection");
 
         var imports = endpoints.MapGroup("/api/v1/import-resolutions")
             .WithName("ImportResolutions");
@@ -47,24 +35,6 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         imports.MapGet(string.Empty, GetImportResolutions)
             .WithName("List Import Resolutions")
             .WithDescription("Query import outcomes for external tools");
-
-        var alerts = endpoints.MapGroup("/api/v1/dispatch-alerts")
-            .WithName("DispatchAlerts");
-
-        alerts.MapGet(string.Empty, GetDispatchAlerts)
-            .WithName("List Dispatch Alerts")
-            .WithDescription("Get open alerts for dispatch failures");
-
-        alerts.MapPost("/{alertId}/acknowledge", AcknowledgeAlert)
-            .WithName("Acknowledge Alert")
-            .WithDescription("Mark a dispatch alert as acknowledged");
-
-        var metrics = endpoints.MapGroup("/api/v1/dispatch-metrics")
-            .WithName("DispatchMetrics");
-
-        metrics.MapGet(string.Empty, GetDispatchMetrics)
-            .WithName("Get Dispatch Metrics")
-            .WithDescription("Get operational metrics for dispatch lifecycle");
 
         return endpoints;
     }
@@ -135,131 +105,6 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         });
     }
 
-    private static async Task<IResult> GetUnresolvedDispatches(
-        IDownloadDispatchesRepository repository,
-        int minAgeMinutes = 30,
-        string? clientId = null,
-        int limit = 100,
-        CancellationToken cancellationToken = default)
-    {
-        var unresolved = await repository.FindUnresolvedDispatchesAsync(
-            minAgeMinutes,
-            clientId,
-            limit,
-            cancellationToken);
-
-        return Results.Ok(new
-        {
-            unresolvedCount = unresolved.Count,
-            dispatches = unresolved.Select(d => new
-            {
-                d.Id,
-                d.ReleaseName,
-                d.DownloadClientName,
-                d.GrabStatus,
-                d.GrabAttemptedUtc,
-                minutesSinceGrab = d.GrabAttemptedUtc.HasValue
-                    ? (int)(DateTimeOffset.UtcNow - d.GrabAttemptedUtc.Value).TotalMinutes
-                    : 0,
-                notes = "Grab succeeded but never appeared in client. Possible: client restarted, release name doesn't match client item, torrent was immediately removed."
-            })
-        });
-    }
-
-    private static async Task<IResult> RetryDispatch(
-        string dispatchId,
-        IDownloadDispatchesRepository repository,
-        IJobScheduler jobScheduler,
-        [FromServices] ILibrariesRepository libraries,
-        TimeProvider timeProvider,
-        CancellationToken cancellationToken)
-    {
-        var dispatch = await repository.GetDispatchAsync(dispatchId, cancellationToken);
-        if (dispatch is null)
-        {
-            return Results.NotFound(new { error = "Dispatch not found" });
-        }
-
-        if (dispatch.GrabStatus != "failed")
-        {
-            return Results.BadRequest(new
-            {
-                code = "CANNOT_RETRY",
-                message = $"Cannot retry dispatch with status '{dispatch.GrabStatus}'. Only 'failed' grabs can be retried."
-            });
-        }
-
-        if (!DispatchTargets.HasTitle(dispatch.EntityType))
-        {
-            // #1062: a release chosen on Search has no title to search for.
-            return Results.BadRequest(new
-            {
-                code = "CHOSEN_ON_SEARCH",
-                message = DispatchTargets.ChosenOnSearchNote
-            });
-        }
-
-        var library = (await libraries.ListLibrariesAsync(cancellationToken))
-            .FirstOrDefault(item => string.Equals(item.Id, dispatch.LibraryId, StringComparison.Ordinal));
-        if (library is null)
-        {
-            return Results.BadRequest(new
-            {
-                code = "LIBRARY_NOT_FOUND",
-                message = "The library this download was for no longer exists, so there is no title to search for."
-            });
-        }
-
-        // A search aimed at this title. The payload used to carry no target, so
-        // with one item per run the search took whichever wanted title came
-        // first in the library - rarely the one whose grab failed (#621).
-        var scheduledUtc = timeProvider.GetUtcNow();
-        var jobType = LibrarySearchJobTypes.For(dispatch.MediaType);
-        var payload = JsonSerializer.Serialize(new
-        {
-            libraryId = library.Id,
-            libraryName = library.Name,
-            mediaType = jobType == LibrarySearchJobTypes.Tv ? "tv" : "movies",
-            checkMissing = true,
-            checkUpgrades = true,
-            maxItems = 1,
-            retryDelayHours = library.RetryDelayHours,
-            triggeredBy = "manual",
-            targetEntityId = dispatch.EntityId
-        });
-
-        var job = await jobScheduler.EnqueueAsync(
-            new EnqueueJobRequest(
-                JobType: jobType,
-                Source: "download_dispatch.retry",
-                PayloadJson: payload,
-                RelatedEntityType: "download_dispatch",
-                RelatedEntityId: dispatch.Id,
-                ScheduledUtc: scheduledUtc,
-                IdempotencyKey: $"dispatch-retry:{dispatch.Id}:{scheduledUtc:yyyyMMddHHmmss}"),
-            cancellationToken);
-
-        await repository.RecordTimelineEventAsync(
-            dispatch.Id,
-            "manual_retry_requested",
-            JsonSerializer.Serialize(new
-            {
-                jobId = job.Id,
-                scheduledUtc,
-                libraryId = dispatch.LibraryId
-            }),
-            cancellationToken);
-
-        var response = new
-        {
-            dispatchId,
-            jobId = job.Id,
-            message = $"Deluno is searching again for the title {dispatch.ReleaseName} was for."
-        };
-
-        return Results.Json(response, statusCode: StatusCodes.Status202Accepted);
-    }
-
     private static async Task<IResult> ArchiveDispatch(
         string dispatchId,
         IDownloadDispatchesRepository repository,
@@ -279,14 +124,6 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         // them, so left open they are a count nothing can bring down (#537).
         await alertRepository.AcknowledgeAlertsForDispatchAsync(dispatchId, cancellationToken);
         return Results.NoContent();
-    }
-
-    private static async Task<IResult> PollDispatchOutcomes(
-        IDownloadDispatchPollingService pollingService,
-        CancellationToken cancellationToken = default)
-    {
-        var report = await pollingService.PollAsync(cancellationToken);
-        return Results.Json(report, statusCode: StatusCodes.Status200OK);
     }
 
     private static async Task<IResult> GetImportResolutions(
@@ -352,67 +189,4 @@ public static class DownloadDispatchesEndpointRouteBuilderExtensions
         });
     }
 
-    private static async Task<IResult> GetDispatchAlerts(
-        [FromServices] IDispatchAlertRepository alertRepository,
-        string? severity = null,
-        int limit = 50,
-        CancellationToken cancellationToken = default)
-    {
-        var alerts = await alertRepository.GetOpenAlertsAsync(severity, limit, cancellationToken);
-
-        return Results.Ok(new
-        {
-            openCount = alerts.Count,
-            alerts = alerts.Select(a => new
-            {
-                a.Id,
-                a.DispatchId,
-                a.Title,
-                a.Summary,
-                a.AlertKind,
-                a.Severity,
-                a.Metadata,
-                a.DetectedUtc
-            })
-        });
-    }
-
-    private static async Task<IResult> AcknowledgeAlert(
-        string alertId,
-        [FromServices] IDispatchAlertRepository alertRepository,
-        CancellationToken cancellationToken)
-    {
-        var acknowledged = await alertRepository.AcknowledgeAlertAsync(alertId, cancellationToken);
-
-        if (!acknowledged)
-        {
-            return Results.NotFound(new { error = "Alert not found" });
-        }
-
-        return Results.NoContent();
-    }
-
-    private static async Task<IResult> GetDispatchMetrics(
-        [FromServices] IDispatchMetricsRepository metricsRepository,
-        CancellationToken cancellationToken)
-    {
-        var metrics = await metricsRepository.GetMetricsAsync(cancellationToken);
-
-        return Results.Ok(new
-        {
-            metrics.TotalDispatchesRecorded,
-            metrics.SuccessfulGrabs,
-            metrics.FailedGrabs,
-            metrics.DetectedDownloads,
-            metrics.SuccessfulImports,
-            metrics.FailedImports,
-            metrics.ActiveDispatchesCount,
-            metrics.RecoveryCasesOpenCount,
-            metrics.AverageGrabToDetection,
-            metrics.AverageDetectionToImport,
-            metrics.GrabFailuresByClient,
-            metrics.ImportFailuresByKind,
-            metrics.ComputedUtc
-        });
-    }
 }

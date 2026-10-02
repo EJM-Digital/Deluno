@@ -208,29 +208,6 @@ public sealed class DownloadDispatchesApiTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task GetUnresolvedDispatches_returns_grabs_not_detected()
-    {
-        var dispatchId = Guid.CreateVersion7().ToString("N");
-        await InsertDispatchAsync(dispatchId, "movies-main", "123", "Test.Movie.2024.1080p");
-
-        await _repository.RecordGrabAsync(
-            dispatchId: dispatchId,
-            grabStatus: "succeeded",
-            grabResponseCode: 200,
-            grabMessage: "ok",
-            grabFailureCode: null,
-            grabResponseJson: null,
-            CancellationToken.None);
-
-        var response = await _client.GetAsync("/api/v1/download-dispatches/unresolved?minAgeMinutes=0");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
-        var dispatches = json.RootElement.GetProperty("dispatches");
-        Assert.True(dispatches.GetArrayLength() > 0);
-    }
-
-    [Fact]
     public async Task ArchiveDispatch_returns_204()
     {
         var dispatchId = Guid.CreateVersion7().ToString("N");

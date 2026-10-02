@@ -254,21 +254,6 @@ public static class IntakeEndpointRouteBuilderExtensions
             }
         });
 
-        intakeSources.MapGet("{id}/exclusions", async (
-            string id,
-            HttpContext httpContext,
-            [FromServices] IIntakeRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            return Results.Ok(await repository.ListActiveIntakeListExclusionsAsync(id, cancellationToken));
-        });
-
         intakeSources.MapPost("{id}/exclude-preview", async (
             string id,
             HttpContext httpContext,

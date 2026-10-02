@@ -479,33 +479,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.Ok(item);
         });
 
-        movies.MapPost("/import-recovery/{id}/resolve", async (
-            string id,
-            HttpContext httpContext,
-            IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
-            IDownloadDispatchesRepository dispatchesRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var updated = await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
-            if (updated is null)
-            {
-                return Results.NotFound();
-            }
-
-            // The alert recorded beside this case settles with it (#537).
-            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
-
-            await repository.AddImportRecoveryEventAsync(id, "case_resolved", "Case marked resolved by user.", null, cancellationToken);
-            return Results.Ok(updated);
-        });
-
         movies.MapPost("/import-recovery/{id}/dismiss", async (
             string id,
             HttpContext httpContext,
@@ -797,22 +770,6 @@ public static class MoviesEndpointRouteBuilderExtensions
                 planVersion = snapshot?.PlanVersion,
                 planHash = snapshot?.PlanHash
             });
-        });
-
-        movies.MapGet("/{id}/preference-evaluation", async (
-            string id,
-            string? libraryId,
-            string? fileIdentity,
-            IMediaStateRepository mediaStateRepository,
-            CancellationToken cancellationToken) =>
-        {
-            var snapshot = await mediaStateRepository.GetLatestPreferenceEvaluationSnapshotAsync(
-                MediaKind.Movie,
-                id,
-                libraryId,
-                fileIdentity,
-                cancellationToken);
-            return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
         });
 
         movies.MapGet("/{id}", async (
@@ -1530,66 +1487,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             return Results.NoContent();
         });
 
-        movies.MapPost("/{id}/evaluate-candidate", async (
-            string id,
-            [FromBody] EvaluateCandidateRequest request,
-            IMediaStateRepository mediaStateRepository,
-            ILibrariesRepository platformSettingsRepository,
-            IQualityRepository qualityRepository,
-            IMovieWorkflowService workflowService,
-            CancellationToken cancellationToken) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.CandidateQuality))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["candidateQuality"] = ["Provide the quality of the candidate release."]
-                });
-            }
-
-            var wantedItem = (await mediaStateRepository.ListWantedByIdsAsync(
-                    MediaKind.Movie,
-                    [id],
-                    cancellationToken))
-                .OrderByDescending(item => item.UpdatedUtc)
-                .ThenBy(item => item.LibraryId, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (wantedItem is null)
-            {
-                return Results.NotFound();
-            }
-
-            var libraries = await platformSettingsRepository.ListLibrariesAsync(cancellationToken);
-            var library = libraries.FirstOrDefault(item => item.Id == wantedItem.LibraryId);
-
-            QualityProfileItem? profile = null;
-            if (library?.QualityProfileId is not null)
-            {
-                var profiles = await qualityRepository.ListQualityProfilesAsync(cancellationToken);
-                profile = profiles.FirstOrDefault(item => item.Id == library.QualityProfileId);
-            }
-
-            var evaluation = workflowService.EvaluateCandidate(new MovieCandidateEvaluationInput(
-                MovieId: id,
-                CurrentQuality: wantedItem.CurrentQuality,
-                CandidateQuality: request.CandidateQuality.Trim(),
-                TargetQuality: wantedItem.TargetQuality,
-                UpgradeUntilCutoff: profile?.UpgradeUntilCutoff ?? true,
-                UpgradeUnknownItems: profile?.UpgradeUnknownItems ?? false,
-                PreventLowerQualityReplacements: wantedItem.PreventLowerQualityReplacements,
-                Profile: profile));
-
-            return Results.Ok(new
-            {
-                evaluation.WantedStatus,
-                evaluation.Reason,
-                evaluation.IsReplacementAllowed,
-                evaluation.QualityDelta,
-                evaluation.CurrentQuality,
-                evaluation.TargetQuality
-            });
-        });
-
         movies.MapPost("/{id}/metadata/refresh", async (
             string id,
             HttpContext httpContext,
@@ -1869,37 +1766,6 @@ public static class MoviesEndpointRouteBuilderExtensions
             if (updated is null) return Results.NotFound();
             await realtimeEventPublisher.PublishEntityChangedAsync("Movie", updated.Id, cancellationToken);
             return Results.Ok(updated);
-        });
-
-        movies.MapPost("/{id}/metadata/jobs", async (
-            string id,
-            HttpContext httpContext,
-            IMovieCatalogRepository repository,
-            IJobScheduler jobScheduler,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            var movie = await repository.GetByIdAsync(id, cancellationToken);
-            if (movie is null)
-            {
-                return Results.NotFound();
-            }
-
-            var job = await jobScheduler.EnqueueAsync(
-                new EnqueueJobRequest(
-                    JobType: "movies.metadata.refresh",
-                    Source: "metadata",
-                    PayloadJson: JsonSerializer.Serialize(new { movie.Id, movie.Title, movie.ReleaseYear }),
-                    RelatedEntityType: "movie",
-                    RelatedEntityId: movie.Id),
-                cancellationToken);
-
-            return Results.Ok(job);
         });
 
         movies.MapPut("/{id}/metadata/override", async (
@@ -2267,15 +2133,6 @@ public static class MoviesEndpointRouteBuilderExtensions
           single feature named "duplicates" was structurally incapable of finding
           duplicates (#419).
         */
-        movies.MapGet("/duplicates", async (
-            IMovieCatalogRepository repository,
-            CancellationToken cancellationToken) =>
-        {
-            var sameFilmTwice = await repository.FindDuplicateTitlesAsync(cancellationToken);
-            var acrossLibraries = await repository.FindCrossLibraryDuplicatesAsync(cancellationToken);
-            return Results.Ok(new MovieDuplicateReport(sameFilmTwice, acrossLibraries));
-        });
-
         /*
           The point a film becomes worth searching for, set across a selection.
 
@@ -2342,34 +2199,6 @@ public static class MoviesEndpointRouteBuilderExtensions
           job would have been a second way to do the same thing, racing the
           first (DESIGN-002 rule 3).
         */
-        movies.MapPost("/bulk/subtitle-rescan", async (
-            HttpContext httpContext,
-            [FromBody] BulkSubtitleRescanRequest request,
-            IMediaSubtitleRepository subtitles,
-            CancellationToken cancellationToken) =>
-        {
-            var denied = await UserAuthorization.RequireAuthenticatedAsync(httpContext, cancellationToken);
-            if (denied is not null)
-            {
-                return denied;
-            }
-
-            if (request.MovieIds is not { Count: > 0 })
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["movieIds"] = ["Choose at least one title before re-reading subtitles."]
-                });
-            }
-
-            var cleared = await subtitles.ClearScansAsync(MediaKind.Movie, request.MovieIds, cancellationToken);
-
-            // "queued" rather than "done": the pass that re-reads them runs on
-            // the library's own schedule, and saying otherwise would promise
-            // something this request has not made happen.
-            return Results.Ok(new { queued = request.MovieIds.Count, cleared });
-        });
-
         /*
           #922's one-click "This is out of sync": a person's own judgment,
           fed through #897's mechanism. Deletes the file, blocklists it so it
@@ -3973,9 +3802,6 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record UpdateReplacementProtectionRequest(
         bool PreventLowerQualityReplacements);
 
-    private sealed record EvaluateCandidateRequest(
-        string CandidateQuality);
-
     private sealed record BulkReassignLibraryRequest(
         IReadOnlyList<string>? MovieIds,
         string? FromLibraryId,
@@ -3985,8 +3811,6 @@ public static class MoviesEndpointRouteBuilderExtensions
     private sealed record BulkMinimumAvailabilityRequest(
         IReadOnlyList<string>? MovieIds,
         string? MinimumAvailability);
-
-    private sealed record BulkSubtitleRescanRequest(IReadOnlyList<string>? MovieIds);
 
     private sealed record SetSubtitleLanguageOverrideRequest(IReadOnlyList<string>? Languages, string? Mode);
 
