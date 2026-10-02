@@ -12,7 +12,7 @@
  * (/api/series/search-history) history endpoints are unchanged; this screen
  * reads the same underlying events through a separate, wider aggregation.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eraser, RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
@@ -20,7 +20,8 @@ import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFacts } from "../components/ui/drawer";
 import { FILTER_MENU_TRIGGER } from "../components/ui/filter-chips";
 import { MenuSelect } from "../components/ui/menu-select";
-import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK, type ListColumn } from "../components/ui/list-card";
+import { useListColumns } from "../lib/use-list-columns";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
@@ -62,6 +63,15 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   "auth-failure": "Auth failure"
 };
 
+// The feed loads 50 at a time, so the server does the sorting (#1119): a column header asks for the
+// whole feed in that order, and "Show more" carries on in it.
+const HISTORY_COLUMNS: Array<ListColumn<IndexerHistoryItem>> = [
+  { id: "event", label: "Event", sort: "event" },
+  { id: "indexer", label: "Indexer", sort: "indexer" },
+  { id: "outcome", label: "Outcome", width: LIST_TRACK.status, mobile: true, sort: "outcome" },
+  { id: "when", label: "When", width: "180px", sort: "when" }
+];
+
 function eventTone(item: IndexerHistoryItem): Tone {
   if (item.eventType === "auth-failure") return "bad";
   if (item.outcome === "failed") return "warn";
@@ -92,11 +102,25 @@ export function IndexerHistoryPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
+  const list = useListColumns("indexer-history", HISTORY_COLUMNS, items, { serverSort: true });
+  const sortKey = list.sort && list.serverSortKey ? list.serverSortKey : "";
+  const sortDirection = list.sort?.direction ?? "asc";
+  const sortSignature = sortKey ? `${sortKey}:${sortDirection}` : "";
+  const requestedSort = useRef("");
+
+  function addSort(params: URLSearchParams) {
+    if (sortKey) {
+      params.set("sortBy", sortKey);
+      params.set("sortDirection", sortDirection);
+    }
+  }
+
   async function applyFilters(nextEventType: string, nextIndexerName: string) {
     try {
       const params = new URLSearchParams({ pageSize: "50" });
       if (nextEventType) params.set("eventType", nextEventType);
       if (nextIndexerName.trim()) params.set("indexerName", nextIndexerName.trim());
+      addSort(params);
       const page = await fetchPage<IndexerHistoryItem>(`/api/indexer-history?${params.toString()}`);
       setItems(page.items);
       setNextPageToken(page.nextPageToken);
@@ -104,6 +128,14 @@ export function IndexerHistoryPage() {
       toast.error("Indexer history could not be loaded.");
     }
   }
+
+  // A new sort (or one remembered from last time) starts the feed again from the top, in that order.
+  useEffect(() => {
+    if (requestedSort.current === sortSignature) return;
+    requestedSort.current = sortSignature;
+    void applyFilters(eventType, indexerName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortSignature]);
 
   // The indexer search is typed into the card's header, so it asks again a moment after the typing stops.
   const indexerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +152,7 @@ export function IndexerHistoryPage() {
       const params = new URLSearchParams({ pageSize: "50", pageToken: nextPageToken });
       if (eventType) params.set("eventType", eventType);
       if (indexerName.trim()) params.set("indexerName", indexerName.trim());
+      addSort(params);
       const page = await fetchPage<IndexerHistoryItem>(`/api/indexer-history?${params.toString()}`);
       setItems((current) => [...current, ...page.items]);
       setNextPageToken(page.nextPageToken);
@@ -179,8 +212,8 @@ export function IndexerHistoryPage() {
             description="RSS syncs, searches, grabs and auth failures across every indexer show up here as they happen."
           />
         ) : (
-          <ListTable columns={[{ label: "Event" }, { label: "Indexer" }, { label: "Outcome", width: LIST_TRACK.status, mobile: true }, { label: "When", width: "180px" }]}>
-            {items.map((item) => (
+          <ListTable list={list}>
+            {() => items.map((item) => (
               <ListRow key={item.id} onClick={() => setSelected(item)}>
                 <ListNameCell name={EVENT_TYPE_LABELS[item.eventType] ?? item.eventType} sub={item.message} />
                 <ListCell primary={item.indexerName} />
