@@ -927,14 +927,14 @@ html,
 }
 
 /* The mockup's own body type: 14px at the browser's normal line height, its 12px gap between cards, and its card
-   titles at the browser's bold. */
+   titles semibold (600), as Weir's (2 Oct 2026). */
 .dash-mockup-size {
   font-size: 14px;
   line-height: normal;
   --grid-gap: 12px;
 }
 .dash-mockup-size h2 {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /*
