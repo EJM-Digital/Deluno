@@ -53,19 +53,19 @@ export function LibraryActions({
         Add {singular}
       </Button>
       {showSeasonPassLink ? (
-        <Button asChild size="sm" variant="outline" className="gap-2">
+        <Button asChild size="sm" variant="outline" className="w-[var(--library-toolbar-height)] gap-2 px-0 min-[2100px]:w-auto min-[2100px]:px-3">
           {/*
-            The label hides below 1800px and the icon carries it alone with
-            the tooltip, same as the refresh button beside it. TV is the only
-            shelf with this extra action, so at 1669px it was the one thing
-            standing between the row fitting on the search line (like Movies)
-            and wrapping onto a fourth line of its own (#959) — the aria-label
-            keeps the accessible name "Season Pass" whether or not the text is
-            painted.
+            The label hides below 2100px and the icon carries it alone with
+            the tooltip, a square the height of every button beside it, like
+            the refresh button. TV is the only shelf with this extra action, so
+            with its label it is the one thing that tips the row onto a line
+            of its own where Movies' fits (#959; measured 2 Oct 2026: it wraps
+            up to 2050px and fits from 2100). The aria-label keeps the
+            accessible name "Season Pass" whether or not the text is painted.
           */}
           <Link to="/tv/season-pass" title="Bulk-monitor seasons across every show" aria-label="Season Pass">
             <CalendarRange className="h-4 w-4" />
-            <span className="hidden min-[1800px]:inline">Season Pass</span>
+            <span className="hidden min-[2100px]:inline">Season Pass</span>
           </Link>
         </Button>
       ) : null}
