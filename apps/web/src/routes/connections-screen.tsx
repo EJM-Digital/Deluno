@@ -956,6 +956,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             indexers.length > 0 ? (
               <div className="flex min-w-0 items-center gap-2">
                 <IndexerFilterChips indexers={indexers} filters={indexerFilters} onChange={setIndexerFilters} />
+                <IndexerFilterBar indexers={indexers} filters={indexerFilters} onChange={setIndexerFilters} />
                 <Button type="button" variant={selectMode ? "secondary" : "ghost"} size="sm" onClick={toggleSelectMode}>
                   <ListChecks className="h-3.5 w-3.5" />
                   {selectMode ? "Done" : "Select"}
@@ -977,7 +978,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             />
           ) : (
             <>
-              <IndexerFilterBar indexers={indexers} filters={indexerFilters} onChange={setIndexerFilters} />
               {selectMode ? (
                 <IndexerBulkBar
                   count={selectedIndexerIds.size}
