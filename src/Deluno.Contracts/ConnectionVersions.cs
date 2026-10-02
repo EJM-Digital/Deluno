@@ -10,7 +10,8 @@ public sealed record ConnectionVersionRow(
     string Id,
     string? Project,
     string Version,
-    DateTimeOffset ReadUtc);
+    DateTimeOffset ReadUtc,
+    string? DismissedVersion = null);
 
 /// <summary>What the Connections screens show beside a connection's name: its version, and the newer stable one when it is out.</summary>
 public sealed record ConnectionVersionItem(
@@ -31,6 +32,12 @@ public interface IConnectionVersionStore
     Task RecordAsync(string kind, string id, string? project, string? version, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ConnectionVersionRow>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// #1118: remembers that the person dismissed the notice for <paramref name="version"/> on this connection. Only a
+    /// newer version brings the notice back. False when nothing is stored for the connection.
+    /// </summary>
+    Task<bool> DismissAsync(string kind, string id, string version, CancellationToken cancellationToken);
 }
 
 /// <summary>The newest stable release of a project, and where to read about it.</summary>

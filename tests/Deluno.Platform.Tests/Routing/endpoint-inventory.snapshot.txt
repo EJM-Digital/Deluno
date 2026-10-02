@@ -70,6 +70,7 @@ GET /api/command/
 GET /api/command/{id}
 GET /api/companion-tools/
 GET /api/connections/checks
+GET /api/connections/updates
 GET /api/connections/versions
 GET /api/custom-formats/
 GET /api/custom-formats/export
@@ -298,6 +299,8 @@ POST /api/command/
 POST /api/companion-tools/install
 POST /api/connections/test-all
 POST /api/connections/{kind}/{id}/test
+POST /api/connections/{kind}/{id}/update
+POST /api/connections/{kind}/{id}/version/dismiss
 POST /api/custom-formats/
 POST /api/custom-formats/dry-run
 POST /api/custom-formats/import

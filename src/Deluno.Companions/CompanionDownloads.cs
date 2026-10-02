@@ -46,6 +46,10 @@ public static class CompanionCatalog
         MustBeSigned: true,
         MinimumBytes: 20_000_000);
 
+    /// <summary>The versions the pinned artifacts above are (#1118: compared with what is installed before an update is offered).</summary>
+    public const string QbittorrentVersion = "5.2.1";
+    public const string SabnzbdVersion = "5.0.4";
+
     public const string WeirRepository = "jampat000/Weir";
     public const string WeirSetupAsset = "Weir-win-Setup.exe";
     public const string WeirChecksumsAsset = "SHA256SUMS.txt";

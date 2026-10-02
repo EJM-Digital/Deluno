@@ -41,12 +41,49 @@ public interface ICompanionTool
     Task RunAsync(CompanionRunContext context, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// A tool Deluno installed that it can also bring up to date (#1118): the same download, checksum and install
+/// path as the first install, then a restart. <see cref="Project"/> names the release feed it is compared with.
+/// </summary>
+public interface IUpdatableCompanion : ICompanionTool
+{
+    string Project { get; }
+
+    /// <summary>The version Deluno installs, or null when it installs whatever the project's latest release is (Weir).</summary>
+    string? PinnedVersion { get; }
+
+    /// <summary>Downloads the build, refuses it unless its checksum matches, installs it and starts the tool again.</summary>
+    Task UpdateAsync(CompanionRunContext context, CancellationToken cancellationToken);
+}
+
 /// <summary>What the download-client tools share: find the client in Deluno, add it, and test it the way a person would.</summary>
 public abstract class DownloadClientCompanion(
     ICompanionSystem system,
     IConnectionsRepository connections,
-    IInstalledClientLogins logins) : ICompanionTool
+    IInstalledClientLogins logins) : IUpdatableCompanion
 {
+    public abstract string Project { get; }
+
+    public abstract string? PinnedVersion { get; }
+
+    public abstract Task UpdateAsync(CompanionRunContext context, CancellationToken cancellationToken);
+
+    /// <summary>Downloads the pinned build and checks it, closes the running copy, installs the build over it (elevated, checked again) and leaves it to the caller to start it again.</summary>
+    protected async Task ReplaceAsync(CompanionArtifact artifact, string installedPath, string processName, ICompanionDownloader downloader, CompanionRunContext context, CancellationToken cancellationToken)
+    {
+        if (!IsInstalled())
+        {
+            throw new CompanionStepException($"Deluno could not find {Name} on this computer to update it.");
+        }
+
+        // Downloaded and checked first: a build that does not match is refused while the app is still running.
+        context.Progress.Report("download", $"Downloading {Name} {PinnedVersion} from its official release and checking it is that build.");
+        var installer = await downloader.DownloadAsync(artifact, context.DownloadFolder, cancellationToken);
+        context.Progress.Report("stop", $"Closing {Name}. Its downloads pause until it is back.");
+        System.StopProcess(processName);
+        await InstallDownloadedAsync(artifact, installer, installedPath, context, cancellationToken);
+    }
+
     public abstract string Id { get; }
 
     public abstract string Name { get; }
@@ -74,7 +111,11 @@ public abstract class DownloadClientCompanion(
     {
         context.Progress.Report("download", $"Downloading {Name} from its official release and checking it is that build.");
         var installer = await downloader.DownloadAsync(artifact, context.DownloadFolder, cancellationToken);
+        await InstallDownloadedAsync(artifact, installer, installedPath, context, cancellationToken);
+    }
 
+    private async Task InstallDownloadedAsync(CompanionArtifact artifact, string installer, string installedPath, CompanionRunContext context, CancellationToken cancellationToken)
+    {
         context.Progress.Report("install", $"Installing {Name}. Windows will ask for permission, because it installs for everyone on this computer.");
         // Never straight from the download folder: the installer is copied into a fresh folder only administrators
         // can write, checked there against the pinned hash, run from there, and the folder is deleted (#1061).
@@ -132,6 +173,18 @@ public sealed class QbittorrentCompanion(
     public override string Description => "Torrent client. Installed for this computer, started when you sign in, with a Web UI only this computer can reach.";
 
     protected override string Protocol => "qbittorrent";
+
+    public override string Project => Deluno.Connections.Versions.ConnectionProjects.Qbittorrent;
+
+    public override string? PinnedVersion => CompanionCatalog.QbittorrentVersion;
+
+    public override async Task UpdateAsync(CompanionRunContext context, CancellationToken cancellationToken)
+    {
+        await ReplaceAsync(CompanionCatalog.Qbittorrent, Executable, "qbittorrent", downloader, context, cancellationToken);
+        context.Progress.Report("start", $"Starting {Name} again.");
+        System.Start(Executable, "--confirm-legal-notice");
+    }
+
 
     private string Executable => Path.Combine(System.ProgramFiles, "qBittorrent", "qbittorrent.exe");
 
@@ -202,6 +255,18 @@ public sealed class SabnzbdCompanion(
 
     protected override string Protocol => "sabnzbd";
 
+    public override string Project => Deluno.Connections.Versions.ConnectionProjects.Sabnzbd;
+
+    public override string? PinnedVersion => CompanionCatalog.SabnzbdVersion;
+
+    public override async Task UpdateAsync(CompanionRunContext context, CancellationToken cancellationToken)
+    {
+        await ReplaceAsync(CompanionCatalog.Sabnzbd, Executable, "SABnzbd", downloader, context, cancellationToken);
+        context.Progress.Report("start", $"Starting {Name} again.");
+        System.Start(Executable, $"-f \"{SettingsPath}\" -b 0");
+    }
+
+
     private string Executable => Path.Combine(System.ProgramFiles, "SABnzbd", "SABnzbd.exe");
 
     private string SettingsPath => Path.Combine(System.LocalAppData, "sabnzbd", "sabnzbd.ini");
@@ -264,7 +329,7 @@ public sealed class WeirCompanion(
     IProcessorConnectionService processorConnections,
     ISecurityRepository security,
     ICompanionDownloader downloader,
-    IHttpClientFactory httpClientFactory) : ICompanionTool, IWeirConnector
+    IHttpClientFactory httpClientFactory) : IUpdatableCompanion, IWeirConnector
 {
     /// <summary>Weir's own default port (W-E-I-R on a phone keypad).</summary>
     private const int WeirDefaultPort = 9347;
@@ -277,6 +342,45 @@ public sealed class WeirCompanion(
     public string Name => "Weir";
 
     public string Description => "Cleans finished downloads before Deluno imports them. Installed for your Windows account; no administrator permission needed.";
+
+    public string Project => Deluno.Connections.Versions.ConnectionProjects.Weir;
+
+    /// <summary>Weir is installed from its latest release, not a build pinned in Deluno.</summary>
+    public string? PinnedVersion => null;
+
+    /// <summary>
+    /// #1118: downloads Weir's latest release, checks it against that release's SHA256SUMS, installs it silently
+    /// and starts Weir again if it is not answering. A checksum that does not match stops it before anything runs.
+    /// </summary>
+    public async Task UpdateAsync(CompanionRunContext context, CancellationToken cancellationToken)
+    {
+        if (!IsInstalled())
+        {
+            throw new CompanionStepException($"Deluno could not find {Name} on this computer to update it.");
+        }
+
+        var artifact = await LatestReleaseAsync(context, cancellationToken);
+        context.Progress.Report("download", $"Downloading {Name} {artifact.FileName} and checking it against the checksum its release publishes.");
+        var setup = await downloader.DownloadAsync(artifact, context.DownloadFolder, cancellationToken);
+        context.Progress.Report("install", $"Installing the new {Name} for your Windows account. It restarts when it is done.");
+        var result = await system.RunAsync(setup, "--silent", cancellationToken);
+        try
+        {
+            File.Delete(setup);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        if (result.ExitCode != 0)
+        {
+            throw new CompanionStepException($"The {Name} installer finished with code {result.ExitCode}, so {Name} was not updated.");
+        }
+
+        context.Progress.Report("start", $"Waiting for {Name} to start again.");
+        _ = await FindRunningAsync(null, cancellationToken)
+            ?? throw new CompanionStepException($"{Name} was updated but did not start answering. Start it from the Start menu.");
+    }
 
     private string Executable => Path.Combine(system.LocalAppData, "Weir", "Weir.exe");
 

@@ -27,6 +27,7 @@ public static class CompanionModule
         services.AddScoped<DownloadClientConnector>();
         services.AddScoped<ICompanionTool, SabnzbdCompanion>();
         services.AddScoped<ICompanionTool, QbittorrentCompanion>();
+        services.AddScoped<ConnectionUpdateService>();
         services.AddScoped<WeirCompanion>();
         services.AddScoped<ICompanionTool>(sp => sp.GetRequiredService<WeirCompanion>());
         services.AddScoped<IWeirConnector>(sp => sp.GetRequiredService<WeirCompanion>());
@@ -69,6 +70,44 @@ public static class CompanionModule
             return service.TryStart(ids, baseUrl)
                 ? Results.Accepted("/api/companion-tools")
                 : Results.Conflict(new { message = "Tools are already being set up. Wait for that to finish." });
+        });
+
+        // #1118: a newer version of a connected app is a notice you can act on.
+        var updates = endpoints.MapGroup("/api/connections").RequireAuthorization(DelunoAuthorizationPolicies.System);
+
+        updates.MapGet("updates", async ([FromServices] ConnectionUpdateService service, CancellationToken cancellationToken)
+            => Results.Ok(await service.ListAsync(cancellationToken)));
+
+        updates.MapPost("{kind}/{id}/version/dismiss", async (
+            string kind,
+            string id,
+            [FromServices] ConnectionUpdateService service,
+            CancellationToken cancellationToken)
+            => await service.DismissAsync(kind, id, cancellationToken) ? Results.NoContent() : Results.NotFound());
+
+        updates.MapPost("{kind}/{id}/update", async (
+            HttpContext httpContext,
+            string kind,
+            string id,
+            [FromServices] ConnectionUpdateService service,
+            CancellationToken cancellationToken) =>
+        {
+            var availability = CompanionToolsService.Availability();
+            if (!availability.Available)
+            {
+                return Results.Conflict(new { message = availability.Reason });
+            }
+
+            // Windows' permission prompt appears on this computer's screen. Asked for from another device, nobody
+            // would be there to answer it.
+            var remote = httpContext.Connection.RemoteIpAddress;
+            if (remote is not null && !IPAddress.IsLoopback(remote))
+            {
+                return Results.Conflict(new { message = "Open Deluno on the computer it runs on to update: Windows asks for permission on that screen." });
+            }
+
+            var baseUrl = $"{httpContext.Request.Scheme}://127.0.0.1:{httpContext.Connection.LocalPort}{httpContext.Request.PathBase}";
+            return Results.Ok(await service.UpdateNowAsync(kind, id, baseUrl, cancellationToken));
         });
 
         return endpoints;

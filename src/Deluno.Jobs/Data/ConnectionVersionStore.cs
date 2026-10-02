@@ -52,7 +52,7 @@ public sealed class ConnectionVersionStore(
         var items = new List<ConnectionVersionRow>();
         await using var connection = await databases.OpenReadOnlyConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT kind, connection_id, project, version, read_utc FROM connection_versions;";
+        command.CommandText = "SELECT kind, connection_id, project, version, read_utc, dismissed_version FROM connection_versions;";
         using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -61,10 +61,28 @@ public sealed class ConnectionVersionStore(
                 reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2),
                 reader.GetString(3),
-                DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
+                DateTimeOffset.Parse(reader.GetString(4), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                reader.IsDBNull(5) ? null : reader.GetString(5)));
         }
 
         return items;
+    }
+
+    public async Task<bool> DismissAsync(string kind, string id, string version, CancellationToken cancellationToken)
+    {
+        var text = version.Trim();
+        if (text.Length is 0 or > 64)
+        {
+            return false;
+        }
+
+        await using var connection = await databases.OpenConnectionAsync(DelunoDatabaseNames.Jobs, cancellationToken);
+        using var write = connection.CreateCommand();
+        write.CommandText = "UPDATE connection_versions SET dismissed_version = @version WHERE kind = @kind AND connection_id = @id;";
+        Add(write, "@kind", kind);
+        Add(write, "@id", id);
+        Add(write, "@version", text);
+        return await write.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
     private static void Add(System.Data.Common.DbCommand command, string name, object? value)
