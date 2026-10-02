@@ -8,7 +8,7 @@
  *
  * Contracts: GET /api/series/calendar?from&to, GET /api/movies/calendar?from&to.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { defineSources, sourceLoader, useRouteSources } from "../lib/route-cache";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
@@ -155,6 +155,44 @@ const DEFAULT_CALENDAR_OPTIONS: CalendarOptions = {
   showPhysical: true
 };
 
+/**
+ * Schedule keeps what you chose when you leave it and come back (the owner, 2 Oct 2026): the range, Calendar or List and
+ * the options for good, and where you stepped to for as long as the tab is open, so a fresh visit opens on today.
+ */
+const SCHEDULE_CHOICES_KEY = "deluno-schedule-choices";
+const SCHEDULE_OFFSET_KEY = "deluno-schedule-offset";
+const SCOPES: readonly Scope[] = ["day", "week", "month", "agenda"];
+
+interface ScheduleChoices {
+  scope: Scope;
+  view: View;
+  options: CalendarOptions;
+}
+
+function readScheduleChoices(): ScheduleChoices {
+  const fallback: ScheduleChoices = { scope: "month", view: "grid", options: DEFAULT_CALENDAR_OPTIONS };
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(SCHEDULE_CHOICES_KEY) ?? "null") as Partial<ScheduleChoices> | null;
+    if (!raw || typeof raw !== "object") return fallback;
+    return {
+      scope: SCOPES.includes(raw.scope as Scope) ? (raw.scope as Scope) : fallback.scope,
+      view: raw.view === "list" || raw.view === "grid" ? raw.view : fallback.view,
+      options: { ...DEFAULT_CALENDAR_OPTIONS, ...(raw.options && typeof raw.options === "object" ? raw.options : {}) }
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function readScheduleOffset(scope: Scope): number {
+  try {
+    const raw = JSON.parse(window.sessionStorage.getItem(SCHEDULE_OFFSET_KEY) ?? "null") as { scope?: string; offset?: number } | null;
+    return raw && raw.scope === scope && Number.isInteger(raw.offset) ? raw.offset! : 0;
+  } catch {
+    return 0;
+  }
+}
+
 interface CalendarEntry {
   id: string;
   date: Date;
@@ -196,12 +234,27 @@ export function CalendarPage() {
 
 function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoaderData; revalidator: { revalidate: () => void; state: "idle" | "loading" } }) {
   const navigate = useNavigate();
-  const [scope, setScope] = useState<Scope>("month");
-  const [view, setView] = useState<View>("grid");
-  const [offset, setOffset] = useState(0);
+  const [initial] = useState(readScheduleChoices);
+  const [scope, setScope] = useState<Scope>(initial.scope);
+  const [view, setView] = useState<View>(initial.view);
+  const [offset, setOffset] = useState(() => readScheduleOffset(initial.scope));
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [options, setOptions] = useState<CalendarOptions>(DEFAULT_CALENDAR_OPTIONS);
+  const [options, setOptions] = useState<CalendarOptions>(initial.options);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SCHEDULE_CHOICES_KEY, JSON.stringify({ scope, view, options }));
+    } catch {
+      // A browser that keeps nothing still shows the choice; it is forgotten on leaving.
+    }
+  }, [scope, view, options]);
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(SCHEDULE_OFFSET_KEY, JSON.stringify({ scope, offset }));
+    } catch {
+      // As above.
+    }
+  }, [scope, offset]);
   const { preferences } = useDisplayPreferences();
 
   // Day and Agenda have no week shape to draw, so they always read as the

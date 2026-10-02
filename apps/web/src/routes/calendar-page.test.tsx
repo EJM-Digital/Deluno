@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A release date is a calendar date in this computer's time zone. Built from UTC it
 // is yesterday for the first hours of a day east of Greenwich, and on the 1st of a
@@ -79,6 +79,28 @@ function renderPage() {
     </MemoryRouter>
   );
 }
+
+// Schedule remembers its choices between visits, so each test starts from a browser that has kept nothing.
+beforeEach(() => {
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+});
+
+describe("Schedule remembers what you chose", () => {
+  it("opens on the range, view and stepped-to period you left it on", () => {
+    const first = renderPage();
+    fireEvent.click(screen.getByRole("radio", { name: "Week" }));
+    fireEvent.click(screen.getByRole("radio", { name: "List" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    const label = screen.getAllByRole("heading", { level: 2 })[0].textContent;
+    first.unmount();
+
+    renderPage();
+    expect(screen.getByRole("radio", { name: "Week" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "List" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getAllByRole("heading", { level: 2 })[0].textContent).toBe(label);
+  });
+});
 
 describe("Calendar scopes (#786)", () => {
   it("offers Day and Agenda alongside Week and Month", () => {
