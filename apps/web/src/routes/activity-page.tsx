@@ -20,6 +20,7 @@
  * /api/movies/import-recovery, /api/series/import-recovery; POST /api/jobs/retry-failed,
  * /api/jobs/{id}/dismiss.
  */
+import { FilterChips } from "../components/ui/filter-chips";
 import { JobDrawer } from "../components/app/job-drawer";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
@@ -398,30 +399,12 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         title="Activity"
         actions={
           <div className="flex min-w-0 items-center gap-2">
-            <div role="radiogroup" aria-label="Show" className="no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto">
-              {STATUS_CHIPS.map((chip) => {
-                const active = chip.value === status;
-                const count = counts[chip.value];
-                return (
-                  <button
-                    key={chip.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    aria-label={count !== undefined ? `${chip.label} ${count}` : chip.label}
-                    onClick={() => setStatus(chip.value)}
-                    className={cn(
-                      "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[length:var(--type-caption)] font-semibold transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      active ? "border-primary/40 bg-primary/12 text-primary" : "border-hairline bg-surface-1 text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    {chip.label}
-                    {count !== undefined ? <span className="tabular-nums opacity-80">{count}</span> : null}
-                  </button>
-                );
-              })}
-            </div>
+            <FilterChips<ActivityStatus>
+              label="Show"
+              value={status}
+              onValueChange={setStatus}
+              options={STATUS_CHIPS.map((chip) => ({ ...chip, count: counts[chip.value] }))}
+            />
             {status === "failed" ? (
               <Button type="button" size="sm" className="shrink-0" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedTitleJobs === 0}>
                 Retry failed jobs

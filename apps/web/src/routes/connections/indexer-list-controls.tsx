@@ -4,6 +4,8 @@
  * lets several indexers be changed or removed together instead of one drawer
  * edit at a time; this gives Deluno the same three things.
  */
+import { FILTER_MENU_TRIGGER, FILTER_ROW_CLASS, FilterChips } from "../../components/ui/filter-chips";
+import { MenuSelect } from "../../components/ui/menu-select";
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import type { IndexerItem } from "../../lib/api";
@@ -71,13 +73,19 @@ export function indexerFiltersActive(filters: IndexerFilters): boolean {
   return Boolean(filters.protocol || filters.privacy || filters.scope) || filters.status !== "all";
 }
 
+function scopeIncludes(mediaScope: string | null | undefined, scope: string): boolean {
+  const own = mediaScope ?? "both";
+  return own === scope || own === "both";
+}
+
 export function filterIndexers(items: IndexerItem[], filters: IndexerFilters): IndexerItem[] {
   return items.filter((item) => {
     if (filters.protocol && item.protocol !== filters.protocol) return false;
     if (filters.privacy && item.privacy !== filters.privacy) return false;
     if (filters.status === "enabled" && !item.isEnabled) return false;
     if (filters.status === "disabled" && item.isEnabled) return false;
-    if (filters.scope && (item.mediaScope ?? "both") !== filters.scope) return false;
+    // Movies or TV means "searched for it": an indexer used for both counts under each.
+    if (filters.scope && !scopeIncludes(item.mediaScope, filters.scope)) return false;
     return true;
   });
 }
@@ -101,60 +109,69 @@ function distinctValues(items: IndexerItem[], pick: (item: IndexerItem) => strin
   return [...new Set(items.map(pick).filter(Boolean))].sort();
 }
 
-const STATUS_OPTIONS = [
-  { value: "all", label: "Any status" },
-  { value: "enabled", label: "Enabled" },
-  { value: "disabled", label: "Disabled" }
-];
-const SCOPE_OPTIONS = [
-  { value: "", label: "Any scope" },
-  { value: "movies", label: "Movies" },
-  { value: "tv", label: "TV" },
-  { value: "both", label: "Movies · TV" }
-];
+/**
+ * On / Off and Movies · TV, as chips with counts in the Indexers card's header: the way every list filters
+ * (the owner, 2 Oct 2026). Protocol and privacy, rarer choices, sit on the line below in `IndexerFilterBar`.
+ */
+export function IndexerFilterChips({ indexers, filters, onChange }: { indexers: IndexerItem[]; filters: IndexerFilters; onChange: (filters: IndexerFilters) => void }) {
+  const on = indexers.filter((item) => item.isEnabled).length;
+  const movies = indexers.filter((item) => scopeIncludes(item.mediaScope, "movies")).length;
+  const tv = indexers.filter((item) => scopeIncludes(item.mediaScope, "tv")).length;
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <FilterChips<IndexerFilters["status"]>
+        label="Filter by on or off"
+        value={filters.status}
+        onValueChange={(status) => onChange({ ...filters, status })}
+        options={[
+          { value: "all", label: "All", count: indexers.length },
+          { value: "enabled", label: "On", count: on },
+          { value: "disabled", label: "Off", count: indexers.length - on }
+        ]}
+      />
+      {movies !== indexers.length || tv !== indexers.length ? (
+        <FilterChips<"" | "movies" | "tv">
+          label="Filter by what it searches for"
+          value={filters.scope === "movies" || filters.scope === "tv" ? filters.scope : ""}
+          onValueChange={(scope) => onChange({ ...filters, scope })}
+          options={[
+            { value: "", label: "Movies · TV", count: indexers.length },
+            { value: "movies", label: "Movies", count: movies },
+            { value: "tv", label: "TV", count: tv }
+          ]}
+        />
+      ) : null}
+    </div>
+  );
+}
 
+/** The rarer filters, protocol and privacy, on a line of their own under the card's header; nothing when neither narrows. */
 export function IndexerFilterBar({ indexers, filters, onChange }: { indexers: IndexerItem[]; filters: IndexerFilters; onChange: (filters: IndexerFilters) => void }) {
   const protocolOptions = distinctValues(indexers, (item) => item.protocol);
   const privacyOptions = distinctValues(indexers, (item) => item.privacy);
+  const active = indexerFiltersActive(filters);
+  if (protocolOptions.length < 2 && privacyOptions.length < 2 && !active) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter indexers">
-      <Select
-        aria-label="Filter by protocol"
-        chrome
-        className="h-[var(--control-height-sm)] w-auto min-w-[7rem] text-[length:var(--type-caption)]"
-        value={filters.protocol}
-        onChange={(event) => onChange({ ...filters, protocol: event.target.value })}
-        placeholder="Any protocol"
-        options={protocolOptions.map((value) => ({ value, label: protocolLabel(value) }))}
-      />
-      {privacyOptions.length > 1 ? (
-        <Select
-          aria-label="Filter by privacy"
-          chrome
-          className="h-[var(--control-height-sm)] w-auto min-w-[6rem] text-[length:var(--type-caption)]"
-          value={filters.privacy}
-          onChange={(event) => onChange({ ...filters, privacy: event.target.value })}
-          placeholder="Any privacy"
-          options={privacyOptions.map((value) => ({ value, label: value }))}
+    <div className={FILTER_ROW_CLASS} role="group" aria-label="Filter indexers">
+      {protocolOptions.length > 1 ? (
+        <MenuSelect
+          label="Filter by protocol"
+          value={filters.protocol}
+          onChange={(protocol) => onChange({ ...filters, protocol })}
+          options={[{ value: "", label: "Any protocol" }, ...protocolOptions.map((value) => ({ value, label: protocolLabel(value) }))]}
+          triggerClassName={FILTER_MENU_TRIGGER}
         />
       ) : null}
-      <Select
-        aria-label="Filter by status"
-        chrome
-        className="h-[var(--control-height-sm)] w-auto min-w-[7rem] text-[length:var(--type-caption)]"
-        value={filters.status}
-        onChange={(event) => onChange({ ...filters, status: event.target.value as IndexerFilters["status"] })}
-        options={STATUS_OPTIONS}
-      />
-      <Select
-        aria-label="Filter by media scope"
-        chrome
-        className="h-[var(--control-height-sm)] w-auto min-w-[7rem] text-[length:var(--type-caption)]"
-        value={filters.scope}
-        onChange={(event) => onChange({ ...filters, scope: event.target.value })}
-        options={SCOPE_OPTIONS}
-      />
-      {indexerFiltersActive(filters) ? (
+      {privacyOptions.length > 1 ? (
+        <MenuSelect
+          label="Filter by privacy"
+          value={filters.privacy}
+          onChange={(privacy) => onChange({ ...filters, privacy })}
+          options={[{ value: "", label: "Any privacy" }, ...privacyOptions.map((value) => ({ value, label: value }))]}
+          triggerClassName={FILTER_MENU_TRIGGER}
+        />
+      ) : null}
+      {active ? (
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(emptyIndexerFilters())}>
           <X className="h-3.5 w-3.5" />
           Clear filters

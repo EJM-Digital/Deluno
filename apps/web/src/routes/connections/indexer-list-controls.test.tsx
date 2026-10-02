@@ -6,6 +6,7 @@ import {
   filterIndexers,
   IndexerBulkBar,
   IndexerFilterBar,
+  IndexerFilterChips,
   IndexerSelectAllCheckbox,
   indexerFiltersActive,
   nextIndexerSort,
@@ -91,8 +92,9 @@ describe("filterIndexers (#737)", () => {
   it("narrows by enabled/disabled status", () => {
     expect(filterIndexers(items, { ...emptyIndexerFilters(), status: "disabled" }).map((item) => item.id)).toEqual(["2"]);
   });
-  it("narrows by media scope", () => {
-    expect(filterIndexers(items, { ...emptyIndexerFilters(), scope: "movies" }).map((item) => item.id)).toEqual(["1"]);
+  it("narrows by what it searches for, counting an indexer used for both under Movies and under TV", () => {
+    expect(filterIndexers(items, { ...emptyIndexerFilters(), scope: "movies" }).map((item) => item.id)).toEqual(["1", "3"]);
+    expect(filterIndexers(items, { ...emptyIndexerFilters(), scope: "tv" }).map((item) => item.id)).toEqual(["2", "3"]);
   });
   it("combines filters", () => {
     expect(filterIndexers(items, { protocol: "torznab", privacy: "public", status: "all", scope: "" }).map((item) => item.id)).toEqual(["3"]);
@@ -103,15 +105,28 @@ describe("filterIndexers (#737)", () => {
   });
 });
 
+describe("IndexerFilterChips", () => {
+  it("offers All, On and Off with their counts, and Movies or TV only when they differ", () => {
+    const items = [indexer({ id: "1", isEnabled: true, mediaScope: "movies" }), indexer({ id: "2", isEnabled: false, mediaScope: "both" })];
+    const onChange = vi.fn();
+    render(<IndexerFilterChips indexers={items} filters={emptyIndexerFilters()} onChange={onChange} />);
+    expect(screen.getByRole("radio", { name: "All 2" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "On 1" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Off 1" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Movies 2" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "TV 1" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Off 1" }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...emptyIndexerFilters(), status: "disabled" });
+  });
+});
+
 describe("IndexerFilterBar (#737)", () => {
-  it("only offers protocols and privacy values actually present", () => {
+  it("only offers a protocol or privacy filter when there is more than one to choose between", () => {
     const items = [indexer({ id: "1", protocol: "torznab", privacy: "private" }), indexer({ id: "2", protocol: "newznab", privacy: "private" })];
     render(<IndexerFilterBar indexers={items} filters={emptyIndexerFilters()} onChange={() => undefined} />);
-    const protocolSelect = screen.getByLabelText("Filter by protocol") as HTMLSelectElement;
-    const values = [...protocolSelect.options].map((option) => option.value).filter(Boolean);
-    expect(values).toEqual(["newznab", "torznab"]);
+    expect(screen.getByRole("combobox", { name: "Filter by protocol" })).toBeInTheDocument();
     // Every indexer here is private, so a privacy filter has nothing to narrow.
-    expect(screen.queryByLabelText("Filter by privacy")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Filter by privacy" })).not.toBeInTheDocument();
   });
 
   it("shows Clear filters only once a filter narrows the list", () => {

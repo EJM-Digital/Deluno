@@ -27,11 +27,10 @@ import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { MenuSelect } from "../ui/menu-select";
+import { FILTER_MENU_TRIGGER, FILTER_ROW_CLASS } from "../ui/filter-chips";
 
 const PAGE_SIZE = 50;
 
-const MENU_TRIGGER =
-  "h-[var(--control-height-sm)] rounded-[8px] border border-hairline bg-surface-1 px-2.5 text-[length:var(--type-caption)] font-semibold text-muted-foreground hover:text-foreground";
 
 const FIELD_CLASS = "h-[var(--control-height-sm)] w-44 rounded-[8px] px-2.5 text-[length:var(--type-caption)]";
 
@@ -126,12 +125,12 @@ export function ActivityFilterBar({
       value={filters[key]}
       onChange={(value) => setFilters({ [key]: value })}
       options={[{ value: "", label: any }, ...(options ?? [])]}
-      triggerClassName={MENU_TRIGGER}
+      triggerClassName={FILTER_MENU_TRIGGER}
     />
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-hairline px-[var(--card-pad-x)] py-2" role="group" aria-label="Filter the activity">
+    <div className={FILTER_ROW_CLASS} role="group" aria-label="Filter the activity">
       <Input
         type="search"
         aria-label="Filter by title"
@@ -157,7 +156,7 @@ export function ActivityFilterBar({
         value={customDays ? "custom" : filters.since}
         onChange={(value) => (value === "custom" ? setFilters({ since: filters.until || filters.since || "today" }) : setFilters({ since: value, until: "" }))}
         options={[...ACTIVITY_SINCE_CHOICES, { value: "custom", label: "Pick days" }]}
-        triggerClassName={MENU_TRIGGER}
+        triggerClassName={FILTER_MENU_TRIGGER}
       />
       {showCustomDays ? (
         <>
