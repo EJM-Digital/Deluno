@@ -37,7 +37,6 @@ import { Field } from "../components/ui/field";
 import { LibraryGridSkeleton } from "../components/shell/skeleton";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -156,18 +155,15 @@ export function DiscoverPage() {
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        left={
-          <SegmentedControl<DiscoverMediaType>
-            aria-label="Discover media type"
-            className="w-auto"
-            value={mediaType}
-            onValueChange={setMediaType}
-            options={[
-              { value: "movies", label: "Movies" },
-              { value: "series", label: "TV" }
-            ]}
-          />
-        }
+        sections={{
+          label: "Discover media type",
+          value: mediaType,
+          onValueChange: (next) => setMediaType(next as DiscoverMediaType),
+          options: [
+            { value: "movies", label: "Movies" },
+            { value: "series", label: "TV" }
+          ]
+        }}
       />
 
       <Card as="section" className="dark:border-white/[0.07]">

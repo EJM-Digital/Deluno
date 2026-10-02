@@ -1,5 +1,6 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
+import { expectSectionChosen, expectTabReachable, openTab, sectionSwitch } from "../helpers/header-tabs";
 
 test.describe("dashboard workflow", () => {
   test("starts in the dashboard and opens direct add flows", async ({ page }) => {
@@ -122,7 +123,7 @@ test.describe("dashboard workflow", () => {
     await page.getByRole("textbox", { name: "Helper address" }).fill("http://127.0.0.1:8191");
     await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
 
-    await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Interface", exact: true }).click();
+    await openTab(page, "Interface");
 
     const prompt = page.getByRole("dialog", { name: "Unsaved changes" });
     await expect(prompt).toBeVisible();
@@ -477,9 +478,10 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/media-management");
     await expect(page.getByRole("heading", { name: "Media Management", exact: true })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Media Naming", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Import Policy", exact: true })).toBeVisible();
+    await expectTabReachable(page, "Import Policy");
     await expect(page.getByText("Naming", { exact: true })).toBeVisible();
-    await expect(page.getByText("Import Policy", { exact: true })).toHaveCount(1);
+    // On the title line, or under More: either way it is not drawn twice.
+    expect(await page.getByText("Import Policy", { exact: true }).count()).toBeLessThanOrEqual(1);
 
     // Area rows, not their children — see the tabsInToolbar rule on
     // configurationNavAreas. Child pages live in the page toolbar.
@@ -490,14 +492,14 @@ test.describe("dashboard workflow", () => {
       await expect(navigator.locator(`a[href="${destination}"]`)).toHaveCount(1);
     }
 
-    await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Library & Storage", exact: true }).click();
+    await openTab(page, "Library & Storage");
     await expect(page.getByText("where Deluno stores and organises your media", { exact: false })).toBeVisible();
 
     await page.goto("/indexers");
     await expect(navigator.getByRole("link", { name: "Find & Download", exact: true })).toBeVisible();
     await page.goto("/search-cycles");
     await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Automation", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Missing Searches", exact: true })).toBeVisible();
+    await expectTabReachable(page, "Missing Searches");
     await expect(page.locator("aside").getByRole("navigation", { name: "Media Management" }).getByRole("link", { name: "Automation & Recovery", exact: true })).toBeVisible();
     await page.goto("/system");
     await expect(page.locator("aside").getByRole("navigation", { name: "System controls" }).getByRole("link", { name: "System", exact: true })).toBeVisible();
@@ -523,7 +525,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("textbox", { name: "Custom pattern", exact: true }).first()).toHaveValue("{Movie Title}");
 
     await page.getByRole("button", { name: "Close", exact: true }).click();
-    await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: "Import Policy", exact: true }).click();
+    await openTab(page, "Import Policy");
     await expect(page.locator("h1")).toHaveText("Media Management");
     await expect(page.getByRole("switch", { name: "Stop searching once the cutoff is met" })).toHaveCount(0);
   });
@@ -541,9 +543,9 @@ test.describe("dashboard workflow", () => {
   test("keeps every system maintenance destination visible from System", async ({ page }) => {
     await authenticateAndNavigate(page, "/system");
 
-    const systemNavigation = page.getByRole("navigation").filter({ has: page.getByRole("link", { name: "Health", exact: true }) });
-    for (const destination of ["/system", "/system/audit", "/system/api", "/system/docs", "/system/backups", "/system/updates"]) {
-      await expect(systemNavigation.locator(`a[href="${destination}"]`)).toHaveCount(1);
+    // Every destination is a tab on the title line, or listed under More when the window is too narrow for all of them.
+    for (const name of ["Health", "Audit", "API Access", "Help & Guides", "Backups", "Updates"]) {
+      await expectTabReachable(page, name);
     }
   });
 
@@ -562,8 +564,7 @@ test.describe("dashboard workflow", () => {
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
     await authenticateAndNavigate(page, "/search-cycles");
 
-    const sections = page.getByRole("navigation", { name: "Sections" });
-    await sections.getByRole("link", { name: "Failed Downloads", exact: true }).click();
+    await openTab(page, "Failed Downloads");
     await expect(page.getByRole("heading", { name: "Failed downloads" })).toBeVisible();
     // Strikes/timer/action moved to their own per-rule controls on the
     // Download health page (#951); this platform-wide default only decides
@@ -574,7 +575,7 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByText("Search for a replacement", { exact: true })).toBeVisible();
     await expect(page.getByText("Remove the client entry", { exact: true })).toBeVisible();
     await expect(page.getByText("Purge residual files", { exact: true })).toBeVisible();
-    await sections.getByRole("link", { name: "Upgrades", exact: true }).click();
+    await openTab(page, "Upgrades");
     await expect(page.getByRole("heading", { name: "Upgrade Searches", exact: true })).toBeVisible();
     await expect(page.getByRole("switch", { name: "Stop searching once the cutoff is met" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save automation settings" })).toBeVisible();
@@ -716,7 +717,7 @@ test.describe("dashboard workflow", () => {
 
     // Metadata is a page inside the Media Management area, so it is reached from
     // the page toolbar rather than the sidebar — see the tabsInToolbar rule.
-    await page.getByRole("link", { name: "Metadata", exact: true }).first().click();
+    await openTab(page, "Metadata");
 
     await expect(page.getByRole("heading", { name: "Media Management", exact: true }).first()).toBeVisible();
     await expect(page.getByText("Title Details", { exact: true })).toBeVisible();
@@ -926,10 +927,9 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/indexers");
 
     // One toolbar for the whole area: Indexers · Download clients · Library routing.
-    const tabs = page.getByRole("navigation", { name: "Sections" });
-    await expect(tabs.getByRole("link", { name: "Indexers", exact: true })).toBeVisible();
-    await expect(tabs.getByRole("link", { name: "Download Clients", exact: true })).toBeVisible();
-    await expect(tabs.getByRole("link", { name: "Library Routing", exact: true })).toBeVisible();
+    await expectTabReachable(page, "Indexers");
+    await expectTabReachable(page, "Download Clients");
+    await expectTabReachable(page, "Library Routing");
     await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
 
     // The explainer belongs to the area, so it is here on the tab you land on
@@ -937,7 +937,7 @@ test.describe("dashboard workflow", () => {
     const explainer = page.getByRole("button", { name: "How this works", exact: true });
     await expect(explainer).toHaveAttribute("aria-expanded", "false");
 
-    await tabs.getByRole("link", { name: "Library Routing", exact: true }).click();
+    await openTab(page, "Library Routing");
     await expect(page.getByRole("heading", { name: "Library Routing", exact: true })).toBeVisible();
     await expect(explainer).toBeVisible();
 
@@ -964,8 +964,8 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/activity");
 
     // Activity opens on the History (#1100); the jobs and downloads are one choice away.
-    await expect(page.getByRole("radio", { name: "History" })).toHaveAttribute("aria-checked", "true");
-    await page.getByRole("radio", { name: "Jobs & downloads" }).click();
+    await expectSectionChosen(page, "History");
+    await sectionSwitch(page, "Jobs & downloads").click();
     await expect(page).toHaveURL(/section=jobs/);
     await expect(page.getByRole("heading", { name: "Job Queue" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sent to Downloads" })).toBeVisible();

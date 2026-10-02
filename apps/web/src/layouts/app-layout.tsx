@@ -837,15 +837,15 @@ function ContentTopbar({
         </NavLink>
 
         <div className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
-        <div className="min-w-0 shrink">
+        <div className="min-w-0 flex-1">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
               document is what this avoids. A page that has tabs (the Dashboard) puts them on the title's own line,
               right after it, so the header never grows (the owner, 2 Oct 2026). */}
           <div className="flex min-w-0 items-baseline gap-[22px]">
-            <TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle>
-            <div id="topbar-page-tabs" className="hidden shrink-0 empty:hidden lg:flex" />
+            <div className="shrink-0"><TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle></div>
+            <div id="topbar-page-tabs" className="hidden min-w-0 flex-1 empty:hidden lg:block" />
           </div>
         </div>
         </div>

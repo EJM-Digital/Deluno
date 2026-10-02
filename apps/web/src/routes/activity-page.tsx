@@ -47,7 +47,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SegmentedControl } from "../components/ui/segmented-control";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
@@ -249,19 +248,16 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        left={
-          <SegmentedControl<Section>
-            aria-label="Section"
-            className="w-auto"
-            value={section}
-            onValueChange={setSection}
-            options={[
-              { value: "jobs", label: "Jobs & downloads" },
-              { value: "events", label: "History" },
-              { value: "imports", label: "Import issues" }
-            ]}
-          />
-        }
+        sections={{
+          label: "Section",
+          value: section,
+          onValueChange: (next) => setSection(next as Section),
+          options: [
+            { value: "jobs", label: "Jobs & downloads" },
+            { value: "events", label: "History" },
+            { value: "imports", label: "Import issues" }
+          ]
+        }}
         actions={
           <>
             <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
