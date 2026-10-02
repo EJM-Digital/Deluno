@@ -53,14 +53,6 @@ public sealed class ConnectionVersionParserTests
         => Assert.Equal("3.5.0", ConnectionVersionParsers.FromSeerr("""{"version":"3.5.0","commitTag":"abc","updateAvailable":false,"commitsBehind":0,"restartRequired":false}"""));
 
     [Fact]
-    public void Prowlarr_reads_the_system_status_version()
-        => Assert.Equal("2.6.5.5623", ConnectionVersionParsers.FromProwlarr("""{"appName":"Prowlarr","instanceName":"Prowlarr","version":"2.6.5.5623","branch":"master"}"""));
-
-    [Fact]
-    public void Jackett_reads_the_server_config_app_version()
-        => Assert.Equal("0.24.2756", ConnectionVersionParsers.FromJackett("""{"port":9117,"app_version":"0.24.2756","api_key":"x"}"""));
-
-    [Fact]
     public void A_processor_publishes_its_version_in_its_capabilities()
     {
         Assert.Equal("4.0.0", ConnectionVersionParsers.FromProcessorCapabilities("""{"machine_name":"nas","capabilities":["handoff-status"],"version":"4.0.0"}"""));
@@ -85,8 +77,6 @@ public sealed class ConnectionVersionParserTests
         Assert.Null(ConnectionVersionParsers.FromPlexIdentity(body));
         Assert.Null(ConnectionVersionParsers.FromEmbyFamily(body));
         Assert.Null(ConnectionVersionParsers.FromSeerr(body));
-        Assert.Null(ConnectionVersionParsers.FromProwlarr(body));
-        Assert.Null(ConnectionVersionParsers.FromJackett(body));
         Assert.Null(ConnectionVersionParsers.FromProcessorCapabilities(body));
     }
 }

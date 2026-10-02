@@ -38,8 +38,6 @@ public static class ConnectionsServiceCollectionExtensions
         services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubReleasesFeed(Versions.ConnectionProjects.Emby, "MediaBrowser/Emby.Releases"));
         // Overseerr and Jellyseerr became one project, Seerr; its releases are the upgrade for both.
         services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubReleasesFeed(Versions.ConnectionProjects.Seerr, "seerr-team/seerr"));
-        services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubReleasesFeed(Versions.ConnectionProjects.Prowlarr, "Prowlarr/Prowlarr"));
-        services.AddSingleton<Versions.ReleaseFeed>(new Versions.GitHubReleasesFeed(Versions.ConnectionProjects.Jackett, "Jackett/Jackett"));
         services.AddSingleton<Versions.LatestReleaseService>();
         services.AddSingleton<global::Deluno.Contracts.ILatestReleaseService>(provider => provider.GetRequiredService<Versions.LatestReleaseService>());
         return services;

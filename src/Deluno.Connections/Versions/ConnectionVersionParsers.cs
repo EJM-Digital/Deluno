@@ -57,14 +57,6 @@ public static class ConnectionVersionParsers
     public static string? FromSeerr(string? json)
         => Clean(Read(json, root => Property(root, "version")));
 
-    /// <summary>Prowlarr's <c>/api/v1/system/status</c>: <c>version</c>, "2.6.5.5623".</summary>
-    public static string? FromProwlarr(string? json)
-        => Clean(Read(json, root => Property(root, "version")));
-
-    /// <summary>Jackett's <c>/api/v2.0/server/config</c>: <c>app_version</c>, "0.24.2756".</summary>
-    public static string? FromJackett(string? json)
-        => Clean(Read(json, root => Property(root, "app_version") ?? Property(root, "version")));
-
     /// <summary>
     /// A processor's <c>GET /api/v1/intake/capabilities</c> answer: the optional <c>version</c> ("X.Y.Z", or
     /// "0.0.1-dev" for a development build). Null when absent. Generic on purpose: any processor may send it.
