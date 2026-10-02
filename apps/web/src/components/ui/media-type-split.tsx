@@ -13,7 +13,7 @@
  */
 import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import { SegmentedControl } from "./segmented-control";
+import { FilterChips } from "./filter-chips";
 
 export type MediaTypeScope = "all" | "movies" | "tv";
 
@@ -37,15 +37,14 @@ export function MediaTypeFilter({
 }) {
   if (counts && (counts.movies === 0 || counts.tv === 0)) return null;
   return (
-    <SegmentedControl<MediaTypeScope>
-      aria-label="Filter by media type"
+    <FilterChips<MediaTypeScope>
+      label="Filter by media type"
       value={value}
       onValueChange={onValueChange}
-      className="w-auto"
       options={[
-        { value: "all", label: counts ? `All ${counts.movies + counts.tv}` : "All" },
-        { value: "movies", label: counts ? `Movies ${counts.movies}` : "Movies" },
-        { value: "tv", label: counts ? `TV ${counts.tv}` : "TV" }
+        { value: "all", label: "All", count: counts ? counts.movies + counts.tv : undefined },
+        { value: "movies", label: "Movies", count: counts?.movies },
+        { value: "tv", label: "TV", count: counts?.tv }
       ]}
     />
   );
