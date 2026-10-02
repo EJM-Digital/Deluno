@@ -7,7 +7,7 @@
  * download and find another, search again) it is offered by name, never hidden behind a vaguer word.
  */
 import type { DownloadQueueItem, JobQueueItem, NoReleaseRow, ProcessorHandoffItem } from "./api";
-import { activityStatusLink } from "./activity-history";
+import { activityLinkForStatus } from "./activity-history";
 import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
 import { canTryAgain, isVanished, type RecoveryCaseRow } from "./needs-action";
 
@@ -327,7 +327,7 @@ export function jobsGaveUpActions(kind: "background" | "title" = "background"): 
       request: { method: "POST", path: "/api/jobs/retry-failed", done: "Failed jobs requeued", failure: "The failed jobs could not be requeued." }
     },
     kind === "title"
-      ? open("jobs-review", "Review", activityStatusLink("failed"), "Opens Activity's failed jobs to see which failed and why. Nothing is changed.")
+      ? open("jobs-review", "Review", activityLinkForStatus("failed"), "Opens Activity's failed jobs to see which failed and why. Nothing is changed.")
       : open("jobs-review", "Review", SYSTEM_BACKGROUND_JOBS_LINK, "Opens System's background jobs to see which failed and why. Nothing is changed.")
   ];
 }

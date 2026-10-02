@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityStatusLink,
   activityLink,
   activityLinkForStatus,
   activityStatusFromParams,
@@ -92,11 +91,11 @@ describe("the Activity history's filters live in the address (#1100)", () => {
   });
 
   it("builds the link for a status chip, with the history filters beside it, and All when there is no status (#1114)", () => {
-    expect(activityStatusLink()).toBe("/activity");
-    expect(activityStatusLink(null)).toBe("/activity");
-    expect(activityStatusLink("in-progress")).toBe("/activity?status=in-progress");
-    expect(activityStatusLink("failed", { type: "turned-down", since: "today" })).toBe("/activity?type=turned-down&since=today&status=failed");
-    expect(activityStatusLink("needs-decision")).toBe("/activity?status=needs-decision");
+    expect(activityLinkForStatus()).toBe("/activity");
+    expect(activityLinkForStatus(null)).toBe("/activity");
+    expect(activityLinkForStatus("in-progress")).toBe("/activity?status=in-progress");
+    expect(activityLinkForStatus("failed", { type: "turned-down", since: "today" })).toBe("/activity?status=failed&type=turned-down&since=today");
+    expect(activityLinkForStatus("needs-decision")).toBe("/activity?status=needs-decision");
   });
 
   it("asks the server for exactly the filters, with a page size and the page token", () => {

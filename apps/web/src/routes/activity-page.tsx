@@ -20,6 +20,7 @@
  * /api/movies/import-recovery, /api/series/import-recovery; POST /api/jobs/retry-failed,
  * /api/jobs/{id}/dismiss.
  */
+import { JobDrawer } from "../components/app/job-drawer";
 import type { Tone } from "../lib/status-tones";
 import { useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -35,7 +36,7 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobFailed, isJobInProgress, isJobPending, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
+import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobInProgress, isJobPending, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
 import { cn } from "../lib/utils";
@@ -69,7 +70,6 @@ import {
   type ActivityStatus
 } from "../lib/activity-history";
 import { reasonWords } from "../lib/failure-reasons";
-import { isChosenOnSearch, relatedEntityLabel } from "../lib/dispatch-target";
 import {
   fileNameFromPath,
   parseDeletedLeftoverPaths,
@@ -498,70 +498,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         )}
       </ListCard>
 
-      <Drawer
-        open={openJob !== null}
-        onOpenChange={(next) => {
-          if (!next) setOpenJobId(null);
-        }}
-        title={openJob ? openJob.label : "Job"}
-        description={openJob ? `${openJob.sourceLabel} · ${getJobStatusLabel(openJob.status as JobStatus)}` : undefined}
-        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenJobId(null)} />}
-      >
-        {openJob ? (
-          <>
-            <DrawerSection title="Run" aside={getJobStatusLabel(openJob.status as JobStatus)}>
-              <DrawerFacts
-                items={[
-                  { label: "Attempts", value: String(openJob.attempts) },
-                  { label: "Scheduled", value: formatPreferenceDateTime(openJob.scheduledUtc, preferences) },
-                  { label: "Started", value: openJob.startedUtc ? formatPreferenceDateTime(openJob.startedUtc, preferences) : "Not started" },
-                  { label: "Finished", value: openJob.completedUtc ? formatPreferenceDateTime(openJob.completedUtc, preferences) : "Not finished" },
-                  { label: "Worker", value: openJob.workerId ?? "—", mono: true }
-                ]}
-              />
-            </DrawerSection>
-
-            {openJob.lastError ? (
-              <DrawerSection title="Why it failed">
-                <p className="whitespace-pre-wrap text-[length:var(--type-body-sm)] leading-relaxed text-destructive">{openJob.lastError}</p>
-              </DrawerSection>
-            ) : null}
-
-            {openJob.relatedEntityId ? (
-              <DrawerSection title="What it was for">
-                <DrawerFacts
-                  items={[
-                    { label: "Type", value: relatedEntityLabel(openJob.relatedEntityType, openJob.relatedEntityId).primary },
-                    ...(isChosenOnSearch(openJob.relatedEntityType) ? [] : [{ label: "Id", value: openJob.relatedEntityId, mono: true }])
-                  ]}
-                />
-              </DrawerSection>
-            ) : null}
-
-            {openJob.payloadJson ? (
-              <DrawerSection title="Payload">
-                <pre className="overflow-x-auto rounded-[10px] border border-hairline bg-surface-1 p-3 font-mono text-[length:var(--type-caption)] text-muted-foreground">
-                  {prettyJson(openJob.payloadJson)}
-                </pre>
-              </DrawerSection>
-            ) : null}
-
-            {isJobFailed(openJob.status as JobStatus) ? (
-              <DrawerSection title="If it does not need doing">
-                <DrawerDanger
-                  title="Dismiss this job"
-                  description="Deluno stops counting it as failed. What it was and why it failed stays in Events."
-                  action={
-                    <Button type="button" variant="outline" size="sm" onClick={() => void handleDismissJob(openJob)} disabled={busy}>
-                      Dismiss
-                    </Button>
-                  }
-                />
-              </DrawerSection>
-            ) : null}
-          </>
-        ) : null}
-      </Drawer>
+      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void handleDismissJob(job)} />
 
       <DownloadDispatchDrawer
         dispatch={openDispatch}

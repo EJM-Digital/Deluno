@@ -105,10 +105,17 @@ export function paramsWithStatus(status: ActivityStatus, base?: URLSearchParams)
   return params;
 }
 
-/** The link into Activity on one status chip, optionally narrowed by the history filters: `/activity?status=failed&since=today`. */
-export function activityLinkForStatus(status: "in-progress" | "done" | "failed" | "needs-decision", filters?: Partial<ActivityFilters>): string {
-  const query = paramsFromFilters({ ...emptyActivityFilters, ...filters }, new URLSearchParams({ status })).toString();
-  return `/activity?${query}`;
+/** The status chips across the top of Activity, as they are written in the address (`status=...`). */
+export type ActivityStatusChip = Exclude<ActivityStatus, "all">;
+
+/**
+ * The link into Activity on one status chip, optionally narrowed by the history filters:
+ * `/activity?status=failed&since=today`. No status is All. Every link from Live, the bell, alerts and Transfers is
+ * built here, so each lands on the matching chip.
+ */
+export function activityLinkForStatus(status?: ActivityStatusChip | null, filters?: Partial<ActivityFilters>): string {
+  const query = paramsFromFilters({ ...emptyActivityFilters, ...filters }, status ? new URLSearchParams({ status }) : undefined).toString();
+  return query ? `/activity?${query}` : "/activity";
 }
 
 /** The link into the Activity history for a title (its own events, and any that name it). */
@@ -219,16 +226,3 @@ export function isQuickSince(token: string): boolean {
   return ACTIVITY_SINCE_CHOICES.some((choice) => choice.value === token);
 }
 
-/** The status chips across the top of Activity, as they are written in the address (`status=...`). */
-export type ActivityStatusChip = "in-progress" | "done" | "failed" | "needs-decision";
-
-/**
- * The link into Activity for one status chip, with any history filters beside it. No status is All.
- * Every link from Live, the bell, alerts and Transfers is built here, so each lands on the matching chip.
- */
-export function activityStatusLink(status?: ActivityStatusChip | null, filters?: Partial<ActivityFilters>): string {
-  const params = paramsFromFilters({ ...emptyActivityFilters, ...filters });
-  if (status) params.set("status", status);
-  const query = params.toString();
-  return query ? `/activity?${query}` : "/activity";
-}
