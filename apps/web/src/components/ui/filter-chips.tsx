@@ -44,7 +44,7 @@ export function FilterChips<T extends string>({
             aria-label={option.count !== undefined ? `${option.label} ${option.count}` : option.label}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              "inline-flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-[10px] border px-[14px] text-[13px] font-medium transition-colors duration-150 motion-reduce:transition-none",
+              "inline-flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-[10px] border px-[14px] text-[length:var(--type-control)] font-medium transition-colors duration-150 motion-reduce:transition-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             )}

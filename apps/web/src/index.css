@@ -843,6 +843,8 @@ html,
 
   --type-micro: calc(11px * var(--font-scale));
   --type-caption: calc(12px * var(--font-scale));
+  /* Text in a joined filter control, as Weir draws it (13px). */
+  --type-control: calc(13px * var(--font-scale));
   --type-body-sm: calc(14px * var(--font-scale));
   /* Row text in lists and tables: Weir's 12.7px (#1106). Buttons, inputs and labels keep their own tokens. */
   --list-row-text: calc(12.7px * var(--font-scale));
