@@ -29,8 +29,14 @@ import { defineSources, sourceLoader, useRouteSources, type RouteSourceData, typ
 import { emptyRecovery, sharedSources } from "../lib/shared-sources";
 import { RouteSourceGate } from "../components/shell/route-source-gate";
 import { RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
+  ApiRequestError,
+  fetchJson,
   fetchPageItems,
+  type DownloadHealthRecord,
+  type DownloadTelemetryOverview,
+  type ProcessorHandoffItem,
   type ActivityEventItem,
   type DownloadDispatchItem,
   type JobQueueItem,
@@ -69,6 +75,13 @@ import {
   resolveUntil,
   type ActivityStatus
 } from "../lib/activity-history";
+import {
+  downloadClientEntries,
+  downloadHealthEntries,
+  isLiveStep,
+  processingEntries,
+  type LiveStepEntry
+} from "../lib/activity-live-steps";
 import { failureKindWords } from "../lib/failure-reasons";
 import {
   fileNameFromPath,
@@ -111,7 +124,7 @@ type OpenStatus = Exclude<ActivityStatus, "all" | "done">;
 interface ActivityRow {
   key: string;
   /** Where the row opens: a job, a send to a client, an import issue, or an event in the history. */
-  kind: "job" | "dispatch" | "import" | "event";
+  kind: "job" | "dispatch" | "import" | "event" | "live";
   /** Set for the open items; history events are Done. */
   status: OpenStatus | "done";
   whenUtc: string;
@@ -164,6 +177,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [openEvent, setOpenEvent] = useState<ActivityEventItem | null>(null);
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
+  const [openLive, setOpenLive] = useState<LiveStepEntry | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingLeftoverDelete, setConfirmingLeftoverDelete] = useState(false);
   const [deletingLeftovers, setDeletingLeftovers] = useState(false);
@@ -276,11 +290,62 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     return rows;
   }, [jobs, stopped, dispatches, importCases, openJobId, openDispatchId, openImportCaseId]);
 
+  // Processing, Download health and Download client are steps of their own, built from what Transfers reads (#1115).
+  // Each is read only while its step is chosen, so the page does not ask for them otherwise.
+  const liveStep = isLiveStep(filters.type) ? filters.type : null;
+  const handoffs = useQuery({
+    queryKey: ["activity-live", "processing"],
+    queryFn: () => fetchJson<ProcessorHandoffItem[]>("/api/integrations/processors/handoffs?take=60").catch((error) => {
+      if (error instanceof ApiRequestError && error.status === 404) return [] as ProcessorHandoffItem[];
+      throw error;
+    }),
+    enabled: liveStep === "processing",
+    refetchInterval: 10_000
+  });
+  const healthRecords = useQuery({
+    queryKey: ["activity-live", "download-health"],
+    queryFn: () => fetchPageItems<DownloadHealthRecord>("/api/download-health?pageSize=60"),
+    enabled: liveStep === "download-health",
+    refetchInterval: 10_000
+  });
+  const clientTelemetry = useQuery({
+    queryKey: ["activity-live", "download-client"],
+    queryFn: () => fetchJson<DownloadTelemetryOverview>("/api/download-clients/telemetry"),
+    enabled: liveStep === "download-client",
+    refetchInterval: 10_000
+  });
+  const liveQuery = liveStep === "processing" ? handoffs : liveStep === "download-health" ? healthRecords : liveStep === "download-client" ? clientTelemetry : null;
+  const liveEntries = useMemo<LiveStepEntry[]>(() => {
+    if (liveStep === "processing") return processingEntries(handoffs.data ?? []);
+    if (liveStep === "download-health") return downloadHealthEntries(healthRecords.data ?? []);
+    if (liveStep === "download-client") return clientTelemetry.data ? downloadClientEntries(clientTelemetry.data) : [];
+    return [];
+  }, [liveStep, handoffs.data, healthRecords.data, clientTelemetry.data]);
+  const liveRows = useMemo<ActivityRow[]>(() => {
+    const since = filterDay(filters.since, "since");
+    const until = filterDay(filters.until, "until");
+    const needle = filters.title.trim().toLowerCase();
+    return liveEntries
+      .filter((entry) => {
+        if (needle && !`${entry.title} ${entry.stepLabel}`.toLowerCase().includes(needle)) return false;
+        const when = new Date(entry.whenUtc).getTime();
+        if (since !== null && when < since) return false;
+        if (until !== null && when >= until) return false;
+        return true;
+      })
+      .map((entry) => ({
+        key: entry.key, kind: "live" as const, status: entry.status, whenUtc: entry.whenUtc, title: entry.title, step: entry.stepLabel,
+        detail: entry.detail, detailSub: entry.detailSub,
+        pill: entry.status === "done" ? { tone: "ok" as Tone, label: "Done" } : OPEN_PILL[entry.status],
+        open: () => setOpenLive(entry), selected: openLive?.key === entry.key
+      }));
+  }, [liveEntries, filters.since, filters.until, filters.title, openLive]);
+
   // The filters narrow the open items too, where they can: the title, the one title chosen, and the days. A filter
   // that is about the history alone (kind of event, file, source, outcome, reason) leaves no open item matching.
   const matchingOpen = useMemo(() => {
     const historyOnly = Boolean(filters.type || filters.file || filters.source || filters.outcome || filters.reason);
-    if (historyOnly) return [];
+    if (historyOnly || liveStep) return [];
     const since = filterDay(filters.since, "since");
     const until = filterDay(filters.until, "until");
     const needle = filters.title.trim().toLowerCase();
@@ -294,10 +359,12 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     });
   }, [openRows, filters]);
 
+  const countable = liveStep ? liveRows : matchingOpen;
   const counts: Partial<Record<ActivityStatus, number>> = {
-    "in-progress": matchingOpen.filter((row) => row.status === "in-progress").length,
-    failed: matchingOpen.filter((row) => row.status === "failed").length,
-    "needs-decision": matchingOpen.filter((row) => row.status === "needs-decision").length
+    "in-progress": countable.filter((row) => row.status === "in-progress").length,
+    failed: countable.filter((row) => row.status === "failed").length,
+    "needs-decision": countable.filter((row) => row.status === "needs-decision").length,
+    ...(liveStep ? { done: countable.filter((row) => row.status === "done").length } : {})
   };
 
   const historyRows = useMemo<ActivityRow[]>(
@@ -315,12 +382,13 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 
   const sortedOpen = (list: ActivityRow[]) => [...list].sort((a, b) => new Date(b.whenUtc).getTime() - new Date(a.whenUtc).getTime());
   const rows: ActivityRow[] =
-    status === "all" ? [...sortedOpen(matchingOpen), ...historyRows]
+    liveStep ? sortedOpen(status === "all" ? liveRows : liveRows.filter((row) => row.status === status))
+    : status === "all" ? [...sortedOpen(matchingOpen), ...historyRows]
     : status === "done" ? historyRows
     : sortedOpen(matchingOpen.filter((row) => row.status === status));
 
-  const historyLoading = historyOn && history.isPending;
-  const historyBroken = historyOn && history.isError;
+  const historyLoading = liveStep ? Boolean(liveQuery?.isPending) : historyOn && history.isPending;
+  const historyBroken = liveStep ? Boolean(liveQuery?.isError) : historyOn && history.isError;
   const failedTitleJobs = counts.failed ?? 0;
   // The card says what it holds in words, so it never repeats the page's title: the chosen status and how many.
   const chosenCount = counts[status];
@@ -429,7 +497,7 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
             title="The history could not be read"
             description="Deluno could not load it just now."
             actions={
-              <Button type="button" variant="outline" size="sm" onClick={() => void history.refetch()}>
+              <Button type="button" variant="outline" size="sm" onClick={() => void (liveQuery ?? history).refetch()}>
                 Try again
               </Button>
             }
@@ -471,15 +539,15 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
                 </ListRow>
               ))}
             </ListTable>
-            {historyOn && historyBroken ? (
+            {historyOn && !liveStep && historyBroken ? (
               <div className="flex items-center justify-center gap-3 border-t border-hairline p-3 text-[length:var(--type-caption)] text-muted-foreground">
                 The history could not be read just now.
-                <Button type="button" variant="outline" size="sm" onClick={() => void history.refetch()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => void (liveQuery ?? history).refetch()}>
                   Try again
                 </Button>
               </div>
             ) : null}
-            {historyOn && history.hasNextPage ? (
+            {historyOn && !liveStep && history.hasNextPage ? (
               <div className="flex justify-center border-t border-hairline p-3">
                 <Button type="button" variant="outline" size="sm" onClick={() => void history.fetchNextPage()} disabled={history.isFetchingNextPage}>
                   {history.isFetchingNextPage ? "Loading" : "Show older events"}
@@ -497,6 +565,30 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
         onClose={() => setOpenDispatchId(null)}
         onBlocked={() => revalidator.revalidate()}
       />
+
+      <Drawer
+        open={openLive !== null}
+        onOpenChange={(next) => {
+          if (!next) setOpenLive(null);
+        }}
+        title={openLive?.title ?? "Detail"}
+        description={openLive ? `${openLive.stepLabel} · ${formatPreferenceDateTime(openLive.whenUtc, preferences)}` : undefined}
+        footer={<DrawerFooter state="clean" readOnly saveLabel="Close" onCancel={() => setOpenLive(null)} />}
+      >
+        {openLive ? (
+          <>
+            <DrawerSection title="What happened">
+              <p className="text-[length:var(--type-body-sm)] leading-relaxed text-foreground">{openLive.detail}</p>
+            </DrawerSection>
+            <DrawerSection title="Details">
+              <DrawerFacts items={openLive.facts} />
+              <Link to="/queue" onClick={() => setOpenLive(null)} className="mt-2 inline-block text-[length:var(--type-caption)] font-semibold text-primary hover:underline">
+                Open Transfers
+              </Link>
+            </DrawerSection>
+          </>
+        ) : null}
+      </Drawer>
 
       <Drawer
         open={openEvent !== null}

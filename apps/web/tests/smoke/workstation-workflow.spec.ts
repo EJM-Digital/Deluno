@@ -953,11 +953,14 @@ test.describe("dashboard workflow", () => {
     await expect(page.getByRole("heading", { name: "Transfers" })).toBeVisible();
   });
 
-  test("keeps download-health evidence available after queue work", async ({ page }) => {
+  test("points from Transfers to Activity for the history", async ({ page }) => {
     await authenticateAndNavigate(page, "/queue");
 
-    await expect(page.getByRole("heading", { name: "Recent activity" })).toBeVisible();
-    await expect(page.getByText("Nothing has happened yet")).toBeVisible();
+    // Keyboard, not a click: on a page this short the link sits where the sidebar account menu's hidden flyout lies.
+    const link = page.getByRole("link", { name: /See everything in Activity/ });
+    await link.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/activity/);
   });
 
   test("keeps activity as a readable history", async ({ page }) => {

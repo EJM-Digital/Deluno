@@ -772,3 +772,17 @@ describe("download drawer: availability, last activity and completion (#970)", (
     expect(screen.queryByText("Seed limit")).not.toBeInTheDocument();
   });
 });
+
+/** #1115: the history lives on Activity; Transfers keeps only a way there. */
+describe("Transfers points to Activity for the history (#1115)", () => {
+  it("has no Recent activity card, and links to Activity", () => {
+    render(
+      <MemoryRouter>
+        <QueuePage />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("heading", { name: "Recent activity" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /See everything in Activity/ })).toHaveAttribute("href", "/activity");
+  });
+});
