@@ -92,7 +92,7 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
             aria-label="Sections"
             className="no-scrollbar flex h-[var(--toolbar-height)] min-w-0 flex-1 items-stretch overflow-x-auto bg-transparent"
           >
-            <div className="flex h-full min-w-max items-stretch gap-[var(--grid-gap)]">
+            <div className="flex h-full min-w-max items-stretch gap-[18px]">
               {tabs.map((tab) => {
                 const isActive = isTabActive(location.pathname, tab);
                 const isComplete = tab.status === "complete";
@@ -106,27 +106,22 @@ export function PageToolbar({ tabs, left, actions, className }: PageToolbarProps
                     aria-label={tabLabel ? `${tabLabel}${isComplete ? " — complete" : ""}` : undefined}
                     data-status={isComplete ? "complete" : "pending"}
                     /*
-                      Marked the way the sidebar marks its area: a 3px accent
-                      bar on the leading edge and the label in the accent
-                      colour. It was an underline, which was a third way of
-                      saying "you are here" in an app that already had one.
-
-                      The padding is on every tab, not only the active one, so
-                      the row does not shift by three pixels each time you move
-                      between them.
+                      The one tab style in Deluno (James, 2 Oct 2026), the same as the Dashboard's Live and System: plain
+                      14px text 18px apart, the chosen one in the accent colour with a 2px underline on the row's bottom
+                      line. The weight never changes between tabs, so the row does not shift as you move along it.
                     */
                     className={cn(
-                      "group relative flex h-full shrink-0 items-center pl-2.5 text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
+                      "group relative flex h-full shrink-0 items-center text-[length:var(--type-body-sm)] font-medium leading-none transition-colors duration-200",
                       "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       isActive
-                        ? "font-semibold text-[var(--toolbar-accent)]"
+                        ? "text-[var(--toolbar-accent)]"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
                     <span
                       aria-hidden
                       className={cn(
-                        "absolute left-0 h-[calc(var(--toolbar-height)*0.42)] w-[3px] rounded-r-full transition-colors",
+                        "absolute inset-x-0 bottom-[-1px] h-[2px] rounded-full transition-colors",
                         isActive ? "bg-[var(--toolbar-accent)]" : "bg-transparent"
                       )}
                     />
