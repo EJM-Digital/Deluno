@@ -84,6 +84,7 @@ import { MovieFilesCard } from "../components/app/movie-files-card";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
 import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
+import { TmdbAttribution } from "../components/app/tmdb-attribution";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
@@ -965,6 +966,7 @@ export function MovieDetailPage() {
                 <span aria-hidden className="text-muted-foreground">·</span>
                 <span className="flex min-w-0 items-center gap-1.5"><SourceMark source="imdb" label="IMDb" /><span className="truncate font-mono font-medium text-foreground">{movie.imdbId ?? "—"}</span></span>
               </div>
+              <TmdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" />
               <TitleActionGrid>
               <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}

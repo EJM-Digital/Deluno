@@ -294,6 +294,14 @@ and OpenAPI file.
   TheTVDB" linking to https://thetvdb.com on the add-show search results and on
   a show's page whenever it carries a TheTVDB id; the broker sends the same text
   in `attribution`.
+  The same credit also sits under Credits on System's "This installation" card
+  (#1108).
+- TMDb attribution (#1108): TMDb's terms ask for "This product uses the TMDB API
+  but is not endorsed or certified by TMDB." with an approved TMDb logo (the Alt
+  short blue one, 14px tall, linked to https://www.themoviedb.org). Deluno shows
+  that notice under Credits on System's "This installation" card, and the short
+  line "Film and TV details from TMDB" at the foot of the Ratings & IDs panel on a
+  film's page and on a show's page (beside TheTVDB's credit where one shows).
 - Caching: TheTVDB recommends a caching proxy and to "set time to live for each
   endpoint based on the needs of your users"; rarely-changing lists may be kept
   "a week or even longer". No fixed maximum is stated. The gateway uses: search
