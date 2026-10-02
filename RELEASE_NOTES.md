@@ -27,6 +27,52 @@ anyway.
 - Your library's title no longer has a dot before it, so it lines up with
   the other cards.
 
+### Every page's tabs and buttons sit on its title line
+
+- A page's tabs sit beside its title, and the ones that don't fit go under
+  a More menu. The tab you're on always shows.
+- A page's own buttons (New indexer, Refresh, Manual import and the rest)
+  sit at the right of the title line too, so no page spends a row on them.
+  On a smaller window they move back into a row under the header.
+- The title line's buttons, search and filters now sit level with the page
+  title, not a little above it.
+
+### Activity is one list
+
+- Activity is one list of what happened to each title, with All, In
+  progress, Done, Failed and Needs a decision across the top, each with its
+  count, and Any step and Any time beside them. It no longer has three tabs.
+- Every number you click on the Dashboard opens Activity on the matching
+  filter. The Pipeline's download stations still open Transfers.
+- Jobs that aren't about a title, such as library-wide refreshes and
+  backups, are on System's Background jobs, where a failed one can be
+  retried or dismissed.
+- Processor hand-offs, download-health issues and what your download
+  clients report are under Any step: Processing, Download health and
+  Download client.
+- Rows say what happened in words, never a stored code.
+
+### One look for every filter
+
+- Filters are one row of chips with counts, the same everywhere, and sit
+  in the header of the card they filter: Indexers, Profiles, Automation,
+  Size Rules, History, Choose a release and Search results.
+- A card no longer repeats the tab you clicked. Indexers says "12 of 12
+  healthy" and Tags says "14 tags" where they used to say Indexers and Tags.
+- Discover's Movies and TV are filter chips beside the title, and Discover
+  and Schedule remember what you last chose.
+- Transfers' Recent activity card is replaced by a link to Activity, which
+  lists the same things with filters.
+- The hidden Wanted episodes page is gone; its address opens TV Shows.
+
+### Fixed
+
+- The account menu at the bottom of the sidebar no longer catches clicks
+  meant for the page while it is closed.
+- Dropdown arrows sit inside their boxes, and a row of dropdowns stays on
+  one line.
+- Season Pass is the same height as the buttons beside it.
+
 ## 1.0.0-rc.26
 
 Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
