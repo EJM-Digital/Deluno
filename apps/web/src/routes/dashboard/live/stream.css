@@ -1,5 +1,5 @@
 /* Activity (#1098): the mockup's stream, ported literally. */
-.lact-more { font-size: 12px; line-height: 1.52; white-space: nowrap; color: hsl(var(--primary)); }
+.lact-more { font-size: 12px; line-height: 17px; white-space: nowrap; color: hsl(var(--primary)); }
 .lact-more:hover { text-decoration: underline; }
 .lact-more:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 2px; }
 .lact-stream { list-style: none; margin: 0; padding: 0 10px 10px; overflow: hidden; min-height: 0; flex: 1 1 0; display: flex; flex-direction: column; }

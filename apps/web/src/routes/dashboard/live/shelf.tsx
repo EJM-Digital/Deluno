@@ -1,6 +1,7 @@
 /**
- * Your library (#1098, #1103): what landed today on one shelf, newest first. Under the card's header a row of chips picks
- * the library the shelf shows ("All" and then each library by name, in Settings › Libraries order). There is no legend:
+ * Your library (#1098, #1103): what landed today on one shelf, newest first. In the card's header, where its count was, a row of
+ * chips picks the library the shelf shows ("All" and then each library by name, in Settings › Libraries order); they scroll
+ * sideways when the header is narrow, and the count stays as the card's accessible description (#1112, as Weir's Just finished). There is no legend:
  * the colours on the posters are the Movies page's own (the owner, 1 Oct 2026). Each poster has the Movies page's bar across its top (gold for
  * quality met, green for upgradable, the quality on it), a small arrow when it replaced a worse copy, and a tag with the
  * name of the library it landed in, which opens that library's page filtered to it.
@@ -19,6 +20,7 @@ import { ago } from "../format";
 import { LiveCard as Panel } from "./live-card";
 import "./shelf.css";
 import { PosterTile } from "./card";
+import { canvasMeasure, lineWords, statusFont, STATUS_MARK_PX, type MeasureText } from "./caption-fit";
 import type { ArrivalItem } from "./extras";
 import { useElementSize } from "./hooks";
 import { posterDetail, posterStatus } from "./poster-caption";
@@ -81,10 +83,15 @@ function rememberChoice(value: string): void {
   }
 }
 
-function Poster({ group, isNew, caption, tag, small }: { group: ArrivalGroup; isNew: boolean; caption: CaptionTier; tag: { id: string; name: string; hue: number } | null; small: boolean }) {
+/** Where text cannot be measured, as in a test, the fullest short words are taken to fit. */
+const FITS_ANYTHING: MeasureText = () => 0;
+
+function Poster({ group, isNew, caption, tag, small, width, measure }: { group: ArrivalGroup; isNew: boolean; caption: CaptionTier; tag: { id: string; name: string; hue: number } | null; small: boolean; width: number | null; measure: MeasureText | null }) {
   const { title, poster, to, upgrades, episodes } = group;
   const when = arrivedWhen(group.at);
   const status = posterStatus(group);
+  // The tiny caption is the status line alone: the shortest of its words that fits under the poster, else the dot alone.
+  const statusWords = caption !== "tiny" ? status.words : width === null ? status.short[0] : lineWords(status.short, width - STATUS_MARK_PX, measure ?? FITS_ANYTHING);
   const detailLine = posterDetail(group);
   const state = group.met === true ? "quality met" : group.met === false ? "can still be upgraded" : null;
   // The upgrade is said in the status line; the tooltip and the name say it in full.
@@ -104,11 +111,11 @@ function Poster({ group, isNew, caption, tag, small }: { group: ArrivalGroup; is
           />
         </span>
         {caption === "none" ? null : (
-          <span className={cn("lsh-cap", caption === "full" && "lsh-cap--full")}>
-            <span className="lsh-title">{title}</span>
+          <span className={cn("lsh-cap", caption === "full" && "lsh-cap--full")} data-tier={caption}>
+            {caption === "tiny" ? null : <span className="lsh-title">{title}</span>}
             <span className="lsh-status" data-tone={status.tone}>
               <i aria-hidden className="lsh-dot" />
-              <span>{status.words}</span>
+              <span>{statusWords}</span>
             </span>
             {caption === "full" ? (
               <>
@@ -184,24 +191,44 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const inRow = posters ? shown.slice(0, across + slots) : shown;
   useSlideNeighbours(boxRef, inRow.map((group) => group.key).join("|"), posters?.width ?? null);
   useTileArrivals(boxRef, shown.map((group) => group.key).join("|"));
+  // The chips live in the card's header, and scroll sideways there: a chip the header cuts off is brought into view when it is chosen.
+  const pick = (value: string, event: MouseEvent<HTMLButtonElement>) => {
+    choose(value);
+    event.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  };
+  const chips: ReactNode = libraries.length > 0 ? (
+    <div className="lsh-chips" role="group" aria-label="Libraries">
+      <button type="button" className="lsh-chip" aria-pressed={!chosen} data-library="all" onClick={(event) => pick("all", event)}>All</button>
+      {libraries.map((entry) => (
+        <button key={entry.libraryId} type="button" className="lsh-chip" aria-pressed={chosen?.libraryId === entry.libraryId} data-library={entry.libraryId} onClick={(event) => pick(entry.libraryId, event)}>{entry.libraryName}</button>
+      ))}
+    </div>
+  ) : null;
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
+  // The status line is measured in its own font, read before paint and again when the fonts arrive.
+  const [measured, setMeasured] = useState<MeasureText | null>(null);
+  useLayoutEffect(() => {
+    const host = boxRef.current;
+    if (!host) return undefined;
+    let live = true;
+    const read = () => {
+      if (live) setMeasured(() => canvasMeasure(statusFont(host)));
+    };
+    read();
+    void document.fonts?.ready.then(read);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   return (
-    <Panel title="Your library" count={headingNode} to="/movies" toLabel="Library" className="lsh min-h-[11rem]">
-      {libraries.length > 0 ? (
-        <div className="lsh-chips" role="group" aria-label="Libraries">
-          <button type="button" className="lsh-chip" aria-pressed={!chosen} data-library="all" onClick={() => choose("all")}>All</button>
-          {libraries.map((entry) => (
-            <button key={entry.libraryId} type="button" className="lsh-chip" aria-pressed={chosen?.libraryId === entry.libraryId} data-library={entry.libraryId} onClick={() => choose(entry.libraryId)}>{entry.libraryName}</button>
-          ))}
-        </div>
-      ) : null}
+    <Panel title="Your library" count={headingNode} controls={chips} description={chips ? (detail ? `${heading}: ${detail}` : heading) : undefined} to="/movies" toLabel="Library" className="lsh">
       <ul ref={boxRef} className="lsh-posters" style={rowStyle}>
         {inRow.length === 0 ? <li className="lsh-empty">{latest ? "Nothing in the last seven days." : "Nothing has arrived yet today."}</li> : inRow.map((group) => {
           const id = group.libraryId;
           const name = id ? names.get(id) ?? group.libraryName : null;
           const position = libraries.findIndex((entry) => entry.libraryId === id);
-          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} caption={posters?.caption ?? "compact"} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} />;
+          return <Poster key={group.key} group={group} isNew={group.items.some((item) => newest.has(item.key))} caption={posters?.caption ?? "compact"} tag={id && name ? { id, name, hue: libraryHue(position) } : null} small={small} width={posters?.width ?? null} measure={measured} />;
         })}
       </ul>
     </Panel>
