@@ -956,10 +956,9 @@ test.describe("dashboard workflow", () => {
   test("points from Transfers to Activity for the history", async ({ page }) => {
     await authenticateAndNavigate(page, "/queue");
 
-    // Keyboard, not a click: on a page this short the link sits where the sidebar account menu's hidden flyout lies.
-    const link = page.getByRole("link", { name: /See everything in Activity/ });
-    await link.focus();
-    await page.keyboard.press("Enter");
+    // A real click: on a page this short the link sits where the sidebar account menu's flyout opens, and the closed
+    // flyout must not catch the click.
+    await page.getByRole("link", { name: /See everything in Activity/ }).click();
     await expect(page).toHaveURL(/\/activity/);
   });
 

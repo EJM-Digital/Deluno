@@ -505,7 +505,11 @@ export function DesktopSidebar({
           )}
           {collapsed ? null : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
         </button>
-        <div className="absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 overflow-hidden rounded-xl border border-hairline bg-popover opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
+        {/* Invisible until the account button is hovered or focused, and it takes no clicks while invisible: it sat over
+            the bottom-left of the page and swallowed clicks meant for what was under it. The strip across the 12px gap
+            keeps the menu open while the pointer crosses from the button to it. */}
+        <div className="pointer-events-none absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 rounded-xl border border-hairline bg-popover opacity-0 shadow-lg transition before:absolute before:inset-y-0 before:-left-3 before:w-3 before:content-[''] group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 dark:border-white/[0.07]">
+          <div className="overflow-hidden rounded-xl">
           <button
             type="button"
             onClick={() => setPasswordOpen(true)}
@@ -522,6 +526,7 @@ export function DesktopSidebar({
             <LogOut className="h-4 w-4" />
             Sign out
           </button>
+          </div>
         </div>
       </div>
       {passwordOpen ? (
