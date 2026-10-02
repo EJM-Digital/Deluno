@@ -78,6 +78,7 @@ import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
+import { FilterChips } from "../components/ui/filter-chips";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -168,6 +169,15 @@ export const queueSources = defineSources({
 export const queueLoader = sourceLoader(queueSources);
 
 /** One row shape for every kind of thing that has already happened. */
+const ACTIVITY_KINDS: { value: "all" | ActivityEntry["kind"]; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "import", label: "Imports" },
+  { value: "processor", label: "Processing" },
+  { value: "sent", label: "Sent" },
+  { value: "client", label: "Clients" },
+  { value: "health", label: "Issues" }
+];
+
 interface ActivityEntry {
   id: string;
   kind: "import" | "processor" | "sent" | "client" | "health";
@@ -1287,22 +1297,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
 
       <ListCard
         title="Recent activity"
-        count={activity.length ? `latest ${Math.min(visibleActivity.length, 25)} of ${activity.length}` : undefined}
+        count={activity.length ? `latest ${Math.min(visibleActivity.length, 25)}` : undefined}
         actions={
           activity.length ? (
-            <SegmentedControl<"all" | ActivityEntry["kind"]>
-              aria-label="Filter activity"
-              className="w-auto"
+            <FilterChips<"all" | ActivityEntry["kind"]>
+              label="Filter activity"
+              size="sm"
               value={activityKind}
               onValueChange={setActivityKind}
-              options={[
-                { value: "all", label: "All" },
-                { value: "import", label: "Imports" },
-                { value: "processor", label: "Processing" },
-                { value: "sent", label: "Sent" },
-                { value: "client", label: "Clients" },
-                { value: "health", label: "Issues" }
-              ]}
+              options={ACTIVITY_KINDS.map((option) => ({
+                ...option,
+                count: option.value === "all" ? activity.length : activity.filter((entry) => entry.kind === option.value).length
+              }))}
             />
           ) : undefined
         }

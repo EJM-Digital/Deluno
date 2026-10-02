@@ -205,15 +205,15 @@ describe("the shelf's captions", () => {
     show({ library, detail: "2 titles · 1 upgraded" });
     const section = screen.getByRole("region", { name: "Your library" });
     const header = section.querySelector("header")!;
-    expect(within(header).getByRole("group", { name: "Libraries" })).toBeInTheDocument();
-    expect(Array.from(header.querySelectorAll(".lsh-chip")).map((chip) => chip.textContent)).toEqual(["All", "Movies HD", "Kids"]);
+    expect(within(header).getByRole("radiogroup", { name: "Libraries" })).toBeInTheDocument();
+    expect(within(header).getAllByRole("radio").map((chip) => chip.textContent)).toEqual(["All", "Movies HD", "Kids"]);
     // The count is not drawn in the header; a screen reader still hears it as the card's description.
     expect(header).not.toHaveTextContent("arrived today");
     const note = document.getElementById(section.getAttribute("aria-describedby")!)!;
     expect(note).toHaveClass("sr-only");
     expect(note).toHaveTextContent("2 arrived today: 2 titles · 1 upgraded");
-    fireEvent.click(within(header).getByRole("button", { name: "Kids" }));
-    expect(within(header).getByRole("button", { name: "Kids" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(header).getByRole("radio", { name: "Kids" }));
+    expect(within(header).getByRole("radio", { name: "Kids" })).toHaveAttribute("aria-checked", "true");
   });
   it("keeps the count in the header, and no description, when there are no libraries to choose between", () => {
     box = { width: 900, height: 340 };

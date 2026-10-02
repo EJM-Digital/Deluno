@@ -92,7 +92,8 @@ describe("combined Indexer History (#754)", () => {
     mockFetch();
     renderPage();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Filter by action type" }), { target: { value: "auth-failure" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by action type" }));
+    fireEvent.click(screen.getByRole("option", { name: "Auth failure" }));
 
     await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
       expect.stringContaining("eventType=auth-failure"),

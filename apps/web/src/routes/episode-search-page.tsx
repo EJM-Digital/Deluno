@@ -25,7 +25,7 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { Select } from "../components/ui/select";
+import { FilterChips } from "../components/ui/filter-chips";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { TitleMarkLabel } from "../components/ui/title-mark";
@@ -189,19 +189,19 @@ export function EpisodeSearchPage() {
 
       <ListCard
         title="Wanted episodes"
-        count={`${visible.length} of ${episodes.length} shown`}
+        count={`${visible.length} shown`}
         filter={{ value: query, onChange: setQuery, placeholder: "Filter by show, code or title" }}
         actions={
-          <Select
-            aria-label="Filter episodes"
-            className="h-[var(--control-height-sm)] w-44 py-0 text-[length:var(--type-caption)]"
+          <FilterChips<Filter>
+            label="Filter episodes"
+            size="sm"
             value={filter}
-            onChange={(event) => setFilter(event.target.value as Filter)}
+            onValueChange={setFilter}
             options={[
-              { value: "all", label: "All wanted" },
-              { value: "aired", label: "Already aired" },
-              { value: "monitored", label: "Monitored" },
-              { value: "never-searched", label: "Never searched" }
+              { value: "all", label: "All wanted", count: episodes.length },
+              { value: "aired", label: "Already aired", count: airedCount },
+              { value: "monitored", label: "Monitored", count: monitored },
+              { value: "never-searched", label: "Never searched", count: neverSearched }
             ]}
           />
         }

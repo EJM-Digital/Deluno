@@ -27,7 +27,7 @@ import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SegmentedControl } from "../components/ui/segmented-control";
-import { Select } from "../components/ui/select";
+import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
 import { candidateLabel, candidateTone } from "../lib/release-candidate-status";
 import {
   type CandidateSortKey,
@@ -243,25 +243,11 @@ export function SearchPage() {
       </ListCard>
 
       {results !== null ? (
-        <ListCard title="Results" count={`${visibleResults.length} of ${results.length} release${results.length === 1 ? "" : "s"}`}>
-          {(protocolOptions.length > 1 || indexerOptions.length > 1) ? (
-            <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-[var(--card-pad-x)]">
-              <Select
-                value={protocolFilter}
-                onChange={(event) => setProtocolFilter(event.target.value)}
-                options={[{ value: "", label: "Every protocol" }, ...protocolOptions.map((protocol) => ({ value: protocol, label: formatProtocol(protocol) }))]}
-                aria-label="Filter by protocol"
-                className="max-w-[10rem]"
-              />
-              <Select
-                value={indexerFilter}
-                onChange={(event) => setIndexerFilter(event.target.value)}
-                options={[{ value: "", label: "Every indexer" }, ...indexerOptions.map((name) => ({ value: name, label: name }))]}
-                aria-label="Filter by indexer"
-                className="max-w-[12rem]"
-              />
-            </div>
-          ) : null}
+        <ListCard
+          title="Results"
+          count={`${visibleResults.length} of ${results.length} release${results.length === 1 ? "" : "s"}`}
+          actions={<ReleaseFilterMenus protocols={protocolOptions} protocol={protocolFilter} onProtocolChange={setProtocolFilter} indexers={indexerOptions} indexer={indexerFilter} onIndexerChange={setIndexerFilter} />}
+        >
           {results.length === 0 ? (
             <ListEmpty title="No releases found" description="Try a different query, or check that an indexer covering this type is enabled." />
           ) : (

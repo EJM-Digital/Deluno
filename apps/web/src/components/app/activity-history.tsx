@@ -24,9 +24,10 @@ import {
   type ActivityFilters
 } from "../../lib/activity-history";
 import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-format";
-import { X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { FILTER_MENU_TRIGGER } from "../ui/filter-chips";
 import { MenuSelect } from "../ui/menu-select";
 import { HeaderTabsPortal, useHeaderSlot } from "../ui/header-tabs";
 import { cn } from "../../lib/utils";
@@ -36,6 +37,13 @@ const PAGE_SIZE = 50;
 
 /** The height of the chips box in the header (Weir: `.mm-header__slot .mm-segmented`), shared by the search and the dropdowns. */
 const CONTROL_HEIGHT = "h-[2.375rem]";
+/** How wide each stage of the group is, in rem, for deciding which stage the title line can hold (#1115). */
+const SEARCH_OPEN_REM = 11;
+const MAGNIFIER_REM = 2.375;
+const SCOPE_FULL_REM = 18.5;
+const SCOPE_COMPACT_REM = 15.5;
+const CHIPS_SCROLL_REM = 9;
+
 const MENU_TRIGGER = `${CONTROL_HEIGHT} rounded-[12px] border border-hairline bg-card px-3 text-[length:var(--type-control)] font-medium text-muted-foreground hover:text-foreground`;
 
 function useDebouncedWrite(value: string, urlValue: string, write: (next: string) => void) {
@@ -100,9 +108,10 @@ export function useActivityHistory({ enabled, onOpenEvent }: { enabled: boolean;
 
 /**
  * What narrows the list, as Weir's History draws it (James, 2 Oct 2026): a search, the status chips and, at the right,
- * two dropdowns, on the header's title line after the title. Where the title, these and the page's buttons do not
- * fit that line, measured, they take a row of their own directly under the header, in the same order; below `lg`
- * they are always in that row. The chips are passed in because the page owns the status and its counts.
+ * two dropdowns, on the header's title line after the title. As the line runs short they give way in turn (#1115): the
+ * search becomes a 38px magnifier that opens to 11rem while focused or holding text, then the dropdowns go to the compact
+ * 28px size, then the chips scroll sideways; only when even that does not fit, measured, they take a row of their own
+ * directly under the header, in the same order. Below `lg` they are always in that row. The chips are passed in because the page owns the status and its counts.
  */
 export function ActivityFilters({
   filters,
@@ -116,7 +125,9 @@ export function ActivityFilters({
   const choices = useActivityFilterChoices();
   const slot = useHeaderSlot();
   const controlsRef = useRef<HTMLDivElement>(null);
-  const [fits, setFits] = useState(true);
+  // 0 = everything full size; 1 = search is a magnifier; 2 = dropdowns compact too; 3 = chips scroll too; null = does not fit.
+  const [stage, setStage] = useState<0 | 1 | 2 | 3 | null>(0);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   // Typing waits a moment before it reaches the address, so every key is not a new question.
   const [titleDraft, setTitleDraft] = useState(filters.title);
@@ -130,17 +141,25 @@ export function ActivityFilters({
     const main = document.getElementById("topbar-main");
     const title = document.getElementById("topbar-title");
     if (!controls || !main || !title) return;
-    const search = controls.querySelector<HTMLElement>("[data-activity-search]");
     const chipsBox = controls.querySelector<HTMLElement>("[data-activity-chips] > *");
-    const scope = controls.querySelector<HTMLElement>("[data-activity-scope]");
-    if (!search || !chipsBox || !scope) return;
-    const minimum = (parseFloat(getComputedStyle(search).minWidth) || 0) + chipsBox.scrollWidth + scope.offsetWidth + 16;
+    if (!chipsBox) return;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const chipsWidth = chipsBox.scrollWidth;
     const actions = document.getElementById("topbar-page-actions");
     const buttons = actions && actions.childElementCount ? actions.getBoundingClientRect().width : 0;
     const mainGap = parseFloat(getComputedStyle(main).columnGap) || 0;
     const titleGap = parseFloat(getComputedStyle(title.parentElement ?? title).columnGap) || 0;
-    const room = main.getBoundingClientRect().width - (buttons > 0 ? buttons + mainGap : 0);
-    setFits(title.getBoundingClientRect().width + titleGap + minimum <= room);
+    const room = main.getBoundingClientRect().width - (buttons > 0 ? buttons + mainGap : 0) - title.getBoundingClientRect().width - titleGap;
+    // Each stage's least width, with the 16px of gaps between the three parts.
+    const need = (search: number, chipsMin: number, scope: number) => (search + scope) * rem + chipsMin + 16;
+    const stages = [
+      need(SEARCH_OPEN_REM, chipsWidth, SCOPE_FULL_REM),
+      need(MAGNIFIER_REM, chipsWidth, SCOPE_FULL_REM),
+      need(MAGNIFIER_REM, chipsWidth, SCOPE_COMPACT_REM),
+      need(MAGNIFIER_REM, CHIPS_SCROLL_REM * rem, SCOPE_COMPACT_REM)
+    ];
+    const found = stages.findIndex((width) => width <= room);
+    setStage(found < 0 ? null : (found as 0 | 1 | 2 | 3));
   };
   useLayoutEffect(measure);
   useLayoutEffect(() => {
@@ -157,7 +176,12 @@ export function ActivityFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot]);
 
-  const inHeader = slot !== null && fits;
+  const inHeader = slot !== null && stage !== null;
+  // In the row under the header there is room for everything, at full size.
+  const level = inHeader ? stage ?? 0 : 0;
+  const magnifier = level >= 1;
+  const compact = level >= 2;
+  const searchOpen = searchFocused || titleDraft !== "";
   const customSince = filters.since !== "" && !isQuickSince(filters.since);
   const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? [])];
   const sinceOptions = customSince
@@ -174,18 +198,28 @@ export function ActivityFilters({
       data-header-controls={inHeader ? "" : undefined}
       className={cn("flex min-w-0 items-center gap-2", inHeader ? "flex-1" : "w-full pt-3 max-lg:flex-wrap")}
     >
-      <Input
-        data-activity-search
-        type="search"
-        aria-label="Find a title"
-        placeholder="Find a title"
-        value={titleDraft}
-        onChange={(event) => setTitleDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") event.currentTarget.blur();
-        }}
-        className={cn(CONTROL_HEIGHT, "w-auto min-w-[6.5rem] flex-[0_100_260px] rounded-[12px] max-lg:max-w-[22rem] max-lg:flex-[1_1_12rem]")}
-      />
+      <div
+        className={cn(
+          "relative min-w-0 shrink-0 transition-[width] duration-150 motion-reduce:transition-none",
+          magnifier ? (searchOpen ? "w-[11rem]" : "w-[2.375rem]") : "w-auto flex-[0_100_260px] max-lg:max-w-[22rem] max-lg:flex-[1_1_12rem]"
+        )}
+      >
+        {magnifier ? <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> : null}
+        <Input
+          data-activity-search
+          type="search"
+          aria-label="Find a title"
+          placeholder="Find a title"
+          value={titleDraft}
+          onChange={(event) => setTitleDraft(event.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") event.currentTarget.blur();
+          }}
+          className={cn(CONTROL_HEIGHT, "rounded-[12px]", magnifier ? "cursor-pointer pl-9 pr-2 focus:cursor-text" : "min-w-[6.5rem]", magnifier && !searchOpen && "placeholder:text-transparent")}
+        />
+      </div>
       <div data-activity-chips className="flex min-w-0 shrink items-center max-lg:order-3 max-lg:basis-full">
         {chips}
       </div>
@@ -195,16 +229,16 @@ export function ActivityFilters({
           value={filters.type}
           onChange={(value) => setFilters({ type: value })}
           options={typeOptions}
-          className="w-[9rem]"
-          triggerClassName={MENU_TRIGGER}
+          className={compact ? "w-[7.5rem]" : "w-[9rem]"}
+          triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
         />
         <MenuSelect
           label="Filter by time"
           value={filters.since}
           onChange={(value) => setFilters({ since: value, until: "" })}
           options={sinceOptions}
-          className="w-[9rem]"
-          triggerClassName={MENU_TRIGGER}
+          className={compact ? "w-[7.5rem]" : "w-[9rem]"}
+          triggerClassName={compact ? FILTER_MENU_TRIGGER : MENU_TRIGGER}
         />
       </div>
     </div>

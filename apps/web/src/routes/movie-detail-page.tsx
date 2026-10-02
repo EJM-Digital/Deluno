@@ -73,7 +73,7 @@ import {
   type SortDirection
 } from "../lib/release-candidate-columns";
 import { Badge } from "../components/ui/badge";
-import { Select } from "../components/ui/select";
+import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { RemoveMediaDialog, type MediaRemovalPreview, type RemoveMediaOptions } from "../components/app/remove-media-dialog";
@@ -1145,25 +1145,11 @@ export function MovieDetailPage() {
       {section === "destination" ? (
         <>
           {releaseCandidates.length ? (
-            <ListCard title="Choose a release" count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}>
-              {candidateProtocolOptions.length > 1 || candidateIndexerOptions.length > 1 ? (
-                <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-[var(--card-pad-x)]">
-                  <Select
-                    value={candidateProtocolFilter}
-                    onChange={(event) => setCandidateProtocolFilter(event.target.value)}
-                    options={[{ value: "", label: "Every protocol" }, ...candidateProtocolOptions.map((protocol) => ({ value: protocol, label: formatProtocol(protocol) }))]}
-                    aria-label="Filter by protocol"
-                    className="max-w-[10rem]"
-                  />
-                  <Select
-                    value={candidateIndexerFilter}
-                    onChange={(event) => setCandidateIndexerFilter(event.target.value)}
-                    options={[{ value: "", label: "Every indexer" }, ...candidateIndexerOptions.map((name) => ({ value: name, label: name }))]}
-                    aria-label="Filter by indexer"
-                    className="max-w-[12rem]"
-                  />
-                </div>
-              ) : null}
+            <ListCard
+              title="Choose a release"
+              count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}
+              actions={<ReleaseFilterMenus protocols={candidateProtocolOptions} protocol={candidateProtocolFilter} onProtocolChange={setCandidateProtocolFilter} indexers={candidateIndexerOptions} indexer={candidateIndexerFilter} onIndexerChange={setCandidateIndexerFilter} />}
+            >
               <ListTable
                 columns={[
                   { label: "Release" },

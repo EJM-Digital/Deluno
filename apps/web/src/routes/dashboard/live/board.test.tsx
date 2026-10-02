@@ -575,11 +575,9 @@ describe("arrived today", () => {
 
   it("has chips for All and each library in order, and All is pressed to begin with", () => {
     shelf();
-    const chips = within(screen.getByRole("group", { name: "Libraries" })).getAllByRole("button");
+    const chips = within(screen.getByRole("radiogroup", { name: "Libraries" })).getAllByRole("radio");
     expect(chips.map((chip) => chip.textContent)).toEqual(["All", "Movies HD", "Kids", "TV"]);
-    expect(chips.map((chip) => chip.getAttribute("data-library"))).toEqual(["all", "hd", "kids", "tvl"]);
-    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
-    expect(chips.every((chip) => chip.classList.contains("lsh-chip"))).toBe(true);
+    expect(chips.map((chip) => chip.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false"]);
   });
 
   it("tags each poster with its library and the tag opens that library's page filtered to it", () => {
@@ -608,29 +606,29 @@ describe("arrived today", () => {
   it("a chip filters the shelf to its library", async () => {
     const user = userEvent.setup();
     shelf();
-    await user.click(screen.getByRole("button", { name: "Kids" }));
-    expect(screen.getByRole("button", { name: "Kids" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("radio", { name: "Kids" }));
+    expect(screen.getByRole("radio", { name: "Kids" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("link", { name: /^Film 2/ })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Film 1/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Show 9/ })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.click(screen.getByRole("radio", { name: "All" }));
     expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
   });
 
   it("remembers the chip in this browser, and a library that is gone is All again", async () => {
     const user = userEvent.setup();
     const first = shelf();
-    await user.click(screen.getByRole("button", { name: "TV" }));
+    await user.click(screen.getByRole("radio", { name: "TV" }));
     expect(localStorage.getItem("deluno.live.shelfLibrary")).toBe("tvl");
     first.unmount();
     shelf();
-    expect(screen.getByRole("button", { name: "TV" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("radio", { name: "TV" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("link", { name: /^Film 1/ })).toBeNull();
     cleanup();
     localStorage.setItem("deluno.live.shelfLibrary", "removed");
     shelf();
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("link", { name: /^Film 1/ })).toBeInTheDocument();
   });
 

@@ -9,6 +9,7 @@ import { useMemo, useState, type JSX } from "react";
 import { Link } from "react-router-dom";
 import type { BackupItem, BackupSettingsSnapshot, DashboardScheduledTask } from "../../../lib/api";
 import type { SystemDatabasesResponse, SystemLogEntry, SystemLogResponse } from "../../../lib/api/types/system-log";
+import { FilterChips } from "../../../components/ui/filter-chips";
 import { send, useAction } from "../downloads-kit";
 import { useNow } from "../live/hooks";
 import { countdown, plainCount, sizeText, span, timeOfDayText, whenText } from "./logic";
@@ -91,11 +92,14 @@ export function LogCard({ log }: { log: SystemLogResponse | null }): JSX.Element
       <div className="sy-card-h">
         <h2>Log</h2>
         <span className="sy-muted sy-num">{log ? `${log.errorsToday} errors · ${log.warningsToday} warnings today` : ""}</span>
-        <span className="sy-lv" role="group" aria-label="Show">
-          {([["all", "All"], ["error", "Errors"], ["warning", "Warnings"]] as const).map(([key, label]) => (
-            <button key={key} type="button" className={level === key ? "sy-on" : undefined} aria-pressed={level === key} onClick={() => setLevel(key)}>{label}</button>
-          ))}
-        </span>
+        <FilterChips<Level>
+          label="Show"
+          size="sm"
+          className="sy-lv"
+          value={level}
+          onValueChange={setLevel}
+          options={[{ value: "all", label: "All" }, { value: "error", label: "Errors" }, { value: "warning", label: "Warnings" }]}
+        />
         <Link className="sy-link" to="/system" aria-label="Open the full log files">Full log →</Link>
       </div>
       <ul className="sy-log sy-scroll">

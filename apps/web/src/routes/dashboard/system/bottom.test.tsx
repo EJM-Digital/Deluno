@@ -40,10 +40,10 @@ describe("Log", () => {
     render(<MemoryRouter><LogCard log={log} /></MemoryRouter>);
     expect(screen.getByText("1 errors · 2 warnings today")).toBeInTheDocument();
     expect(screen.getByText("The backup folder is not writable.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Errors" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Errors" }));
     expect(screen.queryByText("The indexer answered slowly.")).toBeNull();
     expect(screen.getByText("The backup folder is not writable.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Warnings" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Warnings" }));
     expect(screen.getByText("The indexer answered slowly.")).toBeInTheDocument();
     expect(screen.queryByText("Backup complete.")).toBeNull();
   });

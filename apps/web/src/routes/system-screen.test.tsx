@@ -77,8 +77,7 @@ describe("Activity timeline page size (#871)", () => {
       </MemoryRouter>
     );
 
-    const select = screen.getByLabelText("Rows shown") as HTMLSelectElement;
-    expect(select.value).toBe("250");
+    expect(screen.getByRole("combobox", { name: "Rows shown" })).toHaveTextContent("250 rows");
   });
 
   it("changing the select saves the new page size and refetches the timeline", async () => {
@@ -90,8 +89,8 @@ describe("Activity timeline page size (#871)", () => {
       </MemoryRouter>
     );
 
-    const select = screen.getByLabelText("Rows shown") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "1000" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Rows shown" }));
+    fireEvent.click(screen.getByRole("option", { name: "1000 rows" }));
 
     await waitFor(() =>
       expect(authedFetchMock).toHaveBeenCalledWith(
@@ -102,7 +101,7 @@ describe("Activity timeline page size (#871)", () => {
 
     // The select now reflects the saved value, and the loader is asked to
     // re-run -- which is what actually re-fetches Activity at the new size.
-    await waitFor(() => expect(select.value).toBe("1000"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Rows shown" })).toHaveTextContent("1000 rows"));
     expect(revalidateMock).toHaveBeenCalled();
   });
 });

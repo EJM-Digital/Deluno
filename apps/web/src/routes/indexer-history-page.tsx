@@ -12,16 +12,16 @@
  * (/api/series/search-history) history endpoints are unchanged; this screen
  * reads the same underlying events through a separate, wider aggregation.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Eraser, RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFacts } from "../components/ui/drawer";
-import { Input } from "../components/ui/input";
+import { FILTER_MENU_TRIGGER } from "../components/ui/filter-chips";
+import { MenuSelect } from "../components/ui/menu-select";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { Select } from "../components/ui/select";
 import { configurationNavAreas } from "../components/app/settings-shell";
 import { formatDateTime, useDisplayPreferences } from "../lib/display-preferences";
 import { indexerHistoryOutcomeWords } from "../lib/indexer-history-outcomes";
@@ -87,14 +87,12 @@ export function IndexerHistoryPage() {
   const [nextPageToken, setNextPageToken] = useState<string | null>(page.nextPageToken);
   const [eventType, setEventType] = useState("");
   const [indexerName, setIndexerName] = useState("");
-  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<IndexerHistoryItem | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
   async function applyFilters(nextEventType: string, nextIndexerName: string) {
-    setLoading(true);
     try {
       const params = new URLSearchParams({ pageSize: "50" });
       if (nextEventType) params.set("eventType", nextEventType);
@@ -104,9 +102,15 @@ export function IndexerHistoryPage() {
       setNextPageToken(page.nextPageToken);
     } catch {
       toast.error("Indexer history could not be loaded.");
-    } finally {
-      setLoading(false);
     }
+  }
+
+  // The indexer search is typed into the card's header, so it asks again a moment after the typing stops.
+  const indexerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function changeIndexerName(next: string) {
+    setIndexerName(next);
+    if (indexerTimer.current) clearTimeout(indexerTimer.current);
+    indexerTimer.current = setTimeout(() => void applyFilters(eventType, next), 350);
   }
 
   async function loadMore() {
@@ -155,33 +159,20 @@ export function IndexerHistoryPage() {
         }
       />
 
-      <ListCard title={`${items.length}${nextPageToken ? "+" : ""} event${items.length === 1 && !nextPageToken ? "" : "s"}`} titleCase={false}>
-        <div className="flex flex-wrap items-end gap-3 border-b border-hairline p-[var(--card-pad-x)]">
-          <div className="grid gap-1">
-            <label htmlFor="indexer-history-type" className="text-[length:var(--type-caption)] text-muted-foreground">Action</label>
-            <Select
-              value={eventType}
-              onChange={(event) => { setEventType(event.target.value); void applyFilters(event.target.value, indexerName); }}
-              options={EVENT_TYPE_OPTIONS}
-              disabled={loading}
-              id="indexer-history-type"
-              aria-label="Filter by action type"
-            />
-          </div>
-          <div className="grid gap-1">
-            <label htmlFor="indexer-history-indexer" className="text-[length:var(--type-caption)] text-muted-foreground">Indexer</label>
-            <Input
-              id="indexer-history-indexer"
-              value={indexerName}
-              onChange={(event) => setIndexerName(event.target.value)}
-              onBlur={() => void applyFilters(eventType, indexerName)}
-              placeholder="Any indexer"
-              className="max-w-[16rem]"
-              aria-label="Filter by indexer name"
-            />
-          </div>
-        </div>
-
+      <ListCard
+        title={`${items.length}${nextPageToken ? "+" : ""} event${items.length === 1 && !nextPageToken ? "" : "s"}`}
+        titleCase={false}
+        filter={{ value: indexerName, onChange: changeIndexerName, placeholder: "Find an indexer" }}
+        actions={
+          <MenuSelect
+            label="Filter by action type"
+            value={eventType}
+            onChange={(next) => { setEventType(next); void applyFilters(next, indexerName); }}
+            options={EVENT_TYPE_OPTIONS.map((option) => (option.value === "" ? { ...option, label: "Any action" } : option))}
+            triggerClassName={FILTER_MENU_TRIGGER}
+          />
+        }
+      >
         {items.length === 0 ? (
           <ListEmpty
             title="No indexer activity yet"

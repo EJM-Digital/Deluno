@@ -36,7 +36,8 @@ import { EmptyState } from "../components/shell/empty-state";
 import { Field } from "../components/ui/field";
 import { LibraryGridSkeleton } from "../components/shell/skeleton";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
-import { PageToolbar } from "../components/ui/page-toolbar";
+import { FilterChips } from "../components/ui/filter-chips";
+import { HeaderTabsPortal, useHeaderSlot } from "../components/ui/header-tabs";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -114,6 +115,18 @@ export function DiscoverPage() {
       // Nothing kept: the choice holds until the page is left.
     }
   }, [mediaType]);
+  const slot = useHeaderSlot();
+  const typeChips = (
+    <FilterChips<DiscoverMediaType>
+      label="Discover media type"
+      value={mediaType}
+      onValueChange={setMediaType}
+      options={[
+        { value: "movies", label: "Movies" },
+        { value: "series", label: "TV" }
+      ]}
+    />
+  );
   const [data, setData] = useState<DiscoverResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,17 +183,14 @@ export function DiscoverPage() {
 
   return (
     <div className="grid gap-[var(--page-gap)]">
-      <PageToolbar
-        sections={{
-          label: "Discover media type",
-          value: mediaType,
-          onValueChange: (next) => setMediaType(next as DiscoverMediaType),
-          options: [
-            { value: "movies", label: "Movies" },
-            { value: "series", label: "TV" }
-          ]
-        }}
-      />
+      {/* Movies / TV are a page-wide filter, so they are chips on the title line (Activity's mechanism); where the header has no slot, a row of their own. */}
+      {slot ? (
+        <HeaderTabsPortal slot={slot}>
+          <div data-header-controls className="flex items-center">{typeChips}</div>
+        </HeaderTabsPortal>
+      ) : (
+        <div>{typeChips}</div>
+      )}
 
       <Card as="section" className="dark:border-white/[0.07]">
         <header className="flex min-h-[var(--list-header-height)] items-center gap-2 border-b border-hairline px-[var(--card-pad-x)]">

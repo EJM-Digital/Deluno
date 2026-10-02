@@ -19,7 +19,7 @@ import { Input } from "../components/ui/input";
 import { ListCard } from "../components/ui/list-card";
 import { PageFooter } from "../components/ui/page-footer";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SegmentedControl } from "../components/ui/segmented-control";
+import { FilterChips } from "../components/ui/filter-chips";
 import { RangeAxis, RangeSlider } from "../components/ui/range-slider";
 import { SwitchRow } from "../components/ui/switch";
 import { configurationNavAreas } from "../components/app/settings-shell";
@@ -103,9 +103,9 @@ export function SettingsQualityPage() {
   }
 
   const scopeSwitch = (
-    <SegmentedControl<"movie" | "episode">
-      aria-label="Show sizes for"
-      className="w-auto"
+    <FilterChips<"movie" | "episode">
+      label="Show sizes for"
+      size="sm"
       value={scope}
       onValueChange={setScope}
       options={[
