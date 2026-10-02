@@ -11,7 +11,7 @@ surface is definitely untested, a covered one is only probably tested.
 
 | Surface | Total | Touched by a test | Untouched |
 | --- | ---: | ---: | ---: |
-| API routes | 568 | 344 | **224** |
+| API routes | 567 | 351 | **216** |
 | Web screens | 78 | 67 | **11** |
 
 ## API routes no test mentions
@@ -23,7 +23,6 @@ surface is definitely untested, a covered one is only probably tested.
 | DELETE | `/api/integrations/processors/connections/{id}/path-mappings/{mappingId}` |
 | DELETE | `/api/media-servers/{id}` |
 | DELETE | `/api/media-servers/{id}/path-mappings/{mappingId}` |
-| DELETE | `/api/movie-collections/{id}` |
 | DELETE | `/api/movies/{id}/subtitles/override` |
 | DELETE | `/api/retention/episode-removals/{episodeId}` |
 | DELETE | `/api/retention/keeps/{id}` |
@@ -62,9 +61,6 @@ surface is definitely untested, a covered one is only probably tested.
 | GET | `/api/monitoring/diagnostics` |
 | GET | `/api/monitoring/export/influx` |
 | GET | `/api/monitoring/export/prometheus` |
-| GET | `/api/movie-collections/` |
-| GET | `/api/movie-collections/{id}` |
-| GET | `/api/movie-collections/{id}/members` |
 | GET | `/api/movies/calendar` |
 | GET | `/api/movies/genres` |
 | GET | `/api/movies/posters` |
@@ -149,7 +145,6 @@ surface is definitely untested, a covered one is only probably tested.
 | POST | `/api/media-servers/{id}/path-mappings` |
 | POST | `/api/media-servers/{id}/path-mappings/{mappingId}/test` |
 | POST | `/api/media-servers/{id}/test` |
-| POST | `/api/movie-collections/` |
 | POST | `/api/movie-collections/remove` |
 | POST | `/api/movie-collections/{id}/refresh` |
 | POST | `/api/movies/bulk/search` |
@@ -228,8 +223,6 @@ surface is definitely untested, a covered one is only probably tested.
 | PUT | `/api/libraries/{id}/media-plan` |
 | PUT | `/api/media-servers/{id}` |
 | PUT | `/api/movie-collections/bulk` |
-| PUT | `/api/movie-collections/{id}` |
-| PUT | `/api/movie-collections/{id}/members/{providerId}/exclusion` |
 | PUT | `/api/movies/{id}/metadata/override` |
 | PUT | `/api/movies/{id}/replacement-protection` |
 | PUT | `/api/movies/{id}/subtitles/override` |
@@ -238,7 +231,6 @@ surface is definitely untested, a covered one is only probably tested.
 | PUT | `/api/series/{id}/libraries/{libraryId}` |
 | PUT | `/api/series/{id}/metadata/override` |
 | PUT | `/api/series/{id}/numbering` |
-| PUT | `/api/series/{id}/replacement-protection` |
 | PUT | `/api/series/{id}/subtitles/override` |
 | PUT | `/api/sharing-rules/{id}` |
 | PUT | `/api/v1/guides/trash/update-check/settings` |
