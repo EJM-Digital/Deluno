@@ -22,11 +22,11 @@ export function LiveCard({ title, count, to, toLabel, iconOnly = false, classNam
   const id = useId();
   return (
     <section aria-labelledby={id} className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[14px] border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
-      {/* The mockup's card header, rule for rule: 14/18/10 padding, baseline-aligned, a 16px bold title, the count at 14px,
+      {/* The mockup's card header, rule for rule: 14/18/10 padding, baseline-aligned, a 15px bold title, the count at 12px (Weir's sizes, 2 Oct 2026),
           the link 13px at the right with its arrow. No rule under it. */}
-      <header className="flex shrink-0 items-baseline gap-[10px] whitespace-nowrap px-[18px] pb-[10px] pt-[14px]">
+      <header className="flex min-h-[44px] shrink-0 items-baseline gap-[10px] whitespace-nowrap px-[18px] pb-[10px] pt-[14px]">
         <h2 id={id} className="m-0 shrink-0 text-[length:var(--type-card-title)] font-bold text-foreground">{title}</h2>
-        <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[length:var(--type-body-sm)] text-muted-foreground">{count}</span>
+        <span title={typeof count === "string" ? count : undefined} className="min-w-0 flex-1 truncate text-[length:var(--type-caption)] text-muted-foreground">{count}</span>
         {to ? (
           <Link to={to} aria-label={`${toLabel ?? "Open"}: ${title}`} className="ml-auto shrink-0 rounded-sm text-[length:var(--button-font-size-sm)] font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(var(--ring))]">
             {iconOnly ? null : `${toLabel ?? "Open"} `}

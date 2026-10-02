@@ -31,9 +31,9 @@
 .sy-faint { color: var(--sy-faint); }
 .sy-label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--sy-muted); font-weight: 600; }
 .sy-card { background: var(--sy-card); border: 1px solid var(--sy-line); border-radius: 14px; min-width: 0; min-height: 0; overflow: hidden; }
-.sy-card-h { display: flex; align-items: baseline; gap: 10px; padding: 14px 18px 10px; white-space: nowrap; min-width: 0; }
+.sy-card-h { display: flex; align-items: baseline; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 14px 18px 10px; white-space: nowrap; min-width: 0; }
 .sy-card-h h2 { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.2; }
-.sy-card-h > .sy-muted { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: 13px; }
+.sy-card-h > .sy-muted { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: 12px; }
 .sy-link { margin-left: auto; color: var(--sy-primary); font-size: 13px; font-weight: 500; text-decoration: none; white-space: nowrap; }
 .sy-link:hover { text-decoration: underline; }
 .sy-scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: hsl(var(--hairline)) transparent; min-height: 0; }
