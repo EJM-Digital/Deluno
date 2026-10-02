@@ -5,6 +5,7 @@ import { useLoaderData, useRevalidator } from "react-router-dom";
 import { TagPicker } from "../components/app/tag-picker";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
+import { Chip } from "../components/ui/chip";
 import { Checkbox } from "../components/ui/checkbox";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Input } from "../components/ui/input";
@@ -110,6 +111,25 @@ export function CollectionsPage() {
       revalidator.revalidate();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Collection could not be refreshed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function setMemberExcluded(collection: MovieCollectionItem, member: MovieCollectionMemberItem, excluded: boolean) {
+    if (busy) return;
+    setBusy(`exclude:${collection.id}:${member.providerId}`);
+    try {
+      const response = await authedFetch(`/api/movie-collections/${encodeURIComponent(collection.id)}/members/${encodeURIComponent(member.providerId)}/exclusion`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ excluded })
+      });
+      if (!response.ok) throw new Error(excluded ? `${member.title} could not be excluded.` : `${member.title} could not be included again.`);
+      toast.success(excluded ? `${member.title} is excluded. Deluno will not add or search for it.` : `${member.title} is included again.`);
+      revalidator.revalidate();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That film could not be changed.");
     } finally {
       setBusy(null);
     }
@@ -261,6 +281,8 @@ export function CollectionsPage() {
             const members = membersByCollection[collection.id] ?? [];
             const isBusy = busy === collection.id;
             const isRefreshing = busy === `refresh:${collection.id}`;
+            const excludedCount = members.filter((member) => member.isExcluded).length;
+            const excludePrefix = `exclude:${collection.id}:`;
             return (
               <Card key={collection.id} className="flex min-h-[250px] flex-col">
                 <div className="flex gap-[var(--grid-gap)] p-4">
@@ -287,6 +309,7 @@ export function CollectionsPage() {
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <span className={collection.missingCount ? "font-semibold text-warning" : "font-semibold text-success"}>{collection.missingCount} missing</span>
                       <span className="text-muted-foreground">{collection.heldCount}/{collection.memberCount} held</span>
+                      {excludedCount > 0 ? <span className="text-muted-foreground">{excludedCount} excluded</span> : null}
                       {collection.qualityProfileName ? <span className="text-muted-foreground">{collection.qualityProfileName}</span> : null}
                     </div>
                   </div>
@@ -294,14 +317,11 @@ export function CollectionsPage() {
 
                 <div className="border-t border-hairline px-4 py-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Every member</p>
-                  <div className="flex flex-wrap gap-2">
-                    {members.map((member) => (
-                      <a key={member.providerId} href={member.localMovieId ? `/movies/${member.localMovieId}` : member.externalUrl ?? undefined} target={member.localMovieId ? undefined : "_blank"} rel={member.localMovieId ? undefined : "noreferrer"} title={`${member.title}${member.releaseYear ? ` (${member.releaseYear})` : ""}`} className={cn("group relative h-14 w-10 overflow-hidden rounded-md bg-surface-2 ring-offset-2 transition hover:ring-2 hover:ring-primary", !member.localMovieId && "opacity-55 saturate-50") }>
-                        {member.posterUrl ? <ArtworkImage src={member.posterUrl} alt={member.title} className="h-full w-full object-cover" /> : <Film className="m-auto mt-5 h-4 w-4 text-muted-foreground" />}
-                        {member.localMovieId ? <span className="absolute bottom-0.5 right-0.5 rounded-full bg-success p-0.5 text-white"><Check className="h-2.5 w-2.5" /></span> : null}
-                      </a>
-                    ))}
-                  </div>
+                  <CollectionMembers
+                    members={members}
+                    busyProviderId={busy?.startsWith(excludePrefix) ? busy.slice(excludePrefix.length) : null}
+                    onSetExcluded={(member, excluded) => setMemberExcluded(collection, member, excluded)}
+                  />
                 </div>
 
                 <CollectionTagsRow
@@ -339,6 +359,47 @@ export function CollectionsPage() {
         onConfirm={removeCollections}
       />
     </div>
+  );
+}
+
+/**
+ * Every film in a followed collection, one compact row each. A film can be
+ * excluded so Deluno never adds or searches for it; an excluded film stays in
+ * the list, muted, with a way back.
+ */
+export function CollectionMembers({ members, busyProviderId, onSetExcluded }: {
+  members: MovieCollectionMemberItem[];
+  busyProviderId: string | null;
+  onSetExcluded: (member: MovieCollectionMemberItem, excluded: boolean) => void;
+}) {
+  if (members.length === 0) {
+    return <p className="text-sm text-muted-foreground">No films listed yet. Refresh the collection to read its members.</p>;
+  }
+  return (
+    <ul className="grid max-h-60 gap-x-4 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+      {members.map((member) => {
+        const label = `${member.title}${member.releaseYear ? ` (${member.releaseYear})` : ""}`;
+        const href = member.localMovieId ? `/movies/${member.localMovieId}` : member.externalUrl ?? undefined;
+        const rowBusy = busyProviderId === member.providerId;
+        return (
+          <li key={member.providerId} data-excluded={member.isExcluded ? "true" : undefined} className={cn("flex min-w-0 items-center gap-2", member.isExcluded && "opacity-60")}>
+            <a href={href} target={member.localMovieId ? undefined : "_blank"} rel={member.localMovieId ? undefined : "noreferrer"} tabIndex={-1} aria-hidden className={cn("relative h-12 w-8 shrink-0 overflow-hidden rounded-md bg-surface-2", (!member.localMovieId || member.isExcluded) && "saturate-50")}>
+              {member.posterUrl ? <ArtworkImage src={member.posterUrl} alt="" className="h-full w-full object-cover" /> : <Film className="m-auto mt-4 h-4 w-4 text-muted-foreground" />}
+              {member.localMovieId ? <span className="absolute bottom-0.5 right-0.5 rounded-full bg-success p-0.5 text-white"><Check className="h-2.5 w-2.5" /></span> : null}
+            </a>
+            <div className="min-w-0 flex-1">
+              <a href={href} target={member.localMovieId ? undefined : "_blank"} rel={member.localMovieId ? undefined : "noreferrer"} className={cn("block truncate text-sm font-medium text-foreground hover:underline", member.isExcluded && "text-muted-foreground")} title={label}>{label}</a>
+              <span className="text-xs text-muted-foreground">{member.localMovieId ? "In your library" : "Not in your library"}</span>
+            </div>
+            {member.isExcluded ? <Chip tone="idle" dot={false}>Excluded</Chip> : null}
+            <Button size="sm" variant="ghost" disabled={rowBusy} aria-label={`${member.isExcluded ? "Include again" : "Exclude"} ${label}`} onClick={() => onSetExcluded(member, !member.isExcluded)}>
+              {rowBusy ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
+              {member.isExcluded ? "Include again" : "Exclude"}
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
