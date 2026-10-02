@@ -51,10 +51,10 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
     {
         using var storage = TestStorage.Create();
         var clock = new FixedTimeProvider(Start);
-        var (poller, dispatches, alerts) = await CreateAsync(storage, clock);
+        var (poller, dispatches, problems) = await CreateAsync(storage, clock);
         await InsertAsync(storage.Factory, "old", TimeSpan.FromDays(3), clock);
-        await alerts.CreateAlertAsync("old", "old", "Download not detected in qBittorrent", "grab-timeout", "warning", null, CancellationToken.None);
-        await alerts.AcknowledgeAlertsForDispatchAsync("old", CancellationToken.None);
+        await problems.RecordAsync("old", "grab-timeout", CancellationToken.None);
+        await problems.AcknowledgeForDispatchAsync("old", CancellationToken.None);
 
         var report = await poller.PollAsync(CancellationToken.None);
 
@@ -104,13 +104,13 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
     {
         using var storage = TestStorage.Create();
         var clock = new FixedTimeProvider(Start);
-        var (poller, dispatches, alerts) = await CreateAsync(storage, clock);
+        var (poller, dispatches, problems) = await CreateAsync(storage, clock);
         await InsertAsync(storage.Factory, "gone", TimeSpan.FromHours(3), clock);
         await InsertAsync(storage.Factory, "fresh", TimeSpan.FromMinutes(30), clock);
         await poller.PollAsync(CancellationToken.None);
 
-        await RecoveryCaseAlerts.AcknowledgeAsync("""{"DispatchId":"gone"}""", alerts, CancellationToken.None, dispatches);
-        await RecoveryCaseAlerts.AcknowledgeAsync("""{"DispatchId":"fresh"}""", alerts, CancellationToken.None, dispatches);
+        await RecoveryCaseProblems.AcknowledgeAsync("""{"DispatchId":"gone"}""", problems, CancellationToken.None, dispatches);
+        await RecoveryCaseProblems.AcknowledgeAsync("""{"DispatchId":"fresh"}""", problems, CancellationToken.None, dispatches);
 
         Assert.Null(await dispatches.GetDispatchAsync("gone", CancellationToken.None));
         // A download that has not failed is not archived by someone tidying an issue.
@@ -127,7 +127,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
     {
         using var storage = TestStorage.Create();
         var clock = new FixedTimeProvider(Start);
-        var (poller, dispatches, alerts) = await CreateAsync(storage, clock);
+        var (poller, dispatches, problems) = await CreateAsync(storage, clock);
         await InsertAsync(storage.Factory, "shown", TimeSpan.FromMinutes(5), clock);
         await dispatches.RecordDetectionAsync("shown", "nzo-1", 1024, completed: false, CancellationToken.None);
         clock.Advance(TimeSpan.FromHours(3));
@@ -138,7 +138,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
         Assert.Equal("sent", shown?.Status);
         Assert.Null(shown?.GrabFailureCode);
         Assert.Equal(0, report.GrabTimeoutsDetected);
-        Assert.False(await alerts.HasUnresolvedAlertAsync("shown", "grab-timeout", CancellationToken.None));
+        Assert.False(await problems.IsRecordedAsync("shown", "grab-timeout", CancellationToken.None));
     }
 
     /// <summary>
@@ -150,7 +150,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
     {
         using var storage = TestStorage.Create();
         var clock = new FixedTimeProvider(Start);
-        var (poller, dispatches, alerts) = await CreateAsync(storage, clock);
+        var (poller, dispatches, problems) = await CreateAsync(storage, clock);
         await InsertAsync(storage.Factory, "long", TimeSpan.FromMinutes(5), clock);
         await dispatches.RecordDetectionAsync("long", "hash-long", 1024, completed: false, CancellationToken.None);
 
@@ -158,14 +158,14 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
         var stillDownloading = await poller.PollAsync(CancellationToken.None);
 
         Assert.Equal(0, stillDownloading.DetectionTimeoutsDetected);
-        Assert.False(await alerts.HasUnresolvedAlertAsync("long", "detection-timeout", CancellationToken.None));
+        Assert.False(await problems.IsRecordedAsync("long", "detection-timeout", CancellationToken.None));
 
         await dispatches.RecordDetectionAsync("long", "hash-long", 4096, completed: true, CancellationToken.None);
         clock.Advance(TimeSpan.FromHours(5));
         var finishedLongAgo = await poller.PollAsync(CancellationToken.None);
 
         Assert.Equal(1, finishedLongAgo.DetectionTimeoutsDetected);
-        Assert.True(await alerts.HasUnresolvedAlertAsync("long", "detection-timeout", CancellationToken.None));
+        Assert.True(await problems.IsRecordedAsync("long", "detection-timeout", CancellationToken.None));
     }
 
     /// <summary>
@@ -274,7 +274,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
-    private static async Task<(DownloadDispatchPollingService Poller, SqliteDownloadDispatchesRepository Dispatches, SqliteDispatchAlertRepository Alerts)> CreateAsync(
+    private static async Task<(DownloadDispatchPollingService Poller, SqliteDownloadDispatchesRepository Dispatches, SqliteDispatchProblemLog Problems)> CreateAsync(
         TestStorage storage,
         FixedTimeProvider clock)
     {
@@ -282,7 +282,7 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
             storage.Factory,
             new SqliteDatabaseMigrator(storage.Factory, clock),
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
-        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, clock);
         var poller = new DownloadDispatchPollingService(
             storage.Factory,
@@ -290,9 +290,9 @@ public sealed class ADownloadTheClientNeverShowedEndsTests
             new QuietRecoveryHandler(),
             new SqliteJobStore(storage.Factory, clock, new NullRealtimeEventPublisher(), new NullDownloadDispatchesRepository()),
             dispatches,
-            alerts,
+            problems,
             new NullRealtimeEventPublisher());
-        return (poller, dispatches, alerts);
+        return (poller, dispatches, problems);
     }
 
     private static async Task InsertAsync(IDelunoDatabaseConnectionFactory factory, string id, TimeSpan grabbedAgo, FixedTimeProvider clock)

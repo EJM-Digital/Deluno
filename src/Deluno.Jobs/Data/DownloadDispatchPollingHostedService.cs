@@ -58,14 +58,14 @@ public sealed class DownloadDispatchPollingHostedService(
                 {
                     var report = await pollingService.PollAsync(stoppingToken);
                     logger.LogInformation(
-                        "Download dispatch polling completed: {UnresolvedChecked} unresolved, {GrabTimeouts} grab timeouts, {DetectionTimeouts} detection timeouts, {ImportTimeouts} import timeouts, {ImportFailures} import failures, {RecoveryCases} recovery cases recorded, {AlertsResolved} alerts resolved.",
+                        "Download dispatch polling completed: {UnresolvedChecked} unresolved, {GrabTimeouts} grab timeouts, {DetectionTimeouts} detection timeouts, {ImportTimeouts} import timeouts, {ImportFailures} import failures, {RecoveryCases} recovery cases recorded, {ProblemsSettled} problems settled.",
                         report.UnresolvedDispatchesChecked,
                         report.GrabTimeoutsDetected,
                         report.DetectionTimeoutsDetected,
                         report.ImportTimeoutsDetected,
                         report.ImportFailuresDetected,
                         report.RecoveryCasesRecorded,
-                        report.AlertsResolved);
+                        report.ProblemsSettled);
                     await RecordOutcomeAsync(startedUtc, "completed", stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

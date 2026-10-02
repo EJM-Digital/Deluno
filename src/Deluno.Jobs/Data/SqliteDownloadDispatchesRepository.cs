@@ -590,6 +590,8 @@ public sealed class SqliteDownloadDispatchesRepository(
             SELECT id, dispatch_id, event_type, timestamp, details_json, created_utc
             FROM download_dispatch_timeline
             WHERE dispatch_id = @dispatchId
+              -- Bookkeeping rows (see IDispatchProblemLog) are not events a person reads.
+              AND event_type NOT LIKE 'problem-%'
             ORDER BY timestamp DESC
             """;
 

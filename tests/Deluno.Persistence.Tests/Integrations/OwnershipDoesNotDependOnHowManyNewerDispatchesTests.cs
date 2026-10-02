@@ -293,7 +293,7 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
 
             var health = new SqliteDownloadHealthRepository(storage.Factory, time);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
-            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var resilience = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
             var fake = new Client(client);
@@ -303,7 +303,7 @@ public sealed class OwnershipDoesNotDependOnHowManyNewerDispatchesTests
                 settings, health, libraries, connections, jobs, registry, time, resilience,
                 jobs, dispatches, jobs, new DownloadHealthEvaluator(), processors,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
-                dispatchAlertRepository: alerts);
+                dispatchProblemLog: problems);
 
             return new World(storage, service, dispatches, client.Id, fake, health, time);
         }

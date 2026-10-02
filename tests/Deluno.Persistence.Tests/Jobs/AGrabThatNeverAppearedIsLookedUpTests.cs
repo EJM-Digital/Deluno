@@ -210,7 +210,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, clock);
-        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
         var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
         var activity = new RecordingActivityFeed();
 
@@ -220,7 +220,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             new QuietRecoveryHandler(),
             activity,
             dispatches,
-            alerts,
+            problems,
             new NullRealtimeEventPublisher());
 
         await InsertAsync(storage, "gone", TimeSpan.FromHours(3));
@@ -248,7 +248,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             NullLogger<JobsSchemaInitializer>.Instance).StartAsync(CancellationToken.None);
 
         var dispatches = new SqliteDownloadDispatchesRepository(storage.Factory, clock);
-        var alerts = new SqliteDispatchAlertRepository(storage.Factory, clock);
+        var problems = new SqliteDispatchProblemLog(storage.Factory, clock);
         var blocked = new SqliteBlockedReleaseRepository(storage.Factory, clock);
         var activity = new RecordingActivityFeed();
         var appearanceLookup = new FakeGrabAppearanceLookupService(lookup, throwing);
@@ -259,7 +259,7 @@ public sealed class AGrabThatNeverAppearedIsLookedUpTests
             new QuietRecoveryHandler(),
             activity,
             dispatches,
-            alerts,
+            problems,
             new NullRealtimeEventPublisher(),
             appearanceLookup,
             blocked,

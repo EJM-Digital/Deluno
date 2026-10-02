@@ -4,21 +4,21 @@ using Deluno.Jobs.Contracts;
 namespace Deluno.Jobs.Data;
 
 /// <summary>
-/// The dispatch alerts behind an import-recovery case.
+/// The problems recorded behind an import-recovery case.
 ///
 /// <para>The poller records one problem twice: a recovery case, which the
-/// Import issues list shows and a person dismisses, and a dispatch alert, which
-/// no screen shows and monitoring counts. Settling the case left the alert open
-/// until the download was archived weeks later (#537). A case settled by a
-/// person now settles the alerts on its download too.</para>
+/// Import issues list shows and a person dismisses, and an entry in the problem
+/// log, which no screen shows and monitoring counts. Settling the case left the
+/// problem open until the download was archived weeks later (#537). A case
+/// settled by a person now settles the problems on its download too.</para>
 /// </summary>
-public static class RecoveryCaseAlerts
+public static class RecoveryCaseProblems
 {
-    /// <summary>Acknowledges the open alerts on the case's download; returns how many.</summary>
+    /// <summary>Acknowledges the open problems on the case's download; returns how many.</summary>
     /// <param name="detailsJson">
     /// The case's details: <c>DispatchId</c>, or for cases recorded before it was
     /// kept, <c>DownloadClientId</c> and <c>ReleaseName</c> - which cannot say
-    /// which of a release's grabs it was, so the alerts on all of them close.
+    /// which of a release's grabs it was, so the problems on all of them close.
     /// </param>
     /// <param name="dispatches">
     /// When given, the case's download is settled too if it failed. Transfers
@@ -28,7 +28,7 @@ public static class RecoveryCaseAlerts
     /// </param>
     public static async Task<int> AcknowledgeAsync(
         string? detailsJson,
-        IDispatchAlertRepository alertRepository,
+        IDispatchProblemLog problemLog,
         CancellationToken cancellationToken,
         IDownloadDispatchesRepository? dispatches = null)
     {
@@ -57,11 +57,11 @@ public static class RecoveryCaseAlerts
                     await dispatches.ArchiveDispatchAsync(dispatchId, "issue_settled", cancellationToken);
                 }
 
-                return await alertRepository.AcknowledgeAlertsForDispatchAsync(dispatchId, cancellationToken);
+                return await problemLog.AcknowledgeForDispatchAsync(dispatchId, cancellationToken);
             }
 
             return Text(root, "DownloadClientId") is { } clientId && Text(root, "ReleaseName") is { } releaseName
-                ? await alertRepository.AcknowledgeAlertsForReleaseAsync(clientId, releaseName, cancellationToken)
+                ? await problemLog.AcknowledgeForReleaseAsync(clientId, releaseName, cancellationToken)
                 : 0;
         }
         catch (JsonException)

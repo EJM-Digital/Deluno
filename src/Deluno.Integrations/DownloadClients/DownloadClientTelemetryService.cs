@@ -38,7 +38,7 @@ public sealed class DownloadClientTelemetryService(
     IBlockedReleaseRepository? blockedReleases = null,
     IDownloadHealthConnectivityCheck? connectivityCheck = null,
     IDispatchTitleUnmonitorService? titleUnmonitorService = null,
-    IDispatchAlertRepository? dispatchAlertRepository = null,
+    IDispatchProblemLog? dispatchProblemLog = null,
     IDispatchRecoveryHandler? recoveryHandler = null,
     IOutboundNotificationService? outboundNotificationService = null,
     INotificationService? notificationPreferences = null,
@@ -474,7 +474,7 @@ public sealed class DownloadClientTelemetryService(
     ///
     /// <para><b>Known limit:</b> if Transmission itself restarts before this
     /// first poll, its numbers change, and an old in-flight grab recorded under
-    /// a number stays unlinked; it then shows the existing "vanished" alert
+    /// a number stays unlinked; it then shows the existing "vanished" issue
     /// rather than being matched to a torrent that merely has the same number.</para>
     /// </summary>
     private async Task UpgradeLegacyItemIdsAsync(
@@ -2134,7 +2134,7 @@ public sealed class DownloadClientTelemetryService(
         // the grab/detection timeouts ageing out. Comparing against what the
         // client actually shows, on every poll, notices it in minutes.
         var recovered = new List<DownloadQueueItem>();
-        if (dispatchAlertRepository is not null)
+        if (dispatchProblemLog is not null)
         {
             foreach (var dispatch in VanishedFromClient(wholeAnswer ?? live, clientDispatches))
             {
@@ -2799,7 +2799,7 @@ public sealed class DownloadClientTelemetryService(
     /// restarted, or answered with a momentary empty page, reports an empty
     /// queue and empty history the same way a client that genuinely lost
     /// every download would. Reading that as "everything vanished" would
-    /// raise an alert on every tracked download over one bad poll, so an
+    /// raise a problem on every tracked download over one bad poll, so an
     /// entirely empty response is treated as Deluno not yet knowing, never as
     /// proof.</para>
     /// </summary>
@@ -2866,21 +2866,14 @@ public sealed class DownloadClientTelemetryService(
     /// </summary>
     private async Task RecordClientVanishedAsync(DownloadDispatchItem dispatch, string clientName, CancellationToken cancellationToken)
     {
-        const string alertKind = "vanished-downloading";
-        if (dispatchAlertRepository is null ||
-            await dispatchAlertRepository.HasUnresolvedAlertAsync(dispatch.Id, alertKind, cancellationToken))
+        const string problemKind = "vanished-downloading";
+        if (dispatchProblemLog is null ||
+            await dispatchProblemLog.IsRecordedAsync(dispatch.Id, problemKind, cancellationToken))
         {
             return;
         }
 
-        await dispatchAlertRepository.CreateAlertAsync(
-            dispatch.Id,
-            dispatch.ReleaseName,
-            $"{dispatch.ReleaseName} is no longer in {clientName}'s queue or history",
-            alertKind,
-            "warning",
-            new Dictionary<string, string> { { "client", clientName } },
-            cancellationToken);
+        await dispatchProblemLog.RecordAsync(dispatch.Id, problemKind, cancellationToken);
 
         await activityFeedRepository.RecordActivityAsync(
             "download.vanished",
@@ -2892,8 +2885,8 @@ public sealed class DownloadClientTelemetryService(
             cancellationToken);
 
         // The Transfers recovery case: Search for another, Stop wanting it,
-        // Dismiss (#927). The alert above is the System Health/Activity
-        // signal; this is what puts the three buttons on screen.
+        // Dismiss (#927). The activity entry above is the signal; this is
+        // what puts the three buttons on screen.
         if (recoveryHandler is not null)
         {
             var detailsJson = JsonSerializer.Serialize(new

@@ -6,7 +6,8 @@ namespace Deluno.Jobs.Data;
 
 public sealed class SqliteDispatchMetricsRepository(
     IDelunoDatabaseConnectionFactory databaseConnectionFactory,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDispatchProblemLog problemLog)
     : IDispatchMetricsRepository
 {
     public async Task<DispatchMetrics> GetMetricsAsync(CancellationToken cancellationToken)
@@ -52,7 +53,7 @@ public sealed class SqliteDispatchMetricsRepository(
             activeDispatches = reader.IsDBNull(6) ? 0 : reader.GetInt64(6);
         }
 
-        var openAlertCount = await GetOpenAlertCountAsync(connection, cancellationToken);
+        var openProblemCount = await problemLog.CountOpenAsync(cancellationToken);
         var averageGrabToDetectionMinutes = await GetAverageDurationAsync(
             connection,
             "AVG(CAST((julianday(detected_utc) - julianday(grab_attempted_utc)) * 24 * 60 AS INTEGER))",
@@ -76,7 +77,7 @@ public sealed class SqliteDispatchMetricsRepository(
             SuccessfulImports: successfulImports,
             FailedImports: failedImports,
             ActiveDispatchesCount: (int)activeDispatches,
-            RecoveryCasesOpenCount: openAlertCount,
+            RecoveryCasesOpenCount: openProblemCount,
             AverageGrabToDetection: TimeSpan.FromMinutes(averageGrabToDetectionMinutes ?? 0),
             AverageDetectionToImport: TimeSpan.FromMinutes(averageDetectionToImportMinutes ?? 0),
             GrabFailuresByClient: grabFailuresByClient,
@@ -97,19 +98,6 @@ public sealed class SqliteDispatchMetricsRepository(
         // Metrics are computed on-demand from dispatch records.
         // This method is a no-op for SQLite-based metrics.
         await Task.CompletedTask;
-    }
-
-    private static async Task<int> GetOpenAlertCountAsync(
-        DbConnection connection,
-        CancellationToken cancellationToken)
-    {
-        using var command = connection.CreateCommand();
-        // Unacknowledged and unresolved: an alert about a download that has since
-        // moved on is history, not something waiting on the owner.
-        command.CommandText = "SELECT COUNT(*) FROM dispatch_alerts WHERE acknowledged = 0 AND resolved_utc IS NULL";
-
-        var result = await command.ExecuteScalarAsync(cancellationToken);
-        return result is long count ? (int)count : 0;
     }
 
     private static async Task<int?> GetAverageDurationAsync(

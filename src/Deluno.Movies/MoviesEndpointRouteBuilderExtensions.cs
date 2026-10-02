@@ -483,7 +483,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             CancellationToken cancellationToken) =>
         {
@@ -500,7 +500,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             // The alert recorded beside this case settles with it (#537).
-            await RecoveryCaseAlerts.AcknowledgeAsync(updated.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await RecoveryCaseProblems.AcknowledgeAsync(updated.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
 
             await repository.AddImportRecoveryEventAsync(id, "case_dismissed", "Case dismissed by user.", null, cancellationToken);
             return Results.Ok(updated);
@@ -513,7 +513,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             IJobQueueRepository jobQueueRepository,
             IJobScheduler jobScheduler,
@@ -554,7 +554,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
             // Its alerts settle with it (#537). The download itself is left as the
             // retry left it: an import being run again must still have its record.
-            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken);
+            await RecoveryCaseProblems.AcknowledgeAsync(recoveryCase.DetailsJson, problemLog, cancellationToken);
             await repository.AddImportRecoveryEventAsync(id, "case_retried", outcome.Message, null, cancellationToken);
             return Results.Ok(new { message = outcome.Message });
         });
@@ -566,7 +566,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             IDispatchTitleUnmonitorService titleUnmonitorService,
             CancellationToken cancellationToken) =>
@@ -594,7 +594,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
-            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await RecoveryCaseProblems.AcknowledgeAsync(recoveryCase.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
             await repository.AddImportRecoveryEventAsync(id, "case_stopped_wanting", outcome.Message, null, cancellationToken);
             return Results.Ok(new { message = outcome.Message });
         });
@@ -607,7 +607,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             IProcessorRepository processorRepository,
             CancellationToken cancellationToken) =>
@@ -632,7 +632,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
-            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await RecoveryCaseProblems.AcknowledgeAsync(recoveryCase.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
             await repository.AddImportRecoveryEventAsync(id, "case_import_original", outcome.Message, null, cancellationToken);
             return Results.Ok(new { message = outcome.Message });
         });
@@ -643,7 +643,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             IJobScheduler jobScheduler,
             IMediaStateRepository mediaStateRepository,
@@ -678,7 +678,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             }
 
             await repository.ResolveImportRecoveryCaseAsync(id, "resolved", cancellationToken);
-            await RecoveryCaseAlerts.AcknowledgeAsync(recoveryCase.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+            await RecoveryCaseProblems.AcknowledgeAsync(recoveryCase.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
             await repository.AddImportRecoveryEventAsync(id, "case_search_again", outcome.Message, null, cancellationToken);
             return Results.Ok(new { message = outcome.Message });
         });
@@ -687,7 +687,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             string id,
             HttpContext httpContext,
             IMovieCatalogRepository repository,
-            IDispatchAlertRepository alertRepository,
+            IDispatchProblemLog problemLog,
             IDownloadDispatchesRepository dispatchesRepository,
             CancellationToken cancellationToken) =>
         {
@@ -700,7 +700,7 @@ public static class MoviesEndpointRouteBuilderExtensions
             // Read the case's details before the row goes, so its alert settles too (#537).
             if (await repository.ResolveImportRecoveryCaseAsync(id, "dismissed", cancellationToken) is { } dismissed)
             {
-                await RecoveryCaseAlerts.AcknowledgeAsync(dismissed.DetailsJson, alertRepository, cancellationToken, dispatchesRepository);
+                await RecoveryCaseProblems.AcknowledgeAsync(dismissed.DetailsJson, problemLog, cancellationToken, dispatchesRepository);
             }
 
             var removed = await repository.DeleteImportRecoveryCaseAsync(id, cancellationToken);

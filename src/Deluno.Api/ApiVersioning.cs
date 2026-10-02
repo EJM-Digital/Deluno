@@ -76,7 +76,6 @@ public static class ApiVersioning
     private static bool HasDedicatedVersionedRoute(PathString path)
         => path.StartsWithSegments("/v1/download-dispatches", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/import-resolutions", StringComparison.OrdinalIgnoreCase) ||
-           path.StartsWithSegments("/v1/dispatch-alerts", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/dispatch-metrics", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/release-preferences", StringComparison.OrdinalIgnoreCase) ||
            path.StartsWithSegments("/v1/guides", StringComparison.OrdinalIgnoreCase);

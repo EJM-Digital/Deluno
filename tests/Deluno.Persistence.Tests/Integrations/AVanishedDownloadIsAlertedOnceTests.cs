@@ -30,9 +30,8 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         // dispatch's item is gone from both its queue and its history.
         await world.PollWithOtherItemInQueueAsync();
 
-        var alert = Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
-        Assert.Equal("vanished-downloading", alert.AlertKind);
-        Assert.Equal(world.DispatchId, alert.DispatchId);
+        Assert.Equal(1, await world.Problems.CountOpenAsync(CancellationToken.None));
+        Assert.True(await world.Problems.IsRecordedAsync(world.DispatchId, "vanished-downloading", CancellationToken.None));
 
         var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
         var activity = Assert.Single(activities, item => item.Category == "download.vanished");
@@ -51,7 +50,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
         await world.PollWithOtherItemInQueueAsync();
         await world.PollWithOtherItemInQueueAsync();
 
-        Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(1, await world.Problems.CountOpenAsync(CancellationToken.None));
         var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
         Assert.Single(activities, item => item.Category == "download.vanished");
     }
@@ -63,7 +62,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
 
         await world.PollWithEmptyQueueAndHistoryAsync();
 
-        Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(0, await world.Problems.CountOpenAsync(CancellationToken.None));
     }
 
     [Fact]
@@ -73,7 +72,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
 
         await world.PollWithItsOwnItemStillInQueueAsync();
 
-        Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(0, await world.Problems.CountOpenAsync(CancellationToken.None));
     }
 
     /// <summary>
@@ -108,7 +107,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             SqliteJobStore jobs,
             SqliteDownloadDispatchesRepository dispatches,
             SqliteBlockedReleaseRepository blocklist,
-            SqliteDispatchAlertRepository alerts,
+            SqliteDispatchProblemLog problems,
             FakeDispatchRecoveryHandler recoveryHandler)
         {
             _storage = storage;
@@ -119,7 +118,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             Jobs = jobs;
             Dispatches = dispatches;
             Blocklist = blocklist;
-            Alerts = alerts;
+            Problems = problems;
             Activity = jobs;
             RecoveryHandler = recoveryHandler;
         }
@@ -136,7 +135,7 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
 
         public SqliteBlockedReleaseRepository Blocklist { get; }
 
-        public SqliteDispatchAlertRepository Alerts { get; }
+        public SqliteDispatchProblemLog Problems { get; }
 
         public FakeDispatchRecoveryHandler RecoveryHandler { get; }
 
@@ -166,13 +165,13 @@ public sealed class AVanishedDownloadIsAlertedOnceTests
             // The id the client gave this grab, and Deluno has already seen it downloading.
             await dispatches.RecordDetectionAsync(dispatchId, "hash-1", 1_000_000, completed: false, CancellationToken.None);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
-            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var recoveryHandler = new FakeDispatchRecoveryHandler();
             var service = new DownloadClientTelemetryService(
                 settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
-                blocklist, dispatchAlertRepository: alerts, recoveryHandler: recoveryHandler);
-            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, alerts, recoveryHandler);
+                blocklist, dispatchProblemLog: problems, recoveryHandler: recoveryHandler);
+            return new World(storage, now, service, client, dispatchId, jobs, dispatches, blocklist, problems, recoveryHandler);
         }
 
         public Task PollWithOtherItemInQueueAsync() => PollAsync(queue: [Queued("hash-other")], history: []);

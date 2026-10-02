@@ -34,7 +34,7 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
         Assert.Equal(DownloadQueueStatuses.Completed, item.Status);
         Assert.EndsWith(Release, item.SourcePath, StringComparison.OrdinalIgnoreCase);
 
-        Assert.Empty(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(0, await world.Problems.CountOpenAsync(CancellationToken.None));
         var activities = await world.Activity.ListActivityAsync(10, null, null, CancellationToken.None);
         var activity = Assert.Single(activities, activity => activity.Category == "download.vanished.recovered");
         Assert.Contains("importing", activity.Message, StringComparison.OrdinalIgnoreCase);
@@ -60,8 +60,8 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
         var recovered = await world.PollWithOtherItemInQueueAsync();
 
         Assert.DoesNotContain(recovered.Queue, item => item.SourcePath != null);
-        var alert = Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
-        Assert.Equal("vanished-downloading", alert.AlertKind);
+        Assert.Equal(1, await world.Problems.CountOpenAsync(CancellationToken.None));
+        Assert.True(await world.Problems.IsRecordedAsync(world.DispatchId, "vanished-downloading", CancellationToken.None));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
         var recovered = await world.PollWithOtherItemInQueueAsync();
 
         Assert.DoesNotContain(recovered.Queue, item => item.SourcePath != null);
-        Assert.Single(await world.Alerts.GetOpenAlertsAsync(null, 100, CancellationToken.None));
+        Assert.Equal(1, await world.Problems.CountOpenAsync(CancellationToken.None));
     }
 
     private sealed class World : IDisposable
@@ -91,7 +91,7 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
             LibraryItem library,
             string dispatchId,
             SqliteDownloadDispatchesRepository dispatches,
-            SqliteDispatchAlertRepository alerts,
+            SqliteDispatchProblemLog problems,
             SqliteJobStore jobs)
         {
             _storage = storage;
@@ -101,7 +101,7 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
             _library = library;
             DispatchId = dispatchId;
             Dispatches = dispatches;
-            Alerts = alerts;
+            Problems = problems;
             Activity = jobs;
         }
 
@@ -111,7 +111,7 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
 
         public SqliteDownloadDispatchesRepository Dispatches { get; }
 
-        public SqliteDispatchAlertRepository Alerts { get; }
+        public SqliteDispatchProblemLog Problems { get; }
 
         public Deluno.Jobs.Data.IActivityFeedRepository Activity { get; }
 
@@ -141,12 +141,12 @@ public sealed class AVanishedDownloadFoundOnDiskIsImportedTests
             // The client showed it downloading, then reported it finished -
             // stamping ClientCompletedUtc - before it vanished from the list.
             await dispatches.RecordDetectionAsync(dispatchId, "hash-1", 1_000_000, completed: completed, CancellationToken.None);
-            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var service = new DownloadClientTelemetryService(
                 settings, new SqliteDownloadHealthRepository(storage.Factory, time), libraries, connections, null!, null!, time, null!,
                 jobs, dispatches, jobs, new Deluno.Recovery.Policies.DownloadHealthEvaluator(), null!, Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance,
-                new SqliteBlockedReleaseRepository(storage.Factory, time), dispatchAlertRepository: alerts);
-            return new World(storage, now, service, client, library, dispatchId, dispatches, alerts, jobs);
+                new SqliteBlockedReleaseRepository(storage.Factory, time), dispatchProblemLog: problems);
+            return new World(storage, now, service, client, library, dispatchId, dispatches, problems, jobs);
         }
 
         /// <summary>A folder on disk exactly as a download client would have saved this release.</summary>
