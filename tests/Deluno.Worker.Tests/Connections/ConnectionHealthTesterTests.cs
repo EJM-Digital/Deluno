@@ -29,6 +29,7 @@ public sealed class ConnectionHealthTesterTests
         public Mock<ISeerrRepository> Seerrs { get; } = new();
         public Mock<ISeerrClient> SeerrClient { get; } = new();
         public Mock<IConnectionCheckRecorder> Recorder { get; } = new();
+        public Mock<IConnectionVersionStore> Versions { get; } = new();
         public ConnectionHealthTester Tester { get; }
 
         public Rig(params SeerrConnection[] servers)
@@ -59,7 +60,7 @@ public sealed class ConnectionHealthTesterTests
             intake.Setup(item => item.ListIntakeSourcesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<Deluno.Intake.Contracts.IntakeSourceItem>());
 
             var services = new ServiceCollection().AddSingleton(SeerrClient.Object).BuildServiceProvider();
-            Tester = new ConnectionHealthTester(services, connections.Object, mediaServers.Object, Seerrs.Object, processors.Object, intake.Object, Recorder.Object);
+            Tester = new ConnectionHealthTester(services, connections.Object, mediaServers.Object, Seerrs.Object, processors.Object, intake.Object, Recorder.Object, Versions.Object);
         }
     }
 
@@ -178,4 +179,28 @@ public sealed class ConnectionHealthTesterTests
     private static PlatformSettingsSnapshot Snapshot(bool checkRegularly)
         => (PlatformSettingsSnapshot)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(PlatformSettingsSnapshot))
             with { CheckConnectionsRegularly = checkRegularly };
+
+    /// <summary>#1117: a check that reads a version keeps it with the connection, under the project whose releases it is compared with.</summary>
+    [Fact]
+    public async Task A_check_keeps_the_version_the_connection_reported()
+    {
+        var rig = new Rig(Seerr("s1", null));
+        rig.SeerrClient
+            .Setup(item => item.TestAsync(It.IsAny<SeerrConnection>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SeerrTestResult(true, "healthy", "Answered.", 120, "Seerr", "3.5.0"));
+
+        await rig.Tester.TestAsync(ConnectionKinds.Requests, "s1", CancellationToken.None);
+
+        rig.Versions.Verify(item => item.RecordAsync(ConnectionKinds.Requests, "s1", "seerr", "3.5.0", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_check_that_reads_no_version_stores_nothing()
+    {
+        var rig = new Rig(Seerr("s1", null));
+
+        await rig.Tester.TestAsync(ConnectionKinds.Requests, "s1", CancellationToken.None);
+
+        rig.Versions.Verify(item => item.RecordAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 }

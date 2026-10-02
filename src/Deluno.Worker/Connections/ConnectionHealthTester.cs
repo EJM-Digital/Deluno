@@ -3,6 +3,7 @@ using Deluno.Connections;
 using Deluno.Connections.Data;
 using Deluno.Connections.Versions;
 using Deluno.Contracts;
+using Deluno.Integrations.DownloadClients;
 using Deluno.Integrations.MediaServers;
 using Deluno.Integrations.Metadata;
 using Deluno.Integrations.Seerr;
@@ -174,6 +175,20 @@ public sealed class ConnectionHealthTester(
                     }
 
                     var result = await ConnectionsEndpointRouteBuilderExtensions.RunStoredDownloadClientTestAsync(item, scoped, automatic, cancellationToken);
+                    // #1117: a client that answered also says which version it runs, read the way its poll reads it.
+                    if (versions is not null && result is { HealthStatus: "healthy" } && scoped.GetService<IDownloadClientRegistry>() is { } registry && registry.TryGet(item.Protocol, out var implementation))
+                    {
+                        try
+                        {
+                            var snapshot = await implementation.GetSnapshotAsync(item, DateTimeOffset.UtcNow, cancellationToken);
+                            await versions.RememberVersionAsync(ConnectionKinds.DownloadClient, item.Id, ConnectionProjects.ForDownloadClient(item.Protocol), snapshot?.ClientVersion, cancellationToken);
+                        }
+                        catch (Exception exception) when (exception is not OperationCanceledException)
+                        {
+                            // Reading the version never fails the check.
+                        }
+                    }
+
                     return result is null ? null : await LatestAsync(target, cancellationToken);
                 }
                 case ConnectionKinds.Processor:
