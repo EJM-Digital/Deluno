@@ -96,7 +96,8 @@ export const JOURNEY_PX = 398;
 export const JOURNEY_CHROME_PX = 106;
 /** The least the journey is given: its chrome, two rows of the smallest cards, one more, and the "and N more" line. */
 const JOURNEY_MIN_PX = JOURNEY_CHROME_PX + 2 * (MIN_TOKEN_PX + ROW_GAP_PX) + MIN_TOKEN_PX + MORE_PX;
-const BAND_MIN_PX = 150;
+/** Never shorter than 144px (James, 2 Oct 2026, as Weir): at 130px the band tiles lose their row. */
+export const BAND_MIN_PX = 144;
 const BAND_MAX_PX = 200;
 /** Spare height goes to the band, up to this tall. */
 const BAND_GROWN_MAX_PX = 240;
@@ -123,7 +124,7 @@ export interface GridNeeds {
 /**
  * The rows of the shared grid, the mockup's `fitRows` and Weir's rule (Weir 0045b72f), the same rule so the two products' rows
  * agree. `available` is the height the grid has; the 20% of it the band takes, the band's limits, the journey's 398px and the
- * bottom row's 180px minimum are the mockup's, and so is the order they give way in: the band first (never under 150px), then the
+ * bottom row's 180px minimum are the mockup's, and so is the order they give way in: the band first (never under 144px), then the
  * journey (never under what three rows of the smallest cards need), then the bottom row (never under 110px).
  *
  * Spare height is shared once the bottom row has what it needs. Told what the bottom row can use (`lowNeed`, the shelf's posters
@@ -185,6 +186,8 @@ export function cardsBudget(budget: number | undefined, chrome: number): number 
  */
 /** The compact caption under a poster (title and status: two 15px lines 2px apart and the 6px above, Weir's), and the space between posters, in px. */
 export const POSTER_CAPTION_PX = 38;
+/** The tiny caption under a poster: the status line alone, 6px under the poster: 21px (Weir's TINY_CAPTION_PX). */
+export const TINY_CAPTION_PX = 21;
 export const POSTER_GAP_PX = 12;
 /** The padding round the posters' box (7 above, 5 below and either side), which the posters do not use. */
 const POSTERS_PAD_Y = 12;
@@ -197,14 +200,28 @@ const MIN_ART_PX = 36;
 const MIN_POSTER_WIDTH_PX = Math.floor(MIN_ART_PX / 1.5);
 /** No poster grows taller than this, however tall the row. */
 const MAX_ART_PX = 255;
-/** A row at least this tall has room for a caption under each poster. */
-const CAPTION_MIN_ROW_PX = 130;
+/** A row at least this tall (inside its padding) has room for a caption under each poster, and the 96px of art (64px wide) above it. */
+const CAPTION_MIN_ROW_PX = 96 + POSTER_CAPTION_PX;
+/** A row at least this tall has room for the tiny caption under the least art. */
+const TINY_MIN_ROW_PX = MIN_ART_PX + TINY_CAPTION_PX;
 
-/** What goes under each poster: nothing, the compact caption (title and when), or the full one (title, what landed on two lines, and the last line). */
-export type CaptionTier = "none" | "compact" | "full";
+/**
+ * What goes under each poster: nothing, the tiny caption (the status line alone, in the fewest words that fit), the compact
+ * caption (title and status), or the full one (title, what landed on two lines, and the last line).
+ */
+export type CaptionTier = "none" | "tiny" | "compact" | "full";
+
+/** The height a tier's caption takes under the poster. */
+const CAPTION_HEIGHT_PX: Record<CaptionTier, number> = { none: 0, tiny: TINY_CAPTION_PX, compact: POSTER_CAPTION_PX, full: FULL_CAPTION_PX };
+
+/** The caption a row of `inner` px can hold, short of the full one. */
+function captionFor(inner: number): CaptionTier {
+  if (inner >= CAPTION_MIN_ROW_PX) return "compact";
+  return inner >= TINY_MIN_ROW_PX ? "tiny" : "none";
+}
 
 export interface LibraryPosters {
-  /** A caption (at least the title and when) goes under each poster. */
+  /** A caption (at least the status line) goes under each poster. */
   captions: boolean;
   /** Which caption: the full one only where the poster is wide enough to wear it and the row has the height for it. */
   caption: CaptionTier;
@@ -228,7 +245,7 @@ const artOf = (width: number) => Math.max(MIN_ART_PX, Math.ceil(width * 1.5));
  * The poster size, from the shelf row's own measured height, and no wider than lets `MIN_SHELF_POSTERS` whole posters fit
  * across the row's measured width. Posters stay exactly 2:3: a narrower poster is also shorter, never stretched. A row with
  * the height for the widest poster it allows and the full caption under it, and a poster wide enough to wear one
- * (`FULL_DECORATIONS_MIN_PX`), gets the full caption; otherwise the compact one where the row is tall enough, and none where not.
+ * (`FULL_DECORATIONS_MIN_PX`), gets the full caption; otherwise the compact one where the row is tall enough, the tiny one where it is tall enough for that, and none where not.
  */
 export function libraryPosters(boxHeight: number, boxWidth = 0): LibraryPosters {
   const rowH = boxHeight - POSTERS_PAD_Y;
@@ -236,28 +253,27 @@ export function libraryPosters(boxHeight: number, boxWidth = 0): LibraryPosters 
   if (widest !== null && widest >= FULL_DECORATIONS_MIN_PX && rowH >= artOf(widest) + FULL_CAPTION_PX) {
     return { captions: true, caption: "full", width: widest };
   }
-  const captions = rowH >= CAPTION_MIN_ROW_PX;
-  const art = Math.max(MIN_ART_PX, Math.min(MAX_ART_PX, rowH - (captions ? POSTER_CAPTION_PX : 0)));
+  const caption = captionFor(rowH);
+  const art = Math.max(MIN_ART_PX, Math.min(MAX_ART_PX, rowH - CAPTION_HEIGHT_PX[caption]));
   const fromHeight = Math.floor(art / 1.5);
-  return { captions, caption: captions ? "compact" : "none", width: widest === null ? fromHeight : Math.min(fromHeight, widest) };
+  return { captions: caption !== "none", caption, width: widest === null ? fromHeight : Math.min(fromHeight, widest) };
 }
 
 /**
  * The height of a shelf row of `boxWidth` px at which its posters stop growing: the five-poster rule has capped them by width,
  * and a taller row would only leave empty space under them. It is the poster's art (1.5 times its width), the caption it would
- * wear there (the full one where the poster is wide enough) and the row's padding. The page gives the row this tall at most while
+ * wear there (the full one where the poster is wide enough, the tiny one where not) and the row's padding. The page gives the row this tall at most while
  * something else can use the rest (see `gridRows`).
  */
 export function shelfRowNeed(boxWidth: number): number {
   const width = widestPoster(boxWidth);
   const art = artOf(width);
   if (width >= FULL_DECORATIONS_MIN_PX) return POSTERS_PAD_Y + art + FULL_CAPTION_PX;
-  return POSTERS_PAD_Y + art + (art + POSTER_CAPTION_PX >= CAPTION_MIN_ROW_PX ? POSTER_CAPTION_PX : 0);
+  return POSTERS_PAD_Y + art + TINY_CAPTION_PX;
 }
 
-/** What the shelf's card has around its row of posters: its header, the padding under it and, when the library has libraries, the row of chips (measured on the rendered card). */
+/** What the shelf's card has around its row of posters: its header (the library chips are in it), the padding under it and the borders (measured on the rendered card). */
 export const SHELF_CHROME_PX = 60;
-export const SHELF_CHIPS_PX = 32;
 /** The gap between the grid's cards (the --grid-gap token), the card's 1px borders and the 14px margin the posters' row keeps either side, and the two columns' 1.15fr : 1fr split. */
 const GRID_GAP_PX = 12;
 const ROW_MARGIN_X = 30;
@@ -266,11 +282,11 @@ const ROW_MARGIN_X = 30;
  * What the shelf would report for `lowNeed` (`shelfRowNeed` and the card's chrome) worked out from the grid's width alone, for the
  * System tab, which has no shelf of its own but shares Live's rows. The shelf's measured number and this one agree.
  */
-export function lowNeedOfGrid(gridWidth: number, chips: boolean): number {
+export function lowNeedOfGrid(gridWidth: number): number {
   const right = Math.min(600, Math.max(340, gridWidth * 0.28));
   const left = gridWidth - GRID_GAP_PX - right;
   const card = ((left - GRID_GAP_PX) * 1.15) / 2.15;
-  return SHELF_CHROME_PX + (chips ? SHELF_CHIPS_PX : 0) + shelfRowNeed(Math.round(card - ROW_MARGIN_X));
+  return SHELF_CHROME_PX + shelfRowNeed(Math.round(card - ROW_MARGIN_X));
 }
 
 /**

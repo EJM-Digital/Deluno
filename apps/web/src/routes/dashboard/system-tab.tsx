@@ -55,7 +55,7 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
   const [gridRef, grid] = useElementSize<HTMLDivElement>();
   const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
   // Live's shelf is not on this tab, so the same need is worked out from the grid's width: Live and System always agree.
-  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height, { lowNeed: grid.width > 0 ? lowNeedOfGrid(grid.width, (summary?.library?.libraryCounts?.length ?? 0) > 0) : undefined });
+  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height, { lowNeed: grid.width > 0 ? lowNeedOfGrid(grid.width) : undefined });
   const resizing = useResizing();
 
   return (

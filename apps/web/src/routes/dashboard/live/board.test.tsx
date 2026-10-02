@@ -97,7 +97,9 @@ describe("the layout rules", () => {
   it("sizes the posters from the one row's height, exactly 2:3, and draws whole posters only", () => {
     // 168px of row less a 38px caption = 130px of art, 86px wide (floor of 130 / 1.5).
     expect(libraryPosters(180)).toEqual({ captions: true, caption: "compact", width: 86 });
-    expect(libraryPosters(112)).toEqual({ captions: false, caption: "none", width: 66 });
+    // 100px of row has no room for a title but has for the status line alone (21px): 79px of art, 52px wide.
+    expect(libraryPosters(112)).toEqual({ captions: true, caption: "tiny", width: 52 });
+    expect(libraryPosters(60)).toEqual({ captions: false, caption: "none", width: 32 });
     expect(libraryPosters(10).width).toBe(24);
     expect(libraryPosters(2000).width).toBe(170);
     // 89px posters with a 12px gap in a 410px box (400px inside its padding): 4 whole ones, never a part one.
