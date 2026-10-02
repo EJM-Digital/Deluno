@@ -17,22 +17,27 @@
 .lsh-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .lsh-poster[data-new] .lsh-art { box-shadow: 0 0 0 2px hsl(var(--success)), 0 0 26px hsl(var(--success) / .45); }
 /* The caption is a block of fixed line slots (title, status, detail, when), each 1.2em of the 12px type = 14.4px, under 6px: the compact block (title and status) is 34.8px and the full block 63.6px, which layout.ts counts as 35 and 64. A slot with nothing to say keeps its height, so every poster's lines are level across the row. */
-.lsh-cap { display: block; width: var(--aw, 80px); margin-top: 6px; font-size: 12px; font-weight: 600; line-height: 1.2; color: hsl(var(--foreground)); }
-.lsh-cap > * { display: block; height: 1.2em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.lsh-cap small { color: hsl(var(--muted-foreground)); font-weight: 500; font-size: 12px; }
+/* The caption is Weir's, rule for rule (2 Oct 2026): centred, as wide as the poster, fixed 15px slots 2px apart, so every
+   tile's lines are level across the row; an empty slot keeps its height. Compact = title + status (38px with the 6px gap),
+   full = four lines (72px). */
+.lsh-cap { display: flex; flex-direction: column; gap: 2px; width: var(--aw, 80px); margin: 6px 0 0; padding: 0; text-align: center; color: hsl(var(--foreground)); }
+.lsh-cap > * { display: block; flex: none; height: 15px; margin: 0; padding: 0; overflow: hidden; font-size: 12px; font-weight: 500; line-height: 15px; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+.lsh-cap > .lsh-title { font-weight: 600; color: hsl(var(--foreground)); }
+.lsh-cap small { color: hsl(var(--muted-foreground)); }
 /* The status: a 6px dot in the Movies page's legend colour, then the words. */
-.lsh-cap > .lsh-status { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.lsh-cap > .lsh-status { display: flex; align-items: center; justify-content: center; gap: 5px; font-weight: 600; color: hsl(var(--muted-foreground)); }
 .lsh-status > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lsh-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--muted-foreground) / .6); }
-.lsh-status[data-tone="met"] .lsh-dot { background: hsl(var(--mark-quality-met)); }
-.lsh-status[data-tone="upgradable"] .lsh-dot { background: hsl(var(--mark-upgrade)); }
+.lsh-status[data-tone="met"] { color: hsl(var(--mark-quality-met)); }
+.lsh-status[data-tone="upgradable"] { color: hsl(var(--mark-upgrade)); }
+.lsh-status[data-tone="met"] .lsh-dot, .lsh-status[data-tone="upgradable"] .lsh-dot { background: currentColor; }
 .lsh-empty { padding: 6px 0; font-size: 13px; color: hsl(var(--muted-foreground)); white-space: nowrap; }
 /* The library the title landed in, along the foot of the art (the mockup's .poster .tag). It is a link of its own beside the poster's, so the arrow lifts above it. */
-.lsh-tag { position: absolute; left: 0; right: 0; margin: 0 auto; width: fit-content; max-width: calc(var(--aw, 80px) - 12px); top: calc(var(--aw, 80px) * 1.5 - 24px); z-index: 2; font-size: 10px; font-weight: 600; line-height: 1.3; padding: 3px 6px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 6px; background: hsl(222 40% 6% / .82); color: hsl(220 18% 96%); backdrop-filter: blur(4px); }
+.lsh-tag { position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(var(--aw, 80px) - 12px); top: calc(var(--aw, 80px) * 1.5 - 24px); z-index: 2; font-size: 10px; font-weight: 600; line-height: 1.3; padding: 3px 8px; box-sizing: border-box; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 999px; background: hsl(222 40% 6% / .82); color: hsl(220 18% 96%); backdrop-filter: blur(4px); }
 .lsh-tag:hover { background: hsl(222 40% 6% / .95); text-decoration: underline; }
 .lsh-tag:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 /* A poster under 64px wide (data-size="small", see posterSize) has no arrow, and its tag is a 4px strip in its library's colour a little above the foot; the name stays for the tooltip and screen readers, and the hit area reaches 10px above the strip. */
-.lsh-poster[data-size="small"] .lsh-tag { top: calc(var(--aw, 80px) * 1.5 - 10px); right: 6px; left: 6px; width: auto; max-width: none; margin: 0; height: 4px; padding: 0; overflow: visible; border-radius: 2px; background: hsl(var(--tile-hue, 210) 75% 58%); box-shadow: 0 0 0 1px hsl(0 0% 0% / .35); backdrop-filter: none; font-size: 0; line-height: 0; color: transparent; text-decoration: none; }
+.lsh-poster[data-size="small"] .lsh-tag { top: calc(var(--aw, 80px) * 1.5 - 10px); right: 6px; left: 6px; transform: none; width: auto; max-width: none; margin: 0; height: 4px; padding: 0; overflow: visible; border-radius: 2px; background: hsl(var(--tile-hue, 210) 75% 58%); box-shadow: 0 0 0 1px hsl(0 0% 0% / .35); backdrop-filter: none; font-size: 0; line-height: 0; color: transparent; text-decoration: none; }
 .lsh-poster[data-size="small"] .lsh-tag::after { position: absolute; inset: -10px -4px -6px; content: ""; }
 .lsh-poster[data-size="small"] .lsh-tag:hover { background: hsl(var(--tile-hue, 210) 85% 68%); text-decoration: none; }
 .lsh-poster[data-size="small"] .lsh-tag:focus-visible { outline-offset: 2px; }
