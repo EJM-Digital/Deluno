@@ -218,3 +218,17 @@ export const ACTIVITY_SINCE_CHOICES: readonly { value: string; label: string }[]
 export function isQuickSince(token: string): boolean {
   return ACTIVITY_SINCE_CHOICES.some((choice) => choice.value === token);
 }
+
+/** The status chips across the top of Activity, as they are written in the address (`status=...`). */
+export type ActivityStatusChip = "in-progress" | "done" | "failed" | "needs-decision";
+
+/**
+ * The link into Activity for one status chip, with any history filters beside it. No status is All.
+ * Every link from Live, the bell, alerts and Transfers is built here, so each lands on the matching chip.
+ */
+export function activityStatusLink(status?: ActivityStatusChip | null, filters?: Partial<ActivityFilters>): string {
+  const params = paramsFromFilters({ ...emptyActivityFilters, ...filters });
+  if (status) params.set("status", status);
+  const query = params.toString();
+  return query ? `/activity?${query}` : "/activity";
+}

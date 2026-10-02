@@ -941,7 +941,8 @@ function attentionCount(attention: ReturnType<typeof useAttention>, key: "none" 
   if (key === "transfers") return attention.downloadsNeedingAction;
   if (key === "tv") return attention.tvWanted;
   if (key === "indexers") return attention.indexerAlerts;
-  if (key === "activity") return attention.failedJobs;
+  // Activity's badge counts what Activity can clear: failed jobs about a title. A failed background job is cleared on System (#1114).
+  if (key === "activity") return attention.failedTitleJobs ?? attention.failedJobs;
   return 0;
 }
 

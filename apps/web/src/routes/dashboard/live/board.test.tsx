@@ -214,7 +214,7 @@ describe("working on now", () => {
     withRouter(<Band summary={fullSummary} samples={[]} operations={buildOperations(six, [], NO_TITLES)} upcoming={[]} />);
     const region = screen.getByRole("region", { name: "Working on now" });
     expect(within(region).getAllByRole("listitem")).toHaveLength(4);
-    expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity");
+    expect(within(region).getByRole("link", { name: "2 more in Activity" })).toHaveAttribute("href", "/activity?status=in-progress");
   });
 
   it("shows only the rows that fit its height, hiding the rest and counting them", () => {

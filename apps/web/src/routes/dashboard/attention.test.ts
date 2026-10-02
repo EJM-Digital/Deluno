@@ -48,6 +48,23 @@ describe("computeAttention", () => {
     expect(attention.items.find((item) => item.id === "failed-jobs")?.count).toBe(1);
   });
 
+  it("splits jobs that gave up by where they are cleared: background ones on System, ones about a title in Activity (#1114)", () => {
+    const attention = computeAttention(emptySummary(), {
+      failedJobs: [
+        job({ id: "bg", jobType: "library.scan", relatedEntityId: null }),
+        job({ id: "bg2", jobType: "backup.create", relatedEntityId: "" }),
+        job({ id: "ti", jobType: "movie.search", relatedEntityType: "movie", relatedEntityId: "m1" })
+      ]
+    });
+    expect(attention.backgroundJobsGaveUp).toBe(2);
+    expect(attention.titleJobsGaveUp).toBe(1);
+    expect(attention.jobsGaveUp).toBe(3);
+    const background = attention.items.find((item) => item.id === "failed-jobs");
+    expect(background).toMatchObject({ count: 1, to: "/system" });
+    expect(background?.title).toBe("2 background jobs gave up");
+    expect(attention.items.find((item) => item.id === "failed-title-jobs")).toMatchObject({ count: 1, to: "/activity?status=failed" });
+  });
+
   it("does not count a job Deluno will retry by itself", () => {
     const retrying = job({ id: "r", jobType: "library.scan", attempts: 1, nextAttemptUtc: NOW });
     const attention = computeAttention(emptySummary(), { failedJobs: [retrying, job({ id: "r2", attempts: 1, nextAttemptUtc: NOW })] });

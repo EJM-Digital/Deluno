@@ -335,6 +335,10 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
       deluno.push({ key: "update", section: "deluno", kind: "update", tone: "warn", title: item.title, text: item.text, to: "/system/updates", actions: updateReadyActions(), sinceUtc: null, count: 1 });
       continue;
     }
+    if (item.id === "failed-title-jobs") {
+      deluno.push({ key: "failed-title-jobs", section: "deluno", kind: "jobs", tone: "bad", title: item.title, text: item.text, to: item.to, actions: jobsGaveUpActions("title"), sinceUtc: null, count: item.count });
+      continue;
+    }
     if (item.id === "failed-jobs") {
       deluno.push({
         key: "failed-jobs",
@@ -343,8 +347,8 @@ export function bellRows(attention: DashboardAttention, now: number = Date.now()
         tone: "bad",
         title: item.title,
         text: item.text,
-        to: HEALTH,
-        actions: jobsGaveUpActions(),
+        to: item.to,
+        actions: jobsGaveUpActions("background"),
         sinceUtc: null,
         count: item.count
       });

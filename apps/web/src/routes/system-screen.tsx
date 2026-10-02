@@ -18,7 +18,10 @@ import {
   Wifi,
   WifiOff
 } from "lucide-react";
-import { JOB_STATUS, type JobStatus, isJobActive, isJobFailed, isJobSuccessful } from "../lib/job-status-constants";
+import { JOB_STATUS, type JobStatus, getJobStatusLabel, isJobActive, isJobFailed, isJobRetrying, isJobSuccessful } from "../lib/job-status-constants";
+import { dismissFailedJob } from "../lib/failed-jobs";
+import { isBackgroundJob, splitStoppedJobs } from "../lib/background-jobs";
+import { JobDrawer } from "../components/app/job-drawer";
 import { SystemShell } from "../components/app/settings-shell";
 import { LanAccessNotice, type LanAccessStatus } from "../components/app/lan-access-notice";
 import { HostNameTip } from "../components/app/host-name-tip";
@@ -119,7 +122,9 @@ export const systemSources = defineSources({
   updateStatus: { key: ["src", "update-status"], label: "Update status", fetch: () => fetchJson<UpdateStatusResponse>("/api/updates/status") },
   recycleBinSettings: { key: ["src", "recycle-bin-settings"], label: "Recycle bin settings", fetch: () => fetchJson<RecycleBinSettings>("/api/recycle-bin/settings") },
   libraries: { ...sharedSources.libraries, fallback: [] as LibraryItem[] },
-  jobs: { key: ["src", "jobs-25"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=25"), fallback: [] as JobQueueItem[] },
+  // Background jobs (#1114): the latest jobs, of which the ones not about a title are listed; failed ones are read by name so a stopped job is never pushed out of the window.
+  jobs: { key: ["src", "jobs-200"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=200&includePayload=true"), fallback: [] as JobQueueItem[] },
+  failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[] },
   activityDisplaySettings: activityDisplaySettingsSource,
   activity: {
     key: ["src", "system-activity"],
@@ -166,14 +171,14 @@ export function SystemPage() {
 
 function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderData; revalidator: RouteSourceState<typeof systemSources>["revalidator"] }) {
   const location = useLocation();
-  const { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
+  const { activity, activityDisplaySettings, automation, backupSettings, backups, downloadClients, failedJobs, healthChecks, indexers, jobs, lanAccess, libraries, monitoring, processors, recycleBin, recycleBinSettings, retryWindows, searchCycles, settings, systemInfo, systemTasks, updateStatus } = loaderData;
   // The folders Deluno writes to are its libraries' folders. This used to count
   // the two paths the setup guide asks for, which a library made in Settings
   // never fills in: two libraries on a NAS read "0".
   const mediaRoots = new Set(libraries.map((library) => library.rootPath?.trim().toLowerCase()).filter(Boolean)).size;
   const { preferences } = useDisplayPreferences();
 
-  const activeJobs = jobs.filter((job) => isJobActive(job.status as JobStatus)).length;
+  const activeJobs = jobs.filter((job) => isBackgroundJob(job) && isJobActive(job.status as JobStatus)).length;
   const healthyIndexers = indexers.filter((item) => item.healthStatus === "healthy").length;
   const healthyClients = downloadClients.filter((item) => item.healthStatus === "healthy").length;
   const enabledProcessors = processors.filter((item) => item.isEnabled);
@@ -327,26 +332,7 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
 
   const healthChecksCard = <HealthChecksCard checks={healthChecks.checks} onChanged={() => revalidator.revalidate()} />;
 
-  const jobsCard = (
-    <ListCard title="Background jobs" count={jobs.length ? `latest ${Math.min(jobs.length, 12)} of ${jobs.length}` : undefined}>
-      {jobs.length === 0 ? (
-        <ListEmpty title="No jobs have run yet" description="Searches, imports and metadata refreshes queue here as Deluno picks them up." />
-      ) : (
-        <ListTable columns={[{ label: "Job" }, { label: "Started by", width: "minmax(0,1fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-          {jobs.slice(0, 12).map((job) => (
-            <ListRow key={job.id}>
-              <ListNameCell name={job.label} sub={job.attempts > 1 ? `Tried ${job.attempts} times` : "Tried once"} />
-              <ListCell primary={job.sourceLabel} secondary={job.lastError ?? undefined} />
-              <ListCell numeric primary={formatWhen(job.createdUtc, preferences)} />
-              <ListCell mobile>
-                <Chip tone={jobTone(job.status)}>{job.status}</Chip>
-              </ListCell>
-            </ListRow>
-          ))}
-        </ListTable>
-      )}
-    </ListCard>
-  );
+  const jobsCard = <BackgroundJobsCard jobs={jobs} failedJobs={failedJobs} onChanged={() => revalidator.revalidate()} />;
 
   const runtimeCard = (
     <>
@@ -450,6 +436,87 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
   );
 }
 
+/**
+ * Background jobs (#1114): the jobs that are not about a title -- a library-wide metadata refresh, a backup,
+ * a scheduled pass. The stopped ones that need a person (with Retry and Dismiss) come first, then queued and
+ * running ones, then the recent ones. A job about a title is in Activity.
+ */
+export function BackgroundJobsCard({ jobs, failedJobs, onChanged }: { jobs: JobQueueItem[]; failedJobs: JobQueueItem[]; onChanged: () => void }) {
+  const { preferences } = useDisplayPreferences();
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const stopped = useMemo(() => splitStoppedJobs(failedJobs).background, [failedJobs]);
+  const stoppedIds = useMemo(() => new Set(stopped.map((job) => job.id)), [stopped]);
+  const background = useMemo(() => jobs.filter(isBackgroundJob), [jobs]);
+  const working = background.filter((job) => !stoppedIds.has(job.id) && (isJobActive(job.status as JobStatus) || isJobRetrying(job)));
+  const recent = background.filter((job) => !stoppedIds.has(job.id) && !working.includes(job) && !isJobFailed(job.status as JobStatus)).slice(0, 12);
+  const listed = [...stopped, ...working, ...recent];
+  const openJob = listed.find((job) => job.id === openJobId) ?? null;
+
+  async function retryFailed() {
+    setBusy(true);
+    try {
+      const response = await authedFetch("/api/jobs/retry-failed", { method: "POST" });
+      if (!response.ok) throw new Error("Failed jobs could not be requeued.");
+      const result = (await response.json()) as { retried?: number };
+      toast.success(`${result.retried ?? 0} failed job${result.retried === 1 ? "" : "s"} requeued`);
+      onChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Retry failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismiss(job: JobQueueItem) {
+    setBusy(true);
+    try {
+      await dismissFailedJob(job.id);
+      toast.success(`${job.label} dismissed`);
+      setOpenJobId(null);
+      onChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That job could not be dismissed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const count = stopped.length ? `${stopped.length} stopped` : listed.length ? `${working.length} working, ${recent.length} recent` : undefined;
+  return (
+    <ListCard
+      title="Background jobs"
+      count={count}
+      actions={
+        stopped.length ? (
+          <Button type="button" size="sm" onClick={() => void retryFailed()} disabled={busy}>
+            Retry failed jobs
+          </Button>
+        ) : undefined
+      }
+    >
+      {listed.length === 0 ? (
+        <ListEmpty title="No background jobs yet" description="Library-wide refreshes, backups and scheduled passes show here as Deluno runs them. Jobs about one title are in Activity." />
+      ) : (
+        <ListTable columns={[{ label: "Job" }, { label: "Started by", width: "minmax(0,1fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
+          {listed.map((job) => (
+            <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
+              <ListNameCell name={job.label} sub={job.attempts > 1 ? `Tried ${job.attempts} times` : "Tried once"} />
+              <ListCell primary={job.sourceLabel} secondary={job.lastError ?? undefined} />
+              <ListCell numeric primary={formatWhen(job.completedUtc ?? job.startedUtc ?? job.createdUtc, preferences)} />
+              <ListCell mobile>
+                <Chip tone={isJobRetrying(job) ? "info" : jobTone(job.status)}>{isJobRetrying(job) ? "Retrying" : getJobStatusLabel(job.status as JobStatus)}</Chip>
+              </ListCell>
+            </ListRow>
+          ))}
+        </ListTable>
+      )}
+      <JobDrawer job={openJob} busy={busy} onClose={() => setOpenJobId(null)} onDismiss={(job) => void dismiss(job)} />
+    </ListCard>
+  );
+}
+
 /* ---------------------------------------------------------------- bits */
 
 function healthTone(status: string): NonNullable<ChipProps["tone"]> {
@@ -460,7 +527,7 @@ function healthTone(status: string): NonNullable<ChipProps["tone"]> {
 }
 
 function jobTone(status: string): NonNullable<ChipProps["tone"]> {
-  if (status === JOB_STATUS.FAILED) return "bad";
+  if (isJobFailed(status as JobStatus)) return "bad";
   if (status === JOB_STATUS.COMPLETED) return "ok";
   if (isJobActive(status as JobStatus)) return "info";
   return "idle";

@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import type { DownloadThroughputSample, SeriesUpcomingEpisodeItem } from "../../../lib/api";
 import type { DashboardSummary } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
+import { activityStatusLink } from "../../../lib/activity-history";
 import { ago } from "../format";
 import type { WorkItem, WorkKind } from "../live-events";
 import { BandCard, FigureUnit } from "./band-card";
@@ -85,7 +86,7 @@ function WorkingNow({ summary, operations, across }: { summary: DashboardSummary
     <BandCard
       bodyRef={bodyRef}
       label="Working on now"
-      aside={more > 0 ? <Link to="/activity" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
+      aside={more > 0 ? <Link to={activityStatusLink("in-progress")} className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{more.toLocaleString("en-AU")} more in Activity</Link> : undefined}
       figure={
         <>
           <span>{operations.length.toLocaleString("en-AU")}</span>

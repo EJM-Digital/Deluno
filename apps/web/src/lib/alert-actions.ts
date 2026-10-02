@@ -7,6 +7,8 @@
  * download and find another, search again) it is offered by name, never hidden behind a vaguer word.
  */
 import type { DownloadQueueItem, JobQueueItem, NoReleaseRow, ProcessorHandoffItem } from "./api";
+import { activityStatusLink } from "./activity-history";
+import { SYSTEM_BACKGROUND_JOBS_LINK } from "./background-jobs";
 import { canTryAgain, isVanished, type RecoveryCaseRow } from "./needs-action";
 
 /** The longest label that fits the one button width the bell and Health share ("Open Transfers"). */
@@ -312,8 +314,11 @@ export function healthProblemActions(problem: HealthProblemLike): AlertActions {
   return [open(`open:${id}`, screen.label, link, screen.hint), snooze(id, 24)];
 }
 
-/** Jobs that gave up: put them back in the queue, or look at which and why. */
-export function jobsGaveUpActions(): AlertActions {
+/**
+ * Jobs that gave up: put them back in the queue, or look at which and why. Background jobs (not about a title) are
+ * looked at on System; a job about a title in Activity (#1114), so the Review button opens the screen that clears them.
+ */
+export function jobsGaveUpActions(kind: "background" | "title" = "background"): AlertActions {
   return [
     {
       id: "jobs-retry",
@@ -321,7 +326,9 @@ export function jobsGaveUpActions(): AlertActions {
       hint: "Puts the jobs that gave up back in the queue to run again. Nothing already done is undone.",
       request: { method: "POST", path: "/api/jobs/retry-failed", done: "Failed jobs requeued", failure: "The failed jobs could not be requeued." }
     },
-    open("jobs-review", "Review", "/activity", "Opens Activity to see which jobs failed and why. Nothing is changed.")
+    kind === "title"
+      ? open("jobs-review", "Review", activityStatusLink("failed"), "Opens Activity's failed jobs to see which failed and why. Nothing is changed.")
+      : open("jobs-review", "Review", SYSTEM_BACKGROUND_JOBS_LINK, "Opens System's background jobs to see which failed and why. Nothing is changed.")
   ];
 }
 

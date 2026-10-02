@@ -53,6 +53,7 @@ import type { PlatformSettingsPatch } from "../lib/api/settings";
 import { useApiMutation } from "../lib/use-api-mutation";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
 import { formatEventAge } from "../lib/activity-format";
+import { activityStatusLink } from "../lib/activity-history";
 import { useDisplayPreferences } from "../lib/display-preferences";
 
 const RULE_KIND_COPY: Record<string, { label: string; description: string; thresholdLabel?: string; thresholdUnit?: string; thresholdHelp?: string }> = {
@@ -429,7 +430,7 @@ function ConnectivityCheckCard({
               : "Has not skipped a pass."}
           </span>
           {lastSkip ? (
-            <Link to="/activity?section=events" className="shrink-0 text-primary underline-offset-2 hover:underline">
+            <Link to={activityStatusLink("done")} className="shrink-0 text-primary underline-offset-2 hover:underline">
               See in Activity
             </Link>
           ) : null}

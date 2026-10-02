@@ -103,10 +103,16 @@ export function buildHealth(args: { summary: DashboardSummary | undefined; atten
     });
   }
 
-  if (attention.jobsGaveUp > 0) {
+  if (attention.backgroundJobsGaveUp > 0) {
     rows.push({
-      id: "jobs-gave-up", area: "machine", tone: "bad", title: `${plural(attention.jobsGaveUp, "job")} gave up`, why: "They failed on every attempt and are waiting for you.", atUtc: null,
-      buttons: buttonsFor(jobsGaveUpActions())
+      id: "jobs-gave-up", area: "machine", tone: "bad", title: `${plural(attention.backgroundJobsGaveUp, "background job")} gave up`, why: "They failed on every attempt and are waiting for you.", atUtc: null,
+      buttons: buttonsFor(jobsGaveUpActions("background"))
+    });
+  }
+  if (attention.titleJobsGaveUp > 0) {
+    rows.push({
+      id: "title-jobs-gave-up", area: "machine", tone: "bad", title: `${plural(attention.titleJobsGaveUp, "job")} about a title gave up`, why: "They failed on every attempt. Open them in Activity to retry or dismiss.", atUtc: null,
+      buttons: buttonsFor(jobsGaveUpActions("title"))
     });
   }
   for (const lane of failedLanes) {
