@@ -282,7 +282,7 @@ export function SettingsAutoTaggingPage() {
         }
       />
 
-      <ListCard title="Auto-tagging" count={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"} · ${rules.filter((rule) => rule.isEnabled).length} on · checked when a title is added, changed or refreshed` : undefined}>
+      <ListCard title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"} · ${rules.filter((rule) => rule.isEnabled).length} on` : "Empty"} titleCase={false}>
         {rules.length === 0 ? (
           <ListEmpty
             title="No auto-tagging rules"

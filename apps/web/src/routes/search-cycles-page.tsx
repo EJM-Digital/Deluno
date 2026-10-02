@@ -842,7 +842,7 @@ export function SearchCyclesPage() {
         </div>
       </ListCard> : null}
 
-      {view === "failed" ? <ListCard title="Failed downloads">
+      {view === "failed" ? <ListCard title="When strikes run out" titleCase={false}>
         <div className="grid gap-[var(--grid-gap)] p-[var(--card-pad-x)]">
           <p className="text-[length:var(--type-body-sm)] text-muted-foreground">
             Strikes, timers and per-kind conditions now live on their own rules in Settings -&gt; Download health. What happens once a rule's strikes run out, for anything still using this platform-wide default, is set below.

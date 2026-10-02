@@ -108,7 +108,7 @@ export function CompanionToolsPage() {
         }
       />
 
-      <ListCard title="Companion tools" count={`${data.tools.filter((tool) => tool.state === "connected").length} of ${data.tools.length} connected`}>
+      <ListCard title={`${data.tools.filter((tool) => tool.state === "connected").length} of ${data.tools.length} connected`} titleCase={false}>
         {!data.availability.available ? (
           <p className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-warning">{data.availability.reason}</p>
         ) : message ? (

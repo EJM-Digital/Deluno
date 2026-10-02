@@ -283,12 +283,6 @@ export const settingsPageMeta = [
     chrome: "none"
   },
   {
-    match: (path: string) => path.startsWith("/settings/subtitles-wanted"),
-    title: "Subtitle Wanted",
-    description: "Every title or episode across every library still missing a wanted subtitle language, with a bulk search.",
-    chrome: "none"
-  },
-  {
     match: (path: string) => path.startsWith("/settings/subtitles"),
     title: "Media Management",
     description: "Manage where your media lives, how it is named, and how it moves through Deluno.",

@@ -279,8 +279,8 @@ export function SettingsLibrariesPage() {
 
 
       <ListCard
-        title="Libraries"
-        count={`${libraries.length} ${libraries.length === 1 ? "library" : "libraries"} · where Deluno stores and organises your media`}
+        title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "Empty"}
+        titleCase={false}
       >
         {libraries.length === 0 ? (
           <ListEmpty

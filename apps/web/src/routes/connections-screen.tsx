@@ -950,8 +950,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
 
       {section === "indexers" ? (
         <ListCard
-          title="Indexers"
-          count={indexers.length ? `${indexers.length} ${indexers.length === 1 ? "indexer" : "indexers"} · ${healthyIndexers}/${enabledIndexers} healthy` : undefined}
+          title={indexers.length ? `${healthyIndexers} of ${enabledIndexers} healthy` : "Empty"}
+          titleCase={false}
           actions={
             indexers.length > 0 ? (
               <div className="flex min-w-0 items-center gap-2">
@@ -1056,8 +1056,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             onNeedsSignIn={(status, result) => openPrefilledClient(status, result.host ?? status.defaultHost, result.port ?? status.defaultPort, false)}
           />
           <ListCard
-            title="Download clients"
-            count={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : undefined}
+            title={clients.length ? `${clients.length} ${clients.length === 1 ? "client" : "clients"}` : "Empty"}
+            titleCase={false}
             actions={clients.length > 0 ? <ConnectionSelectButton active={clientSelection.active} onClick={clientSelection.toggleActive} /> : undefined}
           >
             {clients.length === 0 ? (
@@ -1136,8 +1136,8 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       {section === "pathMappings" ? (
         <>
           <ListCard
-            title="Remote Path Mappings"
-            count={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : undefined}
+            title={pathMappings.length ? `${pathMappings.length} ${pathMappings.length === 1 ? "mapping" : "mappings"}` : "Empty"}
+            titleCase={false}
           >
             <p className="px-[var(--card-pad-x)] pb-3 text-[length:var(--type-caption)] text-muted-foreground">
               Only needed when a download client reports a path Deluno cannot use directly — for example a container reports <code className="font-mono">/downloads/complete</code> while Deluno reads <code className="font-mono">D:\Downloads\complete</code>. A mapping applies to every download client at its host (#809), so it only needs adding once per host, however many clients share it.
@@ -1238,7 +1238,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           {/* The routing explainer that used to sit here said what the routing
               drawer already says beside the field itself, in more detail and in
               the place you actually need it. One subject, one home. */}
-          <ListCard title="Library routing" count={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : undefined}>
+          <ListCard title={libraries.length ? `${libraries.length} ${libraries.length === 1 ? "library" : "libraries"}` : "Empty"} titleCase={false}>
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
           ) : (
@@ -1272,7 +1272,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
       ) : null}
 
       {section === "proxies" ? (
-        <ListCard title="Indexer Proxies" count={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : undefined}>
+        <ListCard title={proxies.length ? `${proxies.length} ${proxies.length === 1 ? "proxy" : "proxies"}` : "Empty"} titleCase={false}>
           {proxies.length === 0 ? (
             <ListEmpty
               title="No proxies yet"

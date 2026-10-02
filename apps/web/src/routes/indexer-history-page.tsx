@@ -155,7 +155,7 @@ export function IndexerHistoryPage() {
         }
       />
 
-      <ListCard title="Indexer History" count={`${items.length}${nextPageToken ? "+" : ""} event${items.length === 1 && !nextPageToken ? "" : "s"} across every indexer`}>
+      <ListCard title={`${items.length}${nextPageToken ? "+" : ""} event${items.length === 1 && !nextPageToken ? "" : "s"}`} titleCase={false}>
         <div className="flex flex-wrap items-end gap-3 border-b border-hairline p-[var(--card-pad-x)]">
           <div className="grid gap-1">
             <label htmlFor="indexer-history-type" className="text-[length:var(--type-caption)] text-muted-foreground">Action</label>

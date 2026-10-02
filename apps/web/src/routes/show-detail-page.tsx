@@ -1450,8 +1450,8 @@ export function ShowDetailPage() {
           ) : null}
 
           <ListCard
-            title="Episodes"
-            count={`${visibleSeasons.filter((season) => expanded.includes(season.seasonNumber)).reduce((total, season) => total + season.episodes.length, 0)} of ${inventory.episodeCount} shown`}
+            title={`${visibleSeasons.filter((season) => expanded.includes(season.seasonNumber)).reduce((total, season) => total + season.episodes.length, 0)} of ${inventory.episodeCount} shown`}
+            titleCase={false}
             filter={{ value: query, onChange: setQuery, placeholder: "Filter by code or title" }}
             actions={
               <>

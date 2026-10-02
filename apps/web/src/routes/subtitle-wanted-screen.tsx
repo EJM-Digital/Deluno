@@ -95,8 +95,8 @@ export function SubtitleWantedPage() {
       <PageToolbar tabs={TABS} />
 
       <ListCard
-        title="Subtitle Wanted"
-        count={wanted.length ? `${wanted.length} short of a language` : undefined}
+        title={wanted.length ? `${wanted.length} short of a language` : "Nothing waiting"}
+        titleCase={false}
         actions={
           wanted.length > 0 ? (
             <Button

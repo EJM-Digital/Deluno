@@ -189,8 +189,8 @@ export function SubtitleProvidersPage() {
       <PageToolbar tabs={TABS} />
 
       <ListCard
-        title="Subtitle providers"
-        count={configured.length ? `${configured.length} of ${providers.length} set up` : undefined}
+        title={`${configured.length} of ${providers.length} set up`}
+        titleCase={false}
       >
         {providers.length === 0 ? (
           <ListEmpty

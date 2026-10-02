@@ -307,8 +307,8 @@ export function SettingsReleaseRulesPage() {
       <RuleModeCard mode={ruleMode} onChanged={() => revalidator.revalidate()} />
 
       <ListCard
-        title="Acquisition Rules"
-        count={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : undefined}
+        title={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : "Empty"}
+        titleCase={false}
       >
         {profiles.length === 0 ? (
           <ListEmpty
