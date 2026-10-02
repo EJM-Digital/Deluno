@@ -83,8 +83,7 @@ import { MediaMetadataDrawer } from "../components/app/media-metadata-drawer";
 import { HeroBackdrop } from "../components/app/hero-backdrop";
 import { MetadataProviderIssueNotice } from "../components/app/metadata-provider-issue-notice";
 import { SourceMark } from "../components/app/source-mark";
-import { TvdbAttribution } from "../components/app/tvdb-attribution";
-import { TmdbAttribution } from "../components/app/tmdb-attribution";
+import { TmdbAndTvdbAttribution, TmdbAttribution } from "../components/app/tmdb-attribution";
 import { RatingStrip } from "../components/app/rating-strip";
 import { Chip } from "../components/ui/chip";
 import { Drawer, DrawerFacts, DrawerFooter, DrawerSection } from "../components/ui/drawer";
@@ -1249,10 +1248,10 @@ export function ShowDetailPage() {
                   </>
                 ) : null}
               </div>
-              <div className="mt-1.5 flex flex-col gap-0.5">
-                {metaText("TvDbId") ? <TvdbAttribution className="text-[length:var(--type-micro)] leading-tight" /> : null}
-                <TmdbAttribution className="text-[length:var(--type-micro)] leading-tight" />
-              </div>
+              {/* One short credit line for both sources, so the panel still fits beside the poster. */}
+              {metaText("TvDbId")
+                ? <TmdbAndTvdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" />
+                : <TmdbAttribution className="mt-1.5 text-[length:var(--type-micro)] leading-tight" />}
               <TitleActionGrid>
               <Button variant="outline" className="w-full" onClick={() => void handleMetadataRefresh()} disabled={busyAction !== null}>
                 {busyAction === "metadata-refresh" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
