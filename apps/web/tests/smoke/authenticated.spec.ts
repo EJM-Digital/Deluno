@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { fallbackCredentials } from "../helpers/auth-helper";
-import { openSection } from "../helpers/header-tabs";
 
 let credentials: { username: string; password: string } | null = null;
 
@@ -119,7 +118,8 @@ test.describe("authenticated app smoke", () => {
     id: `smoke-job-${index}`, jobType, label, source, sourceLabel, status, payloadJson: "{}", attempts: 1,
     createdUtc: "2026-09-30T00:00:00Z", scheduledUtc: "2026-09-30T00:00:00Z", startedUtc: "2026-09-30T00:00:00Z",
     completedUtc: "2026-09-30T00:01:00Z", leasedUntilUtc: null, workerId: null, lastError: status === "failed" ? "The indexer did not answer." : null,
-    relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
+    // The failed one is about a title, so Activity lists it; the others are background work, which System lists.
+    relatedEntityType: status === "failed" ? "movie" : null, relatedEntityId: status === "failed" ? "smoke-movie" : null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
   }));
   // What the API sends for an event whose stored message began with a job type.
   const smokeEvents = [
@@ -132,9 +132,6 @@ test.describe("authenticated app smoke", () => {
       await mockJobsAndEvents(page);
       await page.goto(path);
       await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
-      if (path === "/activity") {
-        await openSection(page, "History");
-      }
       // Let the feed and the live list settle before reading the page. Not
       // networkidle: the live connection and the pollers keep the network busy
       // by design (#1081).
@@ -161,12 +158,9 @@ test.describe("authenticated app smoke", () => {
   for (const path of ["/activity", "/system"]) {
     test(`names what started each job in words on ${path}`, async ({ page }) => {
       await mockJobsAndEvents(page);
-      await page.goto(path);
-      if (path === "/activity") {
-        await openSection(page, "Jobs & downloads");
-      }
+      await page.goto(path === "/activity" ? "/activity?status=failed" : path);
       // The System list hides this column on a phone, so it is enough that the words are on the page.
-      await expect(page.getByText("A refused release").first()).toBeAttached({ timeout: 15_000 });
+      await expect(page.getByText(path === "/activity" ? "The download health check" : "A refused release").first()).toBeAttached({ timeout: 15_000 });
       const text = await page.locator("body").innerText();
       expect(text).not.toMatch(rawSourceCode);
     });

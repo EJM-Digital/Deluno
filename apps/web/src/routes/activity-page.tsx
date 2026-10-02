@@ -1,18 +1,23 @@
 /**
- * Activity — the permanent record of what happened and why.
+ * Activity — one list of what happened to each title (#1114).
  *
- * Four lists over one poll: the job queue, what went to download clients, the
- * event trail, and imports that could not be filed. Each row opens the detail
- * rather than printing it inline, because an error string or a payload is worth
- * reading in full and worth nothing squeezed into a cell.
+ * Each row is one step for one title: when, title and step, detail, status. Status chips across the top
+ * choose what the list holds, and the history filters narrow it together with the chip:
+ *   - In progress: jobs for a title that are queued or running, and sends still with a client.
+ *   - Done: the history, paged.
+ *   - Failed: jobs for a title that stopped, and sends that were refused or failed.
+ *   - Needs a decision: imports that could not be filed.
+ *   - All: the open items first, then the history.
+ * Jobs that are not about a title (library-wide refreshes, backups, scheduled passes) are on System.
+ * Each row opens the detail rather than printing it inline, because an error string or a payload is
+ * worth reading in full and worth nothing squeezed into a cell.
  *
- * A failed job is listed however old it is. It used to be found only among the
- * latest 24, and recurring work buries one within hours: the sidebar went on
- * counting it while this screen said "none failing" and offered nothing to press.
+ * A failed job is listed however old it is. It used to be found only among the latest 24, and
+ * recurring work buries one within hours: the sidebar went on counting it while this screen said
+ * "none failing" and offered nothing to press.
  *
- * Contracts: GET /api/jobs, /api/jobs?failed=true, /api/activity,
- * /api/download-dispatches, /api/movies/import-recovery,
- * /api/series/import-recovery; POST /api/jobs/retry-failed,
+ * Contracts: GET /api/jobs, /api/jobs?failed=true, /api/activity, /api/download-dispatches,
+ * /api/movies/import-recovery, /api/series/import-recovery; POST /api/jobs/retry-failed,
  * /api/jobs/{id}/dismiss.
  */
 import type { Tone } from "../lib/status-tones";
@@ -30,9 +35,10 @@ import {
   type MovieImportRecoverySummary,
   type SeriesImportRecoverySummary
 } from "../lib/api";
-import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, getJobStatusTone, JOB_STATUS, isJobActive, isJobFailed, isJobInProgress, isJobRetrying, isJobSuccessful, type JobStatus } from "../lib/job-status-constants";
+import { getDispatchStatusLabel as formatDispatchStatus, getJobStatusLabel, isJobFailed, isJobInProgress, isJobPending, isJobRetrying, type JobStatus } from "../lib/job-status-constants";
 import { dismissFailedJob } from "../lib/failed-jobs";
 import { authedFetch } from "../lib/use-auth";
+import { cn } from "../lib/utils";
 import { Button } from "../components/ui/button";
 import { Chip } from "../components/ui/chip";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
@@ -47,14 +53,21 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SummaryStrip } from "../components/ui/summary-strip";
 import { toast } from "../components/shell/toaster";
 import { DownloadDispatchDrawer } from "../components/app/download-dispatch-drawer";
 import { RealtimeGroups, useSignalREvent } from "../lib/use-signalr";
 import { formatDateTime as formatPreferenceDateTime, useDisplayPreferences } from "../lib/display-preferences";
-import { eventLabel, foldCrossMediaJobRuns, foldRoutineJobEvents } from "../lib/activity-format";
-import { ActivityHistory, useActivityFilterChoices } from "../components/app/activity-history";
-import { activityLinkForFile, activityLinkForTitle, hasActivityFilterParams } from "../lib/activity-history";
+import { eventLabel } from "../lib/activity-format";
+import { ActivityFilterBar, useActivityFilterChoices, useActivityHistory } from "../components/app/activity-history";
+import {
+  activityLinkForFile,
+  activityLinkForTitle,
+  activityStatusFromParams,
+  paramsWithStatus,
+  resolveSince,
+  resolveUntil,
+  type ActivityStatus
+} from "../lib/activity-history";
 import { reasonWords } from "../lib/failure-reasons";
 import { isChosenOnSearch, relatedEntityLabel } from "../lib/dispatch-target";
 import {
@@ -65,8 +78,6 @@ import {
   SEASON_PACK_LEFTOVERS_DELETED_CATEGORY
 } from "../lib/season-pack-leftovers";
 
-type Section = "jobs" | "events" | "imports";
-
 /**
  * Active work needs a short refresh, so only the lists that move (jobs,
  * failures, events, sends) are asked again every ten seconds, and only while
@@ -76,7 +87,7 @@ type Section = "jobs" | "events" | "imports";
 const ACTIVE_REFRESH = { refetchInterval: 10_000, pauseWhenHidden: true } as const;
 
 export const activitySources = defineSources({
-  jobs: { key: ["src", "jobs-24"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=24&includePayload=true"), ...ACTIVE_REFRESH },
+  jobs: { key: ["src", "jobs-100"], label: "Jobs", fetch: () => fetchPageItems<JobQueueItem>("/api/jobs?pageSize=100&includePayload=true"), ...ACTIVE_REFRESH },
   failedJobs: { ...sharedSources.failedJobs, fallback: [] as JobQueueItem[], ...ACTIVE_REFRESH },
   dispatches: { key: ["src", "dispatches-20-archived"], label: "Sent downloads", fetch: () => fetchPageItems<DownloadDispatchItem>("/api/download-dispatches?pageSize=20&includeArchived=true"), fallback: [] as DownloadDispatchItem[], ...ACTIVE_REFRESH },
   movieRecovery: { ...sharedSources.movieRecovery, fallback: emptyRecovery as MovieImportRecoverySummary },
@@ -94,34 +105,72 @@ export function ActivityPage() {
   );
 }
 
+type OpenStatus = Exclude<ActivityStatus, "all" | "done">;
+
+/** One row of the list: one step for one title. */
+interface ActivityRow {
+  key: string;
+  /** Where the row opens: a job, a send to a client, an import issue, or an event in the history. */
+  kind: "job" | "dispatch" | "import" | "event";
+  /** Set for the open items; history events are Done. */
+  status: OpenStatus | "done";
+  whenUtc: string;
+  title: string;
+  step?: string;
+  detail?: string;
+  /** A quieter second line under the detail. */
+  detailSub?: string;
+  pill: { tone: Tone; label: string };
+  /** What a title or item filter compares against, for the open items. */
+  entityId?: string | null;
+  entityType?: string | null;
+  open: () => void;
+  selected: boolean;
+}
+
+const STATUS_CHIPS: readonly { value: ActivityStatus; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "in-progress", label: "In progress" },
+  { value: "done", label: "Done" },
+  { value: "failed", label: "Failed" },
+  { value: "needs-decision", label: "Needs a decision" }
+];
+
+const OPEN_PILL: Record<OpenStatus, { tone: Tone; label: string }> = {
+  "in-progress": { tone: "info", label: "In progress" },
+  failed: { tone: "bad", label: "Failed" },
+  "needs-decision": { tone: "warn", label: "Needs a decision" }
+};
+
+/** What each chip would list, said plainly when it lists nothing. */
+const EMPTY_STATUS: Record<ActivityStatus, { title: string; description: string }> = {
+  all: { title: "Nothing has happened yet", description: "Every consequential thing Deluno does is recorded here, with the reason behind it." },
+  done: { title: "Nothing has happened yet", description: "Every consequential thing Deluno does is recorded here, with the reason behind it." },
+  "in-progress": { title: "Nothing in progress", description: "Searches, downloads and imports for your titles appear here while they run." },
+  failed: { title: "Nothing has failed", description: "A search, download or import that stopped, and needs another go or a look, appears here." },
+  "needs-decision": { title: "Nothing needs a decision", description: "Downloads that finish but cannot be filed — wrong quality, no match, corrupt — land here for you to decide." }
+};
+
 function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSourceData<typeof activitySources>; revalidator: RouteSourceState<typeof activitySources>["revalidator"] }) {
   const lastDispatchRefresh = useRef(0);
-  // The section is in the address too, so a link can land on the history (#1100). With nothing asked for, the page
-  // opens on Jobs & downloads, what is happening now (James, 2 Oct 2026); a link carrying a history filter or an event
-  // opens the history, and the links that mean the history ask for it by name.
+  // The chosen status is in the address too, so a link can land on it (#1114). No status means All; the links
+  // from before the tabs became chips still work: section=jobs is In progress, imports is Needs a decision,
+  // events is All.
   const [searchParams, setSearchParams] = useSearchParams();
   const filterChoices = useActivityFilterChoices();
-  const requestedSection = searchParams.get("section");
-  const section: Section = requestedSection === "jobs" || requestedSection === "imports" || requestedSection === "events"
-    ? requestedSection
-    : hasActivityFilterParams(searchParams) || searchParams.has("event")
-      ? "events"
-      : "jobs";
-  const setSection = (next: Section) =>
-    setSearchParams((current) => {
-      const params = new URLSearchParams(current);
-      params.set("section", next);
-      return params;
-    }, { replace: true });
+  const status = activityStatusFromParams(searchParams);
+  const setStatus = (next: ActivityStatus) => setSearchParams((current) => paramsWithStatus(next, current), { replace: true });
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [openDispatchId, setOpenDispatchId] = useState<string | null>(null);
   const [openEvent, setOpenEvent] = useState<ActivityEventItem | null>(null);
-  const [historyEvents, setHistoryEvents] = useState<ActivityEventItem[]>([]);
   const [openImportCaseId, setOpenImportCaseId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmingLeftoverDelete, setConfirmingLeftoverDelete] = useState(false);
   const [deletingLeftovers, setDeletingLeftovers] = useState(false);
   const { preferences } = useDisplayPreferences();
+
+  const historyOn = status === "all" || status === "done";
+  const { filters, setFilters, clearFilters, history, events: historyEvents, folded: foldedActivity, filtered } = useActivityHistory({ enabled: historyOn, onOpenEvent: setOpenEvent });
 
   const scheduleDispatchRefresh = () => {
     const now = Date.now();
@@ -134,20 +183,10 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   useSignalREvent("DispatchImportCompleted", RealtimeGroups.Queue, scheduleDispatchRefresh);
 
   const { dispatches, failedJobs: failed, movieRecovery, seriesRecovery } = loaderData;
-  // A failed job has its own card, so it is not listed again among the latest.
   // A job with another attempt coming belongs with the work in flight, not
   // with the ones that stopped and need a person (#562).
-  const jobs = useMemo(
-    () => loaderData.jobs.filter((job) => !isJobFailed(job.status as JobStatus) || isJobRetrying(job)),
-    [loaderData.jobs]
-  );
+  const jobs = loaderData.jobs;
   const stopped = useMemo(() => failed.filter((job) => !isJobRetrying(job)), [failed]);
-
-  const runningJobs = jobs.filter((job) => isJobInProgress(job.status as JobStatus)).length;
-  const queuedJobs = jobs.filter((job) => isJobActive(job.status as JobStatus) || isJobRetrying(job)).length - runningJobs;
-  const completedJobs = jobs.filter((job) => isJobSuccessful(job.status as JobStatus)).length;
-  const failedJobs = stopped.length;
-  const openRecovery = movieRecovery.openCount + seriesRecovery.openCount;
 
   const importCases = useMemo(
     () => [
@@ -167,7 +206,6 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   // a Movies run and a TV run of the same job finishing within fifteen
   // minutes of each other fold into one line too (James, 27 Sep 2026) — the
   // drawer is where either original run's own wording still shows.
-  const foldedActivity = useMemo(() => foldCrossMediaJobRuns(foldRoutineJobEvents(historyEvents)), [historyEvents]);
   const openEventFoldedFrom = foldedActivity.find((folded) => folded.event.id === openEvent?.id)?.foldedFrom ?? [];
 
   // #889: a season-pack import names, in the same event, every file that did
@@ -187,6 +225,103 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
     if (!openEvent || openEvent.category !== SEASON_PACK_COMPLETED_CATEGORY) return [];
     return parseSeasonPackSkippedFiles(openEvent.detailsJson).filter((file) => !deletedLeftoverPaths.has(file.sourcePath));
   }, [openEvent, deletedLeftoverPaths]);
+
+  // The open items: what is still going, what stopped, and what needs a decision. Jobs that are not about a
+  // title are not listed here (System lists them).
+  const openRows = useMemo<ActivityRow[]>(() => {
+    const rows: ActivityRow[] = [];
+    const jobWhen = (job: JobQueueItem) => job.completedUtc ?? job.startedUtc ?? job.scheduledUtc;
+    for (const job of jobs) {
+      if (!job.relatedEntityId) continue;
+      const retrying = isJobRetrying(job);
+      if (!(isJobInProgress(job.status as JobStatus) || isJobPending(job.status as JobStatus) || retrying)) continue;
+      const state = retrying ? `Retrying, attempt ${job.attempts} of ${job.maxAttempts}` : getJobStatusLabel(job.status as JobStatus);
+      rows.push({
+        key: `job-${job.id}`, kind: "job", status: "in-progress", whenUtc: jobWhen(job), title: job.label, step: job.sourceLabel,
+        detail: job.lastError ? `${state} · ${job.lastError}` : state, pill: OPEN_PILL["in-progress"],
+        entityId: job.relatedEntityId, entityType: job.relatedEntityType,
+        open: () => setOpenJobId(job.id), selected: openJobId === job.id
+      });
+    }
+    for (const job of stopped) {
+      if (!job.relatedEntityId) continue;
+      rows.push({
+        key: `job-${job.id}`, kind: "job", status: "failed", whenUtc: jobWhen(job), title: job.label, step: job.sourceLabel,
+        detail: job.lastError ?? `${getJobStatusLabel(job.status as JobStatus)} after ${job.attempts} ${job.attempts === 1 ? "attempt" : "attempts"}`,
+        pill: OPEN_PILL.failed, entityId: job.relatedEntityId, entityType: job.relatedEntityType,
+        open: () => setOpenJobId(job.id), selected: openJobId === job.id
+      });
+    }
+    for (const dispatch of dispatches) {
+      const dispatchStatus = dispatchOpenStatus(dispatch);
+      if (!dispatchStatus) continue;
+      rows.push({
+        key: `dispatch-${dispatch.id}`, kind: "dispatch", status: dispatchStatus, whenUtc: dispatch.createdUtc, title: dispatch.releaseName,
+        step: `Sent to ${dispatch.downloadClientName}`,
+        detail: dispatchStatus === "in-progress"
+          ? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`
+          : dispatch.grabMessage ?? dispatch.importFailureMessage ?? `${formatDispatchStatus(dispatch.status)} · ${dispatch.indexerName}`,
+        pill: OPEN_PILL[dispatchStatus], entityId: dispatch.entityId, entityType: dispatch.entityType,
+        open: () => setOpenDispatchId(dispatch.id), selected: openDispatchId === dispatch.id
+      });
+    }
+    for (const item of importCases) {
+      const id = `${item.mediaLabel}-${item.id}`;
+      rows.push({
+        key: `import-${id}`, kind: "import", status: "needs-decision", whenUtc: item.detectedUtc, title: item.title, step: reasonWords(item.failureKind),
+        detail: item.summary, pill: OPEN_PILL["needs-decision"],
+        open: () => setOpenImportCaseId(id), selected: openImportCaseId === id
+      });
+    }
+    return rows;
+  }, [jobs, stopped, dispatches, importCases, openJobId, openDispatchId, openImportCaseId]);
+
+  // The filters narrow the open items too, where they can: the title, the one title chosen, and the days. A filter
+  // that is about the history alone (kind of event, file, source, outcome, reason) leaves no open item matching.
+  const matchingOpen = useMemo(() => {
+    const historyOnly = Boolean(filters.type || filters.file || filters.source || filters.outcome || filters.reason);
+    if (historyOnly) return [];
+    const since = filterDay(filters.since, "since");
+    const until = filterDay(filters.until, "until");
+    const needle = filters.title.trim().toLowerCase();
+    return openRows.filter((row) => {
+      if (needle && !`${row.title} ${row.step ?? ""}`.toLowerCase().includes(needle)) return false;
+      if (filters.item && (row.entityId !== filters.item || (filters.itemType && row.entityType && row.entityType !== filters.itemType))) return false;
+      const when = new Date(row.whenUtc).getTime();
+      if (since !== null && when < since) return false;
+      if (until !== null && when >= until) return false;
+      return true;
+    });
+  }, [openRows, filters]);
+
+  const counts: Partial<Record<ActivityStatus, number>> = {
+    "in-progress": matchingOpen.filter((row) => row.status === "in-progress").length,
+    failed: matchingOpen.filter((row) => row.status === "failed").length,
+    "needs-decision": matchingOpen.filter((row) => row.status === "needs-decision").length
+  };
+
+  const historyRows = useMemo<ActivityRow[]>(
+    () => foldedActivity.map(({ event, foldedFrom }) => ({
+      key: `event-${event.id}`, kind: "event", status: "done", whenUtc: event.createdUtc,
+      title: event.title ?? eventLabel(event),
+      step: event.title ? eventLabel(event) : event.sourceName ?? undefined,
+      detail: event.message,
+      detailSub: [event.detail, foldedFrom.length ? `+${foldedFrom.length} more step${foldedFrom.length === 1 ? "" : "s"} for this run — open to see them` : null].filter(Boolean).join(" · ") || undefined,
+      pill: event.outcome === "problem" ? { tone: "bad" as Tone, label: "Went wrong" } : { tone: "ok" as Tone, label: "Done" },
+      open: () => setOpenEvent(event), selected: openEvent?.id === event.id
+    })),
+    [foldedActivity, openEvent]
+  );
+
+  const sortedOpen = (list: ActivityRow[]) => [...list].sort((a, b) => new Date(b.whenUtc).getTime() - new Date(a.whenUtc).getTime());
+  const rows: ActivityRow[] =
+    status === "all" ? [...sortedOpen(matchingOpen), ...historyRows]
+    : status === "done" ? historyRows
+    : sortedOpen(matchingOpen.filter((row) => row.status === status));
+
+  const historyLoading = historyOn && history.isPending;
+  const historyBroken = historyOn && history.isError;
+  const failedTitleJobs = counts.failed ?? 0;
 
   async function handleRetryFailedJobs() {
     setBusy(true);
@@ -251,164 +386,117 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        sections={{
-          label: "Section",
-          value: section,
-          onValueChange: (next) => setSection(next as Section),
-          options: [
-            { value: "jobs", label: "Jobs & downloads" },
-            { value: "events", label: "History" },
-            { value: "imports", label: "Import issues" }
-          ]
-        }}
         actions={
-          <>
-            <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button type="button" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedJobs === 0}>
-              Retry {failedJobs || "failed"} {failedJobs === 1 ? "job" : "jobs"}
-            </Button>
-          </>
+          <Button type="button" variant="outline" onClick={() => revalidator.revalidate()} disabled={revalidator.state !== "idle"}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
         }
       />
 
-      <SummaryStrip
-        cells={[
-          { label: "Running", value: runningJobs, help: runningJobs ? "in flight now" : "nothing working" },
-          { label: "Queued", value: queuedJobs, help: "waiting for a worker" },
-          { label: "Finished", value: completedJobs, help: "in the last 24 jobs" },
-          { label: "Failed", value: failedJobs, tone: failedJobs > 0 ? "danger" : undefined, help: failedJobs ? "need attention" : "none failing" },
-          { label: "Import issues", value: openRecovery, tone: openRecovery > 0 ? "warning" : undefined, help: openRecovery ? "need a decision" : "all imports clear" }
-        ]}
-      />
-
-      {section === "jobs" ? (
-        <>
-          {stopped.length > 0 ? (
-            <ListCard title="Failed jobs" count={`${stopped.length} stopped`}>
-              <ListTable
-                columns={[
-                  { label: "Job" },
-                  { label: "Source", mobile: true },
-                  { label: "Attempts", align: "end" },
-                  { label: "When" },
-                  { label: "Status", width: LIST_TRACK.status }
-                ]}
-              >
-                {stopped.map((job) => (
-                  <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
-                    <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
-                    <ListCell primary={job.sourceLabel} mobile />
-                    <ListCell primary={job.attempts} align="end" numeric />
-                    <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
-                    <ListCell>
-                      <Chip tone={jobTone(job.status)}>{getJobStatusLabel(job.status as JobStatus)}</Chip>
-                    </ListCell>
-                  </ListRow>
-                ))}
-              </ListTable>
-            </ListCard>
-          ) : null}
-
-          <ListCard title="Job queue" count={jobs.length ? `Latest ${jobs.length}` : undefined}>
-            {jobs.length === 0 ? (
-              <ListEmpty title="Nothing queued" description="Scheduled searches, metadata refreshes and imports appear here as they run." />
-            ) : (
-              <ListTable
-                columns={[
-                  { label: "Job" },
-                  { label: "Source", mobile: true },
-                  { label: "Attempts", align: "end" },
-                  { label: "When" },
-                  { label: "Status", width: LIST_TRACK.status }
-                ]}
-              >
-                {jobs.map((job) => (
-                  <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
-                    <ListNameCell name={job.label} sub={job.lastError ?? job.workerId ?? "—"} />
-                    <ListCell primary={job.sourceLabel} mobile />
-                    <ListCell primary={job.attempts} align="end" numeric />
-                    <ListCell primary={formatPreferenceDateTime(job.completedUtc ?? job.startedUtc ?? job.scheduledUtc, preferences)} />
-                    <ListCell>
-                      <Chip tone={isJobRetrying(job) ? "info" : jobTone(job.status)}>{isJobRetrying(job) ? "Retrying" : getJobStatusLabel(job.status as JobStatus)}</Chip>
-                    </ListCell>
-                  </ListRow>
-                ))}
-              </ListTable>
-            )}
-          </ListCard>
-
-          <ListCard title="Sent to downloads" count={dispatches.length ? `Latest ${dispatches.length}` : undefined}>
-            {dispatches.length === 0 ? (
-              <ListEmpty title="Nothing sent yet" description="Releases Deluno hands to a download client are listed here, with what the client said back." />
-            ) : (
-              <ListTable
-                columns={[
-                  { label: "Release" },
-                  { label: "Client", mobile: true },
-                  { label: "Media" },
-                  { label: "When" },
-                  { label: "Status", width: LIST_TRACK.status }
-                ]}
-              >
-                {dispatches.map((dispatch) => (
-                  <ListRow
-                    key={dispatch.id}
-                    onClick={() => setOpenDispatchId(dispatch.id)}
-                    selected={openDispatchId === dispatch.id}
-                  >
-                    <ListNameCell name={dispatch.releaseName} sub={dispatch.indexerName} />
-                    <ListCell primary={dispatch.downloadClientName} mobile />
-                    <ListCell primary={dispatch.mediaType === "tv" ? "TV" : "Movies"} />
-                    <ListCell primary={formatPreferenceDateTime(dispatch.createdUtc, preferences)} />
-                    <ListCell>
-                      <Chip tone={dispatchTone(dispatch.status)}>{formatDispatchStatus(dispatch.status)}</Chip>
-                    </ListCell>
-                  </ListRow>
-                ))}
-              </ListTable>
-            )}
-          </ListCard>
-        </>
-      ) : null}
-
-      {section === "events" ? (
-        <ActivityHistory openEventId={openEvent?.id ?? null} onOpenEvent={setOpenEvent} onLoaded={setHistoryEvents} />
-      ) : null}
-
-      {section === "imports" ? (
-        <ListCard
-          title="Import issues"
-          count={openRecovery ? `${openRecovery} open` : undefined}
-        >
-          {importCases.length === 0 ? (
-            <ListEmpty title="Nothing stuck" description="Downloads that finish but cannot be filed — wrong quality, no match, corrupt — land here for a decision." />
-          ) : (
-            <ListTable
-              columns={[
-                { label: "Issue" },
-                { label: "Media", mobile: true },
-                { label: "What to do", width: "minmax(0,1.4fr)" },
-                { label: "Found" }
-              ]}
-            >
-              {importCases.map((item) => {
-                const id = `${item.mediaLabel}-${item.id}`;
+      <ListCard
+        title="Activity"
+        actions={
+          <div className="flex min-w-0 items-center gap-2">
+            <div role="radiogroup" aria-label="Show" className="no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto">
+              {STATUS_CHIPS.map((chip) => {
+                const active = chip.value === status;
+                const count = counts[chip.value];
                 return (
-                  <ListRow key={id} onClick={() => setOpenImportCaseId(id)} selected={openImportCaseId === id}>
-                    <ListNameCell name={`${reasonWords(item.failureKind)} · ${item.title}`} sub={item.summary} />
-                    <ListCell primary={item.mediaLabel} mobile />
-                    <ListCell primary={item.recommendedAction} />
-                    <ListCell primary={formatPreferenceDateTime(item.detectedUtc, preferences)} />
-                  </ListRow>
+                  <button
+                    key={chip.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={count !== undefined ? `${chip.label} ${count}` : chip.label}
+                    onClick={() => setStatus(chip.value)}
+                    className={cn(
+                      "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[length:var(--type-caption)] font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active ? "border-primary/40 bg-primary/12 text-primary" : "border-hairline bg-surface-1 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {chip.label}
+                    {count !== undefined ? <span className="tabular-nums opacity-80">{count}</span> : null}
+                  </button>
                 );
               })}
+            </div>
+            {status === "failed" ? (
+              <Button type="button" size="sm" className="shrink-0" onClick={() => void handleRetryFailedJobs()} disabled={busy || failedTitleJobs === 0}>
+                Retry failed jobs
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        <ActivityFilterBar filters={filters} setFilters={setFilters} clearFilters={clearFilters} />
+
+        {rows.length === 0 && historyLoading ? (
+          <ListEmpty title="Reading the history" description="This takes a moment." />
+        ) : rows.length === 0 && historyBroken ? (
+          <ListEmpty
+            title="The history could not be read"
+            description="Deluno could not load it just now."
+            actions={
+              <Button type="button" variant="outline" size="sm" onClick={() => void history.refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
+          filtered ? (
+            <ListEmpty
+              title="Nothing matches these filters"
+              description="Widen the dates, or clear a filter, to see more."
+              actions={
+                <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <ListEmpty title={EMPTY_STATUS[status].title} description={EMPTY_STATUS[status].description} />
+          )
+        ) : (
+          <>
+            <ListTable
+              columns={[
+                { label: "Title and step", width: "minmax(0,1.5fr)" },
+                { label: "Detail", width: "minmax(0,1.8fr)" },
+                { label: "When", width: "minmax(0,0.9fr)", mobile: true },
+                { label: "Status", width: LIST_TRACK.status, mobile: true }
+              ]}
+            >
+              {rows.map((row) => (
+                <ListRow key={row.key} onClick={row.open} selected={row.selected}>
+                  <ListNameCell name={row.title} sub={row.step} />
+                  <ListCell primary={row.detail ?? "—"} secondary={row.detailSub} />
+                  <ListCell primary={formatPreferenceDateTime(row.whenUtc, preferences)} mobile />
+                  <ListCell mobile>
+                    <Chip tone={row.pill.tone}>{row.pill.label}</Chip>
+                  </ListCell>
+                </ListRow>
+              ))}
             </ListTable>
-          )}
-        </ListCard>
-      ) : null}
+            {historyOn && historyBroken ? (
+              <div className="flex items-center justify-center gap-3 border-t border-hairline p-3 text-[length:var(--type-caption)] text-muted-foreground">
+                The history could not be read just now.
+                <Button type="button" variant="outline" size="sm" onClick={() => void history.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+            {historyOn && history.hasNextPage ? (
+              <div className="flex justify-center border-t border-hairline p-3">
+                <Button type="button" variant="outline" size="sm" onClick={() => void history.fetchNextPage()} disabled={history.isFetchingNextPage}>
+                  {history.isFetchingNextPage ? "Loading" : "Show older events"}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </ListCard>
 
       <Drawer
         open={openJob !== null}
@@ -640,28 +728,18 @@ function ActivityPageBody({ data: loaderData, revalidator }: { data: RouteSource
 
 /* -------------------------------------------------------------- helpers */
 
-/**
- * Queued was grey here, which is the colour for nothing happening — a queued job
- * is motion that has not started. The table decides now, and this screen no
- * longer holds an opinion of its own.
- */
-function jobTone(status: string): Tone {
-  return getJobStatusTone(status as JobStatus);
+/** Where a send to a download client belongs: still with the client, stopped, or waiting for you. Imported ones are in the history. */
+function dispatchOpenStatus(dispatch: DownloadDispatchItem): OpenStatus | null {
+  if (dispatch.status === "failed" || dispatch.status === "importFailed" || dispatch.grabStatus === "failed" || dispatch.grabStatus === "refused") return "failed";
+  if (dispatch.status === "sent") return "in-progress";
+  if (dispatch.status === "planned") return "needs-decision";
+  return null;
 }
 
-function dispatchTone(status: string): "ok" | "warn" | "bad" | "info" {
-  switch (status) {
-    case "sent":
-    case "imported":
-      return "ok";
-    case "failed":
-    case "importFailed":
-      return "bad";
-    case "planned":
-      return "warn";
-    default:
-      return "info";
-  }
+/** A filter day (a quick word or YYYY-MM-DD) as the moment it starts, or where the "until" day ends. Null when not set. */
+function filterDay(token: string, edge: "since" | "until"): number | null {
+  const moment = edge === "since" ? resolveSince(token) : resolveUntil(token);
+  return moment ? moment.getTime() : null;
 }
 
 function prettyJson(value: string) {

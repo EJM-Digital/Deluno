@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEventItem, MovieImportRecoverySummary, SeriesImportRecoverySummary } from "../lib/api";
 
 const authedFetchMock = vi.fn();
@@ -174,9 +174,8 @@ function LocationProbe() {
   return <output aria-label="address">{location.pathname + location.search}</output>;
 }
 
-/** The history is the page's own opening view; wait for its first rows to arrive. */
+/** The history is part of the page's opening view (All); wait for its first rows to arrive. */
 async function openHistory() {
-  await userEvent.click(screen.getByRole("radio", { name: "History" }));
   await screen.findByText("Imported Arrival (2016).");
 }
 
@@ -226,17 +225,6 @@ describe("Activity history filters and columns (#798, #1100)", () => {
     expect(screen.getByLabelText("address").textContent).toContain("type=blocklisted");
   });
 
-  it("hides an optional column once toggled off from the column picker", async () => {
-    renderActivity();
-    await openHistory();
-
-    expect(screen.getByRole("columnheader", { name: "Kind" })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Columns" }));
-    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Kind" }));
-
-    expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
-  });
 });
 
 /**
@@ -268,7 +256,7 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
   });
 
   it("writes a typed title to the address after a moment and clears every filter in one press", async () => {
-    renderActivity("/activity?section=events&type=search");
+    renderActivity("/activity?status=done&type=search");
     await screen.findByText("Imported Arrival (2016).");
 
     await userEvent.type(screen.getByRole("searchbox", { name: "Filter by title" }), "Arrival");
@@ -333,16 +321,6 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
     expect(within(dialog).getAllByText("Imported Arrival (2016).").length).toBeGreaterThan(0);
   });
 
-  it("opens on Jobs & downloads, and on the history when the link carries a history filter", () => {
-    authedFetchMock.mockImplementation(async (path: string) => answerActivityApi(path));
-    const plain = renderActivity();
-    expect(screen.getByRole("radio", { name: "Jobs & downloads" })).toHaveAttribute("aria-checked", "true");
-    plain.unmount();
-
-    renderActivity("/activity?since=today");
-    expect(screen.getByRole("radio", { name: "History" })).toHaveAttribute("aria-checked", "true");
-  });
-
   it("shows older events a page at a time", async () => {
     authedFetchMock.mockImplementation(async (path: string) => {
       if (!path.startsWith("/api/activity?")) return answerActivityApi(path);
@@ -350,7 +328,7 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
         ? jsonResponse({ items: [activityEvents[1]], nextPageToken: null, hasMore: false })
         : jsonResponse({ items: [activityEvents[0]], nextPageToken: "next", hasMore: true });
     });
-    renderActivity("/activity?section=events");
+    renderActivity("/activity?status=done");
 
     await screen.findByText("Deluno will not use Arrival.2016.2160p again.");
     expect(screen.queryByText("Imported Arrival (2016).")).not.toBeInTheDocument();
@@ -362,7 +340,7 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
 });
 
 describe("Activity names each kind of event in plain words (#1086)", () => {
-  it("shows the label in the Category column and the drawer, never the internal code", async () => {
+  it("shows the label in the list and the drawer, never the internal code", async () => {
     // An earlier test hides this column and the choice is remembered.
     window.localStorage.clear();
     renderActivity();
@@ -391,17 +369,16 @@ describe("Activity shows failures and retry times in plain words (#1095)", () =>
 
 describe("Import issues show the specific rejection reason (#798)", () => {
   it("names the actual failure in plain words rather than a generic label", async () => {
-    renderActivity();
-    await userEvent.click(screen.getByRole("radio", { name: "Import issues" }));
+    renderActivity("/activity?status=needs-decision");
 
-    expect(screen.getByText("No video in the file · Arrival")).toBeInTheDocument();
+    expect(screen.getByText("Arrival")).toBeInTheDocument();
+    expect(screen.getByText("No video in the file")).toBeInTheDocument();
     expect(screen.getByText("No video stream was detected in this file.")).toBeInTheDocument();
   });
 
   it("opens the full reason, recommendation and evidence in a drawer", async () => {
-    renderActivity();
-    await userEvent.click(screen.getByRole("radio", { name: "Import issues" }));
-    await userEvent.click(screen.getByText("No video in the file · Arrival"));
+    renderActivity("/activity?status=needs-decision");
+    await userEvent.click(screen.getByText("Arrival"));
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("No video stream was detected in this file.")).toBeInTheDocument();
@@ -494,13 +471,13 @@ describe("Activity names each job in plain words (#1086)", () => {
       id: "job-9", jobType: "episode.search", label: "Search for an episode", source: "queue-derived", sourceLabel: "A download in the queue", status: "dead-letter",
       payloadJson: "{}", attempts: 3, createdUtc: "2026-09-27T08:00:00Z", scheduledUtc: "2026-09-27T08:00:00Z", startedUtc: null,
       completedUtc: "2026-09-27T08:05:00Z", leasedUntilUtc: null, workerId: null, lastError: "The indexer did not answer.",
-      relatedEntityType: null, relatedEntityId: null, idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
+      relatedEntityType: "movie", relatedEntityId: "movie-1", idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null
     };
     const saved = { jobs: loaderData.jobs, failedJobs: loaderData.failedJobs };
     loaderData.jobs = [job] as never;
     loaderData.failedJobs = [job] as never;
     try {
-      renderActivity("/activity?section=jobs");
+      renderActivity("/activity?status=failed");
 
       await userEvent.click(screen.getAllByText("Search for an episode")[0]);
       expect(document.body.textContent).toContain("Search for an episode");
@@ -510,5 +487,178 @@ describe("Activity names each job in plain words (#1086)", () => {
       loaderData.jobs = saved.jobs;
       loaderData.failedJobs = saved.failedJobs;
     }
+  });
+});
+
+/**
+ * #1114: Activity is one list with status chips instead of tabs. The open items (title jobs, sends,
+ * import issues) come first; the history follows; jobs that are not about a title are not listed.
+ */
+describe("Activity is one list with status chips (#1114)", () => {
+  const job = (overrides: Record<string, unknown>) => ({
+    id: "job-x", jobType: "movie.search", label: "Search for a movie", source: "scheduler", sourceLabel: "A scheduled pass", status: "queued",
+    payloadJson: "{}", attempts: 0, createdUtc: "2026-09-27T08:00:00Z", scheduledUtc: "2026-09-27T08:00:00Z", startedUtc: null,
+    completedUtc: null, leasedUntilUtc: null, workerId: null, lastError: null, relatedEntityType: "movie", relatedEntityId: "movie-1",
+    idempotencyKey: null, dedupeKey: null, maxAttempts: 3, lastAttemptUtc: null, nextAttemptUtc: null, ...overrides
+  });
+  const dispatch = (overrides: Record<string, unknown>) => ({
+    id: "dispatch-x", libraryId: "lib", mediaType: "movie", entityType: "movie", entityId: "movie-1", releaseName: "Arrival.2016.1080p",
+    indexerName: "NZBgeek", downloadClientId: "c1", downloadClientName: "SABnzbd", status: "sent", notesJson: null,
+    createdUtc: "2026-09-27T07:00:00Z", ...overrides
+  });
+
+  const saved = { jobs: loaderData.jobs, failedJobs: loaderData.failedJobs, dispatches: loaderData.dispatches };
+  const restore = () => Object.assign(loaderData, saved);
+  const seed = () => {
+    loaderData.jobs = [
+      job({ id: "job-running", label: "Search for Arrival", status: "running", startedUtc: "2026-09-27T12:00:00Z" }),
+      job({ id: "job-library", label: "Refresh all metadata", status: "running", relatedEntityType: null, relatedEntityId: null })
+    ] as never;
+    loaderData.failedJobs = [
+      job({ id: "job-stopped", label: "Import Arrival", status: "dead-letter", attempts: 3, completedUtc: "2026-09-27T09:30:00Z", lastError: "The indexer did not answer." }),
+      job({ id: "job-backup", label: "Back up the database", status: "failed", relatedEntityType: null, relatedEntityId: null, lastError: "Disk full." })
+    ] as never;
+    loaderData.dispatches = [
+      dispatch({ id: "dispatch-sent" }),
+      dispatch({ id: "dispatch-refused", releaseName: "Sintel.2010.720p", status: "failed", grabMessage: "The client refused the file." })
+    ] as never;
+  };
+  beforeEach(() => { restore(); seed(); });
+  afterAll(restore);
+
+  it("shows the status chips with the counts that are known, and no count where it is not", async () => {
+    renderActivity();
+    await openHistory();
+
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "In progress 2" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Failed 2" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Needs a decision 1" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Done" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  });
+
+  it("lists the open items first, then the history, each with its status pill", async () => {
+    renderActivity();
+    await openHistory();
+
+    const rows = screen.getAllByRole("row").slice(1);
+    const importedAt = rows.findIndex((row) => row.textContent?.includes("Imported Arrival (2016)."));
+    const failedAt = rows.findIndex((row) => row.textContent?.includes("Import Arrival") && !row.textContent?.includes("Imported"));
+    expect(failedAt).toBeGreaterThanOrEqual(0);
+    expect(failedAt).toBeLessThan(importedAt);
+    expect(within(rows[importedAt]).getByText("Done")).toBeInTheDocument();
+    expect(within(rows[failedAt]).getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("keeps a job with no title off the page, and lists the ones about a title", async () => {
+    renderActivity();
+    await openHistory();
+
+    expect(screen.getByText("Search for Arrival")).toBeInTheDocument();
+    expect(screen.getByText("Import Arrival")).toBeInTheDocument();
+    expect(screen.queryByText("Refresh all metadata")).not.toBeInTheDocument();
+    expect(screen.queryByText("Back up the database")).not.toBeInTheDocument();
+  });
+
+  it("lists on each chip what that chip is for", async () => {
+    renderActivity("/activity?status=in-progress");
+    expect(screen.getByText("Search for Arrival")).toBeInTheDocument();
+    expect(screen.getByText("Arrival.2016.1080p")).toBeInTheDocument();
+    expect(screen.queryByText("Import Arrival")).not.toBeInTheDocument();
+    expect(screen.queryByText("Imported Arrival (2016).")).not.toBeInTheDocument();
+    // The history is not even asked for while another chip is chosen.
+    expect(requestedActivityPaths()).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Failed 2" }));
+    expect(screen.getByText("Import Arrival")).toBeInTheDocument();
+    expect(screen.getByText("Sintel.2010.720p")).toBeInTheDocument();
+    expect(screen.getByText("The client refused the file.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry failed jobs" })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Needs a decision 1" }));
+    expect(screen.getByText("No video in the file")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry failed jobs" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Done" }));
+    expect(await screen.findByText("Imported Arrival (2016).")).toBeInTheDocument();
+    expect(screen.queryByText("No video in the file")).not.toBeInTheDocument();
+  });
+
+  it("says plainly what would appear on a chip that is empty", () => {
+    loaderData.jobs = [] as never;
+    loaderData.failedJobs = [] as never;
+    loaderData.dispatches = [] as never;
+    renderActivity("/activity?status=failed");
+    expect(screen.getByText("Nothing has failed")).toBeInTheDocument();
+    expect(screen.getByText(/needs another go or a look/)).toBeInTheDocument();
+  });
+
+  it("keeps the chosen chip in the address, and no chip is All", async () => {
+    renderActivity();
+    const address = () => screen.getByLabelText("address").textContent;
+
+    await userEvent.click(screen.getByRole("radio", { name: "Failed 2" }));
+    expect(address()).toContain("status=failed");
+    await userEvent.click(screen.getByRole("radio", { name: "Needs a decision 1" }));
+    expect(address()).toContain("status=needs-decision");
+    await userEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(address()).not.toContain("status=");
+  });
+
+  it("reads the chip from the address, with the history filters alongside it", () => {
+    renderActivity("/activity?status=failed&title=Arrival");
+    expect(screen.getByRole("radio", { name: "Failed 1" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("searchbox", { name: "Filter by title" })).toHaveValue("Arrival");
+    expect(screen.getByText("Import Arrival")).toBeInTheDocument();
+    expect(screen.queryByText("Sintel.2010.720p")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/activity?section=jobs", "In progress 2"],
+    ["/activity?section=imports", "Needs a decision 1"],
+    ["/activity?section=events", "All"],
+    ["/activity?since=today", "All"],
+    ["/activity?event=event-2&since=2026-09-27&until=2026-09-27", "All"]
+  ])("keeps the old link %s opening the right chip", (address, chip) => {
+    renderActivity(address);
+    expect(screen.getByRole("radio", { name: chip })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("opens the job, the send to the client, the history event and the import issue each in its own drawer", async () => {
+    renderActivity();
+    await openHistory();
+    const closeDrawer = async () => {
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    };
+
+    await userEvent.click(screen.getByText("Search for Arrival"));
+    expect(within(screen.getByRole("dialog")).getByText("What it was for")).toBeInTheDocument();
+    await closeDrawer();
+
+    await userEvent.click(screen.getByText("Import Arrival"));
+    expect(within(screen.getByRole("dialog")).getByText("Why it failed")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    await closeDrawer();
+
+    await userEvent.click(screen.getByText("Sintel.2010.720p"));
+    expect(within(screen.getByRole("dialog")).getAllByText(/Sintel\.2010\.720p/).length).toBeGreaterThan(0);
+    await closeDrawer();
+
+    await userEvent.click(screen.getByText("No video in the file"));
+    expect(within(screen.getByRole("dialog")).getByText("Why this needs a decision")).toBeInTheDocument();
+    await closeDrawer();
+
+    await userEvent.click(screen.getByText("Imported Arrival (2016)."));
+    expect(within(screen.getByRole("dialog")).getByText("What happened")).toBeInTheDocument();
+  });
+
+  it("retries the failed jobs from the Failed chip", async () => {
+    authedFetchMock.mockImplementation(async (path: string) =>
+      path === "/api/jobs/retry-failed" ? jsonResponse({ retried: 2 }) : answerActivityApi(path));
+    renderActivity("/activity?status=failed");
+    await userEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }));
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/retry-failed", expect.objectContaining({ method: "POST" })));
   });
 });

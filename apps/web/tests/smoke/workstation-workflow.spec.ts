@@ -1,6 +1,6 @@
 import { expect, request as playwrightRequest, test } from "@playwright/test";
 import { authenticateAndNavigate } from "../helpers/auth-helper";
-import { expectSectionChosen, expectTabReachable, openSection, openTab } from "../helpers/header-tabs";
+import { expectTabReachable, openTab } from "../helpers/header-tabs";
 
 test.describe("dashboard workflow", () => {
   test("starts in the dashboard and opens direct add flows", async ({ page }) => {
@@ -963,11 +963,15 @@ test.describe("dashboard workflow", () => {
   test("keeps activity as a readable history", async ({ page }) => {
     await authenticateAndNavigate(page, "/activity");
 
-    // Activity opens on the History (#1100); the jobs and downloads are one choice away.
-    await expectSectionChosen(page, "History");
-    await openSection(page, "Jobs & downloads");
-    await expect(page).toHaveURL(/section=jobs/);
-    await expect(page.getByRole("heading", { name: "Job Queue" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Sent to Downloads" })).toBeVisible();
+    // Activity is one list of what happened to each title (#1114): All is the opening view, and each status is one chip away.
+    await expect(page.getByRole("region", { name: "Activity" })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: /^In progress/ }).click();
+    await expect(page).toHaveURL(/status=in-progress/);
+    await expect(page.getByRole("radio", { name: /^In progress/ })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("radio", { name: /^Needs a decision/ }).click();
+    await expect(page).toHaveURL(/status=needs-decision/);
+    await page.getByRole("radio", { name: "All" }).click();
+    await expect(page).not.toHaveURL(/status=/);
   });
 });
