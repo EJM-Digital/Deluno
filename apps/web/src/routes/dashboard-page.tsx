@@ -10,10 +10,10 @@
  * `downloads` open Live, and `setup-health` opens System.
  */
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { RouteSkeleton } from "../components/shell/skeleton";
 import { Button } from "../components/ui/button";
+import { HeaderTabs, HeaderTabsPortal, useHeaderSlot } from "../components/ui/header-tabs";
 import { ListEmpty } from "../components/ui/list-card";
 import { useCoalescedRevalidate } from "../hooks/use-live-interval";
 import { queryClient, startSources } from "../lib/route-cache";
@@ -71,49 +71,24 @@ export function dashboardLoader(args?: { request?: Request }) {
   return { cached: true as const };
 }
 
-function TabBar({ active, onSelect, className }: {
+function TabBar({ active, onSelect }: {
   active: DashboardTab;
   onSelect: (tab: DashboardTab) => void;
-  className?: string;
 }) {
   return (
-    <div role="tablist" aria-label="Dashboard sections" className={cn("inline-flex w-fit items-baseline gap-[18px]", className)}>
-      {DASHBOARD_TABS.map((tab) => {
-        const selected = tab === active;
-        return (
-          <Button
-            key={tab}
-            type="button"
-            role="tab"
-            id={`dashboard-tab-${tab}`}
-            aria-selected={selected}
-            aria-controls="dashboard-tabpanel"
-            variant="ghost"
-            size="sm"
-            onClick={() => onSelect(tab)}
-            className={cn(
-              // Plain text tabs on the title's line (James, 2 Oct 2026): 14px, the chosen one in the accent colour with a
-              // 2px underline that sits below the text, so the header keeps its height.
-              "relative h-auto rounded-sm bg-transparent p-0 text-[length:var(--type-body-sm)] font-medium leading-none hover:bg-transparent",
-              "after:absolute after:inset-x-0 after:-bottom-[7px] after:h-[2px] after:rounded-full after:content-['']",
-              selected ? "text-primary after:bg-primary hover:text-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
-            )}
-          >
-            {TAB_LABELS[tab]}
-          </Button>
-        );
-      })}
-    </div>
+    <HeaderTabs
+      role="tablist"
+      label="Dashboard sections"
+      items={DASHBOARD_TABS.map((tab) => ({
+        key: tab,
+        label: TAB_LABELS[tab],
+        selected: tab === active,
+        onSelect: () => onSelect(tab),
+        buttonId: `dashboard-tab-${tab}`,
+        controls: "dashboard-tabpanel"
+      }))}
+    />
   );
-}
-
-/** The header has a slot for the tabs; a page rendered without the header shows them inline. */
-function useHeaderSlot(): HTMLElement | null {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    setSlot(document.getElementById("topbar-page-tabs"));
-  }, []);
-  return slot;
 }
 
 /**
@@ -204,14 +179,7 @@ export function DashboardPage() {
 
   return (
     <div ref={setRoot} className="flex flex-col gap-[var(--grid-gap)]">
-      {slot ? (
-        <>
-          {createPortal(<TabBar active={tab} onSelect={select} />, slot)}
-          <div className="lg:hidden">{bar}</div>
-        </>
-      ) : (
-        bar
-      )}
+      {slot ? <HeaderTabsPortal slot={slot}>{bar}</HeaderTabsPortal> : bar}
       {/* The tabs are drawn at the approved mockup's own sizes on every screen (see `.dash-mockup-size` in index.css). */}
       <div id="dashboard-tabpanel" role="tabpanel" aria-labelledby={`dashboard-tab-${tab}`} className="dash-mockup-size min-h-0 flex-1 lg:relative">
         <div className="lg:absolute lg:inset-0 lg:overflow-hidden">

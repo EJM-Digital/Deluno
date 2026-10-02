@@ -265,23 +265,20 @@ function CalendarPageBody({ data: loaderData, revalidator }: { data: CalendarLoa
   return (
     <div className="grid gap-[var(--page-gap)]">
       <PageToolbar
-        left={
-          <SegmentedControl<Scope>
-            aria-label="Range"
-            className="w-auto"
-            value={scope}
-            onValueChange={(next) => {
-              setScope(next);
-              setOffset(0);
-            }}
-            options={[
-              { value: "day", label: "Day" },
-              { value: "week", label: "Week" },
-              { value: "month", label: "Month" },
-              { value: "agenda", label: "Agenda" }
-            ]}
-          />
-        }
+        sections={{
+          label: "Range",
+          value: scope,
+          onValueChange: (next) => {
+            setScope(next as Scope);
+            setOffset(0);
+          },
+          options: [
+            { value: "day", label: "Day" },
+            { value: "week", label: "Week" },
+            { value: "month", label: "Month" },
+            { value: "agenda", label: "Agenda" }
+          ]
+        }}
         actions={
           <>
             {isListOnlyScope(scope) ? null : (

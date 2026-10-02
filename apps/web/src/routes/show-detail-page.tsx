@@ -99,7 +99,6 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
-import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
@@ -1060,19 +1059,16 @@ export function ShowDetailPage() {
       {/* One toolbar: which part of the show you want, where you came from, and
           the two searches. The topbar names the section, the hero names the show. */}
       <PageToolbar
-        left={
-          <SegmentedControl<DetailSection>
-            aria-label="Section"
-            className="w-auto"
-            value={section}
-            onValueChange={setSection}
-            options={[
-              { value: "episodes", label: "Episodes" },
-              { value: "destination", label: "Destination" },
-              { value: "history", label: "History" }
-            ]}
-          />
-        }
+        sections={{
+          label: "Section",
+          value: section,
+          onValueChange: (next) => setSection(next as DetailSection),
+          options: [
+            { value: "episodes", label: "Episodes" },
+            { value: "destination", label: "Destination" },
+            { value: "history", label: "History" }
+          ]
+        }}
         actions={
           <>
             <Button asChild type="button" variant="outline">

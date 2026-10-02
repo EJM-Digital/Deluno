@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { fallbackCredentials } from "../helpers/auth-helper";
+import { sectionSwitch } from "../helpers/header-tabs";
 
 let credentials: { username: string; password: string } | null = null;
 
@@ -132,7 +133,7 @@ test.describe("authenticated app smoke", () => {
       await page.goto(path);
       await expect(page.locator("body")).toContainText(/Deluno|Overview|Activity|System/, { timeout: 15_000 });
       if (path === "/activity") {
-        await page.getByRole("radio", { name: "History" }).click();
+        await sectionSwitch(page, "History").click();
       }
       // Let the feed and the live list settle before reading the page. Not
       // networkidle: the live connection and the pollers keep the network busy
@@ -162,7 +163,7 @@ test.describe("authenticated app smoke", () => {
       await mockJobsAndEvents(page);
       await page.goto(path);
       if (path === "/activity") {
-        await page.getByRole("radio", { name: "Jobs & downloads" }).click();
+        await sectionSwitch(page, "Jobs & downloads").click();
       }
       // The System list hides this column on a phone, so it is enough that the words are on the page.
       await expect(page.getByText("A refused release").first()).toBeAttached({ timeout: 15_000 });
