@@ -332,7 +332,8 @@ test.describe("Dashboard tabs", () => {
       const activity = page.getByRole("region", { name: /^activity/i });
       await expect(activity.getByText(/Grabbed Dune Part Two/).first()).toBeVisible();
       await expect(activity.getByText(/Task (started|finished|queued)/)).toHaveCount(0);
-      await expect(activity.getByText(/[0-9]+ routine left out/)).toBeVisible();
+      // Whole entries only: the header says how many more there are (or, when all fit, how much routine was left out).
+      await expect(activity.getByText(/^[0-9,]+ more$|[0-9]+ routine left out/)).toBeVisible();
       await expect(page.getByRole("region", { name: /^(today|latest)/i })).toHaveCount(0);
       // Only titles that are moving are on the journey, each with its library title; a station with too many to fit ends with an and-N-more link.
       await expect(page.getByRole("link", { name: /^Oppenheimer \(2023\): 88%/ })).toBeVisible();

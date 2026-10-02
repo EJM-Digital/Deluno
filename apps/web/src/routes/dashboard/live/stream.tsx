@@ -4,7 +4,7 @@
  * retention, subtitles, lists and requests), the plain sentence, and when and
  * where. A row that arrives while the screen is open slides in and glows once.
  */
-import { useMemo, type ReactElement } from "react";
+import { useMemo, type ReactElement, type RefObject } from "react";
 import { Link } from "react-router-dom";
 import { eventLabel } from "../../../lib/activity-format";
 import { motionAllowed } from "../../../lib/page-motion";
@@ -14,13 +14,14 @@ import type { LiveActivityRow } from "../live-events";
 import { Plain } from "../parts";
 import { LiveCard as Panel } from "./live-card";
 import "./stream.css";
+import { useFittingRows } from "./fit-rows";
 import { groupActivity, type ActivityGroup } from "./group";
 import { activityKind, isRoutine, KIND_STYLE } from "./kinds";
 import { entityFromRelated, namedTitle, type TitleLookup } from "./titles";
 
 export { sentenceOf } from "./group";
 
-/** The most entries the stream keeps (the mockup's 20); the box scrolls inside. */
+/** The most entries the stream lays out; it shows the whole ones that fit and says how many more (the owner, 2 Oct 2026, as Weir). */
 const MAX_ROWS = 20;
 
 function entityLink(item: Pick<LiveActivityRow, "relatedEntityType" | "relatedEntityId">, titles: TitleLookup): string {
@@ -47,7 +48,7 @@ function renderRow(group: ActivityGroup, titles: TitleLookup, dense: boolean, ne
   const named = namedTitle(entityFromRelated(item.relatedEntityType, item.relatedEntityId), titles);
   const name = named && group.sentence.includes(named.title) ? named.title : named?.name ?? null;
   return (
-    <li key={item.id} className={cn("lact-ev", dense && "lact-dense", group.fresh && motionAllowed() && "live-stream-new")} data-glow={newest ? "" : undefined}>
+    <li key={item.id} data-fit="" className={cn("lact-ev", dense && "lact-dense", group.fresh && motionAllowed() && "live-stream-new")} data-glow={newest ? "" : undefined}>
       <Link to={entityLink(item, titles)} title={many > 1 ? group.detail.join("\n") : undefined}>
         <span aria-hidden className={cn("lact-ic", kind.tile, kind.text)}>
           <kind.icon />
@@ -83,13 +84,17 @@ export function ActivityStream({ rows, titles, dense = false }: { rows: LiveActi
     // Neighbours that say the same thing are one line with a count.
     return { shown: groupActivity(mattering, titles, (row) => ago(row.createdUtc)), routine: quiet };
   }, [rows, titles]);
+  // Whole entries only, never one cut through: the rest are counted in the header, and all of them are in Activity.
+  const [boxRef, fits] = useFittingRows();
+  const more = Math.max(0, shown.length - Math.min(fits, MAX_ROWS));
+  const quiet = routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens";
   return (
-    <Panel title="Activity" count={routine > 0 ? `${routine.toLocaleString("en-AU")} routine left out` : "as it happens"} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
+    <Panel title="Activity" count={more > 0 ? `${more.toLocaleString("en-AU")} more` : quiet} to="/activity" toLabel="All activity" className="lact min-h-[10rem] flex-1">
       {shown.length === 0 ? (
         <Plain>Nothing has happened yet. What Deluno does shows up here as it works.</Plain>
       ) : (
-        // The newest on top; the older ones are reached by scrolling inside the box, and the rest is one click away.
-        <ul data-testid="live-stream" className="lact-stream">
+        // The newest on top; as many whole entries as the box holds, and the rest one click away.
+        <ul ref={boxRef as unknown as RefObject<HTMLUListElement>} data-testid="live-stream" className="lact-stream">
           {shown.slice(0, MAX_ROWS).map((group, index) => renderRow(group, titles, dense, index === 0))}
         </ul>
       )}
