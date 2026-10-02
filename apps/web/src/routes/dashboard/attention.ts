@@ -157,7 +157,7 @@ export function screenName(path: string): string {
   if (path.startsWith("/activity")) return "Activity";
   if (path.startsWith("/movies")) return "Movies";
   if (path.startsWith("/tv")) return "TV Shows";
-  if (path.startsWith("/search-cycles") || path.startsWith("/settings/automation")) return "Automation & Recovery";
+  if (path.startsWith("/search-cycles")) return "Automation & Recovery";
   if (path.startsWith("/settings")) return "Settings";
   return "Deluno";
 }
@@ -266,7 +266,7 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
       tone: "warn",
       title: "Deluno can't read the download queue",
       text: "Pausing searches when the queue is long is not working until it can.",
-      to: "/settings/automation",
+      to: "/search-cycles",
       action: "Open Automation"
     });
   }

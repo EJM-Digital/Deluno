@@ -91,7 +91,7 @@ export const CONFIGURATION_AREAS: readonly ConfigurationArea[] = [
   },
   {
     id: "automation-and-recovery",
-    match: (path) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"),
+    match: (path) => path.startsWith("/search-cycles"),
     explainer: {
       lead: "Deluno can keep looking on its own — for the titles you do not have yet, and for better copies of the ones you do. This is where you say how often it looks, how much it takes on at a time, and what it should do when a download goes wrong.",
       steps: [

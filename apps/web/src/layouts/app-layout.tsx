@@ -109,7 +109,7 @@ const routeMeta = [
   { match: (path: string) => path === "/search" || path.startsWith("/search/"), title: "Search", subtitle: "Search every enabled indexer at once, no title required" },
   { match: (path: string) => path.startsWith("/queue"), title: "Transfers", subtitle: "Follow downloads through processing and safe import" },
   { match: (path: string) => path.startsWith("/indexers"), title: "Find & Download", subtitle: "Search sources and download clients Deluno uses" },
-  { match: (path: string) => path.startsWith("/search-cycles") || path.startsWith("/settings/automation"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
+  { match: (path: string) => path.startsWith("/search-cycles"), title: "Automation & Recovery", subtitle: "What Deluno searches for on a schedule, and how it recovers when a download fails" },
   { match: (path: string) => path.startsWith("/activity"), title: "Activity", subtitle: "The permanent record of what happened and why" },
   // The area used to be called "Library Profiles" in the topbar and "Quality
   // Profiles" in the sidebar, while owning tabs of both names — so no name
@@ -139,7 +139,7 @@ const routeMeta = [
  * The named sub-routes under those prefixes are ordinary pages and must not be
  * mistaken for one, or the topbar yields its heading to a page without one.
  */
-const MEDIA_SUB_ROUTES = new Set(["episodes", "wanted", "upgrades", "import", "library"]);
+const MEDIA_SUB_ROUTES = new Set(["season-pass", "wanted", "upgrades", "import", "library"]);
 const TOOLBAR_ROUTE_PREFIXES = ["/activity", "/calendar", "/collections", "/discover", "/indexers", "/queue", "/search-cycles", "/settings", "/system"];
 
 function isDetailRoute(pathname: string) {

@@ -244,7 +244,7 @@ export const settingsCommands: CommandItem[] = [
     keywords: ["search", "retries", "failed downloads", "upgrades", "scheduling", "recovery"],
     group: "navigation",
     icon: RefreshCw,
-    to: "/settings/automation"
+    to: "/search-cycles"
   },
   {
     id: "settings.policy-sets",
