@@ -271,16 +271,18 @@ curl -H "Authorization: Bearer deluno_..." http://127.0.0.1:5099/api/integration
           />
         ) : (
           <ListTable
+            listId="api-keys"
+            items={apiKeys}
             columns={[
-              { label: "Key" },
-              { label: "Scopes", width: "minmax(0,1.2fr)" },
-              { label: "Created" },
-              { label: "Last used" },
-              { label: "Revoke", width: "120px", mobile: true, srOnly: true }
+              { id: "key", label: "Key", sort: (item) => item.name.toLowerCase() },
+              { id: "scopes", label: "Scopes", width: "minmax(0,1.2fr)", sort: (item) => item.scopes.toLowerCase() },
+              { id: "created", label: "Created", sort: (item) => new Date(item.createdUtc) },
+              { id: "lastUsed", label: "Last used", sort: (item) => (item.lastUsedUtc ? new Date(item.lastUsedUtc) : null) },
+              { id: "revoke", label: "Revoke", width: "120px", mobile: true, srOnly: true }
             ]}
             chevron={false}
           >
-            {apiKeys.map((item) => (
+            {(rows) => rows.map((item) => (
               <ListRow key={item.id}>
                 <ListNameCell name={item.name} sub={item.prefix} />
                 <ListCell primary={item.scopes} />

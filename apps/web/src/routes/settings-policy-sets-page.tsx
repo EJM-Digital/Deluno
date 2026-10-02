@@ -555,7 +555,7 @@ export function SettingsPolicySetsPage() {
             }
           />
         ) : (
-          <ListTable columns={LIBRARY_COLUMNS}>
+          <ListTable listId="library-profiles" columns={LIBRARY_COLUMNS}>
             {split.visibleCount === 0 ? (
               <ListEmpty title="No profiles match" description={filter ? `Nothing matches “${filter}”.` : "No library profile for this media type yet."} />
             ) : (

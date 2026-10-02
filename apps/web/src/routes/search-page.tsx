@@ -17,7 +17,7 @@
  * never a client hand-picked here.
  */
 import { useEffect, useState } from "react";
-import { ArrowUpDown, Loader2, Search as SearchIcon } from "lucide-react";
+import { Loader2, Search as SearchIcon } from "lucide-react";
 import { BlockReleaseAction } from "../components/app/block-release-action";
 import { Button } from "../components/ui/button";
 import { CheckboxRow } from "../components/ui/checkbox";
@@ -30,18 +30,14 @@ import { SegmentedControl } from "../components/ui/segmented-control";
 import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
 import { candidateLabel, candidateTone } from "../lib/release-candidate-status";
 import {
-  type CandidateSortKey,
-  defaultSortDirection,
+  candidateSortValue,
   filterCandidates,
   formatGrabs,
   formatProtocol,
   formatReleaseAge,
-  formatSeedersAndLeechers,
-  sortCandidates,
-  type SortDirection
+  formatSeedersAndLeechers
 } from "../lib/release-candidate-columns";
 import { fetchJson, type IndexerItem } from "../lib/api";
-import { cn } from "../lib/utils";
 import { authedFetch } from "../lib/use-auth";
 import { toast } from "../components/shell/toaster";
 
@@ -80,7 +76,6 @@ export function SearchPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set());
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ManualSearchCandidate[] | null>(null);
-  const [candidateSort, setCandidateSort] = useState<{ key: CandidateSortKey; direction: SortDirection } | null>(null);
   const [protocolFilter, setProtocolFilter] = useState("");
   const [indexerFilter, setIndexerFilter] = useState("");
   const [grabTarget, setGrabTarget] = useState<ManualSearchCandidate | null>(null);
@@ -105,7 +100,6 @@ export function SearchPage() {
     }
 
     setSearching(true);
-    setCandidateSort(null);
     setProtocolFilter("");
     setIndexerFilter("");
     try {
@@ -131,20 +125,7 @@ export function SearchPage() {
     }
   }
 
-  function toggleSort(key: CandidateSortKey) {
-    setCandidateSort((current) =>
-      current?.key === key
-        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-        : { key, direction: defaultSortDirection(key) }
-    );
-  }
-
-  const visibleResults = results
-    ? (() => {
-        const filtered = filterCandidates(results, { protocol: protocolFilter, indexerName: indexerFilter });
-        return candidateSort ? sortCandidates(filtered, candidateSort.key, candidateSort.direction) : filtered;
-      })()
-    : [];
+  const visibleResults = results ? filterCandidates(results, { protocol: protocolFilter, indexerName: indexerFilter }) : [];
   const protocolOptions = results ? [...new Set(results.map((item) => item.indexerProtocol).filter((value): value is string => Boolean(value)))] : [];
   const indexerOptions = results ? [...new Set(results.map((item) => item.indexerName))] : [];
 
@@ -252,22 +233,24 @@ export function SearchPage() {
             <ListEmpty title="No releases found" description="Try a different query, or check that an indexer covering this type is enabled." />
           ) : (
             <ListTable
+              listId="manual-search-results"
+              items={visibleResults}
               columns={[
-                { label: "Release" },
+                { id: "release", label: "Release", sort: (candidate) => candidate.releaseName.toLowerCase() },
                 // Only a "basic" search asks both engines, so this column only
                 // earns its place there -- a movie or TV search already says
                 // its own type once, in the toolbar above.
-                ...(searchType === "basic" ? [{ label: "Type" }] : []),
-                { label: <SortHeader label="Protocol" active={candidateSort?.key === "protocol"} direction={candidateSort?.direction} onClick={() => toggleSort("protocol")} />, mobile: true },
-                { label: <SortHeader label="Age" active={candidateSort?.key === "age"} direction={candidateSort?.direction} onClick={() => toggleSort("age")} /> },
-                { label: <SortHeader label="Seeders/Leechers" active={candidateSort?.key === "seeders"} direction={candidateSort?.direction} onClick={() => toggleSort("seeders")} /> },
-                { label: <SortHeader label="Grabs" active={candidateSort?.key === "grabs"} direction={candidateSort?.direction} onClick={() => toggleSort("grabs")} /> },
-                { label: <SortHeader label="Size" active={candidateSort?.key === "size"} direction={candidateSort?.direction} onClick={() => toggleSort("size")} /> },
-                { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+                ...(searchType === "basic" ? [{ id: "type", label: "Type", sort: (candidate: ManualSearchCandidate) => candidate.searchType ?? "" }] : []),
+                { id: "protocol", label: "Protocol", mobile: true, sort: (candidate) => candidateSortValue(candidate, "protocol") },
+                { id: "age", label: "Age", sort: (candidate) => candidateSortValue(candidate, "age") },
+                { id: "seeders", label: "Seeders/Leechers", sort: (candidate) => candidateSortValue(candidate, "seeders") },
+                { id: "grabs", label: "Grabs", sort: (candidate) => candidateSortValue(candidate, "grabs") },
+                { id: "size", label: "Size", sort: (candidate) => candidateSortValue(candidate, "size") },
+                { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
               ]}
               chevron={false}
             >
-              {visibleResults.map((candidate) => (
+              {(rows) => rows.map((candidate) => (
                 <ListRow key={`${candidate.indexerId}:${candidate.releaseName}`}>
                   <ListNameCell name={candidate.releaseName} sub={`${candidate.indexerName} · ${candidate.quality}`} />
                   {searchType === "basic" ? (
@@ -419,21 +402,6 @@ function CategoryChecklist({
         />
       ))}
     </div>
-  );
-}
-
-/** A clickable column header, showing which column (if any) currently sorts the table and which way. */
-function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction?: SortDirection; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => { event.stopPropagation(); onClick(); }}
-      className="flex items-center gap-1 uppercase tracking-[0.1em] text-muted-foreground hover:text-foreground"
-      aria-label={`Sort by ${label}`}
-    >
-      {label}
-      <ArrowUpDown aria-hidden className={cn("h-3 w-3", active && (direction === "asc" ? "rotate-180" : ""))} />
-    </button>
   );
 }
 

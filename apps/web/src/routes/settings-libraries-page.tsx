@@ -295,16 +295,18 @@ export function SettingsLibrariesPage() {
           />
         ) : (
           <ListTable
+            listId="libraries"
+            items={sortedLibraries}
             columns={[
-              { label: "Name" },
-              { label: "Folder" },
-              { label: "Library Profile" },
-              { label: "Search schedule" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+              { id: "name", label: "Name", sort: (library) => library.name.toLowerCase() },
+              { id: "folder", label: "Folder", sort: (library) => library.rootPath.toLowerCase() },
+              { id: "profile", label: "Library Profile", sort: (library) => (library.defaultPolicySetName ?? qualityProfiles.find((item) => item.id === library.qualityProfileId)?.name ?? "").toLowerCase() },
+              { id: "schedule", label: "Search schedule", sort: (library) => (library.missingSearchEnabled || library.upgradeSearchEnabled ? library.searchIntervalMinutes : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (library) => (!(library.missingSearchEnabled || library.upgradeSearchEnabled) ? 0 : library.automationStatus === "running" ? 2 : library.autoSearchEnabled ? 3 : 1) },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (library) => library.autoSearchEnabled }
             ]}
           >
-            {sortedLibraries.map((library) => {
+            {(rows) => rows.map((library) => {
               const profile = qualityProfiles.find((item) => item.id === library.qualityProfileId);
               const running = library.automationStatus === "running";
               const searchKinds = [library.missingSearchEnabled ? "Missing" : null, library.upgradeSearchEnabled ? "Upgrades" : null].filter(Boolean).join(" · ");

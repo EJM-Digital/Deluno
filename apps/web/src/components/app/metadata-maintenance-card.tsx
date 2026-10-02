@@ -154,8 +154,17 @@ export function MetadataMaintenanceCard({ onRefresh }: { onRefresh?: () => void 
         <div className="px-[var(--card-pad-x)] py-3 text-[length:var(--type-caption)] text-muted-foreground">
           These are system maintenance jobs. They run in the background and do not change your library files.
         </div>
-        <ListTable columns={[{ label: "Job" }, { label: "What it does", width: "minmax(0,1.8fr)" }, { label: "Run", width: "120px", mobile: true, srOnly: true }]} chevron={false}>
-          {REFRESH_JOBS.map((job) => (
+        <ListTable
+          listId="metadata-maintenance-jobs"
+          items={REFRESH_JOBS}
+          columns={[
+            { id: "job", label: "Job", sort: (job) => job.name.toLowerCase() },
+            { id: "what", label: "What it does", width: "minmax(0,1.8fr)", sort: (job) => job.description.toLowerCase() },
+            { id: "run", label: "Run", width: "120px", mobile: true, srOnly: true }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((job) => (
             <ListRow key={job.key}>
               <ListNameCell name={job.name} sub={job.sub} />
               <ListCell primary={job.description} secondary={jobResult[job.key]} />

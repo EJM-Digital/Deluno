@@ -109,6 +109,7 @@ export function SeasonPassPage() {
           />
         ) : (
           <ListTable
+            listId="season-pass"
             columns={[
               { label: "Season" },
               { label: "Episodes" },

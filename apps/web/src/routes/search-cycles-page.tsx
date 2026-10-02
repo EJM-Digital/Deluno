@@ -11,6 +11,7 @@
  * Contracts: PUT /api/settings/automation, PATCH /api/settings,
  * PUT /api/libraries/{id}/automation, POST …/search-now, POST …/skip-cycle.
  */
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
 import { Loader2, Pause, Play, SkipForward, Zap } from "lucide-react";
@@ -523,7 +524,7 @@ export function SearchCyclesPage() {
         {scheduleLibraries.length === 0 ? (
           <ListEmpty title={libraries.length === 0 ? "No libraries yet" : view === "missing" ? "No libraries search for missing titles" : "No libraries search for upgrades"} description={libraries.length === 0 ? "Create a library first, then Deluno can search it on a schedule." : "Open a library's automation settings to turn this search on."} />
         ) : (
-          <ListTable columns={[{ label: "Library" }, { label: "Searches for" }, { label: "Schedule" }, { label: "Next / last" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
+          <ListTable listId="search-cycles-libraries" columns={[{ label: "Library" }, { label: "Searches for" }, { label: "Schedule" }, { label: "Next / last" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((library) => {
@@ -860,8 +861,19 @@ export function SearchCyclesPage() {
         {searchCycles.length === 0 ? (
           <ListEmpty title="No search cycles yet" description="Once a library runs a missing or upgrade search, each cycle and what it queued shows up here." />
         ) : (
-          <ListTable columns={[{ label: "Library" }, { label: "Trigger" }, { label: "Result" }, { label: "Ran" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-            {cyclesShown.map((cycle) => (
+          <ListTable
+            listId="search-cycles-recent"
+            items={searchCycles}
+            columns={[
+              { id: "library", label: "Library", sort: (cycle) => cycle.libraryName.toLowerCase() },
+              { id: "trigger", label: "Trigger", sort: (cycle) => triggerLabel(cycle.triggerKind) },
+              { id: "result", label: "Result", sort: (cycle) => cycle.queuedCount },
+              { id: "ran", label: "Ran", sort: (cycle) => new Date(cycle.startedUtc) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (cycle) => toneSortValue(cycle.status === "completed" ? "ok" : cycle.status === "failed" ? "bad" : "info", cycle.status) }
+            ]}
+            chevron={false}
+          >
+            {(rows) => rows.slice(0, cyclesShown.length).map((cycle) => (
               <ListRow key={cycle.id}>
                 <ListNameCell name={cycle.libraryName} sub={cycle.mediaType === "tv" ? "TV shows" : "Movies"} />
                 <ListCell primary={triggerLabel(cycle.triggerKind)} />

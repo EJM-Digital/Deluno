@@ -1,3 +1,4 @@
+import { toneSortValue } from "../lib/status-tones";
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Check, TestTube2 } from "lucide-react";
@@ -199,16 +200,18 @@ export function SubtitleProvidersPage() {
           />
         ) : (
           <ListTable
+            listId="subtitle-providers"
+            items={providers}
             columns={[
-              { label: "Provider" },
-              { label: "Covers" },
-              { label: "Account" },
-              { label: "Last result" },
-              { label: "Status", width: LIST_TRACK.status, mobile: true },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+              { id: "provider", label: "Provider", sort: (provider) => provider.displayName.toLowerCase() },
+              { id: "covers", label: "Covers", sort: (provider) => SCOPE_LABEL[provider.scope] },
+              { id: "account", label: "Account", sort: (provider) => accountLabel(provider).toLowerCase() },
+              { id: "lastResult", label: "Last result", sort: (provider) => (provider.configured?.lastHealthTestUtc ? new Date(provider.configured.lastHealthTestUtc) : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (provider) => toneSortValue(healthTone(provider), healthLabel(provider)) },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (provider) => provider.configured?.isEnabled ?? false }
             ]}
           >
-            {providers.map((provider) => (
+            {(rows) => rows.map((provider) => (
               <ListRow key={provider.key} onClick={() => open(provider)} selected={editing?.key === provider.key}>
                 <ListNameCell name={provider.displayName} sub={provider.description} />
                 <ListCell primary={SCOPE_LABEL[provider.scope]} secondary={provider.configured ? `Priority ${provider.configured.priority}` : undefined} />

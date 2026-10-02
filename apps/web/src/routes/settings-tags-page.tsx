@@ -190,8 +190,17 @@ export function SettingsTagsPage() {
             }
           />
         ) : (
-        <ListTable columns={[{ label: "Name" }, { label: "Colour" }, { label: "Used by" }, { label: "Description", width: "minmax(0,2fr)" }]}>
-            {sorted.map((tag) => (
+        <ListTable
+            listId="tags"
+            items={sorted}
+            columns={[
+              { id: "name", label: "Name", sort: (tag) => tag.name.toLowerCase() },
+              { id: "colour", label: "Colour", sort: (tag) => tag.color },
+              { id: "usedBy", label: "Used by", sort: (tag) => describeTagUsage(usageById.get(tag.id)).toLowerCase() },
+              { id: "description", label: "Description", width: "minmax(0,2fr)", sort: (tag) => (tag.description ?? "").toLowerCase() }
+            ]}
+          >
+            {(rows) => rows.map((tag) => (
               <ListRow key={tag.id} onClick={() => open(tag)} selected={mode.kind === "edit" && mode.id === tag.id}>
                 <div role="cell" className="flex min-w-0 items-center gap-2.5">
                   <span aria-hidden className={cn("h-2.5 w-2.5 shrink-0 rounded-full", dotClass(tag.color))} />

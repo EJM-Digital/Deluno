@@ -181,13 +181,15 @@ export function BlockedReleasesConsole({
         >
           <ListTable
             chevron={false}
+            listId="blocked-releases-proposed"
+            items={proposed}
             columns={[
-              { label: "Release" },
-              { label: "What happened", mobile: true },
-              { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+              { id: "release", label: "Release", sort: (release) => release.releaseName.toLowerCase() },
+              { id: "what", label: "What happened", mobile: true, sort: (release) => reasonWords(release.reasonCode) },
+              { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
             ]}
           >
-            {proposed.map((release) => (
+            {(rows) => rows.map((release) => (
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}
@@ -244,20 +246,22 @@ export function BlockedReleasesConsole({
       >
         <ListTable
           chevron={false}
+          listId="blocked-releases-refused"
+          items={refused}
           columns={[
-            { label: "Release" },
-            { label: "Why", mobile: true },
-            { label: "Refused", width: LIST_TRACK.status },
-            { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+            { id: "release", label: "Release", sort: (release) => release.releaseName.toLowerCase() },
+            { id: "why", label: "Why", mobile: true, sort: (release) => reasonWords(release.reasonCode) },
+            { id: "refused", label: "Refused", width: LIST_TRACK.status, sort: (release) => new Date(release.blockedUtc) },
+            { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
           ]}
         >
-          {refused.length === 0 ? (
+          {(rows) => refused.length === 0 ? (
             <ListEmpty
               title="Nothing has been refused"
               description="A download that turns out to be junk lands here, with the reason it was refused. Searches skip anything on this list and say so, until you un-refuse it."
             />
           ) : (
-            refused.map((release) => (
+            rows.map((release) => (
               <ListRow key={release.id}>
                 <ListNameCell
                   name={release.releaseName}

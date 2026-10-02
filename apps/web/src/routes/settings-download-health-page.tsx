@@ -703,14 +703,16 @@ export function SettingsDownloadHealthPage() {
           />
         ) : (
           <ListTable
+            listId="download-health-rules"
+            items={sorted}
             columns={[
-              { label: "Rule", width: "minmax(0,1.3fr)" },
-              { label: "Scope", width: "minmax(0,1fr)" },
-              { label: "Strikes & timer", width: "minmax(0,1fr)" },
-              { label: "Action", width: "minmax(0,1fr)" }
+              { id: "rule", label: "Rule", width: "minmax(0,1.3fr)", sort: (rule) => kindLabel(rule.kind).toLowerCase() },
+              { id: "scope", label: "Scope", width: "minmax(0,1fr)", sort: (rule) => scopeLabel(rule).toLowerCase() },
+              { id: "strikes", label: "Strikes & timer", width: "minmax(0,1fr)", sort: (rule) => rule.strikeLimit },
+              { id: "action", label: "Action", width: "minmax(0,1fr)", sort: (rule) => actionLabel(rule.actionPreset).toLowerCase() }
             ]}
           >
-            {sorted.map((rule) => (
+            {(rows) => rows.map((rule) => (
               <ListRow key={rule.id} onClick={() => openRule(rule)} selected={mode.kind === "edit" && mode.id === rule.id}>
                 <ListNameCell name={kindLabel(rule.kind)} sub={rule.enabled ? "On" : "Off"} />
                 <ListCell primary={scopeLabel(rule)} secondary={`${rule.minCompletionPercent}-${rule.maxCompletionPercent}% complete`} />
@@ -738,8 +740,16 @@ export function SettingsDownloadHealthPage() {
           </form>
 
           {ignoreEntries.length === 0 ? null : (
-            <ListTable columns={[{ label: "Matches" }, { label: "Note" }, { label: "", width: "80px" }]}>
-              {ignoreEntries.map((entry) => (
+            <ListTable
+              listId="download-health-ignored"
+              items={ignoreEntries}
+              columns={[
+                { id: "matches", label: "Matches", sort: (entry) => [entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ").toLowerCase() },
+                { id: "note", label: "Note", sort: (entry) => (entry.note ?? "").toLowerCase() },
+                { id: "actions", label: "", width: "80px" }
+              ]}
+            >
+              {(rows) => rows.map((entry) => (
                 <ListRow key={entry.id}>
                   <ListCell primary={[entry.hash, entry.category, entry.trackerDomain].filter(Boolean).join(" · ") || "—"} />
                   <ListCell primary={entry.note || "—"} />

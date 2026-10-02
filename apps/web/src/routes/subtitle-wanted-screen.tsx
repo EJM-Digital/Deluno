@@ -118,15 +118,17 @@ export function SubtitleWantedPage() {
           />
         ) : (
           <ListTable
+            listId="subtitles-wanted"
+            items={wanted}
             columns={[
-              { label: "Title" },
-              { label: "Library", mobile: true },
-              { label: "Missing" },
-              { label: "Last try", mobile: true },
-              { label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
+              { id: "title", label: "Title", sort: (row) => row.title.toLowerCase() },
+              { id: "library", label: "Library", mobile: true, sort: (row) => row.libraryName.toLowerCase() },
+              { id: "missing", label: "Missing", sort: (row) => row.languagesMissing.length },
+              { id: "lastTry", label: "Last try", mobile: true, sort: (row) => lastTryLabel(row) },
+              { id: "action", label: "Action", width: LIST_TRACK.action, align: "end", mobile: true }
             ]}
           >
-            {wanted.map((row) => (
+            {(rows) => rows.map((row) => (
               <ListRow key={`${row.kind}-${row.mediaId}`}>
                 <ListNameCell name={row.title} sub={rowLabel(row)} />
                 <ListCell primary={row.libraryName} mobile />

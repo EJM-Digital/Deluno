@@ -813,8 +813,17 @@ export function SettingsCustomFormatsPage() {
       ) : null}
 
       <ListCard title="Guide presets" count="Start with a goal instead of building rules yourself">
-        <ListTable columns={[{ label: "Preset" }, { label: "Best for", width: "minmax(0,1.6fr)" }, { label: "Rules" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-          {guide.bundles.map((bundle) => {
+        <ListTable
+          listId="custom-format-presets"
+          items={guide.bundles}
+          columns={[
+            { id: "preset", label: "Preset", sort: (bundle) => bundle.name.toLowerCase() },
+            { id: "bestFor", label: "Best for", width: "minmax(0,1.6fr)", sort: (bundle) => bundle.bestFor.toLowerCase() },
+            { id: "rules", label: "Rules", sort: (bundle) => presetProgress(bundle).applied },
+            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (bundle) => { const progress = presetProgress(bundle); return progress.total > 0 && progress.applied === progress.total ? 2 : progress.applied ? 1 : 0; } }
+          ]}
+        >
+          {(rows) => rows.map((bundle) => {
             const progress = presetProgress(bundle);
             const complete = progress.total > 0 && progress.applied === progress.total;
             return (
@@ -1027,7 +1036,7 @@ export function SettingsCustomFormatsPage() {
             actions={<Button type="button" variant="outline" onClick={() => openRule(null)}><Plus className="h-4 w-4" />New custom rule</Button>}
           />
         ) : (
-          <ListTable columns={RULE_COLUMNS}>
+          <ListTable listId="custom-format-rules" columns={RULE_COLUMNS}>
             {split.groups.flatMap((group) => [
               split.showGroups && split.scope === "all" ? <ListGroupHeader key={group.key} label={group.label} count={group.items.length} /> : null,
               ...group.items.map((format) => {

@@ -109,7 +109,7 @@ interface ListTableProps<T> {
   /** Names this list in this browser: its column order and sort are remembered under it. */
   listId?: string;
   /** The page's rows, when the table should sort them: pass them here and render them from the function form of `children`. */
-  items?: T[];
+  items?: readonly T[];
   /** From `useListColumns`, for a page that needs the sort itself (a list that loads a page at a time sorts on the server). */
   list?: ListColumnsState<T>;
   /** Rows open something on click — reserve the trailing chevron track. */
