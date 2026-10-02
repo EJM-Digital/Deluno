@@ -13,7 +13,7 @@ public sealed class DownloadDispatchPollingService(
     IDispatchRecoveryHandler recoveryHandler,
     IActivityFeedRepository activityFeedRepository,
     IDownloadDispatchesRepository downloadDispatchesRepository,
-    IDispatchAlertRepository alertRepository,
+    IDispatchProblemLog problemLog,
     IRealtimeEventPublisher realtimeEventPublisher,
     IGrabAppearanceLookupService? appearanceLookup = null,
     IBlockedReleaseRepository? blockedReleaseRepository = null,
@@ -86,12 +86,12 @@ public sealed class DownloadDispatchPollingService(
                     // already ended by an earlier pass (a genuine, final
                     // grab-timeout) is not asked about again — it is only
                     // self-healed, in case it somehow still reads "Sent" (the
-                    // rig's own case: the alert was raised and acknowledged
+                    // rig's own case: the problem was recorded and dismissed
                     // days ago, and the dispatch itself was never marked). An
                     // unreachable client or a still-not-found release, on the
                     // other hand, keeps being asked, every pass, until one of
                     // those settles it.
-                    var alreadyEnded = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-timeout", cancellationToken);
+                    var alreadyEnded = await problemLog.IsRecordedAsync(dispatch.Id, "grab-timeout", cancellationToken);
                     if (alreadyEnded)
                     {
                         await downloadDispatchesRepository.MarkNeverDetectedAsync(
@@ -121,7 +121,7 @@ public sealed class DownloadDispatchPollingService(
                             // the download. The notice itself is
                             // deduplicated, so an outage that lasts several
                             // polls says so once, not every hour.
-                            if (!await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-unreachable", cancellationToken))
+                            if (!await problemLog.IsRecordedAsync(dispatch.Id, "grab-unreachable", cancellationToken))
                             {
                                 await RecordUnreachableRetryAsync(dispatch, lookup, cancellationToken);
                             }
@@ -133,7 +133,7 @@ public sealed class DownloadDispatchPollingService(
                             // Retried once before giving up on it, in case the
                             // client's own queue simply had not caught up
                             // with the grab yet.
-                            var alreadyRetriedNotThere = await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "grab-not-there-retry", cancellationToken);
+                            var alreadyRetriedNotThere = await problemLog.IsRecordedAsync(dispatch.Id, "grab-not-there-retry", cancellationToken);
                             if (!alreadyRetriedNotThere)
                             {
                                 await RecordNotThereRetryAsync(dispatch, cancellationToken);
@@ -162,13 +162,12 @@ public sealed class DownloadDispatchPollingService(
                 // showed the download (#554): a download can be on screen and
                 // progressing for many hours, and none of that is overdue.
                 var age = dispatch.ClientCompletedUtc is { } completedUtc ? now - completedUtc : TimeSpan.Zero;
-                if (age > DetectionTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "detection-timeout", cancellationToken))
+                if (age > DetectionTimeout && !await problemLog.IsRecordedAsync(dispatch.Id, "detection-timeout", cancellationToken))
                 {
                     await RecordDetectionTimeoutRecoveryAsync(
                         dispatch,
                         recoveryHandler,
                         recoveryActivities,
-                        alertRepository,
                         cancellationToken);
                     report = report with { DetectionTimeoutsDetected = report.DetectionTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
                 }
@@ -176,26 +175,24 @@ public sealed class DownloadDispatchPollingService(
             else if (dispatch.ImportStatus == "pending" && dispatch.ImportDetectedUtc is not null)
             {
                 var age = now - dispatch.ImportDetectedUtc.Value;
-                if (age > ImportTimeout && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "import-timeout", cancellationToken))
+                if (age > ImportTimeout && !await problemLog.IsRecordedAsync(dispatch.Id, "import-timeout", cancellationToken))
                 {
                     await RecordImportTimeoutRecoveryAsync(
                         dispatch,
                         recoveryHandler,
                         recoveryActivities,
-                        alertRepository,
                         cancellationToken);
                     report = report with { ImportTimeoutsDetected = report.ImportTimeoutsDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
                 }
             }
             else if (dispatch.ImportStatus == "failed"
                 && !string.IsNullOrWhiteSpace(dispatch.ImportFailureCode)
-                && !await alertRepository.HasUnresolvedAlertAsync(dispatch.Id, "import-failed", cancellationToken))
+                && !await problemLog.IsRecordedAsync(dispatch.Id, "import-failed", cancellationToken))
             {
                 await RecordImportFailureRecoveryAsync(
                     dispatch,
                     recoveryHandler,
                     recoveryActivities,
-                    alertRepository,
                     cancellationToken);
                 report = report with { ImportFailuresDetected = report.ImportFailuresDetected + 1, RecoveryCasesRecorded = report.RecoveryCasesRecorded + 1 };
             }
@@ -208,15 +205,15 @@ public sealed class DownloadDispatchPollingService(
 
         await ArchiveSuccessfulDispatchesAsync(connection, cancellationToken);
 
-        // After archiving, so a download archived on this pass closes its
-        // alerts on this pass rather than an hour later.
-        var resolved = await alertRepository.ResolveSettledAlertsAsync(cancellationToken);
-        report = report with { AlertsResolved = resolved.Count };
+        // After archiving, so a download archived on this pass releases its
+        // problems on this pass rather than an hour later.
+        var resolved = await problemLog.SettleMovedOnAsync(cancellationToken);
+        report = report with { ProblemsSettled = resolved.Count };
 
-        // The recovery case written beside each alert settles with it (#559),
+        // The recovery case written beside each problem settles with it (#559),
         // or it goes on saying "never appeared" about a download the client
         // has since shown, and the screens go on counting it.
-        foreach (var settled in resolved.GroupBy(alert => alert.DispatchId, StringComparer.Ordinal))
+        foreach (var settled in resolved.GroupBy(problem => problem.DispatchId, StringComparer.Ordinal))
         {
             await recoveryHandler.HandleDispatchSettledAsync(settled.Key, settled.First().Reason, cancellationToken);
         }
@@ -319,7 +316,7 @@ public sealed class DownloadDispatchPollingService(
     /// — a setup problem or an internet outage, never a bad release
     /// (#880/#901, #911). This never ends the download: the next pass asks
     /// again, and keeps asking for as long as the client stays unreachable.
-    /// The alert this writes is only how the notice is deduplicated — one
+    /// The problem this records is only how the notice is deduplicated — one
     /// activity entry per outage, not one per poll.
     /// </summary>
     private async Task RecordUnreachableRetryAsync(
@@ -348,14 +345,7 @@ public sealed class DownloadDispatchPollingService(
             dispatch.Id,
             cancellationToken);
 
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            title,
-            $"Deluno could not reach {dispatch.DownloadClientName}",
-            "grab-unreachable",
-            "warning",
-            new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "grab-unreachable", cancellationToken);
     }
 
     /// <summary>
@@ -368,14 +358,7 @@ public sealed class DownloadDispatchPollingService(
     /// </summary>
     private async Task RecordNotThereRetryAsync(UnresolvedDispatch dispatch, CancellationToken cancellationToken)
     {
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            dispatch.ReleaseName,
-            $"Deluno is checking {dispatch.DownloadClientName} again before giving up on {dispatch.ReleaseName}",
-            "grab-not-there-retry",
-            "warning",
-            new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "grab-not-there-retry", cancellationToken);
     }
 
     /// <summary>
@@ -597,21 +580,13 @@ public sealed class DownloadDispatchPollingService(
             "download",
             dispatch.Id));
 
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            title,
-            $"Download not detected in {dispatch.DownloadClientName}",
-            "grab-timeout",
-            "warning",
-            new Dictionary<string, string> { { "client", dispatch.DownloadClientName } },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "grab-timeout", cancellationToken);
     }
 
     private async Task RecordDetectionTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
         ICollection<ActivityEventItem> recoveryActivities,
-        IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
         var title = dispatch.ReleaseName;
@@ -642,21 +617,13 @@ public sealed class DownloadDispatchPollingService(
             "download",
             dispatch.Id));
 
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            title,
-            "Downloaded but not imported",
-            "detection-timeout",
-            "warning",
-            new Dictionary<string, string> { { "mediaType", dispatch.MediaType } },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "detection-timeout", cancellationToken);
     }
 
     private async Task RecordImportTimeoutRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
         ICollection<ActivityEventItem> recoveryActivities,
-        IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
         var title = dispatch.ReleaseName;
@@ -687,21 +654,13 @@ public sealed class DownloadDispatchPollingService(
             "download",
             dispatch.Id));
 
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            title,
-            "Import process did not complete within timeout period",
-            "import-timeout",
-            "error",
-            new Dictionary<string, string> { { "mediaType", dispatch.MediaType } },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "import-timeout", cancellationToken);
     }
 
     private async Task RecordImportFailureRecoveryAsync(
         UnresolvedDispatch dispatch,
         IDispatchRecoveryHandler recoveryHandler,
         ICollection<ActivityEventItem> recoveryActivities,
-        IDispatchAlertRepository alertRepository,
         CancellationToken cancellationToken)
     {
         var title = dispatch.ReleaseName;
@@ -739,18 +698,7 @@ public sealed class DownloadDispatchPollingService(
             "download",
             dispatch.Id));
 
-        await alertRepository.CreateAlertAsync(
-            dispatch.Id,
-            title,
-            $"Import failed: {failureReason}",
-            "import-failed",
-            "error",
-            new Dictionary<string, string>
-            {
-                { "failureCode", dispatch.ImportFailureCode ?? "" },
-                { "failureMessage", dispatch.ImportFailureMessage ?? "" }
-            },
-            cancellationToken);
+        await problemLog.RecordAsync(dispatch.Id, "import-failed", cancellationToken);
     }
 
     private ActivityEventItem CreateRecoveryActivity(

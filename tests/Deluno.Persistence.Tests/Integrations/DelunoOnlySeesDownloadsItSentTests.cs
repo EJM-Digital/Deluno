@@ -260,7 +260,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
 
         // The dispatch Deluno had seen at "vanished-hash" is nowhere in the client's queue or history,
         // which still lists other people's downloads: that is a vanished download, not an empty answer.
-        Assert.True(await world.Alerts.HasUnresolvedAlertAsync(world.VanishedDispatchId, "vanished-downloading", CancellationToken.None));
+        Assert.True(await world.Problems.IsRecordedAsync(world.VanishedDispatchId, "vanished-downloading", CancellationToken.None));
     }
 
     private sealed class World : IDisposable
@@ -273,7 +273,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             SqliteDownloadHealthRepository health,
             SqliteDownloadDispatchesRepository dispatches,
             SqlitePlatformSettingsRepository settings,
-            SqliteDispatchAlertRepository alerts,
+            SqliteDispatchProblemLog problems,
             string clientId,
             string vanishedDispatchId,
             Client fakeClient)
@@ -284,7 +284,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             Health = health;
             Dispatches = dispatches;
             Settings = settings;
-            Alerts = alerts;
+            Problems = problems;
             ClientId = clientId;
             VanishedDispatchId = vanishedDispatchId;
         }
@@ -297,7 +297,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
 
         public SqlitePlatformSettingsRepository Settings { get; }
 
-        public SqliteDispatchAlertRepository Alerts { get; }
+        public SqliteDispatchProblemLog Problems { get; }
 
         public string ClientId { get; }
 
@@ -346,7 +346,7 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
             // The history row Deluno derived from its own record of the first download.
             var health = new SqliteDownloadHealthRepository(storage.Factory, time);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
-            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var resilience = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
             var fakeClient = new Client(client, includeOwn);
@@ -356,9 +356,9 @@ public sealed class DelunoOnlySeesDownloadsItSentTests
                 settings, health, libraries, connections, jobs, registry, time, resilience,
                 jobs, dispatches, jobs, new DownloadHealthEvaluator(), processors,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
-                dispatchAlertRepository: alerts);
+                dispatchProblemLog: problems);
 
-            return new World(storage, service, health, dispatches, settings, alerts, client.Id, vanished, fakeClient);
+            return new World(storage, service, health, dispatches, settings, problems, client.Id, vanished, fakeClient);
         }
 
         public void Dispose() => _storage.Dispose();

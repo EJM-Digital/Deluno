@@ -22,7 +22,7 @@ namespace Deluno.Recovery.Services;
 /// </summary>
 public sealed class DeletedThingCleanupService(
     IDownloadDispatchesRepository dispatches,
-    IDispatchAlertRepository alerts,
+    IDispatchProblemLog problems,
     IProcessorRepository processors,
     IDownloadHealthRepository downloadHealth,
     IJobQueueRepository jobs,
@@ -99,7 +99,7 @@ public sealed class DeletedThingCleanupService(
     }
 
     /// <summary>
-    /// Archives the downloads that are still open and acknowledges their alerts,
+    /// Archives the downloads that are still open and acknowledges their problems,
     /// and reads the archived ones too.
     ///
     /// <para>A download that can never be detected now is not a download to keep
@@ -127,7 +127,7 @@ public sealed class DeletedThingCleanupService(
                 if (string.Equals(dispatch.Status, "archived", StringComparison.OrdinalIgnoreCase)) continue;
 
                 await dispatches.ArchiveDispatchAsync(dispatch.Id, $"{why}.", cancellationToken);
-                await alerts.AcknowledgeAlertsForDispatchAsync(dispatch.Id, cancellationToken);
+                await problems.AcknowledgeForDispatchAsync(dispatch.Id, cancellationToken);
                 archived++;
             }
 

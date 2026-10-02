@@ -293,7 +293,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
             var health = new SqliteDownloadHealthRepository(storage.Factory, time);
             world.healthProxy = CountingHealth.Wrap(health);
             var blocklist = new SqliteBlockedReleaseRepository(storage.Factory, time);
-            var alerts = new SqliteDispatchAlertRepository(storage.Factory, time);
+            var problems = new SqliteDispatchProblemLog(storage.Factory, time);
             var processors = new SqliteProcessorRepository(storage.Factory, time, TestSecretProtection.Create(storage));
             var resilience = new IntegrationResiliencePolicy(time, storage.Factory, NullLogger<IntegrationResiliencePolicy>.Instance);
             world.Fake = new FakeClients();
@@ -309,7 +309,7 @@ public sealed class DownloadTelemetrySnapshotTests(ITestOutputHelper output)
                 settings, world.healthProxy.Proxy, libraries, connections, world.Jobs, registry, time, resilience,
                 world.Jobs, dispatches, world.Jobs, new DownloadHealthEvaluator(), processors,
                 Deluno.Contracts.Connectivity.NullConnectivityMonitor.Instance, blocklist,
-                dispatchAlertRepository: alerts,
+                dispatchProblemLog: problems,
                 snapshotStore: sp.GetRequiredService<IDownloadTelemetrySnapshotStore>()));
             services.AddScoped<IOrphanedDownloadService>(sp => world.BuildOrphans(
                 sp.GetRequiredService<IDownloadClientTelemetryService>(), settings, libraries, processors,

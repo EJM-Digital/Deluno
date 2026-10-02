@@ -12,7 +12,7 @@ public sealed record DownloadDispatchPollingReport(
     int ImportTimeoutsDetected,
     int ImportFailuresDetected,
     int RecoveryCasesRecorded,
-    int AlertsResolved = 0,
+    int ProblemsSettled = 0,
     /// <summary>
     /// A sent release that never appeared was looked up by hash/id and name
     /// across the client's whole queue and history, and that lookup found a

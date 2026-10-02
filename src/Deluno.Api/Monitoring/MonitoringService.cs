@@ -379,7 +379,7 @@ public sealed class MonitoringService(
                 Code: "dispatch.recovery-open",
                 Severity: "warning",
                 Summary: "Dispatch recovery alerts need attention.",
-                Details: $"{dispatch.RecoveryCasesOpenCount} dispatch alert(s) are open.",
+                Details: $"{dispatch.RecoveryCasesOpenCount} download problem(s) are open.",
                 DetectedUtc: now));
         }
 

@@ -498,7 +498,7 @@ public sealed class DownloadDispatchRepositoryTests
         await repository.RecordImportOutcomeAsync("dispatch-a", "imported", @"C:\Library\Movies\Sintel.mkv", null, null, CancellationToken.None);
         await repository.RecordImportOutcomeAsync("dispatch-b", "failed", null, "import-failed", "no matching title", CancellationToken.None);
 
-        var metrics = await new SqliteDispatchMetricsRepository(storage.Factory, timeProvider)
+        var metrics = await new SqliteDispatchMetricsRepository(storage.Factory, timeProvider, new SqliteDispatchProblemLog(storage.Factory, timeProvider))
             .GetMetricsAsync(CancellationToken.None);
 
         Assert.Equal(1, metrics.SuccessfulImports);

@@ -51,7 +51,7 @@ public sealed partial class ImportPipelineService(
     IReleasePreferencePlanRepository? releasePreferencePlanRepository = null,
     IBlockedReleaseRepository? blockedReleases = null,
     IImportFailureRuleRepository? failureRules = null,
-    IDispatchAlertRepository? dispatchAlerts = null,
+    IDispatchProblemLog? dispatchProblems = null,
     // #662: queued, never awaited inline - a slow or down media server must
     // never hold up or fail an import that already landed.
     IJobScheduler? mediaServerJobScheduler = null,
@@ -2773,20 +2773,13 @@ public sealed partial class ImportPipelineService(
 
         // The download is marked failed above, and the poller opens a case for
         // every failed download it has not been told about (#602). This case is
-        // that telling: the alert beside it is what the poller checks, and
-        // dismissing the case settles both.
-        if (dispatchAlerts is not null
+        // that telling: the problem recorded beside it is what the poller
+        // checks, and dismissing the case settles both.
+        if (dispatchProblems is not null
             && !string.IsNullOrEmpty(executeRequest.DispatchId)
-            && !await dispatchAlerts.HasUnresolvedAlertAsync(executeRequest.DispatchId, "import-failed", cancellationToken))
+            && !await dispatchProblems.IsRecordedAsync(executeRequest.DispatchId, "import-failed", cancellationToken))
         {
-            await dispatchAlerts.CreateAlertAsync(
-                executeRequest.DispatchId,
-                title,
-                $"Import failed: {summary}",
-                "import-failed",
-                "error",
-                new Dictionary<string, string> { ["failureCode"] = failureKind, ["failureMessage"] = summary },
-                cancellationToken);
+            await dispatchProblems.RecordAsync(executeRequest.DispatchId, "import-failed", cancellationToken);
         }
 
         if (mediaType == "tv")
