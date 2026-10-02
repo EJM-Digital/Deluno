@@ -153,7 +153,7 @@ export function buildSetupStatus(input: SetupStatusInput): SetupStatusModel {
       complete: automationReady,
       state: automationReady ? "complete" : "not-started",
       optional: false,
-      to: "/settings/automation",
+      to: "/search-cycles",
       action: automationReady ? "Review automation" : "Configure automation",
       attentionTitle: "Automation is not ready",
       attentionText: automationAttentionText(input.settings.autoStartJobs, autoLibraries)
