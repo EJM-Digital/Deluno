@@ -10,7 +10,7 @@ import {
   SunMedium,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useHotkeys } from "react-hotkeys-hook";
 import { NavLink, useLocation, useNavigate, useRevalidator } from "react-router-dom";
@@ -29,6 +29,7 @@ import { getGlobalShortcuts } from "../lib/command-registry";
 import { useAttention } from "../lib/use-attention";
 import { authedFetch, useAuth, type UserProfile } from "../lib/use-auth";
 import { hostTitle, useHostName } from "../lib/use-host-name";
+import { useSidebarCollapsed } from "../lib/use-sidebar-collapsed";
 import { RealtimeGroups, SignalRProvider, useSignalREvent, useSignalRResync } from "../lib/use-signalr";
 import { cn } from "../lib/utils";
 import { DisplayPreferencesProvider } from "../lib/display-preferences";
@@ -190,6 +191,7 @@ function AppLayoutContent() {
   const revalidator = useRevalidator();
   // The tab says which computer this Deluno is on (#1101); the sign-in page keeps plain "Deluno".
   const hostName = useHostName();
+  const sidebar = useSidebarCollapsed();
   useEffect(() => {
     document.title = hostTitle(hostName);
     return () => {
@@ -309,8 +311,9 @@ function AppLayoutContent() {
         <OutageBanner />
         <NavigationProgress />
 
-        <div className="min-h-dvh">
-          <DesktopSidebar attention={attention} user={user} onLogout={logout} />
+        {/* The narrow rail is one variable: the sidebar, the content beside it and the page footer all read it. */}
+        <div className="min-h-dvh" style={sidebar.collapsed ? ({ "--sidebar-width": SIDEBAR_RAIL_WIDTH } as CSSProperties) : undefined}>
+          <DesktopSidebar attention={attention} user={user} onLogout={logout} collapsed={sidebar.collapsed} onToggleCollapsed={sidebar.toggle} />
 
           <div className="min-w-0 pb-mobile-tabbar lg:ml-[var(--sidebar-width)] lg:pb-0">
             <ContentTopbar
@@ -341,7 +344,10 @@ function AppLayoutContent() {
                 paddingBottom: "var(--content-pad-block)"
               }}
             >
-              <PageTransition />
+              {/* Never wider than 2400px, centred in the room beside the sidebar, as Weir's main column is. */}
+              <div className="mx-auto w-full max-w-[2400px]">
+                <PageTransition />
+              </div>
             </main>
           </div>
         </div>
@@ -354,17 +360,29 @@ function AppLayoutContent() {
 
 /* Group labels take Weir's spacing exactly (#1107): 20px above (plus the 5.6px between groups), 8px below
    (plus 5.6px before the first link), and a 19px line, so Deluno's and Weir's sidebars line up. */
+/* On the rail the words go and the line above the group stays, as in Weir. */
+const SIDEBAR_GROUP_LABEL_RAIL = "mx-[6px] p-0 text-[length:0px] leading-[0]";
 const SIDEBAR_GROUP_LABEL =
   "mb-[13.6px] mt-[25.6px] border-t border-hairline/70 px-[var(--shell-nav-inset)] pt-4 text-[length:var(--shell-subtle-size)] font-semibold uppercase leading-[19px] tracking-[0.13em] text-muted-foreground first:mt-0 first:border-t-0 first:pt-0";
 
-function DesktopSidebar({
+/** Weir's collapsed sidebar: 84px, icons only. */
+const SIDEBAR_RAIL_WIDTH = "84px";
+
+/** Whether the sidebar is the icon rail, for the rows inside it. */
+const SidebarRailContext = createContext(false);
+
+export function DesktopSidebar({
   attention,
   user,
-  onLogout
+  onLogout,
+  collapsed,
+  onToggleCollapsed
 }: {
   attention: ReturnType<typeof useAttention>;
   user: UserProfile | null;
   onLogout: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   const { changePassword } = useAuth();
   const hostName = useHostName();
@@ -404,17 +422,31 @@ function DesktopSidebar({
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground lg:flex lg:flex-col">
+    <SidebarRailContext.Provider value={collapsed}>
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-[var(--sidebar-width)] border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground lg:flex lg:flex-col" data-collapsed={collapsed}>
+      {/* On the seam between the menu and the page, outside the scrolling list so it never adds a scrollbar. */}
+      <button
+        type="button"
+        data-testid="sidebar-collapse"
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        aria-expanded={!collapsed}
+        onClick={onToggleCollapsed}
+        className="absolute right-[-13.125px] top-[12.75px] z-[3] flex h-[24.375px] w-[24.375px] items-center justify-center rounded-full border border-sidebar-border bg-background p-0 text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d={collapsed ? "m9.5 6 6 6-6 6" : "m14.5 6-6 6 6 6"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <NavLink to="/" aria-label="Deluno home" className="flex min-h-[61px] items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-sidebar-foreground no-underline">
         <AppMark size={34} />
-        <span className="min-w-0">
+        <span className={cn("min-w-0", collapsed && "hidden")}>
           <span className="block whitespace-nowrap font-display text-[length:var(--shell-brand-size)] font-bold tracking-[0.08em]">Deluno</span>
           <span className="block truncate whitespace-nowrap text-[length:var(--shell-subtle-size)] font-medium text-muted-foreground" title={hostName ?? undefined}>{hostName ?? "Media console"}</span>
         </span>
       </NavLink>
 
       <div className="mt-[17.6px] min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className={SIDEBAR_GROUP_LABEL}>
+        <div className={cn(SIDEBAR_GROUP_LABEL, collapsed && SIDEBAR_GROUP_LABEL_RAIL)}>
           Your media
         </div>
         <nav aria-label="Media dashboard" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -427,7 +459,7 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className={SIDEBAR_GROUP_LABEL}>
+        <div className={cn(SIDEBAR_GROUP_LABEL, collapsed && SIDEBAR_GROUP_LABEL_RAIL)}>
           Live operations
         </div>
         <nav aria-label="Live operational status" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -440,14 +472,14 @@ function DesktopSidebar({
           ))}
         </nav>
 
-        <div className={SIDEBAR_GROUP_LABEL}>
+        <div className={cn(SIDEBAR_GROUP_LABEL, collapsed && SIDEBAR_GROUP_LABEL_RAIL)}>
           Setup
         </div>
         <nav aria-label="Media Management" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
           <ConfigurationSidebarTree pathname={pathname} />
         </nav>
 
-        <div className={SIDEBAR_GROUP_LABEL}>
+        <div className={cn(SIDEBAR_GROUP_LABEL, collapsed && SIDEBAR_GROUP_LABEL_RAIL)}>
           Deluno
         </div>
         <nav aria-label="System controls" className="space-y-[calc(var(--shell-nav-gap)*0.7)]">
@@ -458,16 +490,20 @@ function DesktopSidebar({
       <div className="group relative z-50 mt-3">
         <button
           type="button"
-          className="flex min-h-[var(--shell-pill-height)] w-full items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 px-3 text-left transition hover:border-primary/30 hover:bg-sidebar-accent"
+          className={cn("flex min-h-[42px] w-full items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 py-[6px] text-left transition hover:border-primary/30 hover:bg-sidebar-accent", collapsed ? "justify-center px-0" : "px-3")}
+          title={collapsed ? (user?.displayName ?? "User") : undefined}
+          data-testid="user-menu"
         >
           <span className="flex h-[var(--shell-avatar-size)] w-[var(--shell-avatar-size)] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[hsl(var(--primary-2))] text-[length:var(--type-body-sm)] font-bold text-primary-foreground">
             {user?.avatarInitials ?? "DU"}
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block whitespace-nowrap text-[length:var(--type-body-sm)] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
-            <span className="block whitespace-nowrap text-[length:var(--type-caption)] text-muted-foreground">@{user?.username ?? "deluno"}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          {collapsed ? <span className="sr-only">{`${user?.displayName ?? "User"}, account menu`}</span> : (
+            <span className="block min-w-0 flex-1">
+              <span className="block truncate whitespace-nowrap text-[length:14px] font-semibold text-foreground">{user?.displayName ?? "User"}</span>
+              <span className="block truncate whitespace-nowrap text-[length:12px] text-muted-foreground">{`@${user?.username ?? "deluno"} · ${hostName ? `Deluno on ${hostName}` : "Deluno"}`}</span>
+            </span>
+          )}
+          {collapsed ? null : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
         </button>
         <div className="absolute bottom-0 left-[calc(100%+12px)] z-[90] w-64 overflow-hidden rounded-xl border border-hairline bg-popover opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100 dark:border-white/[0.07]">
           <button
@@ -567,6 +603,7 @@ function DesktopSidebar({
         </div>
       ) : null}
     </aside>
+    </SidebarRailContext.Provider>
   );
 }
 
@@ -586,7 +623,8 @@ function AreaRow({
   open: boolean;
   onToggle: () => void;
 }) {
-  const showChildren = !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
+  const rail = useContext(SidebarRailContext);
+  const showChildren = !rail && !area.tabsInToolbar && area.items.some((item) => item.to !== area.to);
   const areaIsActive = area.match(pathname);
 
   return (
@@ -594,9 +632,12 @@ function AreaRow({
       <div className="flex min-h-[var(--shell-pill-height)] items-center gap-1">
         <NavLink
           to={area.to}
+          title={rail ? area.label : undefined}
+          aria-label={rail ? area.label : undefined}
           {...prefetchHandlers(area.to)}
           className={({ isActive, isPending }) => cn(
-            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+            "group relative flex min-h-[var(--shell-pill-height)] min-w-0 flex-1 items-center gap-2.5 rounded-lg text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+            rail ? "justify-center px-0" : "px-[var(--shell-nav-inset)]",
             isActive || isPending || areaIsActive ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
           )}
         >
@@ -612,7 +653,7 @@ function AreaRow({
             >
               <DelunoNavGlyph kind={area.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
             </span>
-            <span className="min-w-0 flex-1 whitespace-nowrap">{area.label}</span>
+            {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{area.label}</span>}
           </>; }}
         </NavLink>
         {showChildren ? (
@@ -702,16 +743,19 @@ function SidebarItem({
   item: { to: string; label: string; icon: DelunoNavGlyphKind; end: boolean };
   count: number;
 }) {
-
+  const rail = useContext(SidebarRailContext);
   return (
     <NavLink
       to={item.to}
       end={item.end}
       style={NAV_ACCENT_STYLE}
+      title={rail ? item.label : undefined}
+      aria-label={rail ? (count > 0 ? `${item.label}, ${count}` : item.label) : undefined}
       {...prefetchHandlers(item.to)}
       className={({ isActive, isPending }) =>
         cn(
-          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg px-[var(--shell-nav-inset)] text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+          "group relative flex min-h-[var(--shell-pill-height)] items-center gap-2.5 rounded-lg text-[length:var(--shell-nav-size)] font-semibold transition-colors duration-150",
+          rail ? "justify-center px-0" : "px-[var(--shell-nav-inset)]",
           isActive || isPending ? "text-[var(--nav-accent)]" : "text-muted-foreground hover:text-[var(--nav-accent)]"
         )
       }
@@ -733,9 +777,9 @@ function SidebarItem({
           >
             <DelunoNavGlyph kind={item.icon} className="h-[var(--shell-icon-size)] w-[var(--shell-icon-size)]" />
           </span>
-          <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>
+          {rail ? null : <span className="min-w-0 flex-1 whitespace-nowrap">{item.label}</span>}
           {count > 0 ? (
-            <span className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-[length:var(--shell-nav-badge-size)] font-bold tabular-nums", isActive ? "bg-[var(--nav-accent)] text-background" : "bg-surface-2 text-muted-foreground")}>
+            <span aria-hidden={rail || undefined} className={cn("flex h-[calc(var(--shell-pill-height)*0.42)] min-w-[calc(var(--shell-pill-height)*0.42)] shrink-0 items-center justify-center rounded-full px-1.5 text-[length:var(--shell-nav-badge-size)] font-bold tabular-nums", rail && "absolute right-[8px] top-[2px] h-[15px] min-w-[15px] px-1 text-[length:9px]", isActive ? "bg-[var(--nav-accent)] text-background" : "bg-surface-2 text-muted-foreground")}>
               {count}
             </span>
           ) : null}
@@ -793,7 +837,7 @@ function ContentTopbar({
         </NavLink>
 
         <div className="flex min-w-0 flex-1 items-center gap-[calc(var(--grid-gap)*2)]">
-        <div className="min-w-0 shrink">
+        <div className="min-w-[min(300px,100%)] shrink">
           <p className="text-[length:var(--section-eyebrow-size)] font-bold uppercase leading-[1.35] tracking-[0.14em] text-muted-foreground">{subtitle}</p>
           {/* The topbar is the page heading everywhere except a detail route, where
               it names the section and the page's own title is the h1. Two h1s on one
