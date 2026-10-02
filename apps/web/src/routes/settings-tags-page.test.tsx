@@ -89,6 +89,24 @@ describe("Tags page (#1039)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/tags/t2", { method: "DELETE" }));
   });
 
+  it("sorts by a column header and remembers it, with Reset columns to go back (#1119)", async () => {
+    window.localStorage.clear();
+    const { unmount } = renderPage();
+    const names = () => screen.getAllByRole("row").slice(1).map((row) => row.textContent ?? "");
+    const header = screen.getByRole("columnheader", { name: /^Name/ });
+    await userEvent.click(within(header).getByRole("button"));
+    await userEvent.click(within(header).getByRole("button"));
+    expect(header).toHaveAttribute("aria-sort", "descending");
+    expect(names()[0]).toContain("Spare");
+    unmount();
+
+    renderPage();
+    expect(screen.getByRole("columnheader", { name: /^Name/ })).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(screen.getByRole("button", { name: "Reset columns" }));
+    expect(screen.getByRole("columnheader", { name: /^Name/ })).toHaveAttribute("aria-sort", "none");
+    window.localStorage.clear();
+  });
+
   it("deletes unused tags only when asked", async () => {
     renderPage();
     expect(authedFetchMock).not.toHaveBeenCalled();

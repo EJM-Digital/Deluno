@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { authedFetch } from "../lib/use-auth";
@@ -99,6 +99,28 @@ describe("combined Indexer History (#754)", () => {
       expect.stringContaining("eventType=auth-failure"),
       expect.anything()
     ));
+  });
+
+  it("sorts on the server when a column header is clicked, and asks again from the top in that order (#1119)", async () => {
+    window.localStorage.clear();
+    mockFetch();
+    renderPage();
+
+    const header = screen.getByRole("columnheader", { name: /^Indexer/ });
+    fireEvent.click(within(header).getByRole("button"));
+
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      expect.stringMatching(/sortBy=indexer.*sortDirection=asc|sortDirection=asc.*sortBy=indexer/),
+      expect.anything()
+    ));
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+
+    fireEvent.click(within(header).getByRole("button"));
+    await waitFor(() => expect(authedFetch).toHaveBeenCalledWith(
+      expect.stringContaining("sortDirection=desc"),
+      expect.anything()
+    ));
+    window.localStorage.clear();
   });
 
   it("clears the combined history behind a confirmation", async () => {
