@@ -94,8 +94,8 @@ function TabBar({ active, onSelect, className }: {
             className={cn(
               // Plain text tabs on the title's line (the owner, 2 Oct 2026): 14px, the chosen one in the accent colour with a
               // 2px underline that sits below the text, so the header keeps its height.
-              "relative h-auto rounded-sm bg-transparent p-0 text-[length:var(--type-body-sm)] font-medium leading-normal hover:bg-transparent",
-              "after:absolute after:inset-x-0 after:-bottom-[5px] after:h-[2px] after:rounded-full after:content-['']",
+              "relative h-auto rounded-sm bg-transparent p-0 text-[length:var(--type-body-sm)] font-medium leading-none hover:bg-transparent",
+              "after:absolute after:inset-x-0 after:-bottom-[7px] after:h-[2px] after:rounded-full after:content-['']",
               selected ? "text-primary after:bg-primary hover:text-primary" : "text-muted-foreground after:bg-transparent hover:text-foreground"
             )}
           >
