@@ -23,6 +23,7 @@ import {
   paramsFromFilters,
   type ActivityFilters
 } from "../../lib/activity-history";
+import { isLiveStep, LIVE_STEPS } from "../../lib/activity-live-steps";
 import { foldCrossMediaJobRuns, foldRoutineJobEvents } from "../../lib/activity-format";
 import { Search, X } from "lucide-react";
 import { Button } from "../ui/button";
@@ -81,7 +82,8 @@ export function useActivityHistory({ enabled, onOpenEvent }: { enabled: boolean;
     getNextPageParam: (page) => (page.hasMore ? page.nextPageToken ?? undefined : undefined),
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
-    enabled
+    // The three steps built from live sources never ask the history.
+    enabled: enabled && !isLiveStep(filters.type)
   });
 
   const events = useMemo(() => history.data?.pages.flatMap((page) => page.items) ?? [], [history.data]);
@@ -183,7 +185,7 @@ export function ActivityFilters({
   const compact = level >= 2;
   const searchOpen = searchFocused || titleDraft !== "";
   const customSince = filters.since !== "" && !isQuickSince(filters.since);
-  const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? [])];
+  const typeOptions = [{ value: "", label: "Any step" }, ...(choices.data?.types ?? []), ...LIVE_STEPS.map((step) => ({ value: step.value, label: step.label }))];
   const sinceOptions = customSince
     ? [...ACTIVITY_SINCE_CHOICES, { value: filters.since, label: `Since ${filters.since}` }]
     : ACTIVITY_SINCE_CHOICES.map((choice) => ({ ...choice }));

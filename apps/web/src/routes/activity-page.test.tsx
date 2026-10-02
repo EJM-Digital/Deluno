@@ -694,3 +694,86 @@ describe("Activity is one list with status chips (#1114)", () => {
     await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/retry-failed", expect.objectContaining({ method: "POST" })));
   });
 });
+
+/**
+ * #1115: what Transfers' Recent activity listed that the history does not, now steps of the "Any step" picker: files
+ * handed to the processor and back, download-health findings, and what a download client reported.
+ */
+describe("Activity steps built from Transfers' sources (#1115)", () => {
+  const handoffs = [
+    {
+      id: "h1", libraryId: "l1", mediaType: "movie", clientId: "c1", queueItemId: "q1", releaseName: "Sintel.2010.1080p", sourcePath: "D:/Downloads/Sintel",
+      processorName: "Weir", status: "started", outputPath: null, importJobId: null, failureMessage: null, createdUtc: "2026-10-02T08:00:00Z", updatedUtc: "2026-10-02T08:05:00Z"
+    },
+    {
+      id: "h2", libraryId: "l1", mediaType: "movie", clientId: "c1", queueItemId: "q2", releaseName: "Arrival.2016.2160p", sourcePath: "D:/Downloads/Arrival",
+      processorName: "Weir", status: "completed", outputPath: "D:/Clean/Arrival.mkv", importJobId: null, failureMessage: null, createdUtc: "2026-10-02T07:00:00Z", updatedUtc: "2026-10-02T07:10:00Z"
+    }
+  ];
+  const health = [
+    { clientId: "c1", queueItemId: "q3", releaseName: "Stalled.Show.S01E01", kind: "stalled", severity: "critical", evidence: "No progress for 6 hours.", firstObservedUtc: "2026-10-02T01:00:00Z", lastObservedUtc: "2026-10-02T07:00:00Z", strikeCount: 3, ignoredUntilUtc: null },
+    { clientId: "c1", queueItemId: "q4", releaseName: "Slow.Film.2020", kind: "slow", severity: "warning", evidence: "Far below the usual speed.", firstObservedUtc: "2026-10-02T06:00:00Z", lastObservedUtc: "2026-10-02T06:30:00Z", strikeCount: 1, ignoredUntilUtc: null }
+  ];
+  const telemetry = {
+    clients: [{
+      clientId: "c1", clientName: "qBittorrent",
+      history: [{ id: "x1", clientId: "c1", clientName: "qBittorrent", title: "Nope.Film.2019", releaseName: "Nope.Film.2019", outcome: "failed", indexerName: "NZBgeek", completedUtc: "2026-10-02T05:00:00Z", errorMessage: "Not enough disk space." }]
+    }]
+  };
+
+  function answerLive(path: string) {
+    if (path.startsWith("/api/integrations/processors/handoffs")) return jsonResponse(handoffs);
+    if (path.startsWith("/api/download-health")) return jsonResponse({ items: health, nextPageToken: null, hasMore: false });
+    if (path.startsWith("/api/download-clients/telemetry")) return jsonResponse(telemetry);
+    return answerActivityApi(path);
+  }
+
+  beforeEach(() => {
+    authedFetchMock.mockImplementation(async (path: string) => answerLive(path));
+  });
+
+  it("lists processor hand-offs under Processing, in progress and done, without asking the history", async () => {
+    renderActivity("/activity?type=processing");
+
+    expect(await screen.findByText("Sintel.2010.1080p")).toBeInTheDocument();
+    expect(screen.getByText("Arrival.2016.2160p")).toBeInTheDocument();
+    expect(screen.getByText("With the processor")).toBeInTheDocument();
+    expect(screen.getByText("Processed and handed back")).toBeInTheDocument();
+    expect(requestedActivityPaths()).toHaveLength(0);
+
+    await userEvent.click(screen.getByRole("radio", { name: /^In progress/ }));
+    expect(screen.getByText("Sintel.2010.1080p")).toBeInTheDocument();
+    expect(screen.queryByText("Arrival.2016.2160p")).not.toBeInTheDocument();
+  });
+
+  it("lists download-health findings under Download health as Failed or Needs a decision", async () => {
+    renderActivity("/activity?type=download-health");
+
+    expect(await screen.findByText("No progress for 6 hours.")).toBeInTheDocument();
+    expect(screen.getByText("Far below the usual speed.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: /^Failed/ }));
+    expect(screen.getByText("Stalled.Show.S01E01")).toBeInTheDocument();
+    expect(screen.queryByText("Slow.Film.2020")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: /^Needs a decision/ }));
+    expect(screen.getByText("Slow.Film.2020")).toBeInTheDocument();
+  });
+
+  it("lists what a download client reported under Download client", async () => {
+    renderActivity("/activity?type=download-client");
+
+    expect(await screen.findByText("Nope.Film.2019")).toBeInTheDocument();
+    expect(screen.getByText("Not enough disk space.")).toBeInTheDocument();
+  });
+
+  it("offers the three steps in the Any step picker", async () => {
+    renderActivity();
+    await openHistory();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Filter by step" }));
+    for (const name of ["Processing", "Download health", "Download client"]) {
+      expect(await screen.findByRole("option", { name })).toBeInTheDocument();
+    }
+  });
+});

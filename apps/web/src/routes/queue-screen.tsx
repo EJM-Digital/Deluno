@@ -5,7 +5,7 @@
  *   SummaryStrip (downloading · speed · ready to import · needs action · clients)
  *   ListCard     downloads        → drawer: progress · health · import · actions
  *   ListCard     needs attention  → only when something does (recovery, failed jobs)
- *   ListCard     recent activity  → one merged timeline, filtered by kind
+ *   link         See everything in Activity →
  *
  * This replaced a page carrying a six-stat hero, a path banner, seven metric
  * tiles, a "next up" panel and nine separate panels — thirteen numbers and a
@@ -78,7 +78,6 @@ import { Input } from "../components/ui/input";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
 import { PathInput } from "../components/ui/path-input";
-import { FilterChips } from "../components/ui/filter-chips";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
@@ -168,16 +167,7 @@ export const queueSources = defineSources({
 
 export const queueLoader = sourceLoader(queueSources);
 
-/** One row shape for every kind of thing that has already happened. */
-const ACTIVITY_KINDS: { value: "all" | ActivityEntry["kind"]; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "import", label: "Imports" },
-  { value: "processor", label: "Processing" },
-  { value: "sent", label: "Sent" },
-  { value: "client", label: "Clients" },
-  { value: "health", label: "Issues" }
-];
-
+/** One row shape for the finished things a Transfers drawer can open. */
 interface ActivityEntry {
   id: string;
   kind: "import" | "processor" | "sent" | "client" | "health";
@@ -231,7 +221,6 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
   const [cleanupPreviews, setCleanupPreviews] = useState<Record<string, DownloadCleanupPreview>>({});
   const [pendingRemoval, setPendingRemoval] = useState<DownloadQueueItem | null>(null);
   const [removalReasonBusy, setRemovalReasonBusy] = useState<RemovalReason | null>(null);
-  const [activityKind, setActivityKind] = useState<"all" | ActivityEntry["kind"]>("all");
   // #932: select-all on the leftovers list, alongside per-item Keep/Remove.
   const [selectedOrphanPaths, setSelectedOrphanPaths] = useState<Set<string>>(new Set());
   const [manualImport, setManualImport] = useState<ManualImportForm>(() => ({
@@ -314,7 +303,6 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
     () => buildActivity({ importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents }),
     [importJobs, processorHandoffs, dispatches, telemetry, healthRecords, activityEvents]
   );
-  const visibleActivity = activityKind === "all" ? activity : activity.filter((entry) => entry.kind === activityKind);
   const openQueueItem = drawer?.kind === "queue" ? queue.find((item) => item.id === drawer.id) ?? null : null;
   // #810: whether this item's own client can reorder its queue or force-start
   // a transfer, read straight from the client's own reported capabilities
@@ -1295,56 +1283,11 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
         </div>
       </ListCard>
 
-      <ListCard
-        title="Recent activity"
-        count={activity.length ? `latest ${Math.min(visibleActivity.length, 25)}` : undefined}
-        actions={
-          activity.length ? (
-            <FilterChips<"all" | ActivityEntry["kind"]>
-              label="Filter activity"
-              size="sm"
-              value={activityKind}
-              onValueChange={setActivityKind}
-              options={ACTIVITY_KINDS.map((option) => ({
-                ...option,
-                count: option.value === "all" ? activity.length : activity.filter((entry) => entry.kind === option.value).length
-              }))}
-            />
-          ) : undefined
-        }
-      >
-        {visibleActivity.length === 0 ? (
-          <ListEmpty title="Nothing has happened yet" description="Imports, processor hand-offs, releases Deluno sent to a client, and what those clients reported back all land here." />
-        ) : (
-          <ListTable
-            columns={[{ label: "Item" }, { label: "What happened", width: "minmax(0,1.6fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}
-          >
-            {visibleActivity.slice(0, 25).map((entry) => (
-              <ListRow
-                key={entry.id}
-                onClick={() => {
-                  if (entry.kind === "sent") {
-                    const dispatch = dispatches.find((item) => `sent:${item.id}` === entry.id);
-                    if (dispatch) {
-                      void showDispatch(dispatch);
-                      return;
-                    }
-                  }
-                  setDrawer({ kind: "activity", id: entry.id });
-                }}
-                selected={openActivity?.id === entry.id || (entry.kind === "sent" && openDispatchSummary?.id === entry.id.slice("sent:".length))}
-              >
-                <ListNameCell name={entry.name} sub={entry.sub} />
-                <ListCell primary={entry.detail} secondary={entry.extra} />
-                <ListCell numeric primary={formatAgo(entry.whenUtc, preferences)} secondary={preferences.showRelativeDates ? formatPreferenceDateTime(entry.whenUtc, preferences) : undefined} />
-                <ListCell mobile>
-                  <Chip tone={entry.tone}>{entry.status}</Chip>
-                </ListCell>
-              </ListRow>
-            ))}
-          </ListTable>
-        )}
-      </ListCard>
+      <p className="px-1 text-sm">
+        <Link to="/activity" className="font-medium text-primary hover:underline">
+          See everything in Activity →
+        </Link>
+      </p>
 
       {/* -------------------------------------------------- download drawer */}
       <Drawer
