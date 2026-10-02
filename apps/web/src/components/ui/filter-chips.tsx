@@ -8,9 +8,10 @@ export interface FilterChipOption<T extends string> {
 }
 
 /**
- * The one filter control for a list's card header (James, 2 Oct 2026: "chips with counts"): rounded chips, the chosen
- * one in the accent colour, each with how many it holds. Activity's status, Movies · TV on the setup lists and the
- * Indexers' On / Off all wear it, so a filter looks the same wherever it is.
+ * The one filter control in Deluno (James, 2 Oct 2026: "chips with counts", drawn as Weir draws its History's): a joined
+ * group, 3px inside a 12px-round box, of 30px options 14px apart at the sides, 13px/500, each with how many it holds;
+ * the chosen one tinted in the accent colour. Activity's status, Movies · TV on the setup lists and the Indexers' On /
+ * Off all wear it, so a filter looks the same wherever it is, and the same as in Weir.
  */
 export function FilterChips<T extends string>({
   label,
@@ -27,7 +28,11 @@ export function FilterChips<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto", className)}>
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className={cn("no-scrollbar flex w-max min-w-0 max-w-full shrink items-center gap-[2px] overflow-x-auto rounded-[12px] border border-hairline bg-card p-[3px]", className)}
+    >
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -39,13 +44,13 @@ export function FilterChips<T extends string>({
             aria-label={option.count !== undefined ? `${option.label} ${option.count}` : option.label}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[length:var(--type-caption)] font-semibold transition-colors",
+              "inline-flex h-[30px] shrink-0 items-center whitespace-nowrap rounded-[10px] border px-[14px] text-[13px] font-medium transition-colors duration-150 motion-reduce:transition-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              active ? "border-primary/40 bg-primary/12 text-primary" : "border-hairline bg-surface-1 text-muted-foreground hover:text-foreground"
+              active ? "border-primary/40 bg-primary/10 text-primary" : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             )}
           >
             {option.label}
-            {option.count !== undefined ? <span className="tabular-nums opacity-80">{option.count}</span> : null}
+            {option.count !== undefined ? <span className={cn("ml-[5px] tabular-nums", active ? "opacity-80" : "text-muted-foreground/70")}>{option.count}</span> : null}
           </button>
         );
       })}
