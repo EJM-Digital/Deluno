@@ -1,5 +1,4 @@
 /* Your library (#1098): the mockup's shelf (artifacts/live-mockup/approved-final.html), rule for rule, mapped to the app's tokens. Every class is prefixed lsh-. */
-.lsh > header h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--success)); margin-right: 8px; vertical-align: middle; box-shadow: 0 0 10px hsl(var(--success)); }
 .lsh { padding-bottom: 14px; }
 
 /* One shelf (#1103): the library chips, then the counts line(s), then the posters, which take the rest of the card's height. */
