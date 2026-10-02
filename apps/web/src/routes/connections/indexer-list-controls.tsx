@@ -4,7 +4,7 @@
  * lets several indexers be changed or removed together instead of one drawer
  * edit at a time; this gives Deluno the same three things.
  */
-import { FILTER_MENU_TRIGGER, FILTER_ROW_CLASS, FilterChips } from "../../components/ui/filter-chips";
+import { FILTER_MENU_TRIGGER, FilterChips } from "../../components/ui/filter-chips";
 import { MenuSelect } from "../../components/ui/menu-select";
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
@@ -147,14 +147,18 @@ export function IndexerFilterChips({ indexers, filters, onChange }: { indexers: 
   );
 }
 
-/** The rarer filters, protocol and privacy, on a line of their own under the card's header; nothing when neither narrows. */
+/**
+ * The rarer filters, protocol and privacy, as compact pickers after the chips in the card's header, as every card's
+ * filters sit (the owner, 3 Oct 2026: a row of their own under the header was one control on a line by itself); nothing
+ * when neither narrows.
+ */
 export function IndexerFilterBar({ indexers, filters, onChange }: { indexers: IndexerItem[]; filters: IndexerFilters; onChange: (filters: IndexerFilters) => void }) {
   const protocolOptions = distinctValues(indexers, (item) => item.protocol);
   const privacyOptions = distinctValues(indexers, (item) => item.privacy);
   const active = indexerFiltersActive(filters);
   if (protocolOptions.length < 2 && privacyOptions.length < 2 && !active) return null;
   return (
-    <div className={FILTER_ROW_CLASS} role="group" aria-label="Filter indexers">
+    <div className="flex shrink-0 items-center gap-2" role="group" aria-label="Filter indexers">
       {protocolOptions.length > 1 ? (
         <MenuSelect
           label="Filter by protocol"
