@@ -341,3 +341,20 @@ describe("Background jobs name each job in plain words (#1086)", () => {
     loaderData.jobs = [];
   });
 });
+
+/** #1108: both metadata credits sit on the installation card, where a person looks for About. */
+describe("System installation credits (#1108)", () => {
+  it("shows TMDb's notice and TheTVDB's credit under Credits", () => {
+    loaderData.monitoring = { alerts: [] } as never;
+    render(
+      <MemoryRouter initialEntries={["/system"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+    const credits = screen.getByRole("group", { name: "Credits" });
+    expect(credits).toHaveTextContent("This product uses the TMDB API but is not endorsed or certified by TMDB.");
+    expect(credits).toHaveTextContent("TV metadata provided by TheTVDB");
+    expect(screen.getByRole("link", { name: "TMDb" })).toHaveAttribute("href", "https://www.themoviedb.org");
+    expect(screen.getByRole("link", { name: "TheTVDB" })).toHaveAttribute("href", "https://thetvdb.com");
+  });
+});

@@ -67,6 +67,8 @@ import { PathInput } from "../components/ui/path-input";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { Chip, type ChipProps } from "../components/ui/chip";
+import { TmdbAttribution } from "../components/app/tmdb-attribution";
+import { TvdbAttribution } from "../components/app/tvdb-attribution";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { useUnsavedChanges } from "../hooks/use-unsaved-changes";
@@ -375,6 +377,11 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
           </ListRow>
         ))}
       </ListTable>
+      <div role="group" aria-label="Credits" className="flex flex-col gap-1.5 border-t border-hairline px-[var(--card-pad-x)] py-[var(--card-pad-y)]">
+        <p className="text-[length:var(--type-micro)] font-bold uppercase tracking-[0.18em] text-muted-foreground">Credits</p>
+        <TmdbAttribution full />
+        <TvdbAttribution />
+      </div>
     </ListCard>
     <HostNameTip looksLikeContainerId={systemInfo?.hostLooksLikeContainerId} />
     </>
