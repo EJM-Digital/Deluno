@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { TmdbAttribution } from "./tmdb-attribution";
+import { TmdbAndTvdbAttribution, TmdbAttribution } from "./tmdb-attribution";
 
 describe("TmdbAttribution", () => {
   it("full form: TMDb's required sentence word for word, and the logo links to themoviedb.org", () => {
@@ -18,5 +18,11 @@ describe("TmdbAttribution", () => {
     const link = screen.getByRole("link", { name: "TMDB" });
     expect(link).toHaveAttribute("href", "https://www.themoviedb.org");
     expect(link).toHaveAttribute("rel", "noreferrer noopener");
+  });
+  it("credits both sources in one line on a show's page, each linked to its site", () => {
+    render(<TmdbAndTvdbAttribution />);
+    expect(screen.getByText(/Details from/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "TMDB" })).toHaveAttribute("href", "https://www.themoviedb.org");
+    expect(screen.getByRole("link", { name: "TheTVDB" })).toHaveAttribute("href", "https://thetvdb.com");
   });
 });

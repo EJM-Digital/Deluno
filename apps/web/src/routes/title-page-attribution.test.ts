@@ -13,9 +13,9 @@ describe("title pages credit TMDb (#1108)", () => {
     expect(source).toMatch(/<TmdbAttribution className=/);
   });
 
-  it("a show's page shows the short TMDb credit beside TheTVDB's", () => {
+  it("a show's page credits both sources in one short line, or TMDb alone when the show has no TheTVDB id", () => {
     const source = read("show-detail-page.tsx");
-    expect(source).toContain('import { TmdbAttribution } from "../components/app/tmdb-attribution"');
-    expect(source).toMatch(/<TvdbAttribution[^>]*\/>[\s\S]{0,40}<TmdbAttribution/);
+    expect(source).toContain('import { TmdbAndTvdbAttribution, TmdbAttribution } from "../components/app/tmdb-attribution"');
+    expect(source).toMatch(/metaText\("TvDbId"\)\s*\?\s*<TmdbAndTvdbAttribution[^>]*\/>\s*:\s*<TmdbAttribution/);
   });
 });

@@ -25,6 +25,22 @@ function TmdbLogo({ className }: { className?: string }) {
  * prominent than the app's own, wherever an app credits its sources (#1108).
  * `full` is the About / credits form; the short form is for a title's page.
  */
+/**
+ * A show's page credits both sources in one short line, "Details from TMDB and TheTVDB", each name a link to its site, so
+ * the panel beside the poster keeps its height. TheTVDB's terms ask for a visible link to thetvdb.com, which this keeps.
+ */
+export function TmdbAndTvdbAttribution({ className }: { className?: string }) {
+  const link = "font-medium text-foreground underline underline-offset-2 hover:text-primary";
+  return (
+    <p className={cn("text-xs text-muted-foreground", className)}>
+      Details from{" "}
+      <a href={TMDB_URL} target="_blank" rel="noreferrer noopener" className={link}>TMDB</a>
+      {" "}and{" "}
+      <a href="https://thetvdb.com" target="_blank" rel="noreferrer noopener" className={link}>TheTVDB</a>
+    </p>
+  );
+}
+
 export function TmdbAttribution({ full = false, className }: { full?: boolean; className?: string }) {
   if (!full) {
     return (
