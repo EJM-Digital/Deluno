@@ -58,8 +58,8 @@ test("a failed job buried under newer work is listed on Activity and can be dism
 
   await expect(page.getByRole("radio", { name: "Failed 1" })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("button", { name: "Retry failed jobs" })).toBeEnabled();
-  const failedCard = page.getByRole("region", { name: "Activity" });
-  // The detail column is left off a phone, so the row is found by its step and the reason is read in its drawer.
+  const failedCard = page.getByRole("region", { name: /^Failed/ });
+  // The card is named for the chosen status; the row is found by its step and the reason is read in its drawer.
   await expect(failedCard.getByText("Import a download")).toBeVisible();
 
   await failedCard.getByText("Import a download").click();

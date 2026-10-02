@@ -216,7 +216,7 @@ describe("Activity history filters and columns (#798, #1100)", () => {
     expect(screen.getByText("Deluno will not use Arrival.2016.2160p again.")).toBeInTheDocument();
     expect(screen.getByText("Imported Arrival (2016).")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Filter by event type" }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Filter by step" }));
     await userEvent.click(await screen.findByRole("option", { name: "Blocklisted" }));
 
     await waitFor(() => expect(screen.queryByText("Imported Arrival (2016).")).not.toBeInTheDocument());
@@ -249,19 +249,31 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
     const now = new Date();
     expect(new Date(asked.get("since")!).getTime()).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime());
     expect(asked.get("until")).toBe(new Date(2100, 0, 1).toISOString());
-    // The reason menu is there because turned-down releases are being looked at.
-    expect(screen.getByRole("combobox", { name: "Filter by reason" })).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "Filter by title" })).toHaveValue("Sintel");
-    expect(screen.getByRole("searchbox", { name: "Filter by file" })).toHaveValue("Sintel.mkv");
+    // The filters with no control of their own show as tokens at the start of the list card.
+    expect(await screen.findByText("Reason: Not in a language you want")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Find a title" })).toHaveValue("Sintel");
+    expect(screen.getByText("File: Sintel.mkv")).toBeInTheDocument();
+  });
+
+  it("shows a link's file filter as a token and clears the filter when it is removed", async () => {
+    renderActivity("/activity?status=done&file=Arrival.mkv");
+    expect(await screen.findByText("File: Arrival.mkv")).toBeInTheDocument();
+    expect(screen.getByLabelText("address").textContent).toContain("file=Arrival.mkv");
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove filter File: Arrival.mkv" }));
+    await waitFor(() => expect(screen.getByLabelText("address").textContent).not.toContain("file="));
+    expect(screen.queryByText("File: Arrival.mkv")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("address").textContent).toContain("status=done");
   });
 
   it("writes a typed title to the address after a moment and clears every filter in one press", async () => {
-    renderActivity("/activity?status=done&type=search");
+    renderActivity("/activity?status=done&type=search&source=indexer");
     await screen.findByText("Imported Arrival (2016).");
 
-    await userEvent.type(screen.getByRole("searchbox", { name: "Filter by title" }), "Arrival");
+    await userEvent.type(screen.getByRole("searchbox", { name: "Find a title" }), "Arrival");
     await waitFor(() => expect(screen.getByLabelText("address").textContent).toContain("title=Arrival"));
     expect(screen.getByLabelText("address").textContent).toContain("type=search");
+    expect(await screen.findByText("From: An indexer")).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
     await waitFor(() => expect(screen.getByLabelText("address").textContent).not.toMatch(/title=|type=/));
@@ -276,7 +288,7 @@ describe("Activity history keeps its filters in the address (#1100)", () => {
     expect(asked.get("relatedEntityType")).toBe("movie");
     expect(asked.get("title")).toBe("Arrival");
 
-    await userEvent.click(screen.getByRole("button", { name: "Only this title: stop" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove filter Only this title" }));
     await waitFor(() => expect(screen.getByLabelText("address").textContent).not.toContain("item="));
   });
 
@@ -609,7 +621,7 @@ describe("Activity is one list with status chips (#1114)", () => {
   it("reads the chip from the address, with the history filters alongside it", () => {
     renderActivity("/activity?status=failed&title=Arrival");
     expect(screen.getByRole("radio", { name: "Failed 1" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("searchbox", { name: "Filter by title" })).toHaveValue("Arrival");
+    expect(screen.getByRole("searchbox", { name: "Find a title" })).toHaveValue("Arrival");
     expect(screen.getByText("Import Arrival")).toBeInTheDocument();
     expect(screen.queryByText("Sintel.2010.720p")).not.toBeInTheDocument();
   });
