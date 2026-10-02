@@ -47,11 +47,11 @@
 
 /* ---------- the page: Live's grid, rows line up across both columns ---------- */
 .sy-grid { display: grid; min-height: 0; gap: var(--grid-gap, 12px); grid-template-columns: minmax(0, 1fr) clamp(340px, 28%, 600px); grid-template-areas: "band store" "mid conn" "low upd"; }
-.sy-band { grid-area: band; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; min-height: 0; }
+.sy-band { grid-area: band; container: syband / size; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; min-height: 0; }
 .sy-mid { grid-area: mid; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; min-width: 0; }
 .sy-low { grid-area: low; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; min-height: 0; min-width: 0; }
 .sy-stacked { display: flex; flex-direction: column; }
-.sy-stacked .sy-band { grid-template-columns: minmax(0, 1fr); }
+.sy-stacked .sy-band { grid-template-columns: minmax(0, 1fr); container-type: normal; }
 .sy-stacked .sy-low { grid-template-columns: minmax(0, 1fr); }
 .sy-stacked > .sy-mid, .sy-stacked > .sy-store, .sy-stacked > .sy-conn, .sy-stacked > .sy-upd { height: calc(26 * 14px); flex: none; }
 .sy-stacked .sy-band .sy-tile { height: 190px; }
@@ -63,20 +63,21 @@
 .sy-pc { grid-template-rows: 16px minmax(0, 1fr) auto; }
 .sy-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
 .sy-top .sy-faint { font-size: 12px; white-space: nowrap; }
-.sy-inst .sy-top { height: 18px; }
 
 /* This instance: the health ring on the left, an aligned list of facts filling the right */
-.sy-inst-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; min-height: 0; }
+.sy-inst-body { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 16px; align-items: center; min-height: 0; }
 .sy-inst-l { display: grid; justify-items: center; align-content: center; gap: 4px; text-align: center; }
 .sy-inst-l .sy-rcap { font-size: 11px; color: var(--sy-muted); max-width: calc(7.5 * 14px); line-height: 1.3; }
 .sy-ring { display: grid; justify-items: center; gap: 4px; align-self: center; position: relative; }
 .sy-ring .sy-rc { position: relative; }
-.sy-ring svg { transform: rotate(-90deg); display: block; width: clamp(60px, 9vh, 96px); height: clamp(60px, 9vh, 96px); }
+.sy-ring svg { transform: rotate(-90deg); display: block; width: clamp(50px, calc(100cqh - 112px), 96px); height: clamp(50px, calc(100cqh - 112px), 96px); }
+.sy-stacked .sy-ring svg { width: 78px; height: 78px; }
 .sy-ring circle { fill: none; stroke-width: 8; }
 .sy-ring .sy-track { stroke: var(--sy-card-3); }
 .sy-ring .sy-val { stroke: var(--sy-warning); stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(.2, .8, .2, 1); }
-.sy-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(17px, 2.4vh, 24px); font-weight: 700; }
-.sy-needs { font-size: 11.5px; font-weight: 700; color: var(--sy-warning); text-decoration: none; padding: 2px 10px; border-radius: 99px; background: color-mix(in srgb, hsl(var(--warning)) 18%, transparent); border: 1px solid color-mix(in srgb, hsl(var(--warning)) 50%, transparent); white-space: nowrap; cursor: pointer; }
+.sy-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(16px, calc(100cqh - 124px), 22px); font-weight: 700; }
+.sy-stacked .sy-ring b { font-size: 16px; }
+.sy-needs { font-size: 11px; font-weight: 700; color: var(--sy-warning); text-decoration: none; padding: 2px 10px; border-radius: 99px; background: color-mix(in srgb, hsl(var(--warning)) 18%, transparent); border: 1px solid color-mix(in srgb, hsl(var(--warning)) 50%, transparent); white-space: nowrap; cursor: pointer; }
 .sy-needs.sy-good { color: var(--sy-success); background: color-mix(in srgb, hsl(var(--success)) 16%, transparent); border-color: color-mix(in srgb, hsl(var(--success)) 45%, transparent); cursor: default; }
 .sy-needs:hover { filter: brightness(1.15); }
 .sy-inst-r { display: grid; grid-template-rows: minmax(0, 1fr); gap: 8px; overflow: hidden; min-height: 0; align-self: stretch; align-content: center; }
@@ -93,7 +94,7 @@
 /* This computer and Network share one column template */
 .sy-cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-height: 0; }
 .sy-net2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
-.sy-col { display: grid; grid-template-rows: 16px 28px 15px minmax(0, 1fr); row-gap: 2px; padding: 0 12px; border-left: 1px solid var(--sy-line); min-width: 0; min-height: 0; }
+.sy-col { container: sycol / inline-size; display: grid; grid-template-rows: 16px 28px 15px minmax(0, 1fr); row-gap: 2px; padding: 0 12px; border-left: 1px solid var(--sy-line); min-width: 0; min-height: 0; }
 .sy-col:first-child { padding-left: 0; border-left: 0; }
 .sy-col:last-child { padding-right: 0; }
 .sy-col .sy-v { font-size: 22px; font-weight: 700; line-height: 28px; white-space: nowrap; color: var(--sy-fg); font-variant-numeric: tabular-nums; }
@@ -103,7 +104,7 @@
 .sy-mh { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; min-width: 0; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--sy-muted); }
 .sy-mh i { width: 8px; height: 8px; border-radius: 3px; background: var(--m); box-shadow: 0 0 8px var(--m); flex: none; }
 .sy-machine { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; overflow: hidden; height: 29px; padding-top: 10px; margin-bottom: -6px; align-content: flex-start; }
-.sy-machine span { font-size: 10.5px; color: var(--sy-muted); background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
+.sy-machine span { font-size: 11px; color: var(--sy-muted); background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
 .sy-checks2 { grid-template-rows: 16px minmax(0, 1fr); }
 .sy-reach { display: grid; gap: 0; align-content: start; padding-top: 2px; font-size: 11.5px; }
 .sy-reach span { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 6px; align-items: center; white-space: nowrap; height: 17px; border-bottom: 1px solid var(--sy-line-soft); }
@@ -113,24 +114,32 @@
 .sy-reach span i { font-style: normal; color: var(--sy-muted); overflow: hidden; text-overflow: ellipsis; }
 .sy-reach span b { font-weight: 600; font-variant-numeric: tabular-nums; }
 
+/* A trace column 100px wide or narrower, and a band shorter than 230px, set their figures smaller (Weir's sizes). */
+@container sycol (max-width: 100px) {
+  .sy-col .sy-mh { font-size: 8.5px; }
+  .sy-col .sy-v { font-size: 17px; }
+  .sy-col .sy-v small { font-size: 9.5px; }
+  .sy-col .sy-sub { font-size: 10px; }
+}
+@container syband (max-height: 229px) {
+  .sy-col { padding-left: 3px; padding-right: 3px; }
+  .sy-col .sy-v { font-size: 14px; }
+  .sy-col .sy-v small { font-size: 8.5px; }
+}
+
 /* a short top row: smaller ring, facts and tags */
-.sy-short .sy-inst-body { gap: 10px; }
-.sy-short .sy-ring svg { width: 50px; height: 50px; }
-.sy-short .sy-ring b { font-size: 16px; }
+.sy-short .sy-inst-body { grid-template-columns: 86px minmax(0, 1fr); gap: 10px; }
 .sy-short .sy-facts { grid-template-columns: repeat(auto-fill, minmax(calc(5.4 * 14px), 1fr)); }
 .sy-short .sy-facts > div { padding: 0 7px; }
-.sy-short .sy-facts b { font-size: 12.5px; }
 .sy-short .sy-facts em { font-size: 10.5px; }
 .sy-short .sy-inst-l { gap: 3px; }
-.sy-short .sy-inst-l .sy-rcap { font-size: 10.5px; max-width: none; white-space: nowrap; }
-.sy-short .sy-needs { font-size: 10.5px; padding: 1px 8px; }
+.sy-short .sy-inst-l .sy-rcap { font-size: 11px; max-width: none; white-space: nowrap; }
+.sy-short .sy-needs { padding: 1px 8px; }
 .sy-short .sy-machine span:nth-child(n+3) { display: none; }
 .sy-short .sy-reach span:nth-child(n+4) { display: none; }
 
 /* ---------- storage ---------- */
 .sy-store { grid-area: store; display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.sy-store .sy-card-h { padding: 14px 18px 8px; align-items: center; }
-.sy-store .sy-link { font-size: 12px; }
 .sy-drives { display: grid; padding: 0 18px 12px; gap: 8px; align-content: start; }
 .sy-drive { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; font-size: 12.5px; padding-bottom: 7px; border-bottom: 1px solid var(--sy-line-soft); }
 .sy-drive:last-child { border-bottom: 0; }
@@ -197,7 +206,7 @@
 .sy-ct-head span { white-space: nowrap; }
 .sy-ct-head > span:nth-child(3) { text-align: center; }
 .sy-ct-grp { height: 28px; margin: 10px 0 4px; background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 8px; color: var(--sy-fg); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; align-content: center; }
-.sy-ct-head + .sy-ct-grp { margin-top: 2px; }
+.sy-ct-head + * > .sy-ct-grp:first-child { margin-top: 2px; }
 .sy-ct-grp > span { line-height: 1.2; align-self: center; transform: translateY(1.5px); }
 .sy-ct-grp > span:first-child { grid-column: 1 / 3; }
 .sy-ct-grp > span:nth-child(2) { grid-column: 3; justify-self: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--sy-muted); background: var(--sy-card-3); border-radius: 6px; padding: 1px 7px; text-transform: none; white-space: nowrap; }
@@ -240,8 +249,8 @@
 .sy-tk-row .sy-r { text-align: right; color: var(--sy-muted); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sy-tk-row .sy-r b { color: var(--sy-fg); font-weight: 600; }
 .sy-logs { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.sy-lv { display: inline-flex; margin-left: auto; background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 9px; padding: 2px; }
-.sy-lv button { all: unset; box-sizing: border-box; cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--sy-muted); padding: 2px 9px; border-radius: 7px; }
+.sy-lv { display: inline-flex; align-items: center; align-self: center; box-sizing: border-box; height: 24px; margin: -8px 0 -8px auto; background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 9px; padding: 2px; }
+.sy-lv button { all: unset; box-sizing: border-box; cursor: pointer; font-size: 12px; line-height: 18px; height: 18px; font-weight: 600; color: var(--sy-muted); padding: 0 9px; border-radius: 7px; }
 .sy-lv button.sy-on { background: color-mix(in srgb, hsl(var(--primary)) 22%, transparent); color: var(--sy-primary); }
 .sy-lv button:focus-visible { outline: 2px solid hsl(var(--ring)); }
 .sy-logs .sy-card-h .sy-link { margin-left: 10px; }
@@ -265,7 +274,7 @@
 .sy-bk-row .sy-r { text-align: right; color: var(--sy-muted); font-variant-numeric: tabular-nums; }
 .sy-bk-btns { display: grid; grid-template-columns: calc(7.2 * 14px) calc(7.2 * 14px) 1fr; gap: 6px; align-items: center; }
 .sy-bk-btns .sy-muted { text-align: right; font-size: 11.5px; }
-.sy-bk-btns .sy-btn { display: block; padding: 0 10px; }
+.sy-bk-btns .sy-btn { display: block; height: 24px; line-height: 24px; padding: 0 10px; }
 .sy-dbs { display: grid; gap: 6px; align-content: start; }
 .sy-db { display: grid; grid-template-columns: calc(6 * 14px) minmax(0, 1fr) calc(4 * 14px); gap: 10px; align-items: center; font-size: 12px; }
 .sy-db .sy-bar { height: 6px; border-radius: 9px; background: var(--sy-card-3); overflow: hidden; }
