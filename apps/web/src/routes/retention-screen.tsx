@@ -515,15 +515,17 @@ export function RetentionPage() {
           <ListEmpty title="Nothing is leaving soon" description="When a rule matches a title, it waits here for the rule's days before it goes, and anyone can keep it." />
         ) : (
           <ListTable
+            listId="retention-leaving-soon"
+            items={marks}
             columns={[
-              { label: "Title" },
-              { label: "Why" },
-              { label: "Goes" },
-              { label: "Size", width: LIST_TRACK.status },
-              { label: "", width: "320px", mobile: true, srOnly: true }
+              { id: "title", label: "Title", sort: (mark) => mark.title.toLowerCase() },
+              { id: "why", label: "Why", sort: (mark) => (mark.reasons[0] ?? "").toLowerCase() },
+              { id: "goes", label: "Goes", sort: (mark) => new Date(mark.removeAfterUtc) },
+              { id: "size", label: "Size", width: LIST_TRACK.status, sort: (mark) => mark.sizeBytes },
+              { id: "actions", label: "", width: "320px", mobile: true, srOnly: true }
             ]}
           >
-            {marks.map((mark) => {
+            {(rows) => rows.map((mark) => {
               const chip = retentionMarkPresentation(mark.state);
               // A rule that does not remove titles is "Ready", not "Ready to remove".
               const removes = (rules.find((rule) => rule.id === mark.ruleId)?.expiryAction ?? "delete") === "delete";
@@ -577,15 +579,17 @@ export function RetentionPage() {
           />
         ) : (
           <ListTable
+            listId="retention-rules"
+            items={rules}
             columns={[
-              { label: "Rule" },
-              { label: "Selects" },
-              { label: "When it matches" },
-              { label: "Next check" },
-              { label: "On", width: LIST_TRACK.toggle, mobile: true }
+              { id: "rule", label: "Rule", sort: (rule) => rule.name.toLowerCase() },
+              { id: "selects", label: "Selects", sort: (rule) => summarise(rule.steps, fields[rule.level] ?? []).primary?.toString().toLowerCase() },
+              { id: "matches", label: "When it matches", sort: (rule) => rule.waitDays },
+              { id: "nextCheck", label: "Next check", sort: (rule) => (rule.isEnabled && rule.nextCheckUtc ? new Date(rule.nextCheckUtc) : null) },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (rule) => rule.isEnabled }
             ]}
           >
-            {rules.map((rule) => {
+            {(rows) => rows.map((rule) => {
               const selects = summarise(rule.steps, fields[rule.level] ?? []);
               return (
                 <ListRow key={rule.id} onClick={() => open(rule)} selected={drawer.open && drawer.id === rule.id}>
@@ -609,14 +613,16 @@ export function RetentionPage() {
       {keeps.length > 0 ? (
         <ListCard title="Kept" count={`${keeps.length} ${keeps.length === 1 ? "title" : "titles"}`}>
           <ListTable
+            listId="retention-kept"
+            items={keeps}
             columns={[
-              { label: "Title" },
-              { label: "Kept from" },
-              { label: "Note" },
-              { label: "", width: "120px", mobile: true, srOnly: true }
+              { id: "title", label: "Title", sort: (item) => item.title.toLowerCase() },
+              { id: "keptFrom", label: "Kept from", sort: (item) => (item.ruleId ? item.ruleName ?? "Deleted rule" : "Every rule").toLowerCase() },
+              { id: "note", label: "Note", sort: (item) => (item.note ?? "").toLowerCase() },
+              { id: "actions", label: "", width: "120px", mobile: true, srOnly: true }
             ]}
           >
-            {keeps.map((item) => (
+            {(rows) => rows.map((item) => (
               <ListRow key={item.id}>
                 <ListNameCell name={item.title} sub={levelLabel(item.level)} />
                 <ListCell primary={item.ruleId ? `“${item.ruleName ?? "Deleted rule"}”` : "Every rule"} secondary={formatDateTime(item.createdUtc, preferences)} />

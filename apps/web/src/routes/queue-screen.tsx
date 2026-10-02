@@ -17,7 +17,7 @@
  * /api/integrations/processors/handoffs; POST …/queue/actions, …/jobs/retry-failed,
  * …/handoffs/{id}/retry, /api/filesystem/import/{preview,jobs,execute}.
  */
-import { statusPresentation, statusTone } from "../lib/status-tones";
+import { statusPresentation, statusTone, toneSortValue } from "../lib/status-tones";
 import { eventLabel } from "../lib/activity-format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -970,21 +970,23 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           />
         ) : (
           <ListTable
+            listId="transfers-queue"
+            items={queue}
             columns={[
-              { label: "Media" },
-              { label: "Stage", width: "minmax(0,1.25fr)" },
-              { label: "Progress", width: "minmax(0,1.2fr)" },
-              { label: "Speed / left", mobile: true },
-              { label: "Client" },
-              ...(queueColumns.isVisible("quality") ? [{ label: "Quality" }] : []),
-              ...(queueColumns.isVisible("customFormat") ? [{ label: "Custom format" }] : []),
-              ...(queueColumns.isVisible("language") ? [{ label: "Language" }] : []),
-              ...(queueColumns.isVisible("size") ? [{ label: "Size", align: "end" as const }] : []),
-              ...(queueColumns.isVisible("timeleft") ? [{ label: "Timeleft" }] : []),
-              { label: "Status", width: LIST_TRACK.status, mobile: true }
+              { id: "media", label: "Media", sort: (item) => (item.title || item.releaseName).toLowerCase() },
+              { id: "stage", label: "Stage", width: "minmax(0,1.25fr)", sort: (item) => pipelineStage(item) },
+              { id: "progress", label: "Progress", width: "minmax(0,1.2fr)", sort: (item) => item.progress },
+              { id: "speed", label: "Speed / left", mobile: true, sort: (item) => item.speedMbps },
+              { id: "client", label: "Client", sort: (item) => item.clientName.toLowerCase() },
+              ...(queueColumns.isVisible("quality") ? [{ id: "quality", label: "Quality", sort: (item: DownloadQueueItem) => queueRowExtras(item, findDispatchForQueueItem(item, dispatches), false).quality }] : []),
+              ...(queueColumns.isVisible("customFormat") ? [{ id: "customFormat", label: "Custom format", sort: (item: DownloadQueueItem) => queueRowExtras(item, findDispatchForQueueItem(item, dispatches), false).customFormat }] : []),
+              ...(queueColumns.isVisible("language") ? [{ id: "language", label: "Language", sort: (item: DownloadQueueItem) => queueRowExtras(item, findDispatchForQueueItem(item, dispatches), false).language }] : []),
+              ...(queueColumns.isVisible("size") ? [{ id: "size", label: "Size", align: "end" as const, sort: (item: DownloadQueueItem) => item.sizeBytes }] : []),
+              ...(queueColumns.isVisible("timeleft") ? [{ id: "timeleft", label: "Timeleft", sort: (item: DownloadQueueItem) => (item.etaSeconds > 0 ? item.etaSeconds : null) }] : []),
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (item) => { const chip = queueChip(item); return toneSortValue(chip.tone, chip.label); } }
             ]}
           >
-            {queue.map((item) => {
+            {(rows) => rows.map((item) => {
               const chip = queueChip(item);
               // Colour follows what needs a person, not what finished. A
               // completed transfer used to be the brightest thing on the page —
@@ -1063,8 +1065,18 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
             </div>
           ) : null}
           {processorHandoffs.length ? (
-            <ListTable columns={[{ label: "Media" }, { label: "Connector" }, { label: "Stage" }, { label: "Source / output", width: "minmax(0,1.8fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-              {processorHandoffs.map((handoff) => (
+            <ListTable
+              listId="transfers-processing"
+              items={processorHandoffs}
+              columns={[
+                { id: "media", label: "Media", sort: (handoff) => handoff.releaseName.toLowerCase() },
+                { id: "connector", label: "Connector", sort: (handoff) => (handoff.processorName ?? "Configured processor").toLowerCase() },
+                { id: "stage", label: "Stage", sort: (handoff) => processorStageLabel(handoff.status) },
+                { id: "source", label: "Source / output", width: "minmax(0,1.8fr)", sort: (handoff) => (handoff.outputPath ?? handoff.sourcePath).toLowerCase() },
+                { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (handoff) => toneSortValue(processorTone(handoff), processorStatusLabel(handoff.status)) }
+              ]}
+            >
+              {(rows) => rows.map((handoff) => (
                 <ListRow key={handoff.id} onClick={() => setDrawer({ kind: "activity", id: `processor:${handoff.id}` })} selected={openActivity?.id === `processor:${handoff.id}`}>
                   <ListNameCell name={handoff.releaseName} sub={handoff.mediaType === "tv" ? "TV" : "Movies"} />
                   <ListCell primary={handoff.processorName ?? "Configured processor"} secondary={processorSays(handoff, (utc) => formatPreferenceDateTime(utc, preferences)) ?? (handoff.outputPath ? "Output received" : "Waiting for output")} />
@@ -1085,8 +1097,17 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           title="Import & naming"
           count={`${activeImportJobs} active · latest ${importJobs.length}`}
         >
-          <ListTable columns={[{ label: "Media" }, { label: "Source / destination", width: "minmax(0,2fr)" }, { label: "Stage" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-            {importJobs.map((job) => {
+          <ListTable
+            listId="transfers-imports"
+            items={importJobs}
+            columns={[
+              { id: "media", label: "Media", sort: (job) => (parseImportJobPayload(job.payloadJson)?.title || parseImportJobPayload(job.payloadJson)?.fileName || jobTitle(job)).toLowerCase() },
+              { id: "destination", label: "Source / destination", width: "minmax(0,2fr)", sort: (job) => (parseImportJobPayload(job.payloadJson)?.destinationPath ?? "").toLowerCase() },
+              { id: "stage", label: "Stage", sort: (job) => importJobStage(job) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (job) => toneSortValue(importJobTone(job), isJobRetrying(job) ? "retrying" : job.status) }
+            ]}
+          >
+            {(rows) => rows.map((job) => {
               const info = parseImportJobPayload(job.payloadJson);
               // The destination is not in the payload: naming decides it as the
               // file moves, and the download it belongs to then knows where it
@@ -1142,7 +1163,12 @@ function QueuePageBody({ data, revalidator }: { data: RouteSourceData<typeof que
           }
         >
           <ListTable
-            columns={[{ label: "Item" }, { label: "What happened", width: "minmax(0,1.8fr)" }, { label: "Fix", width: "180px", mobile: true, srOnly: true }]}
+            listId="transfers-needs-attention"
+            columns={[
+              { id: "item", label: "Item", sortable: false },
+              { id: "what", label: "What happened", width: "minmax(0,1.8fr)", sortable: false },
+              { id: "fix", label: "Fix", width: "180px", mobile: true, srOnly: true }
+            ]}
             chevron={false}
           >
             {recoveryCases.map((item) => (

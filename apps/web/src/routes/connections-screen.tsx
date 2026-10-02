@@ -60,13 +60,11 @@ import {
   IndexerFilterBar,
   IndexerFilterChips,
   IndexerSelectAllCheckbox,
-  IndexerSortHeader,
-  nextIndexerSort,
-  sortIndexers,
+  indexerSortValue,
   type IndexerBulkScope,
-  type IndexerFilters,
-  type IndexerSortState
+  type IndexerFilters
 } from "./connections/indexer-list-controls";
+import { toneSortValue } from "../lib/status-tones";
 import { ConnectionSelectAll, ConnectionSelectButton, ConnectionSelectionBar, ConnectionTagsDialog } from "../components/app/connection-tags-dialog";
 import { useRowSelection } from "../lib/connection-tags";
 import { resolveDrawerSaveState, shouldClearSaveState } from "../lib/drawer-save-state";
@@ -421,7 +419,6 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
     return clientsForPathMapping(mapping, clients);
   }
 
-  const [indexerSort, setIndexerSort] = useState<IndexerSortState | null>(null);
   const [indexerFilters, setIndexerFilters] = useState<IndexerFilters>(emptyIndexerFilters);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIndexerIds, setSelectedIndexerIds] = useState<Set<string>>(new Set());
@@ -430,7 +427,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   const [tagsFor, setTagsFor] = useState<"indexer" | "downloadClient" | null>(null);
   const clientSelection = useRowSelection();
 
-  const visibleIndexers = useMemo(() => sortIndexers(filterIndexers(indexers, indexerFilters), indexerSort), [indexers, indexerFilters, indexerSort]);
+  const visibleIndexers = useMemo(() => filterIndexers(indexers, indexerFilters), [indexers, indexerFilters]);
 
   function toggleSelectMode() {
     setSelectMode((current) => !current);
@@ -997,18 +994,20 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                 <ListEmpty title="No indexers match these filters" description="Clear a filter to see the rest of your indexers." />
               ) : (
                 <ListTable
+                  listId="indexers"
+                  items={visibleIndexers}
                   columns={[
-                    { label: <IndexerSortHeader label="Name" sortKey="name" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
-                    ...(selectMode ? [{ label: <IndexerSelectAllCheckbox items={visibleIndexers} selected={selectedIndexerIds} onChange={(ids) => setSelectedIndexerIds(new Set(ids))} />, width: "28px", mobile: true }] : []),
-                    { label: <IndexerSortHeader label="Protocol" sortKey="protocol" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
-                    { label: <IndexerSortHeader label="Used for" sortKey="usedFor" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
-                    { label: <IndexerSortHeader label="Last test" sortKey="lastTest" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} /> },
-                    { label: "Pacing" },
-                    { label: <IndexerSortHeader label="Status" sortKey="status" sort={indexerSort} onSort={(key) => setIndexerSort((current) => nextIndexerSort(current, key))} />, width: LIST_TRACK.status, mobile: true },
-                    { label: "On", width: LIST_TRACK.toggle, mobile: true }
+                    { id: "name", label: "Name", sort: (item) => indexerSortValue(item, "name") },
+                    ...(selectMode ? [{ id: "select", label: <IndexerSelectAllCheckbox items={visibleIndexers} selected={selectedIndexerIds} onChange={(ids) => setSelectedIndexerIds(new Set(ids))} />, width: "28px", mobile: true, movable: false, sortable: false }] : []),
+                    { id: "protocol", label: "Protocol", sort: (item) => indexerSortValue(item, "protocol") },
+                    { id: "usedFor", label: "Used for", sort: (item) => indexerSortValue(item, "usedFor") },
+                    { id: "lastTest", label: "Last test", sort: (item) => indexerSortValue(item, "lastTest") },
+                    { id: "pacing", label: "Pacing", sort: (item) => throttleByHost.get(indexerHost(item.baseUrl) ?? "")?.waiting ?? 0 },
+                    { id: "status", label: "Status", sort: (item) => indexerSortValue(item, "status"), width: LIST_TRACK.status, mobile: true },
+                    { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (item) => item.isEnabled }
                   ]}
                 >
-                  {visibleIndexers.map((item) => {
+                  {(rows) => rows.map((item) => {
                     const searchedBy = routing.filter((route) => route.sources.some((source) => source.indexerId === item.id)).map((route) => route.libraryName);
                     const chip = unusedChip(item, searchedBy.length, libraries.length) ?? healthChip(item);
                     const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
@@ -1079,8 +1078,20 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
               {clientSelection.active ? (
                 <ConnectionSelectionBar count={clientSelection.selected.size} noun="download clients" onTags={() => setTagsFor("downloadClient")} onClear={clientSelection.clear} />
               ) : null}
-              <ListTable columns={[{ label: "Name" }, ...(clientSelection.active ? [{ label: <ConnectionSelectAll ids={clients.map((item) => item.id)} selected={clientSelection.selected} noun="download clients" onChange={clientSelection.setAll} />, width: "28px", mobile: true }] : []), { label: "Type" }, { label: "Categories" }, { label: "Now" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-                {clients.map((item) => {
+              <ListTable
+                listId="download-clients"
+                items={clients}
+                columns={[
+                  { id: "name", label: "Name", sort: (item) => item.name.toLowerCase() },
+                  ...(clientSelection.active ? [{ id: "select", label: <ConnectionSelectAll ids={clients.map((item) => item.id)} selected={clientSelection.selected} noun="download clients" onChange={clientSelection.setAll} />, width: "28px", mobile: true, movable: false, sortable: false }] : []),
+                  { id: "type", label: "Type", sort: (item) => CLIENT_PRESETS.find((candidate) => candidate.protocol === item.protocol)?.label ?? item.protocol },
+                  { id: "categories", label: "Categories", sort: (item) => [item.moviesCategory ?? item.categoryTemplate ?? "", item.tvCategory ?? ""].filter(Boolean).join(" ") },
+                  { id: "now", label: "Now", sort: (item) => telemetryByClient.get(item.id)?.summary.activeCount },
+                  { id: "status", label: "Status", sort: (item) => { const chip = healthChip(item, telemetryByClient.get(item.id)?.clientPaused ?? false); return toneSortValue(chip.tone, chip.label); }, width: LIST_TRACK.status, mobile: true },
+                  { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (item) => item.isEnabled }
+                ]}
+              >
+                {(rows) => rows.map((item) => {
                   const sentBy = routing.filter((route) => route.downloadClients.some((client) => client.downloadClientId === item.id)).map((route) => route.libraryName);
                   const live = telemetryByClient.get(item.id);
                   const chip = unusedChip(item, sentBy.length, libraries.length) ?? healthChip(item, live?.clientPaused ?? false);
@@ -1150,8 +1161,18 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
             ) : pathMappings.length === 0 ? (
               <ListEmpty title="No remote path mappings yet" description="Add one below if a client's reported path does not match what Deluno sees." />
             ) : (
-              <ListTable columns={[{ label: "Host" }, { label: "Client path" }, { label: "Deluno path" }, { label: "Applies to" }, { label: "", width: LIST_TRACK.status }]}>
-                {pathMappings.map((mapping) => {
+              <ListTable
+                listId="path-mappings"
+                items={pathMappings}
+                columns={[
+                  { id: "host", label: "Host", sort: (mapping) => (mapping.host ?? "").toLowerCase() },
+                  { id: "remote", label: "Client path", sort: (mapping) => mapping.remotePath.toLowerCase() },
+                  { id: "local", label: "Deluno path", sort: (mapping) => mapping.localPath.toLowerCase() },
+                  { id: "applies", label: "Applies to", sort: (mapping) => clientsForMapping(mapping).map((client) => client.name).join(", ").toLowerCase() },
+                  { id: "actions", label: "", width: LIST_TRACK.status }
+                ]}
+              >
+                {(rows) => rows.map((mapping) => {
                   const appliesTo = clientsForMapping(mapping);
                   return (
                     <ListRow key={mapping.id}>
@@ -1245,8 +1266,17 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
           {libraries.length === 0 ? (
             <ListEmpty title="No libraries yet" description="Create a Movies or TV library first, then choose its search and download connections here." />
           ) : (
-            <ListTable columns={[{ label: "Name" }, { label: "Indexers" }, { label: "Download clients" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-              {libraries.map((library) => {
+            <ListTable
+              listId="library-routing"
+              items={libraries}
+              columns={[
+                { id: "name", label: "Name", sort: (library) => library.name.toLowerCase() },
+                { id: "indexers", label: "Indexers", sort: (library) => routing.find((item) => item.libraryId === library.id)?.sources.length ?? 0 },
+                { id: "clients", label: "Download clients", sort: (library) => routing.find((item) => item.libraryId === library.id)?.downloadClients.length ?? 0 },
+                { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (library) => { const snapshot = routing.find((item) => item.libraryId === library.id); return !snapshot?.sources.length ? "0-no indexers" : !snapshot.downloadClients.length ? "1-no client" : "2-ready"; } }
+              ]}
+            >
+              {(rows) => rows.map((library) => {
                 const snapshot = routing.find((item) => item.libraryId === library.id);
                 const sources = snapshot?.sources ?? [];
                 const targets = snapshot?.downloadClients ?? [];
@@ -1288,8 +1318,17 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
               }
             />
           ) : (
-            <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Used by" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-              {proxies.map((item) => (
+            <ListTable
+              listId="proxies"
+              items={proxies}
+              columns={[
+                { id: "name", label: "Name", sort: (item) => item.name.toLowerCase() },
+                { id: "type", label: "Type", sort: (item) => PROXY_TYPE_LABELS[item.proxyType] ?? item.proxyType },
+                { id: "usedBy", label: "Used by", sort: (item) => item.assignedIndexerNames.length },
+                { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (item) => item.isEnabled }
+              ]}
+            >
+              {(rows) => rows.map((item) => (
                 <ListRow key={item.id} onClick={() => openProxy(item)} selected={drawer.kind === "proxy" && drawer.id === item.id}>
                   <ListNameCell name={item.name} sub={<span className="font-mono">{item.address}</span>} />
                   <ListCell primary={PROXY_TYPE_LABELS[item.proxyType] ?? item.proxyType} />

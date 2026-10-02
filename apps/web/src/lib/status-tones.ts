@@ -725,3 +725,14 @@ export function titleBar(item: {
     noun: "subtitle languages"
   };
 }
+
+const TONE_SEVERITY: Record<Tone, number> = { bad: 0, warn: 1, info: 2, idle: 3, ok: 4 };
+
+/**
+ * What a Status column sorts by (#1119): things that need attention first
+ * (bad, then warn), healthy last, and the chip's own words within a tone, so
+ * the order on screen reads the same as the chips.
+ */
+export function toneSortValue(tone: Tone | null | undefined, label?: string): string {
+  return `${TONE_SEVERITY[tone ?? "idle"]}-${(label ?? "").toLowerCase()}`;
+}

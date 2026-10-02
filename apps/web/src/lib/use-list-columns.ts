@@ -13,13 +13,15 @@ import { useCallback, useMemo, useState } from "react";
 export type SortDirection = "asc" | "desc";
 export type SortValue = string | number | boolean | Date | null | undefined;
 
-/** A value getter (one argument) or a comparator (two arguments). A string names a sort the server does. */
-export type ColumnSort<T> = ((item: T) => SortValue) | ((a: T, b: T) => number) | string;
+/** A value getter, or a string naming a sort the server does. */
+export type ColumnSort<T> = ((item: T) => SortValue) | string;
 
 export interface ListColumnSpec<T = never> {
   id?: string;
   label: unknown;
   sort?: ColumnSort<T>;
+  /** A comparator, for an order a single value cannot express. Used instead of `sort`. */
+  compare?: (a: T, b: T) => number;
   /** Set false where sorting makes no sense (action, chevron and switch columns). */
   sortable?: boolean;
   /** Set false to pin the column in its slot. */
@@ -46,7 +48,7 @@ export function isColumnMovable(column: ListColumnSpec<never>): boolean {
 }
 
 export function isColumnSortable(column: ListColumnSpec<never>): boolean {
-  return column.sortable !== false && column.sort !== undefined && isColumnMovable(column);
+  return column.sortable !== false && (column.sort !== undefined || column.compare !== undefined) && isColumnMovable(column);
 }
 
 const storageKey = (listId: string) => `deluno:list-columns:${listId}`;
@@ -105,11 +107,11 @@ export function compareSortValues(a: SortValue, b: SortValue): number {
 
 export function sortListItems<T>(items: T[], column: ListColumnSpec<T> | undefined, direction: SortDirection): T[] {
   const sort = column?.sort;
-  if (!sort || typeof sort === "string") return items;
+  const compare = column?.compare;
+  if (!compare && (!sort || typeof sort === "string")) return items;
   const sign = direction === "asc" ? 1 : -1;
   const decorated = items.map((item, index) => ({ item, index }));
-  if (sort.length >= 2) {
-    const compare = sort as (a: T, b: T) => number;
+  if (compare) {
     decorated.sort((a, b) => sign * compare(a.item, b.item) || a.index - b.index);
   } else {
     const getter = sort as (item: T) => SortValue;
@@ -170,7 +172,7 @@ export function useListColumns<T>(
     const column = columns[ids.indexOf(stored.sort.id)];
     return column && isColumnSortable(column) ? stored.sort : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listId, stored.sort, ids.join("|"), columns.map((column) => (column.sort === undefined ? "-" : "s")).join("")]);
+  }, [listId, stored.sort, ids.join("|"), columns.map((column) => (column.sort === undefined && column.compare === undefined ? "-" : "s")).join("")]);
 
   const sortedItems = useMemo(() => {
     if (!items) return [] as T[];

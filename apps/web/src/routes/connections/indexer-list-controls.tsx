@@ -7,7 +7,7 @@
 import { FILTER_MENU_TRIGGER, FilterChips } from "../../components/ui/filter-chips";
 import { MenuSelect } from "../../components/ui/menu-select";
 import type { ReactNode } from "react";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { IndexerItem } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -16,13 +16,9 @@ import { cn } from "../../lib/utils";
 import { healthChip, protocolLabel, scopeLabel } from "./format";
 
 export type IndexerSortKey = "name" | "protocol" | "usedFor" | "lastTest" | "status";
-export type SortDirection = "asc" | "desc";
-export interface IndexerSortState {
-  key: IndexerSortKey;
-  direction: SortDirection;
-}
 
-function indexerSortValue(item: IndexerItem, key: IndexerSortKey): string | number {
+/** What each sortable column of the indexer list sorts by (the list's own column headers do the clicking, #1119). */
+export function indexerSortValue(item: IndexerItem, key: IndexerSortKey): string | number {
   switch (key) {
     case "name":
       return item.name.toLowerCase();
@@ -37,25 +33,6 @@ function indexerSortValue(item: IndexerItem, key: IndexerSortKey): string | numb
       // label the Status chip shows, so the order matches what's on screen.
       return `${item.isEnabled ? 0 : 1}-${healthChip(item).label.toLowerCase()}`;
   }
-}
-
-/** Stable sort: equal keys keep their existing relative order. */
-export function sortIndexers(items: IndexerItem[], sort: IndexerSortState | null): IndexerItem[] {
-  if (!sort) return items;
-  const { key, direction } = sort;
-  const decorated = items.map((item, index) => ({ item, index, value: indexerSortValue(item, key) }));
-  decorated.sort((a, b) => {
-    if (a.value < b.value) return -1;
-    if (a.value > b.value) return 1;
-    return a.index - b.index;
-  });
-  const ordered = decorated.map((entry) => entry.item);
-  return direction === "asc" ? ordered : ordered.reverse();
-}
-
-export function nextIndexerSort(current: IndexerSortState | null, key: IndexerSortKey): IndexerSortState {
-  if (current?.key === key) return { key, direction: current.direction === "asc" ? "desc" : "asc" };
-  return { key, direction: "asc" };
 }
 
 export interface IndexerFilters {
@@ -88,21 +65,6 @@ export function filterIndexers(items: IndexerItem[], filters: IndexerFilters): I
     if (filters.scope && !scopeIncludes(item.mediaScope, filters.scope)) return false;
     return true;
   });
-}
-
-/** Clickable column header — sortable columns pass one as their `label`. */
-export function IndexerSortHeader({ label, sortKey, sort, onSort }: { label: ReactNode; sortKey: IndexerSortKey; sort: IndexerSortState | null; onSort: (key: IndexerSortKey) => void }) {
-  const active = sort?.key === sortKey;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey)}
-      className={cn("flex items-center gap-1 truncate uppercase tracking-[0.1em] hover:text-foreground", active && "text-foreground")}
-    >
-      {label}
-      {active ? (sort?.direction === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />) : null}
-    </button>
-  );
 }
 
 function distinctValues(items: IndexerItem[], pick: (item: IndexerItem) => string) {

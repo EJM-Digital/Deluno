@@ -9,6 +9,7 @@
  * PUT/DELETE /api/notification-webhooks/{id}, POST …/{id}/test,
  * GET /api/notification-webhooks/deliveries, POST …/replay, PATCH /api/settings.
  */
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { TagPicker } from "../components/app/tag-picker";
 import { useLoaderData, useRevalidator } from "react-router-dom";
@@ -429,8 +430,20 @@ export function SettingsNotificationsPage() {
           {selection.active ? (
             <ConnectionSelectionBar count={selection.selected.size} noun="notification connections" onTags={() => setTagsOpen(true)} onClear={selection.clear} />
           ) : null}
-          <ListTable columns={[{ label: "Name" }, ...(selection.active ? [{ label: <ConnectionSelectAll ids={sorted.map((webhook) => webhook.id)} selected={selection.selected} noun="notification connections" onChange={selection.setAll} />, width: "28px", mobile: true }] : []), { label: "Sends to", width: "minmax(0,1.4fr)" }, { label: "Events" }, { label: "Last fired" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-            {sorted.map((webhook) => {
+          <ListTable
+            listId="notification-connections"
+            items={sorted}
+            columns={[
+              { id: "name", label: "Name", sort: (webhook) => webhook.name.toLowerCase() },
+              ...(selection.active ? [{ id: "select", label: <ConnectionSelectAll ids={sorted.map((webhook) => webhook.id)} selected={selection.selected} noun="notification connections" onChange={selection.setAll} />, width: "28px", mobile: true, movable: false, sortable: false }] : []),
+              { id: "sendsTo", label: "Sends to", width: "minmax(0,1.4fr)", sort: (webhook) => (webhook.url || providerLabel(webhook.provider)).toLowerCase() },
+              { id: "events", label: "Events", sort: (webhook) => eventLabel(webhook.eventFilters).toLowerCase() },
+              { id: "lastFired", label: "Last fired", sort: (webhook) => (webhook.lastFiredUtc ? new Date(webhook.lastFiredUtc) : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (webhook) => { const chip = statusChip(webhook, settings.enableNotifications); return toneSortValue(chip.tone, chip.label); } },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (webhook) => webhook.isEnabled }
+            ]}
+          >
+            {(rows) => rows.map((webhook) => {
               const chip = statusChip(webhook, settings.enableNotifications);
               return (
                 <ListRow key={webhook.id} onClick={() => open(webhook)} selected={mode.kind === "edit" && mode.id === webhook.id}>
@@ -478,8 +491,17 @@ export function SettingsNotificationsPage() {
       </ListCard>
 
       <ListCard title="Search, download & import" count="Independently toggleable · on by default, matching what every install has always done">
-        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-          {SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS.map((row) => (
+        <ListTable
+          listId="notification-events-search"
+          items={SEARCH_DOWNLOAD_IMPORT_PREFERENCE_ROWS}
+          columns={[
+            { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
+            { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
+            { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (row) => Boolean(preferences[row.key]) }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((row) => (
             <ListRow key={row.key}>
               <ListNameCell name={row.name} />
               <ListCell primary={row.description} />
@@ -498,8 +520,17 @@ export function SettingsNotificationsPage() {
       </ListCard>
 
       <ListCard title="Lifecycle notifications" count="Independently toggleable · off by default so nothing new fires unannounced">
-        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-          {LIFECYCLE_PREFERENCE_ROWS.map((row) => (
+        <ListTable
+          listId="notification-events-lifecycle"
+          items={LIFECYCLE_PREFERENCE_ROWS}
+          columns={[
+            { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
+            { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
+            { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (row) => Boolean(preferences[row.key]) }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((row) => (
             <ListRow key={row.key}>
               <ListNameCell name={row.name} />
               <ListCell primary={row.description} />
@@ -518,8 +549,17 @@ export function SettingsNotificationsPage() {
       </ListCard>
 
       <ListCard title="Recovery & cleanup" count="Off by default · Deluno's own strike/cleanup/queue actions, not just Activity entries">
-        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-          {RECOVERY_CLEANUP_PREFERENCE_ROWS.map((row) => (
+        <ListTable
+          listId="notification-events-recovery"
+          items={RECOVERY_CLEANUP_PREFERENCE_ROWS}
+          columns={[
+            { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
+            { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
+            { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (row) => Boolean(preferences[row.key]) }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((row) => (
             <ListRow key={row.key}>
               <ListNameCell name={row.name} />
               <ListCell primary={row.description} />
@@ -538,8 +578,17 @@ export function SettingsNotificationsPage() {
       </ListCard>
 
       <ListCard title="Subtitle notifications" count="Independently toggleable, like every other notification kind below">
-        <ListTable columns={[{ label: "Event" }, { label: "Fires when" }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]} chevron={false}>
-          {SUBTITLE_PREFERENCE_ROWS.map((row) => (
+        <ListTable
+          listId="notification-events-subtitles"
+          items={SUBTITLE_PREFERENCE_ROWS}
+          columns={[
+            { id: "event", label: "Event", sort: (row) => row.name.toLowerCase() },
+            { id: "fires", label: "Fires when", sort: (row) => row.description.toLowerCase() },
+            { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (row) => Boolean(preferences[row.key]) }
+          ]}
+          chevron={false}
+        >
+          {(rows) => rows.map((row) => (
             <ListRow key={row.key}>
               <ListNameCell name={row.name} />
               <ListCell primary={row.description} />

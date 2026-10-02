@@ -108,16 +108,18 @@ interface ListTableProps<T> {
   columns?: Array<ListColumn<T>>;
   /** Names this list in this browser: its column order and sort are remembered under it. */
   listId?: string;
-  /** From `useListColumns`, when the page hands its rows over to be sorted. */
+  /** The page's rows, when the table should sort them: pass them here and render them from the function form of `children`. */
+  items?: T[];
+  /** From `useListColumns`, for a page that needs the sort itself (a list that loads a page at a time sorts on the server). */
   list?: ListColumnsState<T>;
   /** Rows open something on click — reserve the trailing chevron track. */
   chevron?: boolean;
-  children: React.ReactNode;
+  children: React.ReactNode | ((items: T[]) => React.ReactNode);
   className?: string;
 }
 
-export function ListTable<T = never>({ columns, listId, list, chevron = true, children, className }: ListTableProps<T>) {
-  const own = useListColumns<T>(list ? undefined : listId, (columns ?? []) as ListColumnSpec<T>[]);
+export function ListTable<T = never>({ columns, listId, items, list, chevron = true, children, className }: ListTableProps<T>) {
+  const own = useListColumns<T>(list ? undefined : listId, (columns ?? []) as ListColumnSpec<T>[], items);
   const state = list ?? own;
   const enabled = Boolean(state.listId);
   const headerRowRef = React.useRef<HTMLDivElement>(null);
@@ -287,7 +289,7 @@ export function ListTable<T = never>({ columns, listId, list, chevron = true, ch
           ) : null}
         </div>
         <ListTableContext.Provider value={{ template, mobileTemplate, chevron, visual, reordered }}>
-          <div ref={bodyRef} role="rowgroup">{children}</div>
+          <div ref={bodyRef} role="rowgroup">{typeof children === "function" ? children(state.items) : children}</div>
         </ListTableContext.Provider>
       </div>
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
