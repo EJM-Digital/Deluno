@@ -42,6 +42,8 @@ import { SwitchRow } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
 import { cn } from "../lib/utils";
 
+const DISCOVER_TYPE_KEY = "deluno-discover-type";
+
 type DiscoverMediaType = "movies" | "series";
 
 interface DiscoverLoaderData {
@@ -97,7 +99,21 @@ function candidateFromListEntry(entry: DiscoverListEntry): AddCandidate {
 
 export function DiscoverPage() {
   const { libraries, qualityProfiles } = useLoaderData() as DiscoverLoaderData;
-  const [mediaType, setMediaType] = useState<DiscoverMediaType>("movies");
+  // Movies or TV is remembered between visits, as Schedule remembers its range (James, 2 Oct 2026).
+  const [mediaType, setMediaType] = useState<DiscoverMediaType>(() => {
+    try {
+      return window.localStorage.getItem(DISCOVER_TYPE_KEY) === "series" ? "series" : "movies";
+    } catch {
+      return "movies";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DISCOVER_TYPE_KEY, mediaType);
+    } catch {
+      // Nothing kept: the choice holds until the page is left.
+    }
+  }, [mediaType]);
   const [data, setData] = useState<DiscoverResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
