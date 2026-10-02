@@ -12,7 +12,6 @@
  * shelf. Clicking a card opens the title's own page. A title the library truly has no poster for is a plain tile with its
  * initials.
  */
-import type { LucideIcon } from "lucide-react";
 import type { CSSProperties, ReactElement } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
@@ -41,14 +40,25 @@ export function initialsOf(title: string): string {
   return letters || title.slice(0, 1).toUpperCase();
 }
 
-/** The poster slot: always the same 46 by 69 box (2:3); a poster in it or, only when the title has none, a plain tile with the station's icon and the title's initials. */
-export function PosterSlot({ src, title, icon: Icon }: { src?: string | null; title: string; icon: LucideIcon }) {
-  const tile = (
-    <span aria-hidden className="lj-ph">
-      <Icon />
+/** The tint of a poster's tile by what the title is, the same every time: films and shows wear the shelf's own library colours. */
+export function tileHue(kind: string | undefined): number {
+  if (kind === "movie" || kind === "movies") return 205;
+  if (kind === "series" || kind === "episode" || kind === "tv") return 265;
+  return 210;
+}
+
+/** A title's poster as Weir draws it: 2:3, its initials on a tinted tile until there is a picture, and wherever there is none. */
+export function PosterTile({ title, kind }: { title: string; kind?: string }) {
+  return (
+    <span aria-hidden className="lj-tile" style={{ ["--tile-hue" as string]: tileHue(kind) }}>
       <span>{initialsOf(title)}</span>
     </span>
   );
+}
+
+/** The poster slot: always the same 2:3 box; a poster in it or, only when the title has none, its initials on a tile. */
+export function PosterSlot({ src, title, kind }: { src?: string | null; title: string; kind?: string }) {
+  const tile = <PosterTile title={title} kind={kind} />;
   return (
     <span aria-hidden className="lj-poster">
       <ArtworkImage src={src} alt="" loading="lazy" className="h-full w-full object-cover" fallback={tile} />
@@ -142,7 +152,9 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
   const moving = card.stage === "downloading" && !card.stuck && (card.speedMbps ?? 0) > 0;
   const lines = detailLines(card, indexers, Date.now());
   const route = routeOf(card) || card.routeNote || "";
-  const style: CSSProperties & Record<string, string | number> = { "--lj-st": card.stuck ? "var(--lj-warning)" : `hsl(var(${lane.accent}))` };
+  // The card's edge is its station's colour; a title that stopped is edged in the colour of what happened, and an import that finished is green.
+  const edge = card.landed ? "ok" : status.tone === "bad" ? "bad" : card.stuck || status.tone === "warn" ? "warn" : null;
+  const style: CSSProperties & Record<string, string | number> = { "--lj-st": edge === "ok" ? "var(--lj-success)" : edge === "bad" ? "hsl(var(--destructive))" : edge === "warn" ? "var(--lj-warning)" : `hsl(var(${lane.accent}))` };
   if (place) {
     style.left = `calc(${place.column} * 100% / ${place.stations} + 6px)`;
     style.top = `${place.top}px`;
@@ -154,11 +166,11 @@ export function JourneyToken({ card, titles, arrivals, indexers, place }: CardCo
       data-glide-stage={card.stage}
       aria-label={`${face.title}: ${status.text}`}
       title={[card.release && face.linked ? card.release : face.title, card.startedBy ? STARTED_LABEL[card.startedBy] : null, card.reasonFull || card.reason, route].filter(Boolean).join(" · ")}
-      className={cn("lj-token lj-fresh", card.landed && "lj-done", place?.hidden && "lj-hidden", arrivals.has(card.key) && motionAllowed() && "lj-arrive")}
+      className={cn("lj-token lj-fresh", card.landed && "lj-done", edge === "bad" && "lj-bad", edge === "warn" && "lj-warn", place?.hidden && "lj-hidden", arrivals.has(card.key) && motionAllowed() && "lj-arrive")}
       style={style}
       tabIndex={place?.hidden ? -1 : undefined}
     >
-      <span data-card-poster={card.key}><PosterSlot src={face.poster} title={face.title} icon={lane.icon} /></span>
+      <span data-card-poster={card.key}><PosterSlot src={face.poster} title={face.title} kind={card.entity?.kind} /></span>
       <span className="lj-body">
         <span className="lj-t">{face.title}</span>
         <StatusLine card={card} status={status} />

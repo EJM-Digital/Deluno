@@ -36,7 +36,7 @@
 .lj-station-link { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; padding: 9px 22px 9px 26px; color: inherit; text-decoration: none; }
 .lj-station:first-child .lj-station-link { padding-left: 14px; }
 .lj-station-link:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
-.lj-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; background: transparent; border: 1.5px solid var(--lj-st); color: var(--lj-st); font-size: 11px; font-weight: 700; transition: box-shadow 0.3s; }
+.lj-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; background: transparent; border: 1.5px solid var(--lj-st); color: var(--lj-st); transition: box-shadow 0.3s; }
 .lj-dot svg { width: 12px; height: 12px; }
 .lj-text { display: flex; gap: 6px; align-items: baseline; justify-content: center; white-space: nowrap; min-width: 0; line-height: 1.25; }
 .lj-nm { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
@@ -62,13 +62,15 @@
 .lj-token:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .lj-token.lj-fresh { animation: lj-pop 0.6s ease; }
 .lj-token.lj-arrive { animation: lj-pop 0.6s ease, lj-glow 1.4s ease-out; }
-.lj-token.lj-done { border-color: var(--lj-success); border-left-color: var(--lj-success); box-shadow: 0 0 0 1px var(--lj-success), 0 0 22px hsl(var(--success) / 0.35); }
-.lj-token.lj-done .lj-pb i { background: var(--lj-success); }
+/* Delivered: full and green for a moment, before its poster flies to the shelf. A title that stopped is edged in the colour of what happened. */
+.lj-token.lj-done { border-color: var(--lj-success); box-shadow: 0 0 0 1px var(--lj-success), 0 0 22px color-mix(in srgb, var(--lj-success) 35%, transparent); }
+.lj-token.lj-bad { border-color: hsl(var(--destructive)); }
+.lj-token.lj-warn { border-color: var(--lj-warning); }
 .lj-hidden { visibility: hidden; }
-.lj-poster { display: block; width: calc(var(--lj-poster-h, 69px) / 1.5); height: var(--lj-poster-h, 69px); border-radius: 6px; overflow: hidden; background: var(--lj-card-3); }
+.lj-poster { display: block; width: calc(var(--lj-poster-h, 69px) / 1.5); height: var(--lj-poster-h, 69px); border-radius: 6px; overflow: hidden; }
 .lj-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lj-ph { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--lj-muted); background: var(--lj-card-3); }
-.lj-ph svg { width: 14px; height: 14px; color: var(--lj-st); }
+/* A title's poster, 2:3, filling the box it is in. Where there is no picture it is the title's initials on a tinted tile (Weir's tile), the tint set by --tile-hue. */
+.lj-tile { position: relative; display: flex; width: 100%; height: 100%; box-sizing: border-box; align-items: flex-end; justify-content: center; padding-bottom: 6%; overflow: hidden; border-radius: 6px; background: linear-gradient(160deg, hsl(var(--tile-hue, 210) 45% 34%), hsl(calc(var(--tile-hue, 210) + 40) 50% 14%)); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: hsl(0 0% 100% / 0.88); }
 .lj-body { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* Title, status and bar keep their height whatever is under them, so the room left for the detail lines is what is measured. */
 .lj-body > * { flex: none; }
@@ -76,7 +78,6 @@
 .lj-s { font-size: 11.5px; line-height: 1.2; color: var(--lj-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .lj-s-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lj-s b { color: var(--lj-st); font-weight: 600; }
-.lj-done .lj-s b { color: var(--lj-success); }
 .lj-s-warn { color: var(--lj-warning); }
 .lj-s-bad { color: hsl(var(--destructive)); }
 .lj-s-ok { color: var(--lj-success); }
@@ -121,3 +122,6 @@ body.live-resizing .lj-fly { display: none !important; }
   .lj-token { transition: none; }
   .lj-active::after, .lj-pulse, .lj-pb.lj-moving i::after, .lj-pb.lj-wait i, .lj-token.lj-fresh, .lj-token.lj-arrive { animation: none; }
 }
+
+/* The poster in flight: lifted off the page, its corners set by the flight as it passes from the card's to the shelf's. */
+.lj-fly { box-shadow: 0 16px 36px hsl(0 0% 0% / 0.5); }

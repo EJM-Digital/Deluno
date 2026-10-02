@@ -68,12 +68,14 @@ export function detailLines(card: JourneyCard, indexers: number, now: number): D
       if (card.processorStep) lines.push({ parts: [bold(card.processorStep)] });
       lines.push({ parts: size ? [bold(formatSize(size)), " handed over"] : ["Handed over"], right: spent(card.handedOverUtc, now) });
       if (card.processorQueuePosition && card.processorQueuePosition > 0) lines.push({ parts: [`Number ${card.processorQueuePosition.toLocaleString("en-AU")} in its line`] });
+      if (release) lines.push(release);
       break;
     }
     case "importing": {
       if (card.destination) lines.push({ parts: ["To ", bold(card.destination)] });
       const facts = [size ? formatSize(size) : null, card.quality ?? null].filter(Boolean) as string[];
       if (facts.length > 0) lines.push({ parts: [bold(facts[0]), ...(facts.length > 1 ? [` · ${facts[1]}`] : [])] });
+      if (release) lines.push(release);
       break;
     }
     default:

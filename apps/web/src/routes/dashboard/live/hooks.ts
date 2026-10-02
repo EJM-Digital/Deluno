@@ -119,8 +119,7 @@ const NO_EXTRA: ReadonlyArray<Entity | undefined> = [];
 const ARRIVAL_MS = 2400;
 
 /**
- * The cards that have arrived on the board, or moved to another lane, since it
- * was first drawn. They are marked for a moment so they can be shown arriving.
+ * The cards that have moved to another lane since the board was first drawn (a card new to the board has not moved: it only fades in). They are marked for a moment so they can glow as they arrive.
  */
 export function useArrivals(cards: JourneyCard[]): ReadonlySet<string> {
   const previous = useRef<ReadonlyMap<string, Stage> | null>(null);
@@ -132,7 +131,6 @@ export function useArrivals(cards: JourneyCard[]): ReadonlySet<string> {
     previous.current = new Map(cards.map((card) => [card.key, card.stage]));
     if (before === null) return;
     const arrived = movedCards(before, cards);
-    for (const card of cards) if (!before.has(card.key)) arrived.add(card.key);
     if (arrived.size === 0) return;
     setFresh(arrived);
     if (timer.current !== null) clearTimeout(timer.current);
