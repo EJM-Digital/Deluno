@@ -11,8 +11,10 @@
  * On narrow screens only the first cell and cells marked `mobile` remain.
  */
 import * as React from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, GripVertical, RotateCcw, Search } from "lucide-react";
 import { titleCaseLabel } from "../../lib/title-case";
+import { COLUMN_EASE, COLUMN_MOVE_MS, prefersReducedMotion, trackColumnDrag } from "../../lib/list-column-drag";
+import { isColumnMovable, isColumnSortable, useListColumns, type ListColumnSpec, type ListColumnsState } from "../../lib/use-list-columns";
 import { cn } from "../../lib/utils";
 
 /* ---------------------------------------------------------------- card */
@@ -61,7 +63,7 @@ export function ListCard({ title, count, titleCase = true, filter, actions, clas
 
 /* --------------------------------------------------------------- table */
 
-export interface ListColumn {
+export interface ListColumn<T = never> extends Omit<ListColumnSpec<T>, "label" | "srOnly"> {
   label: React.ReactNode;
   /** CSS grid track. Defaults: first column `minmax(0,1.6fr)`, others `minmax(0,1fr)`. */
   width?: string;
@@ -88,55 +90,208 @@ export const LIST_TRACK = {
   chevron: "40px"
 } as const;
 
-const ListTableContext = React.createContext<{ template: string; mobileTemplate: string; chevron: boolean; columns: ListColumn[] } | null>(null);
+interface ListTableContextValue {
+  template: string;
+  mobileTemplate: string;
+  chevron: boolean;
+  /** Index each column had in the page's own list, in display order. */
+  visual: number[];
+  reordered: boolean;
+}
 
-interface ListTableProps {
-  columns: ListColumn[];
+const ListTableContext = React.createContext<ListTableContextValue | null>(null);
+/** The page's own column index of the cell being rendered; null outside a reordered row. */
+const CellIndexContext = React.createContext<number | null>(null);
+
+interface ListTableProps<T> {
+  /** The page's columns. Give each an `id`, and a `sort` where sorting makes sense. */
+  columns?: Array<ListColumn<T>>;
+  /** Names this list in this browser: its column order and sort are remembered under it. */
+  listId?: string;
+  /** From `useListColumns`, when the page hands its rows over to be sorted. */
+  list?: ListColumnsState<T>;
   /** Rows open something on click — reserve the trailing chevron track. */
   chevron?: boolean;
   children: React.ReactNode;
   className?: string;
 }
 
-export function ListTable({ columns, chevron = true, children, className }: ListTableProps) {
-  const template = React.useMemo(() => {
-    const tracks = columns.map((column, index) => column.width ?? (index === 0 ? "minmax(0,1.6fr)" : "minmax(0,1fr)"));
-    if (chevron) tracks.push(LIST_TRACK.chevron);
-    return tracks.join(" ");
-  }, [columns, chevron]);
-  const mobileTemplate = React.useMemo(() => {
-    const tracks = columns.map((column, index) => (index === 0 ? "minmax(0,1fr)" : column.mobile ? "auto" : null)).filter(Boolean) as string[];
-    if (chevron) tracks.push(LIST_TRACK.chevron);
-    return tracks.join(" ");
-  }, [columns, chevron]);
+export function ListTable<T = never>({ columns, listId, list, chevron = true, children, className }: ListTableProps<T>) {
+  const own = useListColumns<T>(list ? undefined : listId, (columns ?? []) as ListColumnSpec<T>[]);
+  const state = list ?? own;
+  const enabled = Boolean(state.listId);
+  const headerRowRef = React.useRef<HTMLDivElement>(null);
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const flipRef = React.useRef<Record<string, number> | null>(null);
+  const [announcement, setAnnouncement] = React.useState("");
+
+  const visual = state.columns.map((entry) => entry.originalIndex);
+  const displayOrder = state.columns.map((entry) => entry.id);
+  const orderKey = displayOrder.join("|");
+
+  const template = state.columns
+    .map(({ column, originalIndex }) => (column as ListColumn<T>).width ?? (originalIndex === 0 ? "minmax(0,1.6fr)" : "minmax(0,1fr)"))
+    .concat(chevron ? [LIST_TRACK.chevron] : [])
+    .join(" ");
+  const mobileTemplate = state.columns
+    .map(({ column, originalIndex }) => (originalIndex === 0 ? "minmax(0,1fr)" : (column as ListColumn<T>).mobile ? "auto" : null) as string | null)
+    .filter((track): track is string => Boolean(track))
+    .concat(chevron ? [LIST_TRACK.chevron] : [])
+    .join(" ");
+  const reordered = visual.some((value, index) => value !== index);
+
+  const movableById = React.useCallback(
+    (id: string) => enabled && Boolean(state.columns.find((entry) => entry.id === id && isColumnMovable(entry.column))),
+    [enabled, state.columns]
+  );
+
+  const moveByKeyboard = (id: string, delta: -1 | 1) => {
+    const movable = state.movableOrder;
+    const from = movable.indexOf(id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= movable.length) return;
+    const headerRow = headerRowRef.current;
+    if (headerRow) {
+      const snapshot: Record<string, number> = {};
+      headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
+        snapshot[header.dataset.colId as string] = header.getBoundingClientRect().left;
+      });
+      flipRef.current = snapshot;
+    }
+    const next = [...movable];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    state.setMovableOrder(next);
+    const label = state.columns.find((entry) => entry.id === id)?.column.label;
+    setAnnouncement(`${typeof label === "string" ? label : "Column"} moved to position ${to + 1} of ${movable.length}`);
+  };
+
+  // Keyboard moves slide the swapped columns into place (FLIP): the new order is already laid out,
+  // so each header and its cells start at their old spot and ease to the new one.
+  React.useLayoutEffect(() => {
+    const snapshot = flipRef.current;
+    flipRef.current = null;
+    const headerRow = headerRowRef.current;
+    const body = bodyRef.current;
+    if (!snapshot || !headerRow || !body || prefersReducedMotion()) return;
+    const rows = Array.from(body.querySelectorAll<HTMLElement>('[role="row"]'));
+    const moving: HTMLElement[] = [];
+    headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
+      const id = header.dataset.colId as string;
+      const dx = (snapshot[id] ?? 0) - header.getBoundingClientRect().left;
+      if (Math.abs(dx) < 1) return;
+      const position = displayOrder.indexOf(id);
+      const elements = [header, ...rows.map((row) => row.children[position] as HTMLElement | undefined).filter((cell): cell is HTMLElement => Boolean(cell))];
+      for (const element of elements) {
+        element.style.transition = "none";
+        element.style.transform = `translate3d(${dx}px,0,0)`;
+      }
+      moving.push(...elements);
+    });
+    if (moving.length === 0) return;
+    void headerRow.offsetWidth;
+    for (const element of moving) {
+      element.style.transition = `transform ${COLUMN_MOVE_MS}ms ${COLUMN_EASE}`;
+      element.style.transform = "";
+    }
+    const timer = setTimeout(() => {
+      for (const element of moving) element.style.transition = "";
+    }, COLUMN_MOVE_MS + 30);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey]);
+
+  const startDrag = (event: React.PointerEvent, id: string) => {
+    const headerRow = headerRowRef.current;
+    const body = bodyRef.current;
+    if (!headerRow || !body || !movableById(id)) return;
+    trackColumnDrag(event.nativeEvent, id, {
+      headerRow,
+      body,
+      order: displayOrder,
+      isMovable: movableById,
+      commit: (order) => state.setMovableOrder(order.filter(movableById))
+    });
+  };
 
   return (
-    <ListTableContext.Provider value={{ template, mobileTemplate, chevron, columns }}>
+    <>
       <div role="table" className={className}>
         <div
+          ref={headerRowRef}
           role="row"
           style={{ "--list-cols": template, "--list-cols-mobile": mobileTemplate } as React.CSSProperties}
-          className="grid h-[var(--list-thead-height)] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)] [grid-template-columns:var(--list-cols-mobile)] md:[grid-template-columns:var(--list-cols)]"
+          className="relative grid h-[var(--list-thead-height)] items-center gap-[var(--grid-gap)] border-b border-hairline bg-surface-2/40 px-[var(--card-pad-x)] [grid-template-columns:var(--list-cols-mobile)] md:[grid-template-columns:var(--list-cols)]"
         >
-          {columns.map((column, index) => (
-            <span
-              key={index}
-              role="columnheader"
-              className={cn(
-                "truncate text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground",
-                column.align === "end" && "text-right",
-                index !== 0 && !column.mobile && "hidden md:block",
-                column.srOnly && "sr-only"
-              )}
-            >
-              {column.label}
-            </span>
-          ))}
+          {state.columns.map(({ column, id, originalIndex }) => {
+            const col = column as ListColumn<T>;
+            const movable = movableById(id);
+            const sortable = enabled && isColumnSortable(col);
+            const active = state.sort?.id === id ? state.sort : null;
+            return (
+              <div
+                key={id}
+                role="columnheader"
+                data-col-id={id}
+                aria-sort={sortable ? (active ? (active.direction === "asc" ? "ascending" : "descending") : "none") : undefined}
+                tabIndex={movable && !sortable ? 0 : undefined}
+                aria-keyshortcuts={movable ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
+                title={movable ? "Drag to move this column. Alt with the left or right arrow also moves it." : undefined}
+                onPointerDown={movable ? (event) => startDrag(event, id) : undefined}
+                onKeyDown={
+                  movable
+                    ? (event) => {
+                        if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+                          event.preventDefault();
+                          moveByKeyboard(id, event.key === "ArrowLeft" ? -1 : 1);
+                        }
+                      }
+                    : undefined
+                }
+                className={cn(
+                  "group relative min-w-0 truncate rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  movable && "cursor-grab touch-pan-y select-none",
+                  col.align === "end" && "text-right",
+                  originalIndex !== 0 && !col.mobile && "hidden md:block",
+                  col.srOnly && "sr-only"
+                )}
+              >
+                {movable ? (
+                  <GripVertical aria-hidden className="pointer-events-none absolute -left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-50" />
+                ) : null}
+                {sortable ? (
+                  <button
+                    type="button"
+                    onClick={() => state.toggleSort(id)}
+                    className={cn("inline-flex max-w-full cursor-[inherit] items-center gap-1 truncate uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}
+                  >
+                    <span className="truncate">{col.label}</span>
+                    {active ? active.direction === "asc" ? <ChevronUp aria-hidden className="h-3 w-3 shrink-0" /> : <ChevronDown aria-hidden className="h-3 w-3 shrink-0" /> : null}
+                  </button>
+                ) : (
+                  col.label
+                )}
+              </div>
+            );
+          })}
           {chevron ? <span aria-hidden /> : null}
+          {enabled && state.changed ? (
+            <button
+              type="button"
+              aria-label="Reset columns"
+              title="Reset columns"
+              onClick={state.reset}
+              className="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
-        <div role="rowgroup">{children}</div>
+        <ListTableContext.Provider value={{ template, mobileTemplate, chevron, visual, reordered }}>
+          <div ref={bodyRef} role="rowgroup">{children}</div>
+        </ListTableContext.Provider>
       </div>
-    </ListTableContext.Provider>
+      <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
+    </>
   );
 }
 
@@ -146,6 +301,24 @@ interface ListRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onCli
   onClick?: () => void;
   selected?: boolean;
   children: React.ReactNode;
+}
+
+/** Cells in the order the person chose. Only reordered when the cell count matches the columns; otherwise left as the page wrote them. */
+function orderedCells(children: React.ReactNode, visual: number[]): React.ReactNode {
+  const flat: React.ReactNode[] = [];
+  const push = (nodes: React.ReactNode) => {
+    React.Children.toArray(nodes).forEach((node) => {
+      if (React.isValidElement(node) && node.type === React.Fragment) push((node.props as { children?: React.ReactNode }).children);
+      else flat.push(node);
+    });
+  };
+  push(children);
+  if (flat.length !== visual.length) return children;
+  return visual.map((originalIndex) => (
+    <CellIndexContext.Provider key={originalIndex} value={originalIndex}>
+      {flat[originalIndex]}
+    </CellIndexContext.Provider>
+  ));
 }
 
 export function ListRow({ onClick, selected = false, className, children, ...props }: ListRowProps) {
@@ -177,7 +350,7 @@ export function ListRow({ onClick, selected = false, className, children, ...pro
       )}
       {...props}
     >
-      {children}
+      {table.reordered ? orderedCells(children, table.visual) : children}
       {table.chevron ? (
         <span aria-hidden className="flex justify-end text-muted-foreground/50">
           {interactive ? <ChevronRight className="h-4 w-4" /> : null}
@@ -205,12 +378,14 @@ interface ListCellProps {
 }
 
 export function ListCell({ primary, secondary, mobile = false, align = "start", mono, numeric, className, children }: ListCellProps) {
+  const originalIndex = React.useContext(CellIndexContext);
   return (
     <div
       role="cell"
       className={cn(
         "min-w-0 text-[length:var(--list-row-text)] leading-tight",
-        !mobile && "hidden md:block first:block",
+        // The page's first column always shows on a phone, wherever the person has moved it to.
+        !mobile && (originalIndex === null ? "hidden md:block first:block" : originalIndex === 0 ? "" : "hidden md:block"),
         align === "end" && "text-right",
         numeric && "tabular-nums",
         className
