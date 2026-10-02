@@ -14,7 +14,7 @@ import { cn } from "../../lib/utils";
 import { attentionSources } from "./attention";
 import { useSetupState } from "./sources";
 import { useDashboardAttention } from "./use-dashboard-attention";
-import { GRID_AREAS_SYSTEM, GRID_COLUMNS, gridRows, pageLayout } from "./live/layout";
+import { GRID_AREAS_SYSTEM, GRID_COLUMNS, gridRows, lowNeedOfGrid, pageLayout } from "./live/layout";
 import { useElementSize, useNow, useRemPx } from "./live/hooks";
 import { ComputerCard, InstanceCard, NetworkCard } from "./system/band";
 import { BackupsCard, LogCard, TasksCard } from "./system/bottom";
@@ -54,7 +54,8 @@ export function SystemTab({ summary }: { summary: DashboardSummary | undefined }
   // The one shared grid, from the same rule as Live's (see live/layout.ts), re-read whenever the grid is resized.
   const [gridRef, grid] = useElementSize<HTMLDivElement>();
   const windowHeight = typeof window === "undefined" ? 0 : window.innerHeight;
-  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height);
+  // Live's shelf is not on this tab, so the same need is worked out from the grid's width: Live and System always agree.
+  const rows = gridRows(grid.height > 0 ? windowHeight : 0, grid.height, { lowNeed: grid.width > 0 ? lowNeedOfGrid(grid.width, (summary?.library?.libraryCounts?.length ?? 0) > 0) : undefined });
   const resizing = useResizing();
 
   return (

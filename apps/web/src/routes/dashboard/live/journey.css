@@ -38,9 +38,10 @@
 .lj-station-link:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .lj-dot { width: 22px; height: 22px; flex: none; border-radius: 50%; display: grid; place-items: center; background: transparent; border: 1.5px solid var(--lj-st); color: var(--lj-st); transition: box-shadow 0.3s; }
 .lj-dot svg { width: 12px; height: 12px; }
-.lj-text { display: flex; gap: 6px; align-items: baseline; justify-content: center; white-space: nowrap; min-width: 0; line-height: 1.25; }
-.lj-nm { font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
-.lj-ct { font-size: 12px; font-weight: 700; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+/* A label never runs into its icon: the text may shrink and ends in an ellipsis, the stage's name kept whole before the count (it shortens only when it alone does not fit). */
+.lj-text { display: flex; flex: 0 1 auto; gap: 6px; align-items: baseline; justify-content: center; white-space: nowrap; min-width: 0; overflow: hidden; line-height: 1.25; }
+.lj-nm { flex: 0 0 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-weight: 600; font-size: 13px; color: hsl(var(--foreground)); }
+.lj-ct { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 700; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
 .lj-empty { opacity: 0.55; }
 .lj-active { background: color-mix(in srgb, var(--lj-st) 24%, transparent); }
 .lj-active::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, hsl(0 0% 100% / 0.1) 50%, transparent 70%); animation: lj-sheen 2.6s linear infinite; }

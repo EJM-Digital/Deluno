@@ -30,12 +30,13 @@ describe("the shelf's small posters", () => {
   const section = { movies: { qualityMet: 1, upgradable: 1, downloading: 0, missing: 0 }, shows: { qualityMet: 0, upgradable: 0, downloading: 0, missing: 0 }, libraryCounts: [counts("hd", "Movies HD"), counts("kids", "Kids")] } as never;
   const show = () => render(<MemoryRouter><Shelf items={[item("2")]} titles={NO_TITLES} newest={new Set()} heading="1 arrived today" library={section} /></MemoryRouter>);
 
-  it("a small poster has no arrow, says the upgrade in its tooltip and name, and its tag is a strip link with the library's name", () => {
+  it("a small poster says the upgrade in its tooltip and name, and its tag is a strip link with the library's name", () => {
     box = { width: 340, height: 200 };
     show();
     const li = document.querySelector<HTMLElement>(".lsh-poster")!;
     expect(li).toHaveAttribute("data-size", "small");
     expect(li.querySelector(".lsh-up")).toBeNull();
+    expect(li.querySelector(".lsh-art")!.children).toHaveLength(1);
     const poster = screen.getByRole("link", { name: /^Film 2/ });
     expect(poster).toHaveAttribute("title", expect.stringContaining("upgraded from WEB 720p"));
     expect(poster.getAttribute("aria-label")).toMatch(/upgraded from WEB 720p, .+/);
@@ -46,13 +47,14 @@ describe("the shelf's small posters", () => {
     expect(tag.style.getPropertyValue("--tile-hue")).toBe(String(LIBRARY_HUES[1]));
   });
 
-  it("a full poster keeps its arrow and whole tag", () => {
+  it("a full poster has its whole tag and nothing else on the art, and says the upgrade in its status line", () => {
     box = { width: 900, height: 330 };
     show();
     const li = document.querySelector<HTMLElement>(".lsh-poster")!;
     expect(li).toHaveAttribute("data-size", "full");
-    expect(li.querySelector(".lsh-up")).toHaveAttribute("title", "Upgraded from WEB 720p");
-    expect(screen.getByRole("link", { name: /^Film 2/ }).getAttribute("aria-label")).not.toContain("upgraded from");
+    expect(li.querySelector(".lsh-up")).toBeNull();
+    expect(li.querySelector(".lsh-art")!.children).toHaveLength(1);
+    expect(li.querySelector(".lsh-status")).toHaveTextContent("Upgraded · Bluray 1080p");
     expect(screen.getByRole("link", { name: "Kids" })).toHaveAttribute("title", "Open Kids in the library");
   });
 });
