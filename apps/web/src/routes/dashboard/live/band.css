@@ -53,6 +53,7 @@ a.lb-label:hover { color: hsl(var(--foreground)); }
 .lb-tile .lb-fig small { font-size: 14px; font-weight: 500; color: var(--lb-muted); letter-spacing: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The upload sits right after the download's unit, as the mockup shows it (its .side is display: contents there, so the margin never applied). */
 .lb-tile .lb-fig .lb-side { font-size: 15px; font-weight: 600; flex: none; color: hsl(var(--success)); }
+.lb-tile .lb-fig .lb-down { color: hsl(var(--info)); }
 .lb-body { min-width: 0; min-height: 0; position: relative; }
 
 /* Speed */

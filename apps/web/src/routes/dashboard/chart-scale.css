@@ -29,3 +29,5 @@
   pointer-events: none;
 }
 .cs-layer.cs-on { z-index: 5; }
+.cs-down { color: hsl(var(--info)); }
+.cs-up { color: hsl(var(--success)); }
