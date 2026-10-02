@@ -9,6 +9,7 @@
  * POST …/sync, …/preview, …/approve-preview, …/exclude-preview,
  * DELETE …/exclusions/{exclusionId}.
  */
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLoaderData, useRevalidator } from "react-router-dom";
 import { Eye, LoaderCircle, Plus, RefreshCcw } from "lucide-react";
@@ -546,8 +547,19 @@ export function SettingsListsPage() {
             }
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "List" }, { label: "Adds to" }, { label: "Last sync" }, { label: "Status", width: LIST_TRACK.status, mobile: true }, { label: "On", width: LIST_TRACK.toggle, mobile: true }]}>
-            {sorted.map((item) => {
+          <ListTable
+            listId="import-lists"
+            items={sorted}
+            columns={[
+              { id: "name", label: "Name", sort: (item) => item.name.toLowerCase() },
+              { id: "list", label: "List", sort: (item) => item.feedUrl.toLowerCase() },
+              { id: "addsTo", label: "Adds to", sort: (item) => (item.libraryName ?? "").toLowerCase() },
+              { id: "lastSync", label: "Last sync", sort: (item) => (item.lastSyncUtc ? new Date(item.lastSyncUtc) : null) },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (item) => { const chip = syncChip(item); return toneSortValue(chip.tone, chip.label); } },
+              { id: "on", label: "On", width: LIST_TRACK.toggle, mobile: true, sort: (item) => item.isEnabled }
+            ]}
+          >
+            {(rows) => rows.map((item) => {
               const chip = syncChip(item);
               return (
                 <ListRow key={item.id} onClick={() => openEdit(item)} selected={mode.kind === "edit" && mode.id === item.id}>
@@ -585,9 +597,18 @@ export function SettingsListsPage() {
             description="When you exclude an entry during preview, it appears here so you can review or allow it again later."
           />
         ) : (
-          <ListTable columns={[{ label: "Entry" }, { label: "Source" }, { label: "Decision" }, { label: "Created" }, { label: "Action", width: "120px", mobile: true }]}>
-            {[...exclusions]
-              .sort((left, right) => new Date(right.createdUtc).getTime() - new Date(left.createdUtc).getTime())
+          <ListTable
+            listId="list-exclusions"
+            items={[...exclusions].sort((left, right) => new Date(right.createdUtc).getTime() - new Date(left.createdUtc).getTime())}
+            columns={[
+              { id: "entry", label: "Entry", sort: (exclusion) => exclusion.title.toLowerCase() },
+              { id: "source", label: "Source", sort: (exclusion) => (exclusion.sourceName || (intakeSources.find((source) => source.id === exclusion.sourceId)?.name ?? exclusion.sourceKind)).toLowerCase() },
+              { id: "decision", label: "Decision", sort: (exclusion) => (exclusion.expiresUtc ? new Date(exclusion.expiresUtc) : null) },
+              { id: "created", label: "Created", sort: (exclusion) => new Date(exclusion.createdUtc) },
+              { id: "action", label: "Action", width: "120px", mobile: true }
+            ]}
+          >
+            {(rows) => rows
               .map((exclusion) => (
                 <ListRow key={exclusion.id}>
                   <ListNameCell name={exclusion.title} sub={exclusion.year ? String(exclusion.year) : exclusion.imdbId ?? "No year or IMDb id"} />

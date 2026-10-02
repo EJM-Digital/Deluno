@@ -9,9 +9,10 @@ import {
   IndexerFilterChips,
   IndexerSelectAllCheckbox,
   indexerFiltersActive,
-  nextIndexerSort,
-  sortIndexers
+  indexerSortValue,
+  type IndexerSortKey
 } from "./indexer-list-controls";
+import { sortListItems } from "../../lib/use-list-columns";
 
 function indexer(overrides: Partial<IndexerItem> = {}): IndexerItem {
   return {
@@ -38,41 +39,28 @@ function indexer(overrides: Partial<IndexerItem> = {}): IndexerItem {
   } as IndexerItem;
 }
 
-describe("sortIndexers (#737)", () => {
+describe("indexer column sort values (#737, #1119)", () => {
   const a = indexer({ id: "a", name: "Zeta", protocol: "torznab", lastHealthTestUtc: "2026-01-01T00:00:00Z" });
   const b = indexer({ id: "b", name: "Alpha", protocol: "newznab", lastHealthTestUtc: "2026-01-03T00:00:00Z" });
   const c = indexer({ id: "c", name: "Mid", protocol: "rss", lastHealthTestUtc: null });
+  const sortBy = (key: IndexerSortKey, direction: "asc" | "desc") =>
+    sortListItems([a, b, c], { label: key, sort: (item: IndexerItem) => indexerSortValue(item, key) }, direction).map((item) => item.id);
 
   it("sorts by name ascending and descending", () => {
-    expect(sortIndexers([a, b, c], { key: "name", direction: "asc" }).map((item) => item.id)).toEqual(["b", "c", "a"]);
-    expect(sortIndexers([a, b, c], { key: "name", direction: "desc" }).map((item) => item.id)).toEqual(["a", "c", "b"]);
+    expect(sortBy("name", "asc")).toEqual(["b", "c", "a"]);
+    expect(sortBy("name", "desc")).toEqual(["a", "c", "b"]);
   });
 
   it("sorts a never-tested indexer to the front ascending, back descending", () => {
-    expect(sortIndexers([a, b, c], { key: "lastTest", direction: "asc" }).map((item) => item.id)).toEqual(["c", "a", "b"]);
-    expect(sortIndexers([a, b, c], { key: "lastTest", direction: "desc" }).map((item) => item.id)).toEqual(["b", "a", "c"]);
-  });
-
-  it("returns items unchanged when no sort is set", () => {
-    expect(sortIndexers([a, b, c], null)).toEqual([a, b, c]);
+    expect(sortBy("lastTest", "asc")).toEqual(["c", "a", "b"]);
+    expect(sortBy("lastTest", "desc")).toEqual(["b", "a", "c"]);
   });
 
   it("sorts disabled indexers apart from enabled ones", () => {
     const off = indexer({ id: "off", name: "Aaa", isEnabled: false, healthStatus: "healthy" });
     const on = indexer({ id: "on", name: "Zzz", isEnabled: true, healthStatus: "healthy" });
-    expect(sortIndexers([off, on], { key: "status", direction: "asc" }).map((item) => item.id)).toEqual(["on", "off"]);
-  });
-});
-
-describe("nextIndexerSort (#737)", () => {
-  it("starts a new column ascending", () => {
-    expect(nextIndexerSort(null, "name")).toEqual({ key: "name", direction: "asc" });
-  });
-  it("flips direction on the same column", () => {
-    expect(nextIndexerSort({ key: "name", direction: "asc" }, "name")).toEqual({ key: "name", direction: "desc" });
-  });
-  it("resets to ascending when a different column is clicked", () => {
-    expect(nextIndexerSort({ key: "name", direction: "desc" }, "protocol")).toEqual({ key: "protocol", direction: "asc" });
+    const ordered = sortListItems([off, on], { label: "Status", sort: (item: IndexerItem) => indexerSortValue(item, "status") }, "asc");
+    expect(ordered.map((item) => item.id)).toEqual(["on", "off"]);
   });
 });
 

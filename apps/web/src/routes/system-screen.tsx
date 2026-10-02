@@ -1,3 +1,4 @@
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defineSources, queryClient, refetchSources, sourceLoader, useRouteSources, type RouteSource, type RouteSourceData, type RouteSourceState } from "../lib/route-cache";
@@ -296,36 +297,48 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
       {indexers.length + downloadClients.length + processors.length === 0 ? (
         <ListEmpty title="Nothing connected yet" description="Add a search source or a download client under Find & Download and its health shows up here." />
       ) : (
-        <ListTable columns={[{ label: "Provider" }, { label: "Kind", width: "minmax(0,1fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-          {indexers.map((indexer) => (
-            <ListRow key={`indexer:${indexer.id}`} onClick={() => setSelectedProvider({ kind: "indexer", provider: indexer })}>
-              <ListNameCell name={indexer.name} sub="Search source" />
-              <ListCell primary={indexer.protocol} />
-              <ListCell mobile>
-                <Chip tone={healthTone(indexer.healthStatus)}>{indexer.healthStatus}</Chip>
-              </ListCell>
-            </ListRow>
-          ))}
-          {downloadClients.map((client) => (
-            <ListRow key={`client:${client.id}`} onClick={() => setSelectedProvider({ kind: "download-client", provider: client })}>
-              <ListNameCell name={client.name} sub="Download client" />
-              <ListCell primary={client.protocol} />
-              <ListCell mobile>
-                <Chip tone={healthTone(client.healthStatus)}>{client.healthStatus}</Chip>
-              </ListCell>
-            </ListRow>
-          ))}
-          {processors.map((processor) => (
-            <ListRow key={`processor:${processor.id}`}>
-              <ListNameCell name={processor.name} sub="Processor" />
-              <ListCell primary={processor.provider} />
-              <ListCell mobile>
-                <Chip tone={processor.isEnabled ? healthTone(processor.healthStatus) : "idle"}>
-                  {processor.isEnabled ? processor.healthStatus : "off"}
-                </Chip>
-              </ListCell>
-            </ListRow>
-          ))}
+        <ListTable
+          listId="system-providers"
+          items={[
+            ...indexers.map((provider) => ({ kind: "indexer" as const, provider })),
+            ...downloadClients.map((provider) => ({ kind: "client" as const, provider })),
+            ...processors.map((provider) => ({ kind: "processor" as const, provider }))
+          ]}
+          columns={[
+            { id: "provider", label: "Provider", sort: (entry) => entry.provider.name.toLowerCase() },
+            { id: "kind", label: "Kind", width: "minmax(0,1fr)", sort: (entry) => (entry.kind === "processor" ? entry.provider.provider : entry.provider.protocol).toLowerCase() },
+            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (entry) => (entry.kind === "processor" ? (entry.provider.isEnabled ? entry.provider.healthStatus : "off") : entry.provider.healthStatus) }
+          ]}
+        >
+          {(rows) => rows.map((entry) =>
+            entry.kind === "indexer" ? (
+              <ListRow key={`indexer:${entry.provider.id}`} onClick={() => setSelectedProvider({ kind: "indexer", provider: entry.provider })}>
+                <ListNameCell name={entry.provider.name} sub="Search source" />
+                <ListCell primary={entry.provider.protocol} />
+                <ListCell mobile>
+                  <Chip tone={healthTone(entry.provider.healthStatus)}>{entry.provider.healthStatus}</Chip>
+                </ListCell>
+              </ListRow>
+            ) : entry.kind === "client" ? (
+              <ListRow key={`client:${entry.provider.id}`} onClick={() => setSelectedProvider({ kind: "download-client", provider: entry.provider })}>
+                <ListNameCell name={entry.provider.name} sub="Download client" />
+                <ListCell primary={entry.provider.protocol} />
+                <ListCell mobile>
+                  <Chip tone={healthTone(entry.provider.healthStatus)}>{entry.provider.healthStatus}</Chip>
+                </ListCell>
+              </ListRow>
+            ) : (
+              <ListRow key={`processor:${entry.provider.id}`}>
+                <ListNameCell name={entry.provider.name} sub="Processor" />
+                <ListCell primary={entry.provider.provider} />
+                <ListCell mobile>
+                  <Chip tone={entry.provider.isEnabled ? healthTone(entry.provider.healthStatus) : "idle"}>
+                    {entry.provider.isEnabled ? entry.provider.healthStatus : "off"}
+                  </Chip>
+                </ListCell>
+              </ListRow>
+            )
+          )}
         </ListTable>
       )}
       <ProviderHealthDrawer selection={selectedProvider} onClose={() => setSelectedProvider(null)} />
@@ -501,8 +514,17 @@ export function BackgroundJobsCard({ jobs, failedJobs, onChanged }: { jobs: JobQ
       {listed.length === 0 ? (
         <ListEmpty title="No background jobs yet" description="Library-wide refreshes, backups and scheduled passes show here as Deluno runs them. Jobs about one title are in Activity." />
       ) : (
-        <ListTable columns={[{ label: "Job" }, { label: "Started by", width: "minmax(0,1fr)" }, { label: "When", width: "150px" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-          {listed.map((job) => (
+        <ListTable
+          listId="system-background-jobs"
+          items={listed}
+          columns={[
+            { id: "job", label: "Job", sort: (job) => job.label.toLowerCase() },
+            { id: "startedBy", label: "Started by", width: "minmax(0,1fr)", sort: (job) => job.sourceLabel.toLowerCase() },
+            { id: "when", label: "When", width: "150px", sort: (job) => new Date(job.completedUtc ?? job.startedUtc ?? job.createdUtc) },
+            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (job) => { const retrying = isJobRetrying(job); return toneSortValue(retrying ? "info" : jobTone(job.status), retrying ? "Retrying" : getJobStatusLabel(job.status as JobStatus)); } }
+          ]}
+        >
+          {(rows) => rows.map((job) => (
             <ListRow key={job.id} onClick={() => setOpenJobId(job.id)} selected={openJobId === job.id}>
               <ListNameCell name={job.label} sub={job.attempts > 1 ? `Tried ${job.attempts} times` : "Tried once"} />
               <ListCell primary={job.sourceLabel} secondary={job.lastError ?? undefined} />
@@ -636,8 +658,20 @@ function SystemTasksCard({ tasks }: { tasks: SystemTaskItem[] }) {
 
   return (
     <ListCard title="System tasks" count={`${tasks.length} recurring passes · durable across restarts`}>
-      <ListTable columns={[{ label: "Task" }, { label: "Cadence", width: "140px" }, { label: "Last execution", width: "180px" }, { label: "Next execution", width: "180px" }, { label: "Result", width: LIST_TRACK.status, mobile: true }, { label: "", width: LIST_TRACK.action, align: "end", mobile: true }]} chevron={false}>
-        {tasks.map((task) => (
+      <ListTable
+        listId="system-tasks"
+        items={tasks}
+        columns={[
+          { id: "task", label: "Task", sort: (task) => task.name.toLowerCase() },
+          { id: "cadence", label: "Cadence", width: "140px", sort: (task) => task.intervalSeconds },
+          { id: "last", label: "Last execution", width: "180px", sort: (task) => (task.lastCompletedUtc ? new Date(task.lastCompletedUtc) : null) },
+          { id: "next", label: "Next execution", width: "180px", sort: (task) => (task.nextRunUtc ? new Date(task.nextRunUtc) : null) },
+          { id: "result", label: "Result", width: LIST_TRACK.status, mobile: true, sort: (task) => toneSortValue(jobTone(task.lastResult), task.lastResult) },
+          { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+        ]}
+        chevron={false}
+      >
+        {(rows) => rows.map((task) => (
           <ListRow key={task.key}>
             <ListNameCell
               name={task.name}
@@ -1830,14 +1864,16 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
         <ListEmpty title="No checks have run yet" description="Deluno checks download clients, indexers, libraries and connections every fifteen minutes." />
       ) : (
         <ListTable
+          listId="system-health-checks"
+          items={sorted}
           columns={[
-            { label: "Check" },
-            { label: "Result", width: "minmax(0,1.6fr)" },
-            { label: "Status", width: LIST_TRACK.status, mobile: true }
+            { id: "check", label: "Check", sort: (check) => check.name.toLowerCase() },
+            { id: "result", label: "Result", width: "minmax(0,1.6fr)", sort: (check) => check.message.toLowerCase() },
+            { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (check) => ({ problem: 0, warning: 1, ok: 3 } as Record<string, number>)[check.status] ?? 2 }
           ]}
           chevron={false}
         >
-          {sorted.map((check) => {
+          {(rows) => rows.map((check) => {
             const isSnoozed = check.snoozedUntilUtc !== null && new Date(check.snoozedUntilUtc).getTime() > Date.now();
             // A safety-net row for one unexpected item in a processor output
             // folder (#921) is acted on directly -- Import or Delete -- not
@@ -1990,14 +2026,16 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
         count={`${suggestions.length} optional`}
       >
         <ListTable
+          listId="system-suggestions"
+          items={suggestions}
           columns={[
-            { label: "Setting" },
-            { label: "Why", width: "minmax(0,1.6fr)" },
-            { label: "", width: LIST_TRACK.action, align: "end", mobile: true }
+            { id: "setting", label: "Setting", sort: (check) => check.name.toLowerCase() },
+            { id: "why", label: "Why", width: "minmax(0,1.6fr)", sort: (check) => check.message.toLowerCase() },
+            { id: "actions", label: "", width: LIST_TRACK.action, align: "end", mobile: true }
           ]}
           chevron={false}
         >
-          {suggestions.map((check) => {
+          {(rows) => rows.map((check) => {
             const action = SUGGESTION_ACTIONS[check.id];
             return (
               <ListRow key={check.id}>

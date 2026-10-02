@@ -8,6 +8,7 @@
  * Contracts: PATCH /api/settings, PUT /api/libraries/{id}/workflow,
  * GET/POST/DELETE /api/integrations/processors/connections (+ /{id}/test).
  */
+import { toneSortValue } from "../lib/status-tones";
 import { SecretUnreadableNotice } from "../components/app/secret-unreadable-notice";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator } from "react-router-dom";
@@ -950,8 +951,19 @@ function ProcessingWorkflowPage() {
         {libraries.length === 0 ? (
           <ListEmpty title="No libraries yet" description="Create a library first; each one chooses whether completed downloads import straight away or wait for a processor." />
         ) : (
-          <ListTable columns={[{ label: "Library" }, { label: "What happens" }, { label: "Processed folder", width: "minmax(0,1.4fr)" }, { label: "After import" }, { label: "If processing fails" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
-            {libraries.map((library) => {
+          <ListTable
+            listId="media-management-libraries"
+            items={libraries}
+            columns={[
+              { id: "library", label: "Library", sort: (library) => library.name.toLowerCase() },
+              { id: "happens", label: "What happens", sort: (library) => (library.importWorkflow ?? "standard") },
+              { id: "processed", label: "Processed folder", width: "minmax(0,1.4fr)", sort: (library) => (library.processorOutputPath ?? "").toLowerCase() },
+              { id: "afterImport", label: "After import", sort: (library) => library.cleanupMode ?? "keep-source" },
+              { id: "failure", label: "If processing fails", sort: (library) => library.processorFailureMode ?? "" },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (library) => { const refined = (library.importWorkflow ?? "standard") === "refine-before-import"; const processor = findLinkedProcessor(processorConnections, library.processorConnectionId, library.processorName); const ready = !refined || (Boolean(library.processorOutputPath) && (!(library.processorConnectionId || library.processorName) || Boolean(processor?.isEnabled))); return ready ? 1 : 0; } }
+            ]}
+          >
+            {(rows) => rows.map((library) => {
               const refined = (library.importWorkflow ?? "standard") === "refine-before-import";
               const processor = findLinkedProcessor(processorConnections, library.processorConnectionId, library.processorName);
               const ready = !refined || (Boolean(library.processorOutputPath) && (!(library.processorConnectionId || library.processorName) || Boolean(processor?.isEnabled)));
@@ -985,8 +997,19 @@ function ProcessingWorkflowPage() {
             actions={<Button type="button" size="sm" variant="outline" onClick={openCallback}>Connect processor</Button>}
           />
         ) : (
-          <ListTable columns={[{ label: "Name" }, { label: "Type" }, { label: "Notifies", width: "minmax(0,1.4fr)" }, { label: "Health", width: LIST_TRACK.status, mobile: true }, { label: "Actions", width: "22rem", srOnly: true }]} chevron={false}>
-            {processorConnections.map((connection) => (
+          <ListTable
+            listId="processor-connections"
+            items={processorConnections}
+            columns={[
+              { id: "name", label: "Name", sort: (connection) => connection.name.toLowerCase() },
+              { id: "type", label: "Type", sort: (connection) => connection.provider },
+              { id: "notifies", label: "Notifies", width: "minmax(0,1.4fr)", sort: (connection) => (connection.submissionUrl || "").toLowerCase() },
+              { id: "health", label: "Health", width: LIST_TRACK.status, mobile: true, sort: (connection) => toneSortValue(healthTone(connection.healthStatus), connection.healthStatus) },
+              { id: "actions", label: "Actions", width: "22rem", srOnly: true }
+            ]}
+            chevron={false}
+          >
+            {(rows) => rows.map((connection) => (
               <ListRow key={connection.id}>
                 <ListNameCell name={<>{connection.name}<ConnectionVersionBeside info={versions.get(versionKey("processor", connection.id))} /></>} sub={processorSub(connection)} />
                 <ListCell primary={connection.provider === "fileflows-webhook" ? "FileFlows webhook" : "Generic processor notification"} />

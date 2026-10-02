@@ -15,6 +15,7 @@
  * Contracts: POST /api/migration/preview, POST /api/migration/apply,
  * GET /api/migration/reports, POST /api/{indexers|download-clients}/{id}/test.
  */
+import { toneSortValue } from "../lib/status-tones";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowRight, Download, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -281,8 +282,17 @@ export function SettingsMigrationPage() {
             </Chip>
           }
         >
-          <ListTable columns={[{ label: "Source" }, { label: "Rows", width: "120px" }, { label: "Actions", width: "minmax(0,1.6fr)" }, { label: "Classification", width: "minmax(0,1.6fr)" }]}>
-            {report.inventory.entries.map((entry) => (
+          <ListTable
+            listId="migration-inventory"
+            items={report.inventory.entries}
+            columns={[
+              { id: "source", label: "Source", sort: (entry) => entry.category.toLowerCase() },
+              { id: "rows", label: "Rows", width: "120px", sort: (entry) => entry.inputRowCount },
+              { id: "actions", label: "Actions", width: "minmax(0,1.6fr)", sort: (entry) => formatCounts(entry.actionCounts, "No mapped actions").toLowerCase() },
+              { id: "classification", label: "Classification", width: "minmax(0,1.6fr)", sort: (entry) => formatCounts(entry.classificationCounts, "No special classification").toLowerCase() }
+            ]}
+          >
+            {(rows) => rows.map((entry) => (
               <ListRow key={`${entry.sourceKind}-${entry.category}-${entry.mediaType}`}>
                 <ListNameCell name={entry.category} sub={`${entry.sourceKind} · ${entry.mediaType}`} />
                 <ListCell numeric primary={`${entry.accountedRowCount}/${entry.inputRowCount}`} secondary={entry.unaccountedRowCount ? `${entry.unaccountedRowCount} unaccounted` : "All rows mapped"} />
@@ -315,14 +325,16 @@ export function SettingsMigrationPage() {
             <ListEmpty title="Nothing to import" description="No configuration Deluno recognises was found in this payload. Check that you exported the whole snapshot." />
           ) : (
             <ListTable
+              listId="migration-changes"
+              items={report.operations}
               columns={[
-                { label: "Item" },
-                { label: "Why", width: "minmax(0,1.8fr)" },
-                { label: "Action", width: LIST_TRACK.status, mobile: true },
-                { label: "Apply", width: LIST_TRACK.toggle, mobile: true }
+                { id: "item", label: "Item", sort: (operation) => operation.name.toLowerCase() },
+                { id: "why", label: "Why", width: "minmax(0,1.8fr)", sort: (operation) => operation.reason.toLowerCase() },
+                { id: "action", label: "Action", width: LIST_TRACK.status, mobile: true, sort: (operation) => toneSortValue(actionTone(operation.action), operation.action) },
+                { id: "apply", label: "Apply", width: LIST_TRACK.toggle, mobile: true, sort: (operation) => selectedIds.has(operation.id) }
               ]}
             >
-              {report.operations.map((operation) => (
+              {(rows) => rows.map((operation) => (
                 <ListRow key={operation.id} onClick={() => setOpenOperationId(operation.id)} selected={openOperationId === operation.id}>
                   <ListNameCell name={operation.name} sub={operation.targetType} />
                   <ListCell primary={operation.reason} secondary={operation.warnings.length ? `${operation.warnings.length} ${operation.warnings.length === 1 ? "warning" : "warnings"}` : undefined} />
@@ -359,8 +371,17 @@ export function SettingsMigrationPage() {
             </Button>
           }
         >
-          <ListTable columns={[{ label: "Connection" }, { label: "Result", width: "minmax(0,1.8fr)" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]} chevron={false}>
-            {importedConnections.map((item) => {
+          <ListTable
+            listId="migration-connections"
+            items={importedConnections}
+            columns={[
+              { id: "connection", label: "Connection", sort: (item) => item.name.toLowerCase() },
+              { id: "result", label: "Result", width: "minmax(0,1.8fr)", sort: (item) => (connectionValidation[item.operationId]?.message ?? "Not tested yet").toLowerCase() },
+              { id: "status", label: "Status", width: LIST_TRACK.status, mobile: true, sort: (item) => { const result = connectionValidation[item.operationId]; return toneSortValue(result ? (result.healthStatus === "healthy" ? "ok" : "warn") : "idle", result?.healthStatus ?? "Untested"); } }
+            ]}
+            chevron={false}
+          >
+            {(rows) => rows.map((item) => {
               const result = connectionValidation[item.operationId];
               return (
                 <ListRow key={item.operationId}>
@@ -378,8 +399,16 @@ export function SettingsMigrationPage() {
 
       {auditReports.length ? (
         <ListCard title="Applied history" count="Redacted records of real imports — previews are never stored">
-          <ListTable columns={[{ label: "Import" }, { label: "Outcome", width: "minmax(0,1.4fr)" }, { label: "When", width: "160px", mobile: true }]}>
-            {auditReports.map((audit) => {
+          <ListTable
+            listId="migration-history"
+            items={auditReports}
+            columns={[
+              { id: "import", label: "Import", sort: (audit) => audit.sourceName.toLowerCase() },
+              { id: "outcome", label: "Outcome", width: "minmax(0,1.4fr)", sort: (audit) => audit.applied.filter((item) => item.result === "created").length },
+              { id: "when", label: "When", width: "160px", mobile: true, sort: (audit) => new Date(audit.appliedUtc) }
+            ]}
+          >
+            {(rows) => rows.map((audit) => {
               const created = audit.applied.filter((item) => item.result === "created").length;
               const failed = audit.applied.filter((item) => item.result === "failed").length;
               return (
