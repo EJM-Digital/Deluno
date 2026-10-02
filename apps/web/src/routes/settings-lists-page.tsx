@@ -533,7 +533,7 @@ export function SettingsListsPage() {
         </div>
       </ListCard>
 
-      <ListCard title={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled` : "Empty"} titleCase={false}>
+      <ListCard title={intakeSources.length ? `${intakeSources.length} ${intakeSources.length === 1 ? "list" : "lists"} · ${intakeSources.filter((item) => item.isEnabled).length} enabled` : "0 lists"} titleCase={false}>
         {intakeSources.length === 0 ? (
           <ListEmpty
             title="No import lists yet"

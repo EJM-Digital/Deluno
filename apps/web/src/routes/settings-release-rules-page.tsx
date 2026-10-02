@@ -307,7 +307,7 @@ export function SettingsReleaseRulesPage() {
       <RuleModeCard mode={ruleMode} onChanged={() => revalidator.revalidate()} />
 
       <ListCard
-        title={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : "Empty"}
+        title={profiles.length ? `${profiles.length} ${profiles.length === 1 ? "rule" : "rules"}` : "0 rules"}
         titleCase={false}
       >
         {profiles.length === 0 ? (

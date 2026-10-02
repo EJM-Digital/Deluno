@@ -312,7 +312,7 @@ export function SettingsDestinationRulesPage() {
         }
       />
 
-      <ListCard title={destinationRules.length ? `${destinationRules.length} ${destinationRules.length === 1 ? "rule" : "rules"} · ${destinationRules.filter((rule) => rule.isEnabled).length} active` : "Empty"} titleCase={false}>
+      <ListCard title={destinationRules.length ? `${destinationRules.length} ${destinationRules.length === 1 ? "rule" : "rules"} · ${destinationRules.filter((rule) => rule.isEnabled).length} active` : "0 rules"} titleCase={false}>
         {destinationRules.length === 0 ? (
           <ListEmpty
             title="No destination rules"
