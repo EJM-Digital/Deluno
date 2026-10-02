@@ -175,7 +175,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
     const headerRow = headerRowRef.current;
     const body = bodyRef.current;
     if (!snapshot || !headerRow || !body || prefersReducedMotion()) return;
-    const rows = Array.from(body.querySelectorAll<HTMLElement>('[role="row"]'));
+    const rows = Array.from(body.querySelectorAll<HTMLElement>('[role="row"]')).filter((row) => row.querySelector(":scope > [role=cell]"));
     const moving: HTMLElement[] = [];
     headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]').forEach((header) => {
       const id = header.dataset.colId as string;
@@ -250,7 +250,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     : undefined
                 }
                 className={cn(
-                  "group relative min-w-0 truncate rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "group relative min-w-0 rounded-sm text-[length:var(--type-micro)] font-semibold uppercase tracking-[0.1em] text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   movable && "cursor-grab touch-pan-y select-none",
                   col.align === "end" && "text-right",
                   originalIndex !== 0 && !col.mobile && "hidden md:block",
@@ -270,7 +270,7 @@ export function ListTable<T = never>({ columns, listId, items, list, chevron = t
                     {active ? active.direction === "asc" ? <ChevronUp aria-hidden className="h-3 w-3 shrink-0" /> : <ChevronDown aria-hidden className="h-3 w-3 shrink-0" /> : null}
                   </button>
                 ) : (
-                  col.label
+                  <span className="block truncate">{col.label}</span>
                 )}
               </div>
             );

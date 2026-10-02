@@ -115,7 +115,8 @@ export function trackColumnDrag(event: { button: number; pointerType: string; cl
 
   function measure() {
     const headers = Array.from(deps.headerRow.querySelectorAll<HTMLElement>('[role="columnheader"][data-col-id]'));
-    const rows = Array.from(deps.body.querySelectorAll<HTMLElement>('[role="row"]'));
+    // Group headings are role=row too but hold no cells, so they are left where they are.
+    const rows = Array.from(deps.body.querySelectorAll<HTMLElement>('[role="row"]')).filter((row) => row.querySelector(":scope > [role=cell]"));
     slots = headers
       .map((header) => {
         const rect = header.getBoundingClientRect();
