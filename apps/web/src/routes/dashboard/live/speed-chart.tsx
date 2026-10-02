@@ -48,7 +48,9 @@ export function speedHitAt(series: SpeedSeries, at: number): ChartHit | null {
   const span = Math.max(1, series.end - series.start);
   const fractions = series.points.map((point) => Math.min(1, Math.max(0, (point.t - series.start) / span)));
   const point = series.points[nearestIndex(fractions, at)];
-  return { x: Math.min(1, Math.max(0, (point.t - series.start) / span)), time: clockAt(point.t), text: `${rateText(point.down)} down · ${rateText(point.up)} up` };
+  const down = `${rateText(point.down)} down`;
+  const up = `${rateText(point.up)} up`;
+  return { x: Math.min(1, Math.max(0, (point.t - series.start) / span)), time: clockAt(point.t), text: `${down} · ${up}`, parts: [{ text: down, tone: "down" }, { text: up, tone: "up" }] };
 }
 
 export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSample[]; summary: DashboardSummary | undefined }) {
@@ -82,9 +84,10 @@ export function SpeedCell({ samples, summary }: { samples: DownloadThroughputSam
       figure={
         <>
           <CountUp value={live.down} format={(value) => speedParts(value).value} />
-          <FigureUnit>{unit} down</FigureUnit>
+          {/* The words wear their line's colour, so the chart needs no legend: download blue, upload green. */}
+          <FigureUnit><span className="lb-down">{unit} down</span></FigureUnit>
           <span className="lb-side">
-            ↑ <CountUp value={live.up} format={formatSpeed} />
+            ↑ <CountUp value={live.up} format={formatSpeed} /> up
           </span>
         </>
       }

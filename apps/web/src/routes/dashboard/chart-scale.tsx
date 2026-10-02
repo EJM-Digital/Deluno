@@ -77,6 +77,8 @@ export interface ChartHit {
   x: number;
   time: string;
   text: string;
+  /** The same words in pieces, each in the colour of the line it reads (Speed: download blue, upload green). */
+  parts?: { text: string; tone: "down" | "up" }[];
 }
 
 /** The reading of an evenly spaced trace (oldest first, the last one `nowMs`) at a fraction across it. */
@@ -183,7 +185,9 @@ export function ChartLayer({ ticks, startLabel, endLabel, resolve }: { ticks: Ch
         <>
           <i aria-hidden className="cs-cursor" style={{ left: hit.px }} />
           <div ref={box} aria-hidden className="cs-read">
-            {hit.time} · {hit.text}
+            {hit.time} · {hit.parts ? hit.parts.map((part, index) => (
+              <span key={part.tone}>{index > 0 ? " · " : ""}<span className={part.tone === "down" ? "cs-down" : "cs-up"}>{part.text}</span></span>
+            )) : hit.text}
           </div>
         </>
       ) : null}
