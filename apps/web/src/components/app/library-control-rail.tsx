@@ -293,7 +293,7 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               // It used to be `flex-1`, so it took whatever the actions left over
               // and Movies and TV Shows (which has an extra Season pass action)
               // drew it at different widths. Below sm it still fills the line.
-              "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200 sm:w-[clamp(15rem,20vw,26rem)] sm:flex-none",
+              "group relative flex min-w-[240px] flex-1 items-center gap-2.5 rounded-xl px-3.5 transition-all duration-200 sm:w-[clamp(15rem,17vw,26rem)] sm:flex-none",
               "min-h-[var(--library-toolbar-height)] bg-foreground/[0.04] dark:bg-white/[0.05]",
               "ring-1 ring-inset ring-hairline/60 dark:ring-white/[0.06]",
               "focus-within:bg-foreground/[0.06] focus-within:ring-primary/35",
@@ -450,11 +450,12 @@ export function ControlRail({ label, variant, facets, actions, controls }: {
               each: the box is 40px, `size="sm"` is 32 and `size="icon"` is 36,
               so one line carried three heights and the row read as ragged. One
               rule here governs whatever is passed in, including the next action
-              somebody adds.
+              somebody adds, and a link drawn as a button (Season Pass) as well
+              as a button: it was 34px beside the others' 40.
             */}
             <div className={cn(
               "ml-auto flex shrink-0 flex-wrap items-center gap-2",
-              "[&_button]:h-[var(--library-toolbar-height)]",
+              "[&_:is(button,a)]:h-[var(--library-toolbar-height)]",
               "[&_button[data-slot=icon-action]]:w-[var(--library-toolbar-height)]"
             )}>{actions}</div>
           </div>
