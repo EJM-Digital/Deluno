@@ -845,7 +845,7 @@ function ContentTopbar({
               right after it, so the header never grows (James, 2 Oct 2026). */}
           <div className="flex min-w-0 items-baseline gap-[22px]">
             <TopbarTitle as={ownsHeading ? "h1" : "p"}>{title}</TopbarTitle>
-            <div id="topbar-page-tabs" className="hidden shrink-0 empty:hidden lg:block" />
+            <div id="topbar-page-tabs" className="hidden shrink-0 empty:hidden lg:flex" />
           </div>
         </div>
         </div>
