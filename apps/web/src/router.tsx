@@ -207,10 +207,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "episodes",
-            lazy: withSkeleton(async () => {
-              const module = await import("./routes/episode-search-page");
-              return { loader: module.episodeSearchLoader, Component: module.EpisodeSearchPage };
-            })
+            element: <Navigate to="/tv" replace />
           },
           {
             path: "season-pass",
