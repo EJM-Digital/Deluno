@@ -9,6 +9,65 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.26
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Deluno and Weir look the same
+
+- Text, the header and the sidebar now match Weir's, so switching between
+  the two apps moves nothing. Nothing grows on a very wide screen any more.
+- The sidebar has a collapse button. Collapsed, it is a narrow strip of
+  icons with their names on hover, and Deluno remembers your choice.
+- The Live and System tabs, and every card heading, sit in the same place
+  in both apps.
+
+### Live
+
+- The Pipeline has a new look: posters without artwork show the title's
+  initials, a stuck download is edged amber and a failed one red, and an
+  imported poster arcs into Your library.
+- Your library is one shelf of today's arrivals with buttons to pick a
+  library. Each poster shows its library and, under it, whether the quality
+  you want was met or it can still be upgraded, its size and when it came in.
+- On a tall window the spare space goes to bigger Pipeline cards.
+- Activity shows only whole entries, with a link to the rest.
+- The Speed chart has a scale; pointing at any graph on Live or System says
+  what it was at that moment.
+
+### Elsewhere
+
+- A processor such as Weir is now told which film or episode a download is,
+  so it can show the right poster.
+- System and title pages credit TMDb and TheTVDB, where Deluno's film and TV
+  details come from.
+
+## 1.0.0-rc.25
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Live and System, rebuilt
+
+- Live shows what Deluno is doing right now: the speed, what is running,
+  what comes next, every download on its way through the Pipeline, what
+  arrived today, what was turned down and why, and your indexers, download
+  clients and connections.
+- System shows Deluno and the computer it runs on: health checks, the
+  machine's processor, memory, disks and network, your connections with a
+  Test button, scheduled tasks, the log and backups.
+- Both update the moment something happens, without waiting to refresh.
+
+### Activity
+
+- Activity opens on a History of everything that happened, which you can
+  filter by title, file, kind, source, result and day.
+- The browser tab shows which computer Deluno is running on.
+- Russian titles from LimeTorrents now read properly.
+
 ## 1.0.0-rc.24
 
 Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
