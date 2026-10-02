@@ -74,6 +74,43 @@ export function hasActivityFilterParams(params: URLSearchParams): boolean {
   return ACTIVITY_FILTER_KEYS.some((key) => (params.get(key) ?? "").trim() !== "");
 }
 
+/** Which part of the list Activity shows: everything, or one kind of step. No `status` in the address means all. */
+export type ActivityStatus = "all" | "in-progress" | "done" | "failed" | "needs-decision";
+
+export const ACTIVITY_STATUSES: readonly Exclude<ActivityStatus, "all">[] = ["in-progress", "done", "failed", "needs-decision"];
+
+/**
+ * The status a link asks for. `status` wins; an old `section` link (from before the tabs became chips)
+ * means jobs -> In progress, imports -> Needs a decision, events -> All.
+ */
+export function activityStatusFromParams(params: URLSearchParams): ActivityStatus {
+  const status = params.get("status");
+  if (status && (ACTIVITY_STATUSES as readonly string[]).includes(status)) return status as ActivityStatus;
+  switch (params.get("section")) {
+    case "jobs":
+      return "in-progress";
+    case "imports":
+      return "needs-decision";
+    default:
+      return "all";
+  }
+}
+
+/** The address with this status chosen: `all` is the absence of one, and the old `section` goes. */
+export function paramsWithStatus(status: ActivityStatus, base?: URLSearchParams): URLSearchParams {
+  const params = new URLSearchParams(base);
+  params.delete("section");
+  if (status === "all") params.delete("status");
+  else params.set("status", status);
+  return params;
+}
+
+/** The link into Activity on one status chip, optionally narrowed by the history filters: `/activity?status=failed&since=today`. */
+export function activityLinkForStatus(status: "in-progress" | "done" | "failed" | "needs-decision", filters?: Partial<ActivityFilters>): string {
+  const query = paramsFromFilters({ ...emptyActivityFilters, ...filters }, new URLSearchParams({ status })).toString();
+  return `/activity?${query}`;
+}
+
 /** The link into the Activity history for a title (its own events, and any that name it). */
 export function activityLinkForTitle(title: string, entityType: "movie" | "series", entityId: string): string {
   return activityLink({ title, item: entityId, itemType: entityType });

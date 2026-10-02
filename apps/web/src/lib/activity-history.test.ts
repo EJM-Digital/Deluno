@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   activityLink,
+  activityLinkForStatus,
+  activityStatusFromParams,
+  paramsWithStatus,
   activityLinkForEvent,
   activityLinkForFile,
   activityLinkForTitle,
@@ -111,5 +114,27 @@ describe("the Activity history's filters live in the address (#1100)", () => {
       pageToken: "token-1"
     });
     expect(activityQueryString(emptyActivityFilters, 25, undefined, NOW)).toBe("pageSize=25");
+  });
+});
+
+describe("Activity's status chips live in the address (#1114)", () => {
+  it("links to a chip, with the history filters beside it", () => {
+    expect(activityLinkForStatus("failed")).toBe("/activity?status=failed");
+    expect(activityLinkForStatus("in-progress", { type: "search", since: "today" })).toBe("/activity?status=in-progress&type=search&since=today");
+  });
+
+  it("reads the chip, and an old section link opens the matching chip", () => {
+    expect(activityStatusFromParams(new URLSearchParams("status=needs-decision"))).toBe("needs-decision");
+    expect(activityStatusFromParams(new URLSearchParams("section=jobs"))).toBe("in-progress");
+    expect(activityStatusFromParams(new URLSearchParams("section=imports"))).toBe("needs-decision");
+    expect(activityStatusFromParams(new URLSearchParams("section=events"))).toBe("all");
+    expect(activityStatusFromParams(new URLSearchParams("status=nonsense"))).toBe("all");
+    expect(activityStatusFromParams(new URLSearchParams(""))).toBe("all");
+    expect(activityStatusFromParams(new URLSearchParams("status=done&section=jobs"))).toBe("done");
+  });
+
+  it("writes a chip into the address, keeping the filters and dropping the old section", () => {
+    expect(paramsWithStatus("failed", new URLSearchParams("section=jobs&since=today")).toString()).toBe("since=today&status=failed");
+    expect(paramsWithStatus("all", new URLSearchParams("status=failed&since=today")).toString()).toBe("since=today");
   });
 });

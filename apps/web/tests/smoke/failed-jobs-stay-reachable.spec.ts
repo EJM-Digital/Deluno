@@ -21,7 +21,7 @@ const buried = {
   workerId: "worker-import.files",
   lastError: "The refined file is not a readable video.",
   relatedEntityType: "movie",
-  relatedEntityId: null,
+  relatedEntityId: "movie-42",
   idempotencyKey: null,
   dedupeKey: null,
   maxAttempts: 3,
@@ -54,16 +54,20 @@ test("a failed job buried under newer work is listed on Activity and can be dism
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(buried) });
   });
 
-  await page.goto("/activity?section=jobs");
+  await page.goto("/activity?status=failed");
 
-  await expect(page.getByRole("button", { name: "Retry 1 job" })).toBeEnabled();
-  const failedCard = page.getByRole("region", { name: "Failed jobs" }).or(page.locator("section", { hasText: "Failed jobs" })).first();
-  await expect(failedCard.getByText("The refined file is not a readable video.")).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Failed 1" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("button", { name: "Retry failed jobs" })).toBeEnabled();
+  const failedCard = page.getByRole("region", { name: "Activity" });
+  // The detail column is left off a phone, so the row is found by its step and the reason is read in its drawer.
+  await expect(failedCard.getByText("Import a download")).toBeVisible();
 
-  await failedCard.getByText("The refined file is not a readable video.").click();
+  await failedCard.getByText("Import a download").click();
+  await expect(page.getByRole("dialog").getByText("The refined file is not a readable video.")).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Dismiss", exact: true }).click();
 
   await expect(page.getByText("The refined file is not a readable video.")).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Failed 0" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry failed jobs" })).toBeDisabled();
 });
 
