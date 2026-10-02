@@ -155,14 +155,7 @@ public sealed class ConnectionHealthTester(
                     }
 
                     var result = await ConnectionsEndpointRouteBuilderExtensions.RunStoredIndexerTestAsync(item, scoped, automatic, cancellationToken);
-                    // #1117: an indexer behind Prowlarr or Jackett also says which version of it is running.
-                    if (versions is not null && AggregatorVersions.ProjectOf(item.BaseUrl) is { } project && scoped.GetService<IHttpClientFactory>() is { } httpFactory)
-                    {
-                        await versions.RememberVersionAsync(
-                            ConnectionKinds.Indexer, item.Id, project,
-                            await AggregatorVersions.ReadAsync(item, httpFactory.CreateClient("indexers"), cancellationToken), cancellationToken);
-                    }
-
+                    // No version for an indexer: Deluno replaces Prowlarr and Jackett, so it never reports theirs (the owner, 3 Oct 2026).
                     return result is null ? null : await LatestAsync(target, cancellationToken);
                 }
                 case ConnectionKinds.DownloadClient:

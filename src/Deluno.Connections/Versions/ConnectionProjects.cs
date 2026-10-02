@@ -18,8 +18,7 @@ public static class ConnectionProjects
     public const string Emby = "emby";
     public const string Seerr = "seerr";
     public const string Weir = "weir";
-    public const string Prowlarr = "prowlarr";
-    public const string Jackett = "jackett";
+    // No Prowlarr or Jackett: Deluno replaces them, so it never reports their versions (the owner, 3 Oct 2026).
 
     /// <summary>The release feed for a download client's protocol; null for clients with no feed (uTorrent, rTorrent).</summary>
     public static string? ForDownloadClient(string? protocol)
