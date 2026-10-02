@@ -9,6 +9,24 @@ developer: say what changed in everyday words, not internal file or class
 names. `npm run ci:check` warns (does not fail) when the version currently
 being built has no section here yet.
 
+## 1.0.0-rc.27
+
+Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
+your PC" the first time you run the installer. Choose More info, then Run
+anyway.
+
+### Your library on a smaller window
+
+- The buttons that pick a library now sit in Your library's title line, so
+  the posters get the room underneath.
+- On a smaller window each poster keeps a short status under it: a gold dot
+  and "Met" when it is at the quality you want, a green dot and "Upgradable"
+  when it can still be upgraded. Point at a poster for the full details.
+- The row of Speed, Working on now and Next can get a little shorter on a
+  short window so the rest fits.
+- Your library's title no longer has a dot before it, so it lines up with
+  the other cards.
+
 ## 1.0.0-rc.26
 
 Deluno is not code-signed, so Windows SmartScreen shows "Windows protected
