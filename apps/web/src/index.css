@@ -925,6 +925,12 @@ html,
   --settings-nav-pad-y: calc(8px * var(--ui-scale));
   --settings-nav-pad-x: calc(12px * var(--ui-scale));
   --section-eyebrow-size: calc(10.3px * var(--font-scale));
+  /*
+    How far the title line's boxes move down so their centres sit on the page title's text, not on the header's middle:
+    the eyebrow line above the title pushes the title down by its own height, so half of that, plus the 1.75px between
+    the title's line box and its letters (James, 2 Oct 2026: "aligned to the heading"). Used from lg up.
+  */
+  --title-line-shift: calc(var(--section-eyebrow-size) * 1.35 / 2 + 1.75px);
   --section-subtitle-size: calc(14px * var(--font-scale));
 }
 
@@ -1627,4 +1633,15 @@ html .text-\[64px\] {
 #topbar-page-tabs:has([data-header-controls]) {
   align-self: center;
   margin-block: -4px;
+}
+
+/* The title line's boxes sit on the page title's centre (see --title-line-shift). A transform, so the header keeps its height. */
+@media (min-width: 1024px) {
+  #topbar-row > :not(#topbar-main),
+  #topbar-page-actions {
+    transform: translateY(var(--title-line-shift));
+  }
+  #topbar-page-tabs > [data-header-controls] {
+    transform: translateY(1.75px);
+  }
 }

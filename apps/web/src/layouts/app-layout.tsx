@@ -831,7 +831,7 @@ function ContentTopbar({
 
   return (
     <header className="sticky top-0 z-40 border-b border-hairline/70 bg-background/88 px-[var(--content-pad-inline)] py-3 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/78 lg:py-3.5 dark:border-white/[0.05]">
-      <div className="flex w-full min-w-0 items-center gap-[var(--grid-gap)]">
+      <div id="topbar-row" className="flex w-full min-w-0 items-center gap-[var(--grid-gap)]">
         <NavLink to="/" aria-label="Deluno home" className="flex shrink-0 items-center no-underline lg:hidden">
           <AppMark />
         </NavLink>
