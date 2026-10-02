@@ -46,15 +46,15 @@ describe("gridRows told what the bottom row can use (lowNeed), the same rule as 
 
 describe("what the shelf needs (shelfRowNeed) and its caption tiers (libraryPosters)", () => {
   it("is the art of the widest poster the five-across rule allows, its caption, and the 12px of padding", () => {
-    // 574px: widest = floor((574 - 10 + 12) / 5) - 12 = 103, art = ceil(154.5) = 155, full caption 64.
-    expect(shelfRowNeed(574)).toBe(12 + 155 + 64);
+    // 574px: widest = floor((574 - 10 + 12) / 5) - 12 = 103, art = ceil(154.5) = 155, full caption 72 (Weir's four 15px lines, 2px apart, and the 6px above).
+    expect(shelfRowNeed(574)).toBe(12 + 155 + 72);
     // 2000px wide: capped at 170, art 255.
-    expect(shelfRowNeed(2000)).toBe(12 + 255 + 64);
+    expect(shelfRowNeed(2000)).toBe(12 + 255 + 72);
     // 430px: posters 74px wide, art 111.
-    expect(shelfRowNeed(430)).toBe(12 + 111 + 64);
-    // Under 64px wide there is no full caption: 300px gives 48px posters and 72px art, and 72 + 35 < 130 so no compact caption either.
+    expect(shelfRowNeed(430)).toBe(12 + 111 + 72);
+    // Under 64px wide there is no full caption: 300px gives 48px posters and 72px art, and 72 + 38 < 130 so no compact caption either.
     expect(shelfRowNeed(300)).toBe(12 + 72);
-    // 330px gives 54px posters, 81px art: 81 + 35 < 130 still. At 400px the posters are 68px wide, so full again.
+    // 330px gives 54px posters, 81px art: 81 + 38 < 130 still. At 400px the posters are 68px wide, so full again.
     expect(shelfRowNeed(330)).toBe(12 + 81);
     // 24px is the narrowest poster, 36px the least art.
     expect(shelfRowNeed(100)).toBe(12 + 36);
@@ -65,9 +65,9 @@ describe("what the shelf needs (shelfRowNeed) and its caption tiers (libraryPost
     expect(lowNeedOfGrid(1601, false)).toBe(60 + shelfRowNeed(574));
   });
   it("chooses the full caption only for a poster wide enough with a row tall enough, the compact one from 130px, and none under it", () => {
-    expect(libraryPosters(231, 574)).toEqual({ captions: true, caption: "full", width: 103 });
+    expect(libraryPosters(239, 574)).toEqual({ captions: true, caption: "full", width: 103 });
     // One pixel short of the art and the full caption: compact.
-    expect(libraryPosters(230, 574).caption).toBe("compact");
+    expect(libraryPosters(238, 574).caption).toBe("compact");
     expect(libraryPosters(142, 574).caption).toBe("compact");
     expect(libraryPosters(141, 574).caption).toBe("none");
     // A narrow row's posters are under 64px: never the full caption, however tall.
@@ -111,7 +111,7 @@ describe("the shelf's captions", () => {
   const show = (extra: object = {}) => render(<MemoryRouter><Shelf items={[item("1"), item("2", { upgraded: true, previousQuality: "WEB 720p", qualityMet: false })]} titles={NO_TITLES} newest={new Set()} heading="2 arrived today" {...extra} /></MemoryRouter>);
 
   it("is four level slots in the full tier: the title, the status, the detail and when, each present on every poster", () => {
-    box = { width: 900, height: 330 };
+    box = { width: 900, height: 340 };
     show();
     const caps = Array.from(document.querySelectorAll(".lsh-cap--full"));
     expect(caps).toHaveLength(2);
@@ -135,7 +135,7 @@ describe("the shelf's captions", () => {
     expect(document.querySelector(".lsh-cap")).toBeNull();
   });
   it("tells the page what its bottom row can use, which does not depend on its height", () => {
-    box = { width: 900, height: 330 };
+    box = { width: 900, height: 340 };
     const sizes = { clientHeight: 300, clientWidth: 574, offsetHeight: 392 };
     const spies = (Object.keys(sizes) as (keyof typeof sizes)[]).map((key) => vi.spyOn(HTMLElement.prototype, key, "get").mockImplementation(() => sizes[key]));
     const told = vi.fn();

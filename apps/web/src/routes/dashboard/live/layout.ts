@@ -183,15 +183,15 @@ export function cardsBudget(budget: number | undefined, chrome: number): number 
  * Your library (#1103): one shelf row, posters exactly 2:3 and sized from the row's own height, whole posters only. The row
  * takes everything the card has below its chips and counts, so one row gets the whole height.
  */
-/** The caption (the title and when) under a poster, and the space between posters, in px. */
-export const POSTER_CAPTION_PX = 35;
+/** The compact caption under a poster (title and status: two 15px lines 2px apart and the 6px above, Weir's), and the space between posters, in px. */
+export const POSTER_CAPTION_PX = 38;
 export const POSTER_GAP_PX = 12;
 /** The padding round the posters' box (7 above, 5 below and either side), which the posters do not use. */
 const POSTERS_PAD_Y = 12;
 const POSTERS_PAD_X = 10;
 
-/** The full caption: four lines of the caption's type (the title, two for what landed, and the last line) and the 6px above them, 63.6px taken up to a whole pixel. */
-export const FULL_CAPTION_PX = 64;
+/** The full caption: four 15px lines 2px apart (title, status, detail, when) and the 6px above them, Weir's 72px. */
+export const FULL_CAPTION_PX = 72;
 /** The narrowest a poster gets, however many must stand in the row: 2:3 under the least art. */
 const MIN_ART_PX = 36;
 const MIN_POSTER_WIDTH_PX = Math.floor(MIN_ART_PX / 1.5);
