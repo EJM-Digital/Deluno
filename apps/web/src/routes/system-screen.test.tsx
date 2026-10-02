@@ -19,6 +19,7 @@ const loaderData = {
   backups: [],
   downloadClients: [],
   healthChecks: { checks: [], summary: { problemCount: 0 } },
+  failedJobs: [],
   indexers: [],
   jobs: [],
   lanAccess: null,
@@ -324,8 +325,9 @@ describe("Background jobs name each job in plain words (#1086)", () => {
   it("shows the label and never the job type", async () => {
     loaderData.jobs = [
       { id: "j1", jobType: "series.search.season", label: "Search for a season", source: "grab-rejected", sourceLabel: "A refused release", status: "completed", attempts: 1, createdUtc: "2026-09-30T00:00:00Z", lastError: null },
-      { id: "j2", jobType: "library.search.tv", label: "Search the TV library", source: "download-health", sourceLabel: "The download health check", status: "failed", attempts: 3, createdUtc: "2026-09-30T00:00:00Z", lastError: "The indexer did not answer." }
+      { id: "j2", jobType: "library.search.tv", label: "Search the TV library", source: "download-health", sourceLabel: "The download health check", status: "failed", attempts: 3, maxAttempts: 3, nextAttemptUtc: null, createdUtc: "2026-09-30T00:00:00Z", lastError: "The indexer did not answer." }
     ] as never;
+    loaderData.failedJobs = [loaderData.jobs[1]] as never;
     authedFetchMock.mockImplementation(() => jsonResponse([]));
 
     render(
@@ -339,6 +341,73 @@ describe("Background jobs name each job in plain words (#1086)", () => {
     expect(screen.getByText("Tried 3 times")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/series\.search\.season|library\.search\.tv/);
     loaderData.jobs = [];
+    loaderData.failedJobs = [];
+  });
+});
+
+/** #1114: System's Background jobs are the jobs not about a title; a stopped one can be retried and dismissed there. */
+describe("Background jobs are the ones not about a title (#1114)", () => {
+  const base = { source: "schedule", sourceLabel: "The schedule", attempts: 1, maxAttempts: 3, nextAttemptUtc: null, createdUtc: "2026-10-01T00:00:00Z", startedUtc: null, completedUtc: null, workerId: null, payloadJson: null };
+  const titleJob = { ...base, id: "t1", jobType: "movie.search", label: "Search for Sintel", status: "queued", lastError: null, relatedEntityType: "movie", relatedEntityId: "m1" };
+  const refresh = { ...base, id: "b1", jobType: "library.refresh", label: "Refresh the whole library", status: "running", lastError: null, relatedEntityType: null, relatedEntityId: null };
+  const backup = { ...base, id: "b2", jobType: "backup.create", label: "Nightly backup", status: "completed", lastError: null, relatedEntityType: null, relatedEntityId: "" };
+  const failedBackground = { ...base, id: "b3", jobType: "metadata.refresh", label: "Refresh all metadata", status: "dead-letter", attempts: 3, lastError: "The metadata source did not answer.", relatedEntityType: null, relatedEntityId: null };
+  const failedTitle = { ...base, id: "t2", jobType: "movie.search", label: "Search for Arrival", status: "dead-letter", attempts: 3, lastError: "No indexer answered.", relatedEntityType: "movie", relatedEntityId: "m2" };
+
+  function renderSystem() {
+    return render(
+      <MemoryRouter initialEntries={["/system/audit"]}>
+        <SystemPage />
+      </MemoryRouter>
+    );
+  }
+
+  afterEach(() => {
+    loaderData.jobs = [];
+    loaderData.failedJobs = [];
+    authedFetchMock.mockReset();
+    revalidateMock.mockReset();
+  });
+
+  it("lists background jobs, running and recent, and leaves a job about a title to Activity", () => {
+    loaderData.jobs = [titleJob, refresh, backup, failedTitle] as never;
+    loaderData.failedJobs = [failedTitle] as never;
+    renderSystem();
+
+    expect(screen.getByText("Refresh the whole library")).toBeInTheDocument();
+    expect(screen.getByText("Nightly backup")).toBeInTheDocument();
+    expect(screen.queryByText("Search for Sintel")).toBeNull();
+    expect(screen.queryByText("Search for Arrival")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry failed jobs" })).toBeNull();
+  });
+
+  it("shows a stopped background job first and retries it from there", async () => {
+    loaderData.jobs = [refresh, failedBackground] as never;
+    loaderData.failedJobs = [failedBackground, failedTitle] as never;
+    authedFetchMock.mockImplementation(() => jsonResponse({ retried: 1 }));
+    renderSystem();
+
+    expect(screen.getByText("Refresh all metadata")).toBeInTheDocument();
+    expect(screen.getByText("1 stopped")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry failed jobs" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/retry-failed", { method: "POST" }));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
+  });
+
+  it("opens a stopped background job to say why it failed and dismisses it there", async () => {
+    loaderData.jobs = [failedBackground] as never;
+    loaderData.failedJobs = [failedBackground] as never;
+    authedFetchMock.mockImplementation(() => jsonResponse({}));
+    renderSystem();
+
+    fireEvent.click(screen.getByText("Refresh all metadata"));
+    expect(await screen.findByText("Why it failed")).toBeInTheDocument();
+    expect(screen.getAllByText("The metadata source did not answer.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    await waitFor(() => expect(authedFetchMock).toHaveBeenCalledWith("/api/jobs/b3/dismiss", { method: "POST" }));
+    await waitFor(() => expect(revalidateMock).toHaveBeenCalled());
   });
 });
 

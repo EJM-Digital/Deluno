@@ -82,7 +82,7 @@ describe("System", () => {
     expect(await within(health).findByRole("button", { name: "Try again: Restart after a crash isn’t set" })).toBeInTheDocument();
     expect(await within(health).findByRole("link", { name: "Open System: A drive is nearly full" })).toHaveAttribute("href", "/system");
     expect(within(health).getByRole("button", { name: "Snooze 1 day: A drive is nearly full" })).toHaveAttribute("title", expect.stringContaining("not fixed or changed"));
-    expect(within(health).getByRole("button", { name: "Retry: 1 job gave up" })).toBeInTheDocument();
+    expect(within(health).getByRole("button", { name: "Retry: 1 background job gave up" })).toBeInTheDocument();
     expect(within(health).getByRole("button", { name: "Unsnooze: An old problem" })).toBeInTheDocument();
     // An area lists all of its checks, the passing ones too.
     const user = userEvent.setup();

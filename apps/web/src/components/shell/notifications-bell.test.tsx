@@ -26,6 +26,8 @@ const { NotificationsBell } = await import("./notifications-bell");
 
 const attention: AttentionSnapshot = {
   failedJobs: 2,
+  failedTitleJobs: 0,
+  failedBackgroundJobs: 2,
   deadLetteredJobs: 0,
   indexerAlerts: 0,
   downloadsNeedingAction: 0,
@@ -216,7 +218,7 @@ describe("notifications bell (#907)", () => {
     const user = await openPanel();
 
     await user.click(await screen.findByRole("button", { name: "Show all activity" }));
-    expect(navigate).toHaveBeenLastCalledWith("/activity?section=events");
+    expect(navigate).toHaveBeenLastCalledWith("/activity");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

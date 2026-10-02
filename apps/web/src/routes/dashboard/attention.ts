@@ -44,6 +44,8 @@ import { needsAction, type RecoveryCaseRow } from "../../lib/needs-action";
 import { defineSources } from "../../lib/route-cache";
 import { sharedSources } from "../../lib/shared-sources";
 import { plural } from "./format";
+import { SYSTEM_BACKGROUND_JOBS_LINK, splitStoppedJobs } from "../../lib/background-jobs";
+import { activityStatusLink } from "../../lib/activity-history";
 
 /** Two tabs (#1087): Live is what is moving, System is the plumbing. */
 export type DashboardTab = "live" | "system";
@@ -140,6 +142,10 @@ export interface DashboardAttention {
   updateReady: boolean;
   /** Jobs that gave up, not counting failed imports (those are on Downloads). */
   jobsGaveUp: number;
+  /** Of those, the ones not about a title: System lists, retries and dismisses them (#1114). */
+  backgroundJobsGaveUp: number;
+  /** Of those, the ones about a title: Activity does (#1114). */
+  titleJobsGaveUp: number;
   failingLanes: number;
 }
 
@@ -225,9 +231,14 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
 
   // A job that gave up is one Retry row. A failed import is on Downloads instead,
   // and a job Deluno will try again by itself is not a problem.
-  const jobsGaveUp = lists.failedJobs !== undefined
-    ? lists.failedJobs.filter((job) => job.jobType !== "filesystem.import.execute" && !isJobRetrying(job)).length
-    : Math.max(0, (system?.jobs.failed ?? 0) - (imports?.failedImportJobs ?? 0));
+  // Split by where each is cleared (#1114): a background job (not about a title) on System, a job about a title in Activity.
+  const stoppedJobs = lists.failedJobs !== undefined
+    ? splitStoppedJobs(lists.failedJobs.filter((job) => job.jobType !== "filesystem.import.execute"))
+    : null;
+  const titleJobsGaveUp = stoppedJobs ? stoppedJobs.title.length : 0;
+  // Without the list, only the summary's count is known, and it cannot say which kind: System holds them.
+  const backgroundJobsGaveUp = stoppedJobs ? stoppedJobs.background.length : Math.max(0, (system?.jobs.failed ?? 0) - (imports?.failedImportJobs ?? 0));
+  const jobsGaveUp = titleJobsGaveUp + backgroundJobsGaveUp;
   const failingLanes = system?.lanes.filter((lane) => lane.state === "failing").length ?? 0;
   const collectionsFailing = summary?.library?.collections.syncFailing ?? 0;
   const requestServersFailing = summary?.requests?.seerrFailing ?? 0;
@@ -412,11 +423,21 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     id: "failed-jobs",
     tab: "system",
     tone: "bad",
-    title: `${plural(jobsGaveUp, "background job")} gave up`,
+    title: `${plural(backgroundJobsGaveUp, "background job")} gave up`,
     text: "Nothing else waits on them, but the work was not done.",
-    to: "/?tab=system",
+    to: SYSTEM_BACKGROUND_JOBS_LINK,
     action: "Open System",
-    count: jobsGaveUp > 0 ? 1 : 0
+    count: backgroundJobsGaveUp > 0 ? 1 : 0
+  });
+  add({
+    id: "failed-title-jobs",
+    tab: "live",
+    tone: "bad",
+    title: `${plural(titleJobsGaveUp, "job")} about a title gave up`,
+    text: "They failed on every attempt. Open them in Activity to retry or dismiss.",
+    to: activityStatusLink("failed"),
+    action: "Open Activity",
+    count: titleJobsGaveUp > 0 ? 1 : 0
   });
   add({
     id: "lanes",
@@ -457,6 +478,8 @@ export function computeAttention(summary: DashboardSummary | undefined, lists: A
     healthListed,
     downloads: { stalled, queueAttention: na.queueAttention, clients, indexers, processors, recoveryCases: na.recoveryCases, failedImportJobs: na.failedImportJobs, handoffs: na.failedHandoffs },
     jobsGaveUp,
+    backgroundJobsGaveUp,
+    titleJobsGaveUp,
     failingLanes,
     noRelease,
     updateReady

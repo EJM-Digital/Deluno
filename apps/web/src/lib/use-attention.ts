@@ -5,6 +5,7 @@ import { queryClient, type RouteSource } from "./route-cache";
 import { sharedSources } from "./shared-sources";
 import { isJobDeadLettered, isJobRetrying, type JobStatus } from "./job-status-constants";
 import { needsAction } from "./needs-action";
+import { isBackgroundJob } from "./background-jobs";
 import type { DashboardSummary } from "./api";
 import { attentionSources, computeAttention, type AttentionLists, type DashboardAttention } from "../routes/dashboard/attention";
 import { SUMMARY_KEY, summaryQuery, setupNeedsFromCache, setupSources } from "../routes/dashboard/sources";
@@ -15,6 +16,10 @@ const FAILED_JOB_CATEGORIES = new Set(["job.failed", "job.dead-letter", "job.ret
 
 export interface AttentionSnapshot {
   failedJobs: number;
+  /** Of the failed jobs, the ones about a title: Activity clears them (#1114). */
+  failedTitleJobs: number;
+  /** Of the failed jobs, the ones not about a title: System's Background jobs clears them (#1114). */
+  failedBackgroundJobs: number;
   deadLetteredJobs: number;
   indexerAlerts: number;
   /**
@@ -44,6 +49,8 @@ export interface AttentionSnapshot {
 
 const empty: AttentionSnapshot = {
   failedJobs: 0,
+  failedTitleJobs: 0,
+  failedBackgroundJobs: 0,
   deadLetteredJobs: 0,
   indexerAlerts: 0,
   downloadsNeedingAction: 0,
@@ -106,6 +113,8 @@ function snapshotFromCache(): AttentionSnapshot | null {
 
   return {
     failedJobs: stopped.length,
+    failedTitleJobs: stopped.filter((job) => !isBackgroundJob(job)).length,
+    failedBackgroundJobs: stopped.filter(isBackgroundJob).length,
     deadLetteredJobs: stopped.filter((job) => isJobDeadLettered(job.status as JobStatus)).length,
     indexerAlerts: (indexers ?? []).filter((i) => i.isEnabled && i.healthStatus !== "healthy").length,
     downloadsNeedingAction: needsAction({ movieRecovery, seriesRecovery, telemetry, handoffs, dispatches, orphans }).total,

@@ -4,6 +4,8 @@ import { attentionTotal, type AttentionSnapshot } from "./use-attention";
 
 const snapshot = (over: Partial<AttentionSnapshot>): AttentionSnapshot => ({
   failedJobs: 0,
+  failedTitleJobs: 0,
+  failedBackgroundJobs: 0,
   deadLetteredJobs: 0,
   indexerAlerts: 0,
   downloadsNeedingAction: 0,

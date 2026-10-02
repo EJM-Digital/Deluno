@@ -4,6 +4,7 @@ import {
   connectionDownActions,
   failedImportActions,
   handoffActions,
+  jobsGaveUpActions,
   healthProblemActions,
   noReleaseActions,
   recoveryActions,
@@ -18,6 +19,18 @@ const queueItem = (over: Record<string, unknown> = {}) =>
 function labels(actions: AlertActions) {
   return actions.map((action) => action.label);
 }
+
+describe("failed jobs open the screen that clears them (#1114)", () => {
+  it("a background job's Review opens System, a job about a title opens Activity's failed list, and both can Retry", () => {
+    const background = jobsGaveUpActions("background");
+    const title = jobsGaveUpActions("title");
+    expect(background.map((action) => action.label)).toEqual(["Retry", "Review"]);
+    expect(background[1]!.to).toBe("/system");
+    expect(title[1]!.to).toBe("/activity?status=failed");
+    expect(jobsGaveUpActions()[1]!.to).toBe("/system");
+    expect(background[0]!.request).toMatchObject({ method: "POST", path: "/api/jobs/retry-failed" });
+  });
+});
 
 describe("alert buttons (#1098)", () => {
   it("every problem has one or two buttons, short labels, hover notes, and either a request or a link", () => {

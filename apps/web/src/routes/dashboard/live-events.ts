@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardActivityItem, DashboardSummary } from "../../lib/api";
 import { RealtimeGroups, useSignalREvent } from "../../lib/use-signalr";
+import { activityStatusLink } from "../../lib/activity-history";
 
 /* ---------------------------------------------------------- progress */
 
@@ -192,8 +193,8 @@ export function useWorkingNow(summary: DashboardSummary | undefined, pushed?: { 
     const named = pushed ? [...pushed.jobs.values()] : [];
     const running = summary?.system?.jobs.running ?? 0;
     if (named.length > 0) {
-      for (const title of [...new Set(named.map((job) => job.title))]) items.push({ key: `job:${title}`, kind: "jobs", text: title, to: "/activity" });
-    } else if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${running} background ${running === 1 ? "job is" : "jobs are"} running`, to: "/activity" });
+      for (const title of [...new Set(named.map((job) => job.title))]) items.push({ key: `job:${title}`, kind: "jobs", text: title, to: activityStatusLink("in-progress") });
+    } else if (running > 0) items.push({ key: "jobs", kind: "jobs", text: `${running} background ${running === 1 ? "job is" : "jobs are"} running`, to: activityStatusLink("in-progress") });
     return items;
   }, [summary, started, pushed]);
 }

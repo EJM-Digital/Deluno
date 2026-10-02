@@ -64,7 +64,7 @@ describe("connectivity check skip history (#964)", () => {
 
     expect(screen.getByText(/Last skipped a pass/i)).toBeInTheDocument();
     expect(screen.getByText(/1 time in the last 24 hours/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /See in Activity/i })).toHaveAttribute("href", "/activity?section=events");
+    expect(screen.getByRole("link", { name: /See in Activity/i })).toHaveAttribute("href", "/activity?status=done");
   });
 
   it("says it has never skipped a pass, and shows no link, when history is empty", () => {
