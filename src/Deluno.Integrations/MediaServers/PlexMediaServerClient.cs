@@ -59,7 +59,8 @@ public sealed class PlexMediaServerClient(IHttpClientFactory httpClientFactory) 
             root.LatencyMs,
             serverName,
             serverId,
-            libraryCount);
+            libraryCount,
+            Version: Deluno.Connections.Versions.ConnectionVersionParsers.Clean(String(container.Value, "version")));
     }
 
     public async Task<MediaServerAnswer<MediaServerLibrary>> ListItemsAsync(

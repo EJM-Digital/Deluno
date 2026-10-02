@@ -39,6 +39,8 @@ import { Select } from "../components/ui/select";
 import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Drawer, DrawerFooter, type DrawerSaveState } from "../components/ui/drawer";
 import { ListCard, ListCell, ListEmpty, ListNameCell, ListRow, ListTable, LIST_TRACK } from "../components/ui/list-card";
+import { ConnectionVersionBeside } from "../components/app/connection-version";
+import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Switch } from "../components/ui/switch";
 import { toast } from "../components/shell/toaster";
@@ -408,6 +410,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
   });
 
   const telemetryByClient = useMemo(() => new Map<string, DownloadClientTelemetrySnapshot>(telemetry?.clients.map((item) => [item.clientId, item]) ?? []), [telemetry]);
+  const { versions } = useConnectionVersions();
   const throttleByHost = useMemo(() => new Map<string, OutboundThrottleHostState>(liveOutboundThrottle.hosts.map((item) => [item.host.toLowerCase(), item])), [liveOutboundThrottle]);
   const mappingsByClient = useMemo(() => {
     const map = new Map<string, DownloadClientPathMappingItem[]>();
@@ -1011,7 +1014,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                     const throttle = throttleByHost.get(indexerHost(item.baseUrl) ?? "");
                     return (
                       <ListRow key={item.id} onClick={() => openIndexer(item)} selected={drawer.kind === "indexer" && drawer.id === item.id}>
-                        <ListNameCell name={item.name} sub={<span className="font-mono">{item.baseUrl}</span>} />
+                        <ListNameCell name={<>{item.name}<ConnectionVersionBeside info={versions.get(versionKey("indexer", item.id))} /></>} sub={<span className="font-mono">{item.baseUrl}</span>} />
                         {selectMode ? (
                           <ListCell mobile>
                             <Checkbox
@@ -1087,7 +1090,7 @@ function IndexersPageBody({ data, revalidator }: { data: RouteSourceData<typeof 
                   const mappings = mappingsByClient.get(item.id) ?? [];
                   return (
                     <ListRow key={item.id} onClick={() => openClient(item)} selected={drawer.kind === "client" && drawer.id === item.id}>
-                      <ListNameCell name={live?.clientVersion ? `${item.name} (v${live.clientVersion})` : item.name} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
+                      <ListNameCell name={<>{item.name}<ConnectionVersionBeside info={versions.get(versionKey("downloadClient", item.id))} fallback={live?.clientVersion} /></>} sub={<span className="font-mono">{item.endpointUrl ?? [item.host, item.port].filter(Boolean).join(":")}</span>} />
                       {clientSelection.active ? (
                         <ListCell mobile>
                           <Checkbox

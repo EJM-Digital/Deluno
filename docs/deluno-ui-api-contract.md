@@ -719,6 +719,7 @@ Contract note:
 ## Connection checks and the bell (#1098)
 
 - `GET /api/connections/checks` returns the latest real check of every connection: `[{ kind, id, name, ok, slow, message, checkedUtc }]`.
+- `GET /api/connections/versions` returns the version each connection last reported, from its own checks (#1117): `[{ kind, id, version, latestVersion, updateAvailable, releaseUrl }]`. `latestVersion` is the newest stable release of that project, read in the background at most once a day from its public feed (null when not yet read); `updateAvailable` is true only for a stable build older than it, never for a beta or development build, and `releaseUrl` is set only then. Connections that report no version (uTorrent, a plain Torznab or Newznab indexer) are not listed.
 - `POST /api/connections/test-all` tests every connection that is switched on, four at a time, pushing `ConnectionChecked` for each as it finishes; it answers `{ tested, results }`.
 - `POST /api/connections/{kind}/{id}/test` tests one by kind (`indexer`, `downloadClient`, `processor`, `mediaServer`, `requests`, `metadata`, `lists`). The existing per-connection test endpoints (`/api/indexers/{id}/test`, `/api/download-clients/{id}/test`, the media server, Seerr and processor ones, `/api/metadata/test`) push the same event.
 - The regular check (system task `connections.check`, setting `checkConnectionsRegularly`, on unless turned off) tests anything no real call or earlier check touched in 15 minutes. It only reads. A plain Activity line is written only when a result changes.

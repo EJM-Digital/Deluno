@@ -1,3 +1,4 @@
+using Deluno.Connections.Versions;
 using Deluno.Contracts;
 using System.Security.Cryptography;
 using System.Text;
@@ -68,6 +69,7 @@ public static class SeerrEndpointRouteBuilderExtensions
             [FromServices] ISeerrRepository repository,
             [FromServices] ISeerrClient client,
             [FromServices] IConnectionCheckRecorder? checks,
+            [FromServices] IConnectionVersionStore? versions,
             CancellationToken cancellationToken) =>
         {
             var stored = await repository.GetAsync(id, cancellationToken);
@@ -78,6 +80,7 @@ public static class SeerrEndpointRouteBuilderExtensions
 
             var result = await client.TestAsync(request is null ? stored : Draft(request, stored), cancellationToken);
             await repository.RecordHealthAsync(id, result, cancellationToken);
+            await versions.RememberVersionAsync(ConnectionKinds.Requests, stored.Id, ConnectionProjects.Seerr, result.Version, cancellationToken);
             if (checks is not null)
             {
                 await checks.RecordAsync(ConnectionKinds.Requests, stored.Id, stored.Name, result.Ok, result.LatencyMs, result.Message, cancellationToken);

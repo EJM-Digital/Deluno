@@ -85,8 +85,13 @@ public sealed class ProcessorConnectionService(
         }
     }
 
-    public async Task<string?> GetMachineNameAsync(
-        string submissionUrl,
+    /// <summary>
+    /// A processor's capabilities answer (GET /api/v1/intake/capabilities, answered to the webhook secret) as
+    /// text, or null when it cannot be had in a few seconds. Shared by the machine name and the version, both of
+    /// which any processor may publish there.
+    /// </summary>
+    private async Task<string?> ReadCapabilitiesAsync(
+        string? submissionUrl,
         string? authHeaderName,
         string? secret,
         CancellationToken cancellationToken)
@@ -108,12 +113,35 @@ public sealed class ProcessorConnectionService(
             }
 
             using var response = await httpClientFactory.CreateClient("processor-health").SendAsync(request, timeout.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
+            return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(timeout.Token) : null;
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or OperationCanceledException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
 
-            using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(timeout.Token), cancellationToken: timeout.Token);
+    public async Task<string?> ReadVersionAsync(ProcessorConnectionItem connection, CancellationToken cancellationToken)
+        => connection.SecretUnreadable
+            ? null
+            : Deluno.Connections.Versions.ConnectionVersionParsers.FromProcessorCapabilities(
+                await ReadCapabilitiesAsync(connection.SubmissionUrl, connection.AuthHeaderName, connection.Secret, cancellationToken));
+
+    public async Task<string?> GetMachineNameAsync(
+        string submissionUrl,
+        string? authHeaderName,
+        string? secret,
+        CancellationToken cancellationToken)
+    {
+        var body = await ReadCapabilitiesAsync(submissionUrl, authHeaderName, secret, cancellationToken);
+        if (body is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
             return document.RootElement.ValueKind == JsonValueKind.Object
                    && document.RootElement.TryGetProperty("machine_name", out var value)
                    && value.ValueKind == JsonValueKind.String

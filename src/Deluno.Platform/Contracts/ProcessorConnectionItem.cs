@@ -73,6 +73,24 @@ public sealed record ProcessorConnectionTestResult(
     int? StatusCode,
     int? LatencyMs);
 
+/// <summary>
+/// #1117: whose releases a processor's version is compared with. A processor says its version in its capabilities
+/// answer, but it does not say which project it is, so only the one Deluno's own installer sets up (on the intake
+/// route, with its <c>/ready</c> health address) is matched to a release feed; any other shows its version alone.
+/// </summary>
+public static class ProcessorProjects
+{
+    private const string IntakePrefix = "/api/v1/intake/webhook/";
+
+    public static string? ProjectFor(ProcessorConnectionItem connection)
+        => Uri.TryCreate(connection.SubmissionUrl, UriKind.Absolute, out var submission)
+            && submission.AbsolutePath.StartsWith(IntakePrefix, StringComparison.OrdinalIgnoreCase)
+            && Uri.TryCreate(connection.HealthCheckUrl, UriKind.Absolute, out var health)
+            && health.AbsolutePath.TrimEnd('/').Equals("/ready", StringComparison.OrdinalIgnoreCase)
+                ? Deluno.Connections.Versions.ConnectionProjects.Weir
+                : null;
+}
+
 public sealed record ProcessorSubmissionResult(
     bool IsAccepted,
     string Status,
@@ -93,6 +111,14 @@ public interface IProcessorConnectionService
         string? authHeaderName,
         string? secret,
         CancellationToken cancellationToken)
+        => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// #1117: the version a processor publishes in the same capabilities answer ("4.0.0", or "0.0.1-dev" for a
+    /// development build), or null when it publishes none or cannot be reached in a few seconds. Asked after a
+    /// test that reached the processor; never part of the test itself.
+    /// </summary>
+    Task<string?> ReadVersionAsync(ProcessorConnectionItem connection, CancellationToken cancellationToken)
         => Task.FromResult<string?>(null);
 
     Task<ProcessorConnectionTestResult> TestAsync(

@@ -686,6 +686,22 @@ public static class ConnectionsEndpointRouteBuilderExtensions
             [FromServices] IConnectionCheckRecorder recorder,
             CancellationToken cancellationToken) => Results.Ok(await recorder.ListAsync(cancellationToken)));
 
+        // #1117: the version each connection last reported, and the newer stable release when one is out. Read from
+        // what the checks stored and what the release feeds answered earlier: this never calls a connection or a feed.
+        connections.MapGet("versions", async (
+            [FromServices] IConnectionVersionStore store,
+            [FromServices] ILatestReleaseService latestReleases,
+            CancellationToken cancellationToken) =>
+        {
+            var items = (await store.ListAsync(cancellationToken)).Select(row =>
+            {
+                var latest = row.Project is null ? null : latestReleases.Peek(row.Project);
+                var update = latest is not null && ReleaseVersions.IsOutOfDate(row.Version, latest.Version);
+                return new ConnectionVersionItem(row.Kind, row.Id, row.Version, latest?.Version, update, update ? latest!.Url : null);
+            });
+            return Results.Ok(items);
+        });
+
         connections.MapPost("test-all", async (
             [FromServices] IConnectionHealthTester tester,
             CancellationToken cancellationToken) =>

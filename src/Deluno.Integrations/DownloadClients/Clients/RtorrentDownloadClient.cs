@@ -171,7 +171,18 @@ public sealed class RtorrentDownloadClient(IHttpClientFactory httpClientFactory)
             .Select(item => DownloadClientHelpers.ReconcileTorrentStatus(item, capturedUtc))
             .ToArray();
 
-        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to rTorrent at {baseUri.Host}:{baseUri.Port}.");
+        string? clientVersion = null;
+        try
+        {
+            // #1117: system.client_version answers the plain version, "0.9.8". No release feed is compared with it.
+            clientVersion = Deluno.Connections.Versions.ConnectionVersionParsers.Clean(AsString(await SendAsync(http, baseUri, "system.client_version", [], cancellationToken)));
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested && exception is HttpRequestException or TaskCanceledException or System.Xml.XmlException or RtorrentFaultException)
+        {
+            // Unknown, not an error.
+        }
+
+        return CreateSnapshot(client, queue, capturedUtc, "healthy", $"Connected to rTorrent at {baseUri.Host}:{baseUri.Port}.", clientVersion: clientVersion);
     }
 
     private DownloadQueueItem MapRow(DownloadClientItem client, IReadOnlyList<object?> row, DateTimeOffset capturedUtc)

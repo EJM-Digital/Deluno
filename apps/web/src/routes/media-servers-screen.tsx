@@ -20,6 +20,8 @@ import { PageToolbar, PageToolbarAction } from "../components/ui/page-toolbar";
 import { Select } from "../components/ui/select";
 import { Switch, SwitchRow } from "../components/ui/switch";
 import { healthChip, relative } from "./connections/format";
+import { ConnectionVersionBeside } from "../components/app/connection-version";
+import { useConnectionVersions, versionKey } from "../lib/connection-versions";
 import { SeerrServersCard, type SeerrCleanup, type SeerrServer } from "../components/app/seerr-servers-card";
 
 const TABS = configurationNavAreas.find((area) => area.to === "/indexers/indexers")?.items ?? [];
@@ -138,6 +140,7 @@ export function MediaServersPage() {
     libraries: LibraryItem[];
     qualityProfiles: QualityProfileItem[];
   };
+  const { versions } = useConnectionVersions();
   const revalidator = useRevalidator();
 
   const [drawer, setDrawer] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -384,7 +387,7 @@ export function MediaServersPage() {
               const collectionProblem = collections.find((collection) => collection.serverId === server.id && collection.problem)?.problem;
               return (
                 <ListRow key={server.id} onClick={() => open(server)} selected={drawer.open && drawer.id === server.id}>
-                  <ListNameCell name={server.name} sub={kindOf(server.kind).label} />
+                  <ListNameCell name={<>{server.name}<ConnectionVersionBeside info={versions.get(versionKey("mediaServer", server.id))} /></>} sub={kindOf(server.kind).label} />
                   <ListCell mono primary={server.baseUrl} />
                   <ListCell primary={server.serverName ?? <span className="text-muted-foreground">Not tested yet</span>} />
                   <ListCell primary={relative(server.lastHealthTestUtc)} secondary={collectionProblem ? `Leaving soon collection: ${collectionProblem}` : server.lastHealthMessage ?? undefined} />

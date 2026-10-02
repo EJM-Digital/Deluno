@@ -16,6 +16,9 @@ public static class CompanionModule
         // Downloads of 50-200 MB over whatever connection the owner has.
         services.AddHttpClient(CompanionDownloader.ClientName, client => client.Timeout = TimeSpan.FromMinutes(20));
         services.AddSingleton<ICompanionDownloader, CompanionDownloader>();
+        // #1117: where a processor connection that reports a version finds its newest release.
+        services.AddSingleton<Deluno.Connections.Versions.ReleaseFeed>(
+            new Deluno.Connections.Versions.GitHubReleasesFeed(Deluno.Connections.Versions.ConnectionProjects.Weir, CompanionCatalog.WeirRepository));
         services.AddSingleton<ICompanionSystem, WindowsCompanionSystem>();
         services.AddSingleton<ICompanionLoginCleanup, SqliteCompanionLoginCleanup>();
         services.TryAddSingleton<IInstalledClientLogins, NoInstalledClientLogins>();

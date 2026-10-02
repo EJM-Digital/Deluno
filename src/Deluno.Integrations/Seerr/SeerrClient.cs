@@ -83,7 +83,7 @@ public sealed class SeerrClient(IHttpClientFactory httpClientFactory) : ISeerrCl
         var settings = await GetAsync(connection, "/api/v1/settings/main", cancellationToken);
         if (!settings.Ok)
         {
-            return new SeerrTestResult(false, "degraded", settings.Problem!, status.LatencyMs);
+            return new SeerrTestResult(false, "degraded", settings.Problem!, status.LatencyMs, Version: version);
         }
 
         using var settingsDocument = TryParse(settings.Body);
