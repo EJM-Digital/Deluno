@@ -225,8 +225,8 @@ export function BlockedReleasesConsole({
       ) : null}
 
       <ListCard
-        title="Blocklist"
-        count={refused.length === 1 ? "1 refused release" : `${refused.length} refused releases`}
+        title={refused.length === 1 ? "1 refused release" : `${refused.length} refused releases`}
+        titleCase={false}
         actions={
           refused.length ? (
             <Button

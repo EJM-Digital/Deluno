@@ -804,7 +804,7 @@ function RecycleBinCard({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trash2 className="h-4 w-4 text-primary" />
-            Recycle bin
+            {items.length ? `${items.length} stored item${items.length === 1 ? "" : "s"}` : "Nothing stored"}
           </CardTitle>
           <CardDescription>Library removals and replaced files stay recoverable until their retention window expires.</CardDescription>
         </CardHeader>
@@ -834,7 +834,6 @@ function RecycleBinCard({
               {busy === "cleanup" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Clean expired items
             </Button>
-            <span className="text-xs text-muted-foreground">{items.length} stored item{items.length === 1 ? "" : "s"}</span>
           </div>
           {items.length ? (
             <div className="space-y-2">
@@ -1190,7 +1189,7 @@ function BackupCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          Backup and restore
+          {backups.length ? `${backups.length} backup${backups.length === 1 ? "" : "s"}` : "No backups yet"}
         </CardTitle>
         <CardDescription>Protect the app database, settings, queues, and integration cache before changes.</CardDescription>
       </CardHeader>
@@ -1471,7 +1470,7 @@ function UpgradeCard({ status, children }: { status: UpdateStatusResponse; child
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RotateCcw className="h-4 w-4 text-primary" />
-          Updates
+          {current.restartRequired ? "Restart to finish updating" : current.updateAvailable ? "Update available" : "Up to date"}
         </CardTitle>
         <CardDescription>Version status, channel, behaviour mode, and restart flow.</CardDescription>
       </CardHeader>
@@ -1820,8 +1819,8 @@ function HealthChecksCard({ checks, onChanged }: { checks: HealthCheckResultItem
   return (
     <>
     <ListCard
-      title="Health"
-      count={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "everything checked out" : "All clear") : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
+      title={problems.length === 0 ? (sorted.length === 0 && suggestions.length === 0 ? "Everything checked out" : "All clear") : `${problems.length} need${problems.length === 1 ? "s" : ""} attention`}
+      titleCase={false}
     >
       {sorted.length === 0 && suggestions.length > 0 ? (
         <ListEmpty title="All clear" description="Nothing needs a look. The suggestions below are optional." />

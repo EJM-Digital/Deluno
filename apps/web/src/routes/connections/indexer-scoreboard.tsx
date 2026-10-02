@@ -46,7 +46,7 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
       </section>
 
       {rows.length === 0 ? (
-        <ListCard title="Indexer scoreboard">
+        <ListCard title="Nothing recorded yet" titleCase={false}>
           <ListEmpty
             title="No indexer activity yet"
             description="Run a search or test an indexer. Deluno will record the response, result and latency here so source quality is visible over time."
@@ -61,7 +61,7 @@ export function IndexerScoreboard({ snapshot }: { snapshot: IndexerScoreboardSna
             <ScoreboardBars title="Failure rate" rows={rows} value={(row) => row.failureRate * 100} format={(value) => `${value.toFixed(1)}%`} empty="No failed queries in this window." tone="danger" />
           </div>
 
-          <ListCard title="Indexer scoreboard" count={`last ${snapshot.windowDays} days`}>
+          <ListCard title={`Last ${snapshot.windowDays} days`} titleCase={false}>
             <ListTable columns={[{ label: "Indexer" }, { label: "Queries" }, { label: "Response" }, { label: "Failure rate" }, { label: "Grabs" }, { label: "Conversion" }, { label: "Status", width: LIST_TRACK.status, mobile: true }]}>
               {rows.map((row) => (
                 <ListRow key={row.id}>

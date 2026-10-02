@@ -19,21 +19,23 @@ import { cn } from "../../lib/utils";
 
 interface ListCardProps {
   title: React.ReactNode;
-  /** e.g. "5 plans · 4 enabled" */
+  /** Secondary text after the title. A card whose title would repeat the page or tab leads with its count in `title` instead. */
   count?: React.ReactNode;
+  /** Set false when `title` is a count or state phrase ("4 indexers · 3 of 4 healthy", "Up to date") that must keep its own casing. */
+  titleCase?: boolean;
   filter?: { value: string; onChange: (value: string) => void; placeholder?: string };
   actions?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
 }
 
-export function ListCard({ title, count, filter, actions, className, children }: ListCardProps) {
+export function ListCard({ title, count, titleCase = true, filter, actions, className, children }: ListCardProps) {
   const filterId = React.useId();
   const titleId = React.useId();
   return (
     <section aria-labelledby={titleId} className={cn("overflow-hidden rounded-2xl border border-hairline bg-card shadow-card dark:border-white/[0.07]", className)}>
       <header className="flex min-h-[var(--list-header-height)] items-center gap-3 border-b border-hairline px-[var(--card-pad-x)]">
-        <h2 id={titleId} className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{typeof title === "string" ? titleCaseLabel(title) : title}</h2>
+        <h2 id={titleId} className="text-[length:var(--type-card-title)] font-semibold leading-none text-foreground">{typeof title === "string" && titleCase ? titleCaseLabel(title) : title}</h2>
         {count ? <span className="text-[length:var(--type-caption)] text-muted-foreground">{count}</span> : null}
         <span className="flex-1" />
         {filter ? (

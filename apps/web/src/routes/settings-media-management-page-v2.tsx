@@ -447,7 +447,7 @@ function ImportPolicyPage() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--page-gap)]" noValidate>
       <PageToolbar tabs={librarySetupNavItems} />
 
-      <ListCard title="Import Policy" count="What Deluno does after a download finishes">
+      <ListCard title="After a download finishes" titleCase={false}>
         <ImportPolicyFields
           form={form}
           onFormChange={(update) => setForm((current) => update(current))}

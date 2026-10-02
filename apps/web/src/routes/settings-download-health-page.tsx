@@ -692,8 +692,8 @@ export function SettingsDownloadHealthPage() {
       <PageToolbar tabs={automationNavItems} actions={<PageToolbarAction onClick={() => openRule(null)}>New rule</PageToolbarAction>} />
 
       <ListCard
-        title="Download health rules"
-        count={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : undefined}
+        title={rules.length ? `${rules.length} ${rules.length === 1 ? "rule" : "rules"}` : "Empty"}
+        titleCase={false}
       >
         {rules.length === 0 ? (
           <ListEmpty

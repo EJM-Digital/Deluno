@@ -538,8 +538,8 @@ export function SettingsPolicySetsPage() {
       />
 
       <ListCard
-        title="Library Profiles"
-        count={`${policySets.length} ${policySets.length === 1 ? "profile" : "profiles"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled · combines existing settings for each library`}
+        title={policySets.length ? `${policySets.length} ${policySets.length === 1 ? "profile" : "profiles"} · ${policySets.filter((plan) => plan.isEnabled).length} enabled` : "Empty"}
+        titleCase={false}
         filter={policySets.length > 3 ? { value: filter, onChange: setFilter, placeholder: "Filter library profiles" } : undefined}
         actions={<MediaTypeFilter value={split.scope} onValueChange={split.setScope} counts={split.counts} />}
       >

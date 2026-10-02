@@ -493,7 +493,7 @@ test.describe("dashboard workflow", () => {
     }
 
     await openTab(page, "Library & Storage");
-    await expect(page.getByText("where Deluno stores and organises your media", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^d+ librar(y|ies)$|^Empty$/ })).toBeVisible();
 
     await page.goto("/indexers");
     await expect(navigator.getByRole("link", { name: "Find & Download", exact: true })).toBeVisible();
@@ -558,14 +558,14 @@ test.describe("dashboard workflow", () => {
     await page.keyboard.press("Enter");
 
     await expect(page).toHaveURL(/\/indexers/);
-    await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of d+ healthy$|^Empty$/ })).toBeVisible();
   });
 
   test("keeps failed-download handling together with automation and recovery", async ({ page }) => {
     await authenticateAndNavigate(page, "/search-cycles");
 
     await openTab(page, "Failed Downloads");
-    await expect(page.getByRole("heading", { name: "Failed downloads" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "When strikes run out" })).toBeVisible();
     // Strikes/timer/action moved to their own per-rule controls on the
     // Download health page (#951); this platform-wide default only decides
     // what happens once a rule's strikes run out.
@@ -625,7 +625,7 @@ test.describe("dashboard workflow", () => {
     await authenticateAndNavigate(page, "/settings/policy-sets");
 
     // List → drawer: the page contains reusable library profiles.
-    await expect(page.getByRole("heading", { name: "Library Profiles", exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^d+ profiles?|^Empty$/ }).first()).toBeVisible();
     await page.getByRole("button", { name: "New library profile" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New library profile" });
     await expect(drawer).toBeVisible();
@@ -692,7 +692,7 @@ test.describe("dashboard workflow", () => {
     await expect(discoverMedia).toHaveAttribute("href", "/settings/lists");
     await discoverMedia.click();
 
-    await expect(page.getByRole("heading", { name: "Import Lists", exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^d+ lists?|^Empty$/ }).first()).toBeVisible();
     await page.getByRole("button", { name: "New list" }).first().click();
     const drawer = page.getByRole("dialog", { name: "New import list" });
     await expect(drawer.getByText(/Paste a public list URL/)).toBeVisible();
@@ -930,7 +930,7 @@ test.describe("dashboard workflow", () => {
     await expectTabReachable(page, "Indexers");
     await expectTabReachable(page, "Download Clients");
     await expectTabReachable(page, "Library Routing");
-    await expect(page.getByRole("heading", { name: "Indexers", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /of d+ healthy$|^Empty$/ })).toBeVisible();
 
     // The explainer belongs to the area, so it is here on the tab you land on
     // and still here three tabs along. It starts collapsed (#296).
@@ -938,7 +938,7 @@ test.describe("dashboard workflow", () => {
     await expect(explainer).toHaveAttribute("aria-expanded", "false");
 
     await openTab(page, "Library Routing");
-    await expect(page.getByRole("heading", { name: "Library Routing", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^d+ librar(y|ies)$|^Empty$/ })).toBeVisible();
     await expect(explainer).toBeVisible();
 
     await explainer.click();
