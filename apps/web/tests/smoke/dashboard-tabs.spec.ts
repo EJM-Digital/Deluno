@@ -390,7 +390,7 @@ test.describe("Dashboard tabs", () => {
       const shelf = page.getByRole("region", { name: "Your library" });
       await expect(shelf).toBeVisible();
       await page.waitForTimeout(1200);
-      const chips = shelf.getByRole("group", { name: "Libraries" }).getByRole("button");
+      const chips = shelf.getByRole("radiogroup", { name: "Libraries" }).getByRole("radio");
       await expect(chips).toHaveText(["All", "Movies HD", "Kids", "TV"]);
       await expect(shelf.locator(".lsh-posters")).toHaveCount(1);
       // No legend: the colours on the posters are the Movies page's own. The tag opens that library's page filtered to it.
@@ -416,7 +416,7 @@ test.describe("Dashboard tabs", () => {
       await page.screenshot({ path: `test-results/e2e-rig/live-shelf-${size.width}.png` });
       // A chip filters the shelf to its library.
       await chips.filter({ hasText: "Kids" }).click();
-      await expect(chips.filter({ hasText: "Kids" })).toHaveAttribute("aria-pressed", "true");
+      await expect(chips.filter({ hasText: "Kids" })).toHaveAttribute("aria-checked", "true");
       for (const text of await shelf.locator(".lsh-tag").allTextContents()) expect(text).toBe("Kids");
     }
   });

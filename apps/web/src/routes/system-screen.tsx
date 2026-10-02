@@ -67,6 +67,8 @@ import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { PageFooter } from "../components/ui/page-footer";
 import { PathInput } from "../components/ui/path-input";
+import { FILTER_MENU_TRIGGER } from "../components/ui/filter-chips";
+import { MenuSelect } from "../components/ui/menu-select";
 import { Select } from "../components/ui/select";
 import { SwitchRow } from "../components/ui/switch";
 import { Chip, type ChipProps } from "../components/ui/chip";
@@ -251,20 +253,20 @@ function SystemPageBody({ data: loaderData, revalidator }: { data: SystemLoaderD
         count="Every event Deluno has recorded, live as it happens"
         actions={
           <div className="flex items-center gap-2">
-            <Field label="Rows shown" hideLabel>
-              <Select
-                value={String(activityPageSize)}
-                disabled={activityBusy !== null}
-                onChange={(event) => void changeActivityPageSize(Number(event.target.value))}
-                options={[
-                  { value: "50", label: "50 rows" },
-                  { value: "100", label: "100 rows" },
-                  { value: "250", label: "250 rows" },
-                  { value: "500", label: "500 rows" },
-                  { value: "1000", label: "1000 rows" }
-                ]}
-              />
-            </Field>
+            <MenuSelect
+              label="Rows shown"
+              value={String(activityPageSize)}
+              onChange={(next) => { if (activityBusy === null) void changeActivityPageSize(Number(next)); }}
+              align="end"
+              options={[
+                { value: "50", label: "50 rows" },
+                { value: "100", label: "100 rows" },
+                { value: "250", label: "250 rows" },
+                { value: "500", label: "500 rows" },
+                { value: "1000", label: "1000 rows" }
+              ]}
+              triggerClassName={FILTER_MENU_TRIGGER}
+            />
             <Button type="button" variant="outline" size="sm" disabled={activityBusy !== null} onClick={() => setConfirmClearActivity(true)}>
               Clear
             </Button>

@@ -13,6 +13,7 @@
 import { useLayoutEffect, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArtworkImage } from "../../../components/ui/artwork-image";
+import { FilterChips } from "../../../components/ui/filter-chips";
 import type { DashboardLibrarySection } from "../../../lib/api/types/operations";
 import { cn } from "../../../lib/utils";
 import { formatSize } from "../downloads-kit";
@@ -191,18 +192,15 @@ export function Shelf({ items, titles, newest, heading, detail, latest = false, 
   const inRow = posters ? shown.slice(0, across + slots) : shown;
   useSlideNeighbours(boxRef, inRow.map((group) => group.key).join("|"), posters?.width ?? null);
   useTileArrivals(boxRef, shown.map((group) => group.key).join("|"));
-  // The chips live in the card's header, and scroll sideways there: a chip the header cuts off is brought into view when it is chosen.
-  const pick = (value: string, event: MouseEvent<HTMLButtonElement>) => {
-    choose(value);
-    event.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" });
-  };
+  // The chips live in the card's header (FilterChips, the one filter control, in its card-header size) and scroll sideways there.
   const chips: ReactNode = libraries.length > 0 ? (
-    <div className="lsh-chips" role="group" aria-label="Libraries">
-      <button type="button" className="lsh-chip" aria-pressed={!chosen} data-library="all" onClick={(event) => pick("all", event)}>All</button>
-      {libraries.map((entry) => (
-        <button key={entry.libraryId} type="button" className="lsh-chip" aria-pressed={chosen?.libraryId === entry.libraryId} data-library={entry.libraryId} onClick={(event) => pick(entry.libraryId, event)}>{entry.libraryName}</button>
-      ))}
-    </div>
+    <FilterChips
+      label="Libraries"
+      size="sm"
+      value={chosen?.libraryId ?? "all"}
+      onValueChange={choose}
+      options={[{ value: "all", label: "All" }, ...libraries.map((entry) => ({ value: entry.libraryId, label: entry.libraryName }))]}
+    />
   ) : null;
   const headingNode: ReactNode = <span title={detail}>{heading}</span>;
   // The status line is measured in its own font, read before paint and again when the fonts arrive.

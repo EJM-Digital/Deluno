@@ -48,7 +48,11 @@ export function FilterChips<T extends string>({
             role="radio"
             aria-checked={active}
             aria-label={option.count !== undefined ? `${option.label} ${option.count}` : option.label}
-            onClick={() => onValueChange(option.value)}
+            onClick={(event) => {
+              onValueChange(option.value);
+              // A chip the box has cut off is brought into view when it is chosen.
+              event.currentTarget.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+            }}
             className={cn(
               "inline-flex shrink-0 items-center whitespace-nowrap border font-medium transition-colors duration-150 motion-reduce:transition-none",
               size === "sm" ? "h-[22px] rounded-[7px] px-[10px] text-[length:var(--type-caption)]" : "h-[30px] rounded-[10px] px-[14px] text-[length:var(--type-control)]",

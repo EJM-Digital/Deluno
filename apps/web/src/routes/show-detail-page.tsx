@@ -99,6 +99,9 @@ import {
   ListTable
 } from "../components/ui/list-card";
 import { PageToolbar } from "../components/ui/page-toolbar";
+import { FILTER_MENU_TRIGGER, FilterChips, type FilterChipOption } from "../components/ui/filter-chips";
+import { MenuSelect } from "../components/ui/menu-select";
+import { ReleaseFilterMenus } from "../components/app/release-filter-menus";
 import { Select } from "../components/ui/select";
 import { SummaryStrip } from "../components/ui/summary-strip";
 import { Switch } from "../components/ui/switch";
@@ -368,6 +371,16 @@ export function ShowDetailPage() {
     () => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, episodeFilter, query)),
     [episodeFilter, inventory.episodes, query]
   );
+  const episodeFilterOptions = useMemo<FilterChipOption<EpisodeFilter>[]>(() => {
+    const countOf = (filter: EpisodeFilter) => inventory.episodes.filter((episode) => matchesEpisodeFilter(episode, filter, "")).length;
+    return [
+      { value: "all", label: "All", count: inventory.episodes.length },
+      { value: "missing", label: "Missing", count: countOf("missing") },
+      { value: "upgrade", label: "Upgrade", count: countOf("upgrade") },
+      { value: "monitored", label: "Monitored", count: countOf("monitored") },
+      { value: "imported", label: "On disk", count: countOf("imported") }
+    ];
+  }, [inventory.episodes]);
   const visibleSeasons = useMemo(() => buildSeasonGroups(visibleEpisodes), [visibleEpisodes]);
   // Counted over what has aired. `|| !item.hasFile` used to pull in every
   // episode still to come, so a show mid-season offered to "find" episodes that
@@ -1383,25 +1396,8 @@ export function ShowDetailPage() {
             <ListCard
               title={candidatesFor ? `Choose a release for ${candidatesFor}` : "Choose a release"}
               count={`${visibleCandidates.length} of ${releaseCandidates.length} candidate${releaseCandidates.length === 1 ? "" : "s"}`}
+              actions={<ReleaseFilterMenus protocols={candidateProtocolOptions} protocol={candidateProtocolFilter} onProtocolChange={setCandidateProtocolFilter} indexers={candidateIndexerOptions} indexer={candidateIndexerFilter} onIndexerChange={setCandidateIndexerFilter} />}
             >
-              {candidateProtocolOptions.length > 1 || candidateIndexerOptions.length > 1 ? (
-                <div className="flex flex-wrap items-center gap-2 border-b border-hairline p-[var(--card-pad-x)]">
-                  <Select
-                    value={candidateProtocolFilter}
-                    onChange={(event) => setCandidateProtocolFilter(event.target.value)}
-                    options={[{ value: "", label: "Every protocol" }, ...candidateProtocolOptions.map((protocol) => ({ value: protocol, label: formatProtocol(protocol) }))]}
-                    aria-label="Filter by protocol"
-                    className="max-w-[10rem]"
-                  />
-                  <Select
-                    value={candidateIndexerFilter}
-                    onChange={(event) => setCandidateIndexerFilter(event.target.value)}
-                    options={[{ value: "", label: "Every indexer" }, ...candidateIndexerOptions.map((name) => ({ value: name, label: name }))]}
-                    aria-label="Filter by indexer"
-                    className="max-w-[12rem]"
-                  />
-                </div>
-              ) : null}
               <ListTable
                 columns={[
                   { label: "Release" },
@@ -1450,23 +1446,17 @@ export function ShowDetailPage() {
           ) : null}
 
           <ListCard
-            title={`${visibleSeasons.filter((season) => expanded.includes(season.seasonNumber)).reduce((total, season) => total + season.episodes.length, 0)} of ${inventory.episodeCount} shown`}
+            title={`${visibleSeasons.filter((season) => expanded.includes(season.seasonNumber)).reduce((total, season) => total + season.episodes.length, 0)} shown`}
             titleCase={false}
             filter={{ value: query, onChange: setQuery, placeholder: "Filter by code or title" }}
             actions={
               <>
-                <Select
-                  aria-label="Filter episodes"
-                  className="h-[var(--control-height-sm)] w-40 py-0 text-[length:var(--type-caption)]"
+                <FilterChips<EpisodeFilter>
+                  label="Filter episodes"
+                  size="sm"
                   value={episodeFilter}
-                  onChange={(event) => setEpisodeFilter(event.target.value as EpisodeFilter)}
-                  options={[
-                    { value: "all", label: "All episodes" },
-                    { value: "missing", label: "Missing" },
-                    { value: "upgrade", label: "Upgrade" },
-                    { value: "monitored", label: "Monitored" },
-                    { value: "imported", label: "On disk" }
-                  ]}
+                  onValueChange={setEpisodeFilter}
+                  options={episodeFilterOptions}
                 />
                 <Button
                   type="button"
@@ -1804,29 +1794,24 @@ export function ShowDetailPage() {
           <ListCard
             title="Searches"
             count={historyFilteredSearches.length ? `Latest ${Math.min(historyFilteredSearches.length, 12)} of ${historyFilteredSearches.length}` : undefined}
+            actions={
+              <MenuSelect
+                label="Filter history to episode"
+                value={historyEpisodeId ?? ""}
+                onChange={(next) => setHistoryEpisodeId(next || null)}
+                options={[
+                  { value: "", label: "Every episode" },
+                  ...inventory.episodes.map((episode) => ({
+                    value: episode.episodeId,
+                    label: `${formatEpisodeCode(episode)} · ${episode.title ?? "Episode title pending"}`
+                  }))
+                ]}
+                menuWidth="max-h-[min(22rem,60vh)] overflow-y-auto"
+                align="end"
+                triggerClassName={FILTER_MENU_TRIGGER}
+              />
+            }
           >
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Filter to episode</span>
-                <Select
-                  aria-label="Filter history to episode"
-                  value={historyEpisodeId ?? ""}
-                  onChange={(event) => setHistoryEpisodeId(event.target.value || null)}
-                  options={[
-                    { value: "", label: "Whole show" },
-                    ...inventory.episodes.map((episode) => ({
-                      value: episode.episodeId,
-                      label: `${formatEpisodeCode(episode)} · ${episode.title ?? "Episode title pending"}`
-                    }))
-                  ]}
-                />
-              </label>
-              {historyEpisode ? (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setHistoryEpisodeId(null)}>
-                  Clear filter
-                </Button>
-              ) : null}
-            </div>
             {historyFilteredSearches.length === 0 ? (
               <ListEmpty
                 title={historyEpisode ? `No searches yet for ${formatEpisodeCode(historyEpisode)}` : "No searches yet"}

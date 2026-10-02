@@ -249,10 +249,8 @@
 .sy-tk-row .sy-r { text-align: right; color: var(--sy-muted); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sy-tk-row .sy-r b { color: var(--sy-fg); font-weight: 600; }
 .sy-logs { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.sy-lv { display: inline-flex; align-items: center; align-self: center; box-sizing: border-box; height: 24px; margin: -8px 0 -8px auto; background: var(--sy-card-2); border: 1px solid var(--sy-line); border-radius: 9px; padding: 2px; }
-.sy-lv button { all: unset; box-sizing: border-box; cursor: pointer; font-size: 12px; line-height: 18px; height: 18px; font-weight: 600; color: var(--sy-muted); padding: 0 9px; border-radius: 7px; }
-.sy-lv button.sy-on { background: color-mix(in srgb, hsl(var(--primary)) 22%, transparent); color: var(--sy-primary); }
-.sy-lv button:focus-visible { outline: 2px solid hsl(var(--ring)); }
+/* The log's level chips are FilterChips; this puts them at the right of the header without making it taller than its 44px. */
+.sy-lv { align-self: center; margin: -8px 0 -8px auto; }
 .sy-logs .sy-card-h .sy-link { margin-left: 10px; }
 .sy-log { list-style: none; margin: 0; padding: 0 18px 12px; font-size: 12px; }
 .sy-log li { display: grid; grid-template-columns: calc(4.9 * 14px) calc(4 * 14px) minmax(0, 1fr); gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--sy-line-soft); align-items: baseline; }
